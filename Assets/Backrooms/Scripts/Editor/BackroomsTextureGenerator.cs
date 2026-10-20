@@ -27,7 +27,107 @@ namespace Backrooms.EditorTools
             CarpetDetail();
             Wallpaper();
             Ceiling();
+            GenerateProps();
             AssetDatabase.Refresh();
+        }
+
+        /// <summary>Textures for the infinite-world dressing: wall plates, upholstery and wood.</summary>
+        public static void GenerateProps()
+        {
+            Directory.CreateDirectory(Folder);
+            WallPlates();
+            Fabric();
+            Wood();
+            AssetDatabase.Refresh();
+        }
+
+        // ---------- Outlet (left half) and light switch (right half) plate atlas ----------
+        static void WallPlates()
+        {
+            const int W = 256, H = 256;
+            var px = new Color[W * H];
+            var ivory = new Color(0.86f, 0.83f, 0.74f);
+            for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+            {
+                bool sw = x >= W / 2;
+                float u = (x % (W / 2)) / (float)(W / 2), v = y / (float)H;   // 0..1 within the half
+                float edge = Mathf.Min(Mathf.Min(u, 1 - u) * 0.61f, Mathf.Min(v, 1 - v));
+                float bevel = Mathf.SmoothStep(0f, 0.05f, edge);
+                Color c = ivory * (0.82f + 0.18f * bevel);
+                if (!sw)
+                {
+                    // Two receptacle faces with slots and a ground hole.
+                    for (int k = 0; k < 2; k++)
+                    {
+                        float cy = k == 0 ? 0.3f : 0.7f;
+                        float fx = Mathf.Abs(u - 0.5f) / 0.36f, fy = Mathf.Abs(v - cy) / 0.13f;
+                        float face = Mathf.Pow(Mathf.Pow(fx, 4) + Mathf.Pow(fy, 4), 0.25f);
+                        if (face < 1f) c = Color.Lerp(c, ivory * 0.93f, 0.6f) * (face > 0.9f ? 0.85f : 1f);
+                        bool slotL = Mathf.Abs(u - 0.38f) < 0.025f && Mathf.Abs(v - (cy + 0.025f)) < 0.05f;
+                        bool slotR = Mathf.Abs(u - 0.62f) < 0.032f && Mathf.Abs(v - (cy + 0.025f)) < 0.055f;
+                        float gd = Vector2.Distance(new Vector2(u, v * 0.5f), new Vector2(0.5f, (cy - 0.06f) * 0.5f));
+                        bool ground = gd < 0.03f && v > cy - 0.09f;
+                        if (slotL || slotR || ground) c = new Color(0.07f, 0.065f, 0.06f);
+                    }
+                    if (Vector2.Distance(new Vector2(u, v), new Vector2(0.5f, 0.5f)) < 0.035f) c *= 0.7f; // screw
+                }
+                else
+                {
+                    float lx = Mathf.Abs(u - 0.5f) / 0.13f, ly = Mathf.Abs(v - 0.5f) / 0.16f;
+                    if (Mathf.Max(lx, ly) < 1f) c = ivory * (0.75f + 0.25f * (1f - v)); // toggle, lit from above
+                    if (Mathf.Max(lx * 0.75f, ly * 0.75f) < 1f && Mathf.Max(lx, ly) >= 1f) c *= 0.78f;
+                    foreach (float sy in new[] { 0.18f, 0.82f })
+                        if (Vector2.Distance(new Vector2(u, v), new Vector2(0.5f, sy)) < 0.035f) c *= 0.7f;
+                }
+                c.a = 1f;
+                px[y * W + x] = c;
+            }
+            Save("WallPlate_Atlas", W, H, px, true);
+        }
+
+        // ---------- Upholstery weave, neutral grey (tinted per sofa material) ----------
+        static void Fabric()
+        {
+            const int S = 512;
+            var albedo = new Color[S * S];
+            var height = new float[S * S];
+            for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float u = x / (float)S, v = y / (float)S;
+                float warp = 0.5f + 0.5f * Mathf.Sin(u * Mathf.PI * 2f * 128f);
+                float weft = 0.5f + 0.5f * Mathf.Sin(v * Mathf.PI * 2f * 128f);
+                bool over = ((x / 4) + (y / 4)) % 2 == 0;
+                float weave = over ? warp : weft;
+                float slub = VNoise(u * 24, v * 96, 24, 96, 131);
+                float wear = Fbm(u, v, 4, 4, 137);
+                float g = 0.5f + (weave - 0.5f) * 0.16f + (slub - 0.5f) * 0.1f + (wear - 0.5f) * 0.18f;
+                albedo[y * S + x] = new Color(g, g, g, 1f);
+                height[y * S + x] = weave * 0.7f + slub * 0.3f;
+            }
+            Save("Fabric_Albedo", S, S, albedo, true);
+            Save("Fabric_Normal", S, S, NormalFromHeight(height, S, S, 2.5f), false, true);
+        }
+
+        // ---------- Wood laminate (light oak), 1 m repeat ----------
+        static void Wood()
+        {
+            const int S = 512;
+            var albedo = new Color[S * S];
+            Color a = new Color(0.62f, 0.47f, 0.31f), b = new Color(0.50f, 0.36f, 0.22f);
+            for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float u = x / (float)S, v = y / (float)S;
+                float warpN = Fbm(u, v, 3, 4, 151);
+                float rings = 0.5f + 0.5f * Mathf.Sin((v * 38f + warpN * 6f) * Mathf.PI * 2f);
+                float grain = VNoise(u * 8, v * 256, 8, 256, 157);
+                Color c = Color.Lerp(a, b, rings * 0.55f + grain * 0.25f);
+                c.a = 1f;
+                albedo[y * S + x] = c;
+            }
+            Save("Wood_Albedo", S, S, albedo, true);
         }
 
         // ---------- Carpet: large-scale mottling and wear (4 m repeat) ----------

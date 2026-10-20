@@ -28,6 +28,12 @@ namespace Backrooms
         [Range(0.1f, 5f)] public float brightenSpeed = 0.55f;
         [Tooltip("Base exposure offset applied on top of the automatic value.")]
         public float exposureBias = 0f;
+        [Tooltip("Automatic iris on/off. Off holds the nominal exposure plus bias.")]
+        public bool autoExposure = true;
+        [Tooltip("Multiplier on both adaptation speeds.")]
+        [Range(0.1f, 3f)] public float speedScale = 1f;
+        [Tooltip("Subtle brightness beating from the camera shutter against fluorescent mains flicker.")]
+        [Range(0f, 1f)] public float flicker = 0f;
         [Tooltip("Probe renders per second.")]
         [Range(1f, 30f)] public float sampleRate = 6f;
 
@@ -79,12 +85,17 @@ namespace Backrooms
                 }
             }
 
-            float target = MeasuredLuminance > 0f
+            float target = autoExposure && MeasuredLuminance > 0f
                 ? Mathf.Clamp(Mathf.Log(targetLuminance / Mathf.Max(MeasuredLuminance, 1e-4f), 2f) * compensation, minEV, maxEV)
                 : 0f;
-            float speed = target < CurrentEV ? darkenSpeed : brightenSpeed;
+            float speed = (target < CurrentEV ? darkenSpeed : brightenSpeed) * speedScale;
             CurrentEV = Mathf.MoveTowards(CurrentEV, target, speed * Time.deltaTime);
-            _color.postExposure.value = CurrentEV + exposureBias;
+
+            // Shutter beating against mains-driven tubes: a slow, slightly irregular brightness pulse.
+            float beat = flicker > 0f
+                ? (Mathf.Sin(Time.time * 6.2831853f * 0.9f) * 0.6f + Mathf.Sin(Time.time * 6.2831853f * 2.3f + 1.7f) * 0.4f) * 0.05f * flicker
+                : 0f;
+            _color.postExposure.value = CurrentEV + exposureBias + beat;
         }
 
         void OnReadback(AsyncGPUReadbackRequest req)

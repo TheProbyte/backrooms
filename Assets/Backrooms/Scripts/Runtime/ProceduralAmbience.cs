@@ -14,7 +14,7 @@ namespace Backrooms
         public enum Kind { FluorescentHum, RoomTone }
 
         public Kind kind = Kind.FluorescentHum;
-        [Range(0f, 1f)] public float volume = 0.15f;
+        [Range(0f, 1f)] public float volume = 0.04f;
         [Tooltip("Mains frequency of the building (60 Hz US, 50 Hz EU). Ballast hum is twice this.")]
         public float mainsHz = 60f;
         [Tooltip("Randomises phase/detune so neighbouring fixtures don't phase perfectly.")]
@@ -26,14 +26,14 @@ namespace Backrooms
         void Start()
         {
             var src = GetComponent<AudioSource>();
-            src.clip = kind == Kind.FluorescentHum ? BuildHum() : BuildRoomTone();
+            src.clip = kind == Kind.FluorescentHum ? BuildHumClip(mainsHz, seed) : BuildRoomToneClip(seed);
             src.loop = true;
             src.volume = volume;
             src.timeSamples = new System.Random(seed).Next(0, src.clip.samples);
             src.Play();
         }
 
-        AudioClip BuildHum()
+        public static AudioClip BuildHumClip(float mainsHz, int seed)
         {
             int n = (int)(SampleRate * LoopSeconds);
             var data = new float[n];
@@ -61,7 +61,7 @@ namespace Backrooms
             return clip;
         }
 
-        AudioClip BuildRoomTone()
+        public static AudioClip BuildRoomToneClip(int seed)
         {
             int n = (int)(SampleRate * LoopSeconds);
             int fade = SampleRate; // 1 s crossfade for a seamless noise loop

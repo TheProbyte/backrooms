@@ -21,6 +21,16 @@ namespace Backrooms
         [Tooltip("Rotational sway at rest, in degrees.")]
         [Range(0f, 1.5f)] public float idleSwayDegrees = 0.35f;
         [Range(0.05f, 1f)] public float idleSwayFrequency = 0.22f;
+        [Tooltip("Breathing: slow rise and fall of the hands holding the camera, in degrees of tilt.")]
+        [Range(0f, 1f)] public float breathingDegrees = 0.2f;
+        [Tooltip("Breathing height in metres.")]
+        [Range(0f, 0.01f)] public float breathingHeight = 0.0022f;
+        [Tooltip("Breaths per second (resting adult ~0.2-0.3).")]
+        [Range(0.1f, 0.5f)] public float breathingRate = 0.23f;
+
+        [Header("Stabilisation")]
+        [Tooltip("Optical/electronic image stabilisation: 0 = none, 1 = removes most high-frequency shake.")]
+        [Range(0f, 1f)] public float stabilization = 0f;
 
         [Header("Walking")]
         [Tooltip("Vertical bob per step while walking, in metres.")]
@@ -38,7 +48,7 @@ namespace Backrooms
         [Tooltip("How quickly shake blends between rest, walk and run.")]
         [Range(0.5f, 10f)] public float blendSpeed = 3f;
 
-        float _walkBlend, _runBlend, _stepPhase;
+        float _walkBlend, _runBlend, _stepPhase, _breathPhase;
         Vector3 _seed;
 
         void Awake()
@@ -80,8 +90,20 @@ namespace Backrooms
                            + Noise3(t * 4.5f + 113f) * runShakeDegrees * 0.45f;
 
             float walkOnly = _walkBlend * (1f - _runBlend);
-            Vector3 pos = walkPos * walkOnly + runPos * _runBlend;
-            Vector3 rot = idleRot * Mathf.Lerp(1f, 0.6f, _walkBlend) + walkRot * walkOnly + runRot * _runBlend;
+            // Breathing: irregular period (rate wanders a little) so it never reads as a metronome.
+            _breathPhase += dt * breathingRate * (0.85f + 0.3f * Mathf.PerlinNoise(t * 0.05f, _seed.x)) * Mathf.PI * 2f;
+            float breath = Mathf.Sin(_breathPhase) + 0.25f * Mathf.Sin(_breathPhase * 2f + 0.8f);
+            float breathWeight = 1f - _walkBlend * 0.7f;
+            Vector3 breathRot = new Vector3(breath * breathingDegrees, 0f, breath * breathingDegrees * 0.25f) * breathWeight;
+            Vector3 breathPos = new Vector3(0f, breath * breathingHeight, 0f) * breathWeight;
+
+            // Stabilisation removes the fast components first (run shake), then some of the slow ones.
+            float stab = 1f - stabilization;
+            Vector3 pos = breathPos * (1f - stabilization * 0.5f) + (walkPos * walkOnly + runPos * _runBlend) * Mathf.Lerp(1f, 0.45f, stabilization);
+            Vector3 rot = breathRot * (1f - stabilization * 0.5f)
+                        + idleRot * Mathf.Lerp(1f, 0.6f, _walkBlend) * Mathf.Lerp(1f, 0.4f, stabilization)
+                        + walkRot * walkOnly * Mathf.Lerp(1f, 0.35f, stabilization)
+                        + runRot * _runBlend * Mathf.Lerp(1f, 0.25f, stabilization) * (0.5f + 0.5f * stab);
 
             transform.localPosition = pos * shakeIntensity;
             transform.localRotation = Quaternion.Euler(rot * shakeIntensity);

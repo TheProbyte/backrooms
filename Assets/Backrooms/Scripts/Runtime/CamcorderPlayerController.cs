@@ -42,13 +42,18 @@ namespace Backrooms
         /// <summary>0 when still, 1 at walk speed, ~2.7 at run speed.</summary>
         public float NormalizedSpeed => walkSpeed > 0f ? PlanarVelocity.magnitude / walkSpeed : 0f;
 
+        /// <summary>Set by in-game menus to suspend look, movement and cursor capture.</summary>
+        public static bool InputBlocked;
+
         CharacterController _controller;
         float _yaw, _pitch, _verticalVelocity;
+        int _unblockFrame = -10;
 
         void Awake()
         {
             _controller = GetComponent<CharacterController>();
             _yaw = transform.eulerAngles.y;
+            InputBlocked = false;
         }
 
         void OnEnable() => LockCursor(true);
@@ -60,11 +65,17 @@ namespace Backrooms
             var mouse = Mouse.current;
             if (keyboard == null || mouse == null) return;
 
-            if (keyboard.escapeKey.wasPressedThisFrame) LockCursor(false);
-            else if (mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked) LockCursor(true);
+            // A menu (e.g. F5 visual settings) owns the cursor and keys while open, and on the frame it closes.
+            bool blocked = InputBlocked || Time.frameCount <= _unblockFrame + 1;
+            if (InputBlocked) _unblockFrame = Time.frameCount;
+            if (!blocked)
+            {
+                if (keyboard.escapeKey.wasPressedThisFrame) LockCursor(false);
+                else if (mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked) LockCursor(true);
+            }
 
             // Ignore input while the window is in the background (raw mouse deltas still arrive).
-            bool hasFocus = Cursor.lockState == CursorLockMode.Locked && (Application.isFocused || !requireWindowFocus);
+            bool hasFocus = !blocked && Cursor.lockState == CursorLockMode.Locked && (Application.isFocused || !requireWindowFocus);
             if (hasFocus) UpdateLook(mouse.delta.ReadValue());
             UpdateMove(keyboard, hasFocus);
         }
