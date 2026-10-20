@@ -40,6 +40,20 @@ The world is streamed in 14.4 m chunks (12 x 12 cells of 1.2 m) around the playe
 Rebuild the scene with **Backrooms > Build Infinite Offices Scene** (`InfiniteWorldBuilder.cs`). `WorldStreamer.seed`
 = 0 gives a new world each run.
 
+### Realism pass (milestone 2.1)
+
+- **Tall rooms**: big halls (and some large offices/lounges) rise to 3.9-5.4 m with plaster ceilings and round dome
+  fittings. Height changes get soffits; posts and colliders always reach full height so no gap can open to the void.
+  Walls are wallpaper or painted plaster per room.
+- **Stable lighting**: every fixture within 14 m stays lit whether visible or not; up to 26 nearest lights cast
+  shadows with hysteresis and fade their shadow strength in and out instead of popping.
+- **Power flicker**: newly streamed areas strike on like fluorescent tubes, unloading areas stutter off (both happen
+  far away, so it is rarely noticed). About 2.5% of tubes are faulty and stutter now and then.
+- **Props** are modelled in Blender by `Tools/Blender/build_props.py` (headless, no MCP needed):
+  `blender -b --factory-startup --python Tools/Blender/build_props.py -- Assets/Backrooms/Models`. Chesterfield and
+  modern sofas, armchair, floor lamp, mesh office chair, conference table modules and a wall clock, 200-1800 triangles
+  each, instanced as prefabs with shared meshes.
+
 ## Camcorder look (F5)
 
 `CamcorderRig` applies `CamcorderSettings` (saved to PlayerPrefs) to the post-processing volume, auto-iris,

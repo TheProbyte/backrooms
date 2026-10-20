@@ -103,10 +103,101 @@ namespace Backrooms.EditorTools
             a.lampShadeOn = Lit("M_LampShade_On", new Color(0.9f, 0.82f, 0.66f), fabricTex, null, 0.1f);
             a.lampShadeOn.EnableKeyword("_EMISSION");
             a.lampShadeOn.SetColor("_EmissionColor", new Color(1f, 0.72f, 0.42f) * 1.6f);
-            a.lampShadeOn.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+            a.lampShadeOn.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive; a.lampShadeOn.EnableKeyword("_EMISSION");
+
+            // Painted plaster walls and tall plaster ceilings (warm cream, matte), and round dome fittings.
+            var plaster = Tex("Plaster_Albedo"); var plasterN = Tex("Plaster_Normal");
+            a.paintedWall = Lit("M_PaintedWall", new Color(0.86f, 0.79f, 0.6f), plaster, plasterN, 0.12f, 0.22f);
+            a.ceilingPlaster = Lit("M_CeilingPlaster", new Color(0.84f, 0.81f, 0.72f), plaster, plasterN, 0.06f, 0.18f);
+            a.domeOff = Lit("M_DomeLens_Off", new Color(0.7f, 0.7f, 0.68f), null, null, 0.5f);
+            a.domeOn = Lit("M_DomeLens_On", new Color(0.92f, 0.9f, 0.86f), null, null, 0.5f);
+            a.domeOn.EnableKeyword("_EMISSION");
+            a.domeOn.SetColor("_EmissionColor", new Color(1f, 0.93f, 0.8f) * 3.2f);
+            a.domeOn.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive; a.domeOn.EnableKeyword("_EMISSION");
+            // One plaster repeat = 2.4 m square. Walls map U over 1.2 m and V over 2.7 m; ceilings are in metres.
+            a.paintedWall.SetTextureScale("_BaseMap", new Vector2(0.5f, 1.125f));
+            a.ceilingPlaster.SetTextureScale("_BaseMap", new Vector2(1f / 2.4f, 1f / 2.4f));
+            CreatePropPrefabs(a);
             EditorUtility.SetDirty(a);
             AssetDatabase.SaveAssets();
             return a;
+        }
+
+        // ---------------- Blender props ----------------
+
+        const string ModelFolder = Root + "/Models";
+        const string PrefabFolder = Root + "/Prefabs/Props";
+
+        /// <summary>
+        /// Wraps each Blender FBX in a prefab: material slots are remapped by name to project materials,
+        /// one box collider from the bounds, static flags off (props are instanced into streamed chunks).
+        /// </summary>
+        static void CreatePropPrefabs(OfficeBiomeAssets a)
+        {
+            Directory.CreateDirectory(PrefabFolder);
+            var plastic = Lit("M_PropPlastic", new Color(0.12f, 0.12f, 0.125f), null, null, 0.35f);
+            var glass = Lit("M_PropGlass", new Color(0.95f, 0.92f, 0.85f), null, null, 0.85f);
+            var clockFace = Lit("M_ClockFace", new Color(0.92f, 0.91f, 0.87f), null, null, 0.3f);
+
+            GameObject Make(string fbx, string prefabName, Material fabric, Material laminate = null, bool collider = true)
+            {
+                string path = $"{ModelFolder}/{fbx}.fbx";
+                var imp = AssetImporter.GetAtPath(path) as ModelImporter;
+                if (!imp) { Debug.LogWarning("[Backrooms] Missing prop model " + path); return null; }
+                if (imp.globalScale != 1f || imp.isReadable || imp.importAnimation || !imp.useFileScale)
+                {
+                    imp.globalScale = 1f; imp.useFileScale = true; imp.isReadable = false;
+                    imp.importAnimation = false; imp.importCameras = false; imp.importLights = false;
+                    imp.SaveAndReimport();
+                }
+                var model = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                var go = (GameObject)PrefabUtility.InstantiatePrefab(model);
+                go.name = prefabName;
+                foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
+                {
+                    var mats = r.sharedMaterials;
+                    for (int i = 0; i < mats.Length; i++)
+                    {
+                        string n = mats[i] ? mats[i].name : "";
+                        mats[i] = n.StartsWith("Fabric") ? fabric
+                                : n.StartsWith("Wood") ? a.wood
+                                : n.StartsWith("Metal") ? a.lampMetal
+                                : n.StartsWith("Shade") ? a.lampShadeOff
+                                : n.StartsWith("Laminate") ? (laminate ? laminate : a.laminate)
+                                : n.StartsWith("Glass") ? glass
+                                : plastic;
+                    }
+                    r.sharedMaterials = mats;
+                    r.shadowCastingMode = ShadowCastingMode.On;
+                    r.lightProbeUsage = LightProbeUsage.Off;
+                    r.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                }
+                if (collider)
+                {
+                    var b = new Bounds(go.transform.position, Vector3.zero);
+                    foreach (var r in go.GetComponentsInChildren<Renderer>()) b.Encapsulate(r.bounds);
+                    var bc = go.AddComponent<BoxCollider>();
+                    bc.center = b.center - go.transform.position; bc.size = b.size;
+                }
+                string prefabPath = $"{PrefabFolder}/{prefabName}.prefab";
+                var prefab = PrefabUtility.SaveAsPrefabAsset(go, prefabPath);
+                Object.DestroyImmediate(go);
+                return prefab;
+            }
+
+            var fabrics = a.sofaFabrics;
+            var sofas = new List<GameObject>();
+            foreach (var model in new[] { "Sofa_Chesterfield", "Sofa_Modern" })
+                for (int f = 0; f < fabrics.Length; f++) sofas.Add(Make(model, $"{model}_{f}", fabrics[f]));
+            a.sofaPrefabs = sofas.ToArray();
+            var chairs = new List<GameObject>();
+            for (int f = 0; f < fabrics.Length; f++) chairs.Add(Make("Armchair", $"Armchair_{f}", fabrics[f]));
+            a.armchairPrefabs = chairs.ToArray();
+            a.floorLampPrefab = Make("FloorLamp", "FloorLamp", a.lampShadeOff);
+            a.officeChairPrefab = Make("OfficeChair", "OfficeChair", a.chairFabric);
+            a.tableModulePrefab = Make("ConferenceTable_Module", "ConferenceTable_Module", a.chairFabric, null, false);
+            a.tableLegPrefab = Make("ConferenceTable_Leg", "ConferenceTable_Leg", a.chairFabric, null, false);
+            a.wallClockPrefab = Make("WallClock", "WallClock", a.chairFabric, clockFace, false);
         }
 
         static Material Lit(string name, Color color, Texture2D albedo, Texture2D normal, float smoothness, float normalScale = 1f)

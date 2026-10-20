@@ -88,6 +88,20 @@ namespace Backrooms.Generation
             }
         }
 
+        /// <summary>Flat polygon (triangle fan written as degenerate quads).</summary>
+        public void Disc(Vector3 center, float radius, int sides, Vector3 normal, UVProjector uv)
+        {
+            Vector3 t = Vector3.Cross(normal, Mathf.Abs(normal.y) > 0.9f ? Vector3.forward : Vector3.up).normalized;
+            Vector3 b = Vector3.Cross(normal, t);
+            for (int i = 0; i < sides; i++)
+            {
+                float a0 = i * Mathf.PI * 2f / sides, a1 = (i + 1) * Mathf.PI * 2f / sides;
+                Vector3 p0 = center + (t * Mathf.Cos(a0) + b * Mathf.Sin(a0)) * radius;
+                Vector3 p1 = center + (t * Mathf.Cos(a1) + b * Mathf.Sin(a1)) * radius;
+                Quad(center, p0, p1, p1, normal, uv);
+            }
+        }
+
         public Mesh ToMesh(string name)
         {
             var m = new Mesh { name = name };

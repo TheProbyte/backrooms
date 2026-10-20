@@ -9,6 +9,7 @@ namespace Backrooms.Generation
         public const int ChunkCells = 12;            // 14.4 m chunks
         public const float ChunkSize = CellSize * ChunkCells;
         public const float CeilingHeight = 2.7f;
+        public const float MaxCeilingHeight = 5.4f;  // tallest hall; posts and colliders always reach this
         public const float WallThickness = 0.15f;
         public const float DoorHeaderHeight = 2.1f;
         public const float HalfWallHeight = 1.15f;

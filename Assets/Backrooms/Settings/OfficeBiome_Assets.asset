@@ -32,3 +32,23 @@ MonoBehaviour:
   lampMetal: {fileID: 2100000, guid: d3c1d079a3564e54496a2e473f79c53c, type: 2}
   lampShadeOn: {fileID: 2100000, guid: 75a01d5ebdd256d42b481bfe20e458ce, type: 2}
   lampShadeOff: {fileID: 2100000, guid: f9467b0acb3c8d245a20713d35b47c3c, type: 2}
+  paintedWall: {fileID: 2100000, guid: 0d357ea367774df4a854b80658fcb09c, type: 2}
+  ceilingPlaster: {fileID: 2100000, guid: 1534c183803146442aa92e4df1acaad7, type: 2}
+  domeOn: {fileID: 2100000, guid: f6479a6373493d94ebc7eadf32a7a6a6, type: 2}
+  domeOff: {fileID: 2100000, guid: 1972f3a368504b5439c4544fbd1a5d87, type: 2}
+  sofaPrefabs:
+  - {fileID: 7018118578112881847, guid: e02cbaa0ac87c0742ac00c72ad407800, type: 3}
+  - {fileID: 843757320359358737, guid: 659610b934574f8478aa773e3a054d05, type: 3}
+  - {fileID: 7610411597409304417, guid: b23ef9a59b061f244959aa038afc9753, type: 3}
+  - {fileID: 4701842766541106809, guid: 71cbf4074c1e20540b484fb6200fe2b3, type: 3}
+  - {fileID: 399105565311276212, guid: 935fc315425504641be54af96f96d2ce, type: 3}
+  - {fileID: 9093423828257751637, guid: daeff9d134050e546a2a6d99dc7a6781, type: 3}
+  armchairPrefabs:
+  - {fileID: 1465132664645981300, guid: 1ee131ca5ebc26147958a8bf4d1ae513, type: 3}
+  - {fileID: 147283916221190926, guid: c4894b7b538b83e40913bb7eefe1332e, type: 3}
+  - {fileID: 1621707765058127006, guid: e8231b76141c0d345b4657eb7153df69, type: 3}
+  floorLampPrefab: {fileID: 2297905651840131474, guid: 2cd41a112313a794a9943f97a676eb44, type: 3}
+  officeChairPrefab: {fileID: 3694999213999838756, guid: c45a38f0eb3ca574596ada9b62b4ba06, type: 3}
+  tableModulePrefab: {fileID: 7913879385483495022, guid: f9097a9f93e35ac438570fd11223e5ea, type: 3}
+  tableLegPrefab: {fileID: 2348211405358757513, guid: 89906f5ee3549b747a411f3d4e7c0cda, type: 3}
+  wallClockPrefab: {fileID: 5251270770034441190, guid: c23d044de28ceb5429505dd173860c3a, type: 3}

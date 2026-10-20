@@ -9,6 +9,10 @@ namespace Backrooms.Generation
         public Vector3 position;     // world
         public bool isLamp;          // floor lamp (warm point) vs ceiling troffer (spot + bounce)
         public uint roomLayer;       // rendering-layer bit for bounce light
+        public bool dome;            // round fitting on a tall ceiling (longer throw)
+        public float ceiling;        // ceiling height at the fixture
+        public int faultyId;         // index of this tube's own lens renderer when it stutters, else -1
+        public Vector2Int chunk;     // owning chunk (set by the streamer)
     }
 
     /// <summary>
@@ -32,6 +36,11 @@ namespace Backrooms.Generation
 
         public OfficeLayout Layout => _L;
         public readonly List<LightSource> lights = new List<LightSource>();
+        readonly List<(MeshWriter w, bool dome)> faultyLenses = new List<(MeshWriter, bool)>();
+
+        /// <summary>After Instantiate: renderers whose emission the light manager animates.</summary>
+        public readonly List<Renderer> litLensRenderers = new List<Renderer>();
+        public readonly List<Renderer> faultyRenderers = new List<Renderer>();
 
         /// <summary>Material keys compared by reference so the data phase never touches the native engine.</summary>
         class KeyComparer : IEqualityComparer<(Material, uint)>
@@ -61,7 +70,7 @@ namespace Backrooms.Generation
         /// </summary>
         public void BuildData(OfficeLayout layout)
         {
-            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear();
+            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear();
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, 0f, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             foreach (var f in layout.fixtures) _fixtureCells.Add(f.cell);
@@ -96,10 +105,48 @@ namespace Backrooms.Generation
                 var r = go.AddComponent<MeshRenderer>();
                 r.sharedMaterial = mat;
                 r.renderingLayerMask = mask;
-                bool caster = mat != _a.lensOn && mat != _a.lensOff && mat != _a.ceilingGrid && mat != _a.carpet && mat != _a.ceilingTile && mat != _a.lampShadeOn;
+                if (mat == _a.lensOn || (_a.domeOn && mat == _a.domeOn) || mat == _a.lampShadeOn) litLensRenderers.Add(r);
+                bool caster = mat != _a.lensOn && mat != _a.lensOff && mat != _a.ceilingGrid && mat != _a.carpet && mat != _a.ceilingTile && mat != _a.lampShadeOn
+                              && mat != _a.domeOn && mat != _a.domeOff && mat != _a.ceilingPlaster;
                 r.shadowCastingMode = caster ? ShadowCastingMode.On : ShadowCastingMode.Off;
                 r.lightProbeUsage = LightProbeUsage.Off;
                 r.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            }
+
+            for (int i = 0; i < faultyLenses.Count; i++)
+            {
+                var (w, dome) = faultyLenses[i];
+                var go = new GameObject("FaultyLens_" + i);
+                go.transform.SetParent(root.transform, false);
+                go.AddComponent<MeshFilter>().sharedMesh = w.ToMesh(go.name);
+                var r = go.AddComponent<MeshRenderer>();
+                r.sharedMaterial = dome && _a.domeOn ? _a.domeOn : _a.lensOn;
+                r.shadowCastingMode = ShadowCastingMode.Off;
+                r.lightProbeUsage = LightProbeUsage.Off;
+                r.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                faultyRenderers.Add(r);
+            }
+
+            // Prop instances (shared meshes from the Blender prefabs). Colliders come from _rotBoxes/_boxes.
+            foreach (var pi in _instances)
+            {
+                if (!pi.prefab) continue;
+                var go = Object.Instantiate(pi.prefab, root.transform, false);
+                go.transform.localPosition = pi.position;
+                go.transform.localRotation = pi.rotation;
+                go.transform.localScale = pi.scale;
+                var col = go.GetComponent<Collider>();
+                if (col && pi.prefab.GetComponent<BoxCollider>() && pi.scale == Vector3.one) { /* keep prefab collider */ }
+                else if (col) Object.Destroy(col);
+                foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
+                {
+                    r.renderingLayerMask = pi.mask;
+                    if (!pi.litShade) continue;
+                    var mats = r.sharedMaterials;
+                    for (int i = 0; i < mats.Length; i++) if (mats[i] == _a.lampShadeOff) mats[i] = _a.lampShadeOn;
+                    r.sharedMaterials = mats;
+                    litLensRenderers.Add(r);
+                }
             }
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
@@ -131,46 +178,51 @@ namespace Backrooms.Generation
 
         // ---------------- Floor / ceiling / grid ----------------
 
+        Material WallMat(Room r) => r.painted && _a.paintedWall ? _a.paintedWall : _a.wallpaper;
+
         /// <summary>One floor and one ceiling quad per room (world-space UVs keep textures continuous).</summary>
         void BuildFloorAndCeiling()
         {
             foreach (var r in _L.rooms)
             {
-                float x0 = r.rect.xMin * C, z0 = r.rect.yMin * C, x1 = r.rect.xMax * C, z1 = r.rect.yMax * C;
+                float x0 = r.rect.xMin * C, z0 = r.rect.yMin * C, x1 = r.rect.xMax * C, z1 = r.rect.yMax * C, h = r.ceiling;
                 W(_a.carpet, r.color).Quad(new Vector3(x0, 0, z0), new Vector3(x0, 0, z1), new Vector3(x1, 0, z1), new Vector3(x1, 0, z0), Vector3.up, MeshWriter.FloorUV);
-                W(_a.ceilingTile, r.color).Quad(new Vector3(x0, H, z0), new Vector3(x1, H, z0), new Vector3(x1, H, z1), new Vector3(x0, H, z1), Vector3.down, MeshWriter.CeilingUV);
+                var ceil = r.Tall && _a.ceilingPlaster ? _a.ceilingPlaster : _a.ceilingTile;
+                W(ceil, r.color).Quad(new Vector3(x0, h, z0), new Vector3(x1, h, z0), new Vector3(x1, h, z1), new Vector3(x0, h, z1), Vector3.down,
+                    r.Tall ? (MeshWriter.UVProjector)MeshWriter.MetreUV : MeshWriter.CeilingUV);
             }
         }
 
         /// <summary>
-        /// Suspended grid as long runs: main runners along X every 0.6 m (offset 0.3), cross tees along Z
-        /// every 0.6 m, broken only where a troffer sits. Runs pass through walls, where they are hidden.
+        /// Suspended grid per room with an acoustic-tile ceiling: main runners along X every 0.6 m (offset
+        /// 0.3), cross tees along Z every 0.6 m, broken where a troffer sits. Runs end inside the walls.
         /// </summary>
         void BuildCeilingGrid()
         {
             const float gw = 0.024f, gd = 0.012f, off = OfficeBiome.TileGridOffset;
-            int N = _L.N;
-            float S = N * C, y = H - gd * 0.5f;
-            var w = WMask(_a.ceilingGrid, 0xFFu);
-            for (int k = 0; k < N * 2; k++)
+            float y = H - gd * 0.5f;
+            foreach (var r in _L.rooms)
             {
-                float z = off + k * 0.6f;
-                w.Box(new Vector3(S * 0.5f, y, z), new Vector3(S, gd, gw), 4 | 16 | 32, MeshWriter.MetreUV);
-            }
-            for (int k = 0; k < N * 2; k++)
-            {
-                float x = k * 0.6f;
-                bool midColumn = (k & 1) == 1;          // x = cell + 0.6 crosses troffer lenses
-                int cellX = k / 2;
-                float start = 0f;
-                for (int cz = 0; cz <= N; cz++)
+                if (r.Tall) continue;
+                var w = W(_a.ceilingGrid, r.color);
+                float x0 = r.rect.xMin * C, x1 = r.rect.xMax * C, z0 = r.rect.yMin * C, z1 = r.rect.yMax * C;
+                for (float z = z0 + off; z < z1; z += 0.6f)
+                    w.Box(new Vector3((x0 + x1) * 0.5f, y, z), new Vector3(x1 - x0, gd, gw), 4 | 16 | 32, MeshWriter.MetreUV);
+                for (int k = 0; k <= r.rect.width * 2; k++)
                 {
-                    bool cut = cz < N && midColumn && _fixtureCells.Contains(new Vector2Int(cellX, cz));
-                    if (cut || cz == N)
+                    float x = x0 + k * 0.6f;
+                    bool midColumn = (k & 1) == 1;          // x = cell + 0.6 crosses troffer lenses
+                    int cellX = r.rect.xMin + k / 2;
+                    float start = z0;
+                    for (int cz = r.rect.yMin; cz <= r.rect.yMax; cz++)
                     {
-                        float end = cz == N ? S : cz * C + off;
-                        if (end - start > 0.01f) w.Box(new Vector3(x, y - 0.0005f, (start + end) * 0.5f), new Vector3(gw, gd, end - start), 1 | 2 | 4, MeshWriter.MetreUV);
-                        start = cz * C + off + 0.6f;
+                        bool cut = cz < r.rect.yMax && midColumn && _fixtureCells.Contains(new Vector2Int(cellX, cz));
+                        if (cut || cz == r.rect.yMax)
+                        {
+                            float end = cz == r.rect.yMax ? z1 : cz * C + off;
+                            if (end - start > 0.01f) w.Box(new Vector3(x, y - 0.0005f, (start + end) * 0.5f), new Vector3(gw, gd, end - start), 1 | 2 | 4, MeshWriter.MetreUV);
+                            start = cz * C + off + 0.6f;
+                        }
                     }
                 }
             }
@@ -178,72 +230,74 @@ namespace Backrooms.Generation
 
         // ---------------- Walls ----------------
 
+        /// <summary>
+        /// Walls and soffits, emitted from each cell they are seen from.
+        /// Solid edges: a face from the floor to that room's ceiling. Passable edges: the opening top is
+        /// the door header (2.1 m), or the lower of the two ceilings; the taller side gets a soffit face
+        /// down to the opening top plus its half of the underside. On a chunk border the neighbour's
+        /// ceiling is unknown, so a tall room always closes its border openings with a header and a face
+        /// on the border line, guaranteeing nothing can be seen above a neighbour's lower ceiling.
+        /// </summary>
         void BuildWalls()
         {
             int N = _L.N;
-            // Vertical edges (line X = x): faces seen from cell (x-1, z) [normal -X] and (x, z) [normal +X].
             for (int x = 0; x <= N; x++)
             for (int z = 0; z < N; z++)
-            {
-                var e = _L.vEdges[x, z];
-                if (e == EdgeKind.Open) continue;
-                float lx = x * C, z0 = z * C + T * 0.5f, z1 = (z + 1) * C - T * 0.5f;
-                for (int s = 0; s < 2; s++)
-                {
-                    int cx = s == 0 ? x - 1 : x;
-                    if (!_L.InChunk(cx, z)) continue;
-                    var room = _L.RoomAt(cx, z);
-                    float sign = s == 0 ? -1f : 1f;              // face normal points into the viewing cell
-                    float fx = lx + sign * T * 0.5f;
-                    Vector3 n = new Vector3(sign, 0, 0);
-                    if (e == EdgeKind.Wall)
-                    {
-                        WallFace(room.color, new Vector3(fx, 0, z0), new Vector3(fx, 0, z1), 0f, H, n);
-                        Baseboard(room.color, new Vector3(fx, 0, z0), new Vector3(fx, 0, z1), n);
-                    }
-                    else if (e == EdgeKind.DoorHeader)
-                    {
-                        WallFace(room.color, new Vector3(fx, 0, z0), new Vector3(fx, 0, z1), OfficeBiome.DoorHeaderHeight, H, n);
-                        // Soffit: this side's half of the header underside.
-                        W(_a.wallpaper, room.color).Quad(new Vector3(lx, OfficeBiome.DoorHeaderHeight, z0), new Vector3(fx, OfficeBiome.DoorHeaderHeight, z0),
-                            new Vector3(fx, OfficeBiome.DoorHeaderHeight, z1), new Vector3(lx, OfficeBiome.DoorHeaderHeight, z1), Vector3.down, MeshWriter.WallUV);
-                    }
-                }
-            }
-            // Horizontal edges (line Z = z).
+                EdgeFaces(_L.vEdges[x, z], true, x, z);
             for (int x = 0; x < N; x++)
             for (int z = 0; z <= N; z++)
-            {
-                var e = _L.hEdges[x, z];
-                if (e == EdgeKind.Open) continue;
-                float lz = z * C, x0 = x * C + T * 0.5f, x1 = (x + 1) * C - T * 0.5f;
-                for (int s = 0; s < 2; s++)
-                {
-                    int cz = s == 0 ? z - 1 : z;
-                    if (!_L.InChunk(x, cz)) continue;
-                    var room = _L.RoomAt(x, cz);
-                    float sign = s == 0 ? -1f : 1f;
-                    float fz = lz + sign * T * 0.5f;
-                    Vector3 n = new Vector3(0, 0, sign);
-                    if (e == EdgeKind.Wall)
-                    {
-                        WallFace(room.color, new Vector3(x0, 0, fz), new Vector3(x1, 0, fz), 0f, H, n);
-                        Baseboard(room.color, new Vector3(x0, 0, fz), new Vector3(x1, 0, fz), n);
-                    }
-                    else if (e == EdgeKind.DoorHeader)
-                    {
-                        WallFace(room.color, new Vector3(x0, 0, fz), new Vector3(x1, 0, fz), OfficeBiome.DoorHeaderHeight, H, n);
-                        W(_a.wallpaper, room.color).Quad(new Vector3(x0, OfficeBiome.DoorHeaderHeight, lz), new Vector3(x1, OfficeBiome.DoorHeaderHeight, lz),
-                            new Vector3(x1, OfficeBiome.DoorHeaderHeight, fz), new Vector3(x0, OfficeBiome.DoorHeaderHeight, fz), Vector3.down, MeshWriter.WallUV);
-                    }
-                }
-            }
+                EdgeFaces(_L.hEdges[x, z], false, x, z);
             BuildWallColliders();
         }
 
-        void WallFace(int color, Vector3 a, Vector3 b, float y0, float y1, Vector3 n)
+        /// <summary>vertical: edge on line X = line between (line-1, along) and (line, along); else line Z = line.</summary>
+        void EdgeFaces(EdgeKind e, bool vertical, int line, int along)
         {
-            W(_a.wallpaper, color).Quad(a + Vector3.up * y0, b + Vector3.up * y0, b + Vector3.up * y1, a + Vector3.up * y1, n, MeshWriter.WallUV);
+            float l = line * C, a0 = along * C + T * 0.5f, a1 = (along + 1) * C - T * 0.5f;
+            for (int s = 0; s < 2; s++)
+            {
+                int cx = vertical ? (s == 0 ? line - 1 : line) : along;
+                int cz = vertical ? along : (s == 0 ? line - 1 : line);
+                if (!_L.InChunk(cx, cz)) continue;
+                var room = _L.RoomAt(cx, cz);
+                float sign = s == 0 ? -1f : 1f;               // face normal points into the viewing cell
+                float f = l + sign * T * 0.5f;
+                Vector3 n = vertical ? new Vector3(sign, 0, 0) : new Vector3(0, 0, sign);
+                Vector3 A(float pos, float at) => vertical ? new Vector3(pos, 0, at) : new Vector3(at, 0, pos);
+                float myCeil = room.ceiling;
+
+                if (e == EdgeKind.Wall)
+                {
+                    WallFace(room, A(f, a0), A(f, a1), 0f, myCeil, n);
+                    Baseboard(room.color, A(f, a0), A(f, a1), n);
+                    continue;
+                }
+
+                // Passable edge: where does the opening stop?
+                int ox = vertical ? (s == 0 ? line : line - 1) : along;
+                int oz = vertical ? along : (s == 0 ? line : line - 1);
+                bool otherKnown = _L.InChunk(ox, oz);
+                float otherCeil = otherKnown ? _L.CeilingAt(ox, oz) : OfficeBiome.CeilingHeight;
+                bool header = e == EdgeKind.DoorHeader || (!otherKnown && room.Tall);
+                float top = header ? OfficeBiome.DoorHeaderHeight : Mathf.Min(myCeil, otherCeil);
+                if (myCeil <= top + 0.001f) continue;
+
+                WallFace(room, A(f, a0), A(f, a1), top, myCeil, n);
+                // This side's half of the underside.
+                Vector3 u0 = A(l, a0) + Vector3.up * top, u1 = A(l, a1) + Vector3.up * top;
+                Vector3 v0 = A(f, a0) + Vector3.up * top, v1 = A(f, a1) + Vector3.up * top;
+                W(WallMat(room), room.color).Quad(u0, v0, v1, u1, Vector3.down, MeshWriter.WallUV);
+                if (!otherKnown && room.Tall && e != EdgeKind.DoorHeader)
+                {
+                    // Neighbour may have no header: close the space between its ceiling and our header.
+                    WallFace(room, A(l, a0), A(l, a1), top, OfficeBiome.CeilingHeight + 0.05f, -n);
+                }
+            }
+        }
+
+        void WallFace(Room room, Vector3 a, Vector3 b, float y0, float y1, Vector3 n)
+        {
+            W(WallMat(room), room.color).Quad(a + Vector3.up * y0, b + Vector3.up * y0, b + Vector3.up * y1, a + Vector3.up * y1, n, MeshWriter.WallUV);
         }
 
         void Baseboard(int color, Vector3 a, Vector3 b, Vector3 n)
@@ -258,6 +312,7 @@ namespace Backrooms.Generation
         void BuildWallColliders()
         {
             int N = _L.N;
+            const float HC = OfficeBiome.MaxCeilingHeight;
             for (int x = 0; x <= N; x++)
             {
                 int start = -1;
@@ -271,7 +326,7 @@ namespace Backrooms.Generation
                         float cxPos = x * C, th = T;
                         if (x == 0) { cxPos += T * 0.25f; th = T * 0.5f; }
                         else if (x == N) { cxPos -= T * 0.25f; th = T * 0.5f; }
-                        _boxes.Add((new Vector3(cxPos, H * 0.5f, (z0 + z1) * 0.5f), new Vector3(th, H + 0.4f, z1 - z0)));
+                        _boxes.Add((new Vector3(cxPos, HC * 0.5f, (z0 + z1) * 0.5f), new Vector3(th, HC + 0.4f, z1 - z0)));
                         start = -1;
                     }
                 }
@@ -289,39 +344,66 @@ namespace Backrooms.Generation
                         float czPos = z * C, th = T;
                         if (z == 0) { czPos += T * 0.25f; th = T * 0.5f; }
                         else if (z == N) { czPos -= T * 0.25f; th = T * 0.5f; }
-                        _boxes.Add((new Vector3((x0 + x1) * 0.5f, H * 0.5f, czPos), new Vector3(x1 - x0, H + 0.4f, th)));
+                        _boxes.Add((new Vector3((x0 + x1) * 0.5f, HC * 0.5f, czPos), new Vector3(x1 - x0, HC + 0.4f, th)));
                         start = -1;
                     }
                 }
             }
         }
 
-        /// <summary>Square posts at grid vertices touching any wall: close corners and form door jambs.</summary>
+        /// <summary>
+        /// Square posts at grid vertices touching any wall: close corners and form door jambs. They always
+        /// reach the tallest possible ceiling (hidden above lower ceilings), so no slit can open next to a
+        /// taller neighbouring room. Their light layers combine every in-chunk room around the vertex.
+        /// </summary>
         void BuildPosts()
         {
             int N = _L.N;
+            const float HP = OfficeBiome.MaxCeilingHeight;
             for (int x = 0; x < N; x++)
             for (int z = 0; z < N; z++)
             {
                 bool wall = false, header = false;
-                void Check(EdgeKind e) { if (e == EdgeKind.Wall) wall = true; else if (e == EdgeKind.DoorHeader) header = true; }
-                Check(_L.vEdges[x, z]);
-                if (z > 0) Check(_L.vEdges[x, z - 1]);
-                Check(_L.hEdges[x, z]);
-                if (x > 0) Check(_L.hEdges[x - 1, z]);
-                // A post is seen from every cell around its vertex, so it takes every bounce layer
-                // (one shared mesh per chunk instead of one per combination of neighbouring rooms).
-                const uint col = 0xFFu;
-                if (wall)
+                // Headers: explicit door headers, or border openings closed by a tall room (see EdgeFaces).
+                void Check(EdgeKind e, bool border, int cx, int cz)
                 {
-                    WMask(_a.wallpaper, col).Box(new Vector3(x * C, H * 0.5f, z * C), new Vector3(T, H, T), 1 | 2 | 16 | 32, MeshWriter.WallUV);
-                    WMask(_a.baseboard, col).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
+                    if (e == EdgeKind.Wall) wall = true;
+                    else if (e == EdgeKind.DoorHeader) header = true;
+                    else if (e == EdgeKind.Door && border && _L.InChunk(cx, cz) && _L.RoomAt(cx, cz).Tall) header = true;
                 }
-                else if (header)
+                Check(_L.vEdges[x, z], x == 0, x, z);
+                if (z > 0) Check(_L.vEdges[x, z - 1], x == 0, x, z - 1);
+                Check(_L.hEdges[x, z], z == 0, x, z);
+                if (x > 0) Check(_L.hEdges[x - 1, z], z == 0, x - 1, z);
+                if (!wall && !header) continue;
+
+                // Each face takes the finish and light layer of the room it faces, so a post reads as part
+                // of the wall on both sides (painted on one side, wallpaper on the other).
+                Room Facing(int ax, int az, int bx, int bz)
                 {
-                    // Between two headed openings: only the header block, no post down to the floor.
-                    float hy = OfficeBiome.DoorHeaderHeight;
-                    WMask(_a.wallpaper, col).Box(new Vector3(x * C, (hy + H) * 0.5f, z * C), new Vector3(T, H - hy, T), 1 | 2 | 4 | 16 | 32, MeshWriter.WallUV);
+                    if (_L.InChunk(ax, az)) return _L.RoomAt(ax, az);
+                    if (_L.InChunk(bx, bz)) return _L.RoomAt(bx, bz);
+                    return _L.RoomAt(Mathf.Clamp(x, 0, N - 1), Mathf.Clamp(z, 0, N - 1));
+                }
+                var faces = new (int bit, Room room)[]
+                {
+                    (1, Facing(x - 1, z, x - 1, z - 1)), (2, Facing(x, z, x, z - 1)),
+                    (16, Facing(x, z - 1, x - 1, z - 1)), (32, Facing(x, z, x - 1, z)),
+                };
+                foreach (var (bit, room) in faces)
+                {
+                    var w = W(WallMat(room), room.color);
+                    if (wall)
+                    {
+                        w.Box(new Vector3(x * C, HP * 0.5f, z * C), new Vector3(T, HP, T), bit, MeshWriter.WallUV);
+                        W(_a.baseboard, room.color).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit | (bit == 1 ? 8 : 0), MeshWriter.MetreUV);
+                    }
+                    else
+                    {
+                        // Between openings: the block above the opening tops, no post down to the floor.
+                        float hy = OfficeBiome.DoorHeaderHeight;
+                        w.Box(new Vector3(x * C, (hy + HP) * 0.5f, z * C), new Vector3(T, HP - hy, T), bit | (bit == 1 ? 4 : 0), MeshWriter.WallUV);
+                    }
                 }
             }
         }
@@ -336,7 +418,7 @@ namespace Backrooms.Generation
                 if (r.kind != RoomKind.Crawl) continue;
                 var rc = r.rect;
                 bool alongX = rc.width > 1;
-                var w = W(_a.wallpaper, r.color);
+                var w = W(WallMat(r), r.color);
                 if (alongX)
                 {
                     float x0 = rc.xMin * C, x1 = rc.xMax * C, zA = rc.yMin * C + T * 0.5f, zB = rc.yMax * C - T * 0.5f;
@@ -364,10 +446,12 @@ namespace Backrooms.Generation
         {
             foreach (var p in _L.pillars)
             {
-                var c = new Vector3(p.vertex.x * C, H * 0.5f, p.vertex.y * C);
-                W(_a.wallpaper, p.roomColor).Box(c, new Vector3(p.size, H, p.size), 1 | 2 | 16 | 32, MeshWriter.WallUV);
+                var room = _L.RoomAt(Mathf.Min(p.vertex.x, _L.N - 1), Mathf.Min(p.vertex.y, _L.N - 1));
+                float h = room.ceiling;
+                var c = new Vector3(p.vertex.x * C, h * 0.5f, p.vertex.y * C);
+                W(WallMat(room), p.roomColor).Box(c, new Vector3(p.size, h, p.size), 1 | 2 | 16 | 32, MeshWriter.WallUV);
                 W(_a.baseboard, p.roomColor).Box(new Vector3(c.x, BB * 0.5f, c.z), new Vector3(p.size + BD * 2f, BB, p.size + BD * 2f), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
-                _boxes.Add((c, new Vector3(p.size, H, p.size)));
+                _boxes.Add((c, new Vector3(p.size, h, p.size)));
             }
         }
 
@@ -379,7 +463,9 @@ namespace Backrooms.Generation
                 float a0 = hw.start * C, a1 = (hw.start + hw.length) * C, line = hw.line * C;
                 Vector3 c = hw.alongX ? new Vector3((a0 + a1) * 0.5f, hh * 0.5f, line) : new Vector3(line, hh * 0.5f, (a0 + a1) * 0.5f);
                 Vector3 s = hw.alongX ? new Vector3(a1 - a0, hh, ht) : new Vector3(ht, hh, a1 - a0);
-                W(_a.wallpaper, hw.roomColor).Box(c, s, 1 | 2 | 16 | 32, MeshWriter.WallUV);
+                var hwRoom = hw.alongX ? _L.RoomAt(Mathf.Min(hw.start, _L.N - 1), Mathf.Min(hw.line, _L.N - 1))
+                                       : _L.RoomAt(Mathf.Min(hw.line, _L.N - 1), Mathf.Min(hw.start, _L.N - 1));
+                W(WallMat(hwRoom), hw.roomColor).Box(c, s, 1 | 2 | 16 | 32, MeshWriter.WallUV);
                 Vector3 capS = s + new Vector3(0.02f, 0f, 0.02f); capS.y = cap;
                 W(_a.halfWallCap, hw.roomColor).Box(new Vector3(c.x, hh + cap * 0.5f, c.z), capS, 63, MeshWriter.MetreUV);
                 Vector3 bbS = s + new Vector3(BD * 2f, 0f, BD * 2f); bbS.y = BB;
@@ -395,15 +481,36 @@ namespace Backrooms.Generation
             // Grid cut-outs must be known before the ceiling grid is written, so collect first.
             foreach (var f in _L.fixtures)
             {
-                var c = new Vector3(f.cell.x * C + C * 0.5f, H, f.cell.y * C + C * 0.5f);
-                W(f.on ? _a.lensOn : _a.lensOff, -1).Box(c + Vector3.down * 0.004f, new Vector3(1.17f, 0.006f, 0.57f), 4 | 1 | 2 | 16 | 32, MeshWriter.MetreUV);
-                var hw = W(_a.fixtureHousing, -1);
-                const int m = 1 | 2 | 4 | 16 | 32;
-                hw.Box(c + new Vector3(0, -0.009f, 0.291f), new Vector3(1.2f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
-                hw.Box(c + new Vector3(0, -0.009f, -0.291f), new Vector3(1.2f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
-                hw.Box(c + new Vector3(0.591f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
-                hw.Box(c + new Vector3(-0.591f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
-                if (f.on) lights.Add(new LightSource { position = _origin + c, isLamp = false, roomLayer = LayerBit(f.roomColor) });
+                float h = f.height > 0f ? f.height : H;
+                var c = new Vector3(f.cell.x * C + C * 0.5f, h, f.cell.y * C + C * 0.5f);
+                // Faulty tubes get their own lens mesh so their emission can stutter independently.
+                MeshWriter lens;
+                if (f.faulty) { lens = new MeshWriter { worldOffset = _origin }; faultyLenses.Add((lens, f.dome)); }
+                else lens = W(f.on ? (f.dome ? _a.domeOn ?? _a.lensOn : _a.lensOn) : (f.dome ? _a.domeOff ?? _a.lensOff : _a.lensOff), -1);
+
+                if (f.dome)
+                {
+                    // Round surface-mounted fitting: shallow drum with a glowing diffuser.
+                    lens.Frustum(c + Vector3.down * 0.07f, 0.2f, 0.23f, 0.07f, 16, true, MeshWriter.MetreUV);
+                    lens.Disc(c + Vector3.down * 0.07f, 0.2f, 16, Vector3.down, MeshWriter.MetreUV);
+                }
+                else
+                {
+                    lens.Box(c + Vector3.down * 0.004f, new Vector3(1.17f, 0.006f, 0.57f), 4 | 1 | 2 | 16 | 32, MeshWriter.MetreUV);
+                    var hw = W(_a.fixtureHousing, -1);
+                    const int m = 1 | 2 | 4 | 16 | 32;
+                    hw.Box(c + new Vector3(0, -0.009f, 0.291f), new Vector3(1.2f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
+                    hw.Box(c + new Vector3(0, -0.009f, -0.291f), new Vector3(1.2f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
+                    hw.Box(c + new Vector3(0.591f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
+                    hw.Box(c + new Vector3(-0.591f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
+                }
+                if (f.on)
+                    lights.Add(new LightSource
+                    {
+                        position = _origin + c + (f.dome ? Vector3.down * 0.07f : Vector3.zero),
+                        isLamp = false, dome = f.dome, ceiling = h, roomLayer = LayerBit(f.roomColor),
+                        faultyId = f.faulty ? faultyLenses.Count - 1 : -1,
+                    });
             }
         }
 
@@ -441,18 +548,94 @@ namespace Backrooms.Generation
 
         // ---------------- Props ----------------
 
+        /// <summary>Blender prop instances: shared meshes, one GameObject each, created on the main thread.</summary>
+        public struct PropInstance
+        {
+            public GameObject prefab;
+            public Vector3 position;     // chunk-local
+            public Quaternion rotation;
+            public Vector3 scale;
+            public uint mask;
+            public bool litShade;
+        }
+
+        readonly List<PropInstance> _instances = new List<PropInstance>();
+
+        void Place(GameObject prefab, Vector3 at, float yaw, int color, Vector3? scale = null, bool litShade = false)
+        {
+            _instances.Add(new PropInstance { prefab = prefab, position = at, rotation = Quaternion.Euler(0f, yaw, 0f),
+                scale = scale ?? Vector3.one, mask = LayerBit(color), litShade = litShade });
+        }
+
         void BuildProps(List<LightSource> lights)
         {
+            bool modelled = _a.sofaPrefabs != null && _a.sofaPrefabs.Length > 0 && _a.floorLampPrefab;
             foreach (var p in _L.props)
             {
                 var rot = Quaternion.Euler(0f, p.yaw, 0f);
                 var at = new Vector3(p.position.x, 0f, p.position.y);
+                if (modelled) { PlaceModelled(p, at, rot, lights); continue; }
                 switch (p.kind)
                 {
                     case PropKind.Sofa: Sofa(p, at, rot); break;
                     case PropKind.FloorLamp: Lamp(p, at, lights); break;
                     case PropKind.ConferenceTable: Table(p, at, rot); break;
                 }
+            }
+        }
+
+        void PlaceModelled(Prop p, Vector3 at, Quaternion rot, List<LightSource> lights)
+        {
+            int col = p.roomColor;
+            switch (p.kind)
+            {
+                case PropKind.Sofa:
+                {
+                    // Variant picks the model and fabric; small rooms and every fourth seat get an armchair.
+                    int fabricCount = _a.sofaFabrics.Length;
+                    bool arm = _a.armchairPrefabs != null && _a.armchairPrefabs.Length > 0 && (p.variant % 4 == 3);
+                    var rng = new System.Random(OfficeLayoutGenerator.Hash(_L.coord.x, _L.coord.y, (int)(at.x * 31), (int)(at.z * 17)));
+                    int fabric = rng.Next(fabricCount);
+                    if (arm)
+                    {
+                        Place(_a.armchairPrefabs[fabric % _a.armchairPrefabs.Length], at, p.yaw, col);
+                    }
+                    else
+                    {
+                        int models = Mathf.Max(1, _a.sofaPrefabs.Length / fabricCount);
+                        int model = rng.Next(models);
+                        Place(_a.sofaPrefabs[model * fabricCount + fabric], at, p.yaw, col);
+                    }
+                    break;
+                }
+                case PropKind.FloorLamp:
+                    Place(_a.floorLampPrefab, at, p.variant * 37f, col, null, p.lit);
+                    if (p.lit) lights.Add(new LightSource { position = _origin + at + Vector3.up * 1.5f, isLamp = true, roomLayer = LayerBit(col), faultyId = -1 });
+                    break;
+                case PropKind.ConferenceTable:
+                {
+                    float L = p.size.x;
+                    Place(_a.tableModulePrefab, at, p.yaw, col, new Vector3(L, 1f, 1f));
+                    for (int i = -1; i <= 1; i += 2)
+                        Place(_a.tableLegPrefab, at + rot * new Vector3(i * L * 0.32f, 0, 0), p.yaw, col);
+                    _rotBoxes.Add((at + Vector3.up * 0.37f, new Vector3(L, 0.74f, 1.1f), p.yaw));
+                    var rng = new System.Random(OfficeLayoutGenerator.Hash(_L.coord.x, _L.coord.y, (int)(p.position.x * 100), (int)(p.position.y * 100)));
+                    int perSide = Mathf.Max(1, Mathf.FloorToInt(L / 0.75f));
+                    for (int side = -1; side <= 1; side += 2)
+                    for (int i = 0; i < perSide; i++)
+                    {
+                        if (rng.NextDouble() < 0.15) continue;
+                        float cx = -L * 0.5f + L * (i + 0.5f) / perSide + (float)(rng.NextDouble() - 0.5) * 0.12f;
+                        float cz = side * (0.55f + 0.2f + (float)rng.NextDouble() * 0.25f);
+                        float yaw = p.yaw + (side < 0 ? 0f : 180f) + (float)(rng.NextDouble() - 0.5) * 30f;
+                        var cpos = at + rot * new Vector3(cx, 0, cz);
+                        Place(_a.officeChairPrefab, cpos, yaw, col);
+                    }
+                    break;
+                }
+                case PropKind.WallClock:
+                    if (_a.wallClockPrefab) Place(_a.wallClockPrefab, new Vector3(at.x, p.size.y, at.z), p.yaw, col);
+                    break;
             }
         }
 
@@ -499,7 +682,7 @@ namespace Backrooms.Generation
             sw.Frustum(at + Vector3.up * 1.36f, 0.23f, 0.16f, 0.30f, 12, true, MeshWriter.MetreUV);
             sw.Frustum(at + Vector3.up * 1.36f, 0.23f, 0.16f, 0.30f, 12, false, MeshWriter.MetreUV);
             _boxes.Add((at + Vector3.up * 0.8f, new Vector3(0.3f, 1.6f, 0.3f)));
-            if (p.lit) lights.Add(new LightSource { position = _origin + at + Vector3.up * 1.48f, isLamp = true, roomLayer = LayerBit(col) });
+            if (p.lit) lights.Add(new LightSource { position = _origin + at + Vector3.up * 1.48f, isLamp = true, roomLayer = LayerBit(col), faultyId = -1 });
         }
 
         void Table(Prop p, Vector3 at, Quaternion rot)

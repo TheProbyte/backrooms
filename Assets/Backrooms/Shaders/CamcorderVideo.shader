@@ -75,7 +75,7 @@ Shader "Backrooms/CamcorderVideo"
                 float n = lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
                 float w = (1 - f.x) * (1 - f.x) + f.x * f.x;      // variance of the blend
                 float h = (1 - f.y) * (1 - f.y) + f.y * f.y;
-                return n * rsqrt(max(w * h, 0.25));
+                return n * rsqrt(max(w * h, 0.45));
             }
 
             float2 GridNoise2(float2 cell, uint frame, uint salt)
@@ -88,7 +88,7 @@ Shader "Backrooms/CamcorderVideo"
                 float2 n = lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
                 float w = (1 - f.x) * (1 - f.x) + f.x * f.x;
                 float h = (1 - f.y) * (1 - f.y) + f.y * f.y;
-                return n * rsqrt(max(w * h, 0.25));
+                return n * rsqrt(max(w * h, 0.45));
             }
 
             // ---------------- Signal helpers ----------------
@@ -200,8 +200,8 @@ Shader "Backrooms/CamcorderVideo"
                 float2 nC = GridNoise2(cell * 0.5, frame, 23u);
                 float lum = saturate(dot(col, float3(0.299, 0.587, 0.114)));
                 float shadow = 0.35 + 0.65 * (1 - lum) * (1 - lum) + 0.15 * lum;
-                col += nL * _CamVideo2.x * 0.5 * shadow;
-                col += FromYCC(float3(0, nC * _CamVideo2.y * 0.5 * shadow));
+                col += nL * _CamVideo2.x * 0.3 * shadow;
+                col += FromYCC(float3(0, nC * _CamVideo2.y * 0.26 * shadow));
 
                 // Scanlines, box-filtered over the pixel footprint (contrast * sinc) to avoid moire.
                 float scanLines = _CamVideo4.z;

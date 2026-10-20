@@ -49,6 +49,20 @@ namespace Backrooms.Generation
                 else if (minDim >= 3 && Mathf.Max(r.rect.width, r.rect.height) >= 4 && p < 0.30) r.kind = RoomKind.Conference;
             }
 
+            // Ceiling heights and wall finish. Big halls often rise to tall plaster ceilings; a few large
+            // ordinary rooms and lounges do too. Heights step in 0.3 m so trims line up.
+            foreach (var r in L.rooms)
+            {
+                int area = r.rect.width * r.rect.height;
+                double tallChance = r.kind == RoomKind.BigOffice ? (area >= 100 ? 0.65 : 0.4)
+                                  : (r.kind == RoomKind.Lounge || r.kind == RoomKind.Office) && area >= 16 ? 0.15 : 0.0;
+                if (rng.NextDouble() < tallChance)
+                    r.ceiling = OfficeBiome.CeilingHeight + 0.3f * rng.Next(4, 10);   // 3.9 .. 5.4 m
+                if (r.kind != RoomKind.Crawl && r.kind != RoomKind.Hallway)
+                    r.painted = r.Tall ? rng.NextDouble() < 0.7 : rng.NextDouble() < 0.3;
+                else r.painted = rng.NextDouble() < 0.15;
+            }
+
             // 4. Walls everywhere rooms differ, plus the chunk boundary.
             for (int x = 0; x <= n; x++)
             for (int z = 0; z < n; z++)
@@ -382,7 +396,8 @@ namespace Backrooms.Generation
                     bool on = r.lights == LightMode.AllOn ? rng.NextDouble() > 0.04
                             : r.lights == LightMode.Mixed ? rng.NextDouble() < 0.5
                             : rng.NextDouble() < 0.04;
-                    L.fixtures.Add(new Fixture { cell = new Vector2Int(x, z), on = on, roomColor = r.color });
+                    L.fixtures.Add(new Fixture { cell = new Vector2Int(x, z), on = on, roomColor = r.color,
+                        dome = r.Tall, height = r.ceiling, faulty = on && rng.NextDouble() < 0.025 });
                 }
             }
         }
@@ -444,6 +459,26 @@ namespace Backrooms.Generation
             foreach (var r in L.rooms)
             {
                 var rc = r.rect;
+                TryClock(L, rng, r);
+                if (r.kind == RoomKind.BigOffice && rng.NextDouble() < (r.Tall ? 0.45 : 0.2))
+                {
+                    // Abandoned seating left scattered across a big hall, at odd angles.
+                    int count = rng.Next(2, 6);
+                    for (int i = 0, tries = 0; i < count && tries < 30; tries++)
+                    {
+                        int cx = rng.Next(rc.xMin + 1, rc.xMax - 1), cz = rng.Next(rc.yMin + 1, rc.yMax - 1);
+                        var cell = new Vector2Int(cx, cz);
+                        if (occupied.Contains(cell) || NearPillarOrHalfWall(L, cx, cz)) continue;
+                        bool clear = true;
+                        for (int ox = -1; ox <= 1; ox++) for (int oz = -1; oz <= 1; oz++) if (occupied.Contains(new Vector2Int(cx + ox, cz + oz))) clear = false;
+                        if (!clear) continue;
+                        occupied.Add(cell);
+                        float yaw = rng.Next(24) * 15f;
+                        L.props.Add(new Prop { kind = PropKind.Sofa, position = new Vector2((cx + 0.5f) * C, (cz + 0.5f) * C), yaw = yaw,
+                            size = new Vector3(2.0f, 0.82f, 0.88f), variant = rng.Next(4), roomColor = r.color });
+                        i++;
+                    }
+                }
                 if (r.kind == RoomKind.Lounge)
                 {
                     int sofas = rng.Next(1, 4);
@@ -482,6 +517,43 @@ namespace Backrooms.Generation
             }
         }
 
+        /// <summary>Round wall clock on a solid wall, about 2.1 m up (higher in tall rooms).</summary>
+        static void TryClock(OfficeLayout L, System.Random rng, Room r)
+        {
+            double chance = r.kind == RoomKind.Lounge ? 0.45 : r.kind == RoomKind.Conference ? 0.5
+                          : r.kind == RoomKind.BigOffice ? 0.2 : r.kind == RoomKind.Office ? 0.08 : 0.0;
+            if (rng.NextDouble() >= chance) return;
+            float C = OfficeBiome.CellSize;
+            for (int attempt = 0; attempt < 8; attempt++)
+            {
+                int x = rng.Next(r.rect.xMin, r.rect.xMax), z = rng.Next(r.rect.yMin, r.rect.yMax), side = rng.Next(4);
+                if (L.EdgeOf(x, z, side) != EdgeKind.Wall) continue;
+                float off = OfficeBiome.WallThickness * 0.5f;
+                Vector2 pos = side switch
+                {
+                    0 => new Vector2(x * C + off, (z + 0.5f) * C),
+                    1 => new Vector2((x + 1) * C - off, (z + 0.5f) * C),
+                    2 => new Vector2((x + 0.5f) * C, z * C + off),
+                    _ => new Vector2((x + 0.5f) * C, (z + 1) * C - off),
+                };
+                float yaw = side == 0 ? 90f : side == 1 ? -90f : side == 2 ? 0f : 180f;
+                float h = Mathf.Min(r.ceiling - 0.45f, r.Tall ? 2.6f : 2.1f);
+                L.props.Add(new Prop { kind = PropKind.WallClock, position = pos, yaw = yaw, size = new Vector3(0, h, 0), roomColor = r.color });
+                return;
+            }
+        }
+
+        static bool NearPillarOrHalfWall(OfficeLayout L, int x, int z)
+        {
+            foreach (var p in L.pillars) if (p.vertex.x >= x - 1 && p.vertex.x <= x + 2 && p.vertex.y >= z - 1 && p.vertex.y <= z + 2) return true;
+            foreach (var h in L.halfWalls)
+            {
+                int a = h.alongX ? x : z, l = h.alongX ? z : x;
+                if (h.line >= l - 1 && h.line <= l + 2 && a >= h.start - 2 && a <= h.start + h.length + 1) return true;
+            }
+            return false;
+        }
+
         static bool CellHasDoor(OfficeLayout L, int x, int z)
         {
             for (int s = 0; s < 4; s++) { var e = L.EdgeOf(x, z, s); if (e == EdgeKind.Door || e == EdgeKind.DoorHeader) return true; }
@@ -514,7 +586,7 @@ namespace Backrooms.Generation
             Vector2 pos = wallAlongX ? new Vector2(along, wallPos + inward * off) : new Vector2(wallPos + inward * off, along);
             float yaw = side == 0 ? 90f : side == 1 ? -90f : side == 2 ? 0f : 180f;   // sofa front faces +Z locally
             L.props.Add(new Prop { kind = PropKind.Sofa, position = pos, yaw = yaw + (float)(rng.NextDouble() - 0.5) * 4f,
-                size = new Vector3(length, 0.82f, depth), variant = rng.Next(3), roomColor = r.color });
+                size = new Vector3(length, 0.82f, depth), variant = rng.Next(4), roomColor = r.color });
             return true;
         }
 

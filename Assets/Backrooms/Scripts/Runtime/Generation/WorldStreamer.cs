@@ -27,7 +27,7 @@ namespace Backrooms.Generation
         public int Seed { get; private set; }
         public int LoadedChunks => _chunks.Count;
 
-        class Chunk { public GameObject go; public List<LightSource> lights; }
+        class Chunk { public GameObject go; public List<LightSource> lights; public List<Renderer> lenses, faulty; }
 
         readonly Dictionary<Vector2Int, Chunk> _chunks = new Dictionary<Vector2Int, Chunk>();
         readonly List<Vector2Int> _queue = new List<Vector2Int>();
@@ -114,19 +114,46 @@ namespace Backrooms.Generation
 
         void Instantiate(Vector2Int coord, OfficeChunkBuilder built)
         {
+            // A chunk still stuttering off from an earlier unload is simply kept.
+            if (_dying.TryGetValue(coord, out var old))
+            {
+                _dying.Remove(coord);
+                _chunks[coord] = old;
+                if (lightManager) lightManager.Register(coord, old.lights, old.lenses, old.faulty, false);
+                return;
+            }
             var go = built.Instantiate(transform);
-            var lights = new List<LightSource>(built.lights);
-            _chunks[coord] = new Chunk { go = go, lights = lights };
-            if (lightManager) lightManager.Register(coord, lights);
+            var ch = new Chunk { go = go, lights = new List<LightSource>(built.lights),
+                lenses = new List<Renderer>(built.litLensRenderers), faulty = new List<Renderer>(built.faultyRenderers) };
+            _chunks[coord] = ch;
+            // Areas streamed in after the first frame flicker on (only ever seen from far away, if at all).
+            if (lightManager) lightManager.Register(coord, ch.lights, ch.lenses, ch.faulty, _started);
         }
+
+        readonly Dictionary<Vector2Int, Chunk> _dying = new Dictionary<Vector2Int, Chunk>();
+        bool _started;
+
+        void LateUpdate() => _started = true;
 
         void UnloadChunk(Vector2Int coord)
         {
             if (!_chunks.TryGetValue(coord, out var ch)) return;
-            if (lightManager) lightManager.Unregister(coord);
-            foreach (var mf in ch.go.GetComponentsInChildren<MeshFilter>()) Destroy(mf.sharedMesh);
-            Destroy(ch.go);
             _chunks.Remove(coord);
+            float delay = lightManager ? lightManager.BeginPowerDown(coord) : 0f;
+            _dying[coord] = ch;
+            StartCoroutine(DestroyLater(coord, ch, delay));
+        }
+
+        System.Collections.IEnumerator DestroyLater(Vector2Int coord, Chunk ch, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            if (!_dying.TryGetValue(coord, out var still) || still != ch) yield break;   // resurrected
+            _dying.Remove(coord);
+            if (lightManager) lightManager.Unregister(coord);
+            // Only meshes generated at runtime (negative instance ids); prop meshes are shared assets.
+            foreach (var mf in ch.go.GetComponentsInChildren<MeshFilter>())
+                if (mf.sharedMesh && mf.sharedMesh.GetInstanceID() < 0) Destroy(mf.sharedMesh);
+            Destroy(ch.go);
         }
 
         /// <summary>Puts the player in a lit, walkable cell of chunk (0, 0), facing the most open direction.</summary>

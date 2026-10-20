@@ -38,7 +38,29 @@ namespace Backrooms.EditorTools
             WallPlates();
             Fabric();
             Wood();
+            Plaster();
             AssetDatabase.Refresh();
+        }
+
+        // ---------- Painted plaster / drywall: soft mottling and orange-peel texture, neutral (tinted by material) ----------
+        static void Plaster()
+        {
+            const int S = 1024;
+            var albedo = new Color[S * S];
+            var height = new float[S * S];
+            for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float u = x / (float)S, v = y / (float)S;
+                float mottle = Fbm(u, v, 3, 5, 171);
+                float peel = VNoise(u * 300, v * 300, 300, 300, 173) * 0.6f + VNoise(u * 140, v * 140, 140, 140, 179) * 0.4f;
+                float scuff = Mathf.SmoothStep(0.62f, 0.8f, Fbm(u, v, 6, 4, 181));
+                float g = 0.93f + (mottle - 0.5f) * 0.035f + (peel - 0.5f) * 0.018f - scuff * 0.02f;
+                albedo[y * S + x] = new Color(g, g * 0.995f, g * 0.985f, 1f);
+                height[y * S + x] = peel * 0.8f + mottle * 0.2f;
+            }
+            Save("Plaster_Albedo", S, S, albedo, true);
+            Save("Plaster_Normal", S, S, NormalFromHeight(height, S, S, 0.9f), false, true);
         }
 
         // ---------- Outlet (left half) and light switch (right half) plate atlas ----------

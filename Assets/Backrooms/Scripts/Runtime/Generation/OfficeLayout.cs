@@ -14,7 +14,10 @@ namespace Backrooms.Generation
         public RoomKind kind;
         public LightMode lights;
         public int color;             // 0..6, rendering-layer colour so bounce light stays in its room
+        public float ceiling = OfficeBiome.CeilingHeight;   // tall rooms have plaster ceilings and dome lights
+        public bool painted;          // painted plaster walls instead of wallpaper
         public bool Walkable => kind != RoomKind.Crawl;
+        public bool Tall => ceiling > OfficeBiome.CeilingHeight + 0.01f;
     }
 
     public struct Fixture
@@ -22,6 +25,9 @@ namespace Backrooms.Generation
         public Vector2Int cell;       // chunk-local cell
         public bool on;
         public int roomColor;
+        public bool dome;             // round surface-mounted fitting on a tall plaster ceiling
+        public float height;          // ceiling height at the fixture
+        public bool faulty;           // tube that occasionally stutters
     }
 
     public struct Pillar { public Vector2Int vertex; public float size; public int roomColor; }
@@ -32,7 +38,7 @@ namespace Backrooms.Generation
     /// <summary>Electrical plate on a wall face. Face is the cell side the plate is visible from.</summary>
     public struct WallPlate { public Vector2Int cell; public int side; public float t; public float height; public bool isSwitch; public int roomColor; }
 
-    public enum PropKind { Sofa, FloorLamp, ConferenceTable }
+    public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock }
     public struct Prop
     {
         public PropKind kind;
@@ -73,6 +79,7 @@ namespace Backrooms.Generation
         }
 
         public Room RoomAt(int x, int z) => rooms[roomOf[x, z]];
+        public float CeilingAt(int x, int z) => rooms[roomOf[x, z]].ceiling;
         public bool InChunk(int x, int z) => x >= 0 && z >= 0 && x < N && z < N;
 
         /// <summary>Edge on the given side of a cell. Side: 0 = -X, 1 = +X, 2 = -Z, 3 = +Z.</summary>
