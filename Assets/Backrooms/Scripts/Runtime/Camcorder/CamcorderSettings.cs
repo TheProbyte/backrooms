@@ -65,6 +65,7 @@ namespace Backrooms.Camcorder
         public float trackingNoise = 0.345f;
         public bool aspect43 = true;
         public bool showOSD = true;
+        public float osdCurvature = 0.8f;    // viewfinder overlay bends with the lens (0 = flat)
         public int frameRateCap = 60;        // 0 = unlimited
 
         public CamcorderSettings Clone() => (CamcorderSettings)MemberwiseClone();

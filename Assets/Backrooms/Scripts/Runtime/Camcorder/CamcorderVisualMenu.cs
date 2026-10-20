@@ -269,7 +269,9 @@ namespace Backrooms.Camcorder
                 () => S().aspect43, v => S().aspect43 = v);
             Toggle("Viewfinder OSD (REC, date, counter)", "The camcorder's on-screen display: blinking REC, tape counter, battery and date stamp.",
                 () => S().showOSD, v => S().showOSD = v);
-            Slider("Scanlines", "The faint horizontal line structure of 480-line interlaced video. Filtered so it never shimmers or forms moire.",
+            Slider("OSD lens curvature", "Bends the REC, time and counter overlay slightly, as if you are reading it through the viewfinder eyepiece. 0 keeps it flat.",
+                0f, 2f, "0.00", "", () => S().osdCurvature, v => S().osdCurvature = v);
+            Slider("Scanlines","The faint horizontal line structure of 480-line interlaced video. Filtered so it never shimmers or forms moire.",
                 0f, 0.3f, "0.00", "", () => S().scanlines, v => S().scanlines = v);
             Slider("Tape tracking noise", "A soft band of wobble and brightening that drifts slowly up the frame, like a worn tape.",
                 0f, 1f, "0.00", "", () => S().trackingNoise, v => S().trackingNoise = v);

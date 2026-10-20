@@ -352,70 +352,69 @@ namespace Backrooms.Generation
         }
 
         /// <summary>
-        /// Square posts at grid vertices touching any wall: close corners and form door jambs. They always
-        /// reach the tallest possible ceiling (hidden above lower ceilings), so no slit can open next to a
-        /// taller neighbouring room. Their light layers combine every in-chunk room around the vertex.
+        /// Square posts at grid vertices: close corners and form door jambs.
+        /// Ownership: each of a post's four faces is emitted by the chunk that owns the cell it faces, using
+        /// that room's finish and light layer, so posts on chunk borders are assembled from both sides and
+        /// always match the wall they belong to. Border vertices always get a full-height post (a slim
+        /// mullion between openings) because a neighbour's wall may end there; interior posts rise only to
+        /// the tallest ceiling around them, never into a lower room's plenum.
         /// </summary>
         void BuildPosts()
         {
             int N = _L.N;
-            for (int x = 0; x < N; x++)
-            for (int z = 0; z < N; z++)
+            for (int x = 0; x <= N; x++)
+            for (int z = 0; z <= N; z++)
             {
-                // Interior posts rise to the tallest ceiling around them (never into a lower room's
-                // plenum); posts on the chunk border can't see the neighbour, so they always go full height.
+                bool border = x == 0 || z == 0 || x == N || z == N;
                 float HP = OfficeBiome.MaxCeilingHeight;
-                if (x > 0 && z > 0)
+                if (!border)
                     HP = Mathf.Max(Mathf.Max(_L.CeilingAt(x - 1, z - 1), _L.CeilingAt(x, z - 1)),
                                    Mathf.Max(_L.CeilingAt(x - 1, z), _L.CeilingAt(x, z)));
-                bool wall = false, header = false;
-                // Headers: explicit door headers, or border openings closed by a tall room (see EdgeFaces).
-                void Check(EdgeKind e, bool border, int cx, int cz)
-                {
-                    if (e == EdgeKind.Wall) wall = true;
-                    else if (e == EdgeKind.DoorHeader) header = true;
-                    else if (e == EdgeKind.Door && border && _L.InChunk(cx, cz) && _L.RoomAt(cx, cz).Tall) header = true;
-                }
-                Check(_L.vEdges[x, z], x == 0, x, z);
-                if (z > 0) Check(_L.vEdges[x, z - 1], x == 0, x, z - 1);
-                Check(_L.hEdges[x, z], z == 0, x, z);
-                if (x > 0) Check(_L.hEdges[x - 1, z], z == 0, x - 1, z);
-                if (!wall && !header) continue;
-                // On the chunk border the neighbour may have a wall ending at this vertex, expecting our post
-                // to close its end. So border posts between openings stand full height (a slim mullion), with
-                // their own collider since no wall run of ours covers them.
-                if (!wall && (x == 0 || z == 0))
-                {
-                    wall = true;
-                    _boxes.Add((new Vector3(x * C, HP * 0.5f, z * C), new Vector3(T, HP, T)));
-                }
 
-                // Each face takes the finish and light layer of the room it faces, so a post reads as part
-                // of the wall on both sides (painted on one side, wallpaper on the other).
-                Room Facing(int ax, int az, int bx, int bz)
+                bool wall = false, header = false;
+                void Check(EdgeKind e) { if (e == EdgeKind.Wall) wall = true; else if (e == EdgeKind.DoorHeader) header = true; }
+                if (z < N) Check(_L.vEdges[x, z]);
+                if (z > 0) Check(_L.vEdges[x, z - 1]);
+                if (x < N) Check(_L.hEdges[x, z]);
+                if (x > 0) Check(_L.hEdges[x - 1, z]);
+                if (border)
                 {
-                    if (_L.InChunk(ax, az)) return _L.RoomAt(ax, az);
-                    if (_L.InChunk(bx, bz)) return _L.RoomAt(bx, bz);
-                    return _L.RoomAt(Mathf.Clamp(x, 0, N - 1), Mathf.Clamp(z, 0, N - 1));
+                    // Our wall runs cover the collider when we have a wall here; otherwise add one (only
+                    // the west/south owner does, to avoid duplicates).
+                    if (!wall && (x == 0 || z == 0) && x < N && z < N)
+                        _boxes.Add((new Vector3(x * C, HP * 0.5f, z * C), new Vector3(T, HP, T)));
+                    wall = true;
                 }
-                var faces = new (int bit, Room room)[]
+                if (!wall && !header) continue;
+
+                // (face bit, cell it faces)
+                var faces = new (int bit, int cx, int cz)[] { (1, x - 1, z), (2, x, z), (16, x, z - 1), (32, x, z) };
+                foreach (var (bit, cx, cz) in faces)
                 {
-                    (1, Facing(x - 1, z, x - 1, z - 1)), (2, Facing(x, z, x, z - 1)),
-                    (16, Facing(x, z - 1, x - 1, z - 1)), (32, Facing(x, z, x - 1, z)),
-                };
-                foreach (var (bit, room) in faces)
-                {
+                    if (!_L.InChunk(cx, cz)) continue;          // the neighbouring chunk emits this face
+                    var room = _L.RoomAt(cx, cz);
                     var w = W(WallMat(room), room.color);
                     if (wall)
                     {
                         w.Box(new Vector3(x * C, HP * 0.5f, z * C), new Vector3(T, HP, T), bit, MeshWriter.WallUV);
-                        W(_a.baseboard, room.color).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit | (bit == 1 ? 8 : 0), MeshWriter.MetreUV);
+                        W(_a.baseboard, room.color).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit, MeshWriter.MetreUV);
                     }
                     else
                     {
-                        // Between openings: the block above the opening tops, no post down to the floor.
+                        // Between headed openings: the block above the header line, no post to the floor.
                         float hy = OfficeBiome.DoorHeaderHeight;
-                        w.Box(new Vector3(x * C, (hy + HP) * 0.5f, z * C), new Vector3(T, HP - hy, T), bit | (bit == 1 ? 4 : 0), MeshWriter.WallUV);
+                        w.Box(new Vector3(x * C, (hy + HP) * 0.5f, z * C), new Vector3(T, HP - hy, T), bit, MeshWriter.WallUV);
+                    }
+                }
+                // Undersides / tops, owned by the cell at (x, z) when present.
+                if (_L.InChunk(Mathf.Min(x, N - 1), Mathf.Min(z, N - 1)) && x < N && z < N)
+                {
+                    var room = _L.RoomAt(x, z);
+                    if (wall) W(_a.baseboard, room.color).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), 8, MeshWriter.MetreUV);
+                    else
+                    {
+                        float hy = OfficeBiome.DoorHeaderHeight;
+                        W(WallMat(room), room.color).Box(new Vector3(x * C, (hy + HP) * 0.5f, z * C), new Vector3(T, HP - hy, T), 4, MeshWriter.WallUV);
                     }
                 }
             }

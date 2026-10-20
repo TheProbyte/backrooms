@@ -34,6 +34,8 @@ Shader "Backrooms/CamcorderVideo"
             float4 _CamVideo2;   // x luma noise, y chroma noise, z scanlines, w tracking noise
             float4 _CamVideo3;   // x pedestal, y knee point, z time (s), w enabled (0/1)
             float4 _CamVideo4;   // x frame index, y sensor lines (noise grid), z scan lines, w grain size multiplier
+            float4 _CamVideo5;   // x OSD curvature, y OSD texture enabled
+            TEXTURE2D(_CamOSDTex);
 
             // ---------------- Noise ----------------
 
@@ -216,6 +218,31 @@ Shader "Backrooms/CamcorderVideo"
                 {
                     float spark = GridNoise(float2(uv.x * 160.0, uv.y * res.y * 0.5), frame, 211u);
                     col += (0.04 + max(spark, 0) * 0.12) * band * tracking;
+                }
+
+                // Viewfinder OSD (drawn by its own camera), bent with a gentle barrel warp so the text
+                // and icons curve like an overlay seen through the eyepiece lens. A faint glow keeps
+                // the characters from looking pasted on.
+                if (_CamVideo5.y > 0.5)
+                {
+                    float2 c = (input.texcoord - 0.5) * float2(aspect, 1);
+                    float r2 = dot(c, c) / (0.25 * (aspect * aspect + 1));      // 0 centre .. 1 corner
+                    float k = _CamVideo5.x * 0.09;
+                    float2 ouv = 0.5 + (input.texcoord - 0.5) * (1 + k * r2) / (1 + k * 0.35);
+                    if (all(ouv > 0) && all(ouv < 1))
+                    {
+                        float4 o = SAMPLE_TEXTURE2D(_CamOSDTex, sampler_LinearClamp, ouv);
+                        float glowA = 0;
+                        [unroll] for (int g = 0; g < 4; g++)
+                        {
+                            float2 d = float2(g < 2 ? (g == 0 ? 1.5 : -1.5) : 0, g >= 2 ? (g == 2 ? 1.5 : -1.5) : 0) * px;
+                            glowA += SAMPLE_TEXTURE2D(_CamOSDTex, sampler_LinearClamp, ouv + d).a;
+                        }
+                        glowA *= 0.25;
+                        float3 osd = LinearToSRGB(o.rgb / max(o.a, 1e-3));
+                        col += 0.08 * glowA * (1 - o.a);                         // soft halo
+                        col = lerp(col, osd, o.a);
+                    }
                 }
 
                 return float4(SRGBToLinear(saturate(col)), 1);

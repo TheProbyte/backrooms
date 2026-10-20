@@ -34,6 +34,79 @@ namespace Backrooms.Camcorder
             Build();
         }
 
+        // ---------------- Lens-curved rendering ----------------
+        // The OSD is drawn by its own camera into a texture; the camcorder video pass composites it with a
+        // slight barrel warp, so the text and icons bend like a viewfinder seen through an eyepiece.
+
+        [Tooltip("Renderer (index in the URP asset) with no full-screen passes, used by the OSD camera. -1 = draw as a flat overlay.")]
+        public int uiRendererIndex = -1;
+        public const int OsdLayer = 5;   // Unity's built-in "UI" layer
+        static readonly int OsdTexId = Shader.PropertyToID("_CamOSDTex");
+
+        Camera _uiCam;
+        RenderTexture _rt;
+        Canvas _barCanvas;
+        public bool Curved => _uiCam != null;
+
+        void SetupCurvedCanvas()
+        {
+            if (uiRendererIndex < 0) return;
+            var camGo = new GameObject("OSD_Camera");
+            camGo.transform.SetParent(transform, false);
+            _uiCam = camGo.AddComponent<Camera>();
+            _uiCam.clearFlags = CameraClearFlags.SolidColor;
+            _uiCam.backgroundColor = new Color(0, 0, 0, 0);
+            _uiCam.cullingMask = 1 << OsdLayer;
+            _uiCam.orthographic = true;
+            _uiCam.depth = -50f;                      // before the main camera samples it
+            _uiCam.nearClipPlane = 0.1f; _uiCam.farClipPlane = 10f;
+            _uiCam.allowHDR = false; _uiCam.allowMSAA = false;
+            var data = UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(_uiCam);
+            data.SetRenderer(uiRendererIndex);
+            data.renderPostProcessing = false;
+            data.renderShadows = false;
+            data.requiresDepthTexture = false; data.requiresColorTexture = false;
+            EnsureTarget();
+            UnityEngine.Rendering.RenderPipelineManager.beginCameraRendering += ClearOsdTarget;
+            _canvas.renderMode = RenderMode.ScreenSpaceCamera;
+            _canvas.worldCamera = _uiCam;
+            _canvas.planeDistance = 1f;
+            SetLayer(_canvas.transform, OsdLayer);
+        }
+
+        void EnsureTarget()
+        {
+            int w = Mathf.Max(64, Screen.width), h = Mathf.Max(64, Screen.height);
+            if (_rt && _rt.width == w && _rt.height == h) return;
+            if (_rt) { _uiCam.targetTexture = null; _rt.Release(); Destroy(_rt); }
+            _rt = new RenderTexture(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { name = "CamcorderOSD" };
+            _uiCam.targetTexture = _rt;
+            Shader.SetGlobalTexture(OsdTexId, _rt);
+        }
+
+        static void SetLayer(Transform t, int layer)
+        {
+            t.gameObject.layer = layer;
+            foreach (Transform c in t) SetLayer(c, layer);
+        }
+
+        /// <summary>The bare OSD renderer doesn't clear its target, so wipe it to transparent each frame.</summary>
+        void ClearOsdTarget(UnityEngine.Rendering.ScriptableRenderContext ctx, Camera cam)
+        {
+            if (cam != _uiCam || !_rt) return;
+            var prev = RenderTexture.active;
+            RenderTexture.active = _rt;
+            GL.Clear(true, true, new Color(0, 0, 0, 0));
+            RenderTexture.active = prev;
+        }
+
+        void OnDestroy()
+        {
+            UnityEngine.Rendering.RenderPipelineManager.beginCameraRendering -= ClearOsdTarget;
+            Shader.SetGlobalTexture(OsdTexId, Texture2D.blackTexture);
+            if (_rt) { _rt.Release(); Destroy(_rt); }
+        }
+
         void Build()
         {
             var go = new GameObject("CamcorderOSD_Canvas");
@@ -45,6 +118,17 @@ namespace Backrooms.Camcorder
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920, 1080);
             scaler.matchWidthOrHeight = 1f;
+
+            // Pillarbox bars and the debug readout stay flat and crisp on their own overlay canvas.
+            var bgo = new GameObject("CamcorderOSD_Bars");
+            bgo.transform.SetParent(transform, false);
+            _barCanvas = bgo.AddComponent<Canvas>();
+            _barCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _barCanvas.sortingOrder = 49;
+            var bs = bgo.AddComponent<CanvasScaler>();
+            bs.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            bs.referenceResolution = new Vector2(1920, 1080);
+            bs.matchWidthOrHeight = 1f;
 
             _barL = Bar("PillarL", true);
             _barR = Bar("PillarR", false);
@@ -73,15 +157,16 @@ namespace Backrooms.Camcorder
             _time = Label("", new Vector2(0, 0), new Vector2(0, 44), TextAnchor.LowerLeft, 34);
             _date = Label("", new Vector2(0, 0), Vector2.zero, TextAnchor.LowerLeft, 34);
             _debug = Label("", new Vector2(1, 0), Vector2.zero, TextAnchor.LowerRight, 20);
-            _debug.transform.SetParent(_canvas.transform, false);
+            _debug.transform.SetParent(_barCanvas.transform, false);
             var dr2 = _debug.rectTransform; dr2.anchorMin = dr2.anchorMax = dr2.pivot = new Vector2(1, 0); dr2.anchoredPosition = new Vector2(-16, 12);
             Battery();
+            SetupCurvedCanvas();
         }
 
         RectTransform Bar(string name, bool left)
         {
             var img = new GameObject(name).AddComponent<Image>();
-            img.transform.SetParent(_canvas.transform, false);
+            img.transform.SetParent(_barCanvas.transform, false);
             img.color = Color.black;
             var r = img.rectTransform;
             r.anchorMin = new Vector2(left ? 0 : 1, 0); r.anchorMax = new Vector2(left ? 0 : 1, 1);
@@ -155,7 +240,8 @@ namespace Backrooms.Camcorder
         void LateUpdate()
         {
             if (!_canvas) return;
-            var canvasRect = (RectTransform)_canvas.transform;
+            if (_uiCam) EnsureTarget();
+            var canvasRect = (RectTransform)_barCanvas.transform;
             float w = canvasRect.rect.width, h = canvasRect.rect.height;
             float bar = pillarbox ? Mathf.Max(0f, (w - h * 4f / 3f) * 0.5f) : 0f;
             _barL.sizeDelta = new Vector2(bar, 0); _barR.sizeDelta = new Vector2(bar, 0);

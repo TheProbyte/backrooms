@@ -226,6 +226,43 @@ namespace Backrooms.EditorTools
             return a;
         }
 
+        /// <summary>
+        /// A bare renderer (no SSAO, no camcorder pass) for the OSD camera, added to every URP asset's
+        /// renderer list. Returns its index.
+        /// </summary>
+        static int EnsureUIRenderer()
+        {
+            const string path = "Assets/Settings/OSD_Renderer.asset";
+            var data = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(path);
+            if (!data)
+            {
+                data = ScriptableObject.CreateInstance<UniversalRendererData>();
+                AssetDatabase.CreateAsset(data, path);
+                AssetDatabase.SaveAssets();
+            }
+            int index = -1;
+            foreach (var guid in AssetDatabase.FindAssets("t:UniversalRenderPipelineAsset", new[] { "Assets/Settings" }))
+            {
+                var asset = AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(AssetDatabase.GUIDToAssetPath(guid));
+                var so = new SerializedObject(asset);
+                var list = so.FindProperty("m_RendererDataList");
+                int found = -1;
+                for (int i = 0; i < list.arraySize; i++) if (list.GetArrayElementAtIndex(i).objectReferenceValue == data) found = i;
+                if (found < 0)
+                {
+                    list.arraySize++;
+                    found = list.arraySize - 1;
+                    list.GetArrayElementAtIndex(found).objectReferenceValue = data;
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                    EditorUtility.SetDirty(asset);
+                }
+                if (asset == UniversalRenderPipeline.asset) index = found;
+                else if (index < 0) index = found;
+            }
+            AssetDatabase.SaveAssets();
+            return index;
+        }
+
         // ---------------- Video pass ----------------
 
         /// <summary>Adds the camcorder full-screen pass to the PC renderer (after post-processing).</summary>
@@ -351,6 +388,7 @@ namespace Backrooms.EditorTools
 
             var ui = new GameObject("CamcorderUI");
             var osd = ui.AddComponent<CamcorderOSD>();
+            osd.uiRendererIndex = EnsureUIRenderer();
             var rig = camGo.AddComponent<CamcorderRig>();
             rig.volume = volume; rig.exposure = exposure; rig.shake = shake; rig.osd = osd;
             var menu = ui.AddComponent<CamcorderVisualMenu>();

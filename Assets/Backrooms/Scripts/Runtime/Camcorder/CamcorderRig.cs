@@ -32,6 +32,7 @@ namespace Backrooms.Camcorder
         static readonly int ID2 = Shader.PropertyToID("_CamVideo2");
         static readonly int ID3 = Shader.PropertyToID("_CamVideo3");
         static readonly int ID4 = Shader.PropertyToID("_CamVideo4");
+        static readonly int ID5 = Shader.PropertyToID("_CamVideo5");
 
         void Awake()
         {
@@ -41,6 +42,8 @@ namespace Backrooms.Camcorder
 
         void Start()
         {
+            // The OSD is drawn by its own camera and composited by the video pass.
+            _cam.cullingMask &= ~(1 << CamcorderOSD.OsdLayer);
             if (volume)
             {
                 _profile = volume.profile; // runtime instance
@@ -116,6 +119,8 @@ namespace Backrooms.Camcorder
             Shader.SetGlobalVector(ID3, new Vector4(s.pedestal, s.highlightKnee, Time.time, 1f));
             // Frame index re-seeds the noise every rendered frame; 720-line sensor grid; 480 video lines.
             Shader.SetGlobalVector(ID4, new Vector4(Time.frameCount % 16777216, 720f, 480f, s.grainSize));
+            // OSD composite: curvature of the viewfinder overlay, and whether the OSD texture is in use.
+            Shader.SetGlobalVector(ID5, new Vector4(s.osdCurvature, osd && osd.Curved ? 1f : 0f, 0f, 0f));
 
             int fps = s.frameRateCap > 0 ? s.frameRateCap : -1;
             if (Application.targetFrameRate != fps) { Application.targetFrameRate = fps; QualitySettings.vSyncCount = fps > 0 ? 0 : QualitySettings.vSyncCount; }
