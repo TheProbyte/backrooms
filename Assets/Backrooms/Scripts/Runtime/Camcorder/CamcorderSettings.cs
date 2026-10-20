@@ -11,18 +11,20 @@ namespace Backrooms.Camcorder
     [Serializable]
     public class CamcorderSettings
     {
+        // Defaults are the look the player tuned by hand in the F5 panel (2026-10-20).
+
         // Lens
-        public float fieldOfView = 62f;
-        public float lensDistortion = -0.07f;
-        public float chromaticAberration = 0.07f;
+        public float fieldOfView = 50f;
+        public float lensDistortion = 0.2f;
+        public float chromaticAberration = 0.15f;
         public float vignette = 0.24f;
-        public float bloom = 0.32f;
-        public float bloomScatter = 0.62f;
+        public float bloom = 0.875f;
+        public float bloomScatter = 0.71f;
 
         // Focus
         public bool autofocus = true;
         public float aperture = 4f;          // f-number for the depth-of-field effect
-        public float focusSpeed = 1.2f;      // how fast the AF motor drives
+        public float focusSpeed = 0.8f;      // how fast the AF motor drives
         public float focusHunting = 0.35f;   // overshoot and settling when focus changes
 
         // Exposure / iris
@@ -33,36 +35,37 @@ namespace Backrooms.Camcorder
         public float fluorescentFlicker = 0.25f; // shutter beating against 60 Hz tubes
 
         // Sensor gain noise
-        public float noise = 0.018f;
-        public float gainNoise = 0.03f;      // extra noise per EV of gain
-        public float chromaNoise = 0.03f;
+        public float noise = 0.062f;
+        public float gainNoise = 0.10f;      // extra noise per EV of gain
+        public float chromaNoise = 0.032f;
+        public float grainSize = 1.2f;       // 1 = 720-line sensor; larger = coarser, clumpier grain
 
         // Image processing
-        public float sharpening = 0.9f;
-        public float softness = 0.8f;        // optical + resolution softness, in pixels
-        public float chromaBleed = 3f;       // horizontal chroma smear, in pixels
-        public float chromaShift = 0.8f;
+        public float sharpening = 3f;
+        public float softness = 1.78f;       // optical + resolution softness, in pixels
+        public float chromaBleed = 5.1f;     // horizontal chroma smear, in pixels
+        public float chromaShift = 1.4f;
         public float highlightKnee = 0.88f;
         public float pedestal = 0.02f;
 
         // Colour
-        public float whiteBalanceTemp = 9f;
-        public float whiteBalanceTint = -5f;
-        public float saturation = 0f;
-        public float contrast = 18f;
+        public float whiteBalanceTemp = 0f;
+        public float whiteBalanceTint = 10f;
+        public float saturation = 11.5f;
+        public float contrast = 11.6f;
 
         // Motion
-        public float shakeIntensity = 1f;
-        public float breathing = 1f;
+        public float shakeIntensity = 1.23f;
+        public float breathing = 1.48f;
         public float stabilization = 0f;
         public float motionBlur = 0.12f;
 
         // Format
-        public float scanlines = 0.0f;
-        public float trackingNoise = 0f;
-        public bool aspect43 = false;
+        public float scanlines = 0.049f;
+        public float trackingNoise = 0.345f;
+        public bool aspect43 = true;
         public bool showOSD = true;
-        public int frameRateCap = 0;         // 0 = unlimited, otherwise e.g. 30 / 25
+        public int frameRateCap = 60;        // 0 = unlimited
 
         public CamcorderSettings Clone() => (CamcorderSettings)MemberwiseClone();
 
@@ -105,7 +108,8 @@ namespace Backrooms.Camcorder
                     s.softness = 0.5f; s.sharpening = 1.8f; s.chromaBleed = 2.2f; s.chromaShift = 0.4f;
                     s.pedestal = 0.012f; s.highlightKnee = 0.94f; s.noise = 0.014f; s.chromaNoise = 0.02f;
                     s.saturation = 4f; s.contrast = 22f; s.whiteBalanceTemp = 2f; s.whiteBalanceTint = -7f;
-                    s.vignette = 0.18f; s.motionBlur = 0.05f;
+                    s.vignette = 0.18f; s.motionBlur = 0.05f; s.scanlines = 0f; s.trackingNoise = 0f;
+                    s.gainNoise = 0.05f; s.grainSize = 0.8f; s.bloom = 0.5f;
                     break;
                 case 3: // Low light: aggressive gain, heavy noise, slow iris
                     s.maxGain = 1.6f; s.gainNoise = 0.08f; s.noise = 0.03f; s.chromaNoise = 0.08f;
@@ -116,6 +120,8 @@ namespace Backrooms.Camcorder
                     s.chromaNoise = 0f; s.sharpening = 0f; s.softness = 0f; s.chromaBleed = 0f; s.chromaShift = 0f;
                     s.pedestal = 0f; s.highlightKnee = 1f; s.fluorescentFlicker = 0f; s.motionBlur = 0f;
                     s.shakeIntensity = 0.5f; s.autofocus = false; s.showOSD = false;
+                    s.scanlines = 0f; s.trackingNoise = 0f; s.aspect43 = false; s.bloom = 0.3f; s.lensDistortion = 0f;
+                    s.saturation = 0f; s.whiteBalanceTint = 0f; s.fieldOfView = 62f;
                     break;
             }
             return s;

@@ -31,6 +31,7 @@ namespace Backrooms.Camcorder
         static readonly int ID1 = Shader.PropertyToID("_CamVideo1");
         static readonly int ID2 = Shader.PropertyToID("_CamVideo2");
         static readonly int ID3 = Shader.PropertyToID("_CamVideo3");
+        static readonly int ID4 = Shader.PropertyToID("_CamVideo4");
 
         void Awake()
         {
@@ -113,6 +114,8 @@ namespace Backrooms.Camcorder
             Shader.SetGlobalVector(ID1, new Vector4(s.sharpening, s.softness, s.chromaBleed, s.chromaShift));
             Shader.SetGlobalVector(ID2, new Vector4(s.noise + s.gainNoise * gain, s.chromaNoise * (1f + gain), s.scanlines, s.trackingNoise));
             Shader.SetGlobalVector(ID3, new Vector4(s.pedestal, s.highlightKnee, Time.time, 1f));
+            // Frame index re-seeds the noise every rendered frame; 720-line sensor grid; 480 video lines.
+            Shader.SetGlobalVector(ID4, new Vector4(Time.frameCount % 16777216, 720f, 480f, s.grainSize));
 
             int fps = s.frameRateCap > 0 ? s.frameRateCap : -1;
             if (Application.targetFrameRate != fps) { Application.targetFrameRate = fps; QualitySettings.vSyncCount = fps > 0 ? 0 : QualitySettings.vSyncCount; }
