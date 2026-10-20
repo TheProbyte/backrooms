@@ -4,6 +4,9 @@ Realistic camcorder-style Backrooms exploration game. Unity 6 (6000.4.5f1), URP.
 
 ![Infinite offices](Docs/screenshots/infinite_spawn.png)
 
+**Design direction:** see [Docs/ProjectBrief.md](Docs/ProjectBrief.md), the owner's full brief (vision, future
+systems, and the audio milestone). Read it before starting new systems.
+
 ## Play
 
 Open `Assets/Backrooms/Scenes/Backrooms_Infinite.unity` and press Play. (The milestone-1 room is still in
