@@ -287,7 +287,7 @@ namespace Backrooms.Generation
                 Vector3 u0 = A(l, a0) + Vector3.up * top, u1 = A(l, a1) + Vector3.up * top;
                 Vector3 v0 = A(f, a0) + Vector3.up * top, v1 = A(f, a1) + Vector3.up * top;
                 W(WallMat(room), room.color).Quad(u0, v0, v1, u1, Vector3.down, MeshWriter.WallUV);
-                if (!otherKnown && room.Tall && e != EdgeKind.DoorHeader)
+                if (!otherKnown && room.Tall)
                 {
                     // Neighbour may have no header: close the space between its ceiling and our header.
                     WallFace(room, A(l, a0), A(l, a1), top, OfficeBiome.CeilingHeight + 0.05f, -n);
@@ -359,10 +359,15 @@ namespace Backrooms.Generation
         void BuildPosts()
         {
             int N = _L.N;
-            const float HP = OfficeBiome.MaxCeilingHeight;
             for (int x = 0; x < N; x++)
             for (int z = 0; z < N; z++)
             {
+                // Interior posts rise to the tallest ceiling around them (never into a lower room's
+                // plenum); posts on the chunk border can't see the neighbour, so they always go full height.
+                float HP = OfficeBiome.MaxCeilingHeight;
+                if (x > 0 && z > 0)
+                    HP = Mathf.Max(Mathf.Max(_L.CeilingAt(x - 1, z - 1), _L.CeilingAt(x, z - 1)),
+                                   Mathf.Max(_L.CeilingAt(x - 1, z), _L.CeilingAt(x, z)));
                 bool wall = false, header = false;
                 // Headers: explicit door headers, or border openings closed by a tall room (see EdgeFaces).
                 void Check(EdgeKind e, bool border, int cx, int cz)
@@ -376,6 +381,14 @@ namespace Backrooms.Generation
                 Check(_L.hEdges[x, z], z == 0, x, z);
                 if (x > 0) Check(_L.hEdges[x - 1, z], z == 0, x - 1, z);
                 if (!wall && !header) continue;
+                // On the chunk border the neighbour may have a wall ending at this vertex, expecting our post
+                // to close its end. So border posts between openings stand full height (a slim mullion), with
+                // their own collider since no wall run of ours covers them.
+                if (!wall && (x == 0 || z == 0))
+                {
+                    wall = true;
+                    _boxes.Add((new Vector3(x * C, HP * 0.5f, z * C), new Vector3(T, HP, T)));
+                }
 
                 // Each face takes the finish and light layer of the room it faces, so a post reads as part
                 // of the wall on both sides (painted on one side, wallpaper on the other).
@@ -486,7 +499,7 @@ namespace Backrooms.Generation
                 // Faulty tubes get their own lens mesh so their emission can stutter independently.
                 MeshWriter lens;
                 if (f.faulty) { lens = new MeshWriter { worldOffset = _origin }; faultyLenses.Add((lens, f.dome)); }
-                else lens = W(f.on ? (f.dome ? _a.domeOn ?? _a.lensOn : _a.lensOn) : (f.dome ? _a.domeOff ?? _a.lensOff : _a.lensOff), -1);
+                else lens = W(f.on ? (f.dome ? _a.domeOn ?? _a.lensOn : _a.lensOn) : (f.dome ? _a.domeOff ?? _a.lensOff : _a.lensOff), f.roomColor);
 
                 if (f.dome)
                 {
@@ -497,7 +510,7 @@ namespace Backrooms.Generation
                 else
                 {
                     lens.Box(c + Vector3.down * 0.004f, new Vector3(1.17f, 0.006f, 0.57f), 4 | 1 | 2 | 16 | 32, MeshWriter.MetreUV);
-                    var hw = W(_a.fixtureHousing, -1);
+                    var hw = W(_a.fixtureHousing, f.roomColor);
                     const int m = 1 | 2 | 4 | 16 | 32;
                     hw.Box(c + new Vector3(0, -0.009f, 0.291f), new Vector3(1.2f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
                     hw.Box(c + new Vector3(0, -0.009f, -0.291f), new Vector3(1.2f, 0.016f, 0.018f), m, MeshWriter.MetreUV);

@@ -87,39 +87,35 @@ namespace Backrooms.Camcorder
             _panel.sizeDelta = new Vector2(460, 0); _panel.anchoredPosition = Vector2.zero;
             _panel.gameObject.AddComponent<Image>().color = PanelBg;
 
-            var title = Label(_panel, "CAMCORDER  ·  VISUAL SETTINGS", 24, Accent, TextAnchor.MiddleLeft);
+            var title = Label(_panel, "CAMCORDER  ·  SETTINGS", 24, Accent, TextAnchor.MiddleLeft);
             Place(title.rectTransform, 20, -18, -20, 34);
-            var hint = Label(_panel, "F5 / Esc to close.  Changes apply live and are saved.", 15, Dim, TextAnchor.MiddleLeft);
-            Place(hint.rectTransform, 20, -50, -20, 22);
 
-            // Presets row.
-            var presets = Rect("Presets", _panel);
-            Place(presets, 16, -80, -16, 34);
-            var hl = presets.gameObject.AddComponent<HorizontalLayoutGroup>();
+            // Tabs: Visual (camera look) and Gameplay (non-aesthetic options; more will live here later).
+            var tabs = Rect("Tabs", _panel);
+            Place(tabs, 16, -56, -16, 32);
+            var th = tabs.gameObject.AddComponent<HorizontalLayoutGroup>();
+            th.spacing = 6; th.childForceExpandWidth = true; th.childControlWidth = true; th.childControlHeight = true;
+            _tabVisual = Button(tabs, "VISUAL", () => ShowTab(0));
+            _tabGameplay = Button(tabs, "GAMEPLAY", () => ShowTab(1));
+
+            var hint = Label(_panel, "F5 / Esc to close.  Hover an option for an explanation.", 14, Dim, TextAnchor.MiddleLeft);
+            Place(hint.rectTransform, 20, -94, -20, 20);
+
+            // Presets row (visual tab only).
+            _presets = Rect("Presets", _panel);
+            Place(_presets, 16, -120, -16, 34);
+            var hl = _presets.gameObject.AddComponent<HorizontalLayoutGroup>();
             hl.spacing = 6; hl.childForceExpandWidth = true; hl.childControlWidth = true; hl.childControlHeight = true;
             for (int i = 0; i < CamcorderSettings.PresetNames.Length; i++)
             {
                 int idx = i;
-                Button(presets, CamcorderSettings.PresetNames[i], () => ApplyPreset(idx));
+                Button(_presets, CamcorderSettings.PresetNames[i], () => ApplyPreset(idx));
             }
 
-            // Scrollable list.
-            var view = Rect("Scroll", _panel);
-            view.anchorMin = new Vector2(0, 0); view.anchorMax = new Vector2(1, 1);
-            view.offsetMin = new Vector2(10, 56); view.offsetMax = new Vector2(-10, -124);
-            var scroll = view.gameObject.AddComponent<ScrollRect>();
-            view.gameObject.AddComponent<RectMask2D>();
-            view.gameObject.AddComponent<Image>().color = new Color(0, 0, 0, 0.001f); // raycast target for wheel
-            scroll.horizontal = false; scroll.scrollSensitivity = 40f; scroll.movementType = ScrollRect.MovementType.Clamped;
-
-            _list = Rect("List", view);
-            _list.anchorMin = new Vector2(0, 1); _list.anchorMax = new Vector2(1, 1); _list.pivot = new Vector2(0.5f, 1);
-            _list.offsetMin = _list.offsetMax = Vector2.zero;
-            var vl = _list.gameObject.AddComponent<VerticalLayoutGroup>();
-            vl.padding = new RectOffset(10, 18, 6, 16); vl.spacing = 4;
-            vl.childControlHeight = true; vl.childControlWidth = true; vl.childForceExpandHeight = false;
-            _list.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            scroll.content = _list; scroll.viewport = view;
+            (_visualView, _list) = MakeList("VisualScroll", -164);
+            BuildControls();
+            (_gameplayView, _list) = MakeList("GameplayScroll", -120);
+            BuildGameplay();
 
             // Footer.
             var footer = Rect("Footer", _panel);
@@ -127,10 +123,63 @@ namespace Backrooms.Camcorder
             footer.offsetMin = new Vector2(16, 12); footer.offsetMax = new Vector2(-16, 46);
             var fl = footer.gameObject.AddComponent<HorizontalLayoutGroup>();
             fl.spacing = 8; fl.childForceExpandWidth = true; fl.childControlWidth = true; fl.childControlHeight = true;
-            Button(footer, "Reset to default", () => ApplyPreset(0));
+            Button(footer, "Reset visuals", () => ApplyPreset(0));
             Button(footer, "Close", () => SetOpen(false));
 
-            BuildControls();
+            ShowTab(0);
+        }
+
+        RectTransform _visualView, _gameplayView, _presets;
+        Image _tabVisual, _tabGameplay;
+
+        (RectTransform view, RectTransform list) MakeList(string name, float top)
+        {
+            var view = Rect(name, _panel);
+            view.anchorMin = new Vector2(0, 0); view.anchorMax = new Vector2(1, 1);
+            view.offsetMin = new Vector2(10, 56); view.offsetMax = new Vector2(-10, top);
+            var scroll = view.gameObject.AddComponent<ScrollRect>();
+            view.gameObject.AddComponent<RectMask2D>();
+            view.gameObject.AddComponent<Image>().color = new Color(0, 0, 0, 0.001f); // raycast target for wheel
+            scroll.horizontal = false; scroll.scrollSensitivity = 40f; scroll.movementType = ScrollRect.MovementType.Clamped;
+
+            var list = Rect("List", view);
+            list.anchorMin = new Vector2(0, 1); list.anchorMax = new Vector2(1, 1); list.pivot = new Vector2(0.5f, 1);
+            list.offsetMin = list.offsetMax = Vector2.zero;
+            var vl = list.gameObject.AddComponent<VerticalLayoutGroup>();
+            vl.padding = new RectOffset(10, 18, 6, 16); vl.spacing = 4;
+            vl.childControlHeight = true; vl.childControlWidth = true; vl.childForceExpandHeight = false;
+            list.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            scroll.content = list; scroll.viewport = view;
+            return (view, list);
+        }
+
+        void ShowTab(int i)
+        {
+            _visualView.gameObject.SetActive(i == 0);
+            _presets.gameObject.SetActive(i == 0);
+            _gameplayView.gameObject.SetActive(i == 1);
+            _tabVisual.color = new Color(1, 1, 1, i == 0 ? 0.28f : 0.08f);
+            _tabGameplay.color = new Color(1, 1, 1, i == 1 ? 0.28f : 0.08f);
+            HideTip();
+        }
+
+        void BuildGameplay()
+        {
+            Section("MOVEMENT", "Non-visual options. More will be added here.");
+            Toggle("Noclip (walk through anything)", "Turns off collision and gravity so you can fly through walls, floors and ceilings. Look where you want to go and use WASD; Space rises, Ctrl or C sinks, Shift is faster. Turn off to drop back to the floor.",
+                () => player && player.noclip, v => { if (player) player.SetNoclip(v); });
+            Toggle("Show debug info", "Shows your position, chunk, world seed and frame rate in the corner, handy for reporting generation bugs.",
+                () => rig && rig.osd && rig.osd.showDebug, v => { if (rig && rig.osd) rig.osd.showDebug = v; });
+            Slider("Noclip speed","Flying speed while noclip is on (Shift doubles it).",
+                1f, 12f, "0.0", " m/s", () => player ? player.noclipSpeed : 4f, v => { if (player) player.noclipSpeed = v; });
+            Slider("Mouse sensitivity", "How far the camera turns per mouse movement.",
+                0.01f, 0.3f, "0.000", "", () => player ? player.mouseSensitivity : 0.08f, v => { if (player) player.mouseSensitivity = v; });
+            Toggle("Invert mouse Y", "Pushing the mouse forward looks down instead of up.",
+                () => player && player.invertY, v => { if (player) player.invertY = v; });
+            Slider("Walk speed", "Normal walking pace.", 0.5f, 3f, "0.00", " m/s",
+                () => player ? player.walkSpeed : 1.35f, v => { if (player) player.walkSpeed = v; });
+            Slider("Run speed", "Speed while holding Shift.", 1.5f, 6f, "0.00", " m/s",
+                () => player ? player.runSpeed : 3.6f, v => { if (player) player.runSpeed = v; });
         }
 
         void BuildControls()
@@ -355,7 +404,7 @@ namespace Backrooms.Camcorder
 
         void HideTip() { if (_tip) _tip.gameObject.SetActive(false); }
 
-        void Button(RectTransform parent, string text, Action onClick)
+        Image Button(RectTransform parent, string text, Action onClick)
         {
             var b = Rect("Button_" + text, parent);
             var img = b.gameObject.AddComponent<Image>(); img.color = new Color(1, 1, 1, 0.1f);
@@ -365,6 +414,7 @@ namespace Backrooms.Camcorder
             btn.onClick.AddListener(() => onClick());
             var l = Label(b, text, 14, TextCol, TextAnchor.MiddleCenter);
             Stretch(l.rectTransform);
+            return img;
         }
 
         Text Label(RectTransform parent, string text, int size, Color color, TextAnchor align)

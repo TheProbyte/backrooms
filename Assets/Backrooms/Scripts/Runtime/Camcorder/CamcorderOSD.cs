@@ -12,6 +12,9 @@ namespace Backrooms.Camcorder
     {
         public bool visible = true;
         public bool pillarbox = false;
+        [Tooltip("Small debug readout (position, chunk, seed, fps) for reporting bugs.")]
+        public bool showDebug = false;
+        Text _debug;
         [Tooltip("Date the tape thinks it is. Time advances from here in real time.")]
         public string startDate = "1998-10-19 22:41:00";
 
@@ -69,6 +72,9 @@ namespace Backrooms.Camcorder
             _counter = Label("0:00:00", new Vector2(1, 1), Vector2.zero, TextAnchor.UpperRight, 34);
             _time = Label("", new Vector2(0, 0), new Vector2(0, 44), TextAnchor.LowerLeft, 34);
             _date = Label("", new Vector2(0, 0), Vector2.zero, TextAnchor.LowerLeft, 34);
+            _debug = Label("", new Vector2(1, 0), Vector2.zero, TextAnchor.LowerRight, 20);
+            _debug.transform.SetParent(_canvas.transform, false);
+            var dr2 = _debug.rectTransform; dr2.anchorMin = dr2.anchorMax = dr2.pivot = new Vector2(1, 0); dr2.anchoredPosition = new Vector2(-16, 12);
             Battery();
         }
 
@@ -155,6 +161,14 @@ namespace Backrooms.Camcorder
             _barL.sizeDelta = new Vector2(bar, 0); _barR.sizeDelta = new Vector2(bar, 0);
             _frame.GetComponent<AspectRatioFitter>().aspectRatio = pillarbox ? 4f / 3f : w / Mathf.Max(1f, h);
             _content.gameObject.SetActive(visible);
+            _debug.enabled = showDebug;
+            if (showDebug && Camera.main)
+            {
+                var p = Camera.main.transform.position;
+                var ws = FindFirstObjectByType<Backrooms.Generation.WorldStreamer>();
+                var ch = Backrooms.Generation.WorldStreamer.ChunkOf(p);
+                _debug.text = $"pos {p.x:F1} {p.y:F1} {p.z:F1}   chunk {ch.x},{ch.y}   seed {(ws ? ws.Seed : 0)}   {1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):F0} fps";
+            }
 
             float elapsed = Time.time - _t0;
             var now = _start.AddSeconds(elapsed);

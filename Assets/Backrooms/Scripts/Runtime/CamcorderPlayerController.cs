@@ -42,6 +42,25 @@ namespace Backrooms
         /// <summary>0 when still, 1 at walk speed, ~2.7 at run speed.</summary>
         public float NormalizedSpeed => walkSpeed > 0f ? PlanarVelocity.magnitude / walkSpeed : 0f;
 
+        [Header("Noclip")]
+        [Tooltip("Fly through everything (F5 > Gameplay).")]
+        public bool noclip;
+        [Range(1f, 12f)] public float noclipSpeed = 4f;
+
+        /// <summary>Turns noclip on/off. Turning it off drops the player from wherever they are.</summary>
+        public void SetNoclip(bool on)
+        {
+            noclip = on;
+            _controller.enabled = !on;
+            PlanarVelocity = Vector3.zero;
+            _verticalVelocity = 0f;
+        }
+
+        /// <summary>Test hook: when set, used as WASD input (x strafe, y forward) regardless of focus.</summary>
+        [System.NonSerialized] public Vector2? botInput;
+
+        public void SetYaw(float yaw) { _yaw = yaw; transform.rotation = Quaternion.Euler(0f, yaw, 0f); }
+
         /// <summary>Set by in-game menus to suspend look, movement and cursor capture.</summary>
         public static bool InputBlocked;
 
@@ -85,7 +104,7 @@ namespace Backrooms
         {
             _controller.enabled = false;
             transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
-            _controller.enabled = true;
+            _controller.enabled = !noclip;
             _yaw = yaw; _pitch = pitch; _verticalVelocity = 0f;
             PlanarVelocity = Vector3.zero;
             if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
@@ -103,7 +122,13 @@ namespace Backrooms
         void UpdateMove(Keyboard keyboard, bool hasFocus)
         {
             Vector2 input = Vector2.zero;
-            if (hasFocus)
+            if (botInput.HasValue)
+            {
+                // Automated test driver (NavProbe): bypasses keyboard and focus.
+                input = botInput.Value;
+                hasFocus = true;
+            }
+            else if (hasFocus)
             {
                 if (keyboard.wKey.isPressed) input.y += 1f;
                 if (keyboard.sKey.isPressed) input.y -= 1f;
@@ -111,6 +136,21 @@ namespace Backrooms
                 if (keyboard.aKey.isPressed) input.x -= 1f;
             }
             input = Vector2.ClampMagnitude(input, 1f);
+
+            if (noclip)
+            {
+                // Free flight along the view direction; no collision, no gravity.
+                float up = 0f;
+                if (hasFocus && keyboard.spaceKey.isPressed) up += 1f;
+                if (hasFocus && (keyboard.leftCtrlKey.isPressed || keyboard.cKey.isPressed)) up -= 1f;
+                Transform view = cameraPitchPivot ? cameraPitchPivot : transform;
+                float speed = noclipSpeed * (hasFocus && keyboard.leftShiftKey.isPressed ? 2f : 1f);
+                Vector3 fly = (view.forward * input.y + view.right * input.x + Vector3.up * up) * speed;
+                PlanarVelocity = Vector3.MoveTowards(PlanarVelocity, fly, acceleration * speed * Time.deltaTime);
+                transform.position += PlanarVelocity * Time.deltaTime;
+                IsRunning = false;
+                return;
+            }
 
             // Running only makes sense moving mostly forward.
             IsRunning = hasFocus && keyboard.leftShiftKey.isPressed && input.y > 0.1f;

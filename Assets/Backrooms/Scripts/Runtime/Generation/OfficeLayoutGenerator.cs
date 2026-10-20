@@ -35,7 +35,8 @@ namespace Backrooms.Generation
 
             // 2. Partition into rooms and hallways.
             for (int x = 0; x < n; x++) for (int z = 0; z < n; z++) L.roomOf[x, z] = -1;
-            bool bigHall = rng.NextDouble() < 0.12;
+            // The starting chunk is always one big hall; elsewhere big open halls are common.
+            bool bigHall = rng.NextDouble() < 0.22 || coord == Vector2Int.zero;
             Split(L, rng, new RectInt(0, 0, n, n), 0, bigHall, openingCells);
 
             // 3. Room kinds.
@@ -59,7 +60,7 @@ namespace Backrooms.Generation
                 if (rng.NextDouble() < tallChance)
                     r.ceiling = OfficeBiome.CeilingHeight + 0.3f * rng.Next(4, 10);   // 3.9 .. 5.4 m
                 if (r.kind != RoomKind.Crawl && r.kind != RoomKind.Hallway)
-                    r.painted = r.Tall ? rng.NextDouble() < 0.7 : rng.NextDouble() < 0.3;
+                    r.painted = r.Tall || rng.NextDouble() < 0.3;   // wallpaper is designed for 2.7 m walls
                 else r.painted = rng.NextDouble() < 0.15;
             }
 
@@ -79,6 +80,7 @@ namespace Backrooms.Generation
             // 5. Doors: random spanning tree over walkable rooms, plus loops and occasional open plan.
             ConnectRooms(L, rng);
             EnsureConnected(L, rng);
+            EncloseTallRooms(L);
 
             // 6. Lighting, colours and dressing.
             AssignColors(L);
@@ -108,9 +110,10 @@ namespace Backrooms.Generation
             if (!stop && depth > 0)
             {
                 // Bigger rooms are rarer; small rooms always stop.
-                if (maxDim <= 3) stop = rng.NextDouble() < 0.85;
-                else if (maxDim <= 6) stop = rng.NextDouble() < 0.35;
-                else if (maxDim <= 9) stop = rng.NextDouble() < 0.12;
+                if (maxDim <= 3) stop = rng.NextDouble() < 0.9;
+                else if (maxDim <= 6) stop = rng.NextDouble() < 0.6;
+                else if (maxDim <= 9) stop = rng.NextDouble() < 0.3;
+                else stop = rng.NextDouble() < 0.12;
             }
             if (stop) { MakeRoom(L, r, RoomKind.Office); return; }
 
@@ -118,7 +121,7 @@ namespace Backrooms.Generation
             int len = splitX ? w : h;
 
             // Hallway carved along the split line?
-            double hallChance = depth <= 1 ? 0.55 : 0.25;
+            double hallChance = depth <= 1 ? 0.4 : 0.15;
             int hallW = rng.NextDouble() < 0.7 ? 1 : 2;
             if (len >= MinRoom * 2 + hallW && rng.NextDouble() < hallChance)
             {
@@ -244,6 +247,42 @@ namespace Backrooms.Generation
             }
         }
 
+        /// <summary>
+        /// Rule: where ceiling heights change, the taller room is closed off by wall above a door header
+        /// (2.1 m). Every opening out of a tall room - open plan, doors, chunk-border openings - becomes a
+        /// headed doorway, so the space above a lower ceiling can never be seen from the tall side.
+        /// Passability is unchanged (headers are above head height).
+        /// </summary>
+        static void EncloseTallRooms(OfficeLayout L)
+        {
+            int n = L.N;
+            for (int x = 0; x <= n; x++)
+            for (int z = 0; z < n; z++)
+            {
+                var e = L.vEdges[x, z];
+                if (e == EdgeKind.Wall || e == EdgeKind.DoorHeader) continue;
+                float a = x > 0 ? L.CeilingAt(x - 1, z) : -1f, b = x < n ? L.CeilingAt(x, z) : -1f;
+                if (NeedsHeader(a, b)) L.vEdges[x, z] = EdgeKind.DoorHeader;
+            }
+            for (int x = 0; x < n; x++)
+            for (int z = 0; z <= n; z++)
+            {
+                var e = L.hEdges[x, z];
+                if (e == EdgeKind.Wall || e == EdgeKind.DoorHeader) continue;
+                float a = z > 0 ? L.CeilingAt(x, z - 1) : -1f, b = z < n ? L.CeilingAt(x, z) : -1f;
+                if (NeedsHeader(a, b)) L.hEdges[x, z] = EdgeKind.DoorHeader;
+            }
+        }
+
+        /// <summary>a/b are the ceilings on each side (-1 = other chunk, unknown).</summary>
+        static bool NeedsHeader(float a, float b)
+        {
+            const float std = OfficeBiome.CeilingHeight + 0.01f;
+            if (a < 0f) return b > std;
+            if (b < 0f) return a > std;
+            return Mathf.Abs(a - b) > 0.01f;
+        }
+
         struct Shared { public int a, b; public List<(int x, int z, int side)> edges; }
 
         static List<Shared> SharedBoundaries(OfficeLayout L)
@@ -279,7 +318,7 @@ namespace Backrooms.Generation
                 if (!joined && !loop) continue;
                 if (joined) uf[Find(s.a)] = Find(s.b);
 
-                bool openPlan = s.edges.Count >= 3 && rng.NextDouble() < 0.14 &&
+                bool openPlan = s.edges.Count >= 3 && rng.NextDouble() < 0.35 &&
                                 (ra.kind == RoomKind.BigOffice || rb.kind == RoomKind.BigOffice || ra.kind == RoomKind.Hallway || rb.kind == RoomKind.Hallway);
                 if (openPlan)
                 {
@@ -364,19 +403,42 @@ namespace Backrooms.Generation
 
         static void AssignColors(OfficeLayout L)
         {
-            // Greedy graph colouring with 7 colours so neighbouring rooms rarely share a bounce layer.
-            var neighbours = new List<HashSet<int>>();
-            foreach (var _ in L.rooms) neighbours.Add(new HashSet<int>());
-            foreach (var s in SharedBoundaries(L)) { neighbours[s.a].Add(s.b); neighbours[s.b].Add(s.a); }
+            // Rooms joined by open-plan edges (no wall between them) form one light zone, so their bounce
+            // light blends across the floor instead of stopping at an invisible seam.
+            var zone = new int[L.rooms.Count];
+            for (int i = 0; i < zone.Length; i++) zone[i] = i;
+            int Find(int i) { while (zone[i] != i) i = zone[i] = zone[zone[i]]; return i; }
+            var shared = SharedBoundaries(L);
+            foreach (var s in shared)
+            {
+                bool open = false;
+                foreach (var e in s.edges) if (L.EdgeOf(e.x, e.z, e.side) == EdgeKind.Open) { open = true; break; }
+                if (open) zone[Find(s.a)] = Find(s.b);
+            }
+
+            // Greedy colouring of zones with 7 colours so neighbouring zones rarely share a bounce layer.
+            var neighbours = new Dictionary<int, HashSet<int>>();
+            foreach (var s in shared)
+            {
+                int a = Find(s.a), b = Find(s.b);
+                if (a == b) continue;
+                if (!neighbours.TryGetValue(a, out var na)) neighbours[a] = na = new HashSet<int>();
+                if (!neighbours.TryGetValue(b, out var nb)) neighbours[b] = nb = new HashSet<int>();
+                na.Add(b); nb.Add(a);
+            }
             int offset = Hash(L.coord.x, L.coord.y, 7, 0xC010) & 0x7FFFFFFF;
+            var zoneColor = new Dictionary<int, int>();
             foreach (var r in L.rooms)
             {
+                int z = Find(r.id);
+                if (zoneColor.TryGetValue(z, out int known)) { r.color = known; continue; }
                 for (int k = 0; k < 7; k++)
                 {
-                    int c = (offset + r.id + k) % 7;
+                    int c = (offset + z + k) % 7;
                     bool clash = false;
-                    foreach (var nb in neighbours[r.id]) if (nb < r.id && L.rooms[nb].color == c) clash = true;
-                    if (!clash) { r.color = c; break; }
+                    if (neighbours.TryGetValue(z, out var nbs))
+                        foreach (var nb in nbs) if (zoneColor.TryGetValue(nb, out int nc) && nc == c) clash = true;
+                    if (!clash || k == 6) { zoneColor[z] = c; r.color = c; break; }
                 }
             }
         }
@@ -582,7 +644,7 @@ namespace Backrooms.Generation
             float along = ((wallAlongX ? rc.xMin : rc.yMin) + start + 1) * C;
             float wallPos = side == 0 ? rc.xMin * C : side == 1 ? rc.xMax * C : side == 2 ? rc.yMin * C : rc.yMax * C;
             float inward = side == 0 || side == 2 ? 1f : -1f;
-            float off = OfficeBiome.WallThickness * 0.5f + depth * 0.5f + 0.04f;
+            float off = OfficeBiome.WallThickness * 0.5f + depth * 0.5f + 0.005f;   // backed right up to the wall
             Vector2 pos = wallAlongX ? new Vector2(along, wallPos + inward * off) : new Vector2(wallPos + inward * off, along);
             float yaw = side == 0 ? 90f : side == 1 ? -90f : side == 2 ? 0f : 180f;   // sofa front faces +Z locally
             L.props.Add(new Prop { kind = PropKind.Sofa, position = pos, yaw = yaw + (float)(rng.NextDouble() - 0.5) * 4f,

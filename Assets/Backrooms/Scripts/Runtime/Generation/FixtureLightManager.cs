@@ -26,7 +26,7 @@ namespace Backrooms.Generation
         public Color tubeColor = new Color(1.0f, 0.965f, 0.86f);
         [Range(0f, 30f)] public float tubeIntensity = 7f;
         [Range(2f, 10f)] public float tubeRange = 6f;
-        [Range(0f, 3f)] public float bounceIntensity = 0.7f;
+        [Range(0f, 3f)] public float bounceIntensity = 0.9f;
         [Range(1f, 8f)] public float bounceRange = 4.4f;
         [Tooltip("Dome fittings on tall ceilings: intensity multiplier per metre of extra height.")]
         public float domeHeightBoost = 0.3f;
@@ -185,7 +185,7 @@ namespace Backrooms.Generation
             s.main.shadowBias = 0.04f;
             s.main.shadowNormalBias = 0.5f;
             s.main.shadowNearPlane = 0.1f;
-            data.softShadowQuality = SoftShadowQuality.Medium;
+            data.softShadowQuality = SoftShadowQuality.High;
             // Medium (512) spot maps and low lamp cubes keep all pooled shadows inside the atlas.
             // (The tier has no public setter; it is a serialised field.)
             s_tierField?.SetValue(data, lamp
@@ -323,7 +323,10 @@ namespace Backrooms.Generation
                     float boost = s.src.dome ? 1f + (s.src.ceiling - OfficeBiome.CeilingHeight) * domeHeightBoost : 1f;
                     s.main.intensity = tubeIntensity * k * boost;
                     s.main.range = s.src.dome ? tubeRange + (s.src.ceiling - OfficeBiome.CeilingHeight) * 1.2f : tubeRange;
-                    s.main.spotAngle = s.src.dome ? 160f : 150f;
+                    // Domes light the whole hemisphere: a near-180 cone with a wide soft falloff, so no
+                    // cone edge is drawn across tall walls.
+                    s.main.spotAngle = s.src.dome ? 176f : 150f;
+                    s.main.innerSpotAngle = s.src.dome ? 30f : 60f;
                     s.main.color = tubeColor;
                     s.bounce.enabled = s.main.enabled && bounceIntensity > 0f;
                     s.bounce.intensity = bounceIntensity * k * (s.src.dome ? 1.4f : 1f);
@@ -334,7 +337,7 @@ namespace Backrooms.Generation
                 s.shadowK = Mathf.MoveTowards(s.shadowK, s.wantShadow ? 1f : 0f, dt / Mathf.Max(0.01f, shadowFade));
                 var mode = s.shadowK > 0.001f ? LightShadows.Soft : LightShadows.None;
                 if (s.main.shadows != mode) s.main.shadows = mode;
-                s.main.shadowStrength = Mathf.SmoothStep(0f, 0.95f, s.shadowK);
+                s.main.shadowStrength = Mathf.SmoothStep(0f, 0.82f, s.shadowK);
             }
             return _active.Count;
         }

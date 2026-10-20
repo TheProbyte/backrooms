@@ -40,6 +40,17 @@ The world is streamed in 14.4 m chunks (12 x 12 cells of 1.2 m) around the playe
 Rebuild the scene with **Backrooms > Build Infinite Offices Scene** (`InfiniteWorldBuilder.cs`). `WorldStreamer.seed`
 = 0 gives a new world each run.
 
+### Fixes (milestone 2.2)
+
+- Where ceiling heights change, every opening out of the taller room becomes a headed doorway, so the plenum above
+  a drop ceiling can never be seen. Posts only rise as high as the rooms around them.
+- Rooms joined by open-plan walls share one bounce-light zone (no lighting seams across the carpet).
+- Bigger, more open rooms; the starting chunk is always one big hall.
+- F5 has VISUAL and GAMEPLAY tabs. Gameplay: noclip (Space up, Ctrl/C down, Shift faster), debug readout
+  (position, chunk, seed, fps), mouse and movement settings.
+- `Scripts/Runtime/Debug/NavProbe.cs`: automated collision test. Add it in play mode; it walks BFS paths across
+  chunks (or, with `wallHug`, shoves into corners and jambs) and reports walk-through walls and invisible barriers.
+
 ### Realism pass (milestone 2.1)
 
 - **Tall rooms**: big halls (and some large offices/lounges) rise to 3.9-5.4 m with plaster ceilings and round dome

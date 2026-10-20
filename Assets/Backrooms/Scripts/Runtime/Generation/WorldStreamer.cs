@@ -185,6 +185,9 @@ namespace Backrooms.Generation
 
         static bool BlockedCell(OfficeLayout L, int x, int z)
         {
+            // Never spawn inside or right next to furniture.
+            foreach (var p in L.props)
+                if (Mathf.Abs(p.position.x / OfficeBiome.CellSize - (x + 0.5f)) < 1.6f && Mathf.Abs(p.position.y / OfficeBiome.CellSize - (z + 0.5f)) < 1.6f) return true;
             foreach (var p in L.pillars) if (Mathf.Abs(p.vertex.x - (x + 0.5f)) < 1f && Mathf.Abs(p.vertex.y - (z + 0.5f)) < 1f) return true;
             foreach (var h in L.halfWalls)
             {
