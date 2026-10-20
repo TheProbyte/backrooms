@@ -32,6 +32,23 @@ Nothing is purely random. Every chunk is built from **(world seed, chunk coordin
 **Streaming.** 7 x 7 chunks stay loaded around you; new ones are built on worker threads at the outer ring,
 29+ m away inside the fog, and power on with a fluorescent flicker. Chunks behind you stutter off and unload.
 
+## Biomes (implemented)
+
+`WorldGenSettings.cs` + `BiomeRules.cs`, editable live in **F5 > WORLD GEN**:
+
+- **Density field**: fractal value noise with domain warp, sampled per chunk (Region size, Detail octaves,
+  Domain warp). Pure function of the seed, so it is the same for everyone.
+- **Delimiters**: density below *Hallways below* = Hallways, above *Warehouse above* = Warehouse, between = Offices.
+  The order means corridors blend into offices before offices open into warehouse.
+- **Transitions**: within *Transition width* of a delimiter the two biomes' rules are interpolated number by
+  number, so rooms get gradually bigger/taller/emptier across a boundary.
+- **Biome rules**: ~30 numbers per biome (splitting, hallways, crawl slots, open plan, room types, ceiling
+  heights, wall finish, lighting mix, faulty tubes, pillars, half walls, seating, storage racks, outlets).
+- **Live editing**: changing a value rebuilds every loaded chunk except the one you stand in. Chunk borders
+  never depend on the rules, so new and kept chunks always join up.
+- **Sharing**: the World Gen tab shows a world code `seed-settingshash-vN`. Same seed + same settings + same
+  game version gives an identical world on any machine.
+
 ## What Hytale's World Gen V2 does (for comparison)
 
 - Terrain and placement are driven by **density fields**: maps of values (usually -1..1) produced by noise

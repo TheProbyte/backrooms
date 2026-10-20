@@ -36,6 +36,7 @@ MonoBehaviour:
   ceilingPlaster: {fileID: 2100000, guid: 1534c183803146442aa92e4df1acaad7, type: 2}
   domeOn: {fileID: 2100000, guid: f6479a6373493d94ebc7eadf32a7a6a6, type: 2}
   domeOff: {fileID: 2100000, guid: 1972f3a368504b5439c4544fbd1a5d87, type: 2}
+  cardboard: {fileID: 2100000, guid: f383a0172407a014691401b9f0ff6f4a, type: 2}
   sofaPrefabs:
   - {fileID: 7018118578112881847, guid: e02cbaa0ac87c0742ac00c72ad407800, type: 3}
   - {fileID: 843757320359358737, guid: 659610b934574f8478aa773e3a054d05, type: 3}

@@ -19,9 +19,17 @@ namespace Backrooms.Generation
     {
         public const int MinRoom = 2;
 
-        public static OfficeLayout Generate(int seed, Vector2Int coord, int n)
+        /// <summary>Default rules (offices) - used by tools and tests that don't care about biomes.</summary>
+        public static OfficeLayout Generate(int seed, Vector2Int coord, int n) => Generate(seed, coord, n, BiomeRules.Offices(), "Offices");
+
+        /// <summary>
+        /// Builds one chunk from (seed, coord) using the given biome rules. Border openings never depend on
+        /// the rules, so chunks generated with different biomes (or different live settings) always join up.
+        /// </summary>
+        public static OfficeLayout Generate(int seed, Vector2Int coord, int n, BiomeRules rules, string biomeName)
         {
-            var L = new OfficeLayout(n, coord);
+            var L = new OfficeLayout(n, coord) { rules = rules ?? BiomeRules.Offices(), biomeName = biomeName };
+            var R = L.rules;
             var rng = new System.Random(Hash(seed, coord.x, coord.y, 0x51ED));
 
             // 1. Border openings first: they constrain where crawl spaces may go.
@@ -36,7 +44,7 @@ namespace Backrooms.Generation
             // 2. Partition into rooms and hallways.
             for (int x = 0; x < n; x++) for (int z = 0; z < n; z++) L.roomOf[x, z] = -1;
             // The starting chunk is always one big hall; elsewhere big open halls are common.
-            bool bigHall = rng.NextDouble() < 0.22 || coord == Vector2Int.zero;
+            bool bigHall = rng.NextDouble() < R.bigHallChance || coord == Vector2Int.zero;
             Split(L, rng, new RectInt(0, 0, n, n), 0, bigHall, openingCells);
 
             // 3. Room kinds.
@@ -46,8 +54,8 @@ namespace Backrooms.Generation
                 int area = r.rect.width * r.rect.height, minDim = Mathf.Min(r.rect.width, r.rect.height);
                 double p = rng.NextDouble();
                 if (area >= 30 && minDim >= 5) r.kind = RoomKind.BigOffice;
-                else if (minDim >= 3 && area >= 9 && p < 0.18) r.kind = RoomKind.Lounge;
-                else if (minDim >= 3 && Mathf.Max(r.rect.width, r.rect.height) >= 4 && p < 0.30) r.kind = RoomKind.Conference;
+                else if (minDim >= 3 && area >= 9 && p < R.loungeChance) r.kind = RoomKind.Lounge;
+                else if (minDim >= 3 && Mathf.Max(r.rect.width, r.rect.height) >= 4 && p < R.loungeChance + R.conferenceChance) r.kind = RoomKind.Conference;
             }
 
             // Ceiling heights and wall finish. Big halls often rise to tall plaster ceilings; a few large
@@ -55,13 +63,18 @@ namespace Backrooms.Generation
             foreach (var r in L.rooms)
             {
                 int area = r.rect.width * r.rect.height;
-                double tallChance = r.kind == RoomKind.BigOffice ? (area >= 100 ? 0.65 : 0.4)
-                                  : (r.kind == RoomKind.Lounge || r.kind == RoomKind.Office) && area >= 16 ? 0.15 : 0.0;
+                double tallChance = r.kind == RoomKind.BigOffice ? Mathf.Clamp01(R.tallChanceBig + (area >= 100 ? 0.2f : 0f))
+                                  : (r.kind == RoomKind.Lounge || r.kind == RoomKind.Office) && area >= 16 ? R.tallChanceSmall : 0.0;
                 if (rng.NextDouble() < tallChance)
-                    r.ceiling = OfficeBiome.CeilingHeight + 0.3f * rng.Next(4, 10);   // 3.9 .. 5.4 m
+                {
+                    // Heights step in 0.3 m between the biome's min and max, never below 3.3 m.
+                    int lo = Mathf.Max(2, Mathf.RoundToInt((R.tallMin - OfficeBiome.CeilingHeight) / 0.3f));
+                    int hi = Mathf.Max(lo, Mathf.RoundToInt((Mathf.Min(R.tallMax, OfficeBiome.MaxCeilingHeight) - OfficeBiome.CeilingHeight) / 0.3f));
+                    r.ceiling = OfficeBiome.CeilingHeight + 0.3f * rng.Next(lo, hi + 1);
+                }
                 if (r.kind != RoomKind.Crawl && r.kind != RoomKind.Hallway)
-                    r.painted = r.Tall || rng.NextDouble() < 0.3;   // wallpaper is designed for 2.7 m walls
-                else r.painted = rng.NextDouble() < 0.15;
+                    r.painted = r.Tall || rng.NextDouble() < R.paintedChance;   // wallpaper is designed for 2.7 m walls
+                else r.painted = rng.NextDouble() < R.paintedChance * 0.5f;
             }
 
             // 4. Walls everywhere rooms differ, plus the chunk boundary.
@@ -87,7 +100,7 @@ namespace Backrooms.Generation
             foreach (var r in L.rooms)
             {
                 double p = rng.NextDouble();
-                r.lights = p < 0.52 ? LightMode.AllOn : p < 0.85 ? LightMode.Mixed : LightMode.Dark;
+                r.lights = p < R.lightsAllOn ? LightMode.AllOn : p < R.lightsAllOn + R.lightsMixed ? LightMode.Mixed : LightMode.Dark;
                 if (r.kind == RoomKind.Lounge && rng.NextDouble() < 0.5) r.lights = LightMode.Dark; // lamps carry the room
             }
             PlaceFixtures(L, rng);
@@ -110,10 +123,11 @@ namespace Backrooms.Generation
             if (!stop && depth > 0)
             {
                 // Bigger rooms are rarer; small rooms always stop.
-                if (maxDim <= 3) stop = rng.NextDouble() < 0.9;
-                else if (maxDim <= 6) stop = rng.NextDouble() < 0.6;
-                else if (maxDim <= 9) stop = rng.NextDouble() < 0.3;
-                else stop = rng.NextDouble() < 0.12;
+                var R = L.rules;
+                if (maxDim <= 3) stop = rng.NextDouble() < R.stopSmall;
+                else if (maxDim <= 6) stop = rng.NextDouble() < R.stopMedium;
+                else if (maxDim <= 9) stop = rng.NextDouble() < R.stopLarge;
+                else stop = rng.NextDouble() < R.stopHuge;
             }
             if (stop) { MakeRoom(L, r, RoomKind.Office); return; }
 
@@ -121,8 +135,8 @@ namespace Backrooms.Generation
             int len = splitX ? w : h;
 
             // Hallway carved along the split line?
-            double hallChance = depth <= 1 ? 0.4 : 0.15;
-            int hallW = rng.NextDouble() < 0.7 ? 1 : 2;
+            double hallChance = depth <= 1 ? L.rules.hallChanceShallow : L.rules.hallChanceDeep;
+            int hallW = rng.NextDouble() < 1f - L.rules.hallWideChance ? 1 : 2;
             if (len >= MinRoom * 2 + hallW && rng.NextDouble() < hallChance)
             {
                 int s = rng.Next(MinRoom, len - MinRoom - hallW + 1);
@@ -163,7 +177,7 @@ namespace Backrooms.Generation
         {
             int length = runsAlongZ ? hall.height : hall.width;
             int width = runsAlongZ ? hall.width : hall.height;
-            if (width == 1 && length >= 6 && rng.NextDouble() < 0.35)
+            if (width == 1 && length >= 6 && rng.NextDouble() < L.rules.crawlChance)
             {
                 int crawlLen = rng.Next(3, Mathf.Min(6, length - 3) + 1);
                 bool atStart = rng.NextDouble() < 0.5;
@@ -314,11 +328,11 @@ namespace Backrooms.Generation
                 Room ra = L.rooms[s.a], rb = L.rooms[s.b];
                 if (!ra.Walkable || !rb.Walkable) continue;
                 bool joined = Find(s.a) != Find(s.b);
-                bool loop = !joined && rng.NextDouble() < 0.35;
+                bool loop = !joined && rng.NextDouble() < L.rules.loopChance;
                 if (!joined && !loop) continue;
                 if (joined) uf[Find(s.a)] = Find(s.b);
 
-                bool openPlan = s.edges.Count >= 3 && rng.NextDouble() < 0.35 &&
+                bool openPlan = s.edges.Count >= 3 && rng.NextDouble() < L.rules.openPlanChance &&
                                 (ra.kind == RoomKind.BigOffice || rb.kind == RoomKind.BigOffice || ra.kind == RoomKind.Hallway || rb.kind == RoomKind.Hallway);
                 if (openPlan)
                 {
@@ -456,10 +470,10 @@ namespace Backrooms.Generation
                 {
                     if ((x - r.rect.xMin) % 2 != ox % 2 || (z - r.rect.yMin) % 2 != oz % 2) continue;
                     bool on = r.lights == LightMode.AllOn ? rng.NextDouble() > 0.04
-                            : r.lights == LightMode.Mixed ? rng.NextDouble() < 0.5
+                            : r.lights == LightMode.Mixed ? rng.NextDouble() < L.rules.mixedOnFraction
                             : rng.NextDouble() < 0.04;
                     L.fixtures.Add(new Fixture { cell = new Vector2Int(x, z), on = on, roomColor = r.color,
-                        dome = r.Tall, height = r.ceiling, faulty = on && rng.NextDouble() < 0.025 });
+                        dome = r.Tall, height = r.ceiling, faulty = on && rng.NextDouble() < L.rules.faultyChance });
                 }
             }
         }
@@ -471,24 +485,56 @@ namespace Backrooms.Generation
                 var rc = r.rect;
                 if (r.kind == RoomKind.BigOffice)
                 {
-                    int spacing = rng.NextDouble() < 0.5 ? 3 : 4;
+                    int spacing = Mathf.Max(2, Mathf.RoundToInt(L.rules.pillarSpacing + (float)(rng.NextDouble() - 0.5)));
                     float size = rng.NextDouble() < 0.5 ? 0.45f : 0.6f;
                     int sx = rc.xMin + Mathf.Max(2, (rc.width % spacing) / 2 + 1), sz = rc.yMin + Mathf.Max(2, (rc.height % spacing) / 2 + 1);
                     bool sparse = rng.NextDouble() < 0.35;
+                    bool racks = rng.NextDouble() < L.rules.rackChance;
+                    // Racked halls skip the free-standing column grid so the rack rows stay unbroken.
+                    if (racks || rng.NextDouble() >= L.rules.pillarChance) sx = int.MaxValue;   // no pillar grid
                     for (int x = sx; x <= rc.xMax - 2; x += spacing)
                     for (int z = sz; z <= rc.yMax - 2; z += spacing)
                     {
                         if (sparse && rng.NextDouble() < 0.5) continue;
                         L.pillars.Add(new Pillar { vertex = new Vector2Int(x, z), size = size, roomColor = r.color });
                     }
-                    int runs = rng.Next(1, 4);
+                    int runs = rng.Next(0, Mathf.RoundToInt(L.rules.halfWalls) + 1);
                     for (int i = 0; i < runs; i++) TryHalfWall(L, rng, r);
+                    if (racks) PlaceRacks(L, rng, r);
                 }
                 else if ((r.kind == RoomKind.Office) && rc.width >= 4 && rc.height >= 4)
                 {
                     if (rng.NextDouble() < 0.3)
                         L.pillars.Add(new Pillar { vertex = new Vector2Int(rc.xMin + rc.width / 2, rc.yMin + rc.height / 2), size = 0.45f, roomColor = r.color });
                     else if (rng.NextDouble() < 0.3) TryHalfWall(L, rng, r);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Warehouse storage: rows of racks along X, one cell deep, with two-cell aisles between rows and a
+        /// cross aisle every few racks, kept one cell clear of the walls and away from pillars. Aisles keep
+        /// the room fully walkable.
+        /// </summary>
+        static void PlaceRacks(OfficeLayout L, System.Random rng, Room r)
+        {
+            var rc = r.rect;
+            float C = OfficeBiome.CellSize;
+            float h = Mathf.Min(r.ceiling - 0.6f, 2.4f + (float)rng.NextDouble() * 1.2f);
+            if (h < 1.8f) return;
+            int crossEvery = rng.Next(3, 5);
+            for (int z = rc.yMin + 2; z <= rc.yMax - 3; z += 3)
+            {
+                int seg = 0;
+                for (int x = rc.xMin + 2; x + 2 <= rc.xMax - 2; x += 2)
+                {
+                    if (++seg % (crossEvery + 1) == 0) continue;               // cross aisle
+                    bool blocked = false;
+                    foreach (var p in L.pillars)
+                        if (p.vertex.x >= x - 1 && p.vertex.x <= x + 3 && p.vertex.y >= z - 1 && p.vertex.y <= z + 2) blocked = true;
+                    if (blocked) continue;
+                    L.props.Add(new Prop { kind = PropKind.StorageRack, position = new Vector2((x + 1) * C, (z + 0.5f) * C),
+                        yaw = 0f, size = new Vector3(2.3f, h, 0.95f), variant = rng.Next(1 << 16), roomColor = r.color });
                 }
             }
         }
@@ -522,7 +568,10 @@ namespace Backrooms.Generation
             {
                 var rc = r.rect;
                 TryClock(L, rng, r);
-                if (r.kind == RoomKind.BigOffice && rng.NextDouble() < (r.Tall ? 0.45 : 0.2))
+                bool hasRacks = false;
+                foreach (var pr in L.props)
+                    if (pr.kind == PropKind.StorageRack && rc.Contains(new Vector2Int(Mathf.FloorToInt(pr.position.x / C), Mathf.FloorToInt(pr.position.y / C)))) { hasRacks = true; break; }
+                if (r.kind == RoomKind.BigOffice && !hasRacks && rng.NextDouble() < L.rules.scatteredSeating * (r.Tall ? 1.5f : 1f))
                 {
                     // Abandoned seating left scattered across a big hall, at odd angles.
                     int count = rng.Next(2, 6);
@@ -662,7 +711,7 @@ namespace Backrooms.Generation
                 for (int side = 0; side < 4; side++)
                 {
                     var e = L.EdgeOf(x, z, side);
-                    if (e == EdgeKind.Wall && rng.NextDouble() < 0.09)
+                    if (e == EdgeKind.Wall && rng.NextDouble() < L.rules.outletChance)
                         L.plates.Add(new WallPlate { cell = new Vector2Int(x, z), side = side, t = 0.2f + (float)rng.NextDouble() * 0.6f, height = 0.3f, roomColor = room.color });
                     else if ((e == EdgeKind.Door || e == EdgeKind.DoorHeader) && rng.NextDouble() < 0.35)
                     {

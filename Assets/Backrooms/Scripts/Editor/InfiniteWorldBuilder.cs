@@ -120,6 +120,7 @@ namespace Backrooms.EditorTools
             // One plaster repeat = 2.4 m square. Walls map U over 1.2 m and V over 2.7 m; ceilings are in metres.
             a.paintedWall.SetTextureScale("_BaseMap", new Vector2(0.5f, 1.125f));
             a.ceilingPlaster.SetTextureScale("_BaseMap", new Vector2(1f / 2.4f, 1f / 2.4f));
+            a.cardboard = Lit("M_Cardboard", new Color(0.72f, 0.52f, 0.32f), Tex("Wood_Albedo"), null, 0.08f);
             CreatePropPrefabs(a);
             EditorUtility.SetDirty(a);
             AssetDatabase.SaveAssets();

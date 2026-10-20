@@ -592,6 +592,7 @@ namespace Backrooms.Generation
                     case PropKind.Sofa: Sofa(p, at, rot); break;
                     case PropKind.FloorLamp: Lamp(p, at, lights); break;
                     case PropKind.ConferenceTable: Table(p, at, rot); break;
+                    case PropKind.StorageRack: Rack(p, at); break;
                 }
             }
         }
@@ -648,7 +649,49 @@ namespace Backrooms.Generation
                 case PropKind.WallClock:
                     if (_a.wallClockPrefab) Place(_a.wallClockPrefab, new Vector3(at.x, p.size.y, at.z), p.yaw, col);
                     break;
+                case PropKind.StorageRack:
+                    Rack(p, at);
+                    break;
             }
+        }
+
+        /// <summary>Steel storage rack: four uprights, shelf levels, cardboard boxes in uneven stacks.</summary>
+        void Rack(Prop p, Vector3 at)
+        {
+            int col = p.roomColor;
+            float L = p.size.x, h = p.size.y, D = p.size.z;
+            var metal = _a.lampMetal; var shelf = _a.wood; var box = _a.cardboard ?? _a.wood;
+            const int sides = 1 | 2 | 16 | 32;
+            for (int i = 0; i < 4; i++)
+            {
+                float ux = (i % 2 == 0 ? -1 : 1) * (L * 0.5f - 0.04f), uz = (i < 2 ? -1 : 1) * (D * 0.5f - 0.04f);
+                W(metal, col).Box(at + new Vector3(ux, h * 0.5f, uz), new Vector3(0.07f, h, 0.07f), sides | 8, MeshWriter.MetreUV);
+            }
+            int levels = Mathf.Clamp(Mathf.RoundToInt(h / 0.9f), 2, 4);
+            var rng = new System.Random(p.variant);
+            for (int l = 0; l < levels; l++)
+            {
+                float y = 0.12f + l * (h - 0.2f) / levels;
+                W(shelf, col).Box(at + new Vector3(0, y, 0), new Vector3(L - 0.04f, 0.035f, D - 0.02f), 63, MeshWriter.MetreUV);
+                W(metal, col).Box(at + new Vector3(0, y - 0.04f, D * 0.5f - 0.03f), new Vector3(L, 0.06f, 0.04f), sides | 4, MeshWriter.MetreUV);
+                W(metal, col).Box(at + new Vector3(0, y - 0.04f, -D * 0.5f + 0.03f), new Vector3(L, 0.06f, 0.04f), sides | 4, MeshWriter.MetreUV);
+                // Boxes on this level (some missing, uneven sizes).
+                float gap = (h - 0.2f) / levels - 0.08f;
+                float x = -L * 0.5f + 0.08f;
+                while (x < L * 0.5f - 0.3f)
+                {
+                    float bw = 0.35f + (float)rng.NextDouble() * 0.4f, bh = Mathf.Min(gap, 0.25f + (float)rng.NextDouble() * 0.4f);
+                    float bd = Mathf.Min(D - 0.1f, 0.4f + (float)rng.NextDouble() * 0.45f);
+                    if (x + bw > L * 0.5f - 0.06f) break;
+                    if (rng.NextDouble() < 0.72)
+                    {
+                        float oz = (float)(rng.NextDouble() - 0.5) * (D - bd - 0.05f);
+                        W(box, col).Box(at + new Vector3(x + bw * 0.5f, y + 0.0175f + bh * 0.5f, oz), new Vector3(bw, bh, bd), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
+                    }
+                    x += bw + 0.03f + (float)rng.NextDouble() * 0.12f;
+                }
+            }
+            _boxes.Add((at + Vector3.up * h * 0.5f, new Vector3(L, h, D)));
         }
 
         void Part(Material m, int color, Vector3 at, Quaternion rot, Vector3 localCenter, Vector3 size, int mask = 63)

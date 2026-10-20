@@ -38,7 +38,7 @@ namespace Backrooms.Generation
     /// <summary>Electrical plate on a wall face. Face is the cell side the plate is visible from.</summary>
     public struct WallPlate { public Vector2Int cell; public int side; public float t; public float height; public bool isSwitch; public int roomColor; }
 
-    public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock }
+    public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock, StorageRack }
     public struct Prop
     {
         public PropKind kind;
@@ -69,6 +69,9 @@ namespace Backrooms.Generation
         public readonly List<HalfWall> halfWalls = new List<HalfWall>();
         public readonly List<WallPlate> plates = new List<WallPlate>();
         public readonly List<Prop> props = new List<Prop>();
+        /// <summary>Biome rules this chunk was generated with (blended across biome transitions).</summary>
+        public BiomeRules rules = BiomeRules.Offices();
+        public string biomeName = "Offices";
 
         public OfficeLayout(int n, Vector2Int coord)
         {

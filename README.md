@@ -40,6 +40,12 @@ The world is streamed in 14.4 m chunks (12 x 12 cells of 1.2 m) around the playe
 Rebuild the scene with **Backrooms > Build Infinite Offices Scene** (`InfiniteWorldBuilder.cs`). `WorldStreamer.seed`
 = 0 gives a new world each run.
 
+### Biomes (milestone 3)
+
+Hytale-style biome system: a noise density field picks Hallways / Offices / Warehouse per chunk, with rules
+blended across transitions. Everything is live-editable in **F5 > WORLD GEN** (biome map, live readouts, seed,
+world code, ~100 rule sliders). See `Docs/WorldGeneration.md`.
+
 ### Fixes (milestone 2.2)
 
 - Where ceiling heights change, every opening out of the taller room becomes a headed doorway, so the plenum above

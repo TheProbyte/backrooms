@@ -13,12 +13,13 @@ namespace Backrooms.Camcorder
     /// <see cref="CamcorderSettings"/>, so changes are visible immediately while the world keeps running.
     /// Settings are saved when the panel closes. Built with uGUI in code (no prefabs to maintain).
     /// </summary>
-    public class CamcorderVisualMenu : MonoBehaviour
+    public partial class CamcorderVisualMenu : MonoBehaviour
     {
         public CamcorderRig rig;
         public CamcorderPlayerController player;
 
         public bool IsOpen { get; private set; }
+        int _tab;
 
         Canvas _canvas;
         RectTransform _panel, _list;
@@ -45,6 +46,7 @@ namespace Backrooms.Camcorder
             if (kb == null) return;
             if (kb.f5Key.wasPressedThisFrame) SetOpen(!IsOpen);
             else if (IsOpen && kb.escapeKey.wasPressedThisFrame) SetOpen(false);
+            UpdateWorldGen();
         }
 
         public void SetOpen(bool open)
@@ -97,6 +99,7 @@ namespace Backrooms.Camcorder
             th.spacing = 6; th.childForceExpandWidth = true; th.childControlWidth = true; th.childControlHeight = true;
             _tabVisual = Button(tabs, "VISUAL", () => ShowTab(0));
             _tabGameplay = Button(tabs, "GAMEPLAY", () => ShowTab(1));
+            _tabWorld = Button(tabs, "WORLD GEN", () => ShowTab(2));
 
             var hint = Label(_panel, "F5 / Esc to close.  Hover an option for an explanation.", 14, Dim, TextAnchor.MiddleLeft);
             Place(hint.rectTransform, 20, -94, -20, 20);
@@ -116,6 +119,8 @@ namespace Backrooms.Camcorder
             BuildControls();
             (_gameplayView, _list) = MakeList("GameplayScroll", -120);
             BuildGameplay();
+            (_worldView, _list) = MakeList("WorldGenScroll", -120);
+            BuildWorldGen();
 
             // Footer.
             var footer = Rect("Footer", _panel);
@@ -129,8 +134,8 @@ namespace Backrooms.Camcorder
             ShowTab(0);
         }
 
-        RectTransform _visualView, _gameplayView, _presets;
-        Image _tabVisual, _tabGameplay;
+        RectTransform _visualView, _gameplayView, _worldView, _presets;
+        Image _tabVisual, _tabGameplay, _tabWorld;
 
         (RectTransform view, RectTransform list) MakeList(string name, float top)
         {
@@ -158,8 +163,12 @@ namespace Backrooms.Camcorder
             _visualView.gameObject.SetActive(i == 0);
             _presets.gameObject.SetActive(i == 0);
             _gameplayView.gameObject.SetActive(i == 1);
+            _worldView.gameObject.SetActive(i == 2);
+            _tab = i;
+            _panel.sizeDelta = new Vector2(i == 2 ? 560 : 460, 0);
             _tabVisual.color = new Color(1, 1, 1, i == 0 ? 0.28f : 0.08f);
             _tabGameplay.color = new Color(1, 1, 1, i == 1 ? 0.28f : 0.08f);
+            _tabWorld.color = new Color(1, 1, 1, i == 2 ? 0.28f : 0.08f);
             HideTip();
         }
 
@@ -285,7 +294,8 @@ namespace Backrooms.Camcorder
             RefreshAll();
         }
 
-        void RefreshAll() { foreach (var r in _refreshers) r(); }
+        bool _refreshing;
+        void RefreshAll() { _refreshing = true; foreach (var r in _refreshers) r(); _refreshing = false; }
 
         // ---------------- Widgets ----------------
 
@@ -299,7 +309,7 @@ namespace Backrooms.Camcorder
             Place(d.rectTransform, 0, -32, 0, 18);
         }
 
-        void Slider(string label, string tip, float min, float max, string fmt, string unit, Func<float> get, Action<float> set, bool whole = false)
+        UnityEngine.UI.Slider Slider(string label, string tip, float min, float max, string fmt, string unit, Func<float> get, Action<float> set, bool whole = false)
         {
             var row = Rect("Row_" + label, _list);
             row.gameObject.AddComponent<LayoutElement>().preferredHeight = 44;
@@ -331,6 +341,7 @@ namespace Backrooms.Camcorder
             bool syncing = false;
             s.onValueChanged.AddListener(v => { if (syncing) return; set(v); Show(v); });
             _refreshers.Add(() => { syncing = true; float v = get(); s.value = v; Show(v); syncing = false; });
+            return s;
         }
 
         void Toggle(string label, string tip, Func<bool> get, Action<bool> set)
