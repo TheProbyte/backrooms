@@ -26,7 +26,7 @@ namespace Backrooms.Camcorder
         readonly List<Action> _refreshers = new List<Action>();
         CursorLockMode _prevLock;
 
-        static readonly Color PanelBg = new Color(0.06f, 0.06f, 0.055f, 0.86f);
+        static readonly Color PanelBg = new Color(0.05f, 0.05f, 0.045f, 0.95f);
         static readonly Color Accent = new Color(0.93f, 0.78f, 0.36f, 1f);
         static readonly Color TextCol = new Color(0.92f, 0.9f, 0.84f, 1f);
         static readonly Color Dim = new Color(0.62f, 0.6f, 0.55f, 1f);

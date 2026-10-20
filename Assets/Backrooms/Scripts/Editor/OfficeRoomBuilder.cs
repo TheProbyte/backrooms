@@ -328,7 +328,7 @@ namespace Backrooms.EditorTools
                 src.playOnAwake = false;
                 var amb = hum.AddComponent<ProceduralAmbience>();
                 amb.kind = ProceduralAmbience.Kind.FluorescentHum;
-                amb.volume = 0.05f;
+                amb.volume = 0.015f;
                 amb.seed = idx * 17;
             }
         }
@@ -466,7 +466,7 @@ namespace Backrooms.EditorTools
             src.playOnAwake = false;
             var amb = tone.AddComponent<ProceduralAmbience>();
             amb.kind = ProceduralAmbience.Kind.RoomTone;
-            amb.volume = 0.09f;
+            amb.volume = 0.03f;
             amb.seed = 7;
 
             var reverb = tone.AddComponent<AudioReverbZone>();

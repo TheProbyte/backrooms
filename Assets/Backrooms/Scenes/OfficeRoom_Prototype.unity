@@ -1132,7 +1132,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.ProceduralAmbience
   kind: 1
-  volume: 0.09
+  volume: 0.03
   mainsHz: 60
   seed: 7
 --- !u!82 &105203273
@@ -1661,7 +1661,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.ProceduralAmbience
   kind: 0
-  volume: 0.05
+  volume: 0.015
   mainsHz: 60
   seed: 17
 --- !u!82 &140717241
@@ -5190,6 +5190,9 @@ MonoBehaviour:
   darkenSpeed: 1.6
   brightenSpeed: 0.55
   exposureBias: 0
+  autoExposure: 1
+  speedScale: 1
+  flicker: 0
   sampleRate: 6
 --- !u!114 &500713729
 MonoBehaviour:
@@ -5207,6 +5210,10 @@ MonoBehaviour:
   shakeIntensity: 1
   idleSwayDegrees: 0.35
   idleSwayFrequency: 0.22
+  breathingDegrees: 0.2
+  breathingHeight: 0.0022
+  breathingRate: 0.23
+  stabilization: 0
   walkBobHeight: 0.012
   walkSwayDegrees: 0.45
   walkStepRate: 1.7
@@ -13047,7 +13054,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.ProceduralAmbience
   kind: 0
-  volume: 0.05
+  volume: 0.015
   mainsHz: 60
   seed: 51
 --- !u!82 &1354551612
@@ -13733,7 +13740,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.ProceduralAmbience
   kind: 0
-  volume: 0.05
+  volume: 0.015
   mainsHz: 60
   seed: 34
 --- !u!82 &1411592806

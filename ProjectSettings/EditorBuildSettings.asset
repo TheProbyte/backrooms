@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Backrooms/Scenes/Backrooms_Infinite.unity
+    guid: 693c873c62ee7f043be9c08c234ae6b9
+  - enabled: 1
     path: Assets/Backrooms/Scenes/OfficeRoom_Prototype.unity
     guid: 5367f42c640eaa84b9761017d4c63e0e
   - enabled: 1

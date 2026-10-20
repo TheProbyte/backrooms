@@ -36,8 +36,8 @@ namespace Backrooms.Generation
         public float alwaysOnDistance = 9f;
         public float maxDistance = 28f;
         public float fadeStart = 18f;
-        [Range(0, 32)] public int shadowedTroffers = 14;
-        [Range(0, 4)] public int shadowedLamps = 2;
+        [Range(0, 32)] public int shadowedTroffers = 12;
+        [Range(0, 4)] public int shadowedLamps = 1;
         [Tooltip("Visibility rays tested per frame.")]
         public int raysPerFrame = 160;
 
@@ -62,6 +62,8 @@ namespace Backrooms.Generation
         readonly Dictionary<Vector3, float> _lastSeen = new Dictionary<Vector3, float>();
         readonly List<Slot> _troffers = new List<Slot>(), _lamps = new List<Slot>();
         readonly List<AudioSource> _hum = new List<AudioSource>();
+        static readonly System.Reflection.FieldInfo s_tierField = typeof(UniversalAdditionalLightData).GetField(
+            "m_AdditionalLightsShadowResolutionTier", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         int _rayCursor;
         int _mask;
 
@@ -129,6 +131,11 @@ namespace Backrooms.Generation
             s.main.shadowNormalBias = 0.4f;
             s.main.shadowNearPlane = 0.1f;
             data.softShadowQuality = SoftShadowQuality.Medium;
+            // Medium (512) spot maps and low lamp cubes keep all pooled shadows inside the atlas.
+            // (The tier has no public setter; it is a serialised field.)
+            s_tierField?.SetValue(data, lamp
+                ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierLow
+                : UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium);
             s.main.enabled = false;
             return s;
         }

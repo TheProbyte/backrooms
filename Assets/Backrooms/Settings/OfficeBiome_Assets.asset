@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7b48faafd48bbc040b62fe2c9ea1cf00, type: 3}
+  m_Name: OfficeBiome_Assets
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.OfficeBiomeAssets
+  carpet: {fileID: 2100000, guid: 397ef6f0d53c9e1439e9b62248d6573c, type: 2}
+  wallpaper: {fileID: 2100000, guid: 68048d61b07f2f84eb4fd8744f50dccb, type: 2}
+  ceilingTile: {fileID: 2100000, guid: ba895fbedca018e4bbee1b1376af7702, type: 2}
+  ceilingGrid: {fileID: 2100000, guid: 216647db2d9045f46aa9f214d2486a71, type: 2}
+  baseboard: {fileID: 2100000, guid: 9a71c96ada4165a41b47a3d93fd7a50a, type: 2}
+  lensOn: {fileID: 2100000, guid: 96c0922bd2e9c444e978a0dea3be648b, type: 2}
+  lensOff: {fileID: 2100000, guid: 05071f69222fd4c4684009d0fef058cc, type: 2}
+  fixtureHousing: {fileID: 2100000, guid: 59d9f3b026b2b914fa020be862f89bd4, type: 2}
+  wallPlate: {fileID: 2100000, guid: 8431060d6edfe504d9df450e9bffe5ef, type: 2}
+  halfWallCap: {fileID: 2100000, guid: 72ac9e267dbddef4ba2db61261c9e7cd, type: 2}
+  sofaFabrics:
+  - {fileID: 2100000, guid: fabc8f7faa5664f48bd393416ffe229f, type: 2}
+  - {fileID: 2100000, guid: 5828a83fd6b8f9043a8e58843c10531c, type: 2}
+  - {fileID: 2100000, guid: be5d92e119203ae41801fac3a97c8aff, type: 2}
+  wood: {fileID: 2100000, guid: fd6597c742be97643b830ac5f81d8bb7, type: 2}
+  laminate: {fileID: 2100000, guid: 461069c22241c174685204d02f729076, type: 2}
+  chairFabric: {fileID: 2100000, guid: b7096cbb1e8d971449e4211d6a422e28, type: 2}
+  lampMetal: {fileID: 2100000, guid: d3c1d079a3564e54496a2e473f79c53c, type: 2}
+  lampShadeOn: {fileID: 2100000, guid: 75a01d5ebdd256d42b481bfe20e458ce, type: 2}
+  lampShadeOff: {fileID: 2100000, guid: f9467b0acb3c8d245a20713d35b47c3c, type: 2}
