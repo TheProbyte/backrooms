@@ -667,7 +667,7 @@ namespace Backrooms.Generation
                 float ux = (i % 2 == 0 ? -1 : 1) * (L * 0.5f - 0.04f), uz = (i < 2 ? -1 : 1) * (D * 0.5f - 0.04f);
                 W(metal, col).Box(at + new Vector3(ux, h * 0.5f, uz), new Vector3(0.07f, h, 0.07f), sides | 8, MeshWriter.MetreUV);
             }
-            int levels = Mathf.Clamp(Mathf.RoundToInt(h / 0.9f), 2, 4);
+            int levels = Mathf.Clamp(Mathf.RoundToInt(h / 0.9f), 2, 6);
             var rng = new System.Random(p.variant);
             for (int l = 0; l < levels; l++)
             {

@@ -520,7 +520,8 @@ namespace Backrooms.Generation
         {
             var rc = r.rect;
             float C = OfficeBiome.CellSize;
-            float h = Mathf.Min(r.ceiling - 0.6f, 2.4f + (float)rng.NextDouble() * 1.2f);
+            // Tall halls get tall racks (up to ~5.4 m), leaving clear air under the high-bay lights.
+            float h = Mathf.Min(r.ceiling - 1.2f, 2.6f + (float)rng.NextDouble() * Mathf.Max(0.6f, r.ceiling - 4.2f));
             if (h < 1.8f) return;
             int crossEvery = rng.Next(3, 5);
             for (int z = rc.yMin + 2; z <= rc.yMax - 3; z += 3)
