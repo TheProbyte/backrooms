@@ -464,18 +464,24 @@ namespace Backrooms.Generation
             foreach (var r in L.rooms)
             {
                 if (r.kind == RoomKind.Crawl) continue;
-                int ox = r.rect.width % 2 == 1 ? 0 : 1, oz = r.rect.height % 2 == 1 ? 0 : 1;
-                if (r.rect.width == 2) ox = rng.Next(2);
-                if (r.rect.height == 2) oz = rng.Next(2);
+                // Troffers every 2 cells (2.4 m); tall rooms use brighter fittings every 3 cells (3.6 m).
+                int step = r.Tall ? 3 : 2;
+                bool strips = r.Tall && rng.NextDouble() < L.rules.stripLights;
+                int ox = ((r.rect.width - 1) % step + 1) / 2, oz = ((r.rect.height - 1) % step + 1) / 2;
+                if (!r.Tall && r.rect.width == 2) ox = rng.Next(2);
+                if (!r.Tall && r.rect.height == 2) oz = rng.Next(2);
                 for (int x = r.rect.xMin; x < r.rect.xMax; x++)
                 for (int z = r.rect.yMin; z < r.rect.yMax; z++)
                 {
-                    if ((x - r.rect.xMin) % 2 != ox % 2 || (z - r.rect.yMin) % 2 != oz % 2) continue;
+                    if ((x - r.rect.xMin - ox) % step != 0 || (z - r.rect.yMin - oz) % step != 0) continue;
+                    if (x - r.rect.xMin < ox || z - r.rect.yMin < oz) continue;
                     bool on = r.lights == LightMode.AllOn ? rng.NextDouble() > 0.04
                             : r.lights == LightMode.Mixed ? rng.NextDouble() < L.rules.mixedOnFraction
                             : rng.NextDouble() < 0.04;
                     L.fixtures.Add(new Fixture { cell = new Vector2Int(x, z), on = on, roomColor = r.color,
-                        dome = r.Tall, height = r.ceiling, faulty = on && rng.NextDouble() < L.rules.faultyChance });
+                        dome = r.Tall && !strips, strip = strips,
+                        height = strips ? Mathf.Min(r.ceiling - 0.5f, 4.6f) : r.ceiling,
+                        faulty = on && rng.NextDouble() < L.rules.faultyChance });
                 }
             }
         }

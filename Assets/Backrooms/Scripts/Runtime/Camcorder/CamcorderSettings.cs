@@ -59,6 +59,8 @@ namespace Backrooms.Camcorder
         public float breathing = 1.48f;
         public float stabilization = 0f;
         public float motionBlur = 0.12f;
+        public float lookOvershoot = 0.5f;   // camera carries on a touch when you stop turning
+        public float lookJitter = 0.5f;      // small wobble while turning
 
         // Format
         public float scanlines = 0.049f;
@@ -66,7 +68,7 @@ namespace Backrooms.Camcorder
         public bool aspect43 = true;
         public bool showOSD = true;
         public float osdCurvature = 0.8f;    // viewfinder overlay bends with the lens (0 = flat)
-        public int frameRateCap = 60;        // 0 = unlimited
+        public int frameRateCap = 0;         // legacy; frame pacing moved to GraphicsOptions
 
         // Audio: the camcorder's microphone and recording chain (independent of the visual exposure).
         // New fields keep their defaults when older saved settings are loaded.
@@ -140,7 +142,7 @@ namespace Backrooms.Camcorder
                     s.lensDistortion = 0f; s.chromaticAberration = 0f; s.vignette = 0.1f; s.noise = 0f; s.gainNoise = 0f;
                     s.chromaNoise = 0f; s.sharpening = 0f; s.softness = 0f; s.chromaBleed = 0f; s.chromaShift = 0f;
                     s.pedestal = 0f; s.highlightKnee = 1f; s.fluorescentFlicker = 0f; s.motionBlur = 0f;
-                    s.shakeIntensity = 0.5f; s.autofocus = false; s.showOSD = false;
+                    s.shakeIntensity = 0.5f; s.autofocus = false; s.showOSD = false; s.lookOvershoot = 0f; s.lookJitter = 0f;
                     s.scanlines = 0f; s.trackingNoise = 0f; s.aspect43 = false; s.bloom = 0.3f; s.lensDistortion = 0f;
                     s.saturation = 0f; s.whiteBalanceTint = 0f; s.fieldOfView = 62f;
                     // Clean audio reference: chain on but neutral (no colour, AGC, hiss or handling; natural width).

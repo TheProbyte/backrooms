@@ -31,7 +31,7 @@ namespace Backrooms.Generation
         public BiomeRules offices = BiomeRules.Offices();
         public BiomeRules warehouse = BiomeRules.Warehouse();
 
-        public const int Version = 1;   // bump when generation code changes how a seed plays out
+        public const int Version = 2;   // bump when generation code changes how a seed plays out (2: fixture spacing, strips, open plan)
 
         public WorldGenSettings Clone()
         {
@@ -47,6 +47,7 @@ namespace Backrooms.Generation
             public float density;
             public float wHallways, wOffices, wWarehouse;
             public BiomeRules rules;
+            public string zone;          // the zone this chunk belongs to (biomes live inside a zone)
             public string Dominant => wWarehouse >= wOffices && wWarehouse >= wHallways ? "Warehouse" : wHallways >= wOffices ? "Hallways" : "Offices";
         }
 
@@ -66,6 +67,15 @@ namespace Backrooms.Generation
             return Mathf.Clamp01((d - 0.5f) * 1.9f + 0.5f);
         }
 
+        /// <summary>
+        /// Zone layer (above biomes). A zone is a whole "level" with its own biome set, delimiters, look and
+        /// sound; biomes are picked inside it by the density field below. Only one zone exists so far, so
+        /// every chunk is in it. A later zone will add a very low-frequency zone field here (a few hundred
+        /// chunks per cell) and connecting rules at zone borders; chunk generation already takes the
+        /// evaluated rules as input, so adding zones does not change the chunk pipeline.
+        /// </summary>
+        public string ZoneAt(int seed, Vector2Int chunk) => "Level 0";
+
         public Sample Evaluate(int seed, Vector2Int chunk)
         {
             float d = Density(seed, chunk);
@@ -73,7 +83,7 @@ namespace Backrooms.Generation
             // Weight of "above the lower delimiter" and "above the upper delimiter".
             float a = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(hallwaysBelow - half, hallwaysBelow + half, d));
             float b = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(warehouseAbove - half, warehouseAbove + half, d));
-            var s = new Sample { density = d, wHallways = 1f - a, wOffices = a * (1f - b), wWarehouse = b };
+            var s = new Sample { density = d, wHallways = 1f - a, wOffices = a * (1f - b), wWarehouse = b, zone = ZoneAt(seed, chunk) };
             var low = BiomeRules.Lerp(hallways, offices, a);
             s.rules = BiomeRules.Lerp(low, warehouse, b);
             return s;

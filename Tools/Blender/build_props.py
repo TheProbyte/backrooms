@@ -15,8 +15,12 @@ import math
 import os
 import sys
 
-OUT = sys.argv[sys.argv.index("--") + 1] if "--" in sys.argv else os.path.join(os.getcwd(), "Models")
+ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+OUT = ARGS[0] if ARGS else os.path.join(os.getcwd(), "Models")
 os.makedirs(OUT, exist_ok=True)
+# Optional: --only name1,name2   build just these props;   --preview dir   render a check image of each.
+ONLY = ARGS[ARGS.index("--only") + 1].split(",") if "--only" in ARGS else None
+PREVIEW = ARGS[ARGS.index("--preview") + 1] if "--preview" in ARGS else None
 
 
 # ---------------------------------------------------------------- helpers
@@ -85,6 +89,9 @@ def finish(name, parts):
         bpy.context.view_layer.objects.active = p
         for m in list(p.modifiers):
             bpy.ops.object.modifier_apply(modifier=m.name)
+    # Bake every part's rotation and scale into its mesh, so the exported object has an identity
+    # transform (a rotated first part used to leave the wall clock lying flat in Unity).
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
     bpy.context.view_layer.objects.active = parts[0]
     bpy.ops.object.join()
     o = bpy.context.active_object
@@ -101,7 +108,37 @@ def finish(name, parts):
                              mesh_smooth_type="FACE", use_mesh_modifiers=True, add_leaf_bones=False,
                              object_types={"MESH"})
     print("[props] exported", path, "tris:", sum(len(p.vertices) - 2 for p in o.data.polygons))
+    if PREVIEW:
+        render_preview(o, os.path.join(PREVIEW, name + ".png"))
     bpy.ops.object.delete()
+
+
+def render_preview(o, path):
+    """Workbench render from three-quarter above and from floor level, side by side, for checking joints."""
+    scene = bpy.context.scene
+    try:
+        scene.render.engine = "BLENDER_WORKBENCH"
+    except TypeError:
+        pass
+    scene.render.resolution_x, scene.render.resolution_y = 900, 700
+    scene.display.shading.light = "STUDIO"
+    scene.display.shading.show_cavity = True
+    size = max(o.dimensions)
+    center = o.matrix_world @ (sum((o.matrix_world.inverted() @ (o.matrix_world @ v.co) for v in o.data.vertices), __import__("mathutils").Vector()) / max(1, len(o.data.vertices)))
+    cam_data = bpy.data.cameras.new("pcam")
+    cam = bpy.data.objects.new("pcam", cam_data)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    import mathutils
+    for k, (az, el) in enumerate(((35, 30), (35, 4))):
+        d = size * 2.2
+        a, e = math.radians(az), math.radians(el)
+        cam.location = center + mathutils.Vector((math.sin(a) * math.cos(e) * d, -math.cos(a) * math.cos(e) * d, math.sin(e) * d + 0.05))
+        direction = center - cam.location
+        cam.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+        scene.render.filepath = path.replace(".png", "_%d.png" % k)
+        bpy.ops.render.render(write_still=True)
+    bpy.data.objects.remove(cam)
 
 
 # ---------------------------------------------------------------- props
@@ -189,32 +226,62 @@ def floor_lamp():
     finish("FloorLamp", parts)
 
 
+def tapered_leg(name, length, w_root, w_tip, h_root, h_tip, z_root, z_tip, angle):
+    """Five-star base spoke: a box tapered in width and height, sloping down toward the tip."""
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    o = bpy.context.active_object
+    o.name = name
+    for v in o.data.vertices:
+        t = v.co.y + 0.5                                  # 0 at the hub end, 1 at the tip
+        w = w_root + (w_tip - w_root) * t
+        h = h_root + (h_tip - h_root) * t
+        z = z_root + (z_tip - z_root) * t
+        v.co.x *= w
+        v.co.z = z + v.co.z * h
+        v.co.y = t * length
+    o.rotation_euler = (0, 0, -angle)
+    bpy.ops.object.transform_apply(rotation=True)
+    assign(o, "Plastic")
+    m = o.modifiers.new("bevel", "BEVEL")
+    m.width = 0.006
+    m.segments = 1
+    m.limit_method = "ANGLE"
+    return o
+
+
 def office_chair():
-    """Mesh-back task chair on a five-star base with casters (ref: conference room chairs).
-    Every part touches the next: casters hang from forks at the leg tips, legs meet the hub, the gas
-    lift joins hub and seat plate, and the arms are bolted to the seat on brackets."""
+    """Mesh-back task chair on a five-star base with twin-wheel casters (ref: conference room chairs).
+    Joints overlap: spokes start inside the hub, each caster's stem rises into its spoke tip, the gas
+    lift runs from inside the hub into the seat plate, and the arms are bolted under the seat."""
     parts = [
         box("seat", (0.48, 0.46, 0.07), (0, -0.02, 0.47), "Fabric", 0.025, 3),
-        box("plate", (0.26, 0.26, 0.03), (0, -0.02, 0.425), "Plastic", 0.006),
+        box("plate", (0.24, 0.24, 0.035), (0, -0.02, 0.42), "Plastic", 0.006),
         box("back", (0.44, 0.04, 0.5), (0, 0.24, 0.8), "Fabric", 0.02, 2),
         box("spine", (0.05, 0.03, 0.42), (0, 0.235, 0.6), "Plastic", 0.01),
         box("spine_foot", (0.05, 0.2, 0.03), (0, 0.14, 0.42), "Plastic", 0.006),
-        cyl("lift", 0.022, 0.33, (0, 0, 0.27), "Metal", 12),
-        cyl("hub", 0.05, 0.06, (0, 0, 0.11), "Plastic", 14, bevel=0.008),
+        cyl("shroud", 0.032, 0.14, (0, 0, 0.2), "Plastic", 16, bevel=0.006),
+        cyl("lift", 0.016, 0.3, (0, 0, 0.29), "Metal", 12),
+        cyl("hub", 0.055, 0.07, (0, 0, 0.115), "Plastic", 14, bevel=0.01),
     ]
-    reach = 0.3
+    reach = 0.31
     for i in range(5):
         a = i * 2 * math.pi / 5
         dx, dy = math.sin(a), math.cos(a)
-        # Leg from inside the hub to just past the caster fork.
-        leg = box("leg", (0.042, reach, 0.032), (dx * reach / 2, dy * reach / 2, 0.095), "Plastic", 0.008)
-        leg.rotation_euler = (0, 0, -a)
-        bpy.context.view_layer.objects.active = leg
+        parts.append(tapered_leg("leg", reach, 0.05, 0.034, 0.04, 0.028, 0.115, 0.092, a))
+        tip = reach - 0.03
+        tx, ty = dx * tip, dy * tip
+        # Caster: stem into the spoke, a hood, and two wheels on a tangential axle.
+        parts.append(cyl("stem", 0.007, 0.05, (tx, ty, 0.07), "Metal", 8))
+        hood = box("hood", (0.03, 0.05, 0.03), (tx, ty, 0.05), "Plastic", 0.008)
+        hood.rotation_euler = (0, 0, -a)
+        bpy.context.view_layer.objects.active = hood
         bpy.ops.object.transform_apply(rotation=True)
-        parts.append(leg)
-        tip = reach - 0.025
-        parts.append(cyl("fork", 0.012, 0.04, (dx * tip, dy * tip, 0.07), "Plastic", 8))
-        parts.append(cyl("caster", 0.026, 0.024, (dx * tip, dy * tip, 0.027), "Plastic", 12, (0, math.pi / 2, -a)))
+        parts.append(hood)
+        px, py = math.cos(a), -math.sin(a)                # tangent (axle direction)
+        for side in (-1, 1):
+            w = cyl("wheel", 0.024, 0.014, (tx + px * side * 0.02, ty + py * side * 0.02, 0.025), "Plastic", 10,
+                    (0, math.pi / 2, -a))
+            parts.append(w)
     for s in (-1, 1):
         parts.append(box("armbracket", (0.09, 0.05, 0.02), (s * 0.235, 0.02, 0.43), "Plastic", 0.005))
         parts.append(box("armpost", (0.03, 0.03, 0.27), (s * 0.27, 0.02, 0.56), "Plastic", 0.008))
@@ -263,6 +330,8 @@ def wall_clock():
 
 reset()
 for build in (chesterfield, modern_sofa, armchair, floor_lamp, office_chair, conference_table, wall_clock):
+    if ONLY and build.__name__ not in ONLY:
+        continue
     reset()
     build()
 print("[props] done ->", OUT)

@@ -26,6 +26,7 @@ namespace Backrooms.Generation
         public bool on;
         public int roomColor;
         public bool dome;             // round surface-mounted fitting on a tall plaster ceiling
+        public bool strip;            // warehouse: cool-white twin-tube batten hung on chains
         public float height;          // ceiling height at the fixture
         public bool faulty;           // tube that occasionally stutters
     }

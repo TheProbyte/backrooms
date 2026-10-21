@@ -48,6 +48,7 @@ namespace Backrooms.Camcorder
             else if (IsOpen && kb.escapeKey.wasPressedThisFrame) SetOpen(false);
             UpdateWorldGen();
             UpdateAudioTab();
+            UpdateGraphicsTab();
         }
 
         public void SetOpen(bool open)
@@ -102,9 +103,11 @@ namespace Backrooms.Camcorder
             th.spacing = 6; th.childForceExpandWidth = true; th.childControlWidth = true; th.childControlHeight = true;
             _tabVisual = Button(tabs, "VISUAL", () => ShowTab(0));
             _tabGameplay = Button(tabs, "GAMEPLAY", () => ShowTab(1));
-            _tabWorld = Button(tabs, "WORLD GEN", () => ShowTab(2));
+            _tabWorld = Button(tabs, "WORLD", () => ShowTab(2));
             _tabAudio = Button(tabs, "AUDIO", () => ShowTab(3));
             _tabSound = Button(tabs, "SOUND", () => ShowTab(4));
+            _tabGraphics = Button(tabs, "GRAPHICS", () => ShowTab(5));
+            foreach (var t in tabs.GetComponentsInChildren<Text>()) t.fontSize = 12;
 
             var hint = Label(_panel, "F5 / Esc to close.  Hover an option for an explanation.", 14, Dim, TextAnchor.MiddleLeft);
             Place(hint.rectTransform, 20, -94, -20, 20);
@@ -130,6 +133,8 @@ namespace Backrooms.Camcorder
             BuildAudio();
             (_soundView, _list) = MakeList("SoundScroll", -120);
             BuildSound();
+            (_graphicsView, _list) = MakeList("GraphicsScroll", -120);
+            BuildGraphics();
 
             // Footer.
             var footer = Rect("Footer", _panel);
@@ -143,8 +148,8 @@ namespace Backrooms.Camcorder
             ShowTab(0);
         }
 
-        RectTransform _visualView, _gameplayView, _worldView, _audioView, _soundView, _presets;
-        Image _tabVisual, _tabGameplay, _tabWorld, _tabAudio, _tabSound, _resetVisuals;
+        RectTransform _visualView, _gameplayView, _worldView, _audioView, _soundView, _graphicsView, _presets;
+        Image _tabVisual, _tabGameplay, _tabWorld, _tabAudio, _tabSound, _tabGraphics, _resetVisuals;
 
         (RectTransform view, RectTransform list) MakeList(string name, float top)
         {
@@ -175,6 +180,7 @@ namespace Backrooms.Camcorder
             _worldView.gameObject.SetActive(i == 2);
             _audioView.gameObject.SetActive(i == 3);
             _soundView.gameObject.SetActive(i == 4);
+            _graphicsView.gameObject.SetActive(i == 5);
             _tab = i;
             _panel.sizeDelta = new Vector2(i == 2 ? 560 : i >= 3 ? 520 : 460, 0);
             _tabVisual.color = new Color(1, 1, 1, i == 0 ? 0.28f : 0.08f);
@@ -182,6 +188,7 @@ namespace Backrooms.Camcorder
             _tabWorld.color = new Color(1, 1, 1, i == 2 ? 0.28f : 0.08f);
             _tabAudio.color = new Color(1, 1, 1, i == 3 ? 0.28f : 0.08f);
             _tabSound.color = new Color(1, 1, 1, i == 4 ? 0.28f : 0.08f);
+            _tabGraphics.color = new Color(1, 1, 1, i == 5 ? 0.28f : 0.08f);
             if (i == 4) RefreshAll();
             if (_resetVisuals) _resetVisuals.gameObject.SetActive(i == 0);
             HideTip();
@@ -285,6 +292,10 @@ namespace Backrooms.Camcorder
                 0f, 3f, "0.00", "x", () => S().breathing, v => S().breathing = v);
             Slider("Image stabilisation", "Electronic stabilisation that removes much of the fast shake (running jolts) but keeps slow drift.",
                 0f, 1f, "0.00", "", () => S().stabilization, v => S().stabilization = v);
+            Slider("Look overshoot", "When you stop turning, the camera carries on a fraction of a degree and settles back, like a hand-held camera. Adds no input delay. 0 = off.",
+                0f, 2f, "0.00", "x", () => S().lookOvershoot, v => S().lookOvershoot = v);
+            Slider("Look jitter", "A small irregular wobble while you turn the camera. 0 = off.",
+                0f, 2f, "0.00", "x", () => S().lookJitter, v => S().lookJitter = v);
             Slider("Motion blur (shutter)", "Smear when turning quickly, from the camera's shutter staying open for part of each frame.",
                 0f, 0.6f, "0.00", "", () => S().motionBlur, v => S().motionBlur = v);
 
@@ -299,8 +310,6 @@ namespace Backrooms.Camcorder
                 0f, 0.3f, "0.00", "", () => S().scanlines, v => S().scanlines = v);
             Slider("Tape tracking noise", "A soft band of wobble and brightening that drifts slowly up the frame, like a worn tape.",
                 0f, 1f, "0.00", "", () => S().trackingNoise, v => S().trackingNoise = v);
-            Slider("Frame rate cap (0 = off)", "Limit the game's frame rate. 30 matches NTSC video and makes motion feel more like footage.",
-                0f, 60f, "0", " fps", () => S().frameRateCap, v => S().frameRateCap = Mathf.RoundToInt(v), true);
         }
 
         void ApplyPreset(int i)

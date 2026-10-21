@@ -110,10 +110,19 @@ namespace Backrooms
             if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
 
+        /// <summary>Degrees turned this frame (x = yaw, y = pitch), for the handheld look motion.</summary>
+        public Vector2 LookDelta => _lookFrame == Time.frameCount ? _lookDelta : Vector2.zero;
+        Vector2 _lookDelta;
+        int _lookFrame = -1;
+
         void UpdateLook(Vector2 delta)
         {
+            float py = _pitch;
             _yaw += delta.x * mouseSensitivity;
             _pitch += (invertY ? delta.y : -delta.y) * mouseSensitivity;
+            float dp = Mathf.Clamp(_pitch, -pitchLimit, pitchLimit) - py;
+            _lookDelta = new Vector2(delta.x * mouseSensitivity, dp);
+            _lookFrame = Time.frameCount;
             _pitch = Mathf.Clamp(_pitch, -pitchLimit, pitchLimit);
             transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
             if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);

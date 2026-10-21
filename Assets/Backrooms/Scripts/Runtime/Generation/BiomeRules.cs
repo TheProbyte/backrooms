@@ -54,6 +54,7 @@ namespace Backrooms.Generation
         [Tooltip("Chance a big room has abandoned seating scattered in it.")] public float scatteredSeating = 0.3f;
         [Tooltip("Chance a big room is filled with rows of storage racks.")] public float rackChance = 0f;
         [Tooltip("Outlets per wall face.")] public float outletChance = 0.09f;
+        [Tooltip("Chance a tall room is lit by hanging cool-white fluorescent strips instead of round domes.")] public float stripLights = 0f;
 
         public BiomeRules Clone() => (BiomeRules)MemberwiseClone();
 
@@ -99,7 +100,7 @@ namespace Backrooms.Generation
             tallChanceBig = 1f, tallChanceSmall = 0.5f, tallMin = 6.0f, tallMax = 8.1f, paintedChance = 1f,
             lightsAllOn = 0.35f, lightsMixed = 0.45f, mixedOnFraction = 0.4f, faultyChance = 0.04f,
             pillarChance = 1f, pillarSpacing = 4f, halfWalls = 0f, scatteredSeating = 0.1f, rackChance = 0.7f,
-            outletChance = 0.03f,
+            outletChance = 0.03f, stripLights = 1f,
         };
     }
 }

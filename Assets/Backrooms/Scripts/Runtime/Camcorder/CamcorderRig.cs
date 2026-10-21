@@ -111,6 +111,8 @@ namespace Backrooms.Camcorder
                 shake.breathingDegrees = _baseBreathDeg * s.breathing;
                 shake.breathingHeight = _baseBreathHeight * s.breathing;
                 shake.stabilization = s.stabilization;
+                shake.lookOvershoot = s.lookOvershoot;
+                shake.lookJitter = s.lookJitter;
             }
 
             float gain = CurrentGainEV;
@@ -122,8 +124,7 @@ namespace Backrooms.Camcorder
             // OSD composite: curvature of the viewfinder overlay, and whether the OSD texture is in use.
             Shader.SetGlobalVector(ID5, new Vector4(s.osdCurvature, osd && osd.Curved ? 1f : 0f, 0f, 0f));
 
-            int fps = s.frameRateCap > 0 ? s.frameRateCap : -1;
-            if (Application.targetFrameRate != fps) { Application.targetFrameRate = fps; QualitySettings.vSyncCount = fps > 0 ? 0 : QualitySettings.vSyncCount; }
+            // Frame pacing (vsync, frame cap) lives in F5 > Graphics (GraphicsController).
 
             if (osd) { osd.visible = s.showOSD; osd.pillarbox = s.aspect43; }
 

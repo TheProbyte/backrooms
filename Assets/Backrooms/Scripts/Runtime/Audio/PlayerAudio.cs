@@ -52,7 +52,8 @@ namespace Backrooms.Audio
 
             float varAmt = SoundCatalog.ParamA(id);
             int pick;
-            do pick = Random.Range(0, 8); while (pick == _last && varAmt > 0.01f);
+            int count = SoundBank.StepCount;
+            do pick = Random.Range(0, count); while (pick == _last && varAmt > 0.01f && count > 1);
             _last = pick;
             _feet.clip = SoundBank.Step(pick);
             float heavy = _player.IsRunning ? 1.5f : Mathf.Lerp(0.7f, 1f, speed / Mathf.Max(0.1f, _player.walkSpeed));

@@ -8,13 +8,14 @@ namespace Backrooms.Generation
     /// <summary>
     /// The infinite world has thousands of working fixtures, so real lights come from a pool that follows
     /// the camera. Rules that keep lighting stable while you move:
-    ///  - Every fixture inside <see cref="alwaysOnDistance"/> is lit whether visible or not, so turning a
-    ///    corner never reveals a light switching on. Farther fixtures are lit when seen (and stay lit for a
-    ///    few seconds), and they fade with distance into the fog.
-    ///  - Shadows go to the nearest lights with hysteresis (a light keeps its shadow until it is clearly
-    ///    farther than a competitor), and shadow strength fades in and out instead of snapping.
-    ///  - Each troffer is a downward spot plus a soft "bounce" point light restricted to its own room's
-    ///    rendering layer, standing in for baked bounce without leaking through walls.
+    ///  - Every powered fixture within <see cref="maxDistance"/> is lit, nearest first, whether visible or
+    ///    not: the building is already lit, nothing switches on as you approach. The farthest dim into fog.
+    ///  - Unshadowed lights only reach their own room's rendering layer, so light never passes through a
+    ///    wall. The nearest lights get shadows (with hysteresis, easing in); once a shadow is fully in, that
+    ///    light reaches every layer, so it spills naturally through doorways while walls still block it.
+    ///  - Walls cast shadows through closed proxy boxes (see OfficeChunkBuilder), so corners and
+    ///    baseboards don't leak in shadow maps.
+    ///  - The nearest troffers also get a soft "bounce" point light restricted to their room's layer.
     /// Newly streamed chunks power up with a fluorescent start-up flicker, and chunks being unloaded
     /// stutter off; faulty tubes occasionally stutter. Fixture sound lives in Backrooms.Audio.BuildingAudio,
     /// which reads <see cref="PowerLevel"/> so hum, strikes and buzz stay in time with the light.
@@ -27,7 +28,7 @@ namespace Backrooms.Generation
         public Color tubeColor = new Color(1.0f, 0.965f, 0.86f);
         [Range(0f, 30f)] public float tubeIntensity = 7f;
         [Range(2f, 10f)] public float tubeRange = 6f;
-        [Range(0f, 3f)] public float bounceIntensity = 0.9f;
+        [Range(0f, 3f)] public float bounceIntensity = 0.55f;
         [Range(1f, 8f)] public float bounceRange = 4.4f;
         [Tooltip("Dome fittings on tall ceilings: intensity multiplier per metre of extra height.")]
         public float domeHeightBoost = 0.3f;
@@ -37,21 +38,31 @@ namespace Backrooms.Generation
         [Range(0f, 10f)] public float lampIntensity = 1.8f;
         [Range(1f, 8f)] public float lampRange = 5f;
 
+        [Header("Warehouse strips (cool white)")]
+        public Color stripColor = new Color(0.9f, 0.95f, 1f);
+
         [Header("Pool")]
-        [Range(8, 160)] public int maxTroffers = 110;
+        [Tooltip("Ceiling light slots. Every powered fixture within the light distance is lit, nearest first; " +
+                 "URP Forward+ allows 256 visible lights per camera, shared with the bounce lights.")]
+        [Range(8, 220)] public int maxTroffers = 196;
         [Range(0, 16)] public int maxLamps = 10;
-        [Tooltip("Lights within this distance are always active, visible or not.")]
-        public float alwaysOnDistance = 14f;
-        public float maxDistance = 30f;
-        public float fadeStart = 20f;
-        [Range(0, 48)] public int shadowedTroffers = 26;
+        [Tooltip("Fixtures are lit out to here, whether you can see them or not. Past fadeStart they dim into the fog.")]
+        public float maxDistance = 36f;
+        public float fadeStart = 28f;
+        [Tooltip("Only the nearest fixtures add the soft bounce fill.")]
+        [Range(0, 64)] public int bounceCount = 40;
+        public float bounceDistance = 18f;
+        [Header("Shadows")]
+        [Range(0, 48)] public int shadowedTroffers = 24;
         [Range(0, 4)] public int shadowedLamps = 1;
+        [Tooltip("Shadows fade out smoothly between 65% and 100% of this distance.")]
+        public float shadowDistance = 20f;
         [Tooltip("A shadowed light keeps its shadow until a competitor is this much closer (fraction).")]
         [Range(0f, 0.5f)] public float shadowHysteresis = 0.22f;
-        [Tooltip("Seconds for shadows to fade in or out.")]
-        public float shadowFade = 0.35f;
-        [Tooltip("Visibility rays tested per frame.")]
-        public int raysPerFrame = 200;
+        [Tooltip("Seconds for shadows to fade in or out when the nearest set changes.")]
+        public float shadowFade = 0.5f;
+        [Tooltip("0 low (256), 1 medium (512), 2 high (1024) shadow maps.")]
+        [Range(0, 2)] public int shadowTier = 1;
 
         [Header("Power flicker")]
         [Tooltip("Seconds a newly streamed area takes to flicker on (and an unloading one to stutter off).")]
@@ -68,6 +79,7 @@ namespace Backrooms.Generation
             public float fade, target;
             public bool isLamp, wantShadow;
             public float shadowK;          // 0..1 shadow strength ramp
+            public bool allLayers;         // shadowed lights light every room (their shadows stop them at walls)
         }
 
         class ChunkPower
@@ -81,13 +93,12 @@ namespace Backrooms.Generation
 
         readonly Dictionary<Vector2Int, ChunkPower> _chunks = new Dictionary<Vector2Int, ChunkPower>();
         readonly List<LightSource> _candidates = new List<LightSource>();
-        readonly Dictionary<Vector3, float> _lastSeen = new Dictionary<Vector3, float>();
         readonly List<Slot> _troffers = new List<Slot>(), _lamps = new List<Slot>();
         MaterialPropertyBlock _mpb;
         static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
         static readonly System.Reflection.FieldInfo s_tierField = typeof(UniversalAdditionalLightData).GetField(
             "m_AdditionalLightsShadowResolutionTier", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        int _rayCursor, _mask;
+        int _appliedTier = -1;
 
         // ---------------- Registration ----------------
 
@@ -118,7 +129,6 @@ namespace Backrooms.Generation
         public void Unregister(Vector2Int chunk)
         {
             if (!_chunks.TryGetValue(chunk, out var p)) return;
-            foreach (var l in p.lights) _lastSeen.Remove(l.position);
             _chunks.Remove(chunk);
             foreach (var s in _troffers) if (s.busy && s.src.chunk == chunk) Release(s);
             foreach (var s in _lamps) if (s.busy && s.src.chunk == chunk) Release(s);
@@ -145,7 +155,6 @@ namespace Backrooms.Generation
 
         void Awake()
         {
-            _mask = Physics.DefaultRaycastLayers;
             _mpb = new MaterialPropertyBlock();
             for (int i = 0; i < maxTroffers; i++) _troffers.Add(MakeSlot(false, i));
             for (int i = 0; i < maxLamps; i++) _lamps.Add(MakeSlot(true, i));
@@ -204,6 +213,7 @@ namespace Backrooms.Generation
             float now = Time.time;
 
             // Gather candidates from chunks near the viewer.
+            _eye = eye;
             _candidates.Clear();
             var center = WorldStreamer.ChunkOf(eye);
             int r = Mathf.CeilToInt(maxDistance / OfficeBiome.ChunkSize);
@@ -213,35 +223,44 @@ namespace Backrooms.Generation
                     foreach (var l in cp.lights)
                         if ((l.position - eye).sqrMagnitude < maxDistance * maxDistance) _candidates.Add(l);
 
-            // Round-robin visibility rays: to the lens and to the floor below it.
-            int rays = Mathf.Min(raysPerFrame, _candidates.Count);
-            for (int i = 0; i < rays; i++)
-            {
-                _rayCursor = (_rayCursor + 1) % Mathf.Max(1, _candidates.Count);
-                var c = _candidates[_rayCursor];
-                if ((c.position - eye).sqrMagnitude < alwaysOnDistance * alwaysOnDistance) continue;
-                Vector3 lens = c.position + Vector3.down * 0.08f;
-                Vector3 floor = new Vector3(c.position.x, 0.4f, c.position.z);
-                if (!Physics.Linecast(eye, lens, _mask, QueryTriggerInteraction.Ignore) ||
-                    !Physics.Linecast(eye, floor, _mask, QueryTriggerInteraction.Ignore))
-                    _lastSeen[c.position] = now;
-            }
-
-            _candidates.Sort((a, b) => (a.position - eye).sqrMagnitude.CompareTo((b.position - eye).sqrMagnitude));
-            var wantedTroffers = new List<int>(); var wantedLamps = new List<int>();
+            // The building is already lit: every powered fixture in range is on, nearest first, with no
+            // dependence on what the camera can see. Light only reaches its own room (rendering layers),
+            // so an unshadowed light can never shine through a wall.
+            if (_byDistance == null) _byDistance = (a, b) => (a.position - _eye).sqrMagnitude.CompareTo((b.position - _eye).sqrMagnitude);
+            _candidates.Sort(_byDistance);
+            _wantedTroffers.Clear(); _wantedLamps.Clear();
             for (int i = 0; i < _candidates.Count; i++)
             {
-                var c = _candidates[i];
-                float d = Vector3.Distance(c.position, eye);
-                bool want = d < alwaysOnDistance || (_lastSeen.TryGetValue(c.position, out var t) && now - t < 4f);
-                if (!want) continue;
-                if (c.isLamp) { if (wantedLamps.Count < _lamps.Count) wantedLamps.Add(i); }
-                else if (wantedTroffers.Count < _troffers.Count) wantedTroffers.Add(i);
+                if (_candidates[i].isLamp) { if (_wantedLamps.Count < _lamps.Count) _wantedLamps.Add(i); }
+                else if (_wantedTroffers.Count < _troffers.Count) _wantedTroffers.Add(i);
             }
+            // If the pool runs out before the light distance, dim the farthest few by rank instead.
+            _rankEdge = _wantedTroffers.Count >= _troffers.Count && _wantedTroffers.Count > 0
+                ? Vector3.Distance(_candidates[_wantedTroffers[_wantedTroffers.Count - 1]].position, eye) : float.MaxValue;
+            ApplyShadowTier();
 
-            ActiveLights = Assign(_troffers, wantedTroffers, eye, shadowedTroffers) + Assign(_lamps, wantedLamps, eye, shadowedLamps);
+            ActiveLights = Assign(_troffers, _wantedTroffers, eye, shadowedTroffers) + Assign(_lamps, _wantedLamps, eye, shadowedLamps);
             UpdateLensEmission(now);
         }
+
+        readonly List<int> _wantedTroffers = new List<int>(), _wantedLamps = new List<int>();
+        System.Comparison<LightSource> _byDistance;
+        Vector3 _eye;
+        float _rankEdge = float.MaxValue;
+
+        void ApplyShadowTier()
+        {
+            if (_appliedTier == shadowTier) return;
+            _appliedTier = shadowTier;
+            int tier = shadowTier == 0 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierLow
+                     : shadowTier == 2 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierHigh
+                     : UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium;
+            foreach (var t in _troffers) s_tierField?.SetValue(t.main.GetUniversalAdditionalLightData(), tier);
+        }
+
+        /// <summary>Lights currently enabled (ceiling, lamps and bounce) and shadowed, for the Graphics tab.</summary>
+        public int EnabledLights { get; private set; }
+        public int ShadowedLights { get; private set; }
 
         readonly Dictionary<Vector3, int> _wantedIndex = new Dictionary<Vector3, int>();
         readonly HashSet<int> _taken = new HashSet<int>();
@@ -269,13 +288,14 @@ namespace Backrooms.Generation
                 var src = _candidates[wanted[wi]];
                 free.busy = true; free.src = src; free.sourcePos = src.position;
                 free.target = 1f;
-                // Lights entering within the always-on radius start fully on: they were already lit
-                // before reaching it, so a fade-in here would read as a light switching on.
-                float d = Vector3.Distance(src.position, eye);
-                free.fade = d < alwaysOnDistance * 0.9f ? 1f : 0f;
+                // A light is never switched on in view: it starts fully on (distance and rank dimming
+                // handle the far edge, inside the fog).
+                free.fade = 1f;
                 free.wantShadow = false; free.shadowK = 0f;
                 free.main.shadows = LightShadows.None;
                 free.main.transform.position = src.isLamp ? src.position : src.position + Vector3.down * 0.06f;
+                free.main.GetUniversalAdditionalLightData().renderingLayers = src.roomLayer & ~1u;
+                free.allLayers = false;
                 if (free.bounce)
                 {
                     float drop = src.dome ? Mathf.Min(src.ceiling * 0.45f, 2.2f) : 1.1f;
@@ -300,54 +320,79 @@ namespace Backrooms.Generation
             // unless it falls clearly behind (its distance is discounted by the hysteresis fraction).
             float cutoff = _active.Count > shadowCount && shadowCount > 0
                 ? Vector3.Distance(_active[shadowCount - 1].main.transform.position, eye) : float.MaxValue;
+            if (shadowCount <= 0) cutoff = -1f;
             int granted = 0;
             foreach (var s in _active)
             {
                 float d = Vector3.Distance(s.main.transform.position, eye);
                 bool want = s.wantShadow ? d * (1f - shadowHysteresis) <= cutoff : d <= cutoff;
-                if (want && granted >= shadowCount + 4) want = false;     // hard cap (atlas budget)
+                if (d > shadowDistance) want = false;
+                if (want && granted >= shadowCount + 3) want = false;     // hard cap (atlas budget)
                 if (want) granted++;
                 s.wantShadow = want;
             }
 
+            int bounces = 0, enabled = 0, shadowed = 0;
             foreach (var s in _active)
             {
                 float d = Vector3.Distance(s.main.transform.position, eye);
                 float power = PowerLevel(s.src, Time.time);
-                float k = s.fade * power * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fadeStart, maxDistance, d)));
+                float distFade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fadeStart, maxDistance, d));
+                float rankFade = s.isLamp ? 1f : 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(_rankEdge - 4f, _rankEdge, d));
+                float k = s.fade * power * distFade * rankFade;
                 s.main.enabled = k > 0.002f;
+                if (s.main.enabled) enabled++;
                 if (s.isLamp) { s.main.intensity = lampIntensity * k; s.main.range = lampRange; s.main.color = lampColor; }
                 else
                 {
-                    float boost = s.src.dome ? 1f + (s.src.ceiling - OfficeBiome.CeilingHeight) * domeHeightBoost : 1f;
+                    float extra = s.src.ceiling - OfficeBiome.CeilingHeight;
+                    float boost = s.src.dome || s.src.strip ? 1f + extra * domeHeightBoost : 1f;
+                    if (s.src.dome) boost *= 1.6f;                // domes are spaced wider than troffers
                     s.main.intensity = tubeIntensity * k * boost;
-                    s.main.range = s.src.dome ? tubeRange + (s.src.ceiling - OfficeBiome.CeilingHeight) * 1.2f : tubeRange;
+                    s.main.range = s.src.dome || s.src.strip ? tubeRange + extra * 1.3f : tubeRange;
                     // Domes light the whole hemisphere: a near-180 cone with a wide soft falloff, so no
                     // cone edge is drawn across tall walls.
-                    s.main.spotAngle = s.src.dome ? 176f : 150f;
+                    s.main.spotAngle = s.src.dome ? 176f : s.src.strip ? 160f : 150f;
                     s.main.innerSpotAngle = s.src.dome ? 30f : 60f;
-                    // A 176-degree dome spreads one shadow map over a whole tall hall, so it grazes walls at
-                    // steep angles; more bias stops the horizontal shadow-acne bands on tall walls.
-                    s.main.shadowBias = s.src.dome ? 0.1f : 0.04f;
-                    s.main.shadowNormalBias = s.src.dome ? 1.4f : 0.5f;
-                    s.main.color = tubeColor;
-                    s.bounce.enabled = s.main.enabled && bounceIntensity > 0f;
-                    s.bounce.intensity = bounceIntensity * k * (s.src.dome ? 1.4f : 1f);
-                    s.bounce.range = s.src.dome ? bounceRange * 1.5f : bounceRange;
+                    // Wide cones graze tall walls; depth bias (not normal bias, which opens gaps at corners)
+                    // keeps those walls free of acne bands.
+                    s.main.shadowBias = s.src.dome || s.src.strip ? 0.14f : 0.05f;
+                    s.main.shadowNormalBias = 0.25f;
+                    s.main.color = s.src.strip ? stripColor : tubeColor;
+                    // Bounce fill only for the nearest fixtures, fading out before its distance limit.
+                    float bk = bounces < bounceCount ? 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(bounceDistance * 0.7f, bounceDistance, d)) : 0f;
+                    s.bounce.enabled = s.main.enabled && bounceIntensity > 0f && bk > 0.01f;
+                    if (s.bounce.enabled) { bounces++; enabled++; }
+                    s.bounce.intensity = bounceIntensity * k * bk * (s.src.dome ? 1.6f : 1f);
+                    s.bounce.range = s.src.dome || s.src.strip ? bounceRange * 1.6f : bounceRange;
+                    s.bounce.color = s.src.strip ? Color.Lerp(stripColor, new Color(0.95f, 0.92f, 0.85f), 0.5f)
+                                                 : Color.Lerp(tubeColor, new Color(1f, 0.9f, 0.62f), 0.5f);
                 }
 
-                // Shadow strength ramps; the shadow map is only dropped once fully faded.
+                // Light never passes through walls: an unshadowed light only reaches its own room. Once a
+                // light's shadow is fully in, it reaches every room (walls now block it), so light spills
+                // through doorways; it drops back to its own room before its shadow fades out.
                 s.shadowK = Mathf.MoveTowards(s.shadowK, s.wantShadow ? 1f : 0f, dt / Mathf.Max(0.01f, shadowFade));
-                var mode = s.shadowK > 0.001f ? LightShadows.Soft : LightShadows.None;
+                bool all = s.wantShadow && s.shadowK >= 0.999f && s.main.enabled;
+                if (all != s.allLayers)
+                {
+                    s.allLayers = all;
+                    s.main.GetUniversalAdditionalLightData().renderingLayers = all ? 0xFFFFFFFEu : s.src.roomLayer & ~1u;
+                }
+                float strength = Mathf.SmoothStep(0f, 1f, s.shadowK);
+                var mode = strength > 0.005f && s.main.enabled ? LightShadows.Soft : LightShadows.None;
                 if (s.main.shadows != mode) s.main.shadows = mode;
-                s.main.shadowStrength = Mathf.SmoothStep(0f, 0.82f, s.shadowK);
+                if (mode != LightShadows.None) shadowed++;
+                s.main.shadowStrength = strength;
             }
+            if (slots == _troffers) { EnabledLights = enabled; ShadowedLights = shadowed; }
+            else { EnabledLights += enabled; ShadowedLights += shadowed; }
             return _active.Count;
         }
 
         void Release(Slot s)
         {
-            s.busy = false; s.fade = 0f; s.target = 0f; s.shadowK = 0f; s.wantShadow = false;
+            s.busy = false; s.fade = 0f; s.target = 0f; s.shadowK = 0f; s.wantShadow = false; s.allLayers = false;
             s.main.enabled = false; s.main.shadows = LightShadows.None;
             if (s.bounce) s.bounce.enabled = false;
         }

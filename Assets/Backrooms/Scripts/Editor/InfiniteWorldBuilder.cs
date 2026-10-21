@@ -126,6 +126,16 @@ namespace Backrooms.EditorTools
             a.domeOn.EnableKeyword("_EMISSION");
             a.domeOn.SetColor("_EmissionColor", new Color(1f, 0.93f, 0.8f) * 3.2f);
             a.domeOn.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive; a.domeOn.EnableKeyword("_EMISSION");
+            // Warehouse strips: bare cool-white tubes.
+            a.stripOn = Lit("M_StripTube_On", new Color(0.95f, 0.97f, 1f), null, null, 0.4f);
+            a.stripOn.EnableKeyword("_EMISSION");
+            a.stripOn.SetColor("_EmissionColor", new Color(0.86f, 0.93f, 1f) * 4f);
+            a.stripOn.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            a.stripOff = Lit("M_StripTube_Off", new Color(0.7f, 0.72f, 0.72f), null, null, 0.3f);
+            NoSkyReflections(a.stripOff);
+            // Indoors, nothing should pick up the (unoccluded) sky reflection.
+            foreach (var m in new[] { a.paintedWall, a.ceilingPlaster, a.lampMetal, a.laminate, a.fixtureHousing })
+                if (m) NoSkyReflections(m);
             // One plaster repeat = 2.4 m square. Walls map U over 1.2 m and V over 2.7 m; ceilings are in metres.
             a.paintedWall.SetTextureScale("_BaseMap", new Vector2(0.5f, 1.125f));
             a.ceilingPlaster.SetTextureScale("_BaseMap", new Vector2(1f / 2.4f, 1f / 2.4f));

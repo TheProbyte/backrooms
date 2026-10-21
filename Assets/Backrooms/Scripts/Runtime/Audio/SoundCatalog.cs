@@ -200,7 +200,7 @@ namespace Backrooms.Audio
             Register(new SoundDef
             {
                 id = SoundIds.FluorescentHum, name = "Fluorescent hum", category = "Lights", positional = true,
-                description = "The 120 Hz ballast hum of every powered ceiling fixture. Only powered tubes hum, and the hum follows the tube's real brightness.",
+                description = "The buzz of every powered ceiling fixture (recorded fluorescent buzz). Only powered tubes hum, and the hum follows the tube's real brightness.",
                 volume = 1f, minDistance = 0.7f, maxDistance = 13f, rolloff = 1.15f, spatialBlend = 1f,
                 paramAName = "Tone variation", paramADesc = "How different neighbouring fixtures sound (level, buzz and a tiny detune).",
                 paramA = 1f, paramAMin = 0f, paramAMax = 2f,
@@ -242,8 +242,8 @@ namespace Backrooms.Audio
             Register(new SoundDef
             {
                 id = SoundIds.Footsteps, name = "Footsteps (carpet)", category = "Player", positional = true,
-                description = "Your own steps on office carpet: a soft thud and fabric scuff, heavier when running.",
-                volume = 1f, minDistance = 0.5f, maxDistance = 8f, rolloff = 1f, spatialBlend = 0.4f,
+                description = "Your own steps on office carpet (sneakers): one of several recorded steps, picked at random with a slight change in level and pitch each time.",
+                volume = 0.7f, minDistance = 0.5f, maxDistance = 8f, rolloff = 1f, spatialBlend = 0.4f,
                 paramAName = "Step variation", paramADesc = "How much each step differs from the last.",
                 paramA = 1f, paramAMin = 0f, paramAMax = 2f,
             });

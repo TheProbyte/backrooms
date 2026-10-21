@@ -48,7 +48,15 @@ namespace Backrooms
         [Tooltip("How quickly shake blends between rest, walk and run.")]
         [Range(0.5f, 10f)] public float blendSpeed = 3f;
 
+        [Header("Look motion (operator's hands)")]
+        [Tooltip("When you stop turning, the camera carries on a touch further and settles back. 0 = off.")]
+        [Range(0f, 2f)] public float lookOvershoot = 0.5f;
+        [Tooltip("Small irregular wobble while turning. 0 = off.")]
+        [Range(0f, 2f)] public float lookJitter = 0.5f;
+
         float _walkBlend, _runBlend, _stepPhase, _breathPhase;
+        Vector2 _lookVel, _lookOff, _lookOffVel;
+        float _lookRoll;
         Vector3 _seed;
 
         void Awake()
@@ -105,8 +113,35 @@ namespace Backrooms
                         + walkRot * walkOnly * Mathf.Lerp(1f, 0.35f, stabilization)
                         + runRot * _runBlend * Mathf.Lerp(1f, 0.25f, stabilization) * (0.5f + 0.5f * stab);
 
+            rot += LookMotion(dt, t) * (1f - stabilization * 0.5f);
+
             transform.localPosition = pos * shakeIntensity;
             transform.localRotation = Quaternion.Euler(rot * shakeIntensity);
+        }
+
+        /// <summary>
+        /// Secondary motion from turning, added on top of the (instant) mouse look, so there is no input
+        /// delay: the offset leads slightly in the turn direction and is held by an under-damped spring,
+        /// so when you stop it carries on a fraction of a degree and settles back. Plus a little
+        /// speed-dependent wobble and roll.
+        /// </summary>
+        Vector3 LookMotion(float dt, float t)
+        {
+            if (dt <= 0f) return Vector3.zero;
+            Vector2 d = player ? player.LookDelta : Vector2.zero;
+            Vector2 vel = d / dt;                                   // degrees per second
+            _lookVel = Vector2.Lerp(_lookVel, vel, 1f - Mathf.Exp(-dt / 0.05f));
+            // Spring toward a small lead proportional to turn speed (capped).
+            Vector2 target = Vector2.ClampMagnitude(_lookVel * 0.012f * lookOvershoot, 2.5f * lookOvershoot);
+            const float k = 90f, c = 9f;                            // under-damped: a small overshoot when you stop
+            Vector2 acc = (target - _lookOff) * k - _lookOffVel * c;
+            _lookOffVel += acc * dt;
+            _lookOff += _lookOffVel * dt;
+            float speed = _lookVel.magnitude;
+            Vector3 jitter = Noise3(t * 7f + 211f) * Mathf.Min(speed * 0.004f, 0.6f) * lookJitter;
+            _lookRoll = Mathf.Lerp(_lookRoll, Mathf.Clamp(-_lookVel.x * 0.006f, -1.5f, 1.5f) * lookOvershoot, 1f - Mathf.Exp(-dt / 0.15f));
+            // Camera local rotation: x = pitch (down positive), y = yaw.
+            return new Vector3(_lookOff.y + jitter.x, _lookOff.x + jitter.y, _lookRoll + jitter.z);
         }
 
         Vector3 Noise3(float t)
