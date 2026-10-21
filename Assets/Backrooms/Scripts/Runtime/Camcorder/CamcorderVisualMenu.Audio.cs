@@ -36,15 +36,15 @@ namespace Backrooms.Camcorder
         {
             CamcorderSettings S() => rig.Settings;
 
-            Section("LIVE AUDIO", "What the building audio and the camcorder microphone are doing right now.");
+            Section("LIVE AUDIO", "What the building sound and the microphone are doing now.");
             var readRow = Rect("AudioReadout", _list);
-            readRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 210;
+            readRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 150;
             readRow.gameObject.AddComponent<Canvas>();
             _auReadout = Label(readRow, "", 14, TextCol, TextAnchor.UpperLeft);
             Stretch(_auReadout.rectTransform);
             _auReadout.supportRichText = true;
 
-            Section("AUDIO PRESETS", "Microphone character to match each camcorder look. Only changes audio.");
+            Section("AUDIO PRESETS", "Mic character for each camcorder look. Only changes audio.");
             var presets = Rect("AudioPresets", _list);
             presets.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
             var hl = presets.gameObject.AddComponent<HorizontalLayoutGroup>();
@@ -58,7 +58,7 @@ namespace Backrooms.Camcorder
                 });
             }
 
-            Section("OUTPUT", "Order: each sound's own settings, then walls and rooms, then the camcorder, then volume.");
+            Section("OUTPUT", "Each sound, then walls and rooms, then the camcorder, then volume.");
             Slider("Output volume", "Final volume of everything, after the camcorder processing.",
                 0f, 1f, "0%", "", () => S().audioVolume, v => S().audioVolume = v);
             Toggle("Camcorder processing", "Runs all sound through the camcorder's microphone and recording circuit (colour, auto gain, compression, hiss). Off gives the clean sound of the world, with room acoustics still on.",
@@ -76,11 +76,11 @@ namespace Backrooms.Camcorder
             Slider("Handling noise", "Low rumble and soft thumps from holding the camera while walking.",
                 0f, 1f, "0.00", "", () => S().handlingNoise, v => S().handlingNoise = v);
 
-            Section("AUTO GAIN", "The recording level rides up slowly in quiet places and ducks quickly for loud sounds.");
+            Section("AUTO GAIN", "Rises slowly in quiet places, ducks quickly for loud sounds.");
             Slider("Auto-gain strength", "How much the camcorder adjusts its own recording level. 0 is a fixed level. Higher values bring up faint building sound (and hiss) when you stand still in a quiet room.",
                 0f, 1f, "0.00", "", () => S().autoGain, v => S().autoGain = v);
 
-            Section("DEVELOPER", "Advanced tuning. Saved separately from the presets.");
+            Section("DEVELOPER", "Advanced tuning, saved separately from presets.");
             AudioDevSettings D() => BA ? BA.Dev : _devFallback;
             Slider("Hum voice budget", "Fixtures that get their own positioned hum voice. The rest are summed into the distant building hum.",
                 0f, 24f, "0", "", () => D().emitterBudget, v => D().emitterBudget = Mathf.RoundToInt(v), true);
@@ -116,6 +116,7 @@ namespace Backrooms.Camcorder
         }
 
         readonly AudioDevSettings _devFallback = new AudioDevSettings();
+        bool _auOpened;      // only save developer audio after the panel has actually been open
 
         void UpdateAudioTab()
         {
@@ -158,7 +159,7 @@ namespace Backrooms.Camcorder
 
         void BuildSound()
         {
-            Section("SOUND CATALOG", "Every sound in the game. Changes apply to all of that sound, everywhere, and are saved.");
+            Section("SOUND CATALOG", "Every sound in the game. Edits apply everywhere and are saved.");
             var searchRow = Rect("Search", _list);
             searchRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
             _sndSearch = InputBox(searchRow, "");
@@ -203,7 +204,7 @@ namespace Backrooms.Camcorder
             Toggle("Mute", "Silences this sound everywhere without losing its other settings.",
                 () => Id() != null && SoundCatalog.Muted(Id()), v => { if (Id() != null) Edited(SoundField.Mute, v ? 1f : 0f); });
             Field(LastRow(), d => true);
-            Slider("Volume", "Level multiplier for this sound type (1 = default). Power, distance and walls still apply on top, so an unpowered fixture stays silent.",
+            Slider("Volume", "Level multiplier for this sound type (Reset restores its default). Power, distance and walls still apply on top, so an unpowered fixture stays silent.",
                 0f, 3f, "0.00", "x", () => Id() != null ? SoundCatalog.RawVolume(Id()) : 1f, v => Edited(SoundField.Volume, v));
             Field(LastRow(), d => true);
             Slider("Pitch", "Playback pitch (1 = original). Timing of events never changes; for the hum this shifts the mains tone.",
@@ -311,7 +312,7 @@ namespace Backrooms.Camcorder
         void CloseAudio()
         {
             if (Chain) Chain.compareUnprocessed = false;
-            if (BA) { BA.StopPreview(); BA.Dev.Save(); }
+            if (BA) { BA.StopPreview(); if (_auOpened) BA.Dev.Save(); }
             if (_sndDirty) { SoundCatalog.Save(); _sndDirty = false; }
         }
     }

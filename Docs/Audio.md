@@ -121,3 +121,26 @@ Room tone, Footsteps (carpet).
 `AudioProbe` (add it in play mode, `Run("all")`) measures what Unity will actually play: each looping source's
 volume times its rolloff at its rendered position, every frame. Results are in the milestone notes below.
 It can't judge how anything sounds; listening checks are listed there too.
+
+## Milestone test results (2026-10-21)
+
+Measured in play mode with `AudioProbe` (numbers, not listening):
+
+- **Walking toward, under and past a troffer**: its hum rose smoothly from -52 dB at 5 m to -35 dB beneath it
+  and fell to -55 dB at 9 m past. Largest one-frame level change 1.2 dB, no level steps over 3 dB.
+- **Turning 720 degrees in place**: total hum level unchanged (0.0151 throughout), no voices started or stopped.
+- **Walking through walls and rooms (noclip, 30 m)**: largest one-frame change 2.2 dB, no steps over 3 dB, no
+  cut-offs; occluded fixtures resolve to the doorway they are heard through.
+- **Faulty tube**: over 6 stutters the buzz voice was open during dips and released afterwards, with ticks on
+  the rising edges. Hum on faulty tubes follows the stutter (the only intended level jumps).
+- **Streaming 80 m**: voices swap about once per metre at walking pace, always by crossfade; at most 20 sources
+  playing, hum pool fixed at budget + 4, no orphaned voices after unloading.
+- **Auto gain**: in a quiet hall it sits at its bounded maximum; a loud sound 1 m away dropped it in under
+  0.5 s, then it recovered at about 4 dB/s over ~8 s.
+- **F5**: raising Fluorescent hum to 2x doubled every active hum voice; Compare crossfaded to unprocessed;
+  Preview / Stop worked; saved overrides loaded on the next run. No console errors.
+
+Not established by these tests, needs listening: whether the hum, buzz and ventilation timbres sound
+convincing, the reverb character of small offices versus tall halls, the amount of hiss and handling noise,
+and whether the AGC breathing is pleasant. A more convincing fluorescent or HVAC sound may eventually need
+recorded (licensed) material; everything here is synthesised.

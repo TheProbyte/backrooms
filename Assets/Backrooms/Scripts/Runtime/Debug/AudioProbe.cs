@@ -118,18 +118,8 @@ namespace Backrooms.DebugTools
             }
         }
 
-        bool IsFlickering(AudioSource s)
-        {
-            // A hum voice on a faulty or still-starting tube is meant to follow the light's stutter.
-            var near = new List<LightSource>();
-            _lights.GatherTubes(s.transform.position, 25f, near);
-            foreach (var l in near)
-            {
-                float p = _lights.PowerLevel(l, Time.time);
-                if ((l.faultyId >= 0 || _lights.IsStarting(l)) && p < 0.999f && Vector3.Distance(l.position, s.transform.position) < 12f) return true;
-            }
-            return false;
-        }
+        // A hum voice on a faulty or still-starting tube is meant to follow the light's stutter.
+        bool IsFlickering(AudioSource s) => _ba.VoiceFollowsFlicker(s);
 
         void ResetMeasure() { _prev.Clear(); _maxJump = 0f; _maxJumpWhere = ""; _hardStarts = _hardStops = _bigSteps = _hitches = 0; }
 

@@ -229,7 +229,7 @@ namespace Backrooms.Audio
             {
                 id = SoundIds.Ventilation, name = "Ventilation", category = "Ambience", positional = false, hasPitch = true,
                 description = "Air moving through ducts and diffusers. Louder and broader in tall halls, closer and duller in small offices.",
-                volume = 1f, spatialBlend = 0f,
+                volume = 0.5f, spatialBlend = 0f,
                 paramAName = "Airflow drift", paramADesc = "How much the airflow slowly rises and falls.",
                 paramA = 1f, paramAMin = 0f, paramAMax = 2f,
             });
@@ -237,7 +237,7 @@ namespace Backrooms.Audio
             {
                 id = SoundIds.RoomTone, name = "Room tone", category = "Ambience", positional = false, hasPitch = false,
                 description = "The quiet, dark noise floor of an empty building.",
-                volume = 1f, spatialBlend = 0f,
+                volume = 0.6f, spatialBlend = 0f,
             });
             Register(new SoundDef
             {

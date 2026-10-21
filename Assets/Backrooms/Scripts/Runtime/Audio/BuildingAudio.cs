@@ -344,6 +344,14 @@ namespace Backrooms.Audio
             return "";
         }
 
+        /// <summary>Debug: true if the source is a hum voice on a faulty or still-starting tube (meant to stutter).</summary>
+        public bool VoiceFollowsFlicker(AudioSource src)
+        {
+            foreach (var v in _hum)
+                if (v.src == src && v.busy) return v.light.faultyId >= 0 || (lights && lights.IsStarting(v.light));
+            return false;
+        }
+
         /// <summary>Debug: the hum voice currently assigned to a fixture (null if none).</summary>
         public AudioSource VoiceFor(Vector3 fixture)
         {

@@ -60,6 +60,7 @@ namespace Backrooms.Camcorder
             {
                 _prevLock = Cursor.lockState;
                 Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
+                _auOpened = true;
                 RefreshAll();
             }
             else
@@ -136,14 +137,14 @@ namespace Backrooms.Camcorder
             footer.offsetMin = new Vector2(16, 12); footer.offsetMax = new Vector2(-16, 46);
             var fl = footer.gameObject.AddComponent<HorizontalLayoutGroup>();
             fl.spacing = 8; fl.childForceExpandWidth = true; fl.childControlWidth = true; fl.childControlHeight = true;
-            Button(footer, "Reset visuals", () => ApplyPreset(0));
+            _resetVisuals = Button(footer, "Reset visuals", () => ApplyPreset(0));
             Button(footer, "Close", () => SetOpen(false));
 
             ShowTab(0);
         }
 
         RectTransform _visualView, _gameplayView, _worldView, _audioView, _soundView, _presets;
-        Image _tabVisual, _tabGameplay, _tabWorld, _tabAudio, _tabSound;
+        Image _tabVisual, _tabGameplay, _tabWorld, _tabAudio, _tabSound, _resetVisuals;
 
         (RectTransform view, RectTransform list) MakeList(string name, float top)
         {
@@ -182,6 +183,7 @@ namespace Backrooms.Camcorder
             _tabAudio.color = new Color(1, 1, 1, i == 3 ? 0.28f : 0.08f);
             _tabSound.color = new Color(1, 1, 1, i == 4 ? 0.28f : 0.08f);
             if (i == 4) RefreshAll();
+            if (_resetVisuals) _resetVisuals.gameObject.SetActive(i == 0);
             HideTip();
         }
 
