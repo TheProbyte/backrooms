@@ -246,7 +246,7 @@ namespace Backrooms.Generation
                 EdgeFaces(_L.vEdges[x, z], true, x, z);
             for (int x = 0; x < N; x++)
             for (int z = 0; z <= N; z++)
-                EdgeFaces(_L.hEdges[x, z], false, x, z);
+                EdgeFaces(_L.hEdges[x, z], false, z, x);      // hEdges[x, z] lies on line Z = z, along X = x
             BuildWallColliders();
         }
 
@@ -372,11 +372,27 @@ namespace Backrooms.Generation
                                    Mathf.Max(_L.CeilingAt(x - 1, z), _L.CeilingAt(x, z)));
 
                 bool wall = false, header = false;
+                float blockBottom = OfficeBiome.DoorHeaderHeight;
                 void Check(EdgeKind e) { if (e == EdgeKind.Wall) wall = true; else if (e == EdgeKind.DoorHeader) header = true; }
+                // Open-plan span between rooms of different heights: a soffit down to the lower ceiling.
+                void Soffit(EdgeKind e, int ax, int az, int bx, int bz)
+                {
+                    if (e != EdgeKind.Open || !_L.InChunk(ax, az) || !_L.InChunk(bx, bz)) return;
+                    float ca = _L.CeilingAt(ax, az), cb = _L.CeilingAt(bx, bz);
+                    if (Mathf.Abs(ca - cb) < 0.01f) return;
+                    if (!header) blockBottom = Mathf.Min(ca, cb);
+                    else blockBottom = Mathf.Min(blockBottom, Mathf.Min(ca, cb));
+                    header = true;
+                }
                 if (z < N) Check(_L.vEdges[x, z]);
                 if (z > 0) Check(_L.vEdges[x, z - 1]);
                 if (x < N) Check(_L.hEdges[x, z]);
                 if (x > 0) Check(_L.hEdges[x - 1, z]);
+                if (header) blockBottom = OfficeBiome.DoorHeaderHeight;
+                if (z < N) Soffit(_L.vEdges[x, z], x - 1, z, x, z);
+                if (z > 0) Soffit(_L.vEdges[x, z - 1], x - 1, z - 1, x, z - 1);
+                if (x < N) Soffit(_L.hEdges[x, z], x, z - 1, x, z);
+                if (x > 0) Soffit(_L.hEdges[x - 1, z], x - 1, z - 1, x - 1, z);
                 if (border)
                 {
                     // Our wall runs cover the collider when we have a wall here; otherwise add one (only
@@ -394,16 +410,19 @@ namespace Backrooms.Generation
                     if (!_L.InChunk(cx, cz)) continue;          // the neighbouring chunk emits this face
                     var room = _L.RoomAt(cx, cz);
                     var w = W(WallMat(room), room.color);
+                    // A face is only ever seen from the cell it faces, so it stops at that room's ceiling
+                    // (nothing pokes up into a lower room's plenum or above the ceilings when seen from above).
+                    float FH = room.ceiling;
                     if (wall)
                     {
-                        w.Box(new Vector3(x * C, HP * 0.5f, z * C), new Vector3(T, HP, T), bit, MeshWriter.WallUV);
+                        w.Box(new Vector3(x * C, FH * 0.5f, z * C), new Vector3(T, FH, T), bit, MeshWriter.WallUV);
                         W(_a.baseboard, room.color).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit, MeshWriter.MetreUV);
                     }
                     else
                     {
                         // Between headed openings: the block above the header line, no post to the floor.
-                        float hy = OfficeBiome.DoorHeaderHeight;
-                        w.Box(new Vector3(x * C, (hy + HP) * 0.5f, z * C), new Vector3(T, HP - hy, T), bit, MeshWriter.WallUV);
+                        float hy = blockBottom;
+                        if (FH > hy + 0.001f) w.Box(new Vector3(x * C, (hy + FH) * 0.5f, z * C), new Vector3(T, FH - hy, T), bit, MeshWriter.WallUV);
                     }
                 }
                 // Undersides / tops, owned by the cell at (x, z) when present.
@@ -413,8 +432,12 @@ namespace Backrooms.Generation
                     if (wall) W(_a.baseboard, room.color).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), 8, MeshWriter.MetreUV);
                     else
                     {
-                        float hy = OfficeBiome.DoorHeaderHeight;
-                        W(WallMat(room), room.color).Box(new Vector3(x * C, (hy + HP) * 0.5f, z * C), new Vector3(T, HP - hy, T), 4, MeshWriter.WallUV);
+                        float hy = blockBottom;
+                        float top = 0f;
+                        for (int ox = -1; ox <= 0; ox++) for (int oz = -1; oz <= 0; oz++)
+                            if (_L.InChunk(x + ox, z + oz)) top = Mathf.Max(top, _L.CeilingAt(x + ox, z + oz));
+                        if (top > hy + 0.001f)
+                            W(WallMat(room), room.color).Box(new Vector3(x * C, (hy + top) * 0.5f, z * C), new Vector3(T, top - hy, T), 4, MeshWriter.WallUV);
                     }
                 }
             }

@@ -147,19 +147,25 @@ def modern_sofa():
 
 
 def armchair():
-    """Rolled-arm upholstered armchair (ref: grey armchair)."""
+    """Rolled-arm upholstered armchair (ref: grey armchair).
+    Parts overlap generously and no two faces are coplanar, so nothing flickers or shows a seam."""
     W, D = 0.95, 0.9
+    arm_w = 0.18
+    inner = W / 2 - arm_w                     # inside face of each arm
     parts = [
-        box("base", (W, D, 0.26), (0, 0, 0.24), "Fabric", 0.05, 3),
-        box("seat", (W - 0.36, D - 0.25, 0.14), (0, -0.06, 0.43), "Fabric", 0.06, 3),
-        box("back", (W - 0.06, 0.2, 0.58), (0, D / 2 - 0.1, 0.66), "Fabric", 0.08, 3),
+        box("base", (W - 0.02, D - 0.04, 0.26), (0, -0.01, 0.24), "Fabric", 0.05, 3),
+        # Seat cushion sits between the arms with a small tuck gap, slightly proud of the base front.
+        box("seat", (inner * 2 - 0.03, D - 0.22, 0.15), (0, -0.075, 0.435), "Fabric", 0.06, 3),
+        box("back", (inner * 2 + 0.08, 0.2, 0.6), (0, D / 2 - 0.12, 0.67), "Fabric", 0.08, 3),
     ]
     for s in (-1, 1):
-        parts.append(box("arm", (0.18, D, 0.34), (s * (W / 2 - 0.09), 0, 0.5), "Fabric", 0.05, 3))
-        parts.append(cyl("roll", 0.1, D, (s * (W / 2 - 0.09), 0, 0.66), "Fabric", 16, (math.pi / 2, 0, 0)))
+        x = s * (W / 2 - arm_w / 2)
+        # Arm block is recessed behind the roll so the roll's rounded front reads cleanly.
+        parts.append(box("arm", (arm_w - 0.01, D - 0.1, 0.32), (x, 0.02, 0.5), "Fabric", 0.05, 3))
+        parts.append(cyl("roll", 0.105, D - 0.04, (x, -0.01, 0.665), "Fabric", 20, (math.pi / 2, 0, 0), bevel=0.03))
     for x in (-1, 1):
         for y in (-1, 1):
-            parts.append(cyl("leg", 0.025, 0.11, (x * (W / 2 - 0.1), y * (D / 2 - 0.1), 0.055), "Wood", 10))
+            parts.append(cyl("leg", 0.025, 0.13, (x * (W / 2 - 0.1), y * (D / 2 - 0.1), 0.065), "Wood", 10))
     finish("Armchair", parts)
 
 
@@ -184,26 +190,35 @@ def floor_lamp():
 
 
 def office_chair():
-    """Mesh-back task chair on a five-star base with casters (ref: conference room chairs)."""
+    """Mesh-back task chair on a five-star base with casters (ref: conference room chairs).
+    Every part touches the next: casters hang from forks at the leg tips, legs meet the hub, the gas
+    lift joins hub and seat plate, and the arms are bolted to the seat on brackets."""
     parts = [
         box("seat", (0.48, 0.46, 0.07), (0, -0.02, 0.47), "Fabric", 0.025, 3),
+        box("plate", (0.26, 0.26, 0.03), (0, -0.02, 0.425), "Plastic", 0.006),
         box("back", (0.44, 0.04, 0.5), (0, 0.24, 0.8), "Fabric", 0.02, 2),
-        box("spine", (0.05, 0.03, 0.3), (0, 0.23, 0.52), "Plastic", 0.01),
-        cyl("lift", 0.025, 0.3, (0, 0, 0.29), "Metal", 12),
-        cyl("hub", 0.045, 0.05, (0, 0, 0.12), "Plastic", 12),
+        box("spine", (0.05, 0.03, 0.42), (0, 0.235, 0.6), "Plastic", 0.01),
+        box("spine_foot", (0.05, 0.2, 0.03), (0, 0.14, 0.42), "Plastic", 0.006),
+        cyl("lift", 0.022, 0.33, (0, 0, 0.27), "Metal", 12),
+        cyl("hub", 0.05, 0.06, (0, 0, 0.11), "Plastic", 14, bevel=0.008),
     ]
+    reach = 0.3
     for i in range(5):
         a = i * 2 * math.pi / 5
-        x, y = math.sin(a) * 0.14, math.cos(a) * 0.14
-        leg = box("leg", (0.04, 0.29, 0.03), (x, y, 0.1), "Plastic", 0.008)
+        dx, dy = math.sin(a), math.cos(a)
+        # Leg from inside the hub to just past the caster fork.
+        leg = box("leg", (0.042, reach, 0.032), (dx * reach / 2, dy * reach / 2, 0.095), "Plastic", 0.008)
         leg.rotation_euler = (0, 0, -a)
         bpy.context.view_layer.objects.active = leg
         bpy.ops.object.transform_apply(rotation=True)
         parts.append(leg)
-        parts.append(cyl("caster", 0.025, 0.03, (math.sin(a) * 0.28, math.cos(a) * 0.28, 0.03), "Plastic", 10, (0, math.pi / 2, -a)))
+        tip = reach - 0.025
+        parts.append(cyl("fork", 0.012, 0.04, (dx * tip, dy * tip, 0.07), "Plastic", 8))
+        parts.append(cyl("caster", 0.026, 0.024, (dx * tip, dy * tip, 0.027), "Plastic", 12, (0, math.pi / 2, -a)))
     for s in (-1, 1):
-        parts.append(box("armpost", (0.03, 0.03, 0.2), (s * 0.26, 0.02, 0.58), "Plastic", 0.008))
-        parts.append(box("armpad", (0.06, 0.24, 0.025), (s * 0.26, 0.0, 0.69), "Plastic", 0.01))
+        parts.append(box("armbracket", (0.09, 0.05, 0.02), (s * 0.235, 0.02, 0.43), "Plastic", 0.005))
+        parts.append(box("armpost", (0.03, 0.03, 0.27), (s * 0.27, 0.02, 0.56), "Plastic", 0.008))
+        parts.append(box("armpad", (0.06, 0.24, 0.025), (s * 0.27, 0.0, 0.705), "Plastic", 0.01))
     finish("OfficeChair", parts)
 
 

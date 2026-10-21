@@ -326,6 +326,10 @@ namespace Backrooms.Generation
                     // cone edge is drawn across tall walls.
                     s.main.spotAngle = s.src.dome ? 176f : 150f;
                     s.main.innerSpotAngle = s.src.dome ? 30f : 60f;
+                    // A 176-degree dome spreads one shadow map over a whole tall hall, so it grazes walls at
+                    // steep angles; more bias stops the horizontal shadow-acne bands on tall walls.
+                    s.main.shadowBias = s.src.dome ? 0.1f : 0.04f;
+                    s.main.shadowNormalBias = s.src.dome ? 1.4f : 0.5f;
                     s.main.color = tubeColor;
                     s.bounce.enabled = s.main.enabled && bounceIntensity > 0f;
                     s.bounce.intensity = bounceIntensity * k * (s.src.dome ? 1.4f : 1f);

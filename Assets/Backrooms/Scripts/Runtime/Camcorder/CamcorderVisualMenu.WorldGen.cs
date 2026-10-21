@@ -163,6 +163,7 @@ namespace Backrooms.Camcorder
                 HideTip();
             });
             img.color = new Color(1, 1, 1, 0.06f);
+            Stretch(img.rectTransform);       // the header row has no layout group, so fill it explicitly
             label = header.GetComponentInChildren<Text>();
             label.alignment = TextAnchor.MiddleLeft; label.color = Accent; label.fontSize = 16;
             label.rectTransform.offsetMin = new Vector2(10, 0);

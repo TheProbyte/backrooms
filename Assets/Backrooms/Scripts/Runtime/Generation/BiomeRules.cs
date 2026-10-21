@@ -15,29 +15,29 @@ namespace Backrooms.Generation
         public Color mapColor = new Color(0.86f, 0.74f, 0.36f);
 
         [Header("Partition")]
-        [Tooltip("Chance a whole chunk is one big room.")] public float bigHallChance = 0.22f;
+        [Tooltip("Chance a whole chunk is one big room.")] public float bigHallChance = 0.35f;
         [Tooltip("Chance to stop splitting a region whose longest side is <= 3 cells.")] public float stopSmall = 0.9f;
-        [Tooltip("... <= 6 cells.")] public float stopMedium = 0.6f;
-        [Tooltip("... <= 9 cells.")] public float stopLarge = 0.3f;
-        [Tooltip("... 10-12 cells.")] public float stopHuge = 0.12f;
+        [Tooltip("... <= 6 cells.")] public float stopMedium = 0.7f;
+        [Tooltip("... <= 9 cells.")] public float stopLarge = 0.5f;
+        [Tooltip("... 10-12 cells.")] public float stopHuge = 0.25f;
 
         [Header("Hallways")]
-        [Tooltip("Chance a split near the top of the tree carves a hallway.")] public float hallChanceShallow = 0.4f;
-        [Tooltip("Chance a deeper split carves a hallway.")] public float hallChanceDeep = 0.15f;
+        [Tooltip("Chance a split near the top of the tree carves a hallway.")] public float hallChanceShallow = 0.3f;
+        [Tooltip("Chance a deeper split carves a hallway.")] public float hallChanceDeep = 0.1f;
         [Tooltip("Chance a hallway is two cells (2.4 m) wide.")] public float hallWideChance = 0.3f;
         [Tooltip("Chance a long one-wide hallway ends in a crawl slot.")] public float crawlChance = 0.35f;
 
         [Header("Connections")]
-        [Tooltip("Chance a shared wall between big spaces is opened up completely.")] public float openPlanChance = 0.35f;
-        [Tooltip("Chance of extra doors that form loops.")] public float loopChance = 0.35f;
+        [Tooltip("Chance a shared wall between big spaces is opened up completely.")] public float openPlanChance = 0.6f;
+        [Tooltip("Chance of extra doors that form loops.")] public float loopChance = 0.5f;
 
         [Header("Room types")]
         public float loungeChance = 0.18f;
         public float conferenceChance = 0.12f;
 
         [Header("Ceilings and walls")]
-        [Tooltip("Chance a big room gets a tall ceiling.")] public float tallChanceBig = 0.45f;
-        [Tooltip("Chance a medium room gets a tall ceiling.")] public float tallChanceSmall = 0.15f;
+        [Tooltip("Chance a big room gets a tall ceiling.")] public float tallChanceBig = 0.6f;
+        [Tooltip("Chance a medium room gets a tall ceiling.")] public float tallChanceSmall = 0.2f;
         [Tooltip("Tall ceiling range, metres.")] public float tallMin = 3.9f, tallMax = 5.4f;
         [Tooltip("Chance of painted plaster instead of wallpaper (tall rooms are always painted).")] public float paintedChance = 0.3f;
 

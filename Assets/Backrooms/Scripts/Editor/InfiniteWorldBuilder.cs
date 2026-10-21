@@ -60,6 +60,14 @@ namespace Backrooms.EditorTools
 
         // ---------------- Materials ----------------
 
+        /// <summary>Environment (sky) reflections are not occluded indoors, so shiny surfaces would glow in the dark.</summary>
+        static void NoSkyReflections(Material m)
+        {
+            if (m.HasProperty("_EnvironmentReflections")) m.SetFloat("_EnvironmentReflections", 0f);
+            m.EnableKeyword("_ENVIRONMENTREFLECTIONS_OFF");
+            EditorUtility.SetDirty(m);
+        }
+
         static OfficeBiomeAssets CreateBiomeAssets()
         {
             Texture2D Tex(string n) => AssetDatabase.LoadAssetAtPath<Texture2D>(BackroomsTextureGenerator.Folder + "/" + n + ".png");
@@ -108,9 +116,12 @@ namespace Backrooms.EditorTools
             a.paintedWall = Lit("M_PaintedWall", new Color(0.86f, 0.79f, 0.6f), plaster, plasterN, 0.12f, 0.22f);
             a.ceilingPlaster = Lit("M_CeilingPlaster", new Color(0.84f, 0.81f, 0.72f), plaster, plasterN, 0.06f, 0.18f);
             // Unlit opal diffuser: pale, with a faint glow from room light scattering inside it, so a dead fitting never reads as a black hole.
-            a.domeOff = Lit("M_DomeLens_Off", new Color(0.86f, 0.85f, 0.82f), null, null, 0.55f);
-            a.domeOff.EnableKeyword("_EMISSION"); a.domeOff.SetColor("_EmissionColor", new Color(0.09f, 0.085f, 0.075f));
-            a.domeOff.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            // Unpowered diffusers: no emission and no sky reflections, so they stay as dark as the ceiling.
+            a.domeOff = Lit("M_DomeLens_Off", new Color(0.72f, 0.71f, 0.68f), null, null, 0.25f);
+            a.domeOff.DisableKeyword("_EMISSION"); a.domeOff.SetColor("_EmissionColor", Color.black);
+            a.domeOff.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;
+            NoSkyReflections(a.domeOff);
+            if (a.lensOff) NoSkyReflections(a.lensOff);
             a.domeOn = Lit("M_DomeLens_On", new Color(0.92f, 0.9f, 0.86f), null, null, 0.5f);
             a.domeOn.EnableKeyword("_EMISSION");
             a.domeOn.SetColor("_EmissionColor", new Color(1f, 0.93f, 0.8f) * 3.2f);

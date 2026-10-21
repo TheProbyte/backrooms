@@ -262,9 +262,9 @@ namespace Backrooms.Generation
         }
 
         /// <summary>
-        /// Rule: where ceiling heights change, the taller room is closed off by wall above a door header
-        /// (2.1 m). Every opening out of a tall room - open plan, doors, chunk-border openings - becomes a
-        /// headed doorway, so the space above a lower ceiling can never be seen from the tall side.
+        /// Rule: where ceiling heights change, doors out of the taller room get a header (2.1 m), and so do
+        /// chunk-border openings (the neighbour's ceiling is unknown). Open-plan spans inside a chunk stay
+        /// open up to the lower ceiling, with a soffit wall above (the builder closes it off).
         /// Passability is unchanged (headers are above head height).
         /// </summary>
         static void EncloseTallRooms(OfficeLayout L)
@@ -275,6 +275,7 @@ namespace Backrooms.Generation
             {
                 var e = L.vEdges[x, z];
                 if (e == EdgeKind.Wall || e == EdgeKind.DoorHeader) continue;
+                if (e == EdgeKind.Open && x > 0 && x < n) continue;      // open plan keeps a soffit at the lower ceiling
                 float a = x > 0 ? L.CeilingAt(x - 1, z) : -1f, b = x < n ? L.CeilingAt(x, z) : -1f;
                 if (NeedsHeader(a, b)) L.vEdges[x, z] = EdgeKind.DoorHeader;
             }
@@ -283,6 +284,7 @@ namespace Backrooms.Generation
             {
                 var e = L.hEdges[x, z];
                 if (e == EdgeKind.Wall || e == EdgeKind.DoorHeader) continue;
+                if (e == EdgeKind.Open && z > 0 && z < n) continue;
                 float a = z > 0 ? L.CeilingAt(x, z - 1) : -1f, b = z < n ? L.CeilingAt(x, z) : -1f;
                 if (NeedsHeader(a, b)) L.hEdges[x, z] = EdgeKind.DoorHeader;
             }
