@@ -126,7 +126,19 @@ namespace Backrooms.Camcorder
             if (Application.targetFrameRate != fps) { Application.targetFrameRate = fps; QualitySettings.vSyncCount = fps > 0 ? 0 : QualitySettings.vSyncCount; }
 
             if (osd) { osd.visible = s.showOSD; osd.pillarbox = s.aspect43; }
+
+            // Microphone / recording chain (its own gain control; not linked to exposure).
+            if (!_audio) _audio = GetComponent<Backrooms.Audio.CamcorderAudioChain>();
+            if (_audio)
+            {
+                _audio.outputVolume = s.audioVolume; _audio.processing = s.audioProcessing;
+                _audio.coloration = s.micColoration; _audio.autoGain = s.autoGain; _audio.hiss = s.micHiss;
+                _audio.handling = s.handlingNoise; _audio.stereoWidth = s.stereoWidth;
+            }
         }
+
+        Backrooms.Audio.CamcorderAudioChain _audio;
+        public Backrooms.Audio.CamcorderAudioChain Audio => _audio ? _audio : (_audio = GetComponent<Backrooms.Audio.CamcorderAudioChain>());
 
         /// <summary>Contrast-AF style: sample the centre, then drive focus with a damped motor that overshoots.</summary>
         void UpdateFocus(CamcorderSettings s)

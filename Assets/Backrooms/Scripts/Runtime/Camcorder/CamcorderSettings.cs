@@ -68,6 +68,16 @@ namespace Backrooms.Camcorder
         public float osdCurvature = 0.8f;    // viewfinder overlay bends with the lens (0 = flat)
         public int frameRateCap = 60;        // 0 = unlimited
 
+        // Audio: the camcorder's microphone and recording chain (independent of the visual exposure).
+        // New fields keep their defaults when older saved settings are loaded.
+        public float audioVolume = 0.8f;     // output volume, applied last
+        public bool audioProcessing = true;  // camcorder chain on (off = clean reference)
+        public float micColoration = 0.6f;   // bass cut + softened highs
+        public float autoGain = 0.6f;        // AGC strength
+        public float micHiss = 0.5f;         // mic self-noise
+        public float handlingNoise = 0.5f;   // body noise from walking
+        public float stereoWidth = 0.8f;     // 0 mono, 1 natural
+
         public CamcorderSettings Clone() => (CamcorderSettings)MemberwiseClone();
 
         const string PrefsKey = "Backrooms.CamcorderSettings.v1";
@@ -89,6 +99,13 @@ namespace Backrooms.Camcorder
             PlayerPrefs.Save();
         }
 
+        /// <summary>Copies only the audio fields (presets are applied per tab).</summary>
+        public void CopyAudioFrom(CamcorderSettings o)
+        {
+            audioVolume = o.audioVolume; audioProcessing = o.audioProcessing; micColoration = o.micColoration;
+            autoGain = o.autoGain; micHiss = o.micHiss; handlingNoise = o.handlingNoise; stereoWidth = o.stereoWidth;
+        }
+
         // ---------------- Presets ----------------
 
         public static readonly string[] PresetNames = { "Default", "Hi8 '98", "MiniDV '04", "Low light gain", "Clean" };
@@ -104,6 +121,7 @@ namespace Backrooms.Camcorder
                     s.saturation = -12f; s.contrast = 8f; s.whiteBalanceTemp = 14f; s.whiteBalanceTint = -2f;
                     s.scanlines = 0.06f; s.trackingNoise = 0.25f; s.aspect43 = true; s.vignette = 0.32f;
                     s.chromaticAberration = 0.12f; s.lensDistortion = -0.12f; s.fieldOfView = 58f;
+                    s.micColoration = 0.8f; s.autoGain = 0.75f; s.micHiss = 0.75f; s.handlingNoise = 0.6f; s.stereoWidth = 0.6f;
                     break;
                 case 2: // MiniDV: sharper, crunchy edge enhancement, cooler, hard highlight clip
                     s.softness = 0.5f; s.sharpening = 1.8f; s.chromaBleed = 2.2f; s.chromaShift = 0.4f;
@@ -111,10 +129,12 @@ namespace Backrooms.Camcorder
                     s.saturation = 4f; s.contrast = 22f; s.whiteBalanceTemp = 2f; s.whiteBalanceTint = -7f;
                     s.vignette = 0.18f; s.motionBlur = 0.05f; s.scanlines = 0f; s.trackingNoise = 0f;
                     s.gainNoise = 0.05f; s.grainSize = 0.8f; s.bloom = 0.5f;
+                    s.micColoration = 0.45f; s.autoGain = 0.6f; s.micHiss = 0.3f; s.handlingNoise = 0.45f; s.stereoWidth = 0.9f;
                     break;
                 case 3: // Low light: aggressive gain, heavy noise, slow iris
                     s.maxGain = 1.6f; s.gainNoise = 0.08f; s.noise = 0.03f; s.chromaNoise = 0.08f;
                     s.exposureSpeed = 0.6f; s.softness = 1.2f; s.saturation = -20f; s.pedestal = 0.03f;
+                    s.autoGain = 1f; s.micHiss = 0.7f;   // the mic gain also rides up in quiet places
                     break;
                 case 4: // Clean: almost no video character, for comparison
                     s.lensDistortion = 0f; s.chromaticAberration = 0f; s.vignette = 0.1f; s.noise = 0f; s.gainNoise = 0f;
@@ -123,6 +143,8 @@ namespace Backrooms.Camcorder
                     s.shakeIntensity = 0.5f; s.autofocus = false; s.showOSD = false;
                     s.scanlines = 0f; s.trackingNoise = 0f; s.aspect43 = false; s.bloom = 0.3f; s.lensDistortion = 0f;
                     s.saturation = 0f; s.whiteBalanceTint = 0f; s.fieldOfView = 62f;
+                    // Clean audio reference: chain on but neutral (no colour, AGC, hiss or handling; natural width).
+                    s.micColoration = 0f; s.autoGain = 0f; s.micHiss = 0f; s.handlingNoise = 0f; s.stereoWidth = 1f;
                     break;
             }
             return s;

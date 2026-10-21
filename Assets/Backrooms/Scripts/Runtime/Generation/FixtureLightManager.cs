@@ -16,7 +16,8 @@ namespace Backrooms.Generation
     ///  - Each troffer is a downward spot plus a soft "bounce" point light restricted to its own room's
     ///    rendering layer, standing in for baked bounce without leaking through walls.
     /// Newly streamed chunks power up with a fluorescent start-up flicker, and chunks being unloaded
-    /// stutter off; faulty tubes occasionally stutter. The hum is pooled to a few voices.
+    /// stutter off; faulty tubes occasionally stutter. Fixture sound lives in Backrooms.Audio.BuildingAudio,
+    /// which reads <see cref="PowerLevel"/> so hum, strikes and buzz stay in time with the light.
     /// </summary>
     public class FixtureLightManager : MonoBehaviour
     {
@@ -56,10 +57,6 @@ namespace Backrooms.Generation
         [Tooltip("Seconds a newly streamed area takes to flicker on (and an unloading one to stutter off).")]
         public float powerFlickerTime = 1.1f;
 
-        [Header("Hum")]
-        [Range(0, 12)] public int humVoices = 5;
-        [Range(0f, 0.2f)] public float humVolume = 0.018f;
-
         public int ActiveLights { get; private set; }
 
         class Slot
@@ -86,7 +83,6 @@ namespace Backrooms.Generation
         readonly List<LightSource> _candidates = new List<LightSource>();
         readonly Dictionary<Vector3, float> _lastSeen = new Dictionary<Vector3, float>();
         readonly List<Slot> _troffers = new List<Slot>(), _lamps = new List<Slot>();
-        readonly List<AudioSource> _hum = new List<AudioSource>();
         MaterialPropertyBlock _mpb;
         static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
         static readonly System.Reflection.FieldInfo s_tierField = typeof(UniversalAdditionalLightData).GetField(
@@ -128,6 +124,23 @@ namespace Backrooms.Generation
             foreach (var s in _lamps) if (s.busy && s.src.chunk == chunk) Release(s);
         }
 
+        /// <summary>Every powered ceiling tube (not lamps) in loaded chunks within radius of a point.</summary>
+        public void GatherTubes(Vector3 center, float radius, List<LightSource> result)
+        {
+            result.Clear();
+            var c = WorldStreamer.ChunkOf(center);
+            int r = Mathf.CeilToInt(radius / OfficeBiome.ChunkSize);
+            float r2 = radius * radius;
+            for (int dx = -r; dx <= r; dx++)
+            for (int dz = -r; dz <= r; dz++)
+                if (_chunks.TryGetValue(new Vector2Int(c.x + dx, c.y + dz), out var cp))
+                    foreach (var l in cp.lights)
+                        if (!l.isLamp && (l.position - center).sqrMagnitude < r2) result.Add(l);
+        }
+
+        /// <summary>True while the fixture's chunk is still striking on after streaming in.</summary>
+        public bool IsStarting(in LightSource src) => _chunks.TryGetValue(src.chunk, out var cp) && cp.start >= 0f;
+
         // ---------------- Setup ----------------
 
         void Awake()
@@ -136,19 +149,6 @@ namespace Backrooms.Generation
             _mpb = new MaterialPropertyBlock();
             for (int i = 0; i < maxTroffers; i++) _troffers.Add(MakeSlot(false, i));
             for (int i = 0; i < maxLamps; i++) _lamps.Add(MakeSlot(true, i));
-            var clip = ProceduralAmbience.BuildHumClip(60f, 11);
-            for (int i = 0; i < humVoices; i++)
-            {
-                var go = new GameObject("Hum_" + i);
-                go.transform.SetParent(transform, false);
-                var src = go.AddComponent<AudioSource>();
-                src.clip = clip; src.loop = true; src.spatialBlend = 1f; src.dopplerLevel = 0f;
-                src.rolloffMode = AudioRolloffMode.Logarithmic; src.minDistance = 0.8f; src.maxDistance = 10f;
-                src.volume = 0f; src.timeSamples = (clip.samples / Mathf.Max(1, humVoices)) * i;
-                src.pitch = 1f + (i - humVoices * 0.5f) * 0.002f;
-                src.Play();
-                _hum.Add(src);
-            }
         }
 
         Slot MakeSlot(bool lamp, int i)
@@ -241,7 +241,6 @@ namespace Backrooms.Generation
 
             ActiveLights = Assign(_troffers, wantedTroffers, eye, shadowedTroffers) + Assign(_lamps, wantedLamps, eye, shadowedLamps);
             UpdateLensEmission(now);
-            UpdateHum(eye);
         }
 
         readonly Dictionary<Vector3, int> _wantedIndex = new Dictionary<Vector3, int>();
@@ -352,7 +351,7 @@ namespace Backrooms.Generation
         // ---------------- Flicker ----------------
 
         /// <summary>0..1 multiplier from area power-up/down and faulty-tube stutter.</summary>
-        float PowerLevel(in LightSource src, float now)
+        public float PowerLevel(in LightSource src, float now)
         {
             if (!_chunks.TryGetValue(src.chunk, out var cp)) return 0f;
             float seed = Hash01(src.position);
@@ -431,20 +430,6 @@ namespace Backrooms.Generation
                     _mpb.Clear(); _mpb.SetColor(EmissionId, BaseEmission(r) * f); r.SetPropertyBlock(_mpb);
                 }
             }
-        }
-
-        void UpdateHum(Vector3 eye)
-        {
-            int v = 0;
-            foreach (var c in _candidates)
-            {
-                if (v >= _hum.Count) break;
-                if (c.isLamp) continue;
-                _hum[v].transform.position = c.position;
-                _hum[v].volume = Mathf.MoveTowards(_hum[v].volume, humVolume * PowerLevel(c, Time.time), Time.deltaTime * 0.05f);
-                v++;
-            }
-            for (; v < _hum.Count; v++) _hum[v].volume = Mathf.MoveTowards(_hum[v].volume, 0f, Time.deltaTime * 0.05f);
         }
     }
 }

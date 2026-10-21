@@ -79,7 +79,8 @@ namespace Backrooms.Camcorder
             int w = Mathf.Max(64, Screen.width), h = Mathf.Max(64, Screen.height);
             if (_rt && _rt.width == w && _rt.height == h) return;
             if (_rt) { _uiCam.targetTexture = null; _rt.Release(); Destroy(_rt); }
-            _rt = new RenderTexture(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { name = "CamcorderOSD" };
+            // The render graph requires a depth buffer on a camera's output texture.
+            _rt = new RenderTexture(w, h, 16, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { name = "CamcorderOSD" };
             _uiCam.targetTexture = _rt;
             Shader.SetGlobalTexture(OsdTexId, _rt);
         }

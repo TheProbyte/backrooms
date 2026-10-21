@@ -47,6 +47,7 @@ namespace Backrooms.Camcorder
             if (kb.f5Key.wasPressedThisFrame) SetOpen(!IsOpen);
             else if (IsOpen && kb.escapeKey.wasPressedThisFrame) SetOpen(false);
             UpdateWorldGen();
+            UpdateAudioTab();
         }
 
         public void SetOpen(bool open)
@@ -64,6 +65,7 @@ namespace Backrooms.Camcorder
             else
             {
                 if (rig) rig.Settings.Save();
+                CloseAudio();
                 HideTip();
                 if (_prevLock == CursorLockMode.Locked) { Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
             }
@@ -100,6 +102,8 @@ namespace Backrooms.Camcorder
             _tabVisual = Button(tabs, "VISUAL", () => ShowTab(0));
             _tabGameplay = Button(tabs, "GAMEPLAY", () => ShowTab(1));
             _tabWorld = Button(tabs, "WORLD GEN", () => ShowTab(2));
+            _tabAudio = Button(tabs, "AUDIO", () => ShowTab(3));
+            _tabSound = Button(tabs, "SOUND", () => ShowTab(4));
 
             var hint = Label(_panel, "F5 / Esc to close.  Hover an option for an explanation.", 14, Dim, TextAnchor.MiddleLeft);
             Place(hint.rectTransform, 20, -94, -20, 20);
@@ -121,6 +125,10 @@ namespace Backrooms.Camcorder
             BuildGameplay();
             (_worldView, _list) = MakeList("WorldGenScroll", -120);
             BuildWorldGen();
+            (_audioView, _list) = MakeList("AudioScroll", -120);
+            BuildAudio();
+            (_soundView, _list) = MakeList("SoundScroll", -120);
+            BuildSound();
 
             // Footer.
             var footer = Rect("Footer", _panel);
@@ -134,8 +142,8 @@ namespace Backrooms.Camcorder
             ShowTab(0);
         }
 
-        RectTransform _visualView, _gameplayView, _worldView, _presets;
-        Image _tabVisual, _tabGameplay, _tabWorld;
+        RectTransform _visualView, _gameplayView, _worldView, _audioView, _soundView, _presets;
+        Image _tabVisual, _tabGameplay, _tabWorld, _tabAudio, _tabSound;
 
         (RectTransform view, RectTransform list) MakeList(string name, float top)
         {
@@ -164,11 +172,16 @@ namespace Backrooms.Camcorder
             _presets.gameObject.SetActive(i == 0);
             _gameplayView.gameObject.SetActive(i == 1);
             _worldView.gameObject.SetActive(i == 2);
+            _audioView.gameObject.SetActive(i == 3);
+            _soundView.gameObject.SetActive(i == 4);
             _tab = i;
-            _panel.sizeDelta = new Vector2(i == 2 ? 560 : 460, 0);
+            _panel.sizeDelta = new Vector2(i == 2 ? 560 : i >= 3 ? 520 : 460, 0);
             _tabVisual.color = new Color(1, 1, 1, i == 0 ? 0.28f : 0.08f);
             _tabGameplay.color = new Color(1, 1, 1, i == 1 ? 0.28f : 0.08f);
             _tabWorld.color = new Color(1, 1, 1, i == 2 ? 0.28f : 0.08f);
+            _tabAudio.color = new Color(1, 1, 1, i == 3 ? 0.28f : 0.08f);
+            _tabSound.color = new Color(1, 1, 1, i == 4 ? 0.28f : 0.08f);
+            if (i == 4) RefreshAll();
             HideTip();
         }
 
@@ -290,7 +303,10 @@ namespace Backrooms.Camcorder
 
         void ApplyPreset(int i)
         {
-            rig.SetSettings(CamcorderSettings.Preset(i));
+            // Visual presets keep the current audio settings (audio has its own preset row).
+            var p = CamcorderSettings.Preset(i);
+            p.CopyAudioFrom(rig.Settings);
+            rig.SetSettings(p);
             RefreshAll();
         }
 

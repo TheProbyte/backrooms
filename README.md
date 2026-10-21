@@ -49,6 +49,16 @@ Hytale-style biome system: a noise density field picks Hallways / Offices / Ware
 blended across transitions. Everything is live-editable in **F5 > WORLD GEN** (biome map, live readouts, seed,
 world code, ~100 rule sliders). See `Docs/WorldGeneration.md`.
 
+### Audio (milestone 4)
+
+Spatial building sound and a camcorder recording chain, all generated in code. A bounded pool of fixture hum
+voices (picked by what you'd actually hear, not what's on screen) stays anchored to fixtures and follows each
+tube's real power; walls muffle, doorways redirect, and the room reverb follows the space you can see. Everything
+goes through the camcorder's microphone chain (coloration, slow auto gain, gentle compression, hiss, handling
+noise). **F5 > AUDIO** has output, mic and auto-gain settings, audio presets, a processed/unprocessed compare,
+live audio data and developer tuning; **F5 > SOUND** is a searchable catalog of every sound with global
+per-sound overrides and preview. Details and limits: `Docs/Audio.md`.
+
 ### Fixes (milestone 2.2)
 
 - Where ceiling heights change, every opening out of the taller room becomes a headed doorway, so the plenum above

@@ -45,11 +45,9 @@ namespace Backrooms.EditorTools
             streamer.player = player.transform;
             streamer.lightManager = lights;
 
-            var tone = new GameObject("RoomTone");
-            var src = tone.AddComponent<AudioSource>();
-            src.spatialBlend = 0f; src.playOnAwake = false;
-            var amb = tone.AddComponent<ProceduralAmbience>();
-            amb.kind = ProceduralAmbience.Kind.RoomTone; amb.volume = 0.03f; amb.seed = 7;
+            // All building sound (fixture hum pool, beds, reverb) lives in one manager.
+            var audio = world.AddComponent<Backrooms.Audio.BuildingAudio>();
+            audio.streamer = streamer; audio.lights = lights; audio.listener = cam.transform;
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             var scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
@@ -382,6 +380,10 @@ namespace Backrooms.EditorTools
             data.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
             data.antialiasingQuality = AntialiasingQuality.High;
             camGo.AddComponent<AudioListener>();
+            // Listener filters run in component order: room reverb, then the camcorder recording chain.
+            camGo.AddComponent<AudioReverbFilter>().reverbPreset = AudioReverbPreset.Off;
+            camGo.AddComponent<Backrooms.Audio.CamcorderAudioChain>();
+            player.AddComponent<Backrooms.Audio.PlayerAudio>();
             var shake = camGo.AddComponent<HandheldCameraShake>();
             shake.player = ctrl;
             var exposure = camGo.AddComponent<CamcorderAutoExposure>();
