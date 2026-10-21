@@ -60,6 +60,58 @@ namespace Backrooms.EditorTools
 
         // ---------------- Materials ----------------
 
+        const string CC0 = "Assets/Backrooms/Textures/CC0";
+
+        static Texture2D CC0Tex(string file, bool normal, bool linear)
+        {
+            string path = CC0 + "/" + file;
+            var imp = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (!imp) return null;
+            bool dirty = false;
+            if (normal && imp.textureType != TextureImporterType.NormalMap) { imp.textureType = TextureImporterType.NormalMap; dirty = true; }
+            if (!normal && imp.sRGBTexture == linear) { imp.sRGBTexture = !linear; dirty = true; }
+            if (imp.maxTextureSize != 2048) { imp.maxTextureSize = 2048; dirty = true; }
+            if (imp.anisoLevel != 8) { imp.anisoLevel = 8; dirty = true; }
+            if (dirty) imp.SaveAndReimport();
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        }
+
+        /// <summary>
+        /// Scanned CC0 PBR sets (ambientCG, see Textures/CC0/LICENSES.md): colour, normal, and a mask with
+        /// ambient occlusion and smoothness. The yellow striped wallpaper keeps its procedural pattern and
+        /// gets the scanned paper's normal and smoothness for real surface texture.
+        /// </summary>
+        static void ApplyScannedTextures(OfficeBiomeAssets a)
+        {
+            void Pbr(Material m, string set, bool color, Color tint, float normalScale, float occlusion)
+            {
+                if (!m) return;
+                var col = color ? CC0Tex(set + "_Color.jpg", false, false) : null;
+                var nrm = CC0Tex(set + "_Normal.jpg", true, true);
+                var mask = CC0Tex(set + "_Mask.png", false, true);
+                if (color && col) { m.SetTexture("_BaseMap", col); m.SetColor("_BaseColor", tint); }
+                if (nrm) { m.SetTexture("_BumpMap", nrm); m.SetFloat("_BumpScale", normalScale); m.EnableKeyword("_NORMALMAP"); }
+                if (mask)
+                {
+                    m.SetTexture("_MetallicGlossMap", mask); m.EnableKeyword("_METALLICSPECGLOSSMAP");
+                    m.SetFloat("_Smoothness", 1f); m.SetFloat("_Metallic", 0f);
+                    m.SetTexture("_OcclusionMap", mask); m.SetFloat("_OcclusionStrength", occlusion); m.EnableKeyword("_OCCLUSIONMAP");
+                }
+                NoSkyReflections(m);
+                EditorUtility.SetDirty(m);
+            }
+            // Carpet: worn beige loop pile, tinted toward the classic brownish office carpet (4 m repeat).
+            Pbr(a.carpet, "Carpet", true, new Color(0.66f, 0.55f, 0.37f), 1f, 0.8f);
+            // Ceiling tiles: the scan has 6 tiles per repeat; 0.667 tiling makes each tile 0.6 m on our grid.
+            Pbr(a.ceilingTile, "CeilingTile", true, new Color(0.93f, 0.9f, 0.8f), 0.8f, 0.7f);
+            if (a.ceilingTile) a.ceilingTile.SetTextureScale("_BaseMap", new Vector2(2.4f / 3.6f, 2.4f / 3.6f));
+            // Painted plaster walls and tall ceilings keep their cream colour.
+            Pbr(a.paintedWall, "Plaster", true, new Color(1f, 0.86f, 0.52f), 0.55f, 1f);
+            Pbr(a.ceilingPlaster, "Plaster", true, new Color(0.95f, 0.88f, 0.7f), 0.45f, 1f);
+            // Wallpaper: procedural stripes, scanned paper relief.
+            Pbr(a.wallpaper, "WallpaperPaper", false, Color.white, 0.6f, 1f);
+        }
+
         /// <summary>Environment (sky) reflections are not occluded indoors, so shiny surfaces would glow in the dark.</summary>
         static void NoSkyReflections(Material m)
         {
@@ -139,6 +191,7 @@ namespace Backrooms.EditorTools
             // One plaster repeat = 2.4 m square. Walls map U over 1.2 m and V over 2.7 m; ceilings are in metres.
             a.paintedWall.SetTextureScale("_BaseMap", new Vector2(0.5f, 1.125f));
             a.ceilingPlaster.SetTextureScale("_BaseMap", new Vector2(1f / 2.4f, 1f / 2.4f));
+            ApplyScannedTextures(a);
             a.cardboard = Lit("M_Cardboard", new Color(0.72f, 0.52f, 0.32f), Tex("Wood_Albedo"), null, 0.08f);
             CreatePropPrefabs(a);
             EditorUtility.SetDirty(a);

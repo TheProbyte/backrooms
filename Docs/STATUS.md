@@ -21,8 +21,8 @@ Last updated 2026-10-21. Read `Docs/ProjectBrief.md` for the vision.
 
 1. Verify the 2026-10-21 lighting rework in play mode against the owner's screenshots in
    `references/update9` (corner/baseboard bleed, wall pools popping, far floor-corner smudges).
-2. Replace procedural textures with CC0 PBR sets (ambientCG / Poly Haven, 2K, albedo + normal +
-   roughness [+ AO]): wallpaper, carpet, acceleration ceiling tile, painted plaster, baseboard. Owner
+2. CC0 PBR textures added 2026-10-21 (carpet, ceiling tile, plaster, wallpaper relief; see Textures/CC0/LICENSES.md). Check the look in play mode and tune tints in InfiniteWorldBuilder.ApplyScannedTextures.
+   roughness [+ AO]): wallpaper, carpet, acoustic ceiling tile, painted plaster, baseboard. Owner
    approved downloading CC0 textures. Keep a `Assets/Backrooms/Textures/CC0/LICENSES.md` listing sources.
 3. Zone system is a placeholder (`WorldGenSettings.ZoneAt` returns "Level 0").
 4. Owner wants movement polish feedback (zoom F, crouch C, crawl Ctrl, jump Space were added).
