@@ -55,11 +55,12 @@ namespace Backrooms.Audio
             int count = SoundBank.StepCount;
             do pick = Random.Range(0, count); while (pick == _last && varAmt > 0.01f && count > 1);
             _last = pick;
-            _feet.clip = SoundBank.Step(pick);
+            var clip = SoundBank.Step(pick);
             float heavy = _player.IsRunning ? 1.5f : Mathf.Lerp(0.7f, 1f, speed / Mathf.Max(0.1f, _player.walkSpeed));
             _feet.pitch = SoundCatalog.Pitch(id) * (1f + (Random.value - 0.5f) * 0.05f * varAmt);
-            _feet.volume = SoundBank.BaseLevel(id) * SoundCatalog.Volume(id) * heavy * (1f + (Random.value - 0.5f) * 0.3f * varAmt);
-            _feet.Play();
+            _feet.volume = 1f;
+            // PlayOneShot lets the previous step's tail finish instead of cutting it off (that cut was the pop).
+            _feet.PlayOneShot(clip, SoundBank.BaseLevel(id) * SoundCatalog.Volume(id) * heavy * (1f + (Random.value - 0.5f) * 0.3f * varAmt));
             if (_chain) _chain.HandlingImpulse();
         }
     }

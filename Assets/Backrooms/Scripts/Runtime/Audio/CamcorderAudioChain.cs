@@ -67,7 +67,13 @@ namespace Backrooms.Audio
         float _hz1L, _hz2L, _hz1R, _hz2R, _lz1L, _lz2L, _lz1R, _lz2R;
         float _sumIn, _sumOut; int _meterN;
 
+        // Unity also runs listener filters in the editor outside Play Mode. Without this flag the hiss
+        // generator kept playing a constant "shhh" whenever the scene was open.
+        volatile bool _live;
+
         void Awake() { _rate = AudioSettings.outputSampleRate; _gainDb = 0f; }
+        void OnEnable() { _live = Application.isPlaying; }
+        void OnDisable() { _live = false; }
 
         float Rand()
         {
@@ -89,6 +95,7 @@ namespace Backrooms.Audio
 
         void OnAudioFilterRead(float[] data, int channels)
         {
+            if (!_live) return;                      // edit mode: pass sound through untouched, add nothing
             int frames = data.Length / channels;
             if (frames == 0) return;
             float dt = 1f / _rate;
