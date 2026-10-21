@@ -119,7 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &72186177
+--- !u!1 &283940703
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -127,15 +127,236 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 72186178}
-  - component: {fileID: 72186186}
-  - component: {fileID: 72186185}
-  - component: {fileID: 72186184}
-  - component: {fileID: 72186183}
-  - component: {fileID: 72186182}
-  - component: {fileID: 72186181}
-  - component: {fileID: 72186180}
-  - component: {fileID: 72186179}
+  - component: {fileID: 283940707}
+  - component: {fileID: 283940706}
+  - component: {fileID: 283940705}
+  - component: {fileID: 283940704}
+  m_Layer: 0
+  m_Name: World
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &283940704
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 283940703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b809fc1f5b73ec74ca9095a0758b24e8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Audio.BuildingAudio
+  streamer: {fileID: 283940705}
+  lights: {fileID: 283940706}
+  listener: {fileID: 1420943451}
+--- !u!114 &283940705
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 283940703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3bc1d99131900cf48be1dd8f7ecd4896, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.WorldStreamer
+  seed: 0
+  loadRadius: 3
+  unloadRadius: 4
+  frameBudgetMs: 4
+  assets: {fileID: 11400000, guid: cd0631eae779e64479479e398a7f876c, type: 2}
+  player: {fileID: 1728347834}
+  lightManager: {fileID: 283940706}
+  strikeOnStream: 0
+--- !u!114 &283940706
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 283940703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 74b78b28035e35b4aae2c7d18dac1344, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.FixtureLightManager
+  viewer: {fileID: 1420943451}
+  tubeColor: {r: 1, g: 0.965, b: 0.86, a: 1}
+  tubeIntensity: 7
+  tubeRange: 6
+  bounceIntensity: 0.8
+  bounceRange: 4.4
+  domeHeightBoost: 0.3
+  lampColor: {r: 1, g: 0.74, b: 0.47, a: 1}
+  lampIntensity: 1.8
+  lampRange: 5
+  stripColor: {r: 0.9, g: 0.95, b: 1, a: 1}
+  maxTroffers: 168
+  maxLamps: 10
+  maxDistance: 36
+  fadeStart: 28
+  bounceCount: 32
+  bounceDistance: 18
+  shadowedTroffers: 24
+  shadowedLamps: 1
+  shadowDistance: 20
+  shadowHysteresis: 0.22
+  shadowFade: 0.5
+  shadowTier: 1
+  powerFlickerTime: 1.1
+  doorwayLights: 32
+  doorwayGain: 0.55
+  doorwayDistance: 18
+--- !u!4 &283940707
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 283940703}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &321279469
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 321279472}
+  - component: {fileID: 321279470}
+  - component: {fileID: 321279471}
+  m_Layer: 0
+  m_Name: CamcorderUI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &321279470
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 321279469}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b541c911b056d584b89ca1f03108ad9f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Camcorder.CamcorderOSD
+  visible: 1
+  pillarbox: 0
+  showDebug: 0
+  startDate: 1998-10-19 22:41:00
+  uiRendererIndex: 1
+--- !u!114 &321279471
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 321279469}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2458db6c8ed0ac148bc190d130276be8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Camcorder.CamcorderVisualMenu
+  rig: {fileID: 1420943452}
+  player: {fileID: 1728347835}
+--- !u!4 &321279472
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 321279469}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1212333349
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1212333351}
+  - component: {fileID: 1212333350}
+  m_Layer: 0
+  m_Name: Camcorder_PostVolume
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1212333350
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1212333349}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
+  m_IsGlobal: 1
+  priority: 10
+  blendDistance: 0
+  weight: 1
+  sharedProfile: {fileID: 11400000, guid: 7bbd21ca9a98f03448c9edd8099b4387, type: 2}
+--- !u!4 &1212333351
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1212333349}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1420943450
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1420943451}
+  - component: {fileID: 1420943459}
+  - component: {fileID: 1420943458}
+  - component: {fileID: 1420943457}
+  - component: {fileID: 1420943456}
+  - component: {fileID: 1420943455}
+  - component: {fileID: 1420943454}
+  - component: {fileID: 1420943453}
+  - component: {fileID: 1420943452}
   m_Layer: 0
   m_Name: Camcorder
   m_TagString: MainCamera
@@ -143,50 +364,50 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &72186178
+--- !u!4 &1420943451
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 72186177}
+  m_GameObject: {fileID: 1420943450}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 1043526784}
+  m_Father: {fileID: 1960535627}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &72186179
+--- !u!114 &1420943452
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 72186177}
+  m_GameObject: {fileID: 1420943450}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 186e7c5f26454034a8ee25f034dbd28d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Camcorder.CamcorderRig
-  volume: {fileID: 1399991432}
-  exposure: {fileID: 72186180}
-  shake: {fileID: 72186181}
-  osd: {fileID: 1688919966}
---- !u!114 &72186180
+  volume: {fileID: 1212333350}
+  exposure: {fileID: 1420943453}
+  shake: {fileID: 1420943454}
+  osd: {fileID: 321279470}
+--- !u!114 &1420943453
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 72186177}
+  m_GameObject: {fileID: 1420943450}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d01bcde24a7c3d64e9c0db50307a5a2b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.CamcorderAutoExposure
-  volume: {fileID: 1399991432}
+  volume: {fileID: 1212333350}
   targetLuminance: 0.018
   minEV: -1
   maxEV: 0.35
@@ -198,19 +419,19 @@ MonoBehaviour:
   speedScale: 1
   flicker: 0
   sampleRate: 6
---- !u!114 &72186181
+--- !u!114 &1420943454
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 72186177}
+  m_GameObject: {fileID: 1420943450}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 896e6ac11fb202746ac8a5ec30921065, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.HandheldCameraShake
-  player: {fileID: 2060107439}
+  player: {fileID: 1728347835}
   shakeIntensity: 1
   idleSwayDegrees: 0.35
   idleSwayFrequency: 0.22
@@ -227,13 +448,13 @@ MonoBehaviour:
   blendSpeed: 3
   lookOvershoot: 0.5
   lookJitter: 0.5
---- !u!114 &72186182
+--- !u!114 &1420943455
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 72186177}
+  m_GameObject: {fileID: 1420943450}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1d3d95b2c477174469461e4ffc95abf8, type: 3}
@@ -255,13 +476,13 @@ MonoBehaviour:
   agcMaxRiseDbPerSec: 4
   compression: 0.4
   saturation: 0.3
---- !u!164 &72186183
+--- !u!164 &1420943456
 AudioReverbFilter:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 72186177}
+  m_GameObject: {fileID: 1420943450}
   m_Enabled: 1
   m_DryLevel: 0
   m_Room: -10000
@@ -278,21 +499,21 @@ AudioReverbFilter:
   m_LFReference: 250
   m_ReflectionsDelay: 0
   m_ReverbPreset: 0
---- !u!81 &72186184
+--- !u!81 &1420943457
 AudioListener:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 72186177}
+  m_GameObject: {fileID: 1420943450}
   m_Enabled: 1
---- !u!114 &72186185
+--- !u!114 &1420943458
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 72186177}
+  m_GameObject: {fileID: 1420943450}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
@@ -330,13 +551,13 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
---- !u!20 &72186186
+--- !u!20 &1420943459
 Camera:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 72186177}
+  m_GameObject: {fileID: 1420943450}
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 2
@@ -381,7 +602,7 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
---- !u!1 &593998630
+--- !u!1 &1728347833
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -389,259 +610,10 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 593998634}
-  - component: {fileID: 593998633}
-  - component: {fileID: 593998632}
-  - component: {fileID: 593998631}
-  m_Layer: 0
-  m_Name: World
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &593998631
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 593998630}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b809fc1f5b73ec74ca9095a0758b24e8, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Audio.BuildingAudio
-  streamer: {fileID: 593998632}
-  lights: {fileID: 593998633}
-  listener: {fileID: 72186178}
---- !u!114 &593998632
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 593998630}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3bc1d99131900cf48be1dd8f7ecd4896, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.WorldStreamer
-  seed: 0
-  loadRadius: 3
-  unloadRadius: 4
-  frameBudgetMs: 4
-  assets: {fileID: 11400000, guid: cd0631eae779e64479479e398a7f876c, type: 2}
-  player: {fileID: 2060107438}
-  lightManager: {fileID: 593998633}
---- !u!114 &593998633
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 593998630}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 74b78b28035e35b4aae2c7d18dac1344, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.FixtureLightManager
-  viewer: {fileID: 72186178}
-  tubeColor: {r: 1, g: 0.965, b: 0.86, a: 1}
-  tubeIntensity: 7
-  tubeRange: 6
-  bounceIntensity: 0.8
-  bounceRange: 4.4
-  domeHeightBoost: 0.3
-  lampColor: {r: 1, g: 0.74, b: 0.47, a: 1}
-  lampIntensity: 1.8
-  lampRange: 5
-  stripColor: {r: 0.9, g: 0.95, b: 1, a: 1}
-  maxTroffers: 180
-  maxLamps: 10
-  maxDistance: 36
-  fadeStart: 28
-  bounceCount: 40
-  bounceDistance: 18
-  shadowedTroffers: 24
-  shadowedLamps: 1
-  shadowDistance: 20
-  shadowHysteresis: 0.22
-  shadowFade: 0.5
-  shadowTier: 1
-  powerFlickerTime: 1.1
---- !u!4 &593998634
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 593998630}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1043526783
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1043526784}
-  m_Layer: 0
-  m_Name: CameraPivot
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &1043526784
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1043526783}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1.58, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 72186178}
-  m_Father: {fileID: 2060107438}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1399991431
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1399991433}
-  - component: {fileID: 1399991432}
-  m_Layer: 0
-  m_Name: Camcorder_PostVolume
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1399991432
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1399991431}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
-  m_IsGlobal: 1
-  priority: 10
-  blendDistance: 0
-  weight: 1
-  sharedProfile: {fileID: 11400000, guid: 7bbd21ca9a98f03448c9edd8099b4387, type: 2}
---- !u!4 &1399991433
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1399991431}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1688919965
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1688919968}
-  - component: {fileID: 1688919966}
-  - component: {fileID: 1688919967}
-  m_Layer: 0
-  m_Name: CamcorderUI
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1688919966
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1688919965}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b541c911b056d584b89ca1f03108ad9f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Camcorder.CamcorderOSD
-  visible: 1
-  pillarbox: 0
-  showDebug: 0
-  startDate: 1998-10-19 22:41:00
-  uiRendererIndex: 1
---- !u!114 &1688919967
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1688919965}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2458db6c8ed0ac148bc190d130276be8, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Camcorder.CamcorderVisualMenu
-  rig: {fileID: 72186179}
-  player: {fileID: 2060107439}
---- !u!4 &1688919968
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1688919965}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &2060107437
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 2060107438}
-  - component: {fileID: 2060107441}
-  - component: {fileID: 2060107439}
-  - component: {fileID: 2060107440}
+  - component: {fileID: 1728347834}
+  - component: {fileID: 1728347837}
+  - component: {fileID: 1728347835}
+  - component: {fileID: 1728347836}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -649,29 +621,29 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &2060107438
+--- !u!4 &1728347834
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2060107437}
+  m_GameObject: {fileID: 1728347833}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 1043526784}
+  - {fileID: 1960535627}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &2060107439
+--- !u!114 &1728347835
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2060107437}
+  m_GameObject: {fileID: 1728347833}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2cafd59a05bf66e47bbde1e5fa44afb4, type: 3}
@@ -699,16 +671,16 @@ MonoBehaviour:
   chargeTime: 0.45
   maxZoomFov: 0.25
   zoomRate: 0.3
-  cameraPitchPivot: {fileID: 1043526784}
+  cameraPitchPivot: {fileID: 1960535627}
   noclip: 0
   noclipSpeed: 4
---- !u!114 &2060107440
+--- !u!114 &1728347836
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2060107437}
+  m_GameObject: {fileID: 1728347833}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e8d7b5a186e21e543bc750478cc6df7e, type: 3}
@@ -716,13 +688,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Audio.PlayerAudio
   walkStride: 0.72
   runStride: 1.05
---- !u!143 &2060107441
+--- !u!143 &1728347837
 CharacterController:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2060107437}
+  m_GameObject: {fileID: 1728347833}
   m_Material: {fileID: 0}
   m_IncludeLayers:
     serializedVersion: 2
@@ -741,11 +713,43 @@ CharacterController:
   m_SkinWidth: 0.03
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0.875, z: 0}
+--- !u!1 &1960535626
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1960535627}
+  m_Layer: 0
+  m_Name: CameraPivot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1960535627
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1960535626}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 1.58, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1420943451}
+  m_Father: {fileID: 1728347834}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 1399991433}
-  - {fileID: 2060107438}
-  - {fileID: 1688919968}
-  - {fileID: 593998634}
+  - {fileID: 1212333351}
+  - {fileID: 1728347834}
+  - {fileID: 321279472}
+  - {fileID: 283940707}

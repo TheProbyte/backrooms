@@ -42,7 +42,7 @@ namespace Backrooms.Generation
         public float AverageBuildMs { get; private set; }
         public int ChunksBuilt { get; private set; }
 
-        class Chunk { public GameObject go; public List<LightSource> lights; public List<Renderer> lenses, faulty; public int generation; public OfficeLayout layout; }
+        class Chunk { public List<Doorway> doors; public GameObject go; public List<LightSource> lights; public List<Renderer> lenses, faulty; public int generation; public OfficeLayout layout; }
 
         readonly Dictionary<Vector2Int, Chunk> _chunks = new Dictionary<Vector2Int, Chunk>();
         readonly List<Vector2Int> _queue = new List<Vector2Int>();
@@ -105,7 +105,7 @@ namespace Backrooms.Generation
         {
             if (!_chunks.TryGetValue(coord, out var ch)) return;
             _chunks.Remove(coord);
-            if (lightManager) lightManager.Unregister(coord);
+            if (lightManager) { lightManager.Unregister(coord); lightManager.UnregisterDoorways(coord); }
             foreach (var mf in ch.go.GetComponentsInChildren<MeshFilter>())
                 if (mf.sharedMesh && mf.sharedMesh.GetInstanceID() < 0) Destroy(mf.sharedMesh);
             Destroy(ch.go);
@@ -211,18 +211,19 @@ namespace Backrooms.Generation
             {
                 _dying.Remove(coord);
                 _chunks[coord] = old;
-                if (lightManager) lightManager.Register(coord, old.lights, old.lenses, old.faulty, false);
+                if (lightManager) { lightManager.Register(coord, old.lights, old.lenses, old.faulty, false); lightManager.RegisterDoorways(coord, old.doors); }
                 return;
             }
             var go = built.Instantiate(transform);
             var ch = new Chunk { go = go, lights = new List<LightSource>(built.lights),
                 lenses = new List<Renderer>(built.litLensRenderers), faulty = new List<Renderer>(built.faultyRenderers),
-                generation = _generation, layout = built.Layout };
+                generation = _generation, layout = built.Layout, doors = new List<Doorway>(built.doorways) };
             _chunks[coord] = ch;
             // Areas streamed in after the first frame flicker on (only ever seen from far away, if at all).
             // The building is already lit: streamed-in areas are simply on (a strike-on flicker read as
             // distant lights popping in). "animate" is kept for a future power-restoring event.
             if (lightManager) lightManager.Register(coord, ch.lights, ch.lenses, ch.faulty, animate && strikeOnStream);
+            if (lightManager) lightManager.RegisterDoorways(coord, ch.doors);
         }
 
         readonly Dictionary<Vector2Int, Chunk> _dying = new Dictionary<Vector2Int, Chunk>();
@@ -244,7 +245,7 @@ namespace Backrooms.Generation
             yield return new WaitForSeconds(delay);
             if (!_dying.TryGetValue(coord, out var still) || still != ch) yield break;   // resurrected
             _dying.Remove(coord);
-            if (lightManager) lightManager.Unregister(coord);
+            if (lightManager) { lightManager.Unregister(coord); lightManager.UnregisterDoorways(coord); }
             // Only meshes generated at runtime (negative instance ids); prop meshes are shared assets.
             foreach (var mf in ch.go.GetComponentsInChildren<MeshFilter>())
                 if (mf.sharedMesh && mf.sharedMesh.GetInstanceID() < 0) Destroy(mf.sharedMesh);

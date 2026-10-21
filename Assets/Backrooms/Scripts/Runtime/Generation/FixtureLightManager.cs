@@ -44,13 +44,13 @@ namespace Backrooms.Generation
         [Header("Pool")]
         [Tooltip("Ceiling light slots. Every powered fixture within the light distance is lit, nearest first; " +
                  "URP Forward+ allows 256 visible lights per camera, shared with the bounce lights.")]
-        [Range(8, 220)] public int maxTroffers = 180;
+        [Range(8, 220)] public int maxTroffers = 168;
         [Range(0, 16)] public int maxLamps = 10;
         [Tooltip("Fixtures are lit out to here, whether you can see them or not. Past fadeStart they dim into the fog.")]
         public float maxDistance = 36f;
         public float fadeStart = 28f;
         [Tooltip("Only the nearest fixtures add the soft bounce fill.")]
-        [Range(0, 64)] public int bounceCount = 40;
+        [Range(0, 64)] public int bounceCount = 32;
         public float bounceDistance = 18f;
         [Header("Shadows")]
         [Range(0, 48)] public int shadowedTroffers = 24;
@@ -255,7 +255,12 @@ namespace Backrooms.Generation
             // If the pool runs out before the light distance, dim the farthest few by rank instead.
             _rankEdge = _wantedTroffers.Count >= _troffers.Count && _wantedTroffers.Count > 0
                 ? Vector3.Distance(_candidates[_wantedTroffers[_wantedTroffers.Count - 1]].position, eye) : float.MaxValue;
+            // Distance at which the bounce budget runs out; bounce fades smoothly toward it.
+            _bounceEdge = float.MaxValue;
+            if (_wantedTroffers.Count > bounceCount && bounceCount > 0)
+                _bounceEdge = Vector3.Distance(_candidates[_wantedTroffers[bounceCount - 1]].position, eye);
             ApplyShadowTier();
+            UpdateDoorways(eye);
 
             ActiveLights = Assign(_troffers, _wantedTroffers, eye, shadowedTroffers) + Assign(_lamps, _wantedLamps, eye, shadowedLamps);
             UpdateLensEmission(now);
@@ -264,7 +269,7 @@ namespace Backrooms.Generation
         readonly List<int> _wantedTroffers = new List<int>(), _wantedLamps = new List<int>();
         System.Comparison<LightSource> _byDistance;
         Vector3 _eye;
-        float _rankEdge = float.MaxValue;
+        float _rankEdge = float.MaxValue, _bounceEdge = float.MaxValue;
 
         void ApplyShadowTier()
         {
@@ -390,32 +395,27 @@ namespace Backrooms.Generation
                 float angle = s.src.dome ? 170f : s.src.strip ? 160f : 150f, inner = s.src.dome ? 40f : 60f;
                 Color col = s.src.strip ? stripColor : tubeColor;
 
-                // Crossfade between the room-only main light and its shadowed spill copy. The spill only
-                // starts taking over once its shadow map exists, and gives the light back before losing it.
-                bool spillOn = s.wantShadow && k > 0.002f;
-                if (s.spill.shadows == LightShadows.None && (spillOn || s.spillW > 0f)) s.spill.shadows = LightShadows.Soft;
-                bool ready = s.spill.shadows != LightShadows.None && s.spill.enabled;
-                s.spillW = Mathf.MoveTowards(s.spillW, spillOn && ready ? 1f : 0f, dt / Mathf.Max(0.01f, shadowFade));
-                if (spillOn && !s.spill.enabled) s.spill.enabled = true;       // render its shadow first, at zero intensity
-                float w = Mathf.SmoothStep(0f, 1f, s.spillW);
-
-                s.main.intensity = intensity * (1f - w);
-                s.main.enabled = k > 0.002f && w < 0.999f;
+                // Ceiling lights only ever light their own room (rendering layer), so no light can pass
+                // through a wall whatever the shadow resolution. Shadows ease in for the nearest lights and
+                // only add detail (furniture, pillars). Doorway light comes from the doorway lights below.
+                s.main.intensity = intensity;
+                s.main.enabled = k > 0.002f;
                 s.main.range = range; s.main.spotAngle = angle; s.main.innerSpotAngle = inner; s.main.color = col;
-                s.main.shadows = LightShadows.None;
-
-                s.spill.intensity = intensity * w;
-                s.spill.range = range; s.spill.spotAngle = angle; s.spill.innerSpotAngle = inner; s.spill.color = col;
-                // Shadow geometry is inset from the visible walls, so only a small bias is needed.
-                s.spill.shadowBias = s.src.dome || s.src.strip ? 0.08f : 0.03f;
-                s.spill.shadowNormalBias = 0.15f;
-                s.spill.shadowStrength = 1f;
-                if (!spillOn && s.spillW <= 0f) { s.spill.enabled = false; s.spill.shadows = LightShadows.None; }
+                s.shadowK = Mathf.MoveTowards(s.shadowK, s.wantShadow ? 1f : 0f, dt / Mathf.Max(0.01f, shadowFade));
+                float st = Mathf.SmoothStep(0f, 1f, s.shadowK);
+                var sm = st > 0.005f && s.main.enabled ? LightShadows.Soft : LightShadows.None;
+                if (s.main.shadows != sm) s.main.shadows = sm;
+                s.main.shadowStrength = st * 0.9f;
+                s.main.shadowBias = s.src.dome || s.src.strip ? 0.08f : 0.03f;
+                s.main.shadowNormalBias = 0.15f;
+                if (sm != LightShadows.None) shadowed++;
+                if (s.spill.enabled) { s.spill.enabled = false; s.spill.shadows = LightShadows.None; }
                 if (s.main.enabled) enabled++;
-                if (s.spill.enabled) { enabled++; shadowed++; }
 
                 // Bounce fill only for the nearest fixtures, fading out before its distance limit.
-                float bk = bounces < bounceCount ? 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(bounceDistance * 0.7f, bounceDistance, d)) : 0f;
+                float bEdge = Mathf.Min(bounceDistance, _bounceEdge);
+                float bk = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(bEdge - 3f, bEdge, d));
+                if (bounces >= bounceCount + 8) bk = 0f;      // safety cap only
                 s.bounce.enabled = k > 0.002f && bounceIntensity > 0f && bk > 0.01f;
                 if (s.bounce.enabled) { bounces++; enabled++; }
                 s.bounce.intensity = bounceIntensity * k * bk * (s.src.dome ? 1.6f : 1f);
@@ -434,6 +434,98 @@ namespace Backrooms.Generation
             s.main.enabled = false; s.main.shadows = LightShadows.None;
             if (s.spill) { s.spill.enabled = false; s.spill.shadows = LightShadows.None; }
             if (s.bounce) s.bounce.enabled = false;
+        }
+
+        // ---------------- Doorway lights ----------------
+
+        [Header("Doorway light")]
+        [Tooltip("Lights that carry a lit room's light a little way through each doorway into the next room.")]
+        [Range(0, 48)] public int doorwayLights = 32;
+        [Range(0f, 3f)] public float doorwayGain = 0.55f;
+        public float doorwayDistance = 18f;
+
+        readonly Dictionary<Vector2Int, List<Doorway>> _doors = new Dictionary<Vector2Int, List<Doorway>>();
+        readonly List<Doorway> _doorCands = new List<Doorway>();
+        readonly List<Light> _doorPool = new List<Light>();
+        readonly List<float> _doorLevel = new List<float>();
+        readonly Dictionary<Vector3, int> _doorSlot = new Dictionary<Vector3, int>();
+        System.Comparison<Doorway> _doorByDist;
+
+        /// <summary>Called by the streamer with the chunk's doorways (receiving side of each opening).</summary>
+        public void RegisterDoorways(Vector2Int chunk, List<Doorway> doors) { _doors[chunk] = doors; }
+        public void UnregisterDoorways(Vector2Int chunk) { _doors.Remove(chunk); }
+
+        void EnsureDoorPool()
+        {
+            while (_doorPool.Count < doorwayLights)
+            {
+                var go = new GameObject("DoorLight_" + _doorPool.Count);
+                go.transform.SetParent(transform, false);
+                var l = go.AddComponent<Light>();
+                l.type = LightType.Spot; l.spotAngle = 150f; l.innerSpotAngle = 40f; l.range = 5f;
+                l.shadows = LightShadows.None; l.color = Color.Lerp(tubeColor, new Color(1f, 0.92f, 0.75f), 0.3f);
+                l.enabled = false;
+                _doorPool.Add(l); _doorLevel.Add(0f);
+            }
+        }
+
+        /// <summary>
+        /// Light through openings without leaking through walls: each doorway near you gets a soft light
+        /// placed in the receiving room, lighting only that room's layer, as bright as the lit fixtures
+        /// just the other side of the opening (so it follows their power, flicker and faults). Rooms are
+        /// rectangles, so a light inside one can never reach past its walls.
+        /// </summary>
+        void UpdateDoorways(Vector3 eye)
+        {
+            EnsureDoorPool();
+            _doorCands.Clear();
+            var center = WorldStreamer.ChunkOf(eye);
+            int r = Mathf.CeilToInt(doorwayDistance / OfficeBiome.ChunkSize);
+            float r2 = doorwayDistance * doorwayDistance;
+            for (int dx = -r; dx <= r; dx++)
+            for (int dz = -r; dz <= r; dz++)
+                if (_doors.TryGetValue(new Vector2Int(center.x + dx, center.y + dz), out var list))
+                    foreach (var dw in list) if ((dw.position - eye).sqrMagnitude < r2) _doorCands.Add(dw);
+            if (_doorByDist == null) _doorByDist = (a, b) => (a.position - _eye).sqrMagnitude.CompareTo((b.position - _eye).sqrMagnitude);
+            _doorCands.Sort(_doorByDist);
+            int n = Mathf.Min(_doorCands.Count, _doorPool.Count);
+            float edge = _doorCands.Count > _doorPool.Count && n > 0 ? Vector3.Distance(_doorCands[n - 1].position, eye) : doorwayDistance;
+            float now = Time.time, dt = Time.deltaTime;
+
+            // Keep each doorway on the same pooled light while it stays in the set.
+            _doorSlot.Clear();
+            for (int i = 0; i < n; i++) _doorSlot[_doorCands[i].position] = i;
+            for (int i = 0; i < _doorPool.Count; i++)
+            {
+                var l = _doorPool[i];
+                if (i >= n) { _doorLevel[i] = 0f; l.enabled = false; continue; }
+                var dw = _doorCands[i];
+                // Brightness of the source side: lit fixtures within ~3.5 m behind the opening.
+                float src = 0f;
+                foreach (var c in _candidates)
+                {
+                    if (c.isLamp || (c.roomLayer & dw.layer & ~1u) != 0) continue;     // same room: not "the other side"
+                    Vector3 rel = c.position - dw.position; rel.y = 0f;
+                    float back = -Vector3.Dot(rel, dw.inward);
+                    if (back < 0.05f) continue;
+                    float dist = rel.magnitude;
+                    if (dist > 3.6f) continue;
+                    src += PowerLevel(c, now) * (1f - dist / 3.6f) * (c.dome || c.strip ? 1.4f : 1f);
+                }
+                float d = Vector3.Distance(dw.position, eye);
+                float fade = (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(edge - 3f, edge, d)))
+                           * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(doorwayDistance - 4f, doorwayDistance, d)));
+                float target = Mathf.Min(src, 2.5f) * doorwayGain * fade * dw.width;
+                // Follow power changes instantly (flicker stays in sync); ease only small drift.
+                _doorLevel[i] = target;
+                l.enabled = target > 0.01f;
+                if (!l.enabled) continue;
+                l.transform.position = dw.position + dw.inward * 0.05f + Vector3.up * (dw.height - 0.3f);
+                l.transform.rotation = Quaternion.LookRotation((dw.inward + Vector3.down * 0.9f).normalized);
+                l.intensity = target;
+                l.range = 4.5f;
+                l.GetUniversalAdditionalLightData().renderingLayers = dw.layer & ~1u;
+            }
         }
 
         // ---------------- Flicker ----------------

@@ -4,6 +4,16 @@ using UnityEngine.Rendering;
 
 namespace Backrooms.Generation
 {
+    /// <summary>Receiving side of an opening between two rooms (or a chunk-border opening).</summary>
+    public struct Doorway
+    {
+        public Vector3 position;     // world, on the opening line at floor level, centre of the opening
+        public Vector3 inward;       // unit vector into the receiving room
+        public uint layer;           // receiving room's rendering-layer bit
+        public float height;         // top of the opening
+        public float width;          // relative width (1 = one cell)
+    }
+
     public struct LightSource
     {
         public Vector3 position;     // world
@@ -37,6 +47,7 @@ namespace Backrooms.Generation
 
         public OfficeLayout Layout => _L;
         public readonly List<LightSource> lights = new List<LightSource>();
+        public readonly List<Doorway> doorways = new List<Doorway>();
         readonly List<(MeshWriter w, bool dome)> faultyLenses = new List<(MeshWriter, bool)>();
 
         /// <summary>After Instantiate: renderers whose emission the light manager animates.</summary>
@@ -95,7 +106,7 @@ namespace Backrooms.Generation
         /// </summary>
         public void BuildData(OfficeLayout layout)
         {
-            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear();
+            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear(); doorways.Clear();
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, 0f, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             foreach (var f in layout.fixtures) _fixtureCells.Add(f.cell);
@@ -109,6 +120,7 @@ namespace Backrooms.Generation
             BuildPillars();
             BuildHalfWalls();
             BuildShadowProxies();
+            BuildDoorways();
             BuildFixtures(lights);
             BuildPlates();
             BuildProps(lights);
@@ -542,6 +554,37 @@ namespace Backrooms.Generation
                 Vector3 bbS = s + new Vector3(BD * 2f, 0f, BD * 2f); bbS.y = BB;
                 W(_a.baseboard, hw.roomColor).Box(new Vector3(c.x, BB * 0.5f, c.z), bbS, 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
                 _boxes.Add((new Vector3(c.x, (hh + cap) * 0.5f, c.z), new Vector3(s.x, hh + cap, s.z)));
+            }
+        }
+
+        // ---------------- Doorways ----------------
+
+        /// <summary>Every passable edge between two zones (and every border opening), seen from each side.</summary>
+        void BuildDoorways()
+        {
+            int n = _L.N;
+            for (int x = 0; x < n; x++)
+            for (int z = 0; z < n; z++)
+            {
+                var room = _L.RoomAt(x, z);
+                if (room.kind == RoomKind.Crawl) continue;
+                for (int side = 0; side < 4; side++)
+                {
+                    var e = _L.EdgeOf(x, z, side);
+                    if (OfficeLayout.IsSolid(e)) continue;
+                    int nx = x + (side == 0 ? -1 : side == 1 ? 1 : 0), nz = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
+                    bool inChunk = _L.InChunk(nx, nz);
+                    if (inChunk && _L.RoomAt(nx, nz).color == room.color) continue;          // same zone: already shared light
+                    Vector3 c = new Vector3((x + 0.5f) * C, 0f, (z + 0.5f) * C);
+                    Vector3 outDir = side == 0 ? Vector3.left : side == 1 ? Vector3.right : side == 2 ? Vector3.back : Vector3.forward;
+                    float top = e == EdgeKind.DoorHeader || e == EdgeKind.Door ? OfficeBiome.DoorHeaderHeight
+                              : inChunk ? Mathf.Min(room.ceiling, _L.CeilingAt(nx, nz)) : OfficeBiome.DoorHeaderHeight;
+                    doorways.Add(new Doorway
+                    {
+                        position = _origin + c + outDir * (C * 0.5f), inward = -outDir, layer = LayerBit(room.color),
+                        height = top, width = 1f,
+                    });
+                }
             }
         }
 
