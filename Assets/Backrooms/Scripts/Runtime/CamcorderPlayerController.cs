@@ -7,6 +7,11 @@ namespace Backrooms
     /// First-person movement and mouse look for the camcorder viewpoint.
     /// Mouse look is applied directly (no smoothing) so aim stays responsive;
     /// the handheld shake is layered on a child transform by <see cref="HandheldCameraShake"/>.
+    ///
+    /// Controls: WASD walk, Shift run, C crouch (toggle), Left Ctrl crawl (toggle), Space jump (tap for a
+    /// hop, hold to bend the knees for a higher jump), hold F to zoom in (release to zoom back out).
+    /// Stance changes move the eye on a spring, so getting down and up is eased like a person moving;
+    /// dropping into a crouch or crawl from a run is quicker and carries the body forward.
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
     public class CamcorderPlayerController : MonoBehaviour
@@ -26,15 +31,47 @@ namespace Backrooms
         [Range(0.5f, 3f)] public float walkSpeed = 1.35f;
         [Tooltip("Speed while holding Shift.")]
         [Range(1.5f, 6f)] public float runSpeed = 3.6f;
+        [Range(0.2f, 2f)] public float crouchSpeed = 0.8f;
+        [Range(0.1f, 1.5f)] public float crawlSpeed = 0.45f;
         [Tooltip("How quickly the player reaches the target speed (higher = snappier).")]
         [Range(1f, 20f)] public float acceleration = 6f;
         [Tooltip("How quickly the player stops when no keys are held.")]
         [Range(1f, 20f)] public float deceleration = 8f;
         public float gravity = -19.6f;
 
+        [Header("Stances (metres)")]
+        public float standEye = 1.58f, crouchEye = 1.02f, crawlEye = 0.42f;
+        public float standHeight = 1.75f, crouchHeight = 1.2f, crawlHeight = 0.62f;
+
+        [Header("Jump")]
+        [Tooltip("Height of a quick tap jump (a small hop).")]
+        public float hopHeight = 0.22f;
+        [Tooltip("Height of a fully charged jump (hold Space to bend the legs first).")]
+        public float chargedJumpHeight = 0.5f;
+        [Tooltip("Seconds of holding Space for a full charge.")]
+        public float chargeTime = 0.45f;
+
+        [Header("Zoom (hold F)")]
+        [Tooltip("Field of view multiplier at full zoom (0.25 = 4x).")]
+        [Range(0.1f, 0.8f)] public float maxZoomFov = 0.25f;
+        [Tooltip("Zoom travel per second at full motor speed (0..1 range).")]
+        public float zoomRate = 0.3f;
+
         [Header("References")]
         [Tooltip("Pivot that receives pitch rotation (parent of the shake rig).")]
         public Transform cameraPitchPivot;
+
+        public enum Stance { Stand, Crouch, Crawl }
+        public Stance CurrentStance { get; private set; }
+        public bool IsCrawling => CurrentStance == Stance.Crawl;
+        /// <summary>0 = wide, 1 = full zoom.</summary>
+        public float Zoom { get; private set; }
+        /// <summary>Zoom motor speed, -1..1 (for the motor sound).</summary>
+        public float ZoomMotor { get; private set; }
+        /// <summary>Field of view multiplier from the zoom (1 = wide).</summary>
+        public float FovMultiplier => Mathf.Lerp(1f, maxZoomFov, Zoom);
+        /// <summary>Landing speed in m/s on the frame the player lands, otherwise 0.</summary>
+        public float LandedThisFrame { get; private set; }
 
         public Vector3 PlanarVelocity { get; private set; }
         public bool IsRunning { get; private set; }
@@ -67,12 +104,19 @@ namespace Backrooms
         CharacterController _controller;
         float _yaw, _pitch, _verticalVelocity;
         int _unblockFrame = -10;
+        float _eye, _eyeVel, _eyeK = 40f, _eyeC = 11f;      // eye height spring
+        float _chargeT = -1f, _launchAt = -1f, _launchHeight;
+        bool _wasGrounded = true;
+        float _airMinVy, _hopCarry;
+        float _zoomVel;
+        readonly Collider[] _overlap = new Collider[8];
 
         void Awake()
         {
             _controller = GetComponent<CharacterController>();
             _yaw = transform.eulerAngles.y;
             InputBlocked = false;
+            _eye = standEye;
         }
 
         void OnEnable() => LockCursor(true);
@@ -95,8 +139,11 @@ namespace Backrooms
 
             // Ignore input while the window is in the background (raw mouse deltas still arrive).
             bool hasFocus = !blocked && Cursor.lockState == CursorLockMode.Locked && (Application.isFocused || !requireWindowFocus);
-            if (hasFocus) UpdateLook(mouse.delta.ReadValue());
+            if (hasFocus) UpdateLook(mouse.delta.ReadValue() * FovMultiplier);   // aim slows down when zoomed in
+            UpdateZoom(keyboard, hasFocus);
+            UpdateStance(keyboard, hasFocus);
             UpdateMove(keyboard, hasFocus);
+            UpdateEye();
         }
 
         /// <summary>Moves the player instantly (spawning, room transitions) and resets look and velocity.</summary>
@@ -161,14 +208,18 @@ namespace Backrooms
                 return;
             }
 
-            // Running only makes sense moving mostly forward.
-            IsRunning = hasFocus && keyboard.leftShiftKey.isPressed && input.y > 0.1f;
-            float targetSpeed = IsRunning ? runSpeed : walkSpeed;
+            // Running only makes sense standing and moving mostly forward.
+            IsRunning = hasFocus && CurrentStance == Stance.Stand && keyboard.leftShiftKey.isPressed && input.y > 0.1f;
+            float targetSpeed = CurrentStance == Stance.Crawl ? crawlSpeed : CurrentStance == Stance.Crouch ? crouchSpeed : IsRunning ? runSpeed : walkSpeed;
             Vector3 target = (transform.forward * input.y + transform.right * input.x) * targetSpeed;
 
             float rate = input.sqrMagnitude > 0.001f ? acceleration : deceleration;
-            PlanarVelocity = Vector3.MoveTowards(PlanarVelocity, target, rate * targetSpeed * Time.deltaTime);
+            // After dropping into a crouch or crawl from a run the body carries forward for a moment.
+            if (_hopCarry > 0f) { _hopCarry -= Time.deltaTime; rate *= 0.25f; }
+            if (!_controller.isGrounded) rate *= 0.3f;                    // little control in the air
+            PlanarVelocity = Vector3.MoveTowards(PlanarVelocity, target, rate * Mathf.Max(targetSpeed, 1f) * Time.deltaTime);
 
+            UpdateJump(keyboard, hasFocus);
             if (_controller.isGrounded && _verticalVelocity < 0f) _verticalVelocity = -2f;
             _verticalVelocity += gravity * Time.deltaTime;
 
@@ -181,6 +232,126 @@ namespace Backrooms
                 Vector3 actual = _controller.velocity; actual.y = 0f;
                 PlanarVelocity = Vector3.ClampMagnitude(PlanarVelocity, actual.magnitude + 0.05f);
             }
+            if ((flags & CollisionFlags.Above) != 0 && _verticalVelocity > 0f) _verticalVelocity = 0f;
+
+            // Landing: the legs absorb it (the eye dips with the impact) and the step is heard.
+            bool grounded = _controller.isGrounded;
+            LandedThisFrame = 0f;
+            if (!grounded) _airMinVy = Mathf.Min(_airMinVy, _controller.velocity.y);
+            if (grounded && !_wasGrounded && _airMinVy < -1.5f)
+            {
+                LandedThisFrame = -_airMinVy;
+                _eyeVel -= Mathf.Min(2.5f, -_airMinVy * 0.45f);
+            }
+            if (grounded) _airMinVy = 0f;
+            _wasGrounded = grounded;
+        }
+
+        // ---------------- Stances ----------------
+
+        float EyeTarget => CurrentStance == Stance.Crawl ? crawlEye : CurrentStance == Stance.Crouch ? crouchEye : standEye;
+        float HeightFor(Stance st) => st == Stance.Crawl ? crawlHeight : st == Stance.Crouch ? crouchHeight : standHeight;
+
+        void UpdateStance(Keyboard kb, bool hasFocus)
+        {
+            if (!hasFocus || noclip) return;
+            Stance want = CurrentStance;
+            if (kb.cKey.wasPressedThisFrame) want = CurrentStance == Stance.Crouch ? Stance.Stand : Stance.Crouch;
+            if (kb.leftCtrlKey.wasPressedThisFrame) want = CurrentStance == Stance.Crawl ? Stance.Crouch : Stance.Crawl;
+            if (want == CurrentStance) return;
+            if (HeightFor(want) > HeightFor(CurrentStance) && !RoomToStand(HeightFor(want))) return;   // ceiling too low
+
+            bool fromRun = IsRunning || PlanarVelocity.magnitude > walkSpeed * 1.3f;
+            if (fromRun && want != Stance.Stand)
+            {
+                // Sprinting into a crouch or crawl: a quick hop down, body carrying forward.
+                _eyeK = 110f; _eyeC = 13f; _hopCarry = 0.45f;
+                _eyeVel -= 1.2f;
+            }
+            else if (want == Stance.Crawl && CurrentStance == Stance.Stand)
+            {
+                _eyeK = 16f; _eyeC = 8f;          // slower: down through a crouch, then forward onto the hands
+            }
+            else { _eyeK = 28f; _eyeC = 10f; }    // crouching down or getting up, eased like a person
+            CurrentStance = want;
+            _controller.height = HeightFor(want);
+            _controller.center = new Vector3(0f, _controller.height * 0.5f, 0f);
+        }
+
+        bool RoomToStand(float height)
+        {
+            float r = _controller.radius * 0.95f;
+            Vector3 top = transform.position + Vector3.up * (height - r);
+            Vector3 low = transform.position + Vector3.up * (_controller.height + 0.02f);
+            if (low.y >= top.y) return true;
+            int n = Physics.OverlapCapsuleNonAlloc(low, top, r, _overlap, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++) if (_overlap[i] != _controller) return false;   // ignore our own capsule
+            return true;
+        }
+
+        void UpdateEye()
+        {
+            if (!cameraPitchPivot) return;
+            float dt = Time.deltaTime;
+            float charge = _chargeT >= 0f ? Mathf.Clamp01((Time.time - _chargeT) / Mathf.Max(0.05f, chargeTime)) : 0f;
+            // Knees bend while a jump charges (and briefly before a tap hop).
+            float target = EyeTarget - charge * 0.2f - (_launchAt >= 0f ? 0.06f : 0f);
+            // Small fixed substeps keep the spring stable even on a long frame.
+            int steps = Mathf.Clamp(Mathf.CeilToInt(dt / (1f / 240f)), 1, 60);
+            float h = dt / steps;
+            for (int i = 0; i < steps; i++)
+            {
+                float acc = (target - _eye) * _eyeK - _eyeVel * _eyeC;
+                _eyeVel += acc * h;
+                _eye += _eyeVel * h;
+            }
+            _eye = Mathf.Clamp(_eye, 0.25f, standEye + 0.3f);
+            if (Mathf.Abs(target - _eye) < 0.01f && Mathf.Abs(_eyeVel) < 0.05f) { _eyeK = 40f; _eyeC = 11f; }
+            var lp = cameraPitchPivot.localPosition;
+            cameraPitchPivot.localPosition = new Vector3(lp.x, _eye, lp.z);
+        }
+
+        // ---------------- Jump ----------------
+
+        void UpdateJump(Keyboard kb, bool hasFocus)
+        {
+            bool grounded = _controller.isGrounded;
+            if (hasFocus && grounded && CurrentStance != Stance.Crawl && kb.spaceKey.wasPressedThisFrame) _chargeT = Time.time;
+            if (_chargeT >= 0f && (!hasFocus || kb.spaceKey.wasReleasedThisFrame))
+            {
+                float held = Time.time - _chargeT;
+                float charge = Mathf.Clamp01(held / Mathf.Max(0.05f, chargeTime));
+                _launchHeight = Mathf.Lerp(hopHeight, chargedJumpHeight, charge * charge);
+                if (CurrentStance == Stance.Crouch) _launchHeight *= 0.8f;
+                // A tap still needs a moment to bend the knees before leaving the ground.
+                _launchAt = Time.time + Mathf.Max(0f, 0.1f - held);
+                _chargeT = -1f;
+            }
+            if (_launchAt >= 0f && Time.time >= _launchAt)
+            {
+                _launchAt = -1f;
+                if (grounded)
+                {
+                    _verticalVelocity = Mathf.Sqrt(2f * -gravity * _launchHeight);
+                    _eyeVel += 0.6f;                   // legs extend
+                }
+            }
+        }
+
+        // ---------------- Zoom ----------------
+
+        void UpdateZoom(Keyboard kb, bool hasFocus)
+        {
+            // A camcorder zoom motor: ramps up to a steady speed and eases to a stop at the ends.
+            bool zoomIn = hasFocus && kb.fKey.isPressed;
+            float targetVel = zoomIn ? (Zoom < 1f ? 1f : 0f) : (Zoom > 0f ? -1f : 0f);
+            _zoomVel = Mathf.MoveTowards(_zoomVel, targetVel, Time.deltaTime * 4f);
+            // Slow down approaching either end, like a lens reaching its stop.
+            float edge = _zoomVel > 0f ? 1f - Zoom : Zoom;
+            float ease = Mathf.Clamp01(edge / 0.08f) * 0.8f + 0.2f;
+            Zoom = Mathf.Clamp01(Zoom + _zoomVel * ease * zoomRate * Time.deltaTime);
+            if ((Zoom <= 0f && _zoomVel < 0f) || (Zoom >= 1f && _zoomVel > 0f)) _zoomVel = 0f;
+            ZoomMotor = _zoomVel * ease;
         }
 
         static void LockCursor(bool locked)

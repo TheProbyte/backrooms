@@ -14,6 +14,7 @@ namespace Backrooms.Audio
         public const string Ventilation = "ambience.ventilation";
         public const string RoomTone = "ambience.room_tone";
         public const string Footsteps = "player.footsteps_carpet";
+        public const string ZoomMotor = "camcorder.zoom_motor";
     }
 
     /// <summary>
@@ -238,6 +239,12 @@ namespace Backrooms.Audio
                 id = SoundIds.RoomTone, name = "Room tone", category = "Ambience", positional = false, hasPitch = false,
                 description = "The quiet, dark noise floor of an empty building.",
                 volume = 0.6f, spatialBlend = 0f,
+            });
+            Register(new SoundDef
+            {
+                id = SoundIds.ZoomMotor, name = "Zoom motor", category = "Camcorder", positional = true,
+                description = "The little motor that drives the zoom lens (hold F), right behind the microphone.",
+                volume = 1f, minDistance = 0.3f, maxDistance = 3f, rolloff = 1f, spatialBlend = 0.25f,
             });
             Register(new SoundDef
             {

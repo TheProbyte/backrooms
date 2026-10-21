@@ -28,7 +28,7 @@ namespace Backrooms.Generation
         public Color tubeColor = new Color(1.0f, 0.965f, 0.86f);
         [Range(0f, 30f)] public float tubeIntensity = 7f;
         [Range(2f, 10f)] public float tubeRange = 6f;
-        [Range(0f, 3f)] public float bounceIntensity = 0.55f;
+        [Range(0f, 3f)] public float bounceIntensity = 0.8f;
         [Range(1f, 8f)] public float bounceRange = 4.4f;
         [Tooltip("Dome fittings on tall ceilings: intensity multiplier per metre of extra height.")]
         public float domeHeightBoost = 0.3f;
@@ -44,7 +44,7 @@ namespace Backrooms.Generation
         [Header("Pool")]
         [Tooltip("Ceiling light slots. Every powered fixture within the light distance is lit, nearest first; " +
                  "URP Forward+ allows 256 visible lights per camera, shared with the bounce lights.")]
-        [Range(8, 220)] public int maxTroffers = 196;
+        [Range(8, 220)] public int maxTroffers = 180;
         [Range(0, 16)] public int maxLamps = 10;
         [Tooltip("Fixtures are lit out to here, whether you can see them or not. Past fadeStart they dim into the fog.")]
         public float maxDistance = 36f;
@@ -72,14 +72,15 @@ namespace Backrooms.Generation
 
         class Slot
         {
-            public Light main, bounce;
+            public Light main, bounce, spill;   // spill: the shadowed, every-room copy of main
             public bool busy;
             public Vector3 sourcePos;
             public LightSource src;
             public float fade, target;
             public bool isLamp, wantShadow;
             public float shadowK;          // 0..1 shadow strength ramp
-            public bool allLayers;         // shadowed lights light every room (their shadows stop them at walls)
+            public bool allLayers;         // (lamps) shadowed lamps light every room
+            public float spillW;           // 0 = all light from the room-only main, 1 = from the shadowed spill
         }
 
         class ChunkPower
@@ -181,10 +182,27 @@ namespace Backrooms.Generation
                 s.main.spotAngle = 150f;
                 s.main.innerSpotAngle = 60f;
                 go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+                // The shadowed copy: lights every room (its shadow stops it at walls), so light spills
+                // through doorways. Main and spill crossfade, so nothing pops when a light gains a shadow.
+                var sp = new GameObject("Spill");
+                sp.transform.SetParent(go.transform, false);
+                s.spill = sp.AddComponent<Light>();
+                s.spill.type = LightType.Spot;
+                s.spill.color = tubeColor; s.spill.range = tubeRange; s.spill.spotAngle = 150f; s.spill.innerSpotAngle = 60f;
+                s.spill.shadows = LightShadows.None; s.spill.shadowNearPlane = 0.1f;
+                var sd = s.spill.GetUniversalAdditionalLightData();
+                sd.softShadowQuality = SoftShadowQuality.High;
+                sd.renderingLayers = 0xFFFFFFFEu;
+                s_tierField?.SetValue(sd, UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium);
+                s.spill.enabled = false;
+                // Bounce: an upward fill for ceiling and upper walls, kept in the room. Pointing up keeps it
+                // off the floor, where a room-limited light would draw a hard line at every doorway.
                 var b = new GameObject("Bounce");
                 b.transform.SetParent(go.transform, false);
+                b.transform.localRotation = Quaternion.Euler(180f, 0f, 0f);
                 s.bounce = b.AddComponent<Light>();
-                s.bounce.type = LightType.Point;
+                s.bounce.type = LightType.Spot;
+                s.bounce.spotAngle = 172f; s.bounce.innerSpotAngle = 110f;
                 s.bounce.color = Color.Lerp(tubeColor, new Color(1f, 0.9f, 0.62f), 0.5f);
                 s.bounce.range = bounceRange;
                 s.bounce.shadows = LightShadows.None;
@@ -255,7 +273,7 @@ namespace Backrooms.Generation
             int tier = shadowTier == 0 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierLow
                      : shadowTier == 2 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierHigh
                      : UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium;
-            foreach (var t in _troffers) s_tierField?.SetValue(t.main.GetUniversalAdditionalLightData(), tier);
+            foreach (var t in _troffers) if (t.spill) s_tierField?.SetValue(t.spill.GetUniversalAdditionalLightData(), tier);
         }
 
         /// <summary>Lights currently enabled (ceiling, lamps and bounce) and shadowed, for the Graphics tab.</summary>
@@ -295,7 +313,8 @@ namespace Backrooms.Generation
                 free.main.shadows = LightShadows.None;
                 free.main.transform.position = src.isLamp ? src.position : src.position + Vector3.down * 0.06f;
                 free.main.GetUniversalAdditionalLightData().renderingLayers = src.roomLayer & ~1u;
-                free.allLayers = false;
+                free.allLayers = false; free.spillW = 0f;
+                if (free.spill) { free.spill.enabled = false; free.spill.shadows = LightShadows.None; }
                 if (free.bounce)
                 {
                     float drop = src.dome ? Mathf.Min(src.ceiling * 0.45f, 2.2f) : 1.1f;
@@ -340,50 +359,69 @@ namespace Backrooms.Generation
                 float distFade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fadeStart, maxDistance, d));
                 float rankFade = s.isLamp ? 1f : 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(_rankEdge - 4f, _rankEdge, d));
                 float k = s.fade * power * distFade * rankFade;
-                s.main.enabled = k > 0.002f;
-                if (s.main.enabled) enabled++;
-                if (s.isLamp) { s.main.intensity = lampIntensity * k; s.main.range = lampRange; s.main.color = lampColor; }
-                else
+
+                if (s.isLamp)
                 {
-                    float extra = s.src.ceiling - OfficeBiome.CeilingHeight;
-                    float boost = s.src.dome || s.src.strip ? 1f + extra * domeHeightBoost : 1f;
-                    if (s.src.dome) boost *= 1.6f;                // domes are spaced wider than troffers
-                    s.main.intensity = tubeIntensity * k * boost;
-                    s.main.range = s.src.dome || s.src.strip ? tubeRange + extra * 1.3f : tubeRange;
-                    // Domes light the whole hemisphere: a near-180 cone with a wide soft falloff, so no
-                    // cone edge is drawn across tall walls.
-                    s.main.spotAngle = s.src.dome ? 176f : s.src.strip ? 160f : 150f;
-                    s.main.innerSpotAngle = s.src.dome ? 30f : 60f;
-                    // Wide cones graze tall walls; depth bias (not normal bias, which opens gaps at corners)
-                    // keeps those walls free of acne bands.
-                    s.main.shadowBias = s.src.dome || s.src.strip ? 0.14f : 0.05f;
-                    s.main.shadowNormalBias = 0.25f;
-                    s.main.color = s.src.strip ? stripColor : tubeColor;
-                    // Bounce fill only for the nearest fixtures, fading out before its distance limit.
-                    float bk = bounces < bounceCount ? 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(bounceDistance * 0.7f, bounceDistance, d)) : 0f;
-                    s.bounce.enabled = s.main.enabled && bounceIntensity > 0f && bk > 0.01f;
-                    if (s.bounce.enabled) { bounces++; enabled++; }
-                    s.bounce.intensity = bounceIntensity * k * bk * (s.src.dome ? 1.6f : 1f);
-                    s.bounce.range = s.src.dome || s.src.strip ? bounceRange * 1.6f : bounceRange;
-                    s.bounce.color = s.src.strip ? Color.Lerp(stripColor, new Color(0.95f, 0.92f, 0.85f), 0.5f)
-                                                 : Color.Lerp(tubeColor, new Color(1f, 0.9f, 0.62f), 0.5f);
+                    s.main.enabled = k > 0.002f;
+                    if (s.main.enabled) enabled++;
+                    s.main.intensity = lampIntensity * k; s.main.range = lampRange; s.main.color = lampColor;
+                    s.shadowK = Mathf.MoveTowards(s.shadowK, s.wantShadow ? 1f : 0f, dt / Mathf.Max(0.01f, shadowFade));
+                    bool all = s.wantShadow && s.shadowK >= 0.999f && s.main.enabled;
+                    if (all != s.allLayers)
+                    {
+                        s.allLayers = all;
+                        s.main.GetUniversalAdditionalLightData().renderingLayers = all ? 0xFFFFFFFEu : s.src.roomLayer & ~1u;
+                    }
+                    float ls = Mathf.SmoothStep(0f, 1f, s.shadowK);
+                    var lm = ls > 0.005f && s.main.enabled ? LightShadows.Soft : LightShadows.None;
+                    if (s.main.shadows != lm) s.main.shadows = lm;
+                    if (lm != LightShadows.None) shadowed++;
+                    s.main.shadowStrength = ls;
+                    continue;
                 }
 
-                // Light never passes through walls: an unshadowed light only reaches its own room. Once a
-                // light's shadow is fully in, it reaches every room (walls now block it), so light spills
-                // through doorways; it drops back to its own room before its shadow fades out.
-                s.shadowK = Mathf.MoveTowards(s.shadowK, s.wantShadow ? 1f : 0f, dt / Mathf.Max(0.01f, shadowFade));
-                bool all = s.wantShadow && s.shadowK >= 0.999f && s.main.enabled;
-                if (all != s.allLayers)
-                {
-                    s.allLayers = all;
-                    s.main.GetUniversalAdditionalLightData().renderingLayers = all ? 0xFFFFFFFEu : s.src.roomLayer & ~1u;
-                }
-                float strength = Mathf.SmoothStep(0f, 1f, s.shadowK);
-                var mode = strength > 0.005f && s.main.enabled ? LightShadows.Soft : LightShadows.None;
-                if (s.main.shadows != mode) s.main.shadows = mode;
-                if (mode != LightShadows.None) shadowed++;
-                s.main.shadowStrength = strength;
+                float extra = s.src.ceiling - OfficeBiome.CeilingHeight;
+                float boost = s.src.dome || s.src.strip ? 1f + extra * domeHeightBoost : 1f;
+                if (s.src.dome) boost *= 1.6f;                // domes are spaced wider than troffers
+                float intensity = tubeIntensity * k * boost;
+                float range = s.src.dome || s.src.strip ? tubeRange + extra * 1.3f : tubeRange;
+                // Domes light the whole hemisphere: a near-180 cone with a wide soft falloff, so no
+                // cone edge is drawn across tall walls. Strips are a little narrower.
+                float angle = s.src.dome ? 170f : s.src.strip ? 160f : 150f, inner = s.src.dome ? 40f : 60f;
+                Color col = s.src.strip ? stripColor : tubeColor;
+
+                // Crossfade between the room-only main light and its shadowed spill copy. The spill only
+                // starts taking over once its shadow map exists, and gives the light back before losing it.
+                bool spillOn = s.wantShadow && k > 0.002f;
+                if (s.spill.shadows == LightShadows.None && (spillOn || s.spillW > 0f)) s.spill.shadows = LightShadows.Soft;
+                bool ready = s.spill.shadows != LightShadows.None && s.spill.enabled;
+                s.spillW = Mathf.MoveTowards(s.spillW, spillOn && ready ? 1f : 0f, dt / Mathf.Max(0.01f, shadowFade));
+                if (spillOn && !s.spill.enabled) s.spill.enabled = true;       // render its shadow first, at zero intensity
+                float w = Mathf.SmoothStep(0f, 1f, s.spillW);
+
+                s.main.intensity = intensity * (1f - w);
+                s.main.enabled = k > 0.002f && w < 0.999f;
+                s.main.range = range; s.main.spotAngle = angle; s.main.innerSpotAngle = inner; s.main.color = col;
+                s.main.shadows = LightShadows.None;
+
+                s.spill.intensity = intensity * w;
+                s.spill.range = range; s.spill.spotAngle = angle; s.spill.innerSpotAngle = inner; s.spill.color = col;
+                // Shadow geometry is inset from the visible walls, so only a small bias is needed.
+                s.spill.shadowBias = s.src.dome || s.src.strip ? 0.08f : 0.03f;
+                s.spill.shadowNormalBias = 0.15f;
+                s.spill.shadowStrength = 1f;
+                if (!spillOn && s.spillW <= 0f) { s.spill.enabled = false; s.spill.shadows = LightShadows.None; }
+                if (s.main.enabled) enabled++;
+                if (s.spill.enabled) { enabled++; shadowed++; }
+
+                // Bounce fill only for the nearest fixtures, fading out before its distance limit.
+                float bk = bounces < bounceCount ? 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(bounceDistance * 0.7f, bounceDistance, d)) : 0f;
+                s.bounce.enabled = k > 0.002f && bounceIntensity > 0f && bk > 0.01f;
+                if (s.bounce.enabled) { bounces++; enabled++; }
+                s.bounce.intensity = bounceIntensity * k * bk * (s.src.dome ? 1.6f : 1f);
+                s.bounce.range = s.src.dome || s.src.strip ? bounceRange * 1.6f : bounceRange;
+                s.bounce.color = s.src.strip ? Color.Lerp(stripColor, new Color(0.95f, 0.92f, 0.85f), 0.5f)
+                                             : Color.Lerp(tubeColor, new Color(1f, 0.9f, 0.62f), 0.5f);
             }
             if (slots == _troffers) { EnabledLights = enabled; ShadowedLights = shadowed; }
             else { EnabledLights += enabled; ShadowedLights += shadowed; }
@@ -392,8 +430,9 @@ namespace Backrooms.Generation
 
         void Release(Slot s)
         {
-            s.busy = false; s.fade = 0f; s.target = 0f; s.shadowK = 0f; s.wantShadow = false; s.allLayers = false;
+            s.busy = false; s.fade = 0f; s.target = 0f; s.shadowK = 0f; s.wantShadow = false; s.allLayers = false; s.spillW = 0f;
             s.main.enabled = false; s.main.shadows = LightShadows.None;
+            if (s.spill) { s.spill.enabled = false; s.spill.shadows = LightShadows.None; }
             if (s.bounce) s.bounce.enabled = false;
         }
 

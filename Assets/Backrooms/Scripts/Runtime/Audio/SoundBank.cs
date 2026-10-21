@@ -47,6 +47,8 @@ namespace Backrooms.Audio
             if (s_steps == null) { s_steps = new AudioClip[8]; for (int i = 0; i < 8; i++) s_steps[i] = ProceduralSounds.CarpetStep(i); }
             return s_steps[variant & 7];
         }
+        static AudioClip s_zoom;
+        public static AudioClip ZoomMotor => s_zoom ? s_zoom : (s_zoom = ProceduralSounds.ZoomMotor());
         public static AudioClip Buzz => s_buzz ? s_buzz : (s_buzz = ProceduralSounds.FaultyBuzz());
         public static AudioClip Ventilation => s_vent ? s_vent : (s_vent = ProceduralSounds.Ventilation());
         public static AudioClip RoomTone => s_tone ? s_tone : (s_tone = ProceduralSounds.RoomTone());
@@ -63,6 +65,7 @@ namespace Backrooms.Audio
                 case SoundIds.BuildingHum: return 0.022f;
                 case SoundIds.Ventilation: return 0.03f;
                 case SoundIds.RoomTone: return 0.03f;
+                case SoundIds.ZoomMotor: return 0.06f;
                 case SoundIds.Footsteps: return s_recordedSteps != null || StepCount != 8 ? 0.05f : 0.08f;
                 default: return 0.05f;
             }

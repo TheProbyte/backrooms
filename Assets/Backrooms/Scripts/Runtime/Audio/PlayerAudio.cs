@@ -14,7 +14,9 @@ namespace Backrooms.Audio
 
         CamcorderPlayerController _player;
         CamcorderAudioChain _chain;
-        AudioSource _feet;
+        AudioSource _feet, _zoom;
+        float _zoomLevel;
+        int _zoomVersion = -1;
         float _travel;
         int _last = -1, _version = -1;
         Vector3 _lastPos;
@@ -27,6 +29,14 @@ namespace Backrooms.Audio
             go.transform.localPosition = new Vector3(0f, 0.05f, 0.1f);
             _feet = go.AddComponent<AudioSource>();
             _feet.playOnAwake = false; _feet.loop = false;
+            // Zoom motor: in the camera body, just behind the lens and microphone.
+            var cam = Camera.main ? Camera.main.transform : transform;
+            var zgo = new GameObject("ZoomMotor");
+            zgo.transform.SetParent(cam, false);
+            zgo.transform.localPosition = new Vector3(0.03f, -0.02f, -0.12f);
+            _zoom = zgo.AddComponent<AudioSource>();
+            _zoom.clip = SoundBank.ZoomMotor; _zoom.loop = true; _zoom.playOnAwake = false; _zoom.volume = 0f;
+            _zoom.Play();
             _lastPos = transform.position;
         }
 
@@ -35,6 +45,21 @@ namespace Backrooms.Audio
             if (!_chain) { var l = FindAnyObjectByType<AudioListener>(); if (l) _chain = l.GetComponent<CamcorderAudioChain>(); }
             const string id = SoundIds.Footsteps;
             if (SoundCatalog.Version != _version) { SoundBank.ApplySpatial(_feet, id); _version = SoundCatalog.Version; }
+
+            // Zoom motor follows the motor speed (no sound when the lens is still).
+            if (SoundCatalog.Version != _zoomVersion) { SoundBank.ApplySpatial(_zoom, SoundIds.ZoomMotor); _zoomVersion = SoundCatalog.Version; }
+            float zm = Mathf.Abs(_player.ZoomMotor);
+            _zoomLevel = Mathf.MoveTowards(_zoomLevel, zm, Time.deltaTime * 6f);
+            _zoom.volume = SoundBank.BaseLevel(SoundIds.ZoomMotor) * SoundCatalog.Volume(SoundIds.ZoomMotor) * _zoomLevel;
+            _zoom.pitch = SoundCatalog.Pitch(SoundIds.ZoomMotor) * (0.85f + 0.15f * _zoomLevel);
+
+            // Landing from a jump: a heavier step and a thump on the mic.
+            if (_player.LandedThisFrame > 0f)
+            {
+                _feet.PlayOneShot(SoundBank.Step(Random.Range(0, SoundBank.StepCount)),
+                    SoundBank.BaseLevel(SoundIds.Footsteps) * SoundCatalog.Volume(SoundIds.Footsteps) * Mathf.Clamp(_player.LandedThisFrame / 2.5f, 0.8f, 2f));
+                if (_chain) _chain.HandlingImpulse();
+            }
 
             Vector3 pos = transform.position;
             Vector3 d = pos - _lastPos; d.y = 0f;
@@ -45,10 +70,10 @@ namespace Backrooms.Audio
             if (!walking || d.magnitude > 2f) { _travel = 0f; return; }       // teleports don't step
 
             _travel += d.magnitude;
-            float stride = _player.IsRunning ? runStride : walkStride;
+            float stride = _player.IsCrawling ? 0.42f : _player.IsRunning ? runStride : walkStride;
             if (_travel < stride) return;
             _travel -= stride;
-            if (speed < 0.25f) return;
+            if (speed < 0.15f) return;
 
             float varAmt = SoundCatalog.ParamA(id);
             int pick;
@@ -56,7 +81,7 @@ namespace Backrooms.Audio
             do pick = Random.Range(0, count); while (pick == _last && varAmt > 0.01f && count > 1);
             _last = pick;
             var clip = SoundBank.Step(pick);
-            float heavy = _player.IsRunning ? 1.5f : Mathf.Lerp(0.7f, 1f, speed / Mathf.Max(0.1f, _player.walkSpeed));
+            float heavy = _player.IsCrawling ? 0.45f : _player.IsRunning ? 1.5f : Mathf.Lerp(0.7f, 1f, speed / Mathf.Max(0.1f, _player.walkSpeed));
             _feet.pitch = SoundCatalog.Pitch(id) * (1f + (Random.value - 0.5f) * 0.05f * varAmt);
             _feet.volume = 1f;
             // PlayOneShot lets the previous step's tail finish instead of cutting it off (that cut was the pop).

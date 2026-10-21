@@ -266,6 +266,33 @@ namespace Backrooms.Audio
             return Clip("BuildingHum", data, 2);
         }
 
+        // ---------------- Camcorder ----------------
+
+        /// <summary>Zoom lens motor: a thin, slightly wavering whine with gear ripple (seamless 2 s loop).</summary>
+        public static AudioClip ZoomMotor()
+        {
+            float L = 2f;
+            int n = (int)(Rate * L), fade = Rate / 10;
+            var raw = new float[n + fade];
+            var rng = new System.Random(808);
+            var gearBp = Biquad.BandPass(3400f, 1.5f);
+            var hissBp = Biquad.BandPass(6000f, 0.8f);
+            float ph = 0f;
+            for (int i = 0; i < raw.Length; i++)
+            {
+                float t = i / (float)Rate;
+                float f = 1180f + 18f * Mathf.Sin(TwoPi * 3f * t) + 6f * Mathf.Sin(TwoPi * 11f * t);
+                ph += TwoPi * f / Rate;
+                float whine = Mathf.Sin(ph) * 0.5f + Mathf.Sin(ph * 2f) * 0.22f + Mathf.Sin(ph * 3f + 1f) * 0.1f;
+                float ripple = 0.6f + 0.4f * Mathf.Sin(TwoPi * 47f * t);            // gear teeth
+                float gear = gearBp.Run(White(rng)) * ripple * 1.5f;
+                raw[i] = whine * 0.35f + gear * 0.5f + hissBp.Run(White(rng)) * 0.15f;
+            }
+            var data = Seamless(raw, n, fade, 1);
+            Normalize(data, 0.5f);
+            return Clip("ZoomMotor", data, 1);
+        }
+
         // ---------------- Footsteps ----------------
 
         /// <summary>One carpet step (variant 0-7): heel thud through the floor plus a fabric scuff.</summary>

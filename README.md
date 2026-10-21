@@ -16,6 +16,10 @@ Open `Assets/Backrooms/Scenes/Backrooms_Infinite.unity` and press Play. (The mil
 | --- | --- |
 | W A S D | Walk |
 | Hold Left Shift | Run (forward) |
+| C | Crouch / stand (eased) |
+| Left Ctrl | Crawl (from a run: quick drop forward) |
+| Space | Jump (tap = small hop, hold = bend the knees for a higher jump) |
+| Hold F | Zoom in (release to zoom back out), with the lens motor sound |
 | Mouse | Look |
 | F5 | Camcorder visual settings panel |
 | Esc | Close the panel / release cursor |

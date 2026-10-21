@@ -645,6 +645,7 @@ namespace Backrooms.Audio
                 case SoundIds.BuildingHum: s.clip = SoundBank.BuildingHum; s.loop = true; _previewKind = 0; break;
                 case SoundIds.Ventilation: s.clip = SoundBank.Ventilation; s.loop = true; _previewKind = 0; break;
                 case SoundIds.RoomTone: s.clip = SoundBank.RoomTone; s.loop = true; _previewKind = 0; break;
+                case SoundIds.ZoomMotor: s.clip = SoundBank.ZoomMotor; s.loop = true; _previewKind = 0; break;
                 case SoundIds.FluorescentStrike: s.clip = SoundBank.Strike(0); s.loop = false; _previewKind = 1; break;
                 case SoundIds.Footsteps: s.clip = SoundBank.Step(0); s.loop = false; _previewKind = 1; break;
                 default: _previewId = null; return;

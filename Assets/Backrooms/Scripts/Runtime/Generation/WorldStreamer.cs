@@ -23,6 +23,8 @@ namespace Backrooms.Generation
         public OfficeBiomeAssets assets;
         public Transform player;
         public FixtureLightManager lightManager;
+        [Tooltip("Flicker newly streamed areas on (off: the world is already lit).")]
+        public bool strikeOnStream = false;
 
         public int Seed { get; private set; }
         public int LoadedChunks => _chunks.Count;
@@ -218,7 +220,9 @@ namespace Backrooms.Generation
                 generation = _generation, layout = built.Layout };
             _chunks[coord] = ch;
             // Areas streamed in after the first frame flicker on (only ever seen from far away, if at all).
-            if (lightManager) lightManager.Register(coord, ch.lights, ch.lenses, ch.faulty, animate);
+            // The building is already lit: streamed-in areas are simply on (a strike-on flicker read as
+            // distant lights popping in). "animate" is kept for a future power-restoring event.
+            if (lightManager) lightManager.Register(coord, ch.lights, ch.lenses, ch.faulty, animate && strikeOnStream);
         }
 
         readonly Dictionary<Vector2Int, Chunk> _dying = new Dictionary<Vector2Int, Chunk>();
@@ -230,7 +234,7 @@ namespace Backrooms.Generation
         {
             if (!_chunks.TryGetValue(coord, out var ch)) return;
             _chunks.Remove(coord);
-            float delay = lightManager ? lightManager.BeginPowerDown(coord) : 0f;
+            float delay = lightManager && strikeOnStream ? lightManager.BeginPowerDown(coord) : 0f;
             _dying[coord] = ch;
             StartCoroutine(DestroyLater(coord, ch, delay));
         }

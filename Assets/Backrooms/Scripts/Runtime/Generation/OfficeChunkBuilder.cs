@@ -556,7 +556,16 @@ namespace Backrooms.Generation
         {
             if (!_a.baseboard) return;
             var w = WMask(_a.baseboard, ProxyMask);
-            foreach (var (c, sz) in _boxes) w.Box(c, sz, 63, MeshWriter.MetreUV);
+            // Inset each box slightly behind the visible faces: a caster exactly on a lit surface shadows
+            // itself (stepped bands on walls). Only thin dimensions are inset, so corners stay overlapped.
+            const float inset = 0.025f;
+            foreach (var (c, sz) in _boxes)
+            {
+                Vector3 z = sz;
+                if (z.x < 0.6f) z.x = Mathf.Max(0.04f, z.x - inset * 2f);
+                if (z.z < 0.6f) z.z = Mathf.Max(0.04f, z.z - inset * 2f);
+                w.Box(c, z, 63, MeshWriter.MetreUV);
+            }
         }
 
         // ---------------- Fixtures ----------------

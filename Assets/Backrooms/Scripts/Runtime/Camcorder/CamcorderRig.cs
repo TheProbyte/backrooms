@@ -71,7 +71,8 @@ namespace Backrooms.Camcorder
         void LateUpdate()
         {
             var s = Settings;
-            _cam.fieldOfView = s.fieldOfView;
+            if (!_player) _player = FindAnyObjectByType<CamcorderPlayerController>();
+            _cam.fieldOfView = s.fieldOfView * (_player ? _player.FovMultiplier : 1f);
 
             if (_profile)
             {
@@ -139,6 +140,7 @@ namespace Backrooms.Camcorder
         }
 
         Backrooms.Audio.CamcorderAudioChain _audio;
+        CamcorderPlayerController _player;
         public Backrooms.Audio.CamcorderAudioChain Audio => _audio ? _audio : (_audio = GetComponent<Backrooms.Audio.CamcorderAudioChain>());
 
         /// <summary>Contrast-AF style: sample the centre, then drive focus with a damped motor that overshoots.</summary>
@@ -163,7 +165,8 @@ namespace Backrooms.Camcorder
             _dof.mode.Override(DepthOfFieldMode.Bokeh);
             _dof.focusDistance.Override(_focus);
             _dof.aperture.Override(s.aperture);
-            _dof.focalLength.Override(Mathf.Lerp(18f, 32f, Mathf.InverseLerp(80f, 45f, s.fieldOfView)));
+            // Zooming in lengthens the focal length, so depth of field gets shallower like a real lens.
+            _dof.focalLength.Override(Mathf.Lerp(18f, 32f, Mathf.InverseLerp(80f, 45f, s.fieldOfView)) / Mathf.Max(0.1f, _player ? _player.FovMultiplier : 1f));
             _dof.bladeCount.Override(6);
         }
     }
