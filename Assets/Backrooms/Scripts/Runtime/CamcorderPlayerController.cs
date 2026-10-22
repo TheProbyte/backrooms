@@ -101,6 +101,28 @@ namespace Backrooms
         /// <summary>Set by in-game menus to suspend look, movement and cursor capture.</summary>
         public static bool InputBlocked;
 
+        // Set by other systems each frame (e.g. PropGrabber while holding something).
+        /// <summary>Multiplier on mouse look (the grabber takes most of the mouse while holding).</summary>
+        [System.NonSerialized] public float lookScale = 1f;
+        /// <summary>Multiplier on walking speed (heavy things slow you down).</summary>
+        [System.NonSerialized] public float moveScale = 1f;
+        /// <summary>No running (e.g. while dragging something).</summary>
+        [System.NonSerialized] public bool noRun;
+        /// <summary>How far the body bends down (m), e.g. to reach something on the floor.</summary>
+        [System.NonSerialized] public float stoop;
+        /// <summary>True when the game window has the mouse and keys this frame.</summary>
+        public bool HasFocus { get; private set; }
+
+        /// <summary>Turns the view by the given degrees (yaw right, pitch down), as mouse look would.</summary>
+        public void AddLook(float yaw, float pitch)
+        {
+            _yaw += yaw;
+            _pitch = Mathf.Clamp(_pitch + pitch, -pitchLimit, pitchLimit);
+            transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
+            if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
+        }
+        public float Pitch => _pitch;
+
         CharacterController _controller;
         float _yaw, _pitch, _verticalVelocity;
         int _unblockFrame = -10;
@@ -139,7 +161,8 @@ namespace Backrooms
 
             // Ignore input while the window is in the background (raw mouse deltas still arrive).
             bool hasFocus = !blocked && Cursor.lockState == CursorLockMode.Locked && (Application.isFocused || !requireWindowFocus);
-            if (hasFocus) UpdateLook(mouse.delta.ReadValue() * FovMultiplier);   // aim slows down when zoomed in
+            HasFocus = hasFocus;
+            if (hasFocus) UpdateLook(mouse.delta.ReadValue() * FovMultiplier * lookScale);   // aim slows down when zoomed in
             UpdateZoom(keyboard, hasFocus);
             UpdateStance(keyboard, hasFocus);
             UpdateMove(keyboard, hasFocus);
@@ -209,8 +232,9 @@ namespace Backrooms
             }
 
             // Running only makes sense standing and moving mostly forward.
-            IsRunning = hasFocus && CurrentStance == Stance.Stand && keyboard.leftShiftKey.isPressed && input.y > 0.1f;
+            IsRunning = !noRun && hasFocus && CurrentStance == Stance.Stand && keyboard.leftShiftKey.isPressed && input.y > 0.1f;
             float targetSpeed = CurrentStance == Stance.Crawl ? crawlSpeed : CurrentStance == Stance.Crouch ? crouchSpeed : IsRunning ? runSpeed : walkSpeed;
+            targetSpeed *= moveScale;
             Vector3 target = (transform.forward * input.y + transform.right * input.x) * targetSpeed;
 
             float rate = input.sqrMagnitude > 0.001f ? acceleration : deceleration;
@@ -249,6 +273,8 @@ namespace Backrooms
 
         // ---------------- Stances ----------------
 
+        /// <summary>Eye height for the current stance (before stooping, jumps and landing dips).</summary>
+        public float BaseEye => EyeTarget;
         float EyeTarget => CurrentStance == Stance.Crawl ? crawlEye : CurrentStance == Stance.Crouch ? crouchEye : standEye;
         float HeightFor(Stance st) => st == Stance.Crawl ? crawlHeight : st == Stance.Crouch ? crouchHeight : standHeight;
 
@@ -296,6 +322,7 @@ namespace Backrooms
             float charge = _chargeT >= 0f ? Mathf.Clamp01((Time.time - _chargeT) / Mathf.Max(0.05f, chargeTime)) : 0f;
             // Knees bend while a jump charges (and briefly before a tap hop).
             float target = EyeTarget - charge * 0.2f - (_launchAt >= 0f ? 0.06f : 0f);
+            target -= Mathf.Clamp(stoop, 0f, Mathf.Max(0f, EyeTarget - 0.6f));     // bending down to reach something low
             // Small fixed substeps keep the spring stable even on a long frame.
             int steps = Mathf.Clamp(Mathf.CeilToInt(dt / (1f / 240f)), 1, 60);
             float h = dt / steps;

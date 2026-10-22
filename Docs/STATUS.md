@@ -1,9 +1,11 @@
 # Status (where to resume)
+0. Feel test of grabbing (tuning values in Docs/Interaction.md); a better hand model (the thumb sticks out);
+   save moved props to disk; creatures moving things while you are away.
 
 Last updated 2026-10-22. Read `Docs/ProjectBrief.md` for the vision and `Docs/WorldGeneration.md` for how
 generation and lighting work now.
 
-## World generation (world version 4, branch worldgen-v2)
+## World generation (world version 5)
 
 - Layered: zones (Voronoi, data assets) > biomes (density field per zone) > landmarks (sparse grid) >
   districts (4 x 4 chunks planned at once) > chunk slices (streaming only). See WorldGeneration.md.
@@ -14,6 +16,14 @@ generation and lighting work now.
   streams only around it). Seed 1234: atrium at cells (251, 363), colonnade halls at (-319, -20) and (357, -16).
 - Chunk coordinates are (x, storey, z). `WorldStreamer.ChunkLoaded/ChunkUnloaded` are the hook for
   registering Steam Audio geometry per chunk (not done yet).
+
+## Moving things (branch grab-props)
+
+- Sofas, armchairs, office chairs, conference tables and loose cardboard boxes (new, world version 5) can be
+  grabbed with the left hand, dragged, swung, lifted at one end, tipped and shoved. See `Docs/Interaction.md`.
+- Moved props are remembered for the session (they stay where you left them when their chunk unloads and
+  reloads); saving to disk is not done yet.
+- Placeholder first-person arm (watch, ring) and body from `Tools/Blender/make_player.py`.
 
 ## Lighting (all real-time, live shadows)
 
@@ -38,8 +48,8 @@ generation and lighting work now.
 - Play mode needs `runInBackground` on while Unity is unfocused. The MCP camera screenshot pauses the
   editor; unpause after it.
 
-## Open items (next steps, in order)
-
+. Feel test of grabbing (Docs/Interaction.md lists the tuning values); a better hand model (the thumb
+   sticks out); save moved props to disk; creatures moving things while you are away.
 1. Owner review of the light grid look (Docs/screenshots/phase4_ab_*: `_layers` = old, `_grid` = new).
    Tunables: LightGrid.bounceGain / floorAlbedo / bounceSpread / wrap, FixtureLightManager.handoverTime.
 2. The arched-niche/balcony room from references/update11/ref3_arches_balcony.png as a landmark kind

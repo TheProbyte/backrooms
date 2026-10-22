@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Backrooms.Interaction;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -104,7 +105,7 @@ namespace Backrooms.Generation
         public void BuildData(OfficeLayout layout, OfficeLayout[] neighbours)
         {
             _neighbours = neighbours;
-            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear(); doorways.Clear();
+            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear(); _movables.Clear(); doorways.Clear();
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             foreach (var f in layout.fixtures) _fixtureCells.Add(f.cell);
@@ -187,6 +188,12 @@ namespace Backrooms.Generation
                     litLensRenderers.Add(r);
                 }
             }
+
+            // Movable props (skipped if they have been moved: they live with MovablePropManager now).
+            var moved = MovablePropManager.Instance;
+            foreach (var s in _movables)
+                if (!moved || !moved.IsMoved(s.id))
+                    MovableProp.Spawn(s, root.transform, s.position, Quaternion.Euler(0f, s.yaw, 0f));
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
             AddFloorColliders(root);
@@ -910,8 +917,27 @@ namespace Backrooms.Generation
                     case PropKind.FloorLamp: Lamp(p, at, lights); break;
                     case PropKind.ConferenceTable: Table(p, at, rot); break;
                     case PropKind.StorageRack: Rack(p, at); break;
+                    case PropKind.Box: BoxProp(p, at); break;
                 }
             }
+        }
+
+        /// <summary>Props the player can move (built in Instantiate, see Interaction.MovableProp).</summary>
+        readonly List<MovableSpec> _movables = new List<MovableSpec>();
+
+        MovableSpec Movable(ulong id, MovableKind kind, Vector3 at, float yaw, int color)
+        {
+            var s = new MovableSpec { id = id, kind = kind, renderMask = LayerBit(color), proxyMaterial = _a.baseboard, position = _origin + at, yaw = yaw };
+            _movables.Add(s);
+            return s;
+        }
+
+        /// <summary>Loose cardboard box (movable).</summary>
+        void BoxProp(Prop p, Vector3 at)
+        {
+            var s = Movable(p.id, MovableKind.Box, at, p.yaw, p.roomColor);
+            s.size = p.size; s.variant = p.variant;
+            s.AddBox(_a.cardboard ?? _a.wood, new Vector3(0f, p.size.y * 0.5f, 0f), p.size);
         }
 
         void PlaceModelled(Prop p, Vector3 at, Quaternion rot, List<LightSource> lights)
@@ -926,19 +952,14 @@ namespace Backrooms.Generation
                     bool arm = _a.armchairPrefabs != null && _a.armchairPrefabs.Length > 0 && (p.variant % 4 == 3);
                     var rng = new System.Random(DistrictGenerator.Hash(_L.coord.x, _L.coord.y, (int)(at.x * 31), (int)(at.z * 17)));
                     int fabric = rng.Next(fabricCount);
+                    // Movable: the prop builds its own colliders and shadow proxies (Interaction.MovableProp).
                     if (arm)
-                    {
-                        Place(_a.armchairPrefabs[fabric % _a.armchairPrefabs.Length], at, p.yaw, col, null, false, true);
-                        ProxyBox(at, p.yaw, new Vector3(0, 0.27f, 0), new Vector3(0.9f, 0.42f, 0.84f));
-                        ProxyBox(at, p.yaw, new Vector3(0, 0.66f, -0.33f), new Vector3(0.9f, 0.5f, 0.18f));   // backs face -Z in Unity
-                    }
+                        Movable(p.id, MovableKind.Armchair, at, p.yaw, col).AddPrefab(_a.armchairPrefabs[fabric % _a.armchairPrefabs.Length], Vector3.zero);
                     else
                     {
                         int models = Mathf.Max(1, _a.sofaPrefabs.Length / fabricCount);
                         int model = rng.Next(models);
-                        Place(_a.sofaPrefabs[model * fabricCount + fabric], at, p.yaw, col, null, false, true);
-                        ProxyBox(at, p.yaw, new Vector3(0, 0.25f, 0), new Vector3(p.size.x - 0.04f, 0.42f, p.size.z - 0.04f));
-                        ProxyBox(at, p.yaw, new Vector3(0, 0.6f, -p.size.z * 0.5f + 0.12f), new Vector3(p.size.x - 0.04f, 0.5f, 0.2f));
+                        Movable(p.id, MovableKind.Sofa, at, p.yaw, col).AddPrefab(_a.sofaPrefabs[model * fabricCount + fabric], Vector3.zero);
                     }
                     break;
                 }
@@ -949,14 +970,11 @@ namespace Backrooms.Generation
                 case PropKind.ConferenceTable:
                 {
                     float L = p.size.x;
-                    Place(_a.tableModulePrefab, at, p.yaw, col, new Vector3(L, 1f, 1f), false, true);
-                    ProxyBox(at, p.yaw, new Vector3(0, 0.72f, 0), new Vector3(L, 0.05f, 1.1f));
-                    for (int i = -1; i <= 1; i += 2)
-                    {
-                        Place(_a.tableLegPrefab, at + rot * new Vector3(i * L * 0.32f, 0, 0), p.yaw, col, null, false, true);
-                        ProxyBox(at, p.yaw, new Vector3(i * L * 0.32f, 0.35f, 0), new Vector3(0.05f, 0.66f, 0.8f));
-                    }
-                    _rotBoxes.Add((at + Vector3.up * 0.37f, new Vector3(L, 0.74f, 1.1f), p.yaw));
+                    var table = Movable(p.id, MovableKind.Table, at, p.yaw, col);
+                    table.size = new Vector3(L, 0.74f, 1.1f);
+                    table.AddPrefab(_a.tableModulePrefab, Vector3.zero, 0f, new Vector3(L, 1f, 1f));
+                    for (int i = -1; i <= 1; i += 2) table.AddPrefab(_a.tableLegPrefab, new Vector3(i * L * 0.32f, 0, 0));
+                    int chair = 0;
                     var rng = new System.Random(DistrictGenerator.Hash(_L.coord.x, _L.coord.y, (int)(p.position.x * 100), (int)(p.position.y * 100)));
                     int perSide = Mathf.Max(1, Mathf.FloorToInt(L / 0.75f));
                     for (int side = -1; side <= 1; side += 2)
@@ -967,13 +985,13 @@ namespace Backrooms.Generation
                         float cz = side * (0.55f + 0.2f + (float)rng.NextDouble() * 0.25f);
                         float yaw = p.yaw + (side < 0 ? 0f : 180f) + (float)(rng.NextDouble() - 0.5) * 30f;
                         var cpos = at + rot * new Vector3(cx, 0, cz);
-                        Place(_a.officeChairPrefab, cpos, yaw, col, null, false, true);
-                        ProxyBox(cpos, yaw, new Vector3(0, 0.47f, 0.02f), new Vector3(0.46f, 0.08f, 0.44f));
-                        ProxyBox(cpos, yaw, new Vector3(0, 0.8f, -0.24f), new Vector3(0.42f, 0.48f, 0.04f));
-                        ProxyBox(cpos, yaw, new Vector3(0, 0.25f, 0), new Vector3(0.05f, 0.4f, 0.05f));
+                        Movable(MovableSpec.SubId(p.id, chair++), MovableKind.OfficeChair, cpos, yaw, col).AddPrefab(_a.officeChairPrefab, Vector3.zero);
                     }
                     break;
                 }
+                case PropKind.Box:
+                    BoxProp(p, at);
+                    break;
                 case PropKind.WallClock:
                     if (_a.wallClockPrefab) Place(_a.wallClockPrefab, new Vector3(at.x, p.size.y, at.z), p.yaw, col, null, false, true);
                     break;

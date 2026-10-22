@@ -66,6 +66,17 @@ namespace Backrooms.Generation
             Seed = seed != 0 ? seed : new System.Random().Next(1, int.MaxValue);
             Settings = WorldGenSettings.Load();
             _world = new WorldGenerator(Seed, Settings);
+            // Movable props: the list of moved ones, and the player's free hand.
+            if (!GetComponentInChildren<Interaction.MovablePropManager>())
+            {
+                var m = new GameObject("MovedProps").AddComponent<Interaction.MovablePropManager>();
+                m.transform.SetParent(transform, false);
+                m.streamer = this;
+            }
+            if (player && player.GetComponent<CamcorderPlayerController>() && !player.GetComponent<Interaction.PropGrabber>())
+                player.gameObject.AddComponent<Interaction.PropGrabber>();
+            if (player && player.GetComponent<CamcorderPlayerController>() && !player.GetComponent<Interaction.FirstPersonBody>())
+                player.gameObject.AddComponent<Interaction.FirstPersonBody>();
         }
 
         /// <summary>The ground-storey chunk's layout as currently built (null if not loaded).</summary>

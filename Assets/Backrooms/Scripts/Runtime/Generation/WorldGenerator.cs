@@ -59,6 +59,18 @@ namespace Backrooms.Generation
             return Slice(DistrictGenerator.Generate(Settings, Seed, new Vector2Int(d.x, d.z), d.y), c);
         }
 
+        /// <summary>Stable prop id: district, storey and index in the district plan (unique per world).</summary>
+        public static ulong PropId(Vector2Int district, int storey, int index)
+        {
+            unchecked
+            {
+                ulong h = (ulong)(uint)district.x * 0x9E3779B97F4A7C15ul;
+                h ^= (ulong)(uint)district.y * 0xC2B2AE3D27D4EB4Ful + (h << 6) + (h >> 2);
+                h ^= (ulong)(uint)storey * 0x165667B19E3779F9ul + (h << 6) + (h >> 2);
+                return (h & ~0xFFFFul) | (uint)(index & 0xFFFF);
+            }
+        }
+
         static Vector3Int DistrictKey(Vector3Int chunk)
         {
             var d = DistrictOf(new Vector2Int(chunk.x, chunk.z));
@@ -114,11 +126,14 @@ namespace Backrooms.Generation
             }
             foreach (var p in plan.plates)
                 if (Mine(p.cell.x, p.cell.y)) { var g = p; g.cell -= new Vector2Int(ox, oz); S.plates.Add(g); }
-            foreach (var p in plan.props)
+            for (int i = 0; i < plan.props.Count; i++)
             {
+                var p = plan.props[i];
                 int px = Mathf.FloorToInt(p.position.x / C), pz = Mathf.FloorToInt(p.position.y / C);
                 if (!Mine(Mathf.Clamp(px, 0, plan.N - 1), Mathf.Clamp(pz, 0, plan.N - 1))) continue;
-                var g = p; g.position -= new Vector2(ox * C, oz * C); S.props.Add(g);
+                var g = p; g.position -= new Vector2(ox * C, oz * C);
+                g.id = PropId(plan.coord, plan.storey, i);
+                S.props.Add(g);
             }
             foreach (var l in plan.landmarks)
                 if (l.rect.Overlaps(chunkRect)) S.landmarks.Add(l);

@@ -47,6 +47,8 @@ namespace Backrooms.Generation
         public Vector2Int cell;       // layout-local cell
         public bool on;
         public int roomColor;
+        /// <summary>Stable id (district, storey, index in the plan): the key for saved edits such as moved props.</summary>
+        public ulong id;
         public bool dome;             // round surface-mounted fitting on a tall plaster ceiling
         public bool strip;            // warehouse: cool-white twin-tube batten hung on chains
         public float height;          // ceiling height at the fixture (above this storey's floor)
@@ -61,7 +63,7 @@ namespace Backrooms.Generation
     /// <summary>Electrical plate on a wall face. Face is the cell side the plate is visible from.</summary>
     public struct WallPlate { public Vector2Int cell; public int side; public float t; public float height; public bool isSwitch; public int roomColor; }
 
-    public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock, StorageRack }
+    public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock, StorageRack, Box }
     public struct Prop
     {
         public PropKind kind;
@@ -71,6 +73,8 @@ namespace Backrooms.Generation
         public int variant;
         public bool lit;
         public int roomColor;
+        /// <summary>Stable id (district, storey, index in the plan): the key for saved edits such as moved props.</summary>
+        public ulong id;
     }
 
     /// <summary>

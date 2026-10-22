@@ -142,6 +142,8 @@ namespace Backrooms.Generation
             PlacePlates(L, rng);
             for (int i = 0; i < placements.Count; i++)
                 if (landmarkRooms[i] != null) Landmarks.Decorate(L, placements[i], landmarkRooms[i]);
+            // Loose cardboard boxes (movable). Their own dice, so the rest of the plan is unchanged.
+            PlaceBoxes(L, new System.Random(Hash(seed, district.x, district.y, 0x0B0C5 + storey)));
             AssignColors(L);
             return L;
         }
@@ -848,6 +850,63 @@ namespace Backrooms.Generation
                     int cx = Mathf.Clamp(Mathf.FloorToInt(lx / C), 0, L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(lz / C), 0, L.N - 1);
                     if (!CellHasDoor(L, cx, cz) && !occupied.Contains(new Vector2Int(cx, cz)))
                         L.props.Add(new Prop { kind = PropKind.FloorLamp, position = new Vector2(lx, lz), variant = rng.Next(2), lit = rng.NextDouble() < 0.6, roomColor = r.color });
+                }
+            }
+        }
+
+        /// <summary>
+        /// A few loose cardboard boxes against walls in offices and big rooms: light things to pick up and
+        /// move. Kept clear of doors, pillars and other props.
+        /// </summary>
+        static void PlaceBoxes(OfficeLayout L, System.Random rng)
+        {
+            float C = OfficeBiome.CellSize;
+            foreach (var r in L.rooms)
+            {
+                if (r.landmark != null || r.noFloor) continue;
+                double chance = r.kind == RoomKind.Office ? 0.22 : r.kind == RoomKind.BigOffice ? 0.35 : r.kind == RoomKind.Hallway ? 0.04 : 0.0;
+                if (rng.NextDouble() >= chance) continue;
+                var rc = r.rect;
+                for (int attempt = 0; attempt < 10; attempt++)
+                {
+                    int x = rng.Next(rc.xMin, rc.xMax), z = rng.Next(rc.yMin, rc.yMax), side = rng.Next(4);
+                    if (L.EdgeOf(x, z, side) != EdgeKind.Wall || CellHasDoor(L, x, z) || NearPillarOrHalfWall(L, x, z)) continue;
+                    var centre = new Vector2((x + 0.5f) * C, (z + 0.5f) * C);
+                    bool clear = true;
+                    foreach (var p in L.props)
+                        if (p.kind != PropKind.WallClock && (p.position - centre).sqrMagnitude < 1.9f * 1.9f) { clear = false; break; }
+                    if (!clear) continue;
+                    // Inward normal of that wall and the direction along it.
+                    var inward = side == 0 ? Vector2.right : side == 1 ? Vector2.left : side == 2 ? Vector2.up : Vector2.down;
+                    var along = new Vector2(inward.y, -inward.x);
+                    var wall = centre - inward * C * 0.5f;
+                    int count = rng.Next(1, 4);
+                    float s = (float)(rng.NextDouble() - 0.5) * 0.5f;
+                    for (int i = 0; i < count; i++)
+                    {
+                        var size = new Vector3(0.32f + (float)rng.NextDouble() * 0.3f, 0.24f + (float)rng.NextDouble() * 0.3f, 0.3f + (float)rng.NextDouble() * 0.22f);
+                        float gap = OfficeBiome.WallThickness * 0.5f + size.z * 0.5f + 0.02f + (float)rng.NextDouble() * 0.2f;
+                        var pos = wall + inward * gap + along * s;
+                        // Stay inside the room, off door cells, clear of side walls.
+                        int bx = Mathf.FloorToInt(pos.x / C), bz = Mathf.FloorToInt(pos.y / C);
+                        if (!rc.Contains(new Vector2Int(bx, bz)) || CellHasDoor(L, bx, bz)) break;
+                        float fx = pos.x / C - bx, fz = pos.y / C - bz, m = (size.x * 0.75f + 0.1f) / C;
+                        if ((fx < m && L.EdgeOf(bx, bz, 0) != EdgeKind.Open) || (fx > 1f - m && L.EdgeOf(bx, bz, 1) != EdgeKind.Open)
+                            || (fz < m && L.EdgeOf(bx, bz, 2) != EdgeKind.Open) || (fz > 1f - m && L.EdgeOf(bx, bz, 3) != EdgeKind.Open))
+                        {
+                            // Only the wall it backs onto may be close.
+                            bool ok = true;
+                            if (fx < m && side != 0 && L.EdgeOf(bx, bz, 0) != EdgeKind.Open) ok = false;
+                            if (fx > 1f - m && side != 1 && L.EdgeOf(bx, bz, 1) != EdgeKind.Open) ok = false;
+                            if (fz < m && side != 2 && L.EdgeOf(bx, bz, 2) != EdgeKind.Open) ok = false;
+                            if (fz > 1f - m && side != 3 && L.EdgeOf(bx, bz, 3) != EdgeKind.Open) ok = false;
+                            if (!ok) break;
+                        }
+                        float yaw = Mathf.Atan2(inward.x, inward.y) * Mathf.Rad2Deg + (float)(rng.NextDouble() - 0.5) * 30f;
+                        L.props.Add(new Prop { kind = PropKind.Box, position = pos, yaw = yaw, size = size, variant = rng.Next(1 << 16), roomColor = r.color });
+                        s += size.x * 0.5f + 0.06f + (float)rng.NextDouble() * 0.15f + 0.2f;
+                    }
+                    break;
                 }
             }
         }

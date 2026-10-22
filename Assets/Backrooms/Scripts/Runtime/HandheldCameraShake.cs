@@ -54,6 +54,12 @@ namespace Backrooms
         [Tooltip("Small irregular wobble while turning. 0 = off.")]
         [Range(0f, 2f)] public float lookJitter = 0.5f;
 
+        /// <summary>Physical effort from moving something (0..1, set each frame by PropGrabber): adds a strained tremble.</summary>
+        [System.NonSerialized] public float effort;
+        /// <summary>How far the camcorder hand dips while the other hand works (0..1, set by PropGrabber).</summary>
+        [System.NonSerialized] public float dip;
+        float _effort, _dip;
+
         float _walkBlend, _runBlend, _stepPhase, _breathPhase;
         Vector2 _lookVel, _lookOff, _lookOffVel;
         float _lookRoll;
@@ -114,6 +120,13 @@ namespace Backrooms
                         + runRot * _runBlend * Mathf.Lerp(1f, 0.25f, stabilization) * (0.5f + 0.5f * stab);
 
             rot += LookMotion(dt, t) * (1f - stabilization * 0.5f);
+
+            // Working with the other hand: the camcorder sinks and tilts a little, and trembles under effort.
+            _effort = Mathf.MoveTowards(_effort, Mathf.Clamp01(effort), dt * 2.5f);
+            _dip = Mathf.Lerp(_dip, Mathf.Clamp01(dip), 1f - Mathf.Exp(-dt / 0.35f));
+            pos += new Vector3(-0.012f, -0.035f, 0f) * _dip;
+            rot += new Vector3(3.2f, -1.2f, 2.0f) * _dip;
+            rot += (Noise3(t * 9f + 333f) * 0.35f + Noise3(t * 3.1f + 71f) * 0.5f) * _effort;
 
             transform.localPosition = pos * shakeIntensity;
             transform.localRotation = Quaternion.Euler(rot * shakeIntensity);
