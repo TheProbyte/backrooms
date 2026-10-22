@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7df3e89720d1554e8a7986921c6ff5f, type: 3}
+  m_Name: Level0
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.ZoneDefinition
+  zoneName: Level 0
+  mapColor: {r: 0.86, g: 0.74, b: 0.36, a: 1}
+  weight: 1
+  biomes:
+  - biome: {fileID: 11400000, guid: 244dac62553815744b63ab74babc8d72, type: 2}
+    upTo: 0.36
+  - biome: {fileID: 11400000, guid: a3ba4cc42fe1e3f40927d5acf212d395, type: 2}
+    upTo: 0.66
+  - biome: {fileID: 11400000, guid: f3ed6408154438d4c91b5f3bff1b4985, type: 2}
+    upTo: 1
+  edgeBiome: {fileID: 11400000, guid: 244dac62553815744b63ab74babc8d72, type: 2}
+  neighbours: []
+  transitionZone: {fileID: 0}
+  overrideFog: 0
+  fogColor: {r: 0.16, g: 0.15, b: 0.11, a: 1}
+  fogDensity: 0.05
+  ambience: office
+  power: 1
+  minStorey: 0
+  maxStorey: 1

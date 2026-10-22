@@ -18,9 +18,10 @@ namespace Backrooms.Generation
             public Vector2Int cell;      // global cell where it shows
             public Vector2Int from;      // global cell of the source (light leaks), else = cell
             public bool crossChunk;      // involves two chunks
+            public bool crossDistrict;   // involves two districts (their light colours are planned separately)
             public float strength;       // light leaks: irradiance reaching the far side
             public string what;
-            public override string ToString() => $"{what} at cell {cell} (from {from}){(strength > 0f ? $" strength {strength:0.000}" : "")}{(crossChunk ? " [chunk border]" : "")}";
+            public override string ToString() => $"{what} at cell {cell} (from {from}){(strength > 0f ? $" strength {strength:0.000}" : "")}{(crossDistrict ? " [district border]" : crossChunk ? " [chunk border]" : "")}";
         }
 
         static Vector2Int ChunkOfCell(Vector2Int g) => new Vector2Int(FloorDiv(g.x, N), FloorDiv(g.y, N));
@@ -196,7 +197,8 @@ namespace Backrooms.Generation
                     if (e < LightLayers.VisibleIrradiance) continue;
                     var key = (srcCell, ZoneAt(g));
                     if (best.TryGetValue(key, out var old) && old.strength >= e) continue;
-                    best[key] = new Issue { cell = g, from = srcCell, strength = e, crossChunk = ChunkOfCell(g) != ChunkOfCell(srcCell), what = kind + " light leaks into another zone" };
+                    best[key] = new Issue { cell = g, from = srcCell, strength = e, crossChunk = ChunkOfCell(g) != ChunkOfCell(srcCell),
+                        crossDistrict = WorldGenerator.DistrictOf(ChunkOfCell(g)) != WorldGenerator.DistrictOf(ChunkOfCell(srcCell)), what = kind + " light leaks into another zone" };
                 }
             }
 
@@ -222,7 +224,8 @@ namespace Backrooms.Generation
                     Check(LightLayers.LampSpec(p), LightLayers.LayerBit(pr.roomColor), g, "lamp", Vector2.zero);
                 }
                 doors.Clear();
-                OfficeChunkBuilder.ComputeDoorways(L, doors);
+                int ccx = cx, ccz = cz;
+                OfficeChunkBuilder.ComputeDoorways(L, doors, (dx, dz) => gen.Chunk(new Vector2Int(ccx + dx, ccz + dz)));
                 foreach (var d in doors)
                 {
                     var inward = new Vector2(d.inward.x, d.inward.z);

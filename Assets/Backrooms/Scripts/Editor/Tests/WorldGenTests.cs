@@ -13,7 +13,8 @@ namespace Backrooms.Tests
     public class WorldGenTests
     {
         static readonly int[] Seeds = { 1, 1234, 98765, 424242 };
-        static WorldGenerator Gen(int seed) => new WorldGenerator(seed, new WorldGenSettings());
+        /// <summary>The shipped settings (World asset if present, else code defaults).</summary>
+        static WorldGenerator Gen(int seed) => new WorldGenerator(seed, WorldGenSettings.Defaults());
         static RectInt Block(int r) => new RectInt(-r, -r, 2 * r + 1, 2 * r + 1);
 
         static IEnumerable<Vector2Int> Coords(RectInt b)
@@ -71,9 +72,9 @@ namespace Backrooms.Tests
         /// <summary>
         /// Unshadowed lights only reach surfaces carrying their layer. A visible leak is a surface in another
         /// light zone that a light reaches with at least <see cref="LightLayers.VisibleIrradiance"/>.
-        /// Across chunk borders there must be none (neighbouring chunks use different colour sets). Inside a
-        /// chunk 7 colours cannot always separate every light in the densest spots, so a few are tolerated
-        /// (at most one per ten chunks checked).
+        /// Across district borders there must be none (neighbouring districts use different colour sets).
+        /// Inside a district 7 colours cannot always separate every light in the densest spots, so a few are
+        /// tolerated (at most one per ten chunks checked). The light grid (phase 4) removes this limit.
         /// </summary>
         [Test]
         public void NoLightLeaksThroughWalls()
@@ -85,12 +86,12 @@ namespace Backrooms.Tests
                 var block = Block(3);
                 chunks += (block.width - 2) * (block.height - 2);
                 var issues = WorldChecks.LightLeaks(Gen(seed), block);
-                total += issues.Count; cross += issues.Count(i => i.crossChunk);
+                total += issues.Count; cross += issues.Count(i => i.crossDistrict);
                 foreach (var i in issues.Take(3)) report.AppendLine($"seed {seed}: {i}");
             }
-            TestContext.WriteLine($"{total} visible light leaks in {chunks} chunks ({cross} across chunk borders)\n{report}");
-            Assert.AreEqual(0, cross, $"{cross} light leaks across chunk borders\n{report}");
-            Assert.LessOrEqual(total, chunks / 10, $"{total} light leaks inside chunks\n{report}");
+            TestContext.WriteLine($"{total} visible light leaks in {chunks} chunks ({cross} across district borders)\n{report}");
+            Assert.AreEqual(0, cross, $"{cross} light leaks across district borders\n{report}");
+            Assert.LessOrEqual(total, chunks / 10, $"{total} light leaks inside districts\n{report}");
         }
     }
 }

@@ -95,7 +95,8 @@ namespace Backrooms.Generation
             public float seed;
         }
 
-        readonly Dictionary<Vector2Int, ChunkPower> _chunks = new Dictionary<Vector2Int, ChunkPower>();
+        readonly Dictionary<Vector3Int, ChunkPower> _chunks = new Dictionary<Vector3Int, ChunkPower>();
+        int _minStorey, _maxStorey;           // storeys with registered chunks (chunk keys are x, storey, z)
         readonly List<LightSource> _candidates = new List<LightSource>();
         readonly List<Slot> _troffers = new List<Slot>(), _lamps = new List<Slot>();
         MaterialPropertyBlock _mpb;
@@ -107,13 +108,14 @@ namespace Backrooms.Generation
         // ---------------- Registration ----------------
 
         /// <summary>Called by the streamer. animatePowerOn: flicker the area on (false for the initial load).</summary>
-        public void Register(Vector2Int chunk, List<LightSource> lights, List<Renderer> lenses, List<Renderer> faulty, bool animatePowerOn)
+        public void Register(Vector3Int chunk, List<LightSource> lights, List<Renderer> lenses, List<Renderer> faulty, bool animatePowerOn)
         {
+            _minStorey = Mathf.Min(_minStorey, chunk.y); _maxStorey = Mathf.Max(_maxStorey, chunk.y);
             for (int i = 0; i < lights.Count; i++) { var l = lights[i]; l.chunk = chunk; lights[i] = l; }
             _chunks[chunk] = new ChunkPower
             {
                 lights = lights, lenses = lenses ?? new List<Renderer>(), faulty = faulty ?? new List<Renderer>(),
-                start = animatePowerOn ? Time.time : -1f, seed = (chunk.x * 0.731f + chunk.y * 1.37f) % 10f,
+                start = animatePowerOn ? Time.time : -1f, seed = (chunk.x * 0.731f + chunk.z * 1.37f + chunk.y * 2.11f) % 10f,
             };
         }
 
@@ -124,13 +126,13 @@ namespace Backrooms.Generation
         }
 
         /// <summary>Starts the power-down stutter. Returns the seconds until the chunk may be destroyed.</summary>
-        public float BeginPowerDown(Vector2Int chunk)
+        public float BeginPowerDown(Vector3Int chunk)
         {
             if (_chunks.TryGetValue(chunk, out var p) && p.stop < 0f) p.stop = Time.time;
             return powerFlickerTime;
         }
 
-        public void Unregister(Vector2Int chunk)
+        public void Unregister(Vector3Int chunk)
         {
             if (!_chunks.TryGetValue(chunk, out var p)) return;
             _chunks.Remove(chunk);
@@ -147,7 +149,8 @@ namespace Backrooms.Generation
             float r2 = radius * radius;
             for (int dx = -r; dx <= r; dx++)
             for (int dz = -r; dz <= r; dz++)
-                if (_chunks.TryGetValue(new Vector2Int(c.x + dx, c.y + dz), out var cp))
+            for (int s = _minStorey; s <= _maxStorey; s++)
+                if (_chunks.TryGetValue(new Vector3Int(c.x + dx, s, c.y + dz), out var cp))
                     foreach (var l in cp.lights)
                         if (!l.isLamp && (l.position - center).sqrMagnitude < r2) result.Add(l);
         }
@@ -240,7 +243,8 @@ namespace Backrooms.Generation
             int r = Mathf.CeilToInt(maxDistance / OfficeBiome.ChunkSize);
             for (int dx = -r; dx <= r; dx++)
             for (int dz = -r; dz <= r; dz++)
-                if (_chunks.TryGetValue(new Vector2Int(center.x + dx, center.y + dz), out var cp))
+            for (int s = _minStorey; s <= _maxStorey; s++)
+                if (_chunks.TryGetValue(new Vector3Int(center.x + dx, s, center.y + dz), out var cp))
                     foreach (var l in cp.lights)
                         if ((l.position - eye).sqrMagnitude < maxDistance * maxDistance) _candidates.Add(l);
 
@@ -447,7 +451,7 @@ namespace Backrooms.Generation
         [Range(0f, 3f)] public float doorwayGain = 0.55f;
         public float doorwayDistance = 18f;
 
-        readonly Dictionary<Vector2Int, List<Doorway>> _doors = new Dictionary<Vector2Int, List<Doorway>>();
+        readonly Dictionary<Vector3Int, List<Doorway>> _doors = new Dictionary<Vector3Int, List<Doorway>>();
         readonly List<Doorway> _doorCands = new List<Doorway>();
         readonly List<Light> _doorPool = new List<Light>();
         readonly List<float> _doorLevel = new List<float>();
@@ -455,8 +459,8 @@ namespace Backrooms.Generation
         System.Comparison<Doorway> _doorByDist;
 
         /// <summary>Called by the streamer with the chunk's doorways (receiving side of each opening).</summary>
-        public void RegisterDoorways(Vector2Int chunk, List<Doorway> doors) { _doors[chunk] = doors; }
-        public void UnregisterDoorways(Vector2Int chunk) { _doors.Remove(chunk); }
+        public void RegisterDoorways(Vector3Int chunk, List<Doorway> doors) { _doors[chunk] = doors; }
+        public void UnregisterDoorways(Vector3Int chunk) { _doors.Remove(chunk); }
 
         void EnsureDoorPool()
         {
@@ -487,7 +491,8 @@ namespace Backrooms.Generation
             float r2 = doorwayDistance * doorwayDistance;
             for (int dx = -r; dx <= r; dx++)
             for (int dz = -r; dz <= r; dz++)
-                if (_doors.TryGetValue(new Vector2Int(center.x + dx, center.y + dz), out var list))
+            for (int s = _minStorey; s <= _maxStorey; s++)
+                if (_doors.TryGetValue(new Vector3Int(center.x + dx, s, center.y + dz), out var list))
                     foreach (var dw in list) if ((dw.position - eye).sqrMagnitude < r2) _doorCands.Add(dw);
             if (_doorByDist == null) _doorByDist = (a, b) => (a.position - _eye).sqrMagnitude.CompareTo((b.position - _eye).sqrMagnitude);
             _doorCands.Sort(_doorByDist);

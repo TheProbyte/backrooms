@@ -77,9 +77,12 @@ namespace Backrooms.Generation
             switch (mode)
             {
                 case Mode.Zone:
-                    return Hashed(s.zone != null ? s.zone.GetHashCode() : 0, 0.45f, 0.8f);
+                {
+                    var zr = gen.Settings.zones[Mathf.Clamp(s.zoneIndex, 0, gen.Settings.zones.Count - 1)];
+                    return zr.mapColor * (s.zoneEdge ? 0.6f : 1f);
+                }
                 case Mode.Biome:
-                    return s.rules.mapColor * (room.Walkable ? 1f : 0.5f);
+                    return s.mapColor * (room.Walkable ? 1f : 0.5f);
                 case Mode.District:
                 {
                     var d = DistrictOf(L.coord);
@@ -97,6 +100,8 @@ namespace Backrooms.Generation
                         _ => new Color(0.78f, 0.74f, 0.6f),
                     };
                     if (room.Tall) k = Color.Lerp(k, Color.white, 0.25f);
+                    if (room.landmark != null) k = Color.Lerp(k, new Color(0.95f, 0.35f, 0.9f), 0.6f);
+                    if (room.noFloor || room.openAbove) k = Color.Lerp(k, new Color(0.3f, 0.9f, 1f), 0.5f);
                     return k * shade;
                 }
                 case Mode.LightLayers:
@@ -114,8 +119,8 @@ namespace Backrooms.Generation
             return Color.magenta;
         }
 
-        /// <summary>District of a chunk (placeholder grouping until districts exist: 4 x 4 chunks).</summary>
-        public static Vector2Int DistrictOf(Vector2Int chunk) => new Vector2Int(Mathf.FloorToInt(chunk.x / 4f), Mathf.FloorToInt(chunk.y / 4f));
+        /// <summary>District of a chunk (4 x 4 chunks).</summary>
+        public static Vector2Int DistrictOf(Vector2Int chunk) => WorldGenerator.DistrictOf(chunk);
 
         static Color Hashed(int h, float sat, float val)
         {

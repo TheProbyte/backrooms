@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Backrooms.Generation
 {
     /// <summary>
-    /// Every number the layout generator uses for one biome. Biomes are blended by lerping these values,
+    /// Every number the layout generator uses for one biome (authored as <see cref="BiomeDefinition"/> assets). Biomes are blended by lerping these values,
     /// so transitions between biomes are gradual (offices slowly opening up into a warehouse).
     /// All chances are 0..1 probabilities.
     /// </summary>
@@ -20,6 +20,7 @@ namespace Backrooms.Generation
         [Tooltip("... <= 6 cells.")] public float stopMedium = 0.7f;
         [Tooltip("... <= 9 cells.")] public float stopLarge = 0.5f;
         [Tooltip("... 10-12 cells.")] public float stopHuge = 0.25f;
+        [Tooltip("Largest room side in cells: districts always split regions longer than this.")] public float maxRoomCells = 12f;
 
         [Header("Hallways")]
         [Tooltip("Chance a split near the top of the tree carves a hallway.")] public float hallChanceShallow = 0.3f;
@@ -101,7 +102,7 @@ namespace Backrooms.Generation
             tallChanceBig = 1f, tallChanceSmall = 0.5f, tallMin = 6.0f, tallMax = 8.1f, paintedChance = 1f, archedDoors = 0f,
             lightsAllOn = 0.35f, lightsMixed = 0.45f, mixedOnFraction = 0.4f, faultyChance = 0.04f,
             pillarChance = 1f, pillarSpacing = 4f, halfWalls = 0f, scatteredSeating = 0.1f, rackChance = 0.7f,
-            outletChance = 0.03f, stripLights = 1f,
+            outletChance = 0.03f, stripLights = 1f, maxRoomCells = 20f,
         };
     }
 }

@@ -23,7 +23,7 @@ namespace Backrooms.Generation
         public bool strip;           // hanging cool-white warehouse strip
         public float ceiling;        // ceiling height at the fixture
         public int faultyId;         // index of this tube's own lens renderer when it stutters, else -1
-        public Vector2Int chunk;     // owning chunk (set by the streamer)
+        public Vector3Int chunk;     // owning chunk (x, storey, z), set by the streamer
     }
 
     /// <summary>
@@ -105,7 +105,7 @@ namespace Backrooms.Generation
         {
             _neighbours = neighbours;
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear(); doorways.Clear();
-            _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, 0f, layout.coord.y * OfficeBiome.ChunkSize);
+            _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             foreach (var f in layout.fixtures) _fixtureCells.Add(f.cell);
 
@@ -127,7 +127,7 @@ namespace Backrooms.Generation
         /// <summary>Phase 2 (main thread): meshes, renderers and colliders.</summary>
         public GameObject Instantiate(Transform parent)
         {
-            var root = new GameObject($"Chunk_{_L.coord.x}_{_L.coord.y}");
+            var root = new GameObject(_L.storey == 0 ? $"Chunk_{_L.coord.x}_{_L.coord.y}" : $"Chunk_{_L.coord.x}_{_L.coord.y}_s{_L.storey}");
             root.transform.SetParent(parent, false);
             root.transform.localPosition = _origin;
             root.isStatic = true;
@@ -189,9 +189,7 @@ namespace Backrooms.Generation
             }
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
-            var floor = root.AddComponent<BoxCollider>();
-            floor.center = new Vector3(OfficeBiome.ChunkSize * 0.5f, -0.25f, OfficeBiome.ChunkSize * 0.5f);
-            floor.size = new Vector3(OfficeBiome.ChunkSize, 0.5f, OfficeBiome.ChunkSize);
+            AddFloorColliders(root);
             foreach (var (c, s) in _boxes)
             {
                 var b = root.AddComponent<BoxCollider>();
@@ -215,6 +213,37 @@ namespace Backrooms.Generation
             return Instantiate(parent);
         }
 
+        /// <summary>One floor slab for the chunk, or one per row run of floored cells where a well cuts through.</summary>
+        void AddFloorColliders(GameObject root)
+        {
+            int n = _L.N;
+            bool any = false;
+            for (int x = 0; x < n && !any; x++) for (int z = 0; z < n; z++) if (_L.Has(x, z, CellFlags.NoFloor)) { any = true; break; }
+            if (!any)
+            {
+                var floor = root.AddComponent<BoxCollider>();
+                floor.center = new Vector3(OfficeBiome.ChunkSize * 0.5f, -0.25f, OfficeBiome.ChunkSize * 0.5f);
+                floor.size = new Vector3(OfficeBiome.ChunkSize, 0.5f, OfficeBiome.ChunkSize);
+                return;
+            }
+            for (int z = 0; z < n; z++)
+            {
+                int start = -1;
+                for (int x = 0; x <= n; x++)
+                {
+                    bool solid = x < n && !_L.Has(x, z, CellFlags.NoFloor);
+                    if (solid && start < 0) start = x;
+                    if (!solid && start >= 0)
+                    {
+                        var b = root.AddComponent<BoxCollider>();
+                        b.center = new Vector3((start + x) * 0.5f * C, -0.25f, (z + 0.5f) * C);
+                        b.size = new Vector3((x - start) * C, 0.5f, C);
+                        start = -1;
+                    }
+                }
+            }
+        }
+
         // ---------------- Floor / ceiling / grid ----------------
 
         Material WallMat(Room r) => r.painted && _a.paintedWall ? _a.paintedWall : _a.wallpaper;
@@ -230,7 +259,9 @@ namespace Backrooms.Generation
                 var r = _L.RoomAt(x, z);
                 uint m = CellMask(x, z);
                 float x0 = x * C, z0 = z * C, x1 = x0 + C, z1 = z0 + C, h = r.ceiling;
-                WMask(_a.carpet, m).Quad(new Vector3(x0, 0, z0), new Vector3(x0, 0, z1), new Vector3(x1, 0, z1), new Vector3(x1, 0, z0), Vector3.up, MeshWriter.FloorUV);
+                if (!_L.Has(x, z, CellFlags.NoFloor))
+                    WMask(_a.carpet, m).Quad(new Vector3(x0, 0, z0), new Vector3(x0, 0, z1), new Vector3(x1, 0, z1), new Vector3(x1, 0, z0), Vector3.up, MeshWriter.FloorUV);
+                if (_L.Has(x, z, CellFlags.OpenAbove)) continue;     // the storey above closes it
                 var ceil = r.Tall && _a.ceilingPlaster ? _a.ceilingPlaster : _a.ceilingTile;
                 WMask(ceil, m).Quad(new Vector3(x0, h, z0), new Vector3(x1, h, z0), new Vector3(x1, h, z1), new Vector3(x0, h, z1), Vector3.down,
                     r.Tall ? (MeshWriter.UVProjector)MeshWriter.MetreUV : MeshWriter.CeilingUV);
@@ -247,7 +278,7 @@ namespace Backrooms.Generation
             float y = H - gd * 0.5f;
             foreach (var r in _L.rooms)
             {
-                if (r.Tall) continue;
+                if (r.Tall || r.openAbove) continue;
                 var w = W(_a.ceilingGrid, r.color);
                 float x0 = r.rect.xMin * C, x1 = r.rect.xMax * C, z0 = r.rect.yMin * C, z1 = r.rect.yMax * C;
                 for (float z = z0 + off; z < z1; z += 0.6f)
@@ -304,11 +335,12 @@ namespace Backrooms.Generation
                 int cz = vertical ? along : (s == 0 ? line - 1 : line);
                 if (!_L.InChunk(cx, cz)) continue;
                 var room = _L.RoomAt(cx, cz);
+                if (room.noFloor) continue;                   // a well's sides are railings, built separately
                 float sign = s == 0 ? -1f : 1f;               // face normal points into the viewing cell
                 float f = l + sign * T * 0.5f;
                 Vector3 n = vertical ? new Vector3(sign, 0, 0) : new Vector3(0, 0, sign);
                 Vector3 A(float pos, float at) => vertical ? new Vector3(pos, 0, at) : new Vector3(at, 0, pos);
-                float myCeil = room.ceiling;
+                float myCeil = _L.WallTop(room);
 
                 uint cm = CellMask(cx, cz);
                 if (e == EdgeKind.Wall)
@@ -396,19 +428,11 @@ namespace Backrooms.Generation
         /// <summary>Apex of an arched doorway: a little above the flat 2.1 m header, as in older offices.</summary>
         public const float ArchApex = 2.3f;
 
-        /// <summary>
-        /// Deterministic per doorway (world position), interior edges only so both sides always agree.
-        /// </summary>
+        /// <summary>Decided once per edge by the district plan (interior headed doorways only).</summary>
         bool IsArched(bool vertical, int line, int along) => IsArchedEdge(_L, vertical, line, along);
 
-        public static bool IsArchedEdge(OfficeLayout _L, bool vertical, int line, int along)
-        {
-            if (line <= 0 || line >= _L.N || _L.rules.archedDoors <= 0f) return false;
-            int wx = _L.coord.x * _L.N + (vertical ? line : along), wz = _L.coord.y * _L.N + (vertical ? along : line);
-            uint h = (uint)(wx * 73856093) ^ (uint)(wz * 19349663) ^ (vertical ? 0x9E3779B9u : 0x7F4A7C15u);
-            h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
-            return (h & 0xFFFF) / 65535f < _L.rules.archedDoors;
-        }
+        public static bool IsArchedEdge(OfficeLayout _L, bool vertical, int line, int along) =>
+            vertical ? _L.archV[line, along] : _L.archH[along, line];
 
         /// <summary>
         /// One side of a round-topped doorway: wall above the apex, the two spandrels between the curve
@@ -496,9 +520,10 @@ namespace Backrooms.Generation
         /// Square posts at grid vertices: close corners and form door jambs.
         /// Ownership: each of a post's four faces is emitted by the chunk that owns the cell it faces, using
         /// that room's finish and light layer, so posts on chunk borders are assembled from both sides and
-        /// always match the wall they belong to. Border vertices always get a full-height post (a slim
-        /// mullion between openings) because a neighbour's wall may end there; interior posts rise only to
-        /// the tallest ceiling around them, never into a lower room's plenum.
+        /// always match the wall they belong to. The edges and ceilings around a border vertex are read
+        /// from the neighbouring chunk, so a room that continues across a chunk border gets no post. Only
+        /// where a neighbour is unknown does a border vertex get a full-height post (a slim mullion),
+        /// because a neighbour's wall may end there. Posts rise only to the tallest ceiling around them.
         /// </summary>
         void BuildPosts()
         {
@@ -506,35 +531,30 @@ namespace Backrooms.Generation
             for (int x = 0; x <= N; x++)
             for (int z = 0; z <= N; z++)
             {
-                bool border = x == 0 || z == 0 || x == N || z == N;
-                float HP = OfficeBiome.MaxCeilingHeight;
-                if (!border)
-                    HP = Mathf.Max(Mathf.Max(_L.CeilingAt(x - 1, z - 1), _L.CeilingAt(x, z - 1)),
-                                   Mathf.Max(_L.CeilingAt(x - 1, z), _L.CeilingAt(x, z)));
+                // The four cells and four edges around the vertex (possibly in neighbouring chunks).
+                float c00 = CeilAt(x - 1, z - 1), c10 = CeilAt(x, z - 1), c01 = CeilAt(x - 1, z), c11 = CeilAt(x, z);
+                EdgeKind? up = VEdgeAt(x, z), down = VEdgeAt(x, z - 1), right = HEdgeAt(x, z), left = HEdgeAt(x - 1, z);
+                bool unknown = c00 < 0f || c10 < 0f || c01 < 0f || c11 < 0f || up == null || down == null || right == null || left == null;
 
+                float HP = unknown ? OfficeBiome.MaxCeilingHeight : Mathf.Max(Mathf.Max(c00, c10), Mathf.Max(c01, c11));
                 bool wall = false, header = false;
                 float blockBottom = OfficeBiome.DoorHeaderHeight;
-                void Check(EdgeKind e) { if (e == EdgeKind.Wall) wall = true; else if (e == EdgeKind.DoorHeader) header = true; }
+                void Check(EdgeKind? e) { if (e == EdgeKind.Wall) wall = true; else if (e == EdgeKind.DoorHeader) header = true; }
                 // Open-plan span between rooms of different heights: a soffit down to the lower ceiling.
-                void Soffit(EdgeKind e, int ax, int az, int bx, int bz)
+                void Soffit(EdgeKind? e, float ca, float cb)
                 {
-                    if (e != EdgeKind.Open || !_L.InChunk(ax, az) || !_L.InChunk(bx, bz)) return;
-                    float ca = _L.CeilingAt(ax, az), cb = _L.CeilingAt(bx, bz);
-                    if (Mathf.Abs(ca - cb) < 0.01f) return;
+                    if (e != EdgeKind.Open || ca < 0f || cb < 0f || Mathf.Abs(ca - cb) < 0.01f) return;
                     if (!header) blockBottom = Mathf.Min(ca, cb);
                     else blockBottom = Mathf.Min(blockBottom, Mathf.Min(ca, cb));
                     header = true;
                 }
-                if (z < N) Check(_L.vEdges[x, z]);
-                if (z > 0) Check(_L.vEdges[x, z - 1]);
-                if (x < N) Check(_L.hEdges[x, z]);
-                if (x > 0) Check(_L.hEdges[x - 1, z]);
+                Check(up); Check(down); Check(right); Check(left);
                 if (header) blockBottom = OfficeBiome.DoorHeaderHeight;
-                if (z < N) Soffit(_L.vEdges[x, z], x - 1, z, x, z);
-                if (z > 0) Soffit(_L.vEdges[x, z - 1], x - 1, z - 1, x, z - 1);
-                if (x < N) Soffit(_L.hEdges[x, z], x, z - 1, x, z);
-                if (x > 0) Soffit(_L.hEdges[x - 1, z], x - 1, z - 1, x - 1, z);
-                if (border)
+                Soffit(up, c01, c11);       // vertical edge above the vertex: cells (x-1, z) | (x, z)
+                Soffit(down, c00, c10);     // below: (x-1, z-1) | (x, z-1)
+                Soffit(right, c10, c11);    // horizontal edge to the right: (x, z-1) | (x, z)
+                Soffit(left, c00, c01);     // to the left: (x-1, z-1) | (x-1, z)
+                if (unknown)
                 {
                     // Our wall runs cover the collider when we have a wall here; otherwise add one (only
                     // the west/south owner does, to avoid duplicates).
@@ -554,7 +574,7 @@ namespace Backrooms.Generation
                     var w = WMask(WallMat(room), pm);
                     // A face is only ever seen from the cell it faces, so it stops at that room's ceiling
                     // (nothing pokes up into a lower room's plenum or above the ceilings when seen from above).
-                    float FH = room.ceiling;
+                    float FH = _L.WallTop(room);
                     if (wall)
                     {
                         w.Box(new Vector3(x * C, FH * 0.5f, z * C), new Vector3(T, FH, T), bit, MeshWriter.WallUV);
@@ -568,21 +588,49 @@ namespace Backrooms.Generation
                     }
                 }
                 // Undersides / tops, owned by the cell at (x, z) when present.
-                if (_L.InChunk(Mathf.Min(x, N - 1), Mathf.Min(z, N - 1)) && x < N && z < N)
+                if (x < N && z < N)
                 {
                     var room = _L.RoomAt(x, z);
                     if (wall) WMask(_a.baseboard, CellMask(x, z)).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), 8, MeshWriter.MetreUV);
                     else
                     {
                         float hy = blockBottom;
-                        float top = 0f;
-                        for (int ox = -1; ox <= 0; ox++) for (int oz = -1; oz <= 0; oz++)
-                            if (_L.InChunk(x + ox, z + oz)) top = Mathf.Max(top, _L.CeilingAt(x + ox, z + oz));
+                        float top = Mathf.Max(Mathf.Max(c00, c10), Mathf.Max(c01, c11));
                         if (top > hy + 0.001f)
                             WMask(WallMat(room), CellMask(x, z)).Box(new Vector3(x * C, (hy + top) * 0.5f, z * C), new Vector3(T, top - hy, T), 4, MeshWriter.WallUV);
                     }
                 }
             }
+        }
+
+        /// <summary>Wall top of the cell's room, here or in a neighbouring chunk; -1 if unknown.</summary>
+        float CeilAt(int x, int z)
+        {
+            int N = _L.N;
+            if (_L.InChunk(x, z)) return _L.WallTop(_L.RoomAt(x, z));
+            int dx = x < 0 ? -1 : x >= N ? 1 : 0, dz = z < 0 ? -1 : z >= N ? 1 : 0;
+            var nl = Neighbour(dx, dz);
+            return nl == null ? -1f : nl.WallTop(nl.RoomAt(x - dx * N, z - dz * N));
+        }
+
+        /// <summary>Edge on the line X = x at row z (z may be in the chunk below or above); null if unknown.</summary>
+        EdgeKind? VEdgeAt(int x, int z)
+        {
+            int N = _L.N;
+            if (z >= 0 && z < N) return _L.vEdges[x, z];
+            int dz = z < 0 ? -1 : 1;
+            var nl = Neighbour(0, dz);
+            return nl?.vEdges[x, z - dz * N];
+        }
+
+        /// <summary>Edge on the line Z = z at column x (x may be in the chunk left or right); null if unknown.</summary>
+        EdgeKind? HEdgeAt(int x, int z)
+        {
+            int N = _L.N;
+            if (x >= 0 && x < N) return _L.hEdges[x, z];
+            int dx = x < 0 ? -1 : 1;
+            var nl = Neighbour(dx, 0);
+            return nl?.hEdges[x - dx * N, z];
         }
 
         // ---------------- Crawl spaces ----------------
@@ -637,6 +685,7 @@ namespace Backrooms.Generation
             const float ht = OfficeBiome.HalfWallThickness, hh = OfficeBiome.HalfWallHeight, cap = 0.025f;
             foreach (var hw in _L.halfWalls)
             {
+                if (hw.railing) { Railing(hw); continue; }
                 float a0 = hw.start * C, a1 = (hw.start + hw.length) * C, line = hw.line * C;
                 Vector3 c = hw.alongX ? new Vector3((a0 + a1) * 0.5f, hh * 0.5f, line) : new Vector3(line, hh * 0.5f, (a0 + a1) * 0.5f);
                 Vector3 s = hw.alongX ? new Vector3(a1 - a0, hh, ht) : new Vector3(ht, hh, a1 - a0);
@@ -651,18 +700,33 @@ namespace Backrooms.Generation
             }
         }
 
+        /// <summary>Balcony railing along a well's edge: steel balusters every 0.3 m and a handrail, 1.05 m high.</summary>
+        void Railing(HalfWall hw)
+        {
+            const float height = 1.05f, rail = 0.05f, post = 0.025f;
+            float a0 = hw.start * C, a1 = (hw.start + hw.length) * C, line = hw.line * C;
+            Vector3 P(float along, float y) => hw.alongX ? new Vector3(along, y, line) : new Vector3(line, y, along);
+            Vector3 Size(float along, float y, float across) => hw.alongX ? new Vector3(along, y, across) : new Vector3(across, y, along);
+            var metal = W(_a.lampMetal, hw.roomColor);
+            metal.Box(P((a0 + a1) * 0.5f, height - rail * 0.5f), Size(a1 - a0, rail, rail * 1.4f), 63, MeshWriter.MetreUV);
+            metal.Box(P((a0 + a1) * 0.5f, 0.12f), Size(a1 - a0, 0.03f, 0.03f), 63, MeshWriter.MetreUV);
+            for (float a = a0; a <= a1 + 0.001f; a += 0.3f)
+                metal.Box(P(a, (height - rail) * 0.5f), Size(post, height - rail, post), 1 | 2 | 16 | 32, MeshWriter.MetreUV);
+            _boxes.Add((P((a0 + a1) * 0.5f, height * 0.5f), Size(a1 - a0, height, 0.08f)));
+        }
+
         // ---------------- Doorways ----------------
 
-        void BuildDoorways() => ComputeDoorways(_L, doorways);
+        void BuildDoorways() => ComputeDoorways(_L, doorways, Neighbour);
 
         /// <summary>
         /// Every passable edge between two zones (and every border opening), seen from each side: where the
         /// doorway light for the receiving room goes. World positions.
         /// </summary>
-        public static void ComputeDoorways(OfficeLayout L, List<Doorway> into)
+        public static void ComputeDoorways(OfficeLayout L, List<Doorway> into, System.Func<int, int, OfficeLayout> neighbour = null)
         {
             int n = L.N;
-            var origin = new Vector3(L.coord.x * OfficeBiome.ChunkSize, 0f, L.coord.y * OfficeBiome.ChunkSize);
+            var origin = new Vector3(L.coord.x * OfficeBiome.ChunkSize, L.BaseY, L.coord.y * OfficeBiome.ChunkSize);
             for (int x = 0; x < n; x++)
             for (int z = 0; z < n; z++)
             {
@@ -675,6 +739,12 @@ namespace Backrooms.Generation
                     int nx = x + (side == 0 ? -1 : side == 1 ? 1 : 0), nz = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
                     bool inChunk = L.InChunk(nx, nz);
                     if (inChunk && L.RoomAt(nx, nz).color == room.color) continue;          // same zone: already shared light
+                    if (!inChunk && neighbour != null)
+                    {
+                        int dx = nx < 0 ? -1 : nx >= n ? 1 : 0, dz = nz < 0 ? -1 : nz >= n ? 1 : 0;
+                        var nl = neighbour(dx, dz);
+                        if (nl != null && nl.RoomAt(nx - dx * n, nz - dz * n).color == room.color) continue;
+                    }
                     Vector3 c = new Vector3((x + 0.5f) * C, 0f, (z + 0.5f) * C);
                     Vector3 outDir = side == 0 ? Vector3.left : side == 1 ? Vector3.right : side == 2 ? Vector3.back : Vector3.forward;
                     float top = e == EdgeKind.DoorHeader || e == EdgeKind.Door ? OfficeBiome.DoorHeaderHeight
@@ -854,7 +924,7 @@ namespace Backrooms.Generation
                     // Variant picks the model and fabric; small rooms and every fourth seat get an armchair.
                     int fabricCount = _a.sofaFabrics.Length;
                     bool arm = _a.armchairPrefabs != null && _a.armchairPrefabs.Length > 0 && (p.variant % 4 == 3);
-                    var rng = new System.Random(OfficeLayoutGenerator.Hash(_L.coord.x, _L.coord.y, (int)(at.x * 31), (int)(at.z * 17)));
+                    var rng = new System.Random(DistrictGenerator.Hash(_L.coord.x, _L.coord.y, (int)(at.x * 31), (int)(at.z * 17)));
                     int fabric = rng.Next(fabricCount);
                     if (arm)
                     {
@@ -887,7 +957,7 @@ namespace Backrooms.Generation
                         ProxyBox(at, p.yaw, new Vector3(i * L * 0.32f, 0.35f, 0), new Vector3(0.05f, 0.66f, 0.8f));
                     }
                     _rotBoxes.Add((at + Vector3.up * 0.37f, new Vector3(L, 0.74f, 1.1f), p.yaw));
-                    var rng = new System.Random(OfficeLayoutGenerator.Hash(_L.coord.x, _L.coord.y, (int)(p.position.x * 100), (int)(p.position.y * 100)));
+                    var rng = new System.Random(DistrictGenerator.Hash(_L.coord.x, _L.coord.y, (int)(p.position.x * 100), (int)(p.position.y * 100)));
                     int perSide = Mathf.Max(1, Mathf.FloorToInt(L / 0.75f));
                     for (int side = -1; side <= 1; side += 2)
                     for (int i = 0; i < perSide; i++)
@@ -1008,7 +1078,7 @@ namespace Backrooms.Generation
             _rotBoxes.Add((at + Vector3.up * top * 0.5f, new Vector3(L, top, D), p.yaw));
 
             // Chairs pushed in at uneven angles; a couple are missing.
-            var rng = new System.Random(OfficeLayoutGenerator.Hash(_L.coord.x, _L.coord.y, (int)(p.position.x * 100), (int)(p.position.y * 100)));
+            var rng = new System.Random(DistrictGenerator.Hash(_L.coord.x, _L.coord.y, (int)(p.position.x * 100), (int)(p.position.y * 100)));
             int perSide = Mathf.Max(1, Mathf.FloorToInt(L / 0.8f));
             for (int side = -1; side <= 1; side += 2)
             for (int i = 0; i < perSide; i++)
