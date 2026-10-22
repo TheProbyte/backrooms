@@ -219,6 +219,7 @@ namespace Backrooms.EditorTools
             if (UseScannedTextures) ApplyScannedTextures(a);
             a.cardboard = Lit("M_Cardboard", new Color(0.72f, 0.52f, 0.32f), Tex("Wood_Albedo"), null, 0.08f);
             CreatePropPrefabs(a);
+            UseProjectLitShader();
             EditorUtility.SetDirty(a);
             AssetDatabase.SaveAssets();
             return a;
@@ -301,11 +302,33 @@ namespace Backrooms.EditorTools
             a.wallClockPrefab = Make("WallClock", "WallClock", a.chairFabric, clockFace, false);
         }
 
+        const string ProjectLit = "Backrooms/Lit";
+
+        /// <summary>
+        /// Every world material uses Backrooms/Lit (URP Lit plus the light grid). Same properties as URP Lit,
+        /// so switching keeps all settings.
+        /// </summary>
+        static void UseProjectLitShader()
+        {
+            var lit = Shader.Find(ProjectLit);
+            if (!lit) { Debug.LogError("[Backrooms] Backrooms/Lit shader missing; materials stay on URP Lit."); return; }
+            foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { MatFolder }))
+            {
+                var m = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
+                if (!m || m.shader == null || m.shader.name != "Universal Render Pipeline/Lit") continue;
+                bool motion = m.GetShaderPassEnabled("MotionVectors");
+                m.shader = lit;
+                m.renderQueue = -1;                                  // from the shader, as before
+                m.SetShaderPassEnabled("MotionVectors", motion);     // URP's material editor turns it off for static props
+                EditorUtility.SetDirty(m);
+            }
+        }
+
         static Material Lit(string name, Color color, Texture2D albedo, Texture2D normal, float smoothness, float normalScale = 1f)
         {
             string path = $"{MatFolder}/{name}.mat";
             var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (!mat) { mat = new Material(Shader.Find("Universal Render Pipeline/Lit")); AssetDatabase.CreateAsset(mat, path); }
+            if (!mat) { mat = new Material(Shader.Find(ProjectLit) ?? Shader.Find("Universal Render Pipeline/Lit")); AssetDatabase.CreateAsset(mat, path); }
             mat.SetColor("_BaseColor", color);
             mat.SetTexture("_BaseMap", albedo);
             mat.SetFloat("_Smoothness", smoothness);
@@ -433,20 +456,35 @@ namespace Backrooms.EditorTools
             }
         }
 
+        /// <summary>
+        /// The camcorder post-processing volume. An existing profile is kept as it is (it holds the owner's
+        /// tuned look); only missing effects are added. A new profile starts from neutral defaults.
+        /// </summary>
         static Volume BuildVolume()
         {
             string path = SettingsFolder + "/Infinite_PostProfile.asset";
-            if (AssetDatabase.LoadAssetAtPath<VolumeProfile>(path)) AssetDatabase.DeleteAsset(path);
-            var profile = ScriptableObject.CreateInstance<VolumeProfile>();
-            AssetDatabase.CreateAsset(profile, path);
-            void Add<T>() where T : VolumeComponent { var c = profile.Add<T>(true); c.name = typeof(T).Name; AssetDatabase.AddObjectToAsset(c, profile); }
+            var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(path);
+            bool fresh = !profile;
+            if (fresh)
+            {
+                profile = ScriptableObject.CreateInstance<VolumeProfile>();
+                AssetDatabase.CreateAsset(profile, path);
+            }
+            void Add<T>() where T : VolumeComponent
+            {
+                if (profile.Has<T>()) return;
+                var c = profile.Add<T>(true); c.name = typeof(T).Name; AssetDatabase.AddObjectToAsset(c, profile);
+            }
             Add<Tonemapping>(); Add<ColorAdjustments>(); Add<WhiteBalance>(); Add<LiftGammaGain>(); Add<Bloom>(); Add<FilmGrain>();
             Add<Vignette>(); Add<ChromaticAberration>(); Add<LensDistortion>(); Add<DepthOfField>(); Add<MotionBlur>();
-            // Neutral defaults; CamcorderRig drives every value from the user's settings at runtime.
-            profile.TryGet(out Tonemapping tone); tone.mode.Override(TonemappingMode.Neutral);
-            profile.TryGet(out ColorAdjustments ca); ca.postExposure.Override(0f); ca.contrast.Override(18f);
-            profile.TryGet(out Bloom bloom); bloom.intensity.Override(0.32f); bloom.highQualityFiltering.Override(true);
-            profile.TryGet(out DepthOfField dof); dof.mode.Override(DepthOfFieldMode.Bokeh); dof.focusDistance.Override(4f); dof.aperture.Override(4f);
+            if (fresh)
+            {
+                // Neutral defaults; CamcorderRig drives every value from the user's settings at runtime.
+                profile.TryGet(out Tonemapping tone); tone.mode.Override(TonemappingMode.Neutral);
+                profile.TryGet(out ColorAdjustments ca); ca.postExposure.Override(0f); ca.contrast.Override(18f);
+                profile.TryGet(out Bloom bloom); bloom.intensity.Override(0.32f); bloom.highQualityFiltering.Override(true);
+                profile.TryGet(out DepthOfField dof); dof.mode.Override(DepthOfFieldMode.Bokeh); dof.focusDistance.Override(4f); dof.aperture.Override(4f);
+            }
             EditorUtility.SetDirty(profile);
             AssetDatabase.SaveAssets();
 

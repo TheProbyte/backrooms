@@ -1,43 +1,51 @@
 # Status (where to resume)
 
-Last updated 2026-10-22. Read `Docs/ProjectBrief.md` for the vision.
+Last updated 2026-10-22. Read `Docs/ProjectBrief.md` for the vision and `Docs/WorldGeneration.md` for how
+generation and lighting work now.
 
-## Lighting system (current design)
+## World generation (world version 4, branch worldgen-v2)
 
-- **All real-time** (owner rejected the per-chunk bake on 2026-10-22: wants live shadows, and a player
-  model with shadows is coming). The bake was removed; it lives in git history (commit f74d06a).
-- Ceiling lights (`FixtureLightManager`) light their own light zone via rendering layers (7 colours).
-  A zone is all rooms joined by open-plan edges, and since 2026-10-22 it also includes the open-plan zone
-  across a chunk border (`OfficeChunkBuilder.ComputeCellMasks`, using neighbour layouts from
-  `WorldStreamer.CachedLayout`). That removed the straight dark lines at chunk borders.
-- The nearest lights (24 by default) cast real shadows and then light every layer, so their light spills
-  through doorways and is stopped by walls. Doorway lights and upward bounce fill are back on.
-- Debug: `LightingTour` (add in play mode, call `Run()`) screenshots typical views including `7_arch`.
-  Play mode needs `runInBackground` on while Unity is unfocused, or frames (and screenshots) stall.
+- Layered: zones (Voronoi, data assets) > biomes (density field per zone) > landmarks (sparse grid) >
+  districts (4 x 4 chunks planned at once) > chunk slices (streaming only). See WorldGeneration.md.
+- Rules live in assets under `Assets/Backrooms/Resources/WorldGen` (World, Zones/Level0, Biomes, Landmarks).
+  Recreate missing ones with Backrooms > World Gen > Create Default Assets. F5 > World Gen edits the
+  first zone live and saves on top (older saved settings are migrated).
+- Landmarks: Colonnade hall, and the two-storey Atrium (the multi-storey test volume; the upper storey
+  streams only around it). Seed 1234: atrium at cells (251, 363), colonnade halls at (-319, -20) and (357, -16).
+- Chunk coordinates are (x, storey, z). `WorldStreamer.ChunkLoaded/ChunkUnloaded` are the hook for
+  registering Steam Audio geometry per chunk (not done yet).
 
-## Look
+## Lighting (all real-time, live shadows)
 
-- Wallpaper: owner's chevron stripe (`Textures/Wallpaper_Chevron_*`, 0.6 m repeat, normal derived from
-  colour) applied by `InfiniteWorldBuilder.ApplyChevronWallpaper`. Rebuild with
-  Backrooms > Build Infinite Offices Scene.
-- Arched doorways: `BiomeRules.archedDoors` (offices 0.35, hallways 0.12, warehouse 0), round top with
-  apex 2.3 m (`OfficeChunkBuilder.ArchFaces`). Interior edges only so both sides agree. World version 3.
-- Camcorder preset "VHS '96" (index 5) is tuned to `references/update11`.
+- Default **light grid** mode: the nearest 32 tubes (F5 "Shadow-casting lights", capped at 32), up to 6
+  faulty tubes and the nearest lamp are real URP lights with shadows that light every layer (shadows stop
+  them at walls). Every other fixture lights a GPU light grid (0.6 m texels, ~77 m around you) sampled by
+  `Backrooms/Lit`, with wall-aware sampling and a bounce field for ceilings. Fixtures hand over between
+  the two over 0.6 s. No doorway or bounce lights.
+- F5 > Graphics > **Light grid** off returns to the phase 2 room-layer system (28 rendering layers in 4
+  district-parity sets), kept as a fallback.
+- All world materials use `Backrooms/Lit` (copy of URP 17.4 Lit + light grid, see shader header). After a
+  URP upgrade, re-copy Lit.shader / LitForwardPass.hlsl and re-apply the two marked lines.
+- Build Infinite Offices Scene now keeps an existing post profile (the owner's VHS '96 tuning) instead of
+  recreating it.
 
-## F5 / F6
+## Debug tools
 
-F5: UI Toolkit, styled as a 90s camcorder on-screen menu (navy box, white frame, amber highlight bar,
-monospaced system font if installed). Styles in `Resources/UI/CamcorderMenu.uss`, panel settings
-`Resources/UI/CamcorderPanel.asset`. F6: biome minimap under REC, playable while shown
-(`CamcorderVisualMenu.Minimap.cs`). The OSD stays uGUI: it is rendered to a texture and bent by the lens.
+- Backrooms > World Map (top-down zones/biomes/districts/rooms/light layers + consistency checks).
+- Edit-mode tests in `Scripts/Editor/Tests` (14 tests).
+- `LightingTour` (fixed seed, saved views, `compareLightingModes` for A/B shots with frame timings),
+  `NavProbe` (long walks across borders).
+- Play mode needs `runInBackground` on while Unity is unfocused. The MCP camera screenshot pauses the
+  editor; unpause after it.
 
 ## Open items (next steps, in order)
 
-1. Steam Audio 4.8.1 (Valve, Apache 2.0, `Assets/Plugins/SteamAudio`, desktop binaries only, in Git LFS) is the
-   project spatializer. `SoundBank.ApplySpatial` turns HRTF on for every positional source (F5 > AUDIO >
-   HD 3D audio). Our own wall occlusion and reverb still run; Steam Audio's occlusion/reflections are not
-   used yet (they need scene geometry registered per chunk).
-2. Reference room features not done yet: arched wall niches, curved walls, balcony (ref3_arches_balcony).
-3. Owner may supply more textures; spec in `Docs/TextureSpec.md`.
-4. Zone system is a placeholder (`WorldGenSettings.ZoneAt` returns "Level 0").
-5. Movement (zoom F, crouch C, crawl Ctrl, jump Space) awaits the owner's feel feedback.
+1. Owner review of the light grid look (Docs/screenshots/phase4_ab_*: `_layers` = old, `_grid` = new).
+   Tunables: LightGrid.bounceGain / floorAlbedo / bounceSpread / wrap, FixtureLightManager.handoverTime.
+2. The arched-niche/balcony room from references/update11/ref3_arches_balcony.png as a landmark kind
+   (the reference image is not in this checkout).
+3. Steam Audio geometry per chunk via the ChunkLoaded/ChunkUnloaded events.
+4. Stairs or other ways up, if upper storeys should become reachable. Storey pitch is 9 m (above the
+   8.1 m warehouse halls).
+5. A second zone with real content (the zone system is ready; only Level 0 has content).
+6. Movement (zoom F, crouch C, crawl Ctrl, jump Space) awaits the owner's feel feedback.

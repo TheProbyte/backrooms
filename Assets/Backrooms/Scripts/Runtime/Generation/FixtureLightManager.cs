@@ -23,7 +23,7 @@ namespace Backrooms.Generation
     /// stutter off; faulty tubes occasionally stutter. Fixture sound lives in Backrooms.Audio.BuildingAudio,
     /// which reads <see cref="PowerLevel"/> so hum, strikes and buzz stay in time with the light.
     /// </summary>
-    public class FixtureLightManager : MonoBehaviour
+    public partial class FixtureLightManager : MonoBehaviour
     {
         public Transform viewer;
 
@@ -72,6 +72,9 @@ namespace Backrooms.Generation
         public float powerFlickerTime = 1.1f;
 
         public int ActiveLights { get; private set; }
+        /// <summary>Smoothed CPU time of LateUpdate (both modes), for comparisons.</summary>
+        public float LastUpdateMs { get; private set; }
+        readonly System.Diagnostics.Stopwatch _timer = new System.Diagnostics.Stopwatch();
 
         class Slot
         {
@@ -136,6 +139,9 @@ namespace Backrooms.Generation
         {
             if (!_chunks.TryGetValue(chunk, out var p)) return;
             _chunks.Remove(chunk);
+            // Grid mode: the share owns the slot, so free it through the share.
+            foreach (var sh in _shares.Values)
+                if (sh.slot != null && sh.src.chunk == chunk) { Release(sh.slot); sh.slot = null; }
             foreach (var s in _troffers) if (s.busy && s.src.chunk == chunk) Release(s);
             foreach (var s in _lamps) if (s.busy && s.src.chunk == chunk) Release(s);
         }
@@ -233,11 +239,22 @@ namespace Backrooms.Generation
         void LateUpdate()
         {
             if (!viewer) return;
+            _timer.Restart();
             Vector3 eye = viewer.position;
             float now = Time.time;
-
-            // Gather candidates from chunks near the viewer.
             _eye = eye;
+
+            ApplyMode();
+            if (UseGrid)
+            {
+                ApplyShadowTier();
+                LateUpdateGrid(eye, now);
+                UpdateLensEmission(now);
+                LastUpdateMs = Mathf.Lerp(LastUpdateMs, (float)_timer.Elapsed.TotalMilliseconds, 0.1f);
+                return;
+            }
+
+            // Room-layer mode. Gather candidates from chunks near the viewer.
             _candidates.Clear();
             var center = WorldStreamer.ChunkOf(eye);
             int r = Mathf.CeilToInt(maxDistance / OfficeBiome.ChunkSize);
@@ -271,6 +288,7 @@ namespace Backrooms.Generation
 
             ActiveLights = Assign(_troffers, _wantedTroffers, eye, shadowedTroffers) + Assign(_lamps, _wantedLamps, eye, shadowedLamps);
             UpdateLensEmission(now);
+            LastUpdateMs = Mathf.Lerp(LastUpdateMs, (float)_timer.Elapsed.TotalMilliseconds, 0.1f);
         }
 
         readonly List<int> _wantedTroffers = new List<int>(), _wantedLamps = new List<int>();
@@ -278,12 +296,19 @@ namespace Backrooms.Generation
         Vector3 _eye;
         float _rankEdge = float.MaxValue, _bounceEdge = float.MaxValue;
 
+        /// <summary>
+        /// Shadow-map resolution of the ceiling lights: the chosen tier, lowered when that many shadowed
+        /// lights would not fit the 4096 atlas (16 maps at 1024, 64 at 512), so URP never has to shrink them.
+        /// </summary>
         void ApplyShadowTier()
         {
-            if (_appliedTier == shadowTier) return;
-            _appliedTier = shadowTier;
-            int tier = shadowTier == 0 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierLow
-                     : shadowTier == 2 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierHigh
+            int maps = UseGrid ? Mathf.Min(shadowedTroffers, 64) + faultyRealLights + realLamps * 6 + 4 : shadowedTroffers + 3 + shadowedLamps * 6;
+            int fit = maps <= 16 ? 2 : maps <= 64 ? 1 : 0;
+            int want = Mathf.Min(shadowTier, fit);
+            if (_appliedTier == want) return;
+            _appliedTier = want;
+            int tier = want == 0 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierLow
+                     : want == 2 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierHigh
                      : UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium;
             foreach (var t in _troffers) s_tierField?.SetValue(t.main.GetUniversalAdditionalLightData(), tier);   // the shadowed ceiling lights
         }

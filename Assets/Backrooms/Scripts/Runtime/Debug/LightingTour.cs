@@ -20,6 +20,7 @@ namespace Backrooms.DebugTools
         public string prefix = "tour";
         [Tooltip("World seed to tour (0 = keep the current world).")] public int seed;
         [Tooltip("JSON file with saved views: loaded if it exists, written otherwise.")] public string viewsFile = "";
+        [Tooltip("Capture every view twice: room-layer lighting and light-grid lighting.")] public bool compareLightingModes;
         public bool Busy { get; private set; }
         public string Report = "";
 
@@ -47,9 +48,28 @@ namespace Backrooms.DebugTools
                 if (!string.IsNullOrEmpty(viewsFile))
                     System.IO.File.WriteAllText(viewsFile, JsonUtility.ToJson(new ViewList { views = views }, true));
             }
+            var lm = FindAnyObjectByType<FixtureLightManager>();
+            var startMode = lm ? lm.mode : FixtureLightManager.LightingMode.LightGrid;
             foreach (var v in views)
             {
                 pl.Teleport(v.pos, v.yaw, v.pitch);
+                if (compareLightingModes && lm)
+                {
+                    // Same view in both lighting modes; the auto-iris needs a moment after each switch.
+                    foreach (var m in new[] { FixtureLightManager.LightingMode.RoomLayers, FixtureLightManager.LightingMode.LightGrid })
+                    {
+                        lm.mode = m;
+                        var perf = PerfStats.Ensure();
+                        for (int i = 0; i < 40; i++) yield return null;
+                        yield return new WaitForSeconds(2.5f);
+                        ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(folder, $"{prefix}_{v.name}_{(m == FixtureLightManager.LightingMode.LightGrid ? "grid" : "layers")}.png"));
+                        Report += $"{v.name} {m}: {perf.FrameMs:0.0} ms frame, CPU {perf.MainMs:0.0}, render {perf.RenderMs:0.0}, GPU {perf.GpuMs:0.0} ms, " +
+                                  $"{perf.DrawCalls} draws, {perf.ShadowCasters} shadow casters, {lm.EnabledLights} lights ({lm.ShadowedLights} shadowed)\n";
+                        yield return null; yield return null;
+                    }
+                    Report += v.name + " " + v.pos + "\n";
+                    continue;
+                }
                 for (int i = 0; i < 40; i++) yield return null;            // settle exposure and streaming
                 yield return new WaitForSeconds(1.2f);
                 string path = System.IO.Path.Combine(folder, $"{prefix}_{v.name}.png");
@@ -57,6 +77,7 @@ namespace Backrooms.DebugTools
                 Report += v.name + " " + v.pos + "\n";
                 yield return null; yield return null;
             }
+            if (lm) lm.mode = startMode;
             Busy = false;
         }
 

@@ -19,6 +19,7 @@ namespace Backrooms.Camcorder
         public float lightDistance = 36f;     // fixtures lit out to here (fades into the fog)
         public int bounceLights = 40;         // nearest fixtures with soft bounce fill
         public bool ambientOcclusion = true;
+        public bool lightGrid = true;         // far fixtures light a 3D grid (off: older room-layer lights)
         public bool antiAliasing = true;
 
         const string Key = "Backrooms.Graphics.v1";
@@ -51,6 +52,7 @@ namespace Backrooms.Camcorder
         public GraphicsOptions Options { get; private set; }
 
         FixtureLightManager _lights;
+        int _appliedGrid = -1;
         Camera _cam;
         float _origScale = -1f;
         ScriptableRendererFeature _ssao;
@@ -120,6 +122,12 @@ namespace Backrooms.Camcorder
                 _lights.maxDistance = Mathf.Clamp(o.lightDistance, 16f, 44f);
                 _lights.fadeStart = _lights.maxDistance - 8f;
                 _lights.bounceCount = Mathf.Clamp(o.bounceLights, 0, 48);   // ceiling + lamps + bounce stay under URP's 256 visible lights
+                // Applied when the option changes, so debug tools can switch modes for comparisons.
+                if (_appliedGrid != (o.lightGrid ? 1 : 0))
+                {
+                    _appliedGrid = o.lightGrid ? 1 : 0;
+                    _lights.mode = o.lightGrid ? FixtureLightManager.LightingMode.LightGrid : FixtureLightManager.LightingMode.RoomLayers;
+                }
             }
         }
     }
