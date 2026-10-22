@@ -63,58 +63,18 @@ namespace Backrooms.Generation
 
         public OfficeChunkBuilder(OfficeBiomeAssets assets) { _a = assets; }
 
-        public static uint LayerBit(int color) => color < 0 ? 1u : (1u | (1u << (color + 1)));
+        public static uint LayerBit(int color) => LightLayers.LayerBit(color);
 
         /// <summary>Renderer mask for shadow-only proxies: every layer, so every light's shadows see them.</summary>
         const uint ProxyMask = 0xFFFFFFFFu;
 
         uint[,] _cellMask;
-
-        /// <summary>
-        /// Light layers each cell's surfaces receive: its room's (zone's) layer. Unshadowed lights only
-        /// reach their own room, so they cannot pass through walls; shadowed lights reach every layer
-        /// (their shadows stop them at walls), which lets light spill naturally through doorways.
-        /// </summary>
-        void ComputeCellMasks()
-        {
-            int n = _L.N;
-            _cellMask = new uint[n, n];
-            // An open-plan area that crosses into a neighbouring chunk is lit by that chunk's lights too:
-            // its surfaces also take the neighbouring zone's layer. Without this, each chunk's lights
-            // stopped dead at the chunk border and drew a straight dark line across open floors.
-            var extra = new uint[8];
-            if (_neighbours != null)
-            {
-                void Link(int x, int z, EdgeKind e, int dx, int dz)
-                {
-                    if (e != EdgeKind.Open) return;
-                    var nl = Neighbour(dx, dz);
-                    if (nl == null) return;
-                    int nx = (x + dx + n) % n, nz = (z + dz + n) % n;
-                    int c = _L.RoomAt(x, z).color, nc = nl.RoomAt(nx, nz).color;
-                    if (c >= 0 && nc >= 0 && nc != c) extra[c] |= 1u << (nc + 1);
-                }
-                for (int i = 0; i < n; i++)
-                {
-                    Link(0, i, _L.vEdges[0, i], -1, 0);
-                    Link(n - 1, i, _L.vEdges[n, i], 1, 0);
-                    Link(i, 0, _L.hEdges[i, 0], 0, -1);
-                    Link(i, n - 1, _L.hEdges[i, n], 0, 1);
-                }
-            }
-            for (int x = 0; x < n; x++)
-            for (int z = 0; z < n; z++)
-            {
-                // One mask per room (zone): per-cell doorway masks were tried and gave hard square edges.
-                int c = _L.RoomAt(x, z).color;
-                _cellMask[x, z] = LayerBit(c) | (c >= 0 ? extra[c] : 0u);
-            }
-        }
-
         OfficeLayout[] _neighbours;
 
+        /// <summary>Layout of the chunk at (dx, dz) from this one, or null if not supplied.</summary>
         OfficeLayout Neighbour(int dx, int dz)
         {
+            if (_neighbours == null) return null;
             var want = new Vector2Int(_L.coord.x + dx, _L.coord.y + dz);
             foreach (var l in _neighbours) if (l != null && l.coord == want) return l;
             return null;
@@ -149,7 +109,7 @@ namespace Backrooms.Generation
             _fixtureCells.Clear();
             foreach (var f in layout.fixtures) _fixtureCells.Add(f.cell);
 
-            ComputeCellMasks();
+            _cellMask = LightLayers.CellMasks(_L, Neighbour);
             BuildFloorAndCeiling();
             BuildCeilingGrid();
             BuildWalls();
@@ -358,18 +318,14 @@ namespace Backrooms.Generation
                     continue;
                 }
 
-                // Passable edge: where does the opening stop?
-                int ox = vertical ? (s == 0 ? line : line - 1) : along;
-                int oz = vertical ? along : (s == 0 ? line : line - 1);
-                bool otherKnown = _L.InChunk(ox, oz);
-                float otherCeil = otherKnown ? _L.CeilingAt(ox, oz) : OfficeBiome.CeilingHeight;
-                bool header = e == EdgeKind.DoorHeader || (!otherKnown && room.Tall);
-                float top = header ? OfficeBiome.DoorHeaderHeight : Mathf.Min(myCeil, otherCeil);
-                if (e == EdgeKind.DoorHeader && otherKnown && IsArched(vertical, line, along))
+                // Passable edge: where does the opening stop? (Both chunks of a border compute the same.)
+                var v = ViewOpening(_L, Neighbour, vertical, line, along, s);
+                if (v.arched)
                 {
                     ArchFaces(room, cm, vertical, l, f, a0, a1, n, myCeil);
                     continue;
                 }
+                float top = v.top;
                 if (myCeil <= top + 0.001f) continue;
 
                 WallFace(room, cm, A(f, a0), A(f, a1), top, myCeil, n);
@@ -377,16 +333,68 @@ namespace Backrooms.Generation
                 Vector3 u0 = A(l, a0) + Vector3.up * top, u1 = A(l, a1) + Vector3.up * top;
                 Vector3 v0 = A(f, a0) + Vector3.up * top, v1 = A(f, a1) + Vector3.up * top;
                 WMask(WallMat(room), cm).Quad(u0, v0, v1, u1, Vector3.down, MeshWriter.WallUV);
-                if (!otherKnown && room.Tall)
+                if (!v.otherKnown && room.Tall)
                 {
-                    // Neighbour may have no header: close the space between its ceiling and our header.
+                    // Neighbour unknown and may have no header: close the space between its ceiling and our header.
                     WallFace(room, cm, A(l, a0), A(l, a1), top, OfficeBiome.CeilingHeight + 0.05f, -n);
                 }
             }
         }
 
+        /// <summary>How a passable edge looks from one side. Pure function of the layouts.</summary>
+        public struct OpeningView
+        {
+            public EdgeKind kind;        // this edge, combined with the neighbouring chunk's copy on a border
+            public bool otherKnown;      // the far side's ceiling is known
+            public float myCeil, otherCeil;
+            public float top;            // top of the opening (header, lower ceiling or arch apex)
+            public bool arched;
+        }
+
+        /// <summary>
+        /// The opening on an edge seen from side s (0 = the cell at line-1, 1 = the cell at line).
+        /// vertical: edge on line X = line at z = along; else line Z = line at x = along.
+        /// On a chunk border the neighbouring chunk's layout (if given) supplies the far ceiling and its
+        /// copy of the edge, so both chunks build exactly the same opening.
+        /// </summary>
+        public static OpeningView ViewOpening(OfficeLayout L, System.Func<int, int, OfficeLayout> neighbour, bool vertical, int line, int along, int s)
+        {
+            int N = L.N;
+            int cx = vertical ? (s == 0 ? line - 1 : line) : along, cz = vertical ? along : (s == 0 ? line - 1 : line);
+            int ox = vertical ? (s == 0 ? line : line - 1) : along, oz = vertical ? along : (s == 0 ? line : line - 1);
+            var v = new OpeningView { kind = vertical ? L.vEdges[line, along] : L.hEdges[along, line], myCeil = L.CeilingAt(cx, cz) };
+            if (L.InChunk(ox, oz)) { v.otherKnown = true; v.otherCeil = L.CeilingAt(ox, oz); }
+            else if (neighbour != null)
+            {
+                int dx = ox < 0 ? -1 : ox >= N ? 1 : 0, dz = oz < 0 ? -1 : oz >= N ? 1 : 0;
+                var nl = neighbour(dx, dz);
+                if (nl != null)
+                {
+                    v.otherKnown = true;
+                    v.otherCeil = nl.CeilingAt(ox - dx * N, oz - dz * N);
+                    var theirs = vertical ? nl.vEdges[line - dx * N, along] : nl.hEdges[along, line - dz * N];
+                    v.kind = Combine(v.kind, theirs);
+                }
+            }
+            if (!v.otherKnown) v.otherCeil = OfficeBiome.CeilingHeight;
+            bool header = v.kind == EdgeKind.DoorHeader || (!v.otherKnown && v.myCeil > OfficeBiome.CeilingHeight + 0.01f);
+            v.top = header ? OfficeBiome.DoorHeaderHeight : Mathf.Min(v.myCeil, v.otherCeil);
+            v.arched = v.kind == EdgeKind.DoorHeader && v.otherKnown && IsArchedEdge(L, vertical, line, along);
+            if (v.arched) v.top = ArchApex;
+            return v;
+        }
+
+        /// <summary>Both chunks' copies of a border edge as one: a header on either side wins.</summary>
+        public static EdgeKind Combine(EdgeKind a, EdgeKind b)
+        {
+            if (a == EdgeKind.Wall || b == EdgeKind.Wall) return EdgeKind.Wall;
+            if (a == EdgeKind.DoorHeader || b == EdgeKind.DoorHeader) return EdgeKind.DoorHeader;
+            if (a == EdgeKind.Door || b == EdgeKind.Door) return EdgeKind.Door;
+            return EdgeKind.Open;
+        }
+
         /// <summary>Apex of an arched doorway: a little above the flat 2.1 m header, as in older offices.</summary>
-        const float ArchApex = 2.3f;
+        public const float ArchApex = 2.3f;
 
         /// <summary>
         /// Deterministic per doorway (world position), interior edges only so both sides always agree.
@@ -645,29 +653,35 @@ namespace Backrooms.Generation
 
         // ---------------- Doorways ----------------
 
-        /// <summary>Every passable edge between two zones (and every border opening), seen from each side.</summary>
-        void BuildDoorways()
+        void BuildDoorways() => ComputeDoorways(_L, doorways);
+
+        /// <summary>
+        /// Every passable edge between two zones (and every border opening), seen from each side: where the
+        /// doorway light for the receiving room goes. World positions.
+        /// </summary>
+        public static void ComputeDoorways(OfficeLayout L, List<Doorway> into)
         {
-            int n = _L.N;
+            int n = L.N;
+            var origin = new Vector3(L.coord.x * OfficeBiome.ChunkSize, 0f, L.coord.y * OfficeBiome.ChunkSize);
             for (int x = 0; x < n; x++)
             for (int z = 0; z < n; z++)
             {
-                var room = _L.RoomAt(x, z);
+                var room = L.RoomAt(x, z);
                 if (room.kind == RoomKind.Crawl) continue;
                 for (int side = 0; side < 4; side++)
                 {
-                    var e = _L.EdgeOf(x, z, side);
+                    var e = L.EdgeOf(x, z, side);
                     if (OfficeLayout.IsSolid(e)) continue;
                     int nx = x + (side == 0 ? -1 : side == 1 ? 1 : 0), nz = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
-                    bool inChunk = _L.InChunk(nx, nz);
-                    if (inChunk && _L.RoomAt(nx, nz).color == room.color) continue;          // same zone: already shared light
+                    bool inChunk = L.InChunk(nx, nz);
+                    if (inChunk && L.RoomAt(nx, nz).color == room.color) continue;          // same zone: already shared light
                     Vector3 c = new Vector3((x + 0.5f) * C, 0f, (z + 0.5f) * C);
                     Vector3 outDir = side == 0 ? Vector3.left : side == 1 ? Vector3.right : side == 2 ? Vector3.back : Vector3.forward;
                     float top = e == EdgeKind.DoorHeader || e == EdgeKind.Door ? OfficeBiome.DoorHeaderHeight
-                              : inChunk ? Mathf.Min(room.ceiling, _L.CeilingAt(nx, nz)) : OfficeBiome.DoorHeaderHeight;
-                    doorways.Add(new Doorway
+                              : inChunk ? Mathf.Min(room.ceiling, L.CeilingAt(nx, nz)) : OfficeBiome.DoorHeaderHeight;
+                    into.Add(new Doorway
                     {
-                        position = _origin + c + outDir * (C * 0.5f), inward = -outDir, layer = LayerBit(room.color),
+                        position = origin + c + outDir * (C * 0.5f), inward = -outDir, layer = LayerBit(room.color),
                         height = top, width = 1f,
                     });
                 }

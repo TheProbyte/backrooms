@@ -31,7 +31,9 @@ namespace Backrooms.Generation
 
         /// <summary>Live world-gen rules (edited by F5 > World Gen). Call <see cref="Regenerate"/> after changes.</summary>
         public WorldGenSettings Settings { get; private set; }
-        WorldGenSettings _snapshot;          // immutable copy handed to worker threads
+        WorldGenerator _world;               // immutable world (seed + frozen settings) handed to worker threads
+        /// <summary>The world currently being streamed (layouts for any chunk, loaded or not).</summary>
+        public WorldGenerator World => _world;
         int _generation;                     // bumps on every regenerate; stale chunks get rebuilt
         Vector2Int? _frozen;                 // chunk the player stood in when settings changed (kept as is)
         public Vector2Int? FrozenChunk => _frozen;
@@ -54,7 +56,7 @@ namespace Backrooms.Generation
         {
             Seed = seed != 0 ? seed : new System.Random().Next(1, int.MaxValue);
             Settings = WorldGenSettings.Load();
-            _snapshot = Settings.Clone();
+            _world = new WorldGenerator(Seed, Settings);
         }
 
         /// <summary>The chunk's layout as currently built (null if not loaded).</summary>
@@ -67,7 +69,7 @@ namespace Backrooms.Generation
         /// </summary>
         public void Regenerate()
         {
-            _snapshot = Settings.Clone();
+            _world = new WorldGenerator(Seed, Settings);
             _generation++;
             _frozen = player ? ChunkOf(player.position) : (Vector2Int?)null;
             if (_frozen.HasValue && _chunks.TryGetValue(_frozen.Value, out var keep)) keep.generation = _generation;
@@ -78,7 +80,7 @@ namespace Backrooms.Generation
         public void SetSeed(int newSeed)
         {
             Seed = newSeed;
-            _snapshot = Settings.Clone();
+            _world = new WorldGenerator(Seed, Settings);
             _generation++;
             _frozen = null;
             foreach (var k in new List<Vector2Int>(_chunks.Keys)) DestroyNow(k);
@@ -131,9 +133,9 @@ namespace Backrooms.Generation
                 _queue.RemoveAt(0);
                 bool current = _chunks.TryGetValue(coord, out var existing) && existing.generation == _generation;
                 if (current || _pending.ContainsKey(coord) || !InRadius(coord, _center, loadRadius)) continue;
-                int s = Seed; var a = assets; var set = _snapshot;
+                var a = assets; var w = _world;
                 _pendingGen[coord] = _generation;
-                _pending[coord] = Task.Run(() => Prepare(s, coord, a, set));
+                _pending[coord] = Task.Run(() => Prepare(w, coord, a));
             }
 
             // Finished data becomes meshes on the main thread, within the frame budget.
@@ -160,46 +162,21 @@ namespace Backrooms.Generation
             foreach (var k in done) { _pending.Remove(k); _pendingGen.Remove(k); }
         }
 
-        OfficeChunkBuilder Prepare(int seed, Vector2Int coord, OfficeBiomeAssets assets, WorldGenSettings set)
+        OfficeChunkBuilder Prepare(WorldGenerator world, Vector2Int coord, OfficeBiomeAssets assets)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var b = new OfficeChunkBuilder(assets);
-            // Neighbouring layouts (deterministic) so baked light flows across chunk borders. Layouts are
-            // cached per generation, since each one is needed by up to nine chunks.
-            var nb = new OfficeLayout[8];
-            int k = 0;
-            for (int dz = -1; dz <= 1; dz++)
-            for (int dx = -1; dx <= 1; dx++)
-            {
-                if (dx == 0 && dz == 0) continue;
-                nb[k++] = CachedLayout(seed, new Vector2Int(coord.x + dx, coord.y + dz), set);
-            }
-            b.BuildData(CachedLayout(seed, coord, set), nb);
+            // Neighbouring layouts (deterministic, cached by the world) so borders and light agree.
+            b.BuildData(world.Chunk(coord), world.Neighbours(coord));
             float ms = (float)sw.Elapsed.TotalMilliseconds;
             LastBuildMs = ms; AverageBuildMs = Mathf.Lerp(AverageBuildMs <= 0f ? ms : AverageBuildMs, ms, 0.1f);
             return b;
         }
 
-        readonly System.Collections.Concurrent.ConcurrentDictionary<(int, int, Vector2Int), OfficeLayout> _layoutCache =
-            new System.Collections.Concurrent.ConcurrentDictionary<(int, int, Vector2Int), OfficeLayout>();
-
-        OfficeLayout CachedLayout(int seed, Vector2Int c, WorldGenSettings set)
-        {
-            int gen = _generation;
-            return _layoutCache.GetOrAdd((seed, gen, c), _ =>
-            {
-                var sm = set.Evaluate(seed, c);
-                return OfficeLayoutGenerator.Generate(seed, c, OfficeBiome.ChunkCells, sm.rules, sm.Dominant);
-            });
-        }
-
-        /// <summary>Drops cached layouts far from the player or from an old generation.</summary>
+        /// <summary>Drops cached layouts far from the player.</summary>
         void TrimLayoutCache()
         {
-            if (_layoutCache.Count < 200) return;
-            foreach (var key in _layoutCache.Keys)
-                if (key.Item1 != Seed || key.Item2 != _generation || !InRadius(key.Item3, _center, unloadRadius + 2))
-                    _layoutCache.TryRemove(key, out _);
+            if (_world.CachedChunks >= 200) _world.Trim(_center, unloadRadius + 2);
         }
 
         public static Vector2Int ChunkOf(Vector3 world) =>
@@ -236,8 +213,8 @@ namespace Backrooms.Generation
             if (_syncBuild.Count > 0)
             {
                 var built = new OfficeChunkBuilder[_syncBuild.Count];
-                int s = Seed; var a = assets; var set = _snapshot;
-                System.Threading.Tasks.Parallel.For(0, _syncBuild.Count, i => built[i] = Prepare(s, _syncBuild[i], a, set));
+                var a = assets; var w = _world;
+                System.Threading.Tasks.Parallel.For(0, _syncBuild.Count, i => built[i] = Prepare(w, _syncBuild[i], a));
                 for (int i = 0; i < built.Length; i++) Instantiate(_syncBuild[i], built[i], _started);
                 _syncBuild.Clear();
             }
@@ -299,8 +276,7 @@ namespace Backrooms.Generation
         void PlaceSpawn()
         {
             if (!player) return;
-            var spawnSample = _snapshot.Evaluate(Seed, Vector2Int.zero);
-            var layout = OfficeLayoutGenerator.Generate(Seed, Vector2Int.zero, OfficeBiome.ChunkCells, spawnSample.rules, spawnSample.Dominant);
+            var layout = _world.Chunk(Vector2Int.zero);
             float C = OfficeBiome.CellSize;
             Vector2Int best = new Vector2Int(layout.N / 2, layout.N / 2);
             float bestScore = float.MinValue;
