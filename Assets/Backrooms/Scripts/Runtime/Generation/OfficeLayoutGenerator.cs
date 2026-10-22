@@ -95,8 +95,9 @@ namespace Backrooms.Generation
             EnsureConnected(L, rng);
             EncloseTallRooms(L);
 
-            // 6. Lighting, colours and dressing.
-            AssignColors(L);
+            // 6. Lighting and dressing. Placements record the room id in their colour field; light colours
+            // are assigned afterwards, once every light's position is known, and stamped in.
+            foreach (var r in L.rooms) r.color = r.id;
             foreach (var r in L.rooms)
             {
                 double p = rng.NextDouble();
@@ -107,6 +108,7 @@ namespace Backrooms.Generation
             PlacePillarsAndHalfWalls(L, rng);
             PlaceProps(L, rng);
             PlacePlates(L, rng);
+            AssignColors(L);
             return L;
         }
 
@@ -417,46 +419,123 @@ namespace Backrooms.Generation
 
         // ---------------- Dressing ----------------
 
+        /// <summary>
+        /// Light colours (rendering layers for unshadowed lights). A light zone is a set of rooms joined by
+        /// open-plan edges. Two zones conflict when a light in one (ceiling fixture, lamp, or the doorway
+        /// light on its side of an opening) reaches a cell of the other: they must not share a layer, or
+        /// the light would show through the wall. Zones are coloured with DSATUR using 7 colours; the
+        /// chunk's colour set (4 sets by chunk x/z parity) keeps neighbouring chunks, diagonals included,
+        /// on different layers, so no light reaches a same-layer surface in another chunk.
+        /// </summary>
         static void AssignColors(OfficeLayout L)
         {
-            // Rooms joined by open-plan edges (no wall between them) form one light zone, so their bounce
-            // light blends across the floor instead of stopping at an invisible seam.
-            var zone = new int[L.rooms.Count];
-            for (int i = 0; i < zone.Length; i++) zone[i] = i;
-            int Find(int i) { while (zone[i] != i) i = zone[i] = zone[zone[i]]; return i; }
+            int n = L.N, R = L.rooms.Count;
+            const float C = OfficeBiome.CellSize;
+            var parent = new int[R];
+            for (int i = 0; i < R; i++) parent[i] = i;
+            int Find(int i) { while (parent[i] != i) i = parent[i] = parent[parent[i]]; return i; }
             var shared = SharedBoundaries(L);
             foreach (var s in shared)
-            {
-                bool open = false;
-                foreach (var e in s.edges) if (L.EdgeOf(e.x, e.z, e.side) == EdgeKind.Open) { open = true; break; }
-                if (open) zone[Find(s.a)] = Find(s.b);
-            }
+                foreach (var e in s.edges)
+                    if (L.EdgeOf(e.x, e.z, e.side) == EdgeKind.Open) { parent[Find(s.a)] = Find(s.b); break; }
 
-            // Greedy colouring of zones with 7 colours so neighbouring zones rarely share a bounce layer.
-            var neighbours = new Dictionary<int, HashSet<int>>();
-            foreach (var s in shared)
+            // Compact zone indices in room order (deterministic).
+            var zoneIndex = new Dictionary<int, int>();
+            var zi = new int[R];
+            for (int i = 0; i < R; i++)
             {
-                int a = Find(s.a), b = Find(s.b);
-                if (a == b) continue;
-                if (!neighbours.TryGetValue(a, out var na)) neighbours[a] = na = new HashSet<int>();
-                if (!neighbours.TryGetValue(b, out var nb)) neighbours[b] = nb = new HashSet<int>();
-                na.Add(b); nb.Add(a);
+                int root = Find(i);
+                if (!zoneIndex.TryGetValue(root, out int z)) zoneIndex[root] = z = zoneIndex.Count;
+                zi[i] = z;
             }
-            int offset = Hash(L.coord.x, L.coord.y, 7, 0xC010) & 0x7FFFFFFF;
-            var zoneColor = new Dictionary<int, int>();
-            foreach (var r in L.rooms)
+            int Z = zoneIndex.Count;
+            var w = new float[Z, Z];
+
+            // Every zone a light visibly reaches (brightest point of each cell's floor and walls).
+            void Reach(in LightLayers.Spec spec, int src, Vector2 front)
             {
-                int z = Find(r.id);
-                if (zoneColor.TryGetValue(z, out int known)) { r.color = known; continue; }
-                for (int k = 0; k < 7; k++)
+                int r = Mathf.CeilToInt(spec.range / C) + 1;
+                int cx = Mathf.FloorToInt(spec.position.x / C), cz = Mathf.FloorToInt(spec.position.z / C);
+                for (int x = Mathf.Max(0, cx - r); x <= Mathf.Min(n - 1, cx + r); x++)
+                for (int z = Mathf.Max(0, cz - r); z <= Mathf.Min(n - 1, cz + r); z++)
                 {
-                    int c = (offset + z + k) % 7;
-                    bool clash = false;
-                    if (neighbours.TryGetValue(z, out var nbs))
-                        foreach (var nb in nbs) if (zoneColor.TryGetValue(nb, out int nc) && nc == c) clash = true;
-                    if (!clash || k == 6) { zoneColor[z] = c; r.color = c; break; }
+                    int other = zi[L.roomOf[x, z]];
+                    if (other == src) continue;
+                    if (front != Vector2.zero && ((x + 0.5f) * C - spec.position.x) * front.x + ((z + 0.5f) * C - spec.position.z) * front.y <= 0f) continue;
+                    float e = LightLayers.MaxOnCell(spec, x * C, z * C, C, L.CeilingAt(x, z));
+                    if (e < LightLayers.VisibleIrradiance) continue;
+                    w[src, other] += e; w[other, src] += e;
                 }
             }
+            foreach (var f in L.fixtures)
+            {
+                if (!f.on) continue;
+                var centre = new Vector2((f.cell.x + 0.5f) * C, (f.cell.y + 0.5f) * C);
+                Reach(LightLayers.FixtureSpec(f, centre), zi[f.roomColor], Vector2.zero);
+                Reach(LightLayers.BounceSpec(f, centre), zi[f.roomColor], Vector2.zero);
+            }
+            foreach (var p in L.props)
+                if (p.kind == PropKind.FloorLamp && p.lit) Reach(LightLayers.LampSpec(p.position), zi[p.roomColor], Vector2.zero);
+            // Doorway lights: every opening between two zones lights a little way into each side.
+            float Top(EdgeKind e, int ax, int az, int bx, int bz) =>
+                e == EdgeKind.Open ? Mathf.Min(L.CeilingAt(ax, az), L.CeilingAt(bx, bz)) : OfficeBiome.DoorHeaderHeight;
+            for (int x = 0; x < n; x++)
+            for (int z = 0; z < n; z++)
+            {
+                if (x + 1 < n && OfficeLayout.IsPassable(L.vEdges[x + 1, z]) && zi[L.roomOf[x, z]] != zi[L.roomOf[x + 1, z]])
+                {
+                    var at = new Vector2((x + 1) * C, (z + 0.5f) * C);
+                    float top = Top(L.vEdges[x + 1, z], x, z, x + 1, z);
+                    Reach(LightLayers.DoorwaySpec(at, Vector2.left, top), zi[L.roomOf[x, z]], Vector2.left);
+                    Reach(LightLayers.DoorwaySpec(at, Vector2.right, top), zi[L.roomOf[x + 1, z]], Vector2.right);
+                }
+                if (z + 1 < n && OfficeLayout.IsPassable(L.hEdges[x, z + 1]) && zi[L.roomOf[x, z]] != zi[L.roomOf[x, z + 1]])
+                {
+                    var at = new Vector2((x + 0.5f) * C, (z + 1) * C);
+                    float top = Top(L.hEdges[x, z + 1], x, z, x, z + 1);
+                    Reach(LightLayers.DoorwaySpec(at, Vector2.down, top), zi[L.roomOf[x, z]], Vector2.down);
+                    Reach(LightLayers.DoorwaySpec(at, Vector2.up, top), zi[L.roomOf[x, z + 1]], Vector2.up);
+                }
+            }
+
+            // DSATUR: colour the most constrained zone first.
+            const int K = LightLayers.Colors;
+            var col = new int[Z];
+            for (int i = 0; i < Z; i++) col[i] = -1;
+            var degree = new int[Z];
+            for (int a = 0; a < Z; a++) for (int b = 0; b < Z; b++) if (w[a, b] > 0) degree[a]++;
+            int offset = (Hash(L.coord.x, L.coord.y, 7, 0xC010) & 0x7FFFFFFF) % K;
+            for (int step = 0; step < Z; step++)
+            {
+                int pick = -1, bestSat = -1, bestDeg = -1;
+                for (int a = 0; a < Z; a++)
+                {
+                    if (col[a] >= 0) continue;
+                    int used = 0;
+                    for (int b = 0; b < Z; b++) if (w[a, b] > 0 && col[b] >= 0) used |= 1 << col[b];
+                    int sat = 0; for (int k = 0; k < K; k++) if ((used & (1 << k)) != 0) sat++;
+                    if (sat > bestSat || (sat == bestSat && degree[a] > bestDeg)) { pick = a; bestSat = sat; bestDeg = degree[a]; }
+                }
+                int best = -1; float bestCost = float.MaxValue;
+                for (int k = 0; k < K; k++)
+                {
+                    int c = (offset + k) % K; float cost = 0f;
+                    for (int b = 0; b < Z; b++) if (col[b] == c) cost += w[pick, b];
+                    if (cost < bestCost) { bestCost = cost; best = c; if (cost == 0) break; }
+                }
+                col[pick] = best;
+            }
+
+            int set = (L.coord.x & 1) + 2 * (L.coord.y & 1);
+            var roomColor = new int[R];
+            for (int i = 0; i < R; i++) roomColor[i] = set * K + col[zi[i]];
+            foreach (var r in L.rooms) r.color = roomColor[r.id];
+            // Stamp the colours into everything placed with a room id.
+            for (int i = 0; i < L.fixtures.Count; i++) { var f = L.fixtures[i]; f.roomColor = roomColor[f.roomColor]; L.fixtures[i] = f; }
+            for (int i = 0; i < L.pillars.Count; i++) { var p = L.pillars[i]; p.roomColor = roomColor[p.roomColor]; L.pillars[i] = p; }
+            for (int i = 0; i < L.halfWalls.Count; i++) { var h = L.halfWalls[i]; h.roomColor = roomColor[h.roomColor]; L.halfWalls[i] = h; }
+            for (int i = 0; i < L.plates.Count; i++) { var p = L.plates[i]; p.roomColor = roomColor[p.roomColor]; L.plates[i] = p; }
+            for (int i = 0; i < L.props.Count; i++) { var p = L.props[i]; p.roomColor = roomColor[p.roomColor]; L.props[i] = p; }
         }
 
         static void PlaceFixtures(OfficeLayout L, System.Random rng)

@@ -18,8 +18,9 @@ namespace Backrooms.Generation
             public Vector2Int cell;      // global cell where it shows
             public Vector2Int from;      // global cell of the source (light leaks), else = cell
             public bool crossChunk;      // involves two chunks
+            public float strength;       // light leaks: irradiance reaching the far side
             public string what;
-            public override string ToString() => $"{what} at cell {cell} (from {from}){(crossChunk ? " [chunk border]" : "")}";
+            public override string ToString() => $"{what} at cell {cell} (from {from}){(strength > 0f ? $" strength {strength:0.000}" : "")}{(crossChunk ? " [chunk border]" : "")}";
         }
 
         static Vector2Int ChunkOfCell(Vector2Int g) => new Vector2Int(FloorDiv(g.x, N), FloorDiv(g.y, N));
@@ -159,9 +160,10 @@ namespace Backrooms.Generation
         }
 
         /// <summary>
-        /// Every unshadowed light (ceiling fixture, its bounce fill, doorway lights) reaches surfaces within its
-        /// range that carry its layer. A leak is such a surface outside the light's own zone: it would be lit
-        /// through a wall. Only lights in the block's inner chunks are checked; cells anywhere in the block.
+        /// Every unshadowed light (ceiling fixture, its bounce fill, floor lamps, doorway lights) visibly
+        /// lights surfaces within reach that carry its layer (see <see cref="LightLayers.VisibleIrradiance"/>).
+        /// A leak is such a surface outside the light's own zone: it would be lit through a wall. Lights in
+        /// the block's inner chunks are checked against cells anywhere in the block.
         /// </summary>
         public static List<Issue> LightLeaks(WorldGenerator gen, RectInt chunks)
         {
@@ -177,27 +179,24 @@ namespace Backrooms.Generation
             uint MaskAt(Vector2Int g) { var ch = ChunkOfCell(g); return masks[ch][g.x - ch.x * N, g.y - ch.y * N]; }
             int ZoneAt(Vector2Int g) => zone[(g.y - cells.yMin) * cells.width + (g.x - cells.xMin)];
 
-            var list = new List<Issue>();
-            var seenPairs = new HashSet<(Vector2Int, int)>();
-            void Check(Vector2 pos, float reach, uint bits, Vector2Int srcCell, string kind, Vector2? frontOf)
+            var best = new Dictionary<(Vector2Int, int), Issue>();     // strongest leak per light and zone
+            void Check(LightLayers.Spec spec, uint bits, Vector2Int srcCell, string kind, Vector2 front)
             {
                 bits &= ~1u;
                 int srcZone = ZoneAt(srcCell);
-                int r = Mathf.CeilToInt(reach / C) + 1;
-                var pc = new Vector2Int(Mathf.FloorToInt(pos.x / C), Mathf.FloorToInt(pos.y / C));
+                int r = Mathf.CeilToInt(spec.range / C) + 1;
+                var pc = new Vector2Int(Mathf.FloorToInt(spec.position.x / C), Mathf.FloorToInt(spec.position.z / C));
                 for (int x = pc.x - r; x <= pc.x + r; x++)
                 for (int z = pc.y - r; z <= pc.y + r; z++)
                 {
                     var g = new Vector2Int(x, z);
-                    if (!cells.Contains(g)) continue;
-                    // Distance from the light to the nearest point of the cell.
-                    float nx = Mathf.Clamp(pos.x, x * C, (x + 1) * C), nz = Mathf.Clamp(pos.y, z * C, (z + 1) * C);
-                    if ((new Vector2(nx, nz) - pos).sqrMagnitude >= reach * reach) continue;
-                    if (frontOf.HasValue && Vector2.Dot(new Vector2((x + 0.5f) * C, (z + 0.5f) * C) - pos, frontOf.Value) <= 0f) continue;
-                    if ((MaskAt(g) & bits) == 0 || ZoneAt(g) == srcZone) continue;
-                    int pairZone = ZoneAt(g);
-                    if (!seenPairs.Add((srcCell, pairZone))) continue;      // one report per light and zone
-                    list.Add(new Issue { cell = g, from = srcCell, crossChunk = ChunkOfCell(g) != ChunkOfCell(srcCell), what = kind + " light leaks into another zone" });
+                    if (!cells.Contains(g) || (MaskAt(g) & bits) == 0 || ZoneAt(g) == srcZone) continue;
+                    if (front != Vector2.zero && ((x + 0.5f) * C - spec.position.x) * front.x + ((z + 0.5f) * C - spec.position.z) * front.y <= 0f) continue;
+                    float e = LightLayers.MaxOnCell(spec, x * C, z * C, C, RoomAt(gen, g).ceiling);
+                    if (e < LightLayers.VisibleIrradiance) continue;
+                    var key = (srcCell, ZoneAt(g));
+                    if (best.TryGetValue(key, out var old) && old.strength >= e) continue;
+                    best[key] = new Issue { cell = g, from = srcCell, strength = e, crossChunk = ChunkOfCell(g) != ChunkOfCell(srcCell), what = kind + " light leaks into another zone" };
                 }
             }
 
@@ -206,29 +205,34 @@ namespace Backrooms.Generation
             for (int cz = chunks.yMin + 1; cz < chunks.yMax - 1; cz++)
             {
                 var L = gen.Chunk(new Vector2Int(cx, cz));
+                var o = new Vector2(cx * OfficeBiome.ChunkSize, cz * OfficeBiome.ChunkSize);
                 foreach (var f in L.fixtures)
                 {
                     if (!f.on) continue;
                     var g = new Vector2Int(cx * N + f.cell.x, cz * N + f.cell.y);
-                    var p = new Vector2((g.x + 0.5f) * C, (g.y + 0.5f) * C);
-                    Check(p, LightLayers.FixtureRange(f), LightLayers.LayerBit(f.roomColor), g, "fixture", null);
+                    var centre = o + new Vector2((f.cell.x + 0.5f) * C, (f.cell.y + 0.5f) * C);
+                    Check(LightLayers.FixtureSpec(f, centre), LightLayers.LayerBit(f.roomColor), g, "fixture", Vector2.zero);
+                    Check(LightLayers.BounceSpec(f, centre), LightLayers.LayerBit(f.roomColor), g, "bounce", Vector2.zero);
                 }
                 foreach (var pr in L.props)
                 {
                     if (pr.kind != PropKind.FloorLamp || !pr.lit) continue;
-                    var p = new Vector2(cx * OfficeBiome.ChunkSize + pr.position.x, cz * OfficeBiome.ChunkSize + pr.position.y);
+                    var p = o + pr.position;
                     var g = new Vector2Int(Mathf.FloorToInt(p.x / C), Mathf.FloorToInt(p.y / C));
-                    Check(p, LightLayers.LampRange, LightLayers.LayerBit(pr.roomColor), g, "lamp", null);
+                    Check(LightLayers.LampSpec(p), LightLayers.LayerBit(pr.roomColor), g, "lamp", Vector2.zero);
                 }
                 doors.Clear();
                 OfficeChunkBuilder.ComputeDoorways(L, doors);
                 foreach (var d in doors)
                 {
-                    var p = new Vector2(d.position.x, d.position.z) + new Vector2(d.inward.x, d.inward.z) * 0.05f;
-                    var g = new Vector2Int(Mathf.FloorToInt(p.x / C), Mathf.FloorToInt(p.y / C));
-                    Check(p, LightLayers.DoorwayRange, d.layer, g, "doorway", new Vector2(d.inward.x, d.inward.z));
+                    var inward = new Vector2(d.inward.x, d.inward.z);
+                    var at = new Vector2(d.position.x, d.position.z);
+                    var g = new Vector2Int(Mathf.FloorToInt((at.x + inward.x * 0.1f) / C), Mathf.FloorToInt((at.y + inward.y * 0.1f) / C));
+                    Check(LightLayers.DoorwaySpec(at, inward, d.height), d.layer, g, "doorway", inward);
                 }
             }
+            var list = new List<Issue>(best.Values);
+            list.Sort((p, q) => q.strength.CompareTo(p.strength));
             return list;
         }
     }

@@ -33,11 +33,11 @@ namespace Backrooms.DebugTools
             Busy = true; Report = "";
             var ws = FindAnyObjectByType<WorldStreamer>();
             var pl = FindAnyObjectByType<CamcorderPlayerController>();
-            if (seed != 0 && ws && ws.Seed != seed)
-            {
-                ws.SetSeed(seed);
-                for (int i = 0; i < 30; i++) yield return null;
-            }
+            if (seed != 0 && ws && ws.Seed != seed) ws.SetSeed(seed);
+            // Let the world finish streaming and the camera settle before the first shot.
+            for (int i = 0; i < 60; i++) yield return null;
+            for (float t = 0f; t < 10f && ws && ws.QueuedChunks > 0; t += Time.unscaledDeltaTime) yield return null;
+            yield return new WaitForSeconds(1f);
             List<View> views = null;
             if (!string.IsNullOrEmpty(viewsFile) && System.IO.File.Exists(viewsFile))
                 views = JsonUtility.FromJson<ViewList>(System.IO.File.ReadAllText(viewsFile)).views;

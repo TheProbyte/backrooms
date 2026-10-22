@@ -10,13 +10,16 @@ namespace Backrooms.Generation
     /// the camera. Rules that keep lighting stable while you move:
     ///  - Every powered fixture within <see cref="maxDistance"/> is lit, nearest first, whether visible or
     ///    not: the building is already lit, nothing switches on as you approach. The farthest dim into fog.
-    ///  - Unshadowed lights only reach their own room's rendering layer, so light never passes through a
-    ///    wall. The nearest lights get shadows (with hysteresis, easing in); once a shadow is fully in, that
-    ///    light reaches every layer, so it spills naturally through doorways while walls still block it.
-    ///  - Walls cast shadows through closed proxy boxes (see OfficeChunkBuilder), so corners and
-    ///    baseboards don't leak in shadow maps.
-    ///  - The nearest troffers also get a soft "bounce" point light restricted to their room's layer.
-    /// Newly streamed chunks power up with a fluorescent start-up flicker, and chunks being unloaded
+    ///  - Every fixture light (shadowed or not) only reaches its own light zone's rendering layer, so light
+    ///    never passes through a wall. Zones use 28 layers: 7 colours in 4 sets chosen by chunk parity, so
+    ///    neighbouring chunks never share a layer (see LightLayers and OfficeLayoutGenerator.AssignColors).
+    ///  - The nearest lights get shadows (with hysteresis, easing in). Shadows only add detail inside the
+    ///    room (furniture, pillars); they do not let light out of it.
+    ///  - Light through openings comes from doorway lights placed in the receiving room.
+    ///  - The nearest troffers also get a soft upward "bounce" light restricted to their zone's layer.
+    ///  - Each slot also owns a disabled "spill" light (an every-layer shadowed copy, kept for experiments;
+    ///    it is never switched on).
+    /// Newly streamed chunks can power up with a fluorescent start-up flicker, and chunks being unloaded
     /// stutter off; faulty tubes occasionally stutter. Fixture sound lives in Backrooms.Audio.BuildingAudio,
     /// which reads <see cref="PowerLevel"/> so hum, strikes and buzz stay in time with the light.
     /// </summary>
@@ -72,7 +75,7 @@ namespace Backrooms.Generation
 
         class Slot
         {
-            public Light main, bounce, spill;   // spill: the shadowed, every-room copy of main
+            public Light main, bounce, spill;   // spill: an every-layer shadowed copy of main (unused, always off)
             public bool busy;
             public Vector3 sourcePos;
             public LightSource src;
@@ -182,8 +185,8 @@ namespace Backrooms.Generation
                 s.main.spotAngle = 150f;
                 s.main.innerSpotAngle = 60f;
                 go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-                // The shadowed copy: lights every room (its shadow stops it at walls), so light spills
-                // through doorways. Main and spill crossfade, so nothing pops when a light gains a shadow.
+                // An every-layer shadowed copy of main (its shadow would stop it at walls). Not used: it
+                // stays disabled; doorway lights carry light through openings instead.
                 var sp = new GameObject("Spill");
                 sp.transform.SetParent(go.transform, false);
                 s.spill = sp.AddComponent<Light>();
@@ -242,8 +245,8 @@ namespace Backrooms.Generation
                         if ((l.position - eye).sqrMagnitude < maxDistance * maxDistance) _candidates.Add(l);
 
             // The building is already lit: every powered fixture in range is on, nearest first, with no
-            // dependence on what the camera can see. Light only reaches its own room (rendering layers),
-            // so an unshadowed light can never shine through a wall.
+            // dependence on what the camera can see. Light only reaches its own zone (rendering layers),
+            // so it can never shine through a wall.
             if (_byDistance == null) _byDistance = (a, b) => (a.position - _eye).sqrMagnitude.CompareTo((b.position - _eye).sqrMagnitude);
             _candidates.Sort(_byDistance);
             _wantedTroffers.Clear(); _wantedLamps.Clear();
@@ -278,7 +281,7 @@ namespace Backrooms.Generation
             int tier = shadowTier == 0 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierLow
                      : shadowTier == 2 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierHigh
                      : UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium;
-            foreach (var t in _troffers) if (t.spill) s_tierField?.SetValue(t.spill.GetUniversalAdditionalLightData(), tier);
+            foreach (var t in _troffers) s_tierField?.SetValue(t.main.GetUniversalAdditionalLightData(), tier);   // the shadowed ceiling lights
         }
 
         /// <summary>Lights currently enabled (ceiling, lamps and bounce) and shadowed, for the Graphics tab.</summary>

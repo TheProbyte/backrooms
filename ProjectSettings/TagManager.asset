@@ -2,7 +2,7 @@
 %TAG !u! tag:unity3d.com,2011:
 --- !u!78 &1
 TagManager:
-  serializedVersion: 2
+  serializedVersion: 3
   tags: []
   layers:
   - Default
@@ -43,34 +43,32 @@ TagManager:
     locked: 0
   m_RenderingLayers:
   - Default
-  - Light Layer 1
-  - Light Layer 2
-  - Light Layer 3
-  - Light Layer 4
-  - Light Layer 5
-  - Light Layer 6
-  - Light Layer 7
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
+  - Light A1
+  - Light A2
+  - Light A3
+  - Light A4
+  - Light A5
+  - Light A6
+  - Light A7
+  - Light B1
+  - Light B2
+  - Light B3
+  - Light B4
+  - Light B5
+  - Light B6
+  - Light B7
+  - Light C1
+  - Light C2
+  - Light C3
+  - Light C4
+  - Light C5
+  - Light C6
+  - Light C7
+  - Light D1
+  - Light D2
+  - Light D3
+  - Light D4
+  - Light D5
+  - Light D6
+  - Light D7
+  m_MigratedRenderPipelines: []
