@@ -50,10 +50,10 @@ namespace Backrooms.Generation
         public float maxDistance = 36f;
         public float fadeStart = 28f;
         [Tooltip("Only the nearest fixtures add the soft bounce fill.")]
-        [Range(0, 64)] public int bounceCount = 32;
+        [Range(0, 64)] public int bounceCount = 0;    // replaced by the baked lightmap
         public float bounceDistance = 18f;
         [Header("Shadows")]
-        [Range(0, 48)] public int shadowedTroffers = 24;
+        [Range(0, 48)] public int shadowedTroffers = 8;
         [Range(0, 4)] public int shadowedLamps = 1;
         [Tooltip("Shadows fade out smoothly between 65% and 100% of this distance.")]
         public float shadowDistance = 20f;
@@ -317,7 +317,11 @@ namespace Backrooms.Generation
                 free.wantShadow = false; free.shadowK = 0f;
                 free.main.shadows = LightShadows.None;
                 free.main.transform.position = src.isLamp ? src.position : src.position + Vector3.down * 0.06f;
-                free.main.GetUniversalAdditionalLightData().renderingLayers = src.roomLayer & ~1u;
+                // The building itself is lit by the baked lightmap; real-time ceiling lights only light
+                // furniture and props in their room, except faulty tubes (left out of the bake because
+                // they flicker), which also light their room's architecture.
+                uint props = src.roomLayer & ~1u;
+                free.main.GetUniversalAdditionalLightData().renderingLayers = src.faultyId >= 0 ? props | OfficeChunkBuilder.ArchBits(src.roomLayer) : props;
                 free.allLayers = false; free.spillW = 0f;
                 if (free.spill) { free.spill.enabled = false; free.spill.shadows = LightShadows.None; }
                 if (free.bounce)
@@ -440,7 +444,7 @@ namespace Backrooms.Generation
 
         [Header("Doorway light")]
         [Tooltip("Lights that carry a lit room's light a little way through each doorway into the next room.")]
-        [Range(0, 48)] public int doorwayLights = 32;
+        [Range(0, 48)] public int doorwayLights = 0;   // replaced by the baked lightmap
         [Range(0f, 3f)] public float doorwayGain = 0.55f;
         public float doorwayDistance = 18f;
 

@@ -22,6 +22,19 @@ namespace Backrooms.Generation
         public Vector3 worldOffset;   // added to local positions before UV projection
         public int VertexCount => _v.Count;
 
+        // ---- Lightmapping (architecture) ----
+        /// <summary>When set, every quad is recorded for the chunk lightmapper, which fills UV1.</summary>
+        public bool lightmapped;
+        public struct LmQuad { public int first; public Vector3 a, b, c, d, normal; }
+        public readonly List<LmQuad> lmQuads = new List<LmQuad>();
+        readonly List<Vector2> _uv1 = new List<Vector2>();
+        /// <summary>Set the lightmap UVs of a recorded quad (corners a, b, c, d in order).</summary>
+        public void SetLightmapUV(int first, Vector2 a, Vector2 b, Vector2 c, Vector2 d)
+        {
+            while (_uv1.Count < _v.Count) _uv1.Add(Vector2.zero);
+            _uv1[first] = a; _uv1[first + 1] = b; _uv1[first + 2] = c; _uv1[first + 3] = d;
+        }
+
         public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal, UVProjector uv)
         {
             Quad(a, b, c, d, normal, uv(a + worldOffset, normal), uv(b + worldOffset, normal), uv(c + worldOffset, normal), uv(d + worldOffset, normal));
@@ -30,6 +43,7 @@ namespace Backrooms.Generation
         public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal, Vector2 ua, Vector2 ub, Vector2 uc, Vector2 ud)
         {
             int s = _v.Count;
+            if (lightmapped) lmQuads.Add(new LmQuad { first = s, a = a + worldOffset, b = b + worldOffset, c = c + worldOffset, d = d + worldOffset, normal = normal });
             _v.Add(a); _v.Add(b); _v.Add(c); _v.Add(d);
             _uv.Add(ua); _uv.Add(ub); _uv.Add(uc); _uv.Add(ud);
             for (int k = 0; k < 4; k++) _n.Add(normal);
@@ -107,6 +121,7 @@ namespace Backrooms.Generation
             var m = new Mesh { name = name };
             if (_v.Count > 65000) m.indexFormat = IndexFormat.UInt32;
             m.SetVertices(_v); m.SetNormals(_n); m.SetTangents(_t); m.SetUVs(0, _uv);
+            if (lightmapped) { while (_uv1.Count < _v.Count) _uv1.Add(Vector2.zero); m.SetUVs(1, _uv1); }
             m.SetTriangles(_i, 0, true);
             m.UploadMeshData(true); // free the CPU copy; chunks are static
             return m;

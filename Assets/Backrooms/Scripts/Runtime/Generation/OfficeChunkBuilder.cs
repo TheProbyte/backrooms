@@ -91,22 +91,42 @@ namespace Backrooms.Generation
 
         MeshWriter W(Material m, int color) => WMask(m, LayerBit(color));
 
+        /// <summary>Rendering layer of a room's architecture (bits 9-15): only that room's real-time
+        /// lights (faulty tubes) reach it; everything else comes from the baked lightmap.</summary>
+        public static uint ArchBits(uint propMask) => (propMask & 0xFEu) << 8;
+
+        /// <summary>Surfaces of the building itself: lightmapped, lit only by the bake (+ faulty tubes).</summary>
+        bool IsArch(Material m) => m && (m == _a.wallpaper || m == _a.paintedWall || m == _a.baseboard || m == _a.halfWallCap
+            || m == _a.carpet || m == _a.ceilingTile || m == _a.ceilingPlaster || m == _a.ceilingGrid || m == _a.wallPlate
+            || m == _a.fixtureHousing);
+
         MeshWriter WMask(Material m, uint mask)
         {
+            bool arch = mask != ProxyMask && IsArch(m);
+            if (arch) mask = ArchBits(mask);
             if (!_writers.TryGetValue((m, mask), out var w))
             {
-                w = new MeshWriter { worldOffset = _origin };
+                w = new MeshWriter { worldOffset = _origin, lightmapped = arch };
                 _writers[(m, mask)] = w;
             }
             return w;
         }
 
+        int _staticBoxStart;                 // _boxes from here on are blockers for light (not walls/posts)
+        readonly List<Bounds> _propOccluders = new List<Bounds>();
+        ChunkLightBaker _baker;
+        public float BakeMs => _baker != null ? _baker.BakeMs : 0f;
+
         /// <summary>
         /// Phase 1 (thread-safe, no engine calls): layout and all vertex/collider data. Run on a worker thread.
         /// </summary>
-        public void BuildData(OfficeLayout layout)
+        public void BuildData(OfficeLayout layout) => BuildData(layout, null);
+
+        /// <param name="neighbours">Layouts of the surrounding chunks (any may be null), for seamless baked light.</param>
+        public void BuildData(OfficeLayout layout, OfficeLayout[] neighbours)
         {
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear(); doorways.Clear();
+            _propOccluders.Clear(); _baker = null;
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, 0f, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             foreach (var f in layout.fixtures) _fixtureCells.Add(f.cell);
@@ -116,6 +136,7 @@ namespace Backrooms.Generation
             BuildCeilingGrid();
             BuildWalls();
             BuildPosts();
+            _staticBoxStart = _boxes.Count;
             BuildCrawls();
             BuildPillars();
             BuildHalfWalls();
@@ -124,6 +145,29 @@ namespace Backrooms.Generation
             BuildFixtures(lights);
             BuildPlates();
             BuildProps(lights);
+            BakeLighting(neighbours);
+        }
+
+        /// <summary>Bakes this chunk's lightmap (worker thread) and assigns lightmap UVs to architecture.</summary>
+        void BakeLighting(OfficeLayout[] neighbours)
+        {
+            _baker = new ChunkLightBaker(_L, neighbours);
+            for (int i = _staticBoxStart; i < _boxes.Count; i++)
+            {
+                var (c, sz) = _boxes[i];
+                _baker.AddOccluder(new Bounds(_origin + c, sz));
+            }
+            foreach (var (c, sz, yaw) in _rotBoxes)
+            {
+                var rot = Quaternion.Euler(0f, yaw, 0f);
+                Vector3 ex = rot * new Vector3(sz.x * 0.5f, 0, 0), ez = rot * new Vector3(0, 0, sz.z * 0.5f);
+                var ext = new Vector3(Mathf.Abs(ex.x) + Mathf.Abs(ez.x), sz.y * 0.5f, Mathf.Abs(ex.z) + Mathf.Abs(ez.z));
+                _baker.AddOccluder(new Bounds(_origin + c, ext * 2f));
+            }
+            foreach (var b in _propOccluders) _baker.AddOccluder(b);
+            var arch = new List<MeshWriter>();
+            foreach (var w in _writers.Values) if (w.lightmapped) arch.Add(w);
+            _baker.Bake(arch);
         }
 
         /// <summary>Phase 2 (main thread): meshes, renderers and colliders.</summary>
@@ -134,6 +178,12 @@ namespace Backrooms.Generation
             root.transform.localPosition = _origin;
             root.isStatic = true;
 
+            int lmIndex = -1;
+            if (_baker != null && _baker.Pixels != null)
+            {
+                lmIndex = RuntimeLightmaps.Add(_baker.Pixels, _baker.Width, _baker.Height, _baker.DirPixels);
+                root.AddComponent<ChunkLightmapHandle>().index = lmIndex;
+            }
             foreach (var kv in _writers)
             {
                 var (mat, mask) = kv.Key;
@@ -151,6 +201,12 @@ namespace Backrooms.Generation
                 r.shadowCastingMode = mask == ProxyMask ? ShadowCastingMode.ShadowsOnly : caster ? ShadowCastingMode.On : ShadowCastingMode.Off;
                 r.lightProbeUsage = LightProbeUsage.Off;
                 r.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                if (kv.Value.lightmapped && lmIndex >= 0)
+                {
+                    r.receiveGI = ReceiveGI.Lightmaps;
+                    r.lightmapIndex = lmIndex;
+                    r.lightmapScaleOffset = new Vector4(1f, 1f, 0f, 0f);
+                }
             }
 
             for (int i = 0; i < faultyLenses.Count; i++)
@@ -724,6 +780,9 @@ namespace Backrooms.Generation
         {
             var rot = Quaternion.Euler(0f, yaw, 0f);
             WMask(_a.baseboard, ProxyMask).Box(at + rot * localCenter, size, rot, 63, MeshWriter.MetreUV);
+            Vector3 ex = rot * new Vector3(size.x * 0.5f, 0, 0), ez = rot * new Vector3(0, 0, size.z * 0.5f);
+            var ext = new Vector3(Mathf.Abs(ex.x) + Mathf.Abs(ez.x), size.y * 0.5f, Mathf.Abs(ex.z) + Mathf.Abs(ez.z));
+            _propOccluders.Add(new Bounds(_origin + at + rot * localCenter, ext * 2f));
         }
 
         void BuildProps(List<LightSource> lights)

@@ -164,11 +164,42 @@ namespace Backrooms.Generation
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var b = new OfficeChunkBuilder(assets);
-            var sample = set.Evaluate(seed, coord);
-            b.BuildData(OfficeLayoutGenerator.Generate(seed, coord, OfficeBiome.ChunkCells, sample.rules, sample.Dominant));
+            // Neighbouring layouts (deterministic) so baked light flows across chunk borders. Layouts are
+            // cached per generation, since each one is needed by up to nine chunks.
+            var nb = new OfficeLayout[8];
+            int k = 0;
+            for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                if (dx == 0 && dz == 0) continue;
+                nb[k++] = CachedLayout(seed, new Vector2Int(coord.x + dx, coord.y + dz), set);
+            }
+            b.BuildData(CachedLayout(seed, coord, set), nb);
             float ms = (float)sw.Elapsed.TotalMilliseconds;
             LastBuildMs = ms; AverageBuildMs = Mathf.Lerp(AverageBuildMs <= 0f ? ms : AverageBuildMs, ms, 0.1f);
             return b;
+        }
+
+        readonly System.Collections.Concurrent.ConcurrentDictionary<(int, int, Vector2Int), OfficeLayout> _layoutCache =
+            new System.Collections.Concurrent.ConcurrentDictionary<(int, int, Vector2Int), OfficeLayout>();
+
+        OfficeLayout CachedLayout(int seed, Vector2Int c, WorldGenSettings set)
+        {
+            int gen = _generation;
+            return _layoutCache.GetOrAdd((seed, gen, c), _ =>
+            {
+                var sm = set.Evaluate(seed, c);
+                return OfficeLayoutGenerator.Generate(seed, c, OfficeBiome.ChunkCells, sm.rules, sm.Dominant);
+            });
+        }
+
+        /// <summary>Drops cached layouts far from the player or from an old generation.</summary>
+        void TrimLayoutCache()
+        {
+            if (_layoutCache.Count < 200) return;
+            foreach (var key in _layoutCache.Keys)
+                if (key.Item1 != Seed || key.Item2 != _generation || !InRadius(key.Item3, _center, unloadRadius + 2))
+                    _layoutCache.TryRemove(key, out _);
         }
 
         public static Vector2Int ChunkOf(Vector3 world) =>
@@ -198,10 +229,22 @@ namespace Backrooms.Generation
                     if (have.generation != _generation && !_pending.ContainsKey(c)) _queue.Add(c);   // stale after a settings change
                     continue;
                 }
-                if (immediate || r <= 1) { _pending.Remove(c); _pendingGen.Remove(c); Instantiate(c, Prepare(Seed, c, assets, _snapshot), _started); }
+                if (immediate || r <= 1) { _pending.Remove(c); _pendingGen.Remove(c); _syncBuild.Add(c); }
                 else if (!_pending.ContainsKey(c)) _queue.Add(c);
             }
+            // Chunks needed right now are prepared in parallel on all cores, then instantiated in order.
+            if (_syncBuild.Count > 0)
+            {
+                var built = new OfficeChunkBuilder[_syncBuild.Count];
+                int s = Seed; var a = assets; var set = _snapshot;
+                System.Threading.Tasks.Parallel.For(0, _syncBuild.Count, i => built[i] = Prepare(s, _syncBuild[i], a, set));
+                for (int i = 0; i < built.Length; i++) Instantiate(_syncBuild[i], built[i], _started);
+                _syncBuild.Clear();
+            }
+            TrimLayoutCache();
         }
+
+        readonly List<Vector2Int> _syncBuild = new List<Vector2Int>();
 
         void Instantiate(Vector2Int coord, OfficeChunkBuilder built, bool animate)
         {

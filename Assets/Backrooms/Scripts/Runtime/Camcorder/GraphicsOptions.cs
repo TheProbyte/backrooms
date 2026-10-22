@@ -13,7 +13,7 @@ namespace Backrooms.Camcorder
         public bool vSync = false;
         public int frameCap = 0;              // 0 = unlimited (when vsync is off)
         public float renderScale = 1f;
-        public int shadowLights = 24;         // nearest lights that cast shadows
+        public int shadowLights = 8;          // nearest lights that cast shadows
         public float shadowDistance = 20f;    // shadows fade out smoothly toward this distance
         public int shadowResolution = 1;      // 0 low, 1 medium, 2 high
         public float lightDistance = 36f;     // fixtures lit out to here (fades into the fog)
@@ -33,7 +33,7 @@ namespace Backrooms.Camcorder
         public static readonly string[] PresetNames = { "Low", "Medium", "High", "Ultra" };
         public void ApplyPreset(int i)
         {
-            shadowLights = new[] { 8, 16, 24, 40 }[i];
+            shadowLights = new[] { 2, 6, 8, 16 }[i];
             shadowDistance = new[] { 12f, 16f, 20f, 26f }[i];
             shadowResolution = new[] { 0, 1, 1, 2 }[i];
             lightDistance = new[] { 26f, 32f, 36f, 40f }[i];
@@ -119,7 +119,7 @@ namespace Backrooms.Camcorder
                 _lights.shadowTier = Mathf.Clamp(o.shadowResolution, 0, 2);
                 _lights.maxDistance = Mathf.Clamp(o.lightDistance, 16f, 44f);
                 _lights.fadeStart = _lights.maxDistance - 8f;
-                _lights.bounceCount = Mathf.Clamp(o.bounceLights, 0, 48);   // ceiling + lamps + bounce stay under URP's 256 visible lights
+                _lights.bounceCount = 0;                            // bounce is baked now   // ceiling + lamps + bounce stay under URP's 256 visible lights
             }
         }
     }

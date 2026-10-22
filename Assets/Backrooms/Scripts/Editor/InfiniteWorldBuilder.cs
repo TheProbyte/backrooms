@@ -61,6 +61,7 @@ namespace Backrooms.EditorTools
         // ---------------- Materials ----------------
 
         const string CC0 = "Assets/Backrooms/Textures/CC0";
+        const bool UseScannedTextures = false;
 
         static Texture2D CC0Tex(string file, bool normal, bool linear)
         {
@@ -191,7 +192,8 @@ namespace Backrooms.EditorTools
             // One plaster repeat = 2.4 m square. Walls map U over 1.2 m and V over 2.7 m; ceilings are in metres.
             a.paintedWall.SetTextureScale("_BaseMap", new Vector2(0.5f, 1.125f));
             a.ceilingPlaster.SetTextureScale("_BaseMap", new Vector2(1f / 2.4f, 1f / 2.4f));
-            ApplyScannedTextures(a);
+            // Scanned CC0 textures are off (owner preferred the original look); set to true to try them again.
+            if (UseScannedTextures) ApplyScannedTextures(a);
             a.cardboard = Lit("M_Cardboard", new Color(0.72f, 0.52f, 0.32f), Tex("Wood_Albedo"), null, 0.08f);
             CreatePropPrefabs(a);
             EditorUtility.SetDirty(a);
