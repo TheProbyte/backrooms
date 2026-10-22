@@ -1,7 +1,8 @@
 // Backrooms/Lit: a copy of URP 17.4 "Universal Render Pipeline/Lit" (Unity Companion License) with one
 // change: the ForwardLit pass adds the Backrooms light grid (far fixtures and bounce) to baked GI.
 // See BackroomsLitForwardPass.hlsl and LightGridSample.hlsl. When URP is upgraded, re-copy Lit.shader
-// and LitForwardPass.hlsl from the package and re-apply the two marked lines.
+// and LitForwardPass.hlsl from the package and re-apply the lines marked "Backrooms:" (the light grid in
+// baked GI, and BackroomsFragmentPBR: URP's UniversalFragmentPBR with walls blocking real lights).
 Shader "Backrooms/Lit"
 {
     Properties

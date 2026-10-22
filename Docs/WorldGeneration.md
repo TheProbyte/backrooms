@@ -83,8 +83,15 @@ Storey 0 streams everywhere; upper storeys stream only within a chunk of a multi
   the surface, then clamped half a texel from any solid edge of its cell (and from floor/ceiling), so
   trilinear filtering never blends texels from the other side of a wall. Ceiling fittings don't light
   their own ceiling plane directly; ceilings get bounce.
+- **Walls block real lights in the shader**: each real light is tested for line of sight through the layout
+  (`LGrid_LightVisible`, the same cell-edge test the grid uses), so it never reaches through a wall, door
+  header or floor. Walls, corner posts and headers therefore cast no shadow-map shadows in grid mode (their
+  proxies are switched off, `OfficeChunkBuilder.WallShadows`): coarse shadow maps of wide spot lights made
+  stepped bands on walls and slivers of light in corners. Pillars, racks, lamps, half walls and furniture
+  still cast shadows.
 - `Backrooms/Lit` is a copy of URP 17.4 Lit with two lines added (see the shader header). All world
-  materials use it (`InfiniteWorldBuilder.UseProjectLitShader`).
+  materials use it (`InfiniteWorldBuilder.UseProjectLitShader`). Its forward pass also carries a copy of URP's `UniversalFragmentPBR` with the wall test in the
+  additional-light loop (marked `Backrooms:`).
 - **Room-layer mode** (F5 > Graphics > Light grid off) is the phase-2 system, kept as a fallback: a large
   pool of unshadowed lights limited to their room's layer, plus doorway and bounce lights.
 

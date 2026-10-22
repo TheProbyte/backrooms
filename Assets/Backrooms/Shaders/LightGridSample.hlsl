@@ -105,4 +105,52 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
     return (direct + bounce) * edge;
 }
 
+// ---------------- Real lights: wall line of sight ----------------
+// The nearest fixtures are real URP lights whose shadow maps stop them at walls. Shadow maps of wide spot
+// lights are coarse (a few cm to over 10 cm per texel), so light crept around wall ends and into corners
+// in stair-stepped bands. Walls lie on cell edges and the occupancy buffer knows them exactly, so each
+// real light is also tested here: the line from the surface to the light, crossing cell edges, must not
+// pass a wall, a door header (by height) or a floor (except down a well). The same test the grid uses.
+half LGrid_LightVisible(float3 P, float3 N, float3 L)
+{
+    if (_LGridParams.x < 0.5) return 1;
+    float pitch = _LGridParams.w;
+    // Just off the surface, so a wall face counts as being on its own room's side.
+    P += N * 0.06;
+    if (any(P.xz < _LGridWindow.xy) || any(P.xz > _LGridWindow.zw)) return 1;   // no layout data out there
+    uint sp = P.y >= pitch ? 1u : 0u, sl = L.y >= pitch ? 1u : 0u;
+    if (sp != sl)
+    {
+        float ts = (pitch - P.y) / (L.y - P.y);
+        float3 X = lerp(P, L, ts);
+        if ((LGrid_Occ((int2)floor(X.xz / LG_CELL), 0u) & LG_OPENABOVE) == 0u) return 0;
+    }
+    float2 a = P.xz / LG_CELL, b = L.xz / LG_CELL;
+    int2 c = (int2)floor(a), e = (int2)floor(b);
+    float2 d = b - a;
+    int2 stp = int2(d.x > 0 ? 1 : (d.x < 0 ? -1 : 0), d.y > 0 ? 1 : (d.y < 0 ? -1 : 0));
+    float2 tDelta = float2(stp.x != 0 ? abs(1.0 / d.x) : 1e30, stp.y != 0 ? abs(1.0 / d.y) : 1e30);
+    float2 tMax = float2(stp.x > 0 ? (c.x + 1 - a.x) * tDelta.x : (stp.x < 0 ? (a.x - c.x) * tDelta.x : 1e30),
+                         stp.y > 0 ? (c.y + 1 - a.y) * tDelta.y : (stp.y < 0 ? (a.y - c.y) * tDelta.y : 1e30));
+    [loop] for (int i = 0; i < 32; i++)
+    {
+        if (c.x == e.x && c.y == e.y) break;
+        bool stepX = tMax.x < tMax.y;
+        float t = stepX ? tMax.x : tMax.y;
+        if (t > 1.0) break;
+        float y = lerp(P.y, L.y, t);
+        uint storey = y >= pitch ? 1u : 0u;
+        int2 n = c + (stepX ? int2(stp.x, 0) : int2(0, stp.y));
+        int2 owner = stepX ? int2(max(c.x, n.x), c.y) : int2(c.x, max(c.y, n.y));
+        uint o = LGrid_Occ(owner, storey);
+        if (!LG_Loaded(o)) return 1;                       // edge of the loaded area: leave it to the shadows
+        uint kind = stepX ? LG_WestKind(o) : LG_SouthKind(o);
+        float top = (stepX ? LG_WestTop(o) : LG_SouthTop(o)) + storey * pitch;
+        if (kind == LG_EDGE_WALL || y > top + 0.02) return 0;
+        c = n;
+        if (stepX) tMax.x += tDelta.x; else tMax.y += tDelta.y;
+    }
+    return 1;
+}
+
 #endif

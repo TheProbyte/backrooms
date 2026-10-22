@@ -84,6 +84,8 @@ namespace Backrooms.Generation
             _shares.Clear();
             if (UseGrid) { EnsureGrid(); if (grid && !grid.enabled) grid.enabled = true; }
             else if (grid && grid.enabled) grid.enabled = false;
+            // In grid mode walls stop real lights in the shader; their shadow casters would only add artifacts.
+            OfficeChunkBuilder.WallShadows = !UseGrid;
         }
 
         /// <summary>How a fixture's real light is set up (and what the grid draws for it at full share).</summary>

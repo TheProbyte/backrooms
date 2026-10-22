@@ -167,6 +167,107 @@ void InitializeBakedGIData(Varyings input, inout InputData inputData)
 
 ///////////////////////////////////////////////////////////////////////////////
 //                  Vertex and Fragment functions                            //
+
+// Backrooms: URP's UniversalFragmentPBR (17.4, Lighting.hlsl) with one change: in light grid mode each
+// additional light is also blocked by walls (LGrid_LightVisible), so real lights cannot leak through them.
+// Re-copy with Lit when URP is upgraded and keep the two marked lines.
+half BackroomsRealLightVisible(uint lightIndex, InputData inputData)
+{
+#if USE_CLUSTER_LIGHT_LOOP
+    int idx = lightIndex;
+#else
+    int idx = GetPerObjectLightIndex(lightIndex);
+#endif
+#if USE_STRUCTURED_BUFFER_FOR_LIGHT_DATA
+    float4 lp = _AdditionalLightsBuffer[idx].position;
+#else
+    float4 lp = _AdditionalLightsPosition[idx];
+#endif
+    if (lp.w < 0.5) return 1;                                  // directional
+    return LGrid_LightVisible(inputData.positionWS, inputData.normalWS, lp.xyz);
+}
+
+half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
+{
+    #if defined(_SPECULARHIGHLIGHTS_OFF)
+    bool specularHighlightsOff = true;
+    #else
+    bool specularHighlightsOff = false;
+    #endif
+    BRDFData brdfData;
+    InitializeBRDFData(surfaceData, brdfData);
+
+    #if defined(DEBUG_DISPLAY)
+    half4 debugColor;
+    if (CanDebugOverrideOutputColor(inputData, surfaceData, brdfData, debugColor))
+    {
+        return debugColor;
+    }
+    #endif
+
+    BRDFData brdfDataClearCoat = CreateClearCoatBRDFData(surfaceData, brdfData);
+    half4 shadowMask = CalculateShadowMask(inputData);
+    AmbientOcclusionFactor aoFactor = CreateAmbientOcclusionFactor(inputData, surfaceData);
+    uint meshRenderingLayers = GetMeshRenderingLayer();
+    Light mainLight = GetMainLight(inputData, shadowMask, aoFactor);
+    MixRealtimeAndBakedGI(mainLight, inputData.normalWS, inputData.bakedGI);
+    LightingData lightingData = CreateLightingData(inputData, surfaceData);
+    lightingData.giColor = GlobalIllumination(brdfData, brdfDataClearCoat, surfaceData.clearCoatMask,
+                                              inputData.bakedGI, aoFactor.indirectAmbientOcclusion, inputData.positionWS,
+                                              inputData.normalWS, inputData.viewDirectionWS, inputData.normalizedScreenSpaceUV);
+#ifdef _LIGHT_LAYERS
+    if (IsMatchingLightLayer(mainLight.layerMask, meshRenderingLayers))
+#endif
+    {
+        lightingData.mainLightColor = LightingPhysicallyBased(brdfData, brdfDataClearCoat, mainLight,
+                                                              inputData.normalWS, inputData.viewDirectionWS,
+                                                              surfaceData.clearCoatMask, specularHighlightsOff);
+    }
+
+    #if defined(_ADDITIONAL_LIGHTS)
+    uint pixelLightCount = GetAdditionalLightsCount();
+
+    #if USE_CLUSTER_LIGHT_LOOP
+    [loop] for (uint lightIndex = 0; lightIndex < min(URP_FP_DIRECTIONAL_LIGHTS_COUNT, MAX_VISIBLE_LIGHTS); lightIndex++)
+    {
+        CLUSTER_LIGHT_LOOP_SUBTRACTIVE_LIGHT_CHECK
+        Light light = GetAdditionalLight(lightIndex, inputData, shadowMask, aoFactor);
+#ifdef _LIGHT_LAYERS
+        if (IsMatchingLightLayer(light.layerMask, meshRenderingLayers))
+#endif
+        {
+            lightingData.additionalLightsColor += LightingPhysicallyBased(brdfData, brdfDataClearCoat, light,
+                                                                          inputData.normalWS, inputData.viewDirectionWS,
+                                                                          surfaceData.clearCoatMask, specularHighlightsOff);
+        }
+    }
+    #endif
+
+    LIGHT_LOOP_BEGIN(pixelLightCount)
+        Light light = GetAdditionalLight(lightIndex, inputData, shadowMask, aoFactor);
+#ifdef _LIGHT_LAYERS
+        if (IsMatchingLightLayer(light.layerMask, meshRenderingLayers))
+#endif
+        {
+            light.shadowAttenuation *= BackroomsRealLightVisible(lightIndex, inputData);   // Backrooms: walls block real lights
+            if (light.shadowAttenuation > 0)
+                lightingData.additionalLightsColor += LightingPhysicallyBased(brdfData, brdfDataClearCoat, light,
+                                                                              inputData.normalWS, inputData.viewDirectionWS,
+                                                                              surfaceData.clearCoatMask, specularHighlightsOff);
+        }
+    LIGHT_LOOP_END
+    #endif
+
+    #if defined(_ADDITIONAL_LIGHTS_VERTEX)
+    lightingData.vertexLightingColor += inputData.vertexLighting * brdfData.diffuse;
+    #endif
+
+#if REAL_IS_HALF
+    return min(CalculateFinalColor(lightingData, surfaceData.alpha), HALF_MAX);
+#else
+    return CalculateFinalColor(lightingData, surfaceData.alpha);
+#endif
+}
 ///////////////////////////////////////////////////////////////////////////////
 
 // Used in Standard (Physically Based) shader
@@ -274,7 +375,7 @@ void LitPassFragment(
     InitializeBakedGIData(input, inputData);
     inputData.bakedGI += BackroomsLightGrid(inputData.positionWS, inputData.normalWS);   // Backrooms: light grid
 
-    half4 color = UniversalFragmentPBR(inputData, surfaceData);
+    half4 color = BackroomsFragmentPBR(inputData, surfaceData);                          // Backrooms: walls block real lights
     color.rgb = MixFog(color.rgb, inputData.fogCoord);
     color.a = OutputAlpha(color.a, IsSurfaceTypeTransparent(_Surface));
 

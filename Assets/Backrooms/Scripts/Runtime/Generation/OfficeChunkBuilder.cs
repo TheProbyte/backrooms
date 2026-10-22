@@ -68,6 +68,22 @@ namespace Backrooms.Generation
 
         /// <summary>Renderer mask for shadow-only proxies: every layer, so every light's shadows see them.</summary>
         const uint ProxyMask = 0xFFFFFFFFu;
+        /// <summary>Shadow-only proxies for walls (see BuildShadowProxies and <see cref="WallShadows"/>).</summary>
+        const uint WallProxyMask = 0xFFFFFFFEu;
+
+        /// <summary>Wall shadow proxies of every loaded chunk. Off in light grid mode, on in room-layer mode.</summary>
+        public static readonly HashSet<Renderer> WallProxies = new HashSet<Renderer>();
+        static bool _wallShadows = true;
+        public static bool WallShadows
+        {
+            get => _wallShadows;
+            set
+            {
+                _wallShadows = value;
+                WallProxies.RemoveWhere(r => !r);
+                foreach (var r in WallProxies) r.enabled = value;
+            }
+        }
 
         uint[,] _cellMask;
         OfficeLayout[] _neighbours;
@@ -147,7 +163,14 @@ namespace Backrooms.Generation
                 bool architecture = mat == _a.wallpaper || mat == _a.paintedWall || mat == _a.baseboard || mat == _a.halfWallCap;
                 bool caster = !architecture && mat != _a.lensOn && mat != _a.lensOff && mat != _a.ceilingGrid && mat != _a.carpet && mat != _a.ceilingTile && mat != _a.lampShadeOn
                               && mat != _a.domeOn && mat != _a.domeOff && mat != _a.ceilingPlaster && mat != _a.stripOn && mat != _a.stripOff;
-                r.shadowCastingMode = mask == ProxyMask ? ShadowCastingMode.ShadowsOnly : caster ? ShadowCastingMode.On : ShadowCastingMode.Off;
+                r.shadowCastingMode = mask == ProxyMask || mask == WallProxyMask ? ShadowCastingMode.ShadowsOnly : caster ? ShadowCastingMode.On : ShadowCastingMode.Off;
+                if (mask == WallProxyMask)
+                {
+                    if (WallProxies.Count > 4000) WallProxies.RemoveWhere(x => !x);   // unloaded chunks
+                    r.renderingLayerMask = ProxyMask;
+                    r.enabled = WallShadows;
+                    WallProxies.Add(r);
+                }
                 r.lightProbeUsage = LightProbeUsage.Off;
                 r.reflectionProbeUsage = ReflectionProbeUsage.Off;
             }
@@ -776,6 +799,7 @@ namespace Backrooms.Generation
         {
             if (!_a.baseboard) return;
             var w = WMask(_a.baseboard, ProxyMask);
+            var walls = WMask(_a.baseboard, WallProxyMask);
             // Inset each box slightly behind the visible faces: a caster exactly on a lit surface shadows
             // itself (stepped bands on walls). Only thin dimensions are inset, so corners stay overlapped.
             const float inset = 0.025f;
@@ -784,7 +808,12 @@ namespace Backrooms.Generation
                 Vector3 z = sz;
                 if (z.x < 0.6f) z.x = Mathf.Max(0.04f, z.x - inset * 2f);
                 if (z.z < 0.6f) z.z = Mathf.Max(0.04f, z.z - inset * 2f);
-                w.Box(c, z, 63, MeshWriter.MetreUV);
+                // Walls, corner posts and door headers (thin boxes that are tall or high up) go in their own
+                // mesh. In light grid mode the shader stops real lights at walls exactly (LGrid_LightVisible),
+                // so these are switched off there: their coarse shadow maps only added stepped bands and
+                // slivers of light in corners. Pillars, racks, lamps and half walls keep casting.
+                bool wallLike = Mathf.Min(sz.x, sz.z) <= 0.2f && (sz.y >= 1.5f || c.y - sz.y * 0.5f >= 1.9f);
+                (wallLike ? walls : w).Box(c, z, 63, MeshWriter.MetreUV);
             }
         }
 
