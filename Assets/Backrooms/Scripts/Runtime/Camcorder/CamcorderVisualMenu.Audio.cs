@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Text;
 using Backrooms.Audio;
 using UnityEngine;
-using UnityEngine.UI;
+using UnityEngine.UIElements;
 
 namespace Backrooms.Camcorder
 {
@@ -14,18 +14,18 @@ namespace Backrooms.Camcorder
     /// </summary>
     public partial class CamcorderVisualMenu
     {
-        Text _auReadout;
+        Label _auReadout;
         float _auNextReadout;
         int _auSourceCount; float _auNextCount;
 
         // Sound tab state.
         string _sndSelected;
-        InputField _sndSearch;
-        readonly List<(SoundDef def, RectTransform row, Text label)> _sndRows = new List<(SoundDef, RectTransform, Text)>();
-        Text _sndTitle, _sndDesc, _sndPreviewLabel;
-        RectTransform _sndDetail;
-        readonly List<(RectTransform row, System.Func<SoundDef, bool> applies)> _sndFieldRows = new List<(RectTransform, System.Func<SoundDef, bool>)>();
-        Text _sndParamALabel, _sndParamBLabel;
+        TextField _sndSearch;
+        readonly List<(SoundDef def, VisualElement row, TextElement label)> _sndRows = new List<(SoundDef, VisualElement, TextElement)>();
+        Label _sndTitle, _sndDesc;
+        Button _sndPreview;
+        readonly List<(VisualElement row, System.Func<SoundDef, bool> applies)> _sndFieldRows = new List<(VisualElement, System.Func<SoundDef, bool>)>();
+        Label _sndParamALabel, _sndParamBLabel;
 
         CamcorderAudioChain Chain => rig ? rig.Audio : null;
         static BuildingAudio BA => BuildingAudio.Instance;
@@ -37,18 +37,10 @@ namespace Backrooms.Camcorder
             CamcorderSettings S() => rig.Settings;
 
             Section("LIVE AUDIO", "What the building sound and the microphone are doing now.");
-            var readRow = Rect("AudioReadout", _list);
-            readRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 150;
-            readRow.gameObject.AddComponent<Canvas>();
-            _auReadout = Label(readRow, "", 14, TextCol, TextAnchor.UpperLeft);
-            Stretch(_auReadout.rectTransform);
-            _auReadout.supportRichText = true;
+            _auReadout = AddText("", "cc-readout");
 
             Section("AUDIO PRESETS", "Mic character for each camcorder look. Only changes audio.");
-            var presets = Rect("AudioPresets", _list);
-            presets.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
-            var hl = presets.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hl.spacing = 6; hl.childForceExpandWidth = true; hl.childControlWidth = true; hl.childControlHeight = true;
+            var presets = BtnRow(_list);
             for (int i = 0; i < CamcorderSettings.PresetNames.Length; i++)
             {
                 int idx = i;
@@ -104,10 +96,7 @@ namespace Backrooms.Camcorder
             Slider("AGC release", "Seconds to recover after it gets quiet again.", 0.5f, 10f, "0.0", " s", () => D().agcRelease, v => D().agcRelease = v);
             Slider("Compression", "Gentle level compression after the auto gain.", 0f, 1f, "0.00", "", () => D().compression, v => D().compression = v);
             Slider("Saturation", "Soft analogue saturation of loud peaks.", 0f, 1f, "0.00", "", () => D().saturation, v => D().saturation = v);
-            var devRow = Rect("DevButtons", _list);
-            devRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
-            var dh = devRow.gameObject.AddComponent<HorizontalLayoutGroup>();
-            dh.spacing = 6; dh.childForceExpandWidth = true; dh.childControlWidth = true; dh.childControlHeight = true;
+            var devRow = BtnRow(_list);
             Button(devRow, "Reset developer audio", () =>
             {
                 if (BA) { var fresh = new AudioDevSettings(); JsonUtility.FromJsonOverwrite(JsonUtility.ToJson(fresh), BA.Dev); BA.Dev.Save(); }
@@ -120,7 +109,7 @@ namespace Backrooms.Camcorder
 
         void UpdateAudioTab()
         {
-            if (!IsOpen || _tab != 3 || !_auReadout || Time.unscaledTime < _auNextReadout) return;
+            if (!IsOpen || _tab != 3 || _auReadout == null || Time.unscaledTime < _auNextReadout) return;
             _auNextReadout = Time.unscaledTime + 0.25f;
             if (Time.unscaledTime >= _auNextCount)
             {
@@ -160,15 +149,10 @@ namespace Backrooms.Camcorder
         void BuildSound()
         {
             Section("SOUND CATALOG", "Every sound in the game. Edits apply everywhere and are saved.");
-            var searchRow = Rect("Search", _list);
-            searchRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
+            var searchRow = BtnRow(_list);
             _sndSearch = InputBox(searchRow, "");
-            _sndSearch.contentType = InputField.ContentType.Standard;
-            Stretch((RectTransform)_sndSearch.transform);
-            var ph = Label((RectTransform)_sndSearch.transform, "Search sounds or categories...", 15, Dim, TextAnchor.MiddleLeft);
-            Stretch(ph.rectTransform); ph.rectTransform.offsetMin = new Vector2(8, 0); ph.fontStyle = FontStyle.Italic;
-            _sndSearch.placeholder = ph;
-            _sndSearch.onValueChanged.AddListener(_ => FilterSounds());
+            _sndSearch.textEdition.placeholder = "Search sounds or categories...";
+            _sndSearch.RegisterValueChangedCallback(_ => FilterSounds());
 
             string lastCat = null;
             foreach (var d in SoundCatalog.All)
@@ -176,30 +160,23 @@ namespace Backrooms.Camcorder
                 if (d.category != lastCat)
                 {
                     lastCat = d.category;
-                    var cat = Label(_list, d.category.ToUpperInvariant(), 13, Dim, TextAnchor.LowerLeft);
-                    cat.gameObject.AddComponent<LayoutElement>().preferredHeight = 22;
-                    _sndRows.Add((new SoundDef { id = null, category = d.category, name = "" }, cat.rectTransform, cat));
+                    var cat = AddText(d.category.ToUpperInvariant(), "cc-cat");
+                    _sndRows.Add((new SoundDef { id = null, category = d.category, name = "" }, cat, cat));
                 }
                 var def = d;
-                var img = Button(_list, "", () => SelectSound(def.id));
-                img.gameObject.AddComponent<LayoutElement>().preferredHeight = 28;
-                var lbl = img.GetComponentInChildren<Text>();
-                lbl.alignment = TextAnchor.MiddleLeft; lbl.rectTransform.offsetMin = new Vector2(10, 0);
-                lbl.supportRichText = true;
-                _sndRows.Add((def, img.rectTransform, lbl));
+                var btn = Button(_list, "", () => SelectSound(def.id));
+                btn.AddToClassList("cc-left");
+                btn.enableRichText = true;
+                _sndRows.Add((def, btn, btn));
             }
 
             // Detail of the selected sound.
-            _sndDetail = Rect("Detail", _list);
-            var dl = _sndDetail.gameObject.AddComponent<LayoutElement>(); dl.preferredHeight = 70;
-            _sndTitle = Label(_sndDetail, "", 18, Accent, TextAnchor.LowerLeft);
-            Place(_sndTitle.rectTransform, 0, -6, 0, 26);
-            _sndDesc = Label(_sndDetail, "", 13, Dim, TextAnchor.UpperLeft);
-            Place(_sndDesc.rectTransform, 0, -34, 0, 36);
+            _sndTitle = AddText("", "cc-detail-title");
+            _sndDesc = AddText("", "cc-desc");
 
             string Id() => _sndSelected;
-            void Field(RectTransform row, System.Func<SoundDef, bool> applies) => _sndFieldRows.Add((row, applies));
-            RectTransform LastRow() => (RectTransform)_list.GetChild(_list.childCount - 1);
+            void Field(VisualElement row, System.Func<SoundDef, bool> applies) => _sndFieldRows.Add((row, applies));
+            VisualElement LastRow() => _list[_list.childCount - 1];
 
             Toggle("Mute", "Silences this sound everywhere without losing its other settings.",
                 () => Id() != null && SoundCatalog.Muted(Id()), v => { if (Id() != null) Edited(SoundField.Mute, v ? 1f : 0f); });
@@ -223,35 +200,28 @@ namespace Backrooms.Camcorder
                 0f, 1f, "0.00", "", () => Id() != null ? SoundCatalog.SpatialBlend(Id()) : 1f, v => Edited(SoundField.SpatialBlend, v));
             Field(LastRow(), d => d.positional);
             var sa = Slider("Parameter A", "", 0f, 2f, "0.00", "", () => Id() != null ? SoundCatalog.ParamA(Id()) : 0f, v => Edited(SoundField.ParamA, v));
-            _sndParamALabel = sa.transform.parent.GetComponentInChildren<Text>();
+            _sndParamALabel = sa.name;
             Field(LastRow(), d => d.paramAName != null);
             var sbp = Slider("Parameter B", "", 0f, 2f, "0.00", "", () => Id() != null ? SoundCatalog.ParamB(Id()) : 0f, v => Edited(SoundField.ParamB, v));
-            _sndParamBLabel = sbp.transform.parent.GetComponentInChildren<Text>();
+            _sndParamBLabel = sbp.name;
             Field(LastRow(), d => d.paramBName != null);
             _sndParamA = sa; _sndParamB = sbp;
 
-            var act = Rect("SoundActions", _list);
-            act.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
-            var ah = act.gameObject.AddComponent<HorizontalLayoutGroup>();
-            ah.spacing = 6; ah.childForceExpandWidth = true; ah.childControlWidth = true; ah.childControlHeight = true;
-            var pv = Button(act, "Preview", () => { if (BA && Id() != null) BA.Preview(Id()); });
-            _sndPreviewLabel = pv.GetComponentInChildren<Text>();
+            var act = BtnRow(_list);
+            _sndPreview = Button(act, "Preview", () => { if (BA && Id() != null) BA.Preview(Id()); });
             Button(act, "Stop", () => { if (BA) BA.StopPreview(); });
             Button(act, "Reset this sound", () => { if (Id() != null) { SoundCatalog.Reset(Id()); SoundCatalog.Save(); RefreshAll(); UpdateSoundLabels(); } });
             Field(act, d => true);
 
-            var spacer = Rect("Spacer", _list); spacer.gameObject.AddComponent<LayoutElement>().preferredHeight = 14;
-            var allRow = Rect("ResetAll", _list);
-            allRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
-            var alh = allRow.gameObject.AddComponent<HorizontalLayoutGroup>();
-            alh.childForceExpandWidth = true; alh.childControlWidth = true; alh.childControlHeight = true;
+            var allRow = BtnRow(_list);
+            allRow.style.marginTop = 14;
             Button(allRow, "Reset ALL sounds to defaults", () => { SoundCatalog.ResetAll(); RefreshAll(); UpdateSoundLabels(); });
 
             _refreshers.Add(UpdateSoundLabels);
             SelectSound(SoundCatalog.All.Count > 0 ? SoundCatalog.All[0].id : null);
         }
 
-        UnityEngine.UI.Slider _sndParamA, _sndParamB;
+        SliderRow _sndParamA, _sndParamB;
 
         void Edited(SoundField f, float v)
         {
@@ -267,14 +237,13 @@ namespace Backrooms.Camcorder
         {
             _sndSelected = id;
             var d = id != null ? SoundCatalog.Def(id) : null;
-            foreach (var (row, applies) in _sndFieldRows) row.gameObject.SetActive(d != null && applies(d));
+            foreach (var (row, applies) in _sndFieldRows) Show(row, d != null && applies(d));
             if (d != null)
             {
                 _sndTitle.text = d.name + "   <size=13><color=#9e998c>" + d.category + "  ·  " + (d.positional ? "positional" : "2D ambience") + "</color></size>";
-                _sndTitle.supportRichText = true;
                 _sndDesc.text = d.description;
-                if (d.paramAName != null) { _sndParamALabel.text = d.paramAName; _sndParamA.minValue = d.paramAMin; _sndParamA.maxValue = d.paramAMax; }
-                if (d.paramBName != null) { _sndParamBLabel.text = d.paramBName; _sndParamB.minValue = d.paramBMin; _sndParamB.maxValue = d.paramBMax; }
+                if (d.paramAName != null) { _sndParamALabel.text = d.paramAName; _sndParamA.slider.lowValue = d.paramAMin; _sndParamA.slider.highValue = d.paramAMax; }
+                if (d.paramBName != null) { _sndParamBLabel.text = d.paramBName; _sndParamB.slider.lowValue = d.paramBMin; _sndParamB.slider.highValue = d.paramBMax; }
             }
             // Selecting never starts a preview.
             RefreshAll();
@@ -283,16 +252,16 @@ namespace Backrooms.Camcorder
 
         void FilterSounds()
         {
-            string q = _sndSearch ? _sndSearch.text.Trim().ToLowerInvariant() : "";
+            string q = _sndSearch != null ? (_sndSearch.value ?? "").Trim().ToLowerInvariant() : "";
             var visibleCats = new HashSet<string>();
             foreach (var (def, row, _) in _sndRows)
             {
                 if (def.id == null) continue;
                 bool show = q.Length == 0 || def.name.ToLowerInvariant().Contains(q) || def.category.ToLowerInvariant().Contains(q) || def.id.Contains(q);
-                row.gameObject.SetActive(show);
+                Show(row, show);
                 if (show) visibleCats.Add(def.category);
             }
-            foreach (var (def, row, _) in _sndRows) if (def.id == null) row.gameObject.SetActive(visibleCats.Contains(def.category));
+            foreach (var (def, row, _) in _sndRows) if (def.id == null) Show(row, visibleCats.Contains(def.category));
         }
 
         void UpdateSoundLabels()
@@ -305,7 +274,7 @@ namespace Backrooms.Camcorder
                 string mute = SoundCatalog.Muted(def.id) ? "  <color=#ff9c6b>muted</color>" : "";
                 label.text = (sel ? "<color=#e8c45c>▶ </color>" : "   ") + def.name + mark + mute;
             }
-            if (_sndPreviewLabel) _sndPreviewLabel.text = BA && BA.PreviewingId != null && BA.PreviewingId == _sndSelected ? "Previewing..." : "Preview";
+            if (_sndPreview != null) _sndPreview.text = BA && BA.PreviewingId != null && BA.PreviewingId == _sndSelected ? "Previewing..." : "Preview";
         }
 
         /// <summary>Saves audio tuning when the panel closes and drops the temporary compare toggle.</summary>

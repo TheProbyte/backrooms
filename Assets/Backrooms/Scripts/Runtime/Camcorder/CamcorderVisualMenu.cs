@@ -1,17 +1,17 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.UI;
-using UnityEngine.UI;
+using UnityEngine.UIElements;
+using Cursor = UnityEngine.Cursor;
 
 namespace Backrooms.Camcorder
 {
     /// <summary>
     /// F5 opens a left-hand panel of camcorder visual settings. Every slider writes straight into the live
     /// <see cref="CamcorderSettings"/>, so changes are visible immediately while the world keeps running.
-    /// Settings are saved when the panel closes. Built with uGUI in code (no prefabs to maintain).
+    /// Settings are saved when the panel closes. Built with UI Toolkit in code; styling lives in
+    /// Resources/UI/CamcorderMenu.uss and the panel settings in Resources/UI/CamcorderPanel.asset.
     /// </summary>
     public partial class CamcorderVisualMenu : MonoBehaviour
     {
@@ -21,21 +21,13 @@ namespace Backrooms.Camcorder
         public bool IsOpen { get; private set; }
         int _tab;
 
-        Canvas _canvas;
-        RectTransform _panel, _list;
-        Font _font;
+        UIDocument _doc;
+        VisualElement _root, _panel, _list;
         readonly List<Action> _refreshers = new List<Action>();
         CursorLockMode _prevLock;
 
-        static readonly Color PanelBg = new Color(0.05f, 0.05f, 0.045f, 0.95f);
-        static readonly Color Accent = new Color(0.93f, 0.78f, 0.36f, 1f);
-        static readonly Color TextCol = new Color(0.92f, 0.9f, 0.84f, 1f);
-        static readonly Color Dim = new Color(0.62f, 0.6f, 0.55f, 1f);
-
         void Start()
         {
-            _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            EnsureEventSystem();
             Build();
             SetOpen(false);
         }
@@ -53,9 +45,9 @@ namespace Backrooms.Camcorder
 
         public void SetOpen(bool open)
         {
-            if (open == IsOpen && _panel && _panel.gameObject.activeSelf == open) return;
+            if (open == IsOpen && _panel != null && (_panel.style.display == DisplayStyle.Flex) == open) return;
             IsOpen = open;
-            if (_panel) _panel.gameObject.SetActive(open);
+            if (_panel != null) Show(_panel, open);
             CamcorderPlayerController.InputBlocked = open;
             if (open)
             {
@@ -69,6 +61,7 @@ namespace Backrooms.Camcorder
                 if (rig) rig.Settings.Save();
                 CloseAudio();
                 HideTip();
+                _root?.focusController?.focusedElement?.Blur();
                 if (_prevLock == CursorLockMode.Locked) { Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
             }
         }
@@ -77,120 +70,85 @@ namespace Backrooms.Camcorder
 
         void Build()
         {
-            var cgo = new GameObject("CamcorderMenu_Canvas");
-            cgo.transform.SetParent(transform, false);
-            _canvas = cgo.AddComponent<Canvas>();
-            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            _canvas.sortingOrder = 100;
-            var scaler = cgo.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920, 1080);
-            scaler.matchWidthOrHeight = 1f;
-            cgo.AddComponent<GraphicRaycaster>();
+            var go = new GameObject("CamcorderMenu_UI");
+            go.transform.SetParent(transform, false);
+            _doc = go.AddComponent<UIDocument>();
+            _doc.panelSettings = Resources.Load<PanelSettings>("UI/CamcorderPanel");
+            _root = _doc.rootVisualElement;
+            var sheet = Resources.Load<StyleSheet>("UI/CamcorderMenu");
+            if (sheet) _root.styleSheets.Add(sheet);
+            _root.AddToClassList("cc-root");
+            _root.pickingMode = PickingMode.Ignore;           // only the panel itself catches the pointer
 
-            _panel = Rect("Panel", cgo.transform);
-            _panel.anchorMin = new Vector2(0, 0); _panel.anchorMax = new Vector2(0, 1); _panel.pivot = new Vector2(0, 0.5f);
-            _panel.sizeDelta = new Vector2(460, 0); _panel.anchoredPosition = Vector2.zero;
-            _panel.gameObject.AddComponent<Image>().color = PanelBg;
+            _panel = new VisualElement { name = "Panel" };
+            _panel.AddToClassList("cc-panel");
+            _root.Add(_panel);
 
-            var title = Label(_panel, "CAMCORDER  ·  SETTINGS", 24, Accent, TextAnchor.MiddleLeft);
-            Place(title.rectTransform, 20, -18, -20, 34);
+            _panel.Add(Text("CAMCORDER  ·  SETTINGS", "cc-title"));
 
-            // Tabs: Visual (camera look) and Gameplay (non-aesthetic options; more will live here later).
-            var tabs = Rect("Tabs", _panel);
-            Place(tabs, 16, -56, -16, 32);
-            var th = tabs.gameObject.AddComponent<HorizontalLayoutGroup>();
-            th.spacing = 6; th.childForceExpandWidth = true; th.childControlWidth = true; th.childControlHeight = true;
-            _tabVisual = Button(tabs, "VISUAL", () => ShowTab(0));
-            _tabGameplay = Button(tabs, "GAMEPLAY", () => ShowTab(1));
-            _tabWorld = Button(tabs, "WORLD", () => ShowTab(2));
-            _tabAudio = Button(tabs, "AUDIO", () => ShowTab(3));
-            _tabSound = Button(tabs, "SOUND", () => ShowTab(4));
-            _tabGraphics = Button(tabs, "GRAPHICS", () => ShowTab(5));
-            foreach (var t in tabs.GetComponentsInChildren<Text>()) t.fontSize = 12;
+            var tabs = BtnRow(_panel);
+            string[] names = { "VISUAL", "GAMEPLAY", "WORLD", "AUDIO", "SOUND", "GRAPHICS" };
+            _tabButtons = new Button[names.Length];
+            for (int i = 0; i < names.Length; i++)
+            {
+                int idx = i;
+                _tabButtons[i] = Button(tabs, names[i], () => ShowTab(idx));
+                _tabButtons[i].AddToClassList("cc-tab");
+            }
 
-            var hint = Label(_panel, "F5 / Esc to close.  Hover an option for an explanation.", 14, Dim, TextAnchor.MiddleLeft);
-            Place(hint.rectTransform, 20, -94, -20, 20);
+            _panel.Add(Text("F5 / Esc to close.  Hover an option for an explanation.", "cc-hint"));
 
             // Presets row (visual tab only).
-            _presets = Rect("Presets", _panel);
-            Place(_presets, 16, -120, -16, 34);
-            var hl = _presets.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hl.spacing = 6; hl.childForceExpandWidth = true; hl.childControlWidth = true; hl.childControlHeight = true;
+            _presets = BtnRow(_panel);
+            _presets.AddToClassList("cc-presets");
             for (int i = 0; i < CamcorderSettings.PresetNames.Length; i++)
             {
                 int idx = i;
                 Button(_presets, CamcorderSettings.PresetNames[i], () => ApplyPreset(idx));
             }
 
-            (_visualView, _list) = MakeList("VisualScroll", -164);
-            BuildControls();
-            (_gameplayView, _list) = MakeList("GameplayScroll", -120);
-            BuildGameplay();
-            (_worldView, _list) = MakeList("WorldGenScroll", -120);
-            BuildWorldGen();
-            (_audioView, _list) = MakeList("AudioScroll", -120);
-            BuildAudio();
-            (_soundView, _list) = MakeList("SoundScroll", -120);
-            BuildSound();
-            (_graphicsView, _list) = MakeList("GraphicsScroll", -120);
-            BuildGraphics();
+            _views = new ScrollView[names.Length];
+            _list = _views[0] = MakeList(); BuildControls();
+            _list = _views[1] = MakeList(); BuildGameplay();
+            _list = _views[2] = MakeList(); BuildWorldGen();
+            _list = _views[3] = MakeList(); BuildAudio();
+            _list = _views[4] = MakeList(); BuildSound();
+            _list = _views[5] = MakeList(); BuildGraphics();
 
             // Footer.
-            var footer = Rect("Footer", _panel);
-            footer.anchorMin = new Vector2(0, 0); footer.anchorMax = new Vector2(1, 0); footer.pivot = new Vector2(0.5f, 0);
-            footer.offsetMin = new Vector2(16, 12); footer.offsetMax = new Vector2(-16, 46);
-            var fl = footer.gameObject.AddComponent<HorizontalLayoutGroup>();
-            fl.spacing = 8; fl.childForceExpandWidth = true; fl.childControlWidth = true; fl.childControlHeight = true;
+            var footer = BtnRow(_panel);
+            footer.AddToClassList("cc-footer");
             _resetVisuals = Button(footer, "Reset visuals", () => ApplyPreset(0));
             Button(footer, "Close", () => SetOpen(false));
 
             ShowTab(0);
         }
 
-        RectTransform _visualView, _gameplayView, _worldView, _audioView, _soundView, _graphicsView, _presets;
-        Image _tabVisual, _tabGameplay, _tabWorld, _tabAudio, _tabSound, _tabGraphics, _resetVisuals;
+        ScrollView[] _views;
+        Button[] _tabButtons;
+        VisualElement _presets;
+        Button _resetVisuals;
 
-        (RectTransform view, RectTransform list) MakeList(string name, float top)
+        ScrollView MakeList()
         {
-            var view = Rect(name, _panel);
-            view.anchorMin = new Vector2(0, 0); view.anchorMax = new Vector2(1, 1);
-            view.offsetMin = new Vector2(10, 56); view.offsetMax = new Vector2(-10, top);
-            var scroll = view.gameObject.AddComponent<ScrollRect>();
-            view.gameObject.AddComponent<RectMask2D>();
-            view.gameObject.AddComponent<Image>().color = new Color(0, 0, 0, 0.001f); // raycast target for wheel
-            scroll.horizontal = false; scroll.scrollSensitivity = 40f; scroll.movementType = ScrollRect.MovementType.Clamped;
-
-            var list = Rect("List", view);
-            list.anchorMin = new Vector2(0, 1); list.anchorMax = new Vector2(1, 1); list.pivot = new Vector2(0.5f, 1);
-            list.offsetMin = list.offsetMax = Vector2.zero;
-            var vl = list.gameObject.AddComponent<VerticalLayoutGroup>();
-            vl.padding = new RectOffset(10, 18, 6, 16); vl.spacing = 4;
-            vl.childControlHeight = true; vl.childControlWidth = true; vl.childForceExpandHeight = false;
-            list.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            scroll.content = list; scroll.viewport = view;
-            return (view, list);
+            var sv = new ScrollView(ScrollViewMode.Vertical) { horizontalScrollerVisibility = ScrollerVisibility.Hidden, mouseWheelScrollSize = 40f };
+            sv.AddToClassList("cc-scroll");
+            _panel.Add(sv);
+            return sv;
         }
 
         void ShowTab(int i)
         {
-            _visualView.gameObject.SetActive(i == 0);
-            _presets.gameObject.SetActive(i == 0);
-            _gameplayView.gameObject.SetActive(i == 1);
-            _worldView.gameObject.SetActive(i == 2);
-            _audioView.gameObject.SetActive(i == 3);
-            _soundView.gameObject.SetActive(i == 4);
-            _graphicsView.gameObject.SetActive(i == 5);
+            for (int k = 0; k < _views.Length; k++)
+            {
+                Show(_views[k], k == i);
+                _tabButtons[k].EnableInClassList("cc-selected", k == i);
+            }
+            Show(_presets, i == 0);
             _tab = i;
-            _panel.sizeDelta = new Vector2(i == 2 ? 560 : i >= 3 ? 520 : 460, 0);
-            _tabVisual.color = new Color(1, 1, 1, i == 0 ? 0.28f : 0.08f);
-            _tabGameplay.color = new Color(1, 1, 1, i == 1 ? 0.28f : 0.08f);
-            _tabWorld.color = new Color(1, 1, 1, i == 2 ? 0.28f : 0.08f);
-            _tabAudio.color = new Color(1, 1, 1, i == 3 ? 0.28f : 0.08f);
-            _tabSound.color = new Color(1, 1, 1, i == 4 ? 0.28f : 0.08f);
-            _tabGraphics.color = new Color(1, 1, 1, i == 5 ? 0.28f : 0.08f);
+            _panel.style.width = i == 2 ? 560 : i >= 3 ? 520 : 460;
             if (i == 4) RefreshAll();
-            if (_resetVisuals) _resetVisuals.gameObject.SetActive(i == 0);
+            if (_resetVisuals != null) Show(_resetVisuals, i == 0);
             HideTip();
         }
 
@@ -326,169 +284,128 @@ namespace Backrooms.Camcorder
 
         // ---------------- Widgets ----------------
 
+        /// <summary>A labelled slider row; tab code keeps these to relabel or re-range them.</summary>
+        class SliderRow
+        {
+            public VisualElement row;
+            public Label name, value;
+            public UnityEngine.UIElements.Slider slider;
+        }
+
+        static void Show(VisualElement e, bool on) => e.style.display = on ? DisplayStyle.Flex : DisplayStyle.None;
+
+        static Label Text(string text, string cls)
+        {
+            var l = new Label(text) { enableRichText = true };
+            if (cls != null) l.AddToClassList(cls);
+            return l;
+        }
+
+        /// <summary>A label added to the current list.</summary>
+        Label AddText(string text, string cls) { var l = Text(text, cls); _list.Add(l); return l; }
+
+        VisualElement BtnRow(VisualElement parent)
+        {
+            var r = new VisualElement();
+            r.AddToClassList("cc-btnrow");
+            parent.Add(r);
+            return r;
+        }
+
         void Section(string title, string desc)
         {
-            var box = Rect("Section_" + title, _list);
-            var le = box.gameObject.AddComponent<LayoutElement>(); le.preferredHeight = 52;
-            var t = Label(box, title, 17, Accent, TextAnchor.LowerLeft);
-            Place(t.rectTransform, 0, -10, 0, 22);
-            var d = Label(box, desc, 13, Dim, TextAnchor.UpperLeft);
-            Place(d.rectTransform, 0, -32, 0, 18);
+            AddText(title, "cc-section");
+            if (!string.IsNullOrEmpty(desc)) AddText(desc, "cc-desc");
         }
 
-        UnityEngine.UI.Slider Slider(string label, string tip, float min, float max, string fmt, string unit, Func<float> get, Action<float> set, bool whole = false)
+        SliderRow Slider(string label, string tip, float min, float max, string fmt, string unit, Func<float> get, Action<float> set, bool whole = false)
         {
-            var row = Rect("Row_" + label, _list);
-            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 44;
-            AttachTip(row, label, tip);
-            var name = Label(row, label, 15, TextCol, TextAnchor.UpperLeft);
-            Place(name.rectTransform, 0, 0, -90, 20);
-            var value = Label(row, "", 15, Accent, TextAnchor.UpperRight);
-            value.rectTransform.anchorMin = new Vector2(1, 1); value.rectTransform.anchorMax = new Vector2(1, 1);
-            value.rectTransform.pivot = new Vector2(1, 1); value.rectTransform.sizeDelta = new Vector2(90, 20); value.rectTransform.anchoredPosition = Vector2.zero;
+            var r = new SliderRow { row = new VisualElement() };
+            r.row.AddToClassList("cc-row");
+            var head = new VisualElement(); head.AddToClassList("cc-rowhead");
+            r.name = Text(label, null); r.value = Text("", "cc-value");
+            head.Add(r.name); head.Add(r.value);
+            r.row.Add(head);
+            r.slider = new UnityEngine.UIElements.Slider(min, max) { fill = true };
+            r.slider.AddToClassList("cc-slider");
+            r.row.Add(r.slider);
+            AttachTip(r.row, label, tip);
+            _list.Add(r.row);
 
-            var sgo = Rect("Slider", row);
-            sgo.anchorMin = new Vector2(0, 0); sgo.anchorMax = new Vector2(1, 0); sgo.pivot = new Vector2(0.5f, 0);
-            sgo.offsetMin = new Vector2(0, 4); sgo.offsetMax = new Vector2(0, 18);
-            var bg = Rect("Track", sgo); Stretch(bg); bg.offsetMin = new Vector2(0, 5); bg.offsetMax = new Vector2(0, -5);
-            bg.gameObject.AddComponent<Image>().color = new Color(1, 1, 1, 0.12f);
-            var fillArea = Rect("FillArea", sgo); Stretch(fillArea); fillArea.offsetMin = new Vector2(0, 5); fillArea.offsetMax = new Vector2(-8, -5);
-            var fill = Rect("Fill", fillArea); Stretch(fill);
-            fill.gameObject.AddComponent<Image>().color = new Color(Accent.r, Accent.g, Accent.b, 0.55f);
-            var handleArea = Rect("HandleArea", sgo); Stretch(handleArea); handleArea.offsetMin = new Vector2(6, 0); handleArea.offsetMax = new Vector2(-6, 0);
-            var handle = Rect("Handle", handleArea); handle.sizeDelta = new Vector2(12, 0);
-            var himg = handle.gameObject.AddComponent<Image>(); himg.color = Accent;
-
-            var s = sgo.gameObject.AddComponent<UnityEngine.UI.Slider>();
-            s.fillRect = fill; s.handleRect = handle; s.targetGraphic = himg;
-            s.minValue = min; s.maxValue = max; s.wholeNumbers = whole;
-            s.direction = UnityEngine.UI.Slider.Direction.LeftToRight;
-
-            void Show(float v) => value.text = v.ToString(fmt) + unit;
-            bool syncing = false;
-            s.onValueChanged.AddListener(v => { if (syncing) return; set(v); Show(v); });
-            _refreshers.Add(() => { syncing = true; float v = get(); s.value = v; Show(v); syncing = false; });
-            return s;
+            void ShowValue(float v) => r.value.text = v.ToString(fmt) + unit;
+            r.slider.RegisterValueChangedCallback(e =>
+            {
+                float v = whole ? Mathf.Round(e.newValue) : e.newValue;
+                if (whole && !Mathf.Approximately(v, e.newValue)) r.slider.SetValueWithoutNotify(v);
+                set(v); ShowValue(v);
+            });
+            _refreshers.Add(() => { float v = get(); r.slider.SetValueWithoutNotify(v); ShowValue(v); });
+            return r;
         }
 
-        void Toggle(string label, string tip, Func<bool> get, Action<bool> set)
+        VisualElement Toggle(string label, string tip, Func<bool> get, Action<bool> set)
         {
-            var row = Rect("Toggle_" + label, _list);
-            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 30;
+            var t = new UnityEngine.UIElements.Toggle { text = label };
+            t.AddToClassList("cc-toggle");
+            var row = new VisualElement(); row.AddToClassList("cc-row");
+            row.Add(t);
             AttachTip(row, label, tip);
-            var box = Rect("Box", row);
-            box.anchorMin = box.anchorMax = new Vector2(0, 0.5f); box.pivot = new Vector2(0, 0.5f);
-            box.sizeDelta = new Vector2(20, 20); box.anchoredPosition = Vector2.zero;
-            var bimg = box.gameObject.AddComponent<Image>(); bimg.color = new Color(1, 1, 1, 0.14f);
-            var check = Rect("Check", box); Stretch(check); check.offsetMin = new Vector2(4, 4); check.offsetMax = new Vector2(-4, -4);
-            var cimg = check.gameObject.AddComponent<Image>(); cimg.color = Accent;
-            var name = Label(row, label, 15, TextCol, TextAnchor.MiddleLeft);
-            name.rectTransform.anchorMin = new Vector2(0, 0); name.rectTransform.anchorMax = new Vector2(1, 1);
-            name.rectTransform.offsetMin = new Vector2(30, 0); name.rectTransform.offsetMax = Vector2.zero;
+            _list.Add(row);
+            t.RegisterValueChangedCallback(e => set(e.newValue));
+            _refreshers.Add(() => t.SetValueWithoutNotify(get()));
+            return row;
+        }
 
-            var t = row.gameObject.AddComponent<UnityEngine.UI.Toggle>();
-            t.targetGraphic = bimg; t.graphic = cimg;
-            bool syncing = false;
-            t.onValueChanged.AddListener(v => { if (!syncing) set(v); });
-            _refreshers.Add(() => { syncing = true; t.isOn = get(); syncing = false; });
+        Button Button(VisualElement parent, string text, Action onClick)
+        {
+            var b = new Button(onClick) { text = text, focusable = false };
+            b.AddToClassList("cc-btn");
+            parent.Add(b);
+            return b;
+        }
+
+        TextField InputBox(VisualElement parent, string value)
+        {
+            var f = new TextField { value = value };
+            f.AddToClassList("cc-field");
+            parent.Add(f);
+            return f;
         }
 
         // ---------------- Hover explanations ----------------
 
-        RectTransform _tip;
-        Text _tipTitle, _tipBody;
+        VisualElement _tip;
+        Label _tipTitle, _tipBody;
 
         /// <summary>Hovering a row shows its explanation in a box beside the panel, level with the row.</summary>
-        void AttachTip(RectTransform row, string title, string body)
+        void AttachTip(VisualElement row, string title, string body)
         {
-            var hit = row.gameObject.AddComponent<Image>();
-            hit.color = new Color(1, 1, 1, 0f);              // invisible, but catches the pointer
-            var hover = row.gameObject.AddComponent<HoverRelay>();
-            hover.onEnter = () => { ShowTip(row, title, body); hit.color = new Color(1, 1, 1, 0.04f); };
-            hover.onExit = () => { HideTip(); hit.color = new Color(1, 1, 1, 0f); };
+            row.RegisterCallback<PointerEnterEvent>(_ => ShowTip(row, title, body));
+            row.RegisterCallback<PointerLeaveEvent>(_ => HideTip());
         }
 
         void EnsureTip()
         {
-            if (_tip) return;
-            _tip = Rect("Tooltip", _canvas.transform);
-            _tip.anchorMin = _tip.anchorMax = new Vector2(0, 1); _tip.pivot = new Vector2(0, 1);
-            _tip.sizeDelta = new Vector2(380, 0);
-            _tip.gameObject.AddComponent<Image>().color = new Color(0.04f, 0.04f, 0.035f, 0.96f);
-            var vl = _tip.gameObject.AddComponent<VerticalLayoutGroup>();
-            vl.padding = new RectOffset(14, 14, 10, 12); vl.spacing = 4;
-            vl.childControlHeight = true; vl.childControlWidth = true; vl.childForceExpandHeight = false;
-            var fit = _tip.gameObject.AddComponent<ContentSizeFitter>(); fit.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            _tipTitle = Label(_tip, "", 16, Accent, TextAnchor.UpperLeft);
-            _tipBody = Label(_tip, "", 15, TextCol, TextAnchor.UpperLeft);
-            var edge = Rect("Edge", _tip);
-            edge.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
-            edge.anchorMin = new Vector2(0, 0); edge.anchorMax = new Vector2(0, 1); edge.pivot = new Vector2(0, 0.5f);
-            edge.sizeDelta = new Vector2(3, 0); edge.anchoredPosition = Vector2.zero;
-            edge.gameObject.AddComponent<Image>().color = Accent;
+            if (_tip != null) return;
+            _tip = new VisualElement { pickingMode = PickingMode.Ignore };
+            _tip.AddToClassList("cc-tip");
+            _tipTitle = Text("", "cc-tip-title"); _tipBody = Text("", "cc-tip-body");
+            _tip.Add(_tipTitle); _tip.Add(_tipBody);
+            _root.Add(_tip);
         }
 
-        void ShowTip(RectTransform row, string title, string body)
+        void ShowTip(VisualElement row, string title, string body)
         {
             if (string.IsNullOrEmpty(body)) return;
             EnsureTip();
             _tipTitle.text = title; _tipBody.text = body;
-            _tip.gameObject.SetActive(true);
+            Show(_tip, true);
             // Level with the row, just right of the panel, kept on screen.
-            var canvasRect = (RectTransform)_canvas.transform;
-            Vector2 local = canvasRect.InverseTransformPoint(row.TransformPoint(new Vector3(0, row.rect.yMax, 0)));
-            float fromTop = canvasRect.rect.height * 0.5f - local.y;
-            float y = -Mathf.Clamp(fromTop, 10f, canvasRect.rect.height - 160f);
-            _tip.anchoredPosition = new Vector2(_panel.sizeDelta.x + 12f, y);
+            float h = _root.layout.height;
+            _tip.style.left = _panel.layout.width + 12f;
+            _tip.style.top = Mathf.Clamp(row.worldBound.yMin, 10f, Mathf.Max(10f, h - 160f));
         }
 
-        void HideTip() { if (_tip) _tip.gameObject.SetActive(false); }
-
-        Image Button(RectTransform parent, string text, Action onClick)
-        {
-            var b = Rect("Button_" + text, parent);
-            var img = b.gameObject.AddComponent<Image>(); img.color = new Color(1, 1, 1, 0.1f);
-            var btn = b.gameObject.AddComponent<UnityEngine.UI.Button>();
-            btn.targetGraphic = img;
-            var colors = btn.colors; colors.highlightedColor = new Color(1, 0.9f, 0.6f, 1f); colors.pressedColor = Accent; btn.colors = colors;
-            btn.onClick.AddListener(() => onClick());
-            var l = Label(b, text, 14, TextCol, TextAnchor.MiddleCenter);
-            Stretch(l.rectTransform);
-            return img;
-        }
-
-        Text Label(RectTransform parent, string text, int size, Color color, TextAnchor align)
-        {
-            var t = new GameObject("Text").AddComponent<Text>();
-            t.transform.SetParent(parent, false);
-            t.font = _font; t.fontSize = size; t.color = color; t.alignment = align; t.text = text;
-            t.horizontalOverflow = HorizontalWrapMode.Wrap; t.verticalOverflow = VerticalWrapMode.Overflow;
-            t.raycastTarget = false;
-            return t;
-        }
-
-        static RectTransform Rect(string name, Transform parent)
-        {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            return (RectTransform)go.transform;
-        }
-
-        static void Stretch(RectTransform r) { r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one; r.offsetMin = r.offsetMax = Vector2.zero; }
-
-        /// <summary>Top-anchored full-width placement: left inset, y from top, right inset, height.</summary>
-        static void Place(RectTransform r, float left, float top, float right, float height)
-        {
-            r.anchorMin = new Vector2(0, 1); r.anchorMax = new Vector2(1, 1); r.pivot = new Vector2(0.5f, 1);
-            r.offsetMin = new Vector2(left, top - height); r.offsetMax = new Vector2(right, top);
-        }
-
-        static void EnsureEventSystem()
-        {
-            if (EventSystem.current) return;
-            var es = new GameObject("EventSystem");
-            es.AddComponent<EventSystem>();
-            es.AddComponent<InputSystemUIInputModule>();
-        }
+        void HideTip() { if (_tip != null) Show(_tip, false); }
     }
 }

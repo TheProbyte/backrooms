@@ -1,0 +1,87 @@
+/* F5 camcorder settings panel (UI Toolkit). Colours match the old uGUI panel. */
+.cc-root { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
+
+.cc-panel {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 460px;
+    background-color: rgba(13, 13, 11, 0.99);
+    padding: 18px 16px 12px 16px;
+}
+.cc-root .unity-label, .cc-root .unity-text-element { color: rgb(235, 230, 214); font-size: 15px; }
+
+.cc-root .cc-title { font-size: 24px; color: rgb(237, 199, 92); margin: 0 4px 8px 4px; -unity-font-style: bold; }
+.cc-root .cc-hint { font-size: 14px; color: rgb(158, 153, 140); margin: 6px 4px 4px 4px; }
+
+.cc-btnrow { flex-direction: row; flex-shrink: 0; height: 32px; margin: 2px 0; }
+.cc-root .cc-btn {
+    flex-grow: 1; flex-basis: 0; margin: 0 2px; padding: 0 2px; white-space: normal; overflow: hidden;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-width: 0; border-radius: 0;
+    color: rgb(235, 230, 214); font-size: 14px;
+    -unity-text-align: middle-center;
+}
+.cc-root .cc-btn:hover { background-color: rgba(255, 230, 153, 0.28); }
+.cc-root .cc-btn:active { background-color: rgb(237, 199, 92); color: rgb(20, 18, 12); }
+.cc-root .cc-tab { font-size: 11px; background-color: rgba(255, 255, 255, 0.08); }
+.cc-root .cc-tab.cc-selected { background-color: rgba(255, 255, 255, 0.28); color: rgb(237, 199, 92); }
+.cc-root .cc-btn.cc-left { -unity-text-align: middle-left; padding-left: 10px; height: 28px; flex-grow: 0; flex-basis: auto; margin: 1px 0; }
+
+.cc-scroll { flex-grow: 1; margin-top: 6px; }
+.cc-scroll .unity-scroll-view__content-container { padding: 6px 14px 16px 6px; }
+.cc-scroll .unity-scroller--vertical { width: 8px; }
+.cc-scroll .unity-scroller--vertical .unity-base-slider__tracker { background-color: rgba(255, 255, 255, 0.05); border-width: 0; }
+.cc-scroll .unity-scroller--vertical .unity-base-slider__dragger { background-color: rgba(255, 255, 255, 0.22); border-width: 0; border-radius: 4px; width: 8px; left: 0; }
+.cc-scroll .unity-scroller__low-button, .cc-scroll .unity-scroller__high-button { display: none; }
+
+.cc-root .cc-section { font-size: 17px; color: rgb(237, 199, 92); margin-top: 14px; -unity-font-style: bold; }
+.cc-root .cc-desc { font-size: 13px; color: rgb(158, 153, 140); margin-bottom: 6px; white-space: normal; }
+.cc-root .cc-readout { font-size: 14px; white-space: normal; margin: 2px 0 6px 0; }
+.cc-root .cc-cat { font-size: 13px; color: rgb(158, 153, 140); margin-top: 8px; }
+
+.cc-row { padding: 3px 2px; margin: 1px 0; }
+.cc-row:hover { background-color: rgba(255, 255, 255, 0.04); }
+.cc-rowhead { flex-direction: row; justify-content: space-between; }
+.cc-root .cc-value { color: rgb(237, 199, 92); -unity-text-align: upper-right; min-width: 80px; }
+
+.cc-slider { margin: 2px 0 2px 0; height: 18px; }
+.cc-slider .unity-base-slider__tracker { background-color: rgba(255, 255, 255, 0.12); border-width: 0; border-radius: 0; height: 6px; margin-top: -3px; }
+.cc-slider .unity-base-slider__fill { background-color: rgba(237, 199, 92, 0.55); }
+.cc-slider .unity-base-slider__dragger { background-color: rgb(237, 199, 92); border-width: 0; border-radius: 0; width: 12px; height: 16px; margin-top: -8px; }
+.cc-slider .unity-base-slider__dragger-border { display: none; }
+
+.cc-toggle { margin: 3px 0; }
+.cc-toggle .unity-toggle__checkmark {
+    width: 20px; height: 20px; background-color: rgba(255, 255, 255, 0.14);
+    border-width: 0; border-radius: 0; -unity-background-image-tint-color: rgb(237, 199, 92);
+}
+.cc-root .cc-toggle .unity-toggle__text { margin-left: 10px; font-size: 15px; }
+
+.cc-root .cc-field { flex-grow: 1; flex-basis: 0; margin: 0 3px; }
+.cc-root .cc-field .unity-base-text-field__input {
+    background-color: rgba(255, 255, 255, 0.12); border-width: 0; border-radius: 0;
+    color: rgb(235, 230, 214); font-size: 15px; padding-left: 8px; -unity-text-align: middle-left;
+}
+
+.cc-root .cc-foldout { margin-top: 6px; }
+.cc-root .cc-foldout > .unity-foldout__toggle { background-color: rgba(255, 255, 255, 0.06); height: 34px; margin: 0; padding-left: 6px; }
+.cc-root .cc-foldout > .unity-foldout__toggle .unity-foldout__text { color: rgb(237, 199, 92); font-size: 16px; }
+.cc-root .cc-foldout > .unity-foldout__content { margin-left: 8px; }
+
+.cc-map-row { flex-direction: row; height: 292px; margin-top: 4px; }
+.cc-map { width: 280px; height: 280px; margin-top: 6px; }
+.cc-marker { position: absolute; width: 7px; height: 7px; margin-left: -3px; margin-bottom: -3px; background-color: white; }
+.cc-root .cc-legend { font-size: 13px; margin-left: 10px; flex-shrink: 1; white-space: normal; }
+
+.cc-tip {
+    position: absolute; width: 380px;
+    background-color: rgba(10, 10, 9, 0.96);
+    border-left-width: 3px; border-left-color: rgb(237, 199, 92);
+    padding: 10px 14px 12px 14px;
+}
+.cc-root .cc-tip-title { font-size: 16px; color: rgb(237, 199, 92); margin-bottom: 4px; }
+.cc-root .cc-tip-body { white-space: normal; }
+
+.cc-footer { margin-top: 8px; height: 34px; }
+.cc-detail-title { font-size: 18px; color: rgb(237, 199, 92); margin-top: 12px; }
+.cc-root .cc-presets .cc-btn { font-size: 12px; }
+.cc-scroll .unity-scroller { background-color: rgba(0, 0, 0, 0); border-width: 0; }
+.cc-scroll .unity-scroller--vertical .unity-base-slider { margin: 0; }

@@ -252,7 +252,7 @@ namespace Backrooms.Camcorder
             if (showDebug && Camera.main)
             {
                 var p = Camera.main.transform.position;
-                var ws = FindFirstObjectByType<Backrooms.Generation.WorldStreamer>();
+                var ws = FindAnyObjectByType<Backrooms.Generation.WorldStreamer>();
                 var ch = Backrooms.Generation.WorldStreamer.ChunkOf(p);
                 _debug.text = $"pos {p.x:F1} {p.y:F1} {p.z:F1}   chunk {ch.x},{ch.y}   seed {(ws ? ws.Seed : 0)}   {1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):F0} fps";
             }

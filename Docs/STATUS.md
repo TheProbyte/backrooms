@@ -4,26 +4,33 @@ Last updated 2026-10-21. Read `Docs/ProjectBrief.md` for the vision.
 
 ## Lighting system (current design)
 
-- Ceiling lights (`FixtureLightManager`) only light their own room/zone via rendering layers, so light can
-  never pass through a wall regardless of shadow resolution. Every powered fixture within the light
-  distance is on (nearest first, pool of 168); far ones dim into the fog. No strike-on for streamed areas.
-- The nearest lights also cast shadows (ease in over 0.5 s) for furniture and pillar detail only.
-- Light through openings comes from **doorway lights**: one soft spot per opening near the player, placed
-  in the receiving room, lighting only that room, as bright as the lit fixtures just behind the opening.
-  Doorways are produced by `OfficeChunkBuilder.BuildDoorways` and registered by `WorldStreamer`.
-- Bounce fill points up (ceiling, upper walls) so it never draws lines on floors; it fades smoothly by
-  distance toward the nearest-N edge.
-- Walls cast shadows through inset proxy boxes (shadow-only) to avoid self-shadow banding.
-- SSAO: intensity 1.0, radius 0.3, falloff 22 m (contact darkening no longer grows with distance).
-- Budget: URP Forward+ allows 256 visible lights; ceiling 168 + bounce ~32 + doorway 32 + lamps 10.
+- **Walls, floors and ceilings are lit by a baked lightmap per chunk** (`ChunkLightBaker`, CPU, worker
+  threads). It sees the chunk plus its 8 neighbours, so light crosses chunk edges with no seam.
+  - Visibility: 2.5D grid walk through the wall grid (doors pass below 2.1 m, open edges below the lower
+    ceiling) plus furniture/pillar boxes. Rooms are convex, so same-room rays only test that room's boxes.
+  - Rooms joined by open-plan edges form a region; a light only reaches its own region or ones joined by a
+    doorway. Light spills through doorways with soft penumbras, and never through walls.
+  - Direct light + a small fill term + geometric contact AO. Directional lightmaps (dominant direction in a
+    second texture) so normal maps still show relief. HDR (RGBAHalf), 4 texels per metre.
+  - `RuntimeLightmaps` streams lightmap slots in and out with chunks (`ChunkLightmapHandle`).
+  - Project settings needed: lightmap encoding High, lightmap stripping Custom with Plain + DirCombined kept.
+- **Real-time lights (`FixtureLightManager`) now light furniture and props only** (rendering layers 1-7;
+  architecture is on 9-15). Faulty flickering tubes also light their room's architecture so the flicker shows.
+  The nearest 8 cast furniture shadows.
+- Debug: `LightingTour` (add in play mode, call `Run()`) screenshots six typical views for review.
+
+## F5 menu
+
+UI Toolkit (Unity 6's runtime UI) built in code. Styles: `Resources/UI/CamcorderMenu.uss`; panel
+settings `Resources/UI/CamcorderPanel.asset` with theme `CamcorderTheme.tss`. Helpers in
+`CamcorderVisualMenu.cs` (Section, Slider, Toggle, Button, InputBox, hover tips); tabs in the partial files.
+The camcorder OSD is still uGUI on purpose: it is rendered to a texture and bent by the lens shader.
 
 ## Open items (next steps, in order)
 
-1. Owner to confirm the leak-proof lighting (rooms only lit by their own lights, doorway lights for
-   openings) against `references/update9` in their own world. Checked 2026-10-22 in play mode: dark room
-   next to a lit one shows no corner/baseboard bleed; wall light pools stay steady while walking.
-2. CC0 PBR textures are in (carpet, ceiling tile, plaster, wallpaper relief; `Textures/CC0/LICENSES.md`).
-   Tints live in `InfiniteWorldBuilder.ApplyScannedTextures`. The striped wallpaper pattern is still
-   procedural (no CC0 match found).
+1. Owner is making textures; spec in `Docs/TextureSpec.md`. Wire roughness/AO when the first set lands.
+   The CC0 set is kept but off (`InfiniteWorldBuilder.UseScannedTextures = false`).
+2. Lighting polish: faint soft blotches on some corridor walls (likely contact AO near door headers);
+   bake is about 0.7-1.4 s per chunk on a worker thread, could drop further.
 3. Zone system is a placeholder (`WorldGenSettings.ZoneAt` returns "Level 0").
 4. Movement (zoom F, crouch C, crawl Ctrl, jump Space) awaits the owner's feel feedback.

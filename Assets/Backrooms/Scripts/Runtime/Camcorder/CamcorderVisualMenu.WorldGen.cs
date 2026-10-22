@@ -2,7 +2,7 @@ using System;
 using System.Reflection;
 using Backrooms.Generation;
 using UnityEngine;
-using UnityEngine.UI;
+using UnityEngine.UIElements;
 
 namespace Backrooms.Camcorder
 {
@@ -13,59 +13,40 @@ namespace Backrooms.Camcorder
     public partial class CamcorderVisualMenu
     {
         WorldStreamer _ws;
-        Text _wgReadout;
-        RawImage _wgMap;
-        RectTransform _wgMarker;
+        Label _wgReadout;
+        VisualElement _wgMap, _wgMarker;
         Texture2D _wgTex;
-        InputField _wgSeedField;
+        TextField _wgSeedField;
         float _wgDirtyAt = -1f, _wgNextReadout, _wgNextMap;
         Vector2Int _wgMapCenter = new Vector2Int(int.MinValue, 0);
         const int MapChunks = 64;           // map covers 64 x 64 chunks (~920 m) around you
 
         void BuildWorldGen()
         {
-            _ws = FindFirstObjectByType<WorldStreamer>();
+            _ws = FindAnyObjectByType<WorldStreamer>();
             if (!_ws) { Section("WORLD GEN", "No world streamer in this scene."); return; }
 
             Section("LIVE DATA", "Updates while you walk. Settings changes rebuild the world around you (not the chunk you stand in).");
             // Biome map.
-            var mapRow = Rect("BiomeMap", _list);
-            mapRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 292;
-            mapRow.gameObject.AddComponent<Canvas>();             // nested canvas: map updates don't rebatch the whole panel
-            var mapGo = Rect("Map", mapRow);
-            mapGo.anchorMin = mapGo.anchorMax = new Vector2(0, 1); mapGo.pivot = new Vector2(0, 1);
-            mapGo.sizeDelta = new Vector2(280, 280); mapGo.anchoredPosition = new Vector2(0, -6);
-            _wgMap = mapGo.gameObject.AddComponent<RawImage>();
+            var mapRow = new VisualElement(); mapRow.AddToClassList("cc-map-row"); _list.Add(mapRow);
+            _wgMap = new VisualElement(); _wgMap.AddToClassList("cc-map"); mapRow.Add(_wgMap);
             _wgTex = new Texture2D(MapChunks, MapChunks, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
-            _wgMap.texture = _wgTex;
-            _wgMarker = Rect("You", mapGo);
-            _wgMarker.sizeDelta = new Vector2(7, 7);
-            _wgMarker.gameObject.AddComponent<Image>().color = Color.white;
-            var legend = Label(mapRow, "", 13, TextCol, TextAnchor.UpperLeft);
-            var lr = legend.rectTransform; lr.anchorMin = new Vector2(0, 1); lr.anchorMax = new Vector2(1, 1); lr.pivot = new Vector2(0, 1);
-            lr.offsetMin = new Vector2(290, -280); lr.offsetMax = new Vector2(0, -6);
+            _wgMap.style.backgroundImage = new StyleBackground(_wgTex);
+            _wgMarker = new VisualElement(); _wgMarker.AddToClassList("cc-marker"); _wgMap.Add(_wgMarker);
+            var legend = Text("", "cc-legend"); mapRow.Add(legend);
             legend.text = $"<color=#{ColorUtility.ToHtmlStringRGB(_ws.Settings.hallways.mapColor)}>■</color> Hallways\n" +
                           $"<color=#{ColorUtility.ToHtmlStringRGB(_ws.Settings.offices.mapColor)}>■</color> Offices\n" +
                           $"<color=#{ColorUtility.ToHtmlStringRGB(_ws.Settings.warehouse.mapColor)}>■</color> Warehouse\n\n" +
                           "Each pixel is one 14.4 m chunk.\nBrighter = deeper in that biome, darker = blending.\nWhite dot: you.\n\nThe map is the biome density field split by the delimiters below.";
-            legend.supportRichText = true;
 
-            var readRow = Rect("Readout", _list);
-            readRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 250;
-            readRow.gameObject.AddComponent<Canvas>();
-            _wgReadout = Label(readRow, "", 14, TextCol, TextAnchor.UpperLeft);
-            Stretch(_wgReadout.rectTransform);
-            _wgReadout.supportRichText = true;
+            _wgReadout = AddText("", "cc-readout");
 
             // Seed.
             Section("SEED", "Same seed + same settings + same game version = the same world for anyone.");
-            var seedRow = Rect("SeedRow", _list);
-            seedRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
-            var hl = seedRow.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hl.spacing = 6; hl.childControlWidth = true; hl.childControlHeight = true; hl.childForceExpandWidth = true;
+            var seedRow = BtnRow(_list);
             _wgSeedField = InputBox(seedRow, _ws.Seed.ToString());
-            Button(seedRow, "Load seed", () => { if (int.TryParse(_wgSeedField.text, out int s)) { _ws.SetSeed(s); _wgMapCenter.x = int.MinValue; } });
-            Button(seedRow, "Random", () => { int s = new System.Random().Next(1, int.MaxValue); _wgSeedField.text = s.ToString(); _ws.SetSeed(s); _wgMapCenter.x = int.MinValue; });
+            Button(seedRow, "Load seed", () => { if (int.TryParse(_wgSeedField.value, out int s)) { _ws.SetSeed(s); _wgMapCenter.x = int.MinValue; } });
+            Button(seedRow, "Random", () => { int s = new System.Random().Next(1, int.MaxValue); _wgSeedField.value = s.ToString(); _ws.SetSeed(s); _wgMapCenter.x = int.MinValue; });
             Button(seedRow, "Copy code", () => GUIUtility.systemCopyBuffer = _ws.Settings.WorldCode(_ws.Seed));
 
             // Field + delimiters.
@@ -83,10 +64,7 @@ namespace Backrooms.Camcorder
             BiomeGroup("WAREHOUSE rules", () => _ws.Settings.warehouse);
 
             Section("ACTIONS", "");
-            var actRow = Rect("Actions", _list);
-            actRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
-            var ah = actRow.gameObject.AddComponent<HorizontalLayoutGroup>();
-            ah.spacing = 6; ah.childControlWidth = true; ah.childControlHeight = true; ah.childForceExpandWidth = true;
+            var actRow = BtnRow(_list);
             Button(actRow, "Rebuild now", () => _wgDirtyAt = 0f);
             Button(actRow, "Reset world gen", () =>
             {
@@ -97,7 +75,7 @@ namespace Backrooms.Camcorder
         }
 
         /// <summary>Marks a control as world-gen: changing it schedules a rebuild.</summary>
-        void WG(UnityEngine.UI.Slider s) { if (s) s.onValueChanged.AddListener(_ => { if (!_refreshing) _wgDirtyAt = Time.unscaledTime + 0.35f; }); }
+        void WG(SliderRow s) { s?.slider.RegisterValueChangedCallback(_ => { if (!_refreshing) _wgDirtyAt = Time.unscaledTime + 0.35f; }); }
 
         void BiomeGroup(string title, Func<BiomeRules> rules)
         {
@@ -144,46 +122,15 @@ namespace Backrooms.Camcorder
         }
 
         /// <summary>Collapsible section; returns the container the rows go into.</summary>
-        RectTransform Group(string title, string desc)
+        VisualElement Group(string title, string desc)
         {
-            var header = Rect("Group_" + title, _list);
-            header.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
-            var container = Rect("Rows_" + title, _list);
-            var vl = container.gameObject.AddComponent<VerticalLayoutGroup>();
-            vl.spacing = 4; vl.padding = new RectOffset(8, 0, 0, 6);
-            vl.childControlHeight = true; vl.childControlWidth = true; vl.childForceExpandHeight = false;
-            var d = Label(container, desc, 13, Dim, TextAnchor.UpperLeft);
-            d.gameObject.AddComponent<LayoutElement>().preferredHeight = 18;
-            Text label = null;
-            var img = Button(header, "", () =>
-            {
-                bool open = !container.gameObject.activeSelf;
-                container.gameObject.SetActive(open);
-                label.text = (open ? "▼  " : "►  ") + title;
-                HideTip();
-            });
-            img.color = new Color(1, 1, 1, 0.06f);
-            Stretch(img.rectTransform);       // the header row has no layout group, so fill it explicitly
-            label = header.GetComponentInChildren<Text>();
-            label.alignment = TextAnchor.MiddleLeft; label.color = Accent; label.fontSize = 16;
-            label.rectTransform.offsetMin = new Vector2(10, 0);
-            label.text = "►  " + title;
-            container.gameObject.SetActive(false);
-            return container;
-        }
-
-        InputField InputBox(RectTransform parent, string value)
-        {
-            var box = Rect("Input", parent);
-            var img = box.gameObject.AddComponent<Image>(); img.color = new Color(1, 1, 1, 0.12f);
-            var text = Label(box, value, 15, TextCol, TextAnchor.MiddleLeft);
-            Stretch(text.rectTransform); text.rectTransform.offsetMin = new Vector2(8, 0);
-            text.supportRichText = false;
-            var field = box.gameObject.AddComponent<InputField>();
-            field.textComponent = text; field.targetGraphic = img;
-            field.contentType = InputField.ContentType.IntegerNumber;
-            field.text = value;
-            return field;
+            var f = new Foldout { text = title, value = false };
+            f.AddToClassList("cc-foldout");
+            f.RegisterValueChangedCallback(_ => HideTip());
+            _list.Add(f);
+            var d = Text(desc, "cc-desc");
+            f.Add(d);
+            return f.contentContainer;
         }
 
         void UpdateWorldGen()
@@ -196,7 +143,7 @@ namespace Backrooms.Camcorder
                 _ws.Settings.Save();
                 _wgMapCenter.x = int.MinValue;            // redraw map
             }
-            if (!IsOpen || _tab != 2 || !_wgReadout) return;
+            if (!IsOpen || _tab != 2 || _wgReadout == null) return;
 
             var cam = Camera.main ? Camera.main.transform : null;
             Vector3 pos = cam ? cam.position : Vector3.zero;
@@ -205,8 +152,8 @@ namespace Backrooms.Camcorder
             // Marker position inside the 64 x 64 map (sub-chunk precision).
             float fx = pos.x / OfficeBiome.ChunkSize - (_wgMapCenter.x - MapChunks / 2);
             float fz = pos.z / OfficeBiome.ChunkSize - (_wgMapCenter.y - MapChunks / 2);
-            var anchor = new Vector2(fx / MapChunks, fz / MapChunks);
-            if ((anchor - _wgMarker.anchorMin).sqrMagnitude > 1e-6f) _wgMarker.anchorMin = _wgMarker.anchorMax = anchor;
+            _wgMarker.style.left = Length.Percent(Mathf.Clamp01(fx / MapChunks) * 100f);
+            _wgMarker.style.bottom = Length.Percent(Mathf.Clamp01(fz / MapChunks) * 100f);
 
 
             if (Time.unscaledTime < _wgNextReadout) return;
@@ -238,7 +185,7 @@ namespace Backrooms.Camcorder
                 sb.AppendLine($"   {tall} tall ceilings, lights: {lit} lit / {layout.rooms.Count - lit - dark} mixed / {dark} dark rooms, {on}/{layout.fixtures.Count} fixtures on");
                 sb.AppendLine($"   {layout.pillars.Count} pillars, {layout.halfWalls.Count} half walls, {layout.props.Count} props ({racks} racks), {layout.plates.Count} outlets/switches");
             }
-            var lm = FindFirstObjectByType<FixtureLightManager>();
+            var lm = FindAnyObjectByType<FixtureLightManager>();
             sb.AppendLine($"<b>Streaming:</b> {_ws.LoadedChunks} chunks loaded, {_ws.QueuedChunks} queued, {_ws.ChunksBuilt} built this session");
             sb.AppendLine($"   chunk data {_ws.AverageBuildMs:0.0} ms avg (worker threads), {(lm ? lm.ActiveLights : 0)} pooled lights active");
             sb.AppendLine($"   {1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):0} fps");
@@ -265,6 +212,7 @@ namespace Backrooms.Camcorder
             }
             _wgTex.SetPixels32(px);
             _wgTex.Apply(false);
+            _wgMap.MarkDirtyRepaint();
         }
     }
 }

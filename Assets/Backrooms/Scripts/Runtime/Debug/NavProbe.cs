@@ -37,8 +37,8 @@ namespace Backrooms.DebugTools
 
         void Start()
         {
-            _ws = FindFirstObjectByType<WorldStreamer>();
-            _player = FindFirstObjectByType<CamcorderPlayerController>();
+            _ws = FindAnyObjectByType<WorldStreamer>();
+            _player = FindAnyObjectByType<CamcorderPlayerController>();
             _rng = new System.Random(seedOffset);
             _lastCell = CellOf(_player.transform.position);
             if (!wallHug) NextTrip();

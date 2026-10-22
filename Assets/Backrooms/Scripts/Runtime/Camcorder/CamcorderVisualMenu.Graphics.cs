@@ -1,14 +1,14 @@
 using Backrooms.DebugTools;
 using Backrooms.Generation;
 using UnityEngine;
-using UnityEngine.UI;
+using UnityEngine.UIElements;
 
 namespace Backrooms.Camcorder
 {
     /// <summary>F5 > GRAPHICS: frame pacing, render scale, shadows and light distances, with live performance data.</summary>
     public partial class CamcorderVisualMenu
     {
-        Text _gfxReadout;
+        Label _gfxReadout;
         float _gfxNext;
 
         void BuildGraphics()
@@ -17,18 +17,10 @@ namespace Backrooms.Camcorder
             GraphicsOptions O() => gc.Options;
 
             Section("PERFORMANCE", "Live numbers. In the editor these include editor overhead; a build is faster.");
-            var row = Rect("GfxReadout", _list);
-            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 200;
-            row.gameObject.AddComponent<Canvas>();
-            _gfxReadout = Label(row, "", 14, TextCol, TextAnchor.UpperLeft);
-            Stretch(_gfxReadout.rectTransform);
-            _gfxReadout.supportRichText = true;
+            _gfxReadout = AddText("", "cc-readout");
 
             Section("QUALITY PRESETS", "Sets the shadow and light options below together.");
-            var presets = Rect("GfxPresets", _list);
-            presets.gameObject.AddComponent<LayoutElement>().preferredHeight = 34;
-            var hl = presets.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hl.spacing = 6; hl.childForceExpandWidth = true; hl.childControlWidth = true; hl.childControlHeight = true;
+            var presets = BtnRow(_list);
             for (int i = 0; i < GraphicsOptions.PresetNames.Length; i++)
             {
                 int idx = i;
@@ -62,7 +54,7 @@ namespace Backrooms.Camcorder
 
         void UpdateGraphicsTab()
         {
-            if (!IsOpen || _tab != 5 || !_gfxReadout || Time.unscaledTime < _gfxNext) return;
+            if (!IsOpen || _tab != 5 || _gfxReadout == null || Time.unscaledTime < _gfxNext) return;
             _gfxNext = Time.unscaledTime + 0.5f;
             var p = PerfStats.Ensure();
             var lm = FindAnyObjectByType<FixtureLightManager>();
