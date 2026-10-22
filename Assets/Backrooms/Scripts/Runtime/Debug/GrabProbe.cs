@@ -18,6 +18,7 @@ namespace Backrooms.DebugTools
         public string folder = "";
         public string prefix = "grab";
         public MovableKind[] kinds = { MovableKind.Box, MovableKind.OfficeChair, MovableKind.Sofa, MovableKind.Table };
+        [Tooltip("Also save a close side view of the hand at each step.")] public bool handCloseUps = true;
         public bool Busy { get; private set; }
         public string Report = "";
 
@@ -190,12 +191,38 @@ namespace Backrooms.DebugTools
                             (h ? $", prop at {h.transform.position} kin={h.Body.isKinematic}" : $", last release: {_grab.LastRelease}"));
         }
 
+        /// <summary>Renders the hand from the side (thumb side, a little above) into a PNG.</summary>
+        void HandCloseUp(string path)
+        {
+            var main = Camera.main;
+            var go = new GameObject("HandCam");
+            var cam = go.AddComponent<Camera>();
+            if (main) cam.CopyFrom(main);
+            cam.fieldOfView = 50f; cam.nearClipPlane = 0.02f;
+            Vector3 h = _grab.HandPosition;
+            Vector3 side = _grab.HandRotation * Vector3.right, fwd = _grab.HandRotation * Vector3.forward, up = _grab.HandRotation * Vector3.up;
+            go.transform.position = h + side * 0.32f + up * 0.12f - fwd * 0.08f;
+            go.transform.LookAt(h + up * 0.02f, Vector3.up);
+            var rt = new RenderTexture(960, 720, 24);
+            cam.targetTexture = rt;
+            cam.Render();
+            RenderTexture.active = rt;
+            var tex = new Texture2D(960, 720, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, 960, 720), 0, 0);
+            tex.Apply();
+            RenderTexture.active = null;
+            System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
+            cam.targetTexture = null;
+            Destroy(rt); Destroy(tex); Destroy(go);
+        }
+
         IEnumerator Wait(float s) { for (float t = 0; t < s; t += Time.deltaTime) yield return null; }
 
         void Shot(MovableKind k, string step)
         {
             if (string.IsNullOrEmpty(folder)) return;
             ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(folder, $"{prefix}_{k}_{step}.png"));
+            if (handCloseUps && _grab.HandBlend > 0.5f) HandCloseUp(System.IO.Path.Combine(folder, $"{prefix}_{k}_{step}_hand.png"));
         }
     }
 }

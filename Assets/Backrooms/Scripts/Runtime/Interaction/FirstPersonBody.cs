@@ -140,8 +140,20 @@ namespace Backrooms.Interaction
             float palmLen = middle ? Vector3.Dot(middle.position - _hand.position, fingersW) : 0.1f;
             _wristToGrip = new Vector3(0f, -0.018f, palmLen * 0.78f);     // (side, back, fingers)
 
-            // Finger joints bend toward the palm: about back x fingers.
-            Vector3 bendW = Vector3.Cross(fingersW, backW).normalized;   // Unity rotations are left-handed
+            // Thumb rest pose: out to the side, forward, and down toward the palm (the exported model has it
+            // pointing up and out). Set here so it does not depend on the FBX axis conversion.
+            Vector3 sideW = Vector3.Cross(backW, fingersW).normalized;
+            var thumb1 = Find(_arm, "Thumb1"); var thumb2 = Find(_arm, "Thumb2");
+            if (thumb1 && thumb2)
+            {
+                if (Vector3.Dot(sideW, thumb1.position - _hand.position) < 0f) sideW = -sideW;      // toward the thumb
+                Vector3 now = (thumb2.position - thumb1.position).normalized;
+                Vector3 want = (sideW * 0.45f + fingersW * 0.75f - backW * 0.5f).normalized;
+                thumb1.rotation = Quaternion.FromToRotation(now, want) * thumb1.rotation;
+            }
+            // Finger joints bend toward the palm. (Checked numerically: rotating about back x fingers moves
+            // the fingertips to the palm side.)
+            Vector3 bendW = Vector3.Cross(backW, fingersW).normalized;
             foreach (var name in new[] { "Index", "Middle", "Ring", "Pinky", "Thumb" })
                 for (int i = 1; i <= 3; i++)
                 {

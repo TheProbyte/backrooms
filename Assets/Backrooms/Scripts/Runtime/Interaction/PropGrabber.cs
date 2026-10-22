@@ -364,7 +364,12 @@ namespace Backrooms.Interaction
             if (fingers.sqrMagnitude < 0.01f) fingers = transform.forward;
             HandPosition = grip;
             HandRotation = Quaternion.LookRotation(fingers, n);
-            float curl = Current == State.Holding ? (edge.sqrMagnitude > 0.01f ? 0.7f : 0.25f) + 0.2f * Strain : 0.2f;
+            // Fingers hook over an edge only where they reach past the outside of the prop; resting across
+            // its top (the near edge) they lie nearly flat instead of sinking into it.
+            Vector3 centre = _target.Body ? _target.Body.worldCenterOfMass : _target.transform.position;
+            bool overOutside = Vector3.Dot(fingers, Vector3.ProjectOnPlane(centre - grip, n)) < 0f;
+            float hook = edge.sqrMagnitude > 0.01f && overOutside ? 0.75f : 0.12f;
+            float curl = Current == State.Holding ? hook + 0.15f * Strain : 0.2f;
             HandCurl = Mathf.MoveTowards(HandCurl, curl, Time.deltaTime * 3f);
         }
 
