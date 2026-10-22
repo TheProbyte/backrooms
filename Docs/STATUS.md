@@ -48,7 +48,9 @@ generation and lighting work now.
 - Play mode needs `runInBackground` on while Unity is unfocused. The MCP camera screenshot pauses the
   editor; unpause after it.
 
-. Feel test of grabbing (Docs/Interaction.md lists the tuning values); a better hand model (the thumb
+## Open items (next steps, in order)
+
+0. Feel test of grabbing (Docs/Interaction.md lists the tuning values); a better hand model (the thumb
    sticks out); save moved props to disk; creatures moving things while you are away.
 1. Owner review of the light grid look (Docs/screenshots/phase4_ab_*: `_layers` = old, `_grid` = new).
    Tunables: LightGrid.bounceGain / floorAlbedo / bounceSpread / wrap, FixtureLightManager.handoverTime.
