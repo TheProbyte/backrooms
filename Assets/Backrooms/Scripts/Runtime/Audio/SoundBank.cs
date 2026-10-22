@@ -74,6 +74,17 @@ namespace Backrooms.Audio
         static AnimationCurve s_flat;
 
         /// <summary>
+        /// Binaural 3D audio through the Steam Audio spatializer (HRTF): direction, height and front/back
+        /// are heard the way ears hear them, on headphones especially. Set from F5 > AUDIO.
+        /// </summary>
+        public static bool Hrtf
+        {
+            get => s_hrtf;
+            set { if (s_hrtf == value) return; s_hrtf = value; SoundCatalog.Touch(); }
+        }
+        static bool s_hrtf = true;
+
+        /// <summary>
         /// Applies a catalog sound's spatial settings to a source. distanceInVolume: the caller bakes
         /// distance / wall attenuation into the volume (building emitters, so the level can be smoothed as
         /// one number), and the source only provides direction; otherwise Unity's rolloff follows the
@@ -84,8 +95,11 @@ namespace Backrooms.Audio
             var def = SoundCatalog.Def(id);
             src.dopplerLevel = 0f;
             src.spread = 0f;
-            if (!def.positional) { src.spatialBlend = 0f; return; }
+            if (!def.positional) { src.spatialBlend = 0f; src.spatialize = false; return; }
             src.spatialBlend = SoundCatalog.SpatialBlend(id);
+            // HRTF after the source's own filters (wall occlusion low-pass), so muffled sound still has direction.
+            src.spatialize = s_hrtf && src.spatialBlend > 0.01f && !string.IsNullOrEmpty(AudioSettings.GetSpatializerPluginName());
+            src.spatializePostEffects = true;
             src.rolloffMode = AudioRolloffMode.Custom;
             src.minDistance = 0.01f;
             if (distanceInVolume)

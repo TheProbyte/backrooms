@@ -17,6 +17,7 @@ namespace Backrooms.Audio
         public float reverb = 1f;               // room reverb amount
         public float densityReference = 0.55f;  // hum loudness above which many fixtures are compressed
         public float ambience = 1f;             // master for beds (building hum, ventilation, room tone)
+        public bool hrtf = true;                // binaural 3D (Steam Audio spatializer)
         // Camcorder chain internals.
         public float agcTargetDb = -30f, agcMaxBoostDb = 15f, agcAttack = 0.12f, agcRelease = 3.5f;
         public float compression = 0.4f, saturation = 0.3f;
@@ -115,6 +116,7 @@ namespace Backrooms.Audio
         {
             Instance = this;
             Dev = AudioDevSettings.Load();
+            SoundBank.Hrtf = Dev.hrtf;
             _byScore = (a, b) => _scores[b].CompareTo(_scores[a]);
             _byRank = (a, b) => _rank[b].CompareTo(_rank[a]);
         }

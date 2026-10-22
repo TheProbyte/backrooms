@@ -74,6 +74,8 @@ namespace Backrooms.Camcorder
 
             Section("DEVELOPER", "Advanced tuning, saved separately from presets.");
             AudioDevSettings D() => BA ? BA.Dev : _devFallback;
+            Toggle("HD 3D audio (HRTF)", "Binaural 3D sound through Steam Audio: you hear whether a sound is above, below, behind or around a corner the way your ears would. Best on headphones. Off falls back to plain stereo panning.",
+                () => D().hrtf, v => { D().hrtf = v; SoundBank.Hrtf = v; });
             Slider("Hum voice budget", "Fixtures that get their own positioned hum voice. The rest are summed into the distant building hum.",
                 0f, 24f, "0", "", () => D().emitterBudget, v => D().emitterBudget = Mathf.RoundToInt(v), true);
             Slider("Candidate radius", "Fixtures within this distance are considered for a hum voice.",

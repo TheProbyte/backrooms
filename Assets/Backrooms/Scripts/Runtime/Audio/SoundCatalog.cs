@@ -67,6 +67,8 @@ namespace Backrooms.Audio
 
         /// <summary>Bumps whenever any override changes (emitters rebuild curves when it moves).</summary>
         public static int Version { get; private set; }
+        /// <summary>Forces every source to re-apply its spatial settings (e.g. after toggling HRTF).</summary>
+        public static void Touch() => Version++;
 
         public static IReadOnlyList<SoundDef> All { get { Ensure(); return s_defs; } }
 

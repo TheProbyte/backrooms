@@ -33,7 +33,10 @@ monospaced system font if installed). Styles in `Resources/UI/CamcorderMenu.uss`
 
 ## Open items (next steps, in order)
 
-1. HD 3D audio: Steam Audio (HRTF + occlusion) proposed; waiting on the owner's OK to download it.
+1. Steam Audio 4.8.1 (Valve, Apache 2.0, `Assets/Plugins/SteamAudio`, desktop binaries only, in Git LFS) is the
+   project spatializer. `SoundBank.ApplySpatial` turns HRTF on for every positional source (F5 > AUDIO >
+   HD 3D audio). Our own wall occlusion and reverb still run; Steam Audio's occlusion/reflections are not
+   used yet (they need scene geometry registered per chunk).
 2. Reference room features not done yet: arched wall niches, curved walls, balcony (ref3_arches_balcony).
 3. Owner may supply more textures; spec in `Docs/TextureSpec.md`.
 4. Zone system is a placeholder (`WorldGenSettings.ZoneAt` returns "Level 0").
