@@ -110,6 +110,19 @@ bool Visible(float3 P, float3 Q)
     return visible;
 }
 
+// A texel stands for a 0.6 m box but is tested at its centre only, which lets light peek past wall ends and
+// header edges into texels that are mostly shadowed (stair-stepped streaks along corners). So a texel only
+// counts as lit when points a little way around its centre are lit too (conservative: light edges erode
+// by a few cm instead of leaking).
+bool VisibleSolid(float3 P, float3 Q)
+{
+    if (!Visible(P, Q)) return false;
+    const float k = 0.22;
+    return Visible(P, Q + float3(k, 0, 0)) && Visible(P, Q - float3(k, 0, 0))
+        && Visible(P, Q + float3(0, 0, k)) && Visible(P, Q - float3(0, 0, k))
+        && Visible(P, Q + float3(0, k, 0)) && Visible(P, Q - float3(0, k, 0));
+}
+
 float Attenuation(GridLight L, float3 Q, out float3 toLight)
 {
     toLight = L.pos - Q;
@@ -144,7 +157,7 @@ void Direct(uint3 id : SV_DispatchThreadID)
             if (dot(L.color, L.color) <= 0.0) continue;
             float3 toLight;
             float att = Attenuation(L, Q, toLight);
-            if (att <= 1e-6 || !Visible(L.pos, Q)) continue;
+            if (att <= 1e-6 || !VisibleSolid(L.pos, Q)) continue;
             float3 e = L.color * att;
             float lum = dot(e, LUM);
             A.rgb += e;
@@ -183,7 +196,7 @@ void BounceSource(uint3 id : SV_DispatchThreadID)
     _BounceSrc[wi] = float4(sum * _GridMisc.y, 1);
 }
 
-float EdgePass(uint kind) { return kind == LG_EDGE_OPEN ? 1.0 : (kind == LG_EDGE_WALL ? 0.0 : 0.2); }
+float EdgePass(uint kind) { return kind == LG_EDGE_OPEN ? 1.0 : (kind == LG_EDGE_WALL ? 0.0 : 0.08); }
 
 // One blur step: a cell's bounce is its own floor light mixed with the weighted average of itself and its
 // neighbours (walls excluded, doorways weak), so light spreads without adding energy.
