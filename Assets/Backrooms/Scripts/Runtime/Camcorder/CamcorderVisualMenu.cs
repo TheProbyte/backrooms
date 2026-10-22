@@ -41,11 +41,12 @@ namespace Backrooms.Camcorder
             UpdateWorldGen();
             UpdateAudioTab();
             UpdateGraphicsTab();
+            UpdateMinimap(kb);
+            if (IsOpen && _stby != null) _stby.style.opacity = (Time.unscaledTime % 1.2f) < 0.8f ? 1f : 0f;
         }
 
         public void SetOpen(bool open)
         {
-            if (open == IsOpen && _panel != null && (_panel.style.display == DisplayStyle.Flex) == open) return;
             IsOpen = open;
             if (_panel != null) Show(_panel, open);
             CamcorderPlayerController.InputBlocked = open;
@@ -79,15 +80,22 @@ namespace Backrooms.Camcorder
             if (sheet) _root.styleSheets.Add(sheet);
             _root.AddToClassList("cc-root");
             _root.pickingMode = PickingMode.Ignore;           // only the panel itself catches the pointer
+            ApplyMenuFont();
 
             _panel = new VisualElement { name = "Panel" };
             _panel.AddToClassList("cc-panel");
             _root.Add(_panel);
 
-            _panel.Add(Text("CAMCORDER  ·  SETTINGS", "cc-title"));
+            // Header like a camcorder's on-screen menu: MENU, the page name, and a blinking STBY.
+            var header = new VisualElement(); header.AddToClassList("cc-header");
+            header.Add(Text("MENU", "cc-title"));
+            _pageLabel = Text("", "cc-page"); header.Add(_pageLabel);
+            _stby = Text("STBY", "cc-stby"); header.Add(_stby);
+            _panel.Add(header);
+            var rule = new VisualElement(); rule.AddToClassList("cc-rule"); _panel.Add(rule);
 
             var tabs = BtnRow(_panel);
-            string[] names = { "VISUAL", "GAMEPLAY", "WORLD", "AUDIO", "SOUND", "GRAPHICS" };
+            string[] names = { "CAMERA", "PLAYER", "WORLD", "AUDIO", "SOUND", "DISPLAY" };
             _tabButtons = new Button[names.Length];
             for (int i = 0; i < names.Length; i++)
             {
@@ -96,7 +104,7 @@ namespace Backrooms.Camcorder
                 _tabButtons[i].AddToClassList("cc-tab");
             }
 
-            _panel.Add(Text("F5 / Esc to close.  Hover an option for an explanation.", "cc-hint"));
+            _panel.Add(Text("[F5] END   [F6] MAP   HOVER AN ITEM FOR HELP", "cc-hint"));
 
             // Presets row (visual tab only).
             _presets = BtnRow(_panel);
@@ -118,10 +126,32 @@ namespace Backrooms.Camcorder
             // Footer.
             var footer = BtnRow(_panel);
             footer.AddToClassList("cc-footer");
-            _resetVisuals = Button(footer, "Reset visuals", () => ApplyPreset(0));
-            Button(footer, "Close", () => SetOpen(false));
+            _resetVisuals = Button(footer, "RESET", () => ApplyPreset(0));
+            Button(footer, "END", () => SetOpen(false));
 
+            BuildMinimap();
             ShowTab(0);
+        }
+
+        static readonly string[] PageNames = { "CAMERA SET", "PLAYER SET", "WORLD SET", "AUDIO SET", "SOUND LIST", "DISPLAY SET" };
+        Label _pageLabel, _stby;
+
+        /// <summary>A monospaced system font reads closer to a camcorder's character generator; falls back
+        /// to the default font when none is installed.</summary>
+        void ApplyMenuFont()
+        {
+            foreach (var family in new[] { "Consolas", "Lucida Console", "Courier New" })
+            {
+                try
+                {
+                    var fa = UnityEngine.TextCore.Text.FontAsset.CreateFontAsset(family, "Bold");
+                    if (fa == null) fa = UnityEngine.TextCore.Text.FontAsset.CreateFontAsset(family, "Regular");
+                    if (fa == null) continue;
+                    _root.style.unityFontDefinition = FontDefinition.FromSDFFont(fa);
+                    return;
+                }
+                catch (Exception) { }
+            }
         }
 
         ScrollView[] _views;
@@ -146,6 +176,7 @@ namespace Backrooms.Camcorder
             }
             Show(_presets, i == 0);
             _tab = i;
+            if (_pageLabel != null) _pageLabel.text = PageNames[i];
             _panel.style.width = i == 2 ? 560 : i >= 3 ? 520 : 460;
             if (i == 4) RefreshAll();
             if (_resetVisuals != null) Show(_resetVisuals, i == 0);
@@ -314,7 +345,7 @@ namespace Backrooms.Camcorder
 
         void Section(string title, string desc)
         {
-            AddText(title, "cc-section");
+            AddText(title.ToUpperInvariant(), "cc-section");
             if (!string.IsNullOrEmpty(desc)) AddText(desc, "cc-desc");
         }
 
@@ -323,7 +354,7 @@ namespace Backrooms.Camcorder
             var r = new SliderRow { row = new VisualElement() };
             r.row.AddToClassList("cc-row");
             var head = new VisualElement(); head.AddToClassList("cc-rowhead");
-            r.name = Text(label, null); r.value = Text("", "cc-value");
+            r.name = Text(label.ToUpperInvariant(), null); r.value = Text("", "cc-value");
             head.Add(r.name); head.Add(r.value);
             r.row.Add(head);
             r.slider = new UnityEngine.UIElements.Slider(min, max) { fill = true };
@@ -345,7 +376,7 @@ namespace Backrooms.Camcorder
 
         VisualElement Toggle(string label, string tip, Func<bool> get, Action<bool> set)
         {
-            var t = new UnityEngine.UIElements.Toggle { text = label };
+            var t = new UnityEngine.UIElements.Toggle { text = label.ToUpperInvariant() };
             t.AddToClassList("cc-toggle");
             var row = new VisualElement(); row.AddToClassList("cc-row");
             row.Add(t);
@@ -358,7 +389,7 @@ namespace Backrooms.Camcorder
 
         Button Button(VisualElement parent, string text, Action onClick)
         {
-            var b = new Button(onClick) { text = text, focusable = false };
+            var b = new Button(onClick) { text = text.ToUpperInvariant(), focusable = false };
             b.AddToClassList("cc-btn");
             parent.Add(b);
             return b;
@@ -398,11 +429,11 @@ namespace Backrooms.Camcorder
         {
             if (string.IsNullOrEmpty(body)) return;
             EnsureTip();
-            _tipTitle.text = title; _tipBody.text = body;
+            _tipTitle.text = title.ToUpperInvariant(); _tipBody.text = body;
             Show(_tip, true);
             // Level with the row, just right of the panel, kept on screen.
             float h = _root.layout.height;
-            _tip.style.left = _panel.layout.width + 12f;
+            _tip.style.left = _panel.layout.xMax + 12f;
             _tip.style.top = Mathf.Clamp(row.worldBound.yMin, 10f, Mathf.Max(10f, h - 160f));
         }
 

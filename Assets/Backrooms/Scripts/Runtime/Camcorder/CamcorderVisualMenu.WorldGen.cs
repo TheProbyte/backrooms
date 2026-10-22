@@ -195,24 +195,30 @@ namespace Backrooms.Camcorder
         void DrawMap(Vector2Int center)
         {
             _wgMapCenter = center;
+            FillBiomeMap(_wgTex, MapChunks, center);
+            _wgMap.MarkDirtyRepaint();
+        }
+
+        /// <summary>Paints size x size chunks of the biome field around center into tex (one pixel per chunk).</summary>
+        void FillBiomeMap(Texture2D tex, int size, Vector2Int center)
+        {
             var s = _ws.Settings;
-            var px = new Color32[MapChunks * MapChunks];
-            for (int y = 0; y < MapChunks; y++)
-            for (int x = 0; x < MapChunks; x++)
+            var px = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
             {
-                var c = new Vector2Int(center.x - MapChunks / 2 + x, center.y - MapChunks / 2 + y);
+                var c = new Vector2Int(center.x - size / 2 + x, center.y - size / 2 + y);
                 var e = s.Evaluate(_ws.Seed, c);
                 Color col = s.hallways.mapColor * e.wHallways + s.offices.mapColor * e.wOffices + s.warehouse.mapColor * e.wWarehouse;
                 float purity = Mathf.Max(e.wHallways, Mathf.Max(e.wOffices, e.wWarehouse));
                 col *= Mathf.Lerp(0.55f, 1f, purity);
                 if (_ws.LayoutAt(c) == null) col *= 0.75f;                     // not loaded yet
-                if ((c.x == 0 && c.y == 0)) col = Color.Lerp(col, Color.white, 0.5f);  // spawn
+                if (c.x == 0 && c.y == 0) col = Color.Lerp(col, Color.white, 0.5f);  // spawn
                 col.a = 1f;
-                px[y * MapChunks + x] = col;
+                px[y * size + x] = col;
             }
-            _wgTex.SetPixels32(px);
-            _wgTex.Apply(false);
-            _wgMap.MarkDirtyRepaint();
+            tex.SetPixels32(px);
+            tex.Apply(false);
         }
     }
 }

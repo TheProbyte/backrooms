@@ -110,7 +110,7 @@ namespace Backrooms.Camcorder
 
         // ---------------- Presets ----------------
 
-        public static readonly string[] PresetNames = { "Default", "Hi8 '98", "MiniDV '04", "Low light gain", "Clean" };
+        public static readonly string[] PresetNames = { "Default", "Hi8 '98", "MiniDV '04", "Low light gain", "Clean", "VHS '96" };
 
         public static CamcorderSettings Preset(int index)
         {
@@ -147,6 +147,16 @@ namespace Backrooms.Camcorder
                     s.saturation = 0f; s.whiteBalanceTint = 0f; s.fieldOfView = 62f;
                     // Clean audio reference: chain on but neutral (no colour, AGC, hiss or handling; natural width).
                     s.micColoration = 0f; s.autoGain = 0f; s.micHiss = 0f; s.handlingNoise = 0f; s.stereoWidth = 1f;
+                    break;
+                case 5: // VHS '96, matched to the owner's reference frames: very soft, haloed edges, yellow-green
+                        // fluorescent cast, tubes blown out to white with wide glow, smeared colour, 4:3
+                    s.softness = 2.2f; s.sharpening = 1.7f; s.chromaBleed = 8f; s.chromaShift = 1.8f;
+                    s.pedestal = 0.025f; s.highlightKnee = 0.7f; s.noise = 0.035f; s.chromaNoise = 0.08f; s.gainNoise = 0.07f;
+                    s.saturation = 6f; s.contrast = 14f; s.whiteBalanceTemp = 18f; s.whiteBalanceTint = -12f;
+                    s.bloom = 1.2f; s.bloomScatter = 0.85f; s.vignette = 0.34f;
+                    s.scanlines = 0.04f; s.trackingNoise = 0.18f; s.aspect43 = true;
+                    s.chromaticAberration = 0.18f; s.lensDistortion = -0.18f; s.fieldOfView = 60f; s.maxGain = 1.4f;
+                    s.micColoration = 0.85f; s.autoGain = 0.8f; s.micHiss = 0.4f; s.handlingNoise = 0.6f; s.stereoWidth = 0.55f;
                     break;
             }
             return s;

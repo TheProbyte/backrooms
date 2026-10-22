@@ -39,17 +39,19 @@ namespace Backrooms.Camcorder
             Toggle("Anti-aliasing (SMAA)", "Smooths jagged edges.",
                 () => O().antiAliasing, v => { O().antiAliasing = v; O().Save(); });
 
-            Section("SHADOWS", "The building is lit by a baked lightmap; these real-time shadows are for furniture.");
-            Slider("Shadow-casting lights", "How many of the nearest lights cast furniture shadows. Each one redraws nearby furniture, so fewer is faster.",
-                0f, 32f, "0", "", () => O().shadowLights, v => { O().shadowLights = Mathf.RoundToInt(v); O().Save(); }, true);
-            Slider("Shadow distance", "Lights farther than this give up their furniture shadow.",
+            Section("SHADOWS", "Shadows ease in over half a second as lights come into range.");
+            Slider("Shadow-casting lights", "How many of the nearest lights cast shadows. Shadowed lights also spill through doorways (unshadowed ones stay inside their own room, so light never passes through walls). Each one redraws nearby geometry, so this is the biggest performance setting.",
+                0f, 48f, "0", "", () => O().shadowLights, v => { O().shadowLights = Mathf.RoundToInt(v); O().Save(); }, true);
+            Slider("Shadow distance", "Lights farther than this give up their shadow (and their doorway spill).",
                 8f, 30f, "0.0", " m", () => O().shadowDistance, v => { O().shadowDistance = v; O().Save(); });
             Slider("Shadow resolution", "Sharpness of each light's shadow map: 0 low, 1 medium, 2 high.",
                 0f, 2f, "0", "", () => O().shadowResolution, v => { O().shadowResolution = Mathf.RoundToInt(v); O().Save(); }, true);
 
-            Section("LIGHTS", "Walls, floors and ceilings use baked light (always the same at any distance).");
-            Slider("Furniture light distance", "How far real-time lights are drawn on furniture and props. Farther ones dim into the fog.",
+            Section("LIGHTS", "The building is already lit; these only decide how far real lights are drawn.");
+            Slider("Light distance", "Every powered fixture closer than this is on, whether you can see it or not. Farther ones dim into the fog.",
                 20f, 44f, "0", " m", () => O().lightDistance, v => { O().lightDistance = v; O().Save(); });
+            Slider("Bounce fill lights", "Nearest fixtures that also add soft bounced light to walls and floor.",
+                0f, 48f, "0", "", () => O().bounceLights, v => { O().bounceLights = Mathf.RoundToInt(v); O().Save(); }, true);
         }
 
         void UpdateGraphicsTab()

@@ -40,6 +40,7 @@ namespace Backrooms.Generation
         [Tooltip("Chance a medium room gets a tall ceiling.")] public float tallChanceSmall = 0.2f;
         [Tooltip("Tall ceiling range, metres.")] public float tallMin = 3.9f, tallMax = 5.4f;
         [Tooltip("Chance of painted plaster instead of wallpaper (tall rooms are always painted).")] public float paintedChance = 0.3f;
+        [Tooltip("Chance a doorway has a round arched top instead of a flat header.")] public float archedDoors = 0.35f;
 
         [Header("Lighting")]
         [Tooltip("Share of rooms with every light working.")] public float lightsAllOn = 0.52f;
@@ -85,7 +86,7 @@ namespace Backrooms.Generation
             bigHallChance = 0.02f, stopSmall = 0.95f, stopMedium = 0.75f, stopLarge = 0.15f, stopHuge = 0.02f,
             hallChanceShallow = 0.95f, hallChanceDeep = 0.7f, hallWideChance = 0.15f, crawlChance = 0.5f,
             openPlanChance = 0.05f, loopChance = 0.5f, loungeChance = 0.05f, conferenceChance = 0.03f,
-            tallChanceBig = 0.1f, tallChanceSmall = 0f, paintedChance = 0.15f,
+            tallChanceBig = 0.1f, tallChanceSmall = 0f, paintedChance = 0.15f, archedDoors = 0.12f,
             lightsAllOn = 0.4f, lightsMixed = 0.4f, mixedOnFraction = 0.45f, faultyChance = 0.05f,
             pillarChance = 0.3f, halfWalls = 0f, scatteredSeating = 0f, outletChance = 0.12f,
         };
@@ -97,7 +98,7 @@ namespace Backrooms.Generation
             bigHallChance = 0.75f, stopSmall = 0.95f, stopMedium = 0.85f, stopLarge = 0.7f, stopHuge = 0.55f,
             hallChanceShallow = 0.15f, hallChanceDeep = 0.05f, hallWideChance = 0.8f, crawlChance = 0.1f,
             openPlanChance = 0.8f, loopChance = 0.5f, loungeChance = 0.02f, conferenceChance = 0.02f,
-            tallChanceBig = 1f, tallChanceSmall = 0.5f, tallMin = 6.0f, tallMax = 8.1f, paintedChance = 1f,
+            tallChanceBig = 1f, tallChanceSmall = 0.5f, tallMin = 6.0f, tallMax = 8.1f, paintedChance = 1f, archedDoors = 0f,
             lightsAllOn = 0.35f, lightsMixed = 0.45f, mixedOnFraction = 0.4f, faultyChance = 0.04f,
             pillarChance = 1f, pillarSpacing = 4f, halfWalls = 0f, scatteredSeating = 0.1f, rackChance = 0.7f,
             outletChance = 0.03f, stripLights = 1f,

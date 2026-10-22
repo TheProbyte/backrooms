@@ -31,7 +31,7 @@ namespace Backrooms.Generation
         public BiomeRules offices = BiomeRules.Offices();
         public BiomeRules warehouse = BiomeRules.Warehouse();
 
-        public const int Version = 2;   // bump when generation code changes how a seed plays out (2: fixture spacing, strips, open plan)
+        public const int Version = 3;   // bump when generation code changes how a seed plays out (2: fixture spacing, strips, open plan)
 
         public WorldGenSettings Clone()
         {

@@ -45,7 +45,7 @@ namespace Backrooms.DebugTools
             var ws = FindAnyObjectByType<WorldStreamer>();
             var center = WorldStreamer.ChunkOf(Camera.main.transform.position);
             const float C = OfficeBiome.CellSize, S = OfficeBiome.ChunkSize;
-            bool bigDone = false, darkDone = false, doorDone = false, hallDone = false, tallDone = false, wareDone = false;
+            bool bigDone = false, darkDone = false, doorDone = false, hallDone = false, tallDone = false, wareDone = false, archDone = false;
             for (int cx = center.x - 2; cx <= center.x + 2; cx++)
             for (int cz = center.y - 2; cz <= center.y + 2; cz++)
             {
@@ -72,6 +72,8 @@ namespace Backrooms.DebugTools
                 for (int z = 1; z < L.N - 1; z++)
                 {
                     var a = L.RoomAt(x, z); var b = L.RoomAt(x + 1, z); var e = L.vEdges[x + 1, z];
+                    if (!archDone && e == EdgeKind.DoorHeader && OfficeChunkBuilder.IsArchedEdge(L, true, x + 1, z) && a.rect.width >= 3)
+                    { archDone = true; list.Add(new View { name = "7_arch", pos = o + new Vector3((x - 1.5f) * C, 0, (z + 0.5f) * C), yaw = 90f, pitch = 4f }); }
                     if (a.id == b.id || !(e == EdgeKind.Door || e == EdgeKind.DoorHeader) || a.Tall || b.Tall) continue;
                     if (!darkDone && a.lights == LightMode.Dark && b.lights == LightMode.AllOn && a.rect.width >= 3)
                     { darkDone = true; list.Add(new View { name = "2_dark_room_by_lit", pos = o + new Vector3((a.rect.xMin + 0.5f) * C, 0, (z + 0.5f) * C), yaw = 90f, pitch = 8f }); }

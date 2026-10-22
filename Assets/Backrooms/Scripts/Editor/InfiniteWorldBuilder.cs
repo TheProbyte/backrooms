@@ -113,6 +113,28 @@ namespace Backrooms.EditorTools
             Pbr(a.wallpaper, "WallpaperPaper", false, Color.white, 0.6f, 1f);
         }
 
+        /// <summary>
+        /// The owner's seamless 2K chevron-stripe wallpaper (Textures/Wallpaper_Chevron_*). One repeat is
+        /// 0.6 m square: walls map U over 1.2 m and V over 2.7 m, hence 2 x 4.5. The normal map is derived
+        /// from the colour for a faint embossed-paper relief. Falls back to the procedural stripes if missing.
+        /// </summary>
+        static void ApplyChevronWallpaper(Material m)
+        {
+            const string dir = "Assets/Backrooms/Textures/";
+            var col = AssetDatabase.LoadAssetAtPath<Texture2D>(dir + "Wallpaper_Chevron_Albedo.png");
+            if (!m || !col) return;
+            var nrmPath = dir + "Wallpaper_Chevron_Normal.png";
+            if (AssetImporter.GetAtPath(nrmPath) is TextureImporter ti && ti.textureType != TextureImporterType.NormalMap)
+            { ti.textureType = TextureImporterType.NormalMap; ti.SaveAndReimport(); }
+            var nrm = AssetDatabase.LoadAssetAtPath<Texture2D>(nrmPath);
+            m.SetTexture("_BaseMap", col);
+            m.SetColor("_BaseColor", new Color(0.93f, 0.92f, 0.86f));
+            m.SetTextureScale("_BaseMap", new Vector2(2f, 4.5f));
+            if (nrm) { m.SetTexture("_BumpMap", nrm); m.SetFloat("_BumpScale", 0.5f); m.EnableKeyword("_NORMALMAP"); }
+            m.SetFloat("_Smoothness", 0.18f);
+            EditorUtility.SetDirty(m);
+        }
+
         /// <summary>Environment (sky) reflections are not occluded indoors, so shiny surfaces would glow in the dark.</summary>
         static void NoSkyReflections(Material m)
         {
@@ -141,6 +163,7 @@ namespace Backrooms.EditorTools
             {
                 m.SetTextureScale("_BaseMap", Vector2.one); m.SetTextureOffset("_BaseMap", Vector2.zero);
             }
+            ApplyChevronWallpaper(a.wallpaper);
 
             var plate = Lit("M_WallPlate", Color.white, Tex("WallPlate_Atlas"), null, 0.42f);
             a.wallPlate = plate;

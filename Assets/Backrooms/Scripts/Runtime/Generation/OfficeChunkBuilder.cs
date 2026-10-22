@@ -79,54 +79,72 @@ namespace Backrooms.Generation
         {
             int n = _L.N;
             _cellMask = new uint[n, n];
+            // An open-plan area that crosses into a neighbouring chunk is lit by that chunk's lights too:
+            // its surfaces also take the neighbouring zone's layer. Without this, each chunk's lights
+            // stopped dead at the chunk border and drew a straight dark line across open floors.
+            var extra = new uint[8];
+            if (_neighbours != null)
+            {
+                void Link(int x, int z, EdgeKind e, int dx, int dz)
+                {
+                    if (e != EdgeKind.Open) return;
+                    var nl = Neighbour(dx, dz);
+                    if (nl == null) return;
+                    int nx = (x + dx + n) % n, nz = (z + dz + n) % n;
+                    int c = _L.RoomAt(x, z).color, nc = nl.RoomAt(nx, nz).color;
+                    if (c >= 0 && nc >= 0 && nc != c) extra[c] |= 1u << (nc + 1);
+                }
+                for (int i = 0; i < n; i++)
+                {
+                    Link(0, i, _L.vEdges[0, i], -1, 0);
+                    Link(n - 1, i, _L.vEdges[n, i], 1, 0);
+                    Link(i, 0, _L.hEdges[i, 0], 0, -1);
+                    Link(i, n - 1, _L.hEdges[i, n], 0, 1);
+                }
+            }
             for (int x = 0; x < n; x++)
             for (int z = 0; z < n; z++)
             {
                 // One mask per room (zone): per-cell doorway masks were tried and gave hard square edges.
-                _cellMask[x, z] = LayerBit(_L.RoomAt(x, z).color);
+                int c = _L.RoomAt(x, z).color;
+                _cellMask[x, z] = LayerBit(c) | (c >= 0 ? extra[c] : 0u);
             }
+        }
+
+        OfficeLayout[] _neighbours;
+
+        OfficeLayout Neighbour(int dx, int dz)
+        {
+            var want = new Vector2Int(_L.coord.x + dx, _L.coord.y + dz);
+            foreach (var l in _neighbours) if (l != null && l.coord == want) return l;
+            return null;
         }
 
         uint CellMask(int x, int z) => _cellMask[Mathf.Clamp(x, 0, _L.N - 1), Mathf.Clamp(z, 0, _L.N - 1)];
 
         MeshWriter W(Material m, int color) => WMask(m, LayerBit(color));
 
-        /// <summary>Rendering layer of a room's architecture (bits 9-15): only that room's real-time
-        /// lights (faulty tubes) reach it; everything else comes from the baked lightmap.</summary>
-        public static uint ArchBits(uint propMask) => (propMask & 0xFEu) << 8;
-
-        /// <summary>Surfaces of the building itself: lightmapped, lit only by the bake (+ faulty tubes).</summary>
-        bool IsArch(Material m) => m && (m == _a.wallpaper || m == _a.paintedWall || m == _a.baseboard || m == _a.halfWallCap
-            || m == _a.carpet || m == _a.ceilingTile || m == _a.ceilingPlaster || m == _a.ceilingGrid || m == _a.wallPlate
-            || m == _a.fixtureHousing);
-
         MeshWriter WMask(Material m, uint mask)
         {
-            bool arch = mask != ProxyMask && IsArch(m);
-            if (arch) mask = ArchBits(mask);
             if (!_writers.TryGetValue((m, mask), out var w))
             {
-                w = new MeshWriter { worldOffset = _origin, lightmapped = arch };
+                w = new MeshWriter { worldOffset = _origin };
                 _writers[(m, mask)] = w;
             }
             return w;
         }
-
-        int _staticBoxStart;                 // _boxes from here on are blockers for light (not walls/posts)
-        readonly List<Bounds> _propOccluders = new List<Bounds>();
-        ChunkLightBaker _baker;
-        public float BakeMs => _baker != null ? _baker.BakeMs : 0f;
 
         /// <summary>
         /// Phase 1 (thread-safe, no engine calls): layout and all vertex/collider data. Run on a worker thread.
         /// </summary>
         public void BuildData(OfficeLayout layout) => BuildData(layout, null);
 
-        /// <param name="neighbours">Layouts of the surrounding chunks (any may be null), for seamless baked light.</param>
+        /// <param name="neighbours">Layouts of the surrounding chunks (any may be null): open floors that
+        /// continue into them share light across the border.</param>
         public void BuildData(OfficeLayout layout, OfficeLayout[] neighbours)
         {
+            _neighbours = neighbours;
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear(); doorways.Clear();
-            _propOccluders.Clear(); _baker = null;
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, 0f, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             foreach (var f in layout.fixtures) _fixtureCells.Add(f.cell);
@@ -136,7 +154,6 @@ namespace Backrooms.Generation
             BuildCeilingGrid();
             BuildWalls();
             BuildPosts();
-            _staticBoxStart = _boxes.Count;
             BuildCrawls();
             BuildPillars();
             BuildHalfWalls();
@@ -145,29 +162,6 @@ namespace Backrooms.Generation
             BuildFixtures(lights);
             BuildPlates();
             BuildProps(lights);
-            BakeLighting(neighbours);
-        }
-
-        /// <summary>Bakes this chunk's lightmap (worker thread) and assigns lightmap UVs to architecture.</summary>
-        void BakeLighting(OfficeLayout[] neighbours)
-        {
-            _baker = new ChunkLightBaker(_L, neighbours);
-            for (int i = _staticBoxStart; i < _boxes.Count; i++)
-            {
-                var (c, sz) = _boxes[i];
-                _baker.AddOccluder(new Bounds(_origin + c, sz));
-            }
-            foreach (var (c, sz, yaw) in _rotBoxes)
-            {
-                var rot = Quaternion.Euler(0f, yaw, 0f);
-                Vector3 ex = rot * new Vector3(sz.x * 0.5f, 0, 0), ez = rot * new Vector3(0, 0, sz.z * 0.5f);
-                var ext = new Vector3(Mathf.Abs(ex.x) + Mathf.Abs(ez.x), sz.y * 0.5f, Mathf.Abs(ex.z) + Mathf.Abs(ez.z));
-                _baker.AddOccluder(new Bounds(_origin + c, ext * 2f));
-            }
-            foreach (var b in _propOccluders) _baker.AddOccluder(b);
-            var arch = new List<MeshWriter>();
-            foreach (var w in _writers.Values) if (w.lightmapped) arch.Add(w);
-            _baker.Bake(arch);
         }
 
         /// <summary>Phase 2 (main thread): meshes, renderers and colliders.</summary>
@@ -178,12 +172,6 @@ namespace Backrooms.Generation
             root.transform.localPosition = _origin;
             root.isStatic = true;
 
-            int lmIndex = -1;
-            if (_baker != null && _baker.Pixels != null)
-            {
-                lmIndex = RuntimeLightmaps.Add(_baker.Pixels, _baker.Width, _baker.Height, _baker.DirPixels);
-                root.AddComponent<ChunkLightmapHandle>().index = lmIndex;
-            }
             foreach (var kv in _writers)
             {
                 var (mat, mask) = kv.Key;
@@ -201,12 +189,6 @@ namespace Backrooms.Generation
                 r.shadowCastingMode = mask == ProxyMask ? ShadowCastingMode.ShadowsOnly : caster ? ShadowCastingMode.On : ShadowCastingMode.Off;
                 r.lightProbeUsage = LightProbeUsage.Off;
                 r.reflectionProbeUsage = ReflectionProbeUsage.Off;
-                if (kv.Value.lightmapped && lmIndex >= 0)
-                {
-                    r.receiveGI = ReceiveGI.Lightmaps;
-                    r.lightmapIndex = lmIndex;
-                    r.lightmapScaleOffset = new Vector4(1f, 1f, 0f, 0f);
-                }
             }
 
             for (int i = 0; i < faultyLenses.Count; i++)
@@ -383,6 +365,11 @@ namespace Backrooms.Generation
                 float otherCeil = otherKnown ? _L.CeilingAt(ox, oz) : OfficeBiome.CeilingHeight;
                 bool header = e == EdgeKind.DoorHeader || (!otherKnown && room.Tall);
                 float top = header ? OfficeBiome.DoorHeaderHeight : Mathf.Min(myCeil, otherCeil);
+                if (e == EdgeKind.DoorHeader && otherKnown && IsArched(vertical, line, along))
+                {
+                    ArchFaces(room, cm, vertical, l, f, a0, a1, n, myCeil);
+                    continue;
+                }
                 if (myCeil <= top + 0.001f) continue;
 
                 WallFace(room, cm, A(f, a0), A(f, a1), top, myCeil, n);
@@ -395,6 +382,49 @@ namespace Backrooms.Generation
                     // Neighbour may have no header: close the space between its ceiling and our header.
                     WallFace(room, cm, A(l, a0), A(l, a1), top, OfficeBiome.CeilingHeight + 0.05f, -n);
                 }
+            }
+        }
+
+        /// <summary>Apex of an arched doorway: a little above the flat 2.1 m header, as in older offices.</summary>
+        const float ArchApex = 2.3f;
+
+        /// <summary>
+        /// Deterministic per doorway (world position), interior edges only so both sides always agree.
+        /// </summary>
+        bool IsArched(bool vertical, int line, int along) => IsArchedEdge(_L, vertical, line, along);
+
+        public static bool IsArchedEdge(OfficeLayout _L, bool vertical, int line, int along)
+        {
+            if (line <= 0 || line >= _L.N || _L.rules.archedDoors <= 0f) return false;
+            int wx = _L.coord.x * _L.N + (vertical ? line : along), wz = _L.coord.y * _L.N + (vertical ? along : line);
+            uint h = (uint)(wx * 73856093) ^ (uint)(wz * 19349663) ^ (vertical ? 0x9E3779B9u : 0x7F4A7C15u);
+            h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
+            return (h & 0xFFFF) / 65535f < _L.rules.archedDoors;
+        }
+
+        /// <summary>
+        /// One side of a round-topped doorway: wall above the apex, the two spandrels between the curve
+        /// and the apex line, and this side's half of the curved underside (intrados).
+        /// </summary>
+        void ArchFaces(Room room, uint cm, bool vertical, float l, float f, float a0, float a1, Vector3 n, float myCeil)
+        {
+            const int K = 14;
+            var w = WMask(WallMat(room), cm);
+            Vector3 alongDir = vertical ? Vector3.forward : Vector3.right;
+            Vector3 P(float plane, float at, float y) => (vertical ? new Vector3(plane, 0, at) : new Vector3(at, 0, plane)) + Vector3.up * y;
+            float r = (a1 - a0) * 0.5f, mid = (a0 + a1) * 0.5f, spring = ArchApex - r;
+            if (myCeil > ArchApex + 0.001f) WallFace(room, cm, P(f, a0, 0), P(f, a1, 0), ArchApex, myCeil, n);
+            for (int i = 0; i < K; i++)
+            {
+                float t0 = Mathf.PI * (1f - i / (float)K), t1 = Mathf.PI * (1f - (i + 1) / (float)K);
+                float x0 = mid + r * Mathf.Cos(t0), y0 = spring + r * Mathf.Sin(t0);
+                float x1 = mid + r * Mathf.Cos(t1), y1 = spring + r * Mathf.Sin(t1);
+                // Spandrel strip on the face.
+                w.Quad(P(f, x0, y0), P(f, x1, y1), P(f, x1, ArchApex), P(f, x0, ArchApex), n, MeshWriter.WallUV);
+                // Intrados: faces the arch's centre.
+                float tm = (t0 + t1) * 0.5f;
+                Vector3 nn = -(alongDir * Mathf.Cos(tm) + Vector3.up * Mathf.Sin(tm));
+                w.Quad(P(l, x0, y0), P(f, x0, y0), P(f, x1, y1), P(l, x1, y1), nn, MeshWriter.WallUV);
             }
         }
 
@@ -780,9 +810,6 @@ namespace Backrooms.Generation
         {
             var rot = Quaternion.Euler(0f, yaw, 0f);
             WMask(_a.baseboard, ProxyMask).Box(at + rot * localCenter, size, rot, 63, MeshWriter.MetreUV);
-            Vector3 ex = rot * new Vector3(size.x * 0.5f, 0, 0), ez = rot * new Vector3(0, 0, size.z * 0.5f);
-            var ext = new Vector3(Mathf.Abs(ex.x) + Mathf.Abs(ez.x), size.y * 0.5f, Mathf.Abs(ex.z) + Mathf.Abs(ez.z));
-            _propOccluders.Add(new Bounds(_origin + at + rot * localCenter, ext * 2f));
         }
 
         void BuildProps(List<LightSource> lights)

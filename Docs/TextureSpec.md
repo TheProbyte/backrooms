@@ -1,7 +1,7 @@
 # Texture spec (what to make, and how it maps)
 
 Drop finished files into `Assets/Backrooms/Textures/` using the file names below, replacing the old ones.
-The world builder (Backrooms > Build Infinite World) picks them up; nothing else needs changing.
+The world builder (Backrooms > Build Infinite Offices Scene) picks them up; nothing else needs changing.
 
 ## General rules
 
@@ -31,5 +31,5 @@ The world builder (Backrooms > Build Infinite World) picks them up; nothing else
 ## How to check a texture in game
 
 1. Put the files in `Assets/Backrooms/Textures/`.
-2. Run **Backrooms > Build Infinite World**, then press Play.
-3. Use F5 > VISUAL > **Clean** to see it without the camcorder look, then switch back.
+2. Run **Backrooms > Build Infinite Offices Scene**, then press Play.
+3. Use F5 > CAMERA > **Clean** to see it without the camcorder look, then switch back.
