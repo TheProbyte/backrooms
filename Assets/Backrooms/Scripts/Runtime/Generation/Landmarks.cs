@@ -49,15 +49,37 @@ namespace Backrooms.Generation
             bool turn = rng.NextDouble() < 0.5;
             int w = Mathf.Clamp(turn ? chosen.depth : chosen.width, 4, D - 2 * Margin);
             int d = Mathf.Clamp(turn ? chosen.width : chosen.depth, 4, D - 2 * Margin);
+            // An atrium gets a wing (stairs and/or elevator) along one side, as long as the stairs need.
+            int connectors = 0, side = 0, bw = w, bh = d;
+            if (chosen.kind == LandmarkKind.Atrium)
+            {
+                double c = rng.NextDouble();
+                connectors = c < 0.4 ? AtriumAnnex.Stairs : c < 0.8 ? AtriumAnnex.Elevator : AtriumAnnex.Stairs | AtriumAnnex.Elevator;
+                side = rng.Next(4);
+                if (side < 2) { w = Mathf.Max(w, AtriumAnnex.MinLength); bw = w; bh = d + AtriumAnnex.Depth; }
+                else { d = Mathf.Max(d, AtriumAnnex.MinLength); bw = w + AtriumAnnex.Depth; bh = d; }
+            }
             int lo = Margin;
             // The spawn hall fills the first chunk of district (0, 0): stay clear of it.
             if (district == Vector2Int.zero) lo = OfficeBiome.ChunkCells + Margin;
-            int x = rng.Next(lo, Mathf.Max(lo + 1, D - Margin - w + 1));
-            int z = rng.Next(lo, Mathf.Max(lo + 1, D - Margin - d + 1));
+            int x = rng.Next(lo, Mathf.Max(lo + 1, D - Margin - bw + 1));
+            int z = rng.Next(lo, Mathf.Max(lo + 1, D - Margin - bh + 1));
+            var rect = new RectInt(x, z, bw, bh);
+            RectInt core = rect, annex = default;
+            if (connectors != 0)
+            {
+                switch (side)
+                {
+                    case 0: annex = new RectInt(x, z, w, AtriumAnnex.Depth); core = new RectInt(x, z + AtriumAnnex.Depth, w, d); break;
+                    case 1: core = new RectInt(x, z, w, d); annex = new RectInt(x, z + d, w, AtriumAnnex.Depth); break;
+                    case 2: annex = new RectInt(x, z, AtriumAnnex.Depth, d); core = new RectInt(x + AtriumAnnex.Depth, z, w, d); break;
+                    default: core = new RectInt(x, z, w, d); annex = new RectInt(x + w, z, AtriumAnnex.Depth, d); break;
+                }
+            }
             p = new LandmarkPlacement
             {
-                name = chosen.name, kind = chosen.kind, district = district, rect = new RectInt(x, z, w, d),
-                storeys = Mathf.Max(1, chosen.storeys), seed = rng.Next(),
+                name = chosen.name, kind = chosen.kind, district = district, rect = rect, core = core, annex = annex, side = side,
+                connectors = connectors, storeys = Mathf.Max(1, chosen.storeys), seed = rng.Next(),
             };
             return true;
         }
@@ -84,7 +106,8 @@ namespace Backrooms.Generation
             public RectInt rect;
             public RoomKind kind;
             public float ceiling;
-            public bool painted, openAbove, noFloor;
+            public bool painted, openAbove, noFloor, noDoors;
+            public AnnexRole role;
             public LightMode lights;
         }
 
@@ -104,16 +127,19 @@ namespace Backrooms.Generation
                 {
                     // A two-cell arcade ring around a lightwell. Ground storey: the ring has an ordinary
                     // ceiling, the well rises to the storey above (whose ceiling closes it). Upper storey: the
-                    // ring is a balcony with a railing, the well has no floor.
+                    // ring is a balcony with a railing, the well has no floor. The annex (stairs / elevator)
+                    // rooms come first in the list; the ring (four rooms) and the well are the last five.
+                    if (AtriumAnnex.TryGet(p, storeyPitch, out var annex)) AnnexRooms(annex, storey, storeyPitch, list);
                     const int ring = 2;
-                    var inner = new RectInt(r.x + ring, r.y + ring, r.width - 2 * ring, r.height - 2 * ring);
+                    var core = p.core.width > 0 ? p.core : r;
+                    var inner = new RectInt(core.x + ring, core.y + ring, core.width - 2 * ring, core.height - 2 * ring);
                     bool ground = storey == 0;
                     float ringCeil = OfficeBiome.CeilingHeight;
                     void Ring(RectInt rr) => list.Add(new RoomSpec { rect = rr, kind = RoomKind.Hallway, ceiling = ringCeil, lights = LightMode.AllOn, painted = !ground });
-                    Ring(new RectInt(r.x, r.y, r.width, ring));                                  // south
-                    Ring(new RectInt(r.x, r.yMax - ring, r.width, ring));                        // north
-                    Ring(new RectInt(r.x, r.y + ring, ring, r.height - 2 * ring));               // west
-                    Ring(new RectInt(r.xMax - ring, r.y + ring, ring, r.height - 2 * ring));     // east
+                    Ring(new RectInt(core.x, core.y, core.width, ring));                                  // south
+                    Ring(new RectInt(core.x, core.yMax - ring, core.width, ring));                        // north
+                    Ring(new RectInt(core.x, core.y + ring, ring, core.height - 2 * ring));               // west
+                    Ring(new RectInt(core.xMax - ring, core.y + ring, ring, core.height - 2 * ring));     // east
                     if (ground)
                         list.Add(new RoomSpec { rect = inner, kind = RoomKind.BigOffice, ceiling = storeyPitch + OfficeBiome.CeilingHeight, painted = true, openAbove = true, lights = LightMode.AllOn });
                     else
@@ -122,6 +148,67 @@ namespace Backrooms.Generation
                 }
             }
             return list;
+        }
+
+        /// <summary>The stairs / elevator wing of an atrium on one storey (see <see cref="AtriumAnnex"/> for the plan).</summary>
+        static void AnnexRooms(in AtriumAnnex.Plan a, int storey, float pitch, List<RoomSpec> list)
+        {
+            bool ground = storey == 0;
+            float top = pitch + OfficeBiome.CeilingHeight;
+            const float h = OfficeBiome.CeilingHeight;
+            // Band S (v 0-1): stair hall and landing, or one filler room.
+            if (a.stairs)
+            {
+                if (ground)
+                {
+                    list.Add(new RoomSpec { rect = a.Hall, kind = RoomKind.Hallway, ceiling = top, painted = true, openAbove = true, noDoors = true, role = AnnexRole.StairHall, lights = LightMode.AllOn });
+                    list.Add(new RoomSpec { rect = a.Landing, kind = RoomKind.Office, ceiling = h, lights = LightMode.Dark });         // under the landing: a closet
+                }
+                else
+                {
+                    list.Add(new RoomSpec { rect = a.Hall, kind = RoomKind.Hallway, ceiling = h, painted = true, noFloor = true, noDoors = true, role = AnnexRole.StairVoid, lights = LightMode.Dark });
+                    list.Add(new RoomSpec { rect = a.Landing, kind = RoomKind.Office, ceiling = h, painted = true, lights = LightMode.AllOn });
+                }
+            }
+            else list.Add(new RoomSpec { rect = a.BandSFull, kind = RoomKind.Office, ceiling = h, lights = LightMode.Mixed });
+            // Band N (v 2-4): lobby and shaft, or one filler room.
+            if (a.elevator)
+            {
+                list.Add(new RoomSpec { rect = a.Lobby, kind = RoomKind.Hallway, ceiling = h, painted = true, lights = LightMode.AllOn });
+                if (ground)
+                    list.Add(new RoomSpec { rect = a.Shaft, kind = RoomKind.Office, ceiling = top, painted = true, openAbove = true, noDoors = true, role = AnnexRole.ShaftGround, lights = LightMode.Dark });
+                else
+                    list.Add(new RoomSpec { rect = a.Shaft, kind = RoomKind.Office, ceiling = h, painted = true, noFloor = true, noDoors = true, role = AnnexRole.ShaftUpper, lights = LightMode.Dark });
+            }
+            else list.Add(new RoomSpec { rect = a.BandNFull, kind = RoomKind.Office, ceiling = h, painted = !ground, lights = LightMode.AllOn });
+        }
+
+        static void SetLocalEdge(OfficeLayout L, in AtriumAnnex.Plan a, int u, int v, int du, int dv, EdgeKind k)
+        {
+            var c = a.f.Cell(u, v);
+            L.SetEdge(c.x, c.y, AtriumAnnex.Frame.SideOf(a.f.Dir(du, dv)), k);
+        }
+
+        /// <summary>Doors of the wing: the stair hall's entrance, the way off the landing, doors to the atrium ring, the elevator door.</summary>
+        static void ConnectAnnex(OfficeLayout L, in AtriumAnnex.Plan a)
+        {
+            bool ground = L.storey == 0;
+            if (a.stairs)
+            {
+                if (ground) SetLocalEdge(L, a, 0, 1, 0, 1, EdgeKind.DoorHeader);                       // lobby -> foot of the stairs
+                else
+                {
+                    for (int v = 0; v < AtriumAnnex.BandS; v++) SetLocalEdge(L, a, a.HallCells - 1, v, 1, 0, EdgeKind.Open);   // the top step runs onto the landing
+                    SetLocalEdge(L, a, a.HallCells, 1, 0, 1, EdgeKind.Door);                          // landing -> lobby
+                }
+            }
+            int top = AtriumAnnex.BandS + AtriumAnnex.BandN - 1;
+            foreach (int u in new[] { 3, 9 }) SetLocalEdge(L, a, u, top, 0, 1, EdgeKind.Door);        // lobby / filler -> the atrium's ring
+            if (a.elevator)
+            {
+                var d = a.DoorLobbyCell;
+                SetLocalEdge(L, a, d.u, d.v, 1, 0, EdgeKind.DoorHeader);                              // lobby -> elevator
+            }
         }
 
         /// <summary>
@@ -148,14 +235,39 @@ namespace Backrooms.Generation
                     break;
                 }
                 case LandmarkKind.Atrium:
-                    // Everything inside the footprint is one open space (ring strips and well).
-                    for (int x = r.xMin; x < r.xMax; x++)
-                    for (int z = r.yMin; z < r.yMax; z++)
+                {
+                    // Everything inside the core is one open space (ring strips and well).
+                    var core = p.core.width > 0 ? p.core : r;
+                    for (int x = core.xMin; x < core.xMax; x++)
+                    for (int z = core.yMin; z < core.yMax; z++)
                     {
-                        if (x + 1 < r.xMax) L.vEdges[x + 1, z] = EdgeKind.Open;
-                        if (z + 1 < r.yMax) L.hEdges[x, z + 1] = EdgeKind.Open;
+                        if (x + 1 < core.xMax) L.vEdges[x + 1, z] = EdgeKind.Open;
+                        if (z + 1 < core.yMax) L.hEdges[x, z + 1] = EdgeKind.Open;
                     }
+                    if (AtriumAnnex.TryGet(p, L.storeyPitch, out var annex)) ConnectAnnex(L, annex);
                     break;
+                }
+            }
+        }
+
+        /// <summary>Stair hall lights follow the sloping ceiling; the elevator door is never arched.</summary>
+        static void DecorateAnnex(OfficeLayout L, in AtriumAnnex.Plan a, List<Room> rooms)
+        {
+            if (a.elevator)
+            {
+                var d = a.DoorLobbyCell;
+                var c = a.f.Cell(d.u, d.v);
+                L.SetArch(c.x, c.y, AtriumAnnex.Frame.SideOf(a.f.Dir(1, 0)), false);
+            }
+            if (!a.stairs || L.storey != 0) return;
+            int colour = 0;
+            foreach (var r in rooms) if (r.role == AnnexRole.StairHall) colour = r.color;
+            // Twin-tube battens hung from the slope, one cell column in three, alternating sides.
+            for (int u = 1, k = 0; u < a.HallCells - 1; u += 3, k++)
+            {
+                var cell = a.f.Cell(u, k & 1);
+                float ceil = a.CeilingAt((u + 0.5f) * AtriumAnnex.C);
+                L.fixtures.Add(new Fixture { cell = cell, on = true, roomColor = colour, strip = true, height = ceil - 0.45f });
             }
         }
 
@@ -181,10 +293,11 @@ namespace Backrooms.Generation
                 }
                 case LandmarkKind.Atrium:
                 {
+                    if (AtriumAnnex.TryGet(p, L.storeyPitch, out var annex)) DecorateAnnex(L, annex, rooms);
                     if (L.storey == 0) break;
                     // Balcony railing around the well.
                     var well = rooms[rooms.Count - 1].rect;
-                    int col = rooms[0].id;
+                    int col = rooms[rooms.Count - 5].id;
                     L.halfWalls.Add(new HalfWall { alongX = true, line = well.yMin, start = well.xMin, length = well.width, roomColor = col, railing = true });
                     L.halfWalls.Add(new HalfWall { alongX = true, line = well.yMax, start = well.xMin, length = well.width, roomColor = col, railing = true });
                     L.halfWalls.Add(new HalfWall { alongX = false, line = well.xMin, start = well.yMin, length = well.height, roomColor = col, railing = true });

@@ -139,6 +139,7 @@ namespace Backrooms.Generation
             BuildFixtures(lights);
             BuildPlates();
             BuildProps(lights);
+            BuildAnnex();
         }
 
         /// <summary>Phase 2 (main thread): meshes, renderers and colliders.</summary>
@@ -221,6 +222,7 @@ namespace Backrooms.Generation
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
             AddFloorColliders(root);
+            foreach (var e in _elevators) ElevatorSystem.Spawn(root.transform, e);
             foreach (var (c, s) in _boxes)
             {
                 var b = root.AddComponent<BoxCollider>();
@@ -366,7 +368,7 @@ namespace Backrooms.Generation
                 int cz = vertical ? along : (s == 0 ? line - 1 : line);
                 if (!_L.InChunk(cx, cz)) continue;
                 var room = _L.RoomAt(cx, cz);
-                if (room.noFloor) continue;                   // a well's sides are railings, built separately
+                if (room.noFloor && e != EdgeKind.Wall) continue;     // a well's open sides are railings, built separately; walls around a stair or shaft void are real
                 float sign = s == 0 ? -1f : 1f;               // face normal points into the viewing cell
                 float f = l + sign * T * 0.5f;
                 Vector3 n = vertical ? new Vector3(sign, 0, 0) : new Vector3(0, 0, sign);
@@ -377,7 +379,7 @@ namespace Backrooms.Generation
                 if (e == EdgeKind.Wall)
                 {
                     WallFace(room, cm, A(f, a0), A(f, a1), 0f, myCeil, n);
-                    Baseboard(cm, A(f, a0), A(f, a1), n);
+                    if (!room.noFloor) Baseboard(cm, A(f, a0), A(f, a1), n);
                     continue;
                 }
 
@@ -847,7 +849,8 @@ namespace Backrooms.Generation
                 if (f.strip)
                 {
                     // Warehouse batten: white steel channel with two bare tubes, hung on two chains.
-                    float ceil = _L.RoomAt(f.cell.x, f.cell.y).ceiling;
+                    var fr = _L.RoomAt(f.cell.x, f.cell.y);
+                    float ceil = fr.role == AnnexRole.StairHall ? h + 0.45f : fr.ceiling;      // stair hall battens hang from the sloping ceiling
                     var hw = W(_a.fixtureHousing, f.roomColor);
                     hw.Box(c + Vector3.up * 0.03f, new Vector3(1.24f, 0.06f, 0.16f), 63, MeshWriter.MetreUV);
                     lens.Box(c + new Vector3(0, -0.012f, 0.04f), new Vector3(1.18f, 0.028f, 0.028f), 1 | 2 | 4 | 16 | 32, MeshWriter.MetreUV);

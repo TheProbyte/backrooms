@@ -46,6 +46,15 @@ Hips, Torso, ThighL/R, ShinL/R). A skinned model would need the IK moved onto it
 one if needed), grabs, lifts, drags, swings and shoves it with screenshots, then walks away until the
 chunk unloads and checks the prop comes back where it was left.
 
+## Buttons
+Left click on a button (`ElevatorButton`, an elevator call button or the cab's button) within 2 m: the hand
+steps you in if needed, the arm reaches out with the index finger extended (the other fingers curl), taps
+the button, pulls back (`PropGrabber.Poke.cs`; the body keeps the pointing pose while the arm lowers). The
+button lights briefly when pressed, and stays lit while its elevator is on the way.
+
+`Debug/WalkTrace.cs`: a bot that walks (or stands) while recording height, grounding and bumps, used to check
+stairs and the elevator are smooth.
+
 ## Not done yet
 - Saving moved props to disk (they last the session).
 - Creatures moving things while you are away (the manager's records are the place for it).

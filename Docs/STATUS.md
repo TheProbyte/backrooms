@@ -5,7 +5,7 @@
 Last updated 2026-10-22. Read `Docs/ProjectBrief.md` for the vision and `Docs/WorldGeneration.md` for how
 generation and lighting work now.
 
-## World generation (world version 6)
+## World generation (world version 7)
 
 - Layered: zones (Voronoi, data assets) > biomes (density field per zone) > landmarks (sparse grid) >
   districts (4 x 4 chunks planned at once) > chunk slices (streaming only). See WorldGeneration.md.
@@ -14,6 +14,9 @@ generation and lighting work now.
   first zone live and saves on top (older saved settings are migrated).
 - Landmarks: Colonnade hall, and the two-storey Atrium (the multi-storey test volume; the upper storey
   streams only around it). Seed 1234: atrium at cells (251, 363), colonnade halls at (-319, -20) and (357, -16).
+- The atrium has a wing with stairs and/or an elevator up to its balcony storey (WorldGeneration.md,
+  "Stairs and elevator"); pressing buttons is a hand animation (Interaction.md). Nothing is on the upper
+  storey yet to reward getting there.
 - Chunk coordinates are (x, storey, z). `WorldStreamer.ChunkLoaded/ChunkUnloaded` are the hook for
   registering Steam Audio geometry per chunk (not done yet).
 
@@ -57,7 +60,7 @@ generation and lighting work now.
 2. The arched-niche/balcony room from references/update11/ref3_arches_balcony.png as a landmark kind
    (the reference image is not in this checkout).
 3. Steam Audio geometry per chunk via the ChunkLoaded/ChunkUnloaded events.
-4. Stairs or other ways up, if upper storeys should become reachable. Storey pitch is 9 m (above the
-   8.1 m warehouse halls).
+4. Something worth finding on the atrium's upper storey. Elevator extras: sound (hum, ding, door), floor
+   indicator, a stuck or flickering state. Stairs: a landing light, the camera could smooth the step bob.
 5. A second zone with real content (the zone system is ready; only Level 0 has content).
 6. Movement (zoom F, crouch C, crawl Ctrl, jump Space) awaits the owner's feel feedback.

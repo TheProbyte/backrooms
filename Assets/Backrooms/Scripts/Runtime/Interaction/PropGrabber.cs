@@ -19,7 +19,7 @@ namespace Backrooms.Interaction
     /// Right mouse without holding gives a quick push. Walking into light props nudges them.
     /// </summary>
     [RequireComponent(typeof(CamcorderPlayerController))]
-    public class PropGrabber : MonoBehaviour
+    public partial class PropGrabber : MonoBehaviour
     {
         [Header("Reach")]
         public float lookRange = 2.4f;
@@ -101,7 +101,8 @@ namespace Backrooms.Interaction
             switch (Current)
             {
                 case State.Idle:
-                    if (pressed) TryStart();
+                    if (_poke != PokePhase.None) break;
+                    if (pressed) { if (!TryStartPoke()) TryStart(); }
                     else if (shovePressed) Push();
                     break;
                 case State.Reaching:
@@ -114,6 +115,8 @@ namespace Backrooms.Interaction
                     UpdateHold(md);
                     break;
             }
+            if (_poke != PokePhase.None) UpdatePoke();
+            UpdatePokeFingers();
             UpdateStoop();
             UpdateHandPose();
 
@@ -121,7 +124,7 @@ namespace Backrooms.Interaction
             if (_shake)
             {
                 float m = Held ? Held.Mass : 0f;
-                _shake.dip = Current == State.Holding ? Mathf.Lerp(0.2f, 1f, Mathf.Clamp01((m - 4f) / 40f)) : Current == State.Reaching ? 0.15f : 0f;
+                _shake.dip = Current == State.Holding ? Mathf.Lerp(0.2f, 1f, Mathf.Clamp01((m - 4f) / 40f)) : Current == State.Reaching ? 0.15f : Poking ? 0.08f : 0f;
                 _shake.effort = Current == State.Holding ? Strain * Mathf.Clamp01(m / 25f) : 0f;
             }
         }
@@ -347,8 +350,9 @@ namespace Backrooms.Interaction
 
         void UpdateHandPose()
         {
-            bool active = Current != State.Idle && _target;
+            bool active = (Current != State.Idle && _target) || Poking;
             HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? 3.2f : 2.5f));
+            if (Poking) PokePose = true; else if (HandBlend <= 0.01f) PokePose = false;
             if (!_target) { HandCurl = Mathf.MoveTowards(HandCurl, 0.25f, Time.deltaTime * 2f); return; }
             Vector3 grip = _target.transform.TransformPoint(_gripLocal);
             Vector3 n = _target.transform.TransformDirection(_normalLocal).normalized;

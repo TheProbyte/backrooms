@@ -28,7 +28,8 @@ namespace Backrooms.Interaction
         // Rest-pose axes (local to each segment): along the bone, and the "back" (watch / back of the hand) side.
         Vector3 _upperAxis, _upperBack, _foreAxis, _foreBack, _handFingers, _handBack;
         Vector3 _wristToGrip;                              // grip point in the hand's frame (fingers, back, side)
-        readonly List<(Transform t, Quaternion rest, Vector3 axis, float weight)> _fingerJoints = new List<(Transform, Quaternion, Vector3, float)>();
+        readonly List<(Transform t, Quaternion rest, Vector3 axis, float weight, string finger)> _fingerJoints = new List<(Transform, Quaternion, Vector3, float, string)>();
+        Vector3 _wristToTip;                               // index fingertip in the hand's frame (side, back, fingers)
         Vector3 _thighAxisL, _thighAxisR;
         Quaternion _thighRestL, _thighRestR, _shinRestL, _shinRestR, _torsoRest;
         Vector3 _legSwingAxisL, _legSwingAxisR, _shinAxisL, _shinAxisR, _torsoBendAxis;
@@ -140,6 +141,14 @@ namespace Backrooms.Interaction
             float palmLen = middle ? Vector3.Dot(middle.position - _hand.position, fingersW) : 0.1f;
             _wristToGrip = new Vector3(0f, -0.018f, palmLen * 0.78f);     // (side, back, fingers)
 
+            var ix2 = Find(_arm, "Index2"); var ix3 = Find(_arm, "Index3");
+            if (ix2 && ix3)
+            {
+                Vector3 tipW = ix3.position + (ix3.position - ix2.position).normalized * (Vector3.Distance(ix2.position, ix3.position) * 0.9f);
+                Vector3 d = tipW - _hand.position, sideRest = Vector3.Cross(backW, fingersW).normalized;
+                _wristToTip = new Vector3(Vector3.Dot(d, sideRest), Vector3.Dot(d, backW), Vector3.Dot(d, fingersW));
+            }
+
             // Thumb rest pose: out to the side, forward, and down toward the palm (the exported model has it
             // pointing up and out). Set here so it does not depend on the FBX axis conversion.
             Vector3 sideW = Vector3.Cross(backW, fingersW).normalized;
@@ -160,7 +169,7 @@ namespace Backrooms.Interaction
                     var t = Find(_arm, name + i);
                     if (!t) continue;
                     float w = name == "Thumb" ? (i == 1 ? 0.2f : 0.5f) : i == 1 ? 1f : i == 2 ? 1.25f : 0.8f;
-                    _fingerJoints.Add((t, t.localRotation, t.InverseTransformDirection(bendW), w));
+                    _fingerJoints.Add((t, t.localRotation, t.InverseTransformDirection(bendW), w, name));
                 }
         }
 
@@ -183,8 +192,10 @@ namespace Backrooms.Interaction
             // Resting: hanging by the side, out of view. Reaching: palm on the grip.
             Vector3 restWrist = shoulder + yaw * new Vector3(-0.06f, -0.52f, 0.12f);
             Quaternion restHand = yaw * Quaternion.LookRotation(Vector3.down * 0.9f + Vector3.forward * 0.3f, Vector3.left);
-            Quaternion gripHand = _grab.HandRotation;
-            Vector3 gripWrist = _grab.HandPosition - gripHand * new Vector3(_wristToGrip.x, _wristToGrip.y, _wristToGrip.z);
+            bool poke = _grab.PokePose;
+            Quaternion gripHand = poke ? _grab.PokeRotation : _grab.HandRotation;
+            Vector3 gripWrist = poke ? _grab.PokeTip - gripHand * _wristToTip
+                                     : _grab.HandPosition - gripHand * new Vector3(_wristToGrip.x, _wristToGrip.y, _wristToGrip.z);
             float s = Mathf.SmoothStep(0f, 1f, blend);
             Vector3 wrist = Vector3.Lerp(restWrist, gripWrist, s);
             Quaternion handRot = Quaternion.Slerp(restHand, gripHand, s);
@@ -212,8 +223,13 @@ namespace Backrooms.Interaction
             _hand.position = wristAt;
 
             float curl = _grab ? _grab.HandCurl : 0.2f;
-            foreach (var (t, rest, axis, w) in _fingerJoints)
-                t.localRotation = rest * Quaternion.AngleAxis(curl * 62f * w, axis);
+            float pointing = _grab ? _grab.PokeIndex : 0f;
+            foreach (var (t, rest, axis, w, finger) in _fingerJoints)
+            {
+                // Pointing: the index finger straight out, the other fingers and the thumb curled in.
+                float c = finger == "Index" ? Mathf.Lerp(curl, -0.05f, pointing) : Mathf.Lerp(curl, finger == "Thumb" ? 0.6f : 1.2f, pointing);
+                t.localRotation = rest * Quaternion.AngleAxis(c * 62f * w, axis);
+            }
         }
 
         /// <summary>Rotates a segment so its bone axis points along <paramref name="along"/> with its back toward <paramref name="back"/>.</summary>

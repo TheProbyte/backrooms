@@ -118,7 +118,7 @@ namespace Backrooms.Generation
 
         public static LandmarkRules Atrium() => new LandmarkRules
         {
-            name = "Atrium", kind = LandmarkKind.Atrium, width = 12, depth = 12, chance = 0.35f, weight = 1f, storeys = 2,
+            name = "Atrium", kind = LandmarkKind.Atrium, width = 16, depth = 12, chance = 0.35f, weight = 1f, storeys = 2,
             biomes = new List<string> { "Offices" },
         };
     }
@@ -129,7 +129,11 @@ namespace Backrooms.Generation
         public string name;
         public LandmarkKind kind;
         public Vector2Int district;   // district (x, z)
-        public RectInt rect;          // district-local cells
+        public RectInt rect;          // district-local cells (the whole reserved area, atrium plus its annex)
+        public RectInt core;          // atrium only: the atrium proper (ring and well); equals rect when there is no annex
+        public RectInt annex;         // atrium only: the stairs / elevator wing along one side of the core (width 0 if none)
+        public int side;              // which side of the core the annex is on: 0 south, 1 north, 2 west, 3 east
+        public int connectors;        // AtriumAnnex.Stairs | AtriumAnnex.Elevator
         public int storeys;           // spans storeys 0 .. storeys - 1
         public int seed;              // for the landmark's own dice
         public RectInt WorldCells => new RectInt(district.x * WorldGenSettings.DistrictCells + rect.x, district.y * WorldGenSettings.DistrictCells + rect.y, rect.width, rect.height);

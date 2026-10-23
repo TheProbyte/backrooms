@@ -135,8 +135,9 @@ namespace Backrooms.Tests
             }
             Assert.IsTrue(found, "no atrium near the origin");
             var occ = LightGridMath.FromWorld(gen);
-            var c = p.WorldCells;
-            var light = new Vector3((c.x + c.width * 0.5f) * C, Pitch + 2.6f, (c.y + c.height * 0.5f) * C);
+            var core = p.core.width > 0 ? p.core : p.rect;
+            float cx = p.district.x * WorldGenSettings.DistrictCells + core.x + core.width * 0.5f, cz = p.district.y * WorldGenSettings.DistrictCells + core.y + core.height * 0.5f;
+            var light = new Vector3(cx * C, Pitch + 2.6f, cz * C);
             // Floor and the wall face of the well, every point on the well's side of the ring: all in view of a lamp hung from the top.
             for (float dx = -3.6f; dx <= 3.6f; dx += 1.2f)
             for (float dz = -3.6f; dz <= 3.6f; dz += 1.2f)

@@ -32,13 +32,15 @@ namespace Backrooms.Generation
         public string landmark;       // name of the landmark this room belongs to, if any
         public bool openAbove;        // continues into the storey above (no ceiling here; walls stop at the storey top)
         public bool noFloor;          // upper part of a volume from the storey below (no floor, no fixtures)
+        public bool noDoors;          // no random doors (stair halls and elevator shafts get their doors from their landmark)
+        public AnnexRole role;        // stair hall, shaft ... (see AtriumAnnex)
         public bool Walkable => kind != RoomKind.Crawl;
         public bool Tall => ceiling > OfficeBiome.CeilingHeight + 0.01f;
 
         public Room CloneFor(int newId, RectInt newRect) => new Room
         {
             id = newId, globalId = globalId, rect = newRect, fullRect = fullRect, kind = kind, lights = lights, color = color,
-            ceiling = ceiling, painted = painted, landmark = landmark, openAbove = openAbove, noFloor = noFloor,
+            ceiling = ceiling, painted = painted, landmark = landmark, openAbove = openAbove, noFloor = noFloor, noDoors = noDoors, role = role,
         };
     }
 

@@ -180,6 +180,7 @@ namespace Backrooms.Generation
                 var room = MakeRoom(L, spec.rect, spec.kind);
                 room.ceiling = spec.ceiling; room.painted = spec.painted; room.lights = spec.lights;
                 room.openAbove = spec.openAbove; room.noFloor = spec.noFloor; room.landmark = placements[lm].name;
+                room.noDoors = spec.noDoors; room.role = spec.role;
                 for (int x = spec.rect.xMin; x < spec.rect.xMax; x++)
                 for (int z = spec.rect.yMin; z < spec.rect.yMax; z++)
                     L.flags[x, z] |= (spec.openAbove ? CellFlags.OpenAbove : 0) | (spec.noFloor ? CellFlags.NoFloor : 0);
@@ -435,7 +436,7 @@ namespace Backrooms.Generation
             foreach (var s in shared)
             {
                 Room ra = L.rooms[s.a], rb = L.rooms[s.b];
-                if (!ra.Walkable || !rb.Walkable) continue;
+                if (!ra.Walkable || !rb.Walkable || ra.noDoors || rb.noDoors) continue;      // stair halls and shafts only get their landmark's doors
                 bool joined = Find(s.a) != Find(s.b);
                 var R = L.RulesAt(ra.rect);
                 bool loop = !joined && rng.NextDouble() < R.loopChance;
@@ -479,11 +480,11 @@ namespace Backrooms.Generation
                 for (int x = 0; x < L.N; x++)
                 for (int z = 0; z < L.N; z++)
                 {
-                    if (!reached[x, z] || !L.RoomAt(x, z).Walkable) continue;
+                    if (!reached[x, z] || !L.RoomAt(x, z).Walkable || L.RoomAt(x, z).noDoors) continue;
                     for (int side = 0; side < 4; side++)
                     {
                         int nx = x + (side == 0 ? -1 : side == 1 ? 1 : 0), nz = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
-                        if (!L.InChunk(nx, nz) || reached[nx, nz] || !L.RoomAt(nx, nz).Walkable) continue;
+                        if (!L.InChunk(nx, nz) || reached[nx, nz] || !L.RoomAt(nx, nz).Walkable || L.RoomAt(nx, nz).noDoors) continue;
                         if (L.EdgeOf(x, z, side) == EdgeKind.Wall) candidates.Add((x, z, side));
                     }
                 }
@@ -676,7 +677,7 @@ namespace Backrooms.Generation
         {
             foreach (var r in L.rooms)
             {
-                if (r.kind == RoomKind.Crawl || r.noFloor) continue;      // a well's light belongs to the storey below
+                if (r.kind == RoomKind.Crawl || r.noFloor || r.role != AnnexRole.None) continue;      // a well's light belongs to the storey below; stair halls and shafts light themselves
                 var R = L.RulesAt(r.rect);
                 // Troffers every 2 cells (2.4 m); tall rooms use brighter fittings every 3 cells (3.6 m).
                 int step = r.Tall ? 3 : 2;
@@ -1021,10 +1022,16 @@ namespace Backrooms.Generation
             for (int z = 0; z < L.N; z++)
             {
                 var room = L.RoomAt(x, z);
-                if (room.kind == RoomKind.Crawl || room.noFloor) continue;
+                if (room.kind == RoomKind.Crawl || room.noFloor || room.role != AnnexRole.None) continue;
                 for (int side = 0; side < 4; side++)
                 {
                     var e = L.EdgeOf(x, z, side);
+                    if (e != EdgeKind.Wall)
+                    {
+                        // No outlets or switches beside an elevator or stair door (the call button goes there).
+                        int ax = x + (side == 0 ? -1 : side == 1 ? 1 : 0), az = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
+                        if (L.InChunk(ax, az) && L.RoomAt(ax, az).role != AnnexRole.None) continue;
+                    }
                     if (e == EdgeKind.Wall && rng.NextDouble() < L.RulesAt(x, z).outletChance)
                         L.plates.Add(new WallPlate { cell = new Vector2Int(x, z), side = side, t = 0.2f + (float)rng.NextDouble() * 0.6f, height = 0.3f, roomColor = room.color });
                     else if ((e == EdgeKind.Door || e == EdgeKind.DoorHeader) && rng.NextDouble() < 0.35)

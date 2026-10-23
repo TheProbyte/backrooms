@@ -39,7 +39,35 @@ multi-storey landmarks agree between storeys. Two exist:
 - **Colonnade hall** (test landmark): tall painted hall, two rows of columns, arched doorways mid-side.
 - **Atrium** (the multi-storey test volume): a two-cell arcade ring around a lightwell. Storey 0's well
   rises to storey 1's ceiling (cells flagged `OpenAbove`); storey 1 has a railed balcony and a void
-  (`NoFloor`). The well's dome lights hang at storey 1's ceiling and belong to storey 0.
+  (`NoFloor`). The well's dome lights hang at storey 1's ceiling and belong to storey 0. The atrium has a
+  **wing** (below) so the upper storey can be reached.
+
+#### Stairs and elevator (the atrium wing)
+`AtriumAnnex` (one file; see its header for the local frame) describes a strip 5 cells deep along one side of
+the atrium core, as long as the stairs need (the core grows to at least 16 cells on that side). The placement
+rolls which connector(s): stairs (40 %), elevator (40 %), both (20 %), and which side (`LandmarkPlacement.core`,
+`.annex`, `.side`, `.connectors`; `.rect` is the whole reserved area). Rooms of the wing come first in the
+landmark's room list, the ring and well are the last five.
+- **Band S** (2 deep): the stair hall (a `Hallway` with role `StairHall`, `openAbove`, ceiling = storey pitch +
+  2.7, no random doors) and the closet under the landing; upstairs a floorless `StairVoid` and the landing.
+  Without stairs: one filler office.
+- **Band N** (3 deep): the elevator lobby and the shaft (2 x 3 cells, role `ShaftGround` / `ShaftUpper`, a hole
+  through both storeys, door in the middle of the lobby side), or one filler room. Doors to the atrium's ring
+  at u = 3 and 9; the stair hall's door from the lobby at u = 0; the top step opens onto the landing, which
+  has a door to the lobby.
+- `Room.noDoors` keeps random doors out of stair halls and shafts (`ConnectRooms`, `EnsureConnected`).
+- **Stairs** (`OfficeChunkBuilder.Annex.cs`): 49 steps of about 0.18 m rise and 0.28 m tread after a flat
+  1.8 m entry, built per cell so each chunk makes its own part; visual boxes plus one collider per step;
+  handrails on both walls; the hall's ceiling slopes with the stairs and meets the upper storey's ceiling at
+  the top (headroom always above 2.4 m). Hall lights are strip battens hung from the slope.
+  `EdgeFaces` now also builds Wall faces for `noFloor` rooms (a void with walls, not a railed well).
+- **Elevator**: `ElevatorSystem` (Interaction/) is built at runtime in the chunk that owns the shaft: cab,
+  hoistway doors on both floors, call buttons, a button in the cab, a cab light. Smooth-stepped travel
+  (9 s), doors 1.4 s; stepping in and staying 1.8 s sends it to the other floor; doors never close on a
+  person in the doorway; the cab's floor survives chunk unloads. The player rides it through
+  `CamcorderPlayerController.platformMotion`.
+- World version 7. Tests: `AtriumAnnexTests` (every atrium has a way up, flood fills inside the landmark;
+  stair numbers).
 
 ### Districts
 1. **Edge contracts**: each chunk-length segment of a district edge gets 1-3 openings (some 2 wide, some

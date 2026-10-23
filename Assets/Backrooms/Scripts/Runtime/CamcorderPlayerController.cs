@@ -114,6 +114,8 @@ namespace Backrooms
         [System.NonSerialized] public float stoop;
         /// <summary>True when the game window has the mouse and keys this frame.</summary>
         public bool HasFocus { get; private set; }
+        /// <summary>Movement carried over from the thing the player stands on this frame (an elevator cab); applied once.</summary>
+        [System.NonSerialized] public Vector3 platformMotion;
 
         /// <summary>Turns the view by the given degrees (yaw right, pitch down), as mouse look would.</summary>
         public void AddLook(float yaw, float pitch)
@@ -245,12 +247,17 @@ namespace Backrooms
             if (!_controller.isGrounded) rate *= 0.3f;                    // little control in the air
             PlanarVelocity = Vector3.MoveTowards(PlanarVelocity, target, rate * Mathf.Max(targetSpeed, 1f) * Time.deltaTime);
 
+            if (platformMotion != Vector3.zero) { _controller.Move(platformMotion); platformMotion = Vector3.zero; }
             UpdateJump(keyboard, hasFocus);
             if (_controller.isGrounded && _verticalVelocity < 0f) _verticalVelocity = -2f;
             _verticalVelocity += gravity * Time.deltaTime;
 
             Vector3 motion = PlanarVelocity + Vector3.up * _verticalVelocity;
+            bool wasGrounded = _controller.isGrounded;
             CollisionFlags flags = _controller.Move(motion * Time.deltaTime);
+            // Walking down stairs: the controller does not step down by itself, so it would drop onto each tread and
+            // dip and thud like a landing. If the ground was under us and a short way below is more, stay on it.
+            if (wasGrounded && !_controller.isGrounded && _verticalVelocity <= 0f && SnapToGround(0.32f)) _verticalVelocity = -2f;
 
             // Bleed off velocity into walls so the player doesn't "stick" to them.
             if ((flags & CollisionFlags.Sides) != 0)
@@ -271,6 +278,18 @@ namespace Backrooms
             }
             if (grounded) _airMinVy = 0f;
             _wasGrounded = grounded;
+        }
+
+        bool SnapToGround(float maxDrop)
+        {
+            float r = _controller.radius * 0.9f;
+            var origin = transform.position + Vector3.up * (r + _controller.skinWidth + 0.05f);
+            if (!Physics.SphereCast(origin, r, Vector3.down, out var hit, maxDrop + 0.05f + _controller.skinWidth, ~0, QueryTriggerInteraction.Ignore)) return false;
+            if (hit.collider.transform.IsChildOf(transform) || hit.normal.y < 0.5f) return false;
+            float drop = hit.distance - 0.05f;
+            if (drop <= 0.001f) return false;
+            _controller.Move(Vector3.down * drop);
+            return _controller.isGrounded;
         }
 
         // ---------------- Stances ----------------
