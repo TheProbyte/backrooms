@@ -725,6 +725,7 @@ namespace Backrooms.Generation
                     int runs = rng.Next(0, Mathf.RoundToInt(R.halfWalls) + 1);
                     for (int i = 0; i < runs; i++) TryHalfWall(L, rng, r);
                     if (racks) PlaceRacks(L, rng, r);
+                    if (r.Tall && rng.NextDouble() < 0.75) PlacePallets(L, rng, r);
                 }
                 else if ((r.kind == RoomKind.Office) && rc.width >= 4 && rc.height >= 4)
                 {
@@ -739,6 +740,36 @@ namespace Backrooms.Generation
         /// Warehouse storage: rows of racks along X, one cell deep, with two-cell aisles between rows and a
         /// cross aisle every few racks, kept one cell clear of the walls and away from pillars. Aisles keep
         /// the room fully walkable.
+
+        /// <summary>
+        /// Loaded wooden pallets standing against the walls of a tall hall (the ring of cells around the
+        /// racks), long side along the wall. Kept clear of doors, pillars and each other.
+        /// </summary>
+        static void PlacePallets(OfficeLayout L, System.Random rng, Room r)
+        {
+            var rc = r.rect;
+            float C = OfficeBiome.CellSize;
+            int want = rng.Next(1, 5);
+            var used = new List<Vector2>();
+            for (int attempt = 0; attempt < 24 && used.Count < want; attempt++)
+            {
+                int x = rng.Next(rc.xMin, rc.xMax), z = rng.Next(rc.yMin, rc.yMax), side = rng.Next(4);
+                if (L.EdgeOf(x, z, side) != EdgeKind.Wall || CellHasDoor(L, x, z) || NearPillarOrHalfWall(L, x, z)) continue;
+                var centre = new Vector2((x + 0.5f) * C, (z + 0.5f) * C);
+                bool clear = true;
+                foreach (var u in used) if ((u - centre).sqrMagnitude < 2.6f * 2.6f) { clear = false; break; }
+                foreach (var p in L.props) if (p.kind != PropKind.WallClock && (p.position - centre).sqrMagnitude < 2.0f * 2.0f) { clear = false; break; }
+                if (!clear) continue;
+                // Backed against the wall, long side (1.2 m) along it.
+                var inward = side == 0 ? Vector2.right : side == 1 ? Vector2.left : side == 2 ? Vector2.up : Vector2.down;
+                var wall = centre - inward * C * 0.5f;
+                float gap = OfficeBiome.WallThickness * 0.5f + 0.5f + 0.03f + (float)rng.NextDouble() * 0.08f;
+                var pos = wall + inward * gap;
+                float yaw = (side >= 2 ? 0f : 90f) + (float)(rng.NextDouble() - 0.5) * 6f;
+                L.props.Add(new Prop { kind = PropKind.Pallet, position = pos, yaw = yaw, size = new Vector3(1.2f, 1.6f, 1.0f), variant = rng.Next(1 << 16), roomColor = r.color });
+                used.Add(centre);
+            }
+        }
         /// </summary>
         static void PlaceRacks(OfficeLayout L, System.Random rng, Room r)
         {

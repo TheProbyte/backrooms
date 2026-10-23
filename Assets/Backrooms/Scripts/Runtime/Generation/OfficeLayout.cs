@@ -63,7 +63,7 @@ namespace Backrooms.Generation
     /// <summary>Electrical plate on a wall face. Face is the cell side the plate is visible from.</summary>
     public struct WallPlate { public Vector2Int cell; public int side; public float t; public float height; public bool isSwitch; public int roomColor; }
 
-    public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock, StorageRack, Box }
+    public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock, StorageRack, Box, Pallet }
     public struct Prop
     {
         public PropKind kind;

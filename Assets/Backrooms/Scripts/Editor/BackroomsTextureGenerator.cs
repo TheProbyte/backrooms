@@ -1,5 +1,6 @@
 using System.IO;
 using UnityEditor;
+using Backrooms.Generation;
 using UnityEngine;
 
 namespace Backrooms.EditorTools
@@ -39,6 +40,9 @@ namespace Backrooms.EditorTools
             Fabric();
             Wood();
             Plaster();
+            Cardboard();
+            BoxPrint();
+            RackUpright();
             AssetDatabase.Refresh();
         }
 
@@ -306,6 +310,141 @@ namespace Backrooms.EditorTools
             Save("CeilingTile_Normal", S, S, NormalFromHeight(height, S, S, 2.2f), false, true);
         }
 
+
+        // ---------- Warehouse dressing: corrugated cardboard, box print atlas, perforated steel upright ----------
+
+        /// <summary>Only the warehouse textures (Cardboard, BoxPrint atlas, RackUpright).</summary>
+        public static void GenerateWarehouse()
+        {
+            Directory.CreateDirectory(Folder);
+            Cardboard();
+            BoxPrint();
+            RackUpright();
+            AssetDatabase.Refresh();
+        }
+
+        /// <summary>Kraft cardboard, 0.5 m per repeat: vertical corrugation flutes, paper fibres, mottling, a few stains.</summary>
+        static void Cardboard()
+        {
+            const int S = 512;
+            var albedo = new Color[S * S];
+            var height = new float[S * S];
+            for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float u = x / (float)S, v = y / (float)S;
+                float flute = 0.5f + 0.5f * Mathf.Sin(x * Mathf.PI * 2f / 8f);                    // 8 px per flute, tiles (512 / 8)
+                float fibre = VNoise(u * 220, v * 40, 220, 40, 301) * 0.6f + VNoise(u * 90, v * 90, 90, 90, 307) * 0.4f;
+                float mottle = Fbm(u, v, 4, 5, 311);
+                float stain = Mathf.SmoothStep(0.64f, 0.8f, Fbm(u, v, 3, 4, 317));
+                float g = 1f + (flute - 0.5f) * 0.07f + (fibre - 0.5f) * 0.12f + (mottle - 0.5f) * 0.16f - stain * 0.16f;
+                var c = new Color(0.64f, 0.49f, 0.31f) * g;
+                c.a = 1f;
+                albedo[y * S + x] = c;
+                height[y * S + x] = flute * 0.45f + fibre * 0.4f + mottle * 0.15f;
+            }
+            Save("Cardboard_Albedo", S, S, albedo, true);
+            Save("Cardboard_Normal", S, S, NormalFromHeight(height, S, S, 1.4f), false, true);
+        }
+
+        /// <summary>
+        /// Prints for boxes (cut out where there is no ink): shipping label, address label, "this side up" arrows,
+        /// a red FRAGILE stamp, a maker mark and the dark gap between top flaps. Layout: BoxPrintAtlas.
+        /// </summary>
+        static void BoxPrint()
+        {
+            const int W = 1024, H = 512;
+            var px = new Color[W * H];                                   // all transparent
+            void Fill(Rect r, Color c)
+            {
+                int x0 = Mathf.RoundToInt(r.xMin * W), x1 = Mathf.RoundToInt(r.xMax * W), y0 = Mathf.RoundToInt(r.yMin * H), y1 = Mathf.RoundToInt(r.yMax * H);
+                for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) px[y * W + x] = c;
+            }
+            Rect Sub(Rect r, float fx, float fy, float fw, float fh) => new Rect(r.xMin + r.width * fx, r.yMin + r.height * fy, r.width * fw, r.height * fh);
+            var paper = new Color(0.9f, 0.89f, 0.84f, 1f); var ink = new Color(0.07f, 0.06f, 0.05f, 1f);
+            var rng = new System.Random(77);
+
+            // Shipping label: border, logo bar, text lines, barcode, a code square.
+            var L = BoxPrintAtlas.ShippingLabel;
+            Fill(L, new Color(0.45f, 0.43f, 0.4f, 1f));
+            Fill(Sub(L, 0.015f, 0.025f, 0.97f, 0.95f), paper);
+            Fill(Sub(L, 0.05f, 0.76f, 0.9f, 0.16f), ink);
+            for (int i = 0; i < 4; i++) Fill(Sub(L, 0.05f, 0.58f - i * 0.085f, (0.45f + (float)rng.NextDouble() * 0.5f) * 0.9f, 0.035f), new Color(0.25f, 0.24f, 0.22f, 1f));
+            float bx = 0.05f;
+            while (bx < 0.62f)
+            {
+                float bw = 0.008f + (float)rng.NextDouble() * 0.024f;
+                Fill(Sub(L, bx, 0.06f, bw, 0.22f), ink);
+                bx += bw + 0.008f + (float)rng.NextDouble() * 0.02f;
+            }
+            for (int i = 0; i < 6; i++) for (int j = 0; j < 4; j++) if (rng.NextDouble() < 0.5) Fill(Sub(L, 0.7f + i * 0.045f, 0.06f + j * 0.055f, 0.04f, 0.05f), ink);
+
+            // Address label: border and text lines.
+            var A = BoxPrintAtlas.AddressLabel;
+            Fill(A, new Color(0.5f, 0.47f, 0.42f, 1f));
+            Fill(Sub(A, 0.02f, 0.03f, 0.96f, 0.94f), paper);
+            for (int i = 0; i < 6; i++) Fill(Sub(A, 0.08f, 0.82f - i * 0.12f, (0.3f + (float)rng.NextDouble() * 0.6f) * 0.85f, 0.05f), new Color(0.25f, 0.24f, 0.22f, 1f));
+
+            // This side up: two arrows (stem + head) in ink.
+            var T = BoxPrintAtlas.ThisSideUp;
+            foreach (float cx in new[] { 0.28f, 0.72f })
+            {
+                Fill(Sub(T, cx - 0.07f, 0.12f, 0.14f, 0.5f), ink);                      // stem
+                for (int k = 0; k < 14; k++)                                              // head (stacked shrinking bars)
+                    Fill(Sub(T, cx - 0.22f * (1f - k / 14f), 0.62f + k * 0.0185f, 0.44f * (1f - k / 14f), 0.0185f), ink);
+            }
+            Fill(Sub(T, 0.1f, 0.02f, 0.8f, 0.05f), ink);
+
+            // Fragile stamp: red frame, bars standing in for lettering.
+            var F = BoxPrintAtlas.Fragile; var red = new Color(0.72f, 0.1f, 0.08f, 1f);
+            Fill(F, red);
+            Fill(Sub(F, 0.05f, 0.1f, 0.9f, 0.8f), new Color(0, 0, 0, 0));
+            for (int i = 0; i < 7; i++) Fill(Sub(F, 0.14f + i * 0.11f, 0.3f, 0.06f, 0.4f), red);
+
+            // Maker mark: a ring with a bar underneath.
+            var M = BoxPrintAtlas.Logo;
+            int mx0 = Mathf.RoundToInt(M.xMin * W), my0 = Mathf.RoundToInt(M.yMin * H), mw = Mathf.RoundToInt(M.width * W), mh = Mathf.RoundToInt(M.height * H);
+            for (int y = 0; y < mh; y++) for (int x = 0; x < mw; x++)
+            {
+                float dx = (x - mw * 0.5f) / (mw * 0.5f), dy = (y - mh * 0.62f) / (mw * 0.5f);
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                if ((d < 0.88f && d > 0.62f) || (y > mh * 0.08f && y < mh * 0.2f && x > mw * 0.1f && x < mw * 0.9f)) px[(my0 + y) * W + mx0 + x] = new Color(0.12f, 0.1f, 0.08f, 1f);
+            }
+
+            Fill(BoxPrintAtlas.SeamLine, new Color(0.2f, 0.14f, 0.08f, 1f));
+
+            Save("BoxPrint_Atlas", W, H, px, true);
+            var imp = (TextureImporter)AssetImporter.GetAtPath(Folder + "/BoxPrint_Atlas.png");
+            imp.alphaIsTransparency = true; imp.wrapMode = TextureWrapMode.Clamp; imp.SaveAndReimport();
+        }
+
+        /// <summary>
+        /// Perforated steel upright face: blue paint, a column of slots. One repeat: u across the face, v over 0.5 m
+        /// (ten slots), so the rack geometry maps it with explicit UVs.
+        /// </summary>
+        static void RackUpright()
+        {
+            const int Wd = 128, Ht = 512;
+            var albedo = new Color[Wd * Ht];
+            var height = new float[Wd * Ht];
+            for (int y = 0; y < Ht; y++)
+            for (int x = 0; x < Wd; x++)
+            {
+                float u = x / (float)Wd, v = y / (float)Ht;
+                float cell = (v * 10f) % 1f;
+                bool slot = u > 0.26f && u < 0.74f && cell > 0.22f && cell < 0.72f;
+                float wear = Fbm(u, v, 4, 5, 331);
+                float chip = Mathf.SmoothStep(0.7f, 0.85f, Fbm(u, v * 4f, 6, 4, 337));
+                var paint = Color.Lerp(new Color(0.10f, 0.24f, 0.47f), new Color(0.07f, 0.17f, 0.34f), wear);
+                paint = Color.Lerp(paint, new Color(0.30f, 0.30f, 0.29f), chip * 0.5f);       // paint chipped down to steel
+                var c = slot ? new Color(0.015f, 0.015f, 0.015f) : paint;
+                c.a = 1f;
+                albedo[y * Wd + x] = c;
+                height[y * Wd + x] = slot ? 0f : 1f;
+            }
+            Save("RackUpright_Albedo", Wd, Ht, albedo, true);
+            Save("RackUpright_Normal", Wd, Ht, NormalFromHeight(height, Wd, Ht, 3.5f), false, true);
+        }
         // ---------- Helpers ----------
         static float Hash(int x, int y, int seed)
         {

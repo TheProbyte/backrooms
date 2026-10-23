@@ -12,6 +12,8 @@ namespace Backrooms.Generation
         public Material[] sofaFabrics;
         public Material wood, laminate, chairFabric, lampMetal, lampShadeOn, lampShadeOff;
         public Material paintedWall, ceilingPlaster, domeOn, domeOff, cardboard, stripOn, stripOff;
+        [Header("Warehouse dressing (rack steel, pallets, cardboard boxes)")]
+        public Material rackUpright, rackBeam, boxTape, boxPrint, pallet;
 
         [Header("Blender-built props (Tools/Blender/build_props.py)")]
         [Tooltip("Sofas: [model * fabricCount + fabric]. Models: chesterfield, modern.")]

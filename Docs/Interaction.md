@@ -51,3 +51,10 @@ chunk unloads and checks the prop comes back where it was left.
 - Creatures moving things while you are away (the manager's records are the place for it).
 - Two-handed carrying, throwing, stacking aids, item pickups (inventory).
 - Per-finger contact: fingers curl by a set amount and can sink into thin edges.
+
+## Cardboard boxes
+Loose boxes (and the boxes on racks and pallets) share one generator, `CardboardBoxGeometry`: bevelled edges
+with smooth normals, a taped top seam wrapping down the ends (most boxes; the rest show the flap gap),
+shipping and address labels, "this side up" arrows, a FRAGILE stamp and a maker mark from the print atlas
+(`BoxPrintAtlas` lists where each sits on `Textures/BoxPrint_Atlas.png`). Three materials: corrugated board
+(`M_Cardboard`, 0.5 m repeat, flutes in the normal map), tape (`M_BoxTape`) and print (`M_BoxPrint`, cutout).

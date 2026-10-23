@@ -1,3 +1,4 @@
+using Backrooms.Generation;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -74,6 +75,9 @@ namespace Backrooms.Interaction
                 }
             }
 
+            var builtMeshes = new System.Collections.Generic.List<Mesh>();
+            if (spec.cardboard && spec.materials != null) BuildCardboard(root, spec, builtMeshes);
+
             var shape = MovableShapes.Build(spec, root);
             var mat = shape.rolls ? Rolling : Sliding(shape.friction);
             foreach (var (c, s) in shape.boxes)
@@ -109,6 +113,7 @@ namespace Backrooms.Interaction
             root.transform.SetPositionAndRotation(position, rotation);
             var mp = root.AddComponent<MovableProp>();
             mp.Spec = spec; mp.Shape = shape; mp.Body = rb;
+            mp._ownedMeshes = builtMeshes;
             mp._lastGoodPos = position; mp._lastGoodRot = rotation;
             return mp;
         }
@@ -124,6 +129,38 @@ namespace Backrooms.Interaction
             if (!_sliding.TryGetValue(f, out var m) || !m)
                 _sliding[f] = m = new PhysicsMaterial("Furniture") { dynamicFriction = f, staticFriction = f * 1.2f, bounciness = 0.02f, frictionCombine = PhysicsMaterialCombine.Minimum };
             return m;
+        }
+
+        System.Collections.Generic.List<Mesh> _ownedMeshes;
+
+        void OnDestroy()
+        {
+            if (_ownedMeshes != null) foreach (var m in _ownedMeshes) if (m) Destroy(m);
+        }
+
+        /// <summary>Builds the box visuals (board, tape, print) as three child meshes.</summary>
+        static void BuildCardboard(GameObject root, MovableSpec spec, System.Collections.Generic.List<Mesh> meshes)
+        {
+            var board = new MeshWriter { worldOffset = spec.position };
+            var tape = new MeshWriter { worldOffset = spec.position };
+            var print = new MeshWriter { worldOffset = spec.position };
+            CardboardBoxGeometry.Build(board, tape, print, Vector3.zero, spec.size, 0f, new System.Random(spec.variant));
+            var writers = new[] { board, tape, print };
+            for (int i = 0; i < 3; i++)
+            {
+                if (writers[i].VertexCount == 0) continue;
+                var go = new GameObject("Box" + i);
+                go.transform.SetParent(root.transform, false);
+                var mesh = writers[i].ToMesh("Carton" + i);
+                meshes.Add(mesh);
+                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var r = go.AddComponent<MeshRenderer>();
+                r.sharedMaterial = spec.materials[Mathf.Min(i, spec.materials.Length - 1)];
+                r.renderingLayerMask = spec.renderMask;
+                r.shadowCastingMode = ShadowCastingMode.Off;
+                r.lightProbeUsage = LightProbeUsage.Off;
+                r.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            }
         }
 
         /// <summary>Starts simulating (and marks the prop as moved, so its pose is saved from now on).</summary>

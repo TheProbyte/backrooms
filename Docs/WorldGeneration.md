@@ -1,4 +1,4 @@
-# World generation and lighting: how it works (world version 4)
+# World generation and lighting: how it works (world version 6)
 
 Everything is built from **(seed, settings, game version)** by fixed rules. Every layer depends only on the
 layers above it, never on what was generated before, so any part of the world can be generated in any
@@ -56,6 +56,13 @@ multi-storey landmarks agree between storeys. Two exist:
 6. **Light colours** (rendering layers, used by room-layer lighting): zones near the district edge take
    one of 7 colours from the district's parity set (4 sets, so neighbouring districts never share one);
    zones deeper than any light's reach use any of the 28.
+
+### Warehouse dressing (tall halls)
+Storage racks are steel pallet racking: slotted blue uprights (`RackUpright` texture), orange box beams, deck
+boards, end bracing and base plates, loaded shelf by shelf with matching or mixed cartons (some stacked, some
+gaps). Wooden pallets with stacked cartons stand against the walls (`PlacePallets`, new in world version 6).
+Code: `OfficeChunkBuilder.Warehouse.cs`, `CardboardBoxGeometry.cs`. Racks, boxes and pallets cast shadows through
+a few proxy boxes, not their detailed meshes.
 
 ### Chunks and storeys
 A chunk is cut from its district: clipped room rectangles with the district room id (`globalId`),

@@ -228,7 +228,17 @@ namespace Backrooms.EditorTools
             a.ceilingPlaster.SetTextureScale("_BaseMap", new Vector2(1f / 2.4f, 1f / 2.4f));
             // Scanned CC0 textures are off (owner preferred the original look); set to true to try them again.
             if (UseScannedTextures) ApplyScannedTextures(a);
-            a.cardboard = Lit("M_Cardboard", new Color(0.72f, 0.52f, 0.32f), Tex("Wood_Albedo"), null, 0.08f);
+            // Warehouse dressing: corrugated cardboard (0.5 m per repeat), taped seams, printed labels, blue slotted
+            // rack uprights with orange beams, pale pallet wood.
+            a.cardboard = Lit("M_Cardboard", Color.white, Tex("Cardboard_Albedo"), Tex("Cardboard_Normal"), 0.14f, 0.9f);
+            a.cardboard.SetTextureScale("_BaseMap", new Vector2(2f, 2f)); a.cardboard.SetTextureScale("_BumpMap", new Vector2(2f, 2f));
+            a.boxTape = Lit("M_BoxTape", new Color(0.66f, 0.52f, 0.33f), null, null, 0.72f);
+            a.boxPrint = Lit("M_BoxPrint", Color.white, Tex("BoxPrint_Atlas"), null, 0.18f);
+            a.boxPrint.SetFloat("_AlphaClip", 1f); a.boxPrint.SetFloat("_Cutoff", 0.5f); a.boxPrint.EnableKeyword("_ALPHATEST_ON"); a.boxPrint.renderQueue = 2450;
+            a.rackUpright = Lit("M_RackUpright", Color.white, Tex("RackUpright_Albedo"), Tex("RackUpright_Normal"), 0.42f, 1f); a.rackUpright.SetFloat("_Metallic", 0.35f);
+            a.rackBeam = Lit("M_RackBeam", new Color(0.78f, 0.32f, 0.07f), null, null, 0.45f); a.rackBeam.SetFloat("_Metallic", 0.3f);
+            a.pallet = Lit("M_Pallet", new Color(0.66f, 0.56f, 0.4f), Tex("Wood_Albedo"), null, 0.18f);
+            foreach (var m in new[] { a.cardboard, a.boxTape, a.boxPrint, a.rackUpright, a.rackBeam, a.pallet }) EditorUtility.SetDirty(m);
             CreatePropPrefabs(a);
             UseProjectLitShader();
             EditorUtility.SetDirty(a);

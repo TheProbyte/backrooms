@@ -5,7 +5,7 @@
 Last updated 2026-10-22. Read `Docs/ProjectBrief.md` for the vision and `Docs/WorldGeneration.md` for how
 generation and lighting work now.
 
-## World generation (world version 5)
+## World generation (world version 6)
 
 - Layered: zones (Voronoi, data assets) > biomes (density field per zone) > landmarks (sparse grid) >
   districts (4 x 4 chunks planned at once) > chunk slices (streaming only). See WorldGeneration.md.

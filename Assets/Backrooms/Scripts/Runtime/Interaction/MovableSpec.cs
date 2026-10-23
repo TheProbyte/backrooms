@@ -30,6 +30,8 @@ namespace Backrooms.Interaction
         public Vector3 size;              // kind-specific dimensions (table length/height/depth, box size)
         public int variant;
         public readonly List<Part> parts = new List<Part>();
+        public bool cardboard;            // a cardboard box: the mesh is built at spawn (needs the main thread)
+        public Material[] materials;      // board, tape, print
 
         public Vector3 position;          // world, where the generator put it
         public float yaw;
