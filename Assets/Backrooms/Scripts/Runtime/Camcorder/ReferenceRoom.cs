@@ -36,7 +36,12 @@ namespace Backrooms.Camcorder
         public float recessHalfWidth = 1.6f, recessDepth = 0.3f, supportWidth = 0.45f, supportDepth = 0.18f;
         public float darkBandBottom = 2.05f, darkBandTop = 2.3f;
         [Header("Trim")]
+        [Tooltip("A narrow light trim along the foot of the walls (off: the reference room has none).")]
+        public bool baseboard = false;
         public float trimHeight = 0.075f, trimDepth = 0.012f;
+        [Header("Ceiling")]
+        [Tooltip("Ceiling tile size: the panels are square, one tile each, centred on a tile.")]
+        public float tileSize = 0.6f;
         [Header("Lights")]
         public float panelIntensity = 5.2f, panelRange = 9f, panelSpotAngle = 160f;
         [Tooltip("Inner cone as a fraction of the outer: near 1 spreads a panel's light evenly (no pools on nearby walls).")]
@@ -68,6 +73,7 @@ namespace Backrooms.Camcorder
         };
 
         const string GeneratedName = "Generated";
+        const float CarpetMeters = 3f;   // one repeat of RefCarpet_Albedo (see BackroomsTextureGenerator.RefCarpetMeters)
         const int NX = 1, PX = 2, NY = 4, PY = 8, NZ = 16, PZ = 32;
 
         void OnEnable() { Rebuild(); }
@@ -109,9 +115,9 @@ namespace Backrooms.Camcorder
             MeshWriter W(Material m) { if (!writers.TryGetValue(m, out var w)) writers[m] = w = new MeshWriter(); return w; }
 
             // World-space projections so textures run continuously across surfaces.
-            MeshWriter.UVProjector wallUV = (p, n) => Mathf.Abs(n.x) > 0.5f ? new Vector2(p.z / 1.2f, p.y / 1.2f) : new Vector2(p.x / 1.2f, p.y / 1.2f);
-            MeshWriter.UVProjector floorUV = (p, n) => new Vector2(p.x / 3f, p.z / 3f);
-            MeshWriter.UVProjector ceilUV = (p, n) => new Vector2(p.x / 2.4f, p.z / 2.4f);
+            MeshWriter.UVProjector wallUV = MeshWriter.WallUV;
+            MeshWriter.UVProjector floorUV = (p, n) => new Vector2(p.x / CarpetMeters, p.z / CarpetMeters);
+            MeshWriter.UVProjector ceilUV = (p, n) => new Vector2(p.x / (tileSize * 4f), p.z / (tileSize * 4f));
             MeshWriter.UVProjector flat = (p, n) => Vector2.zero;
 
             void Box(Material m, float x0, float y0, float z0, float x1, float y1, float z1, int mask, MeshWriter.UVProjector uv, bool collide = true)
@@ -132,9 +138,9 @@ namespace Backrooms.Camcorder
                 var s3 = new Vector3(thick, height - y0, len);
                 var rot = Quaternion.Euler(0f, yaw, 0f);
                 var dir = d / len;
-                W(m).Box(c, s3, rot, mask, (p, n) => new Vector2((p.x * dir.x + p.z * dir.y) / 1.2f, p.y / 1.2f));
+                W(m).Box(c, s3, rot, mask, (p, n) => new Vector2((p.x * dir.x + p.z * dir.y) / OfficeBiome.CellSize, p.y / OfficeBiome.CeilingHeight));
                 if (collide) rotated.Add((c, s3, rot));
-                if (y0 > 0f) return;
+                if (y0 > 0f || !baseboard || !trim) return;
                 // narrow light trim along the wall's foot, on its visible side
                 var nrm = new Vector3(dir.y, 0f, -dir.x);
                 var tc = new Vector3(c.x, trimHeight * 0.5f, c.z) + nrm * (thick * 0.5f + trimDepth * 0.5f);
@@ -173,8 +179,9 @@ namespace Backrooms.Camcorder
 
             // Trim: narrow, light, close to the wall colour.
             float th = trimHeight, td = trimDepth;
-            void TrimZ(float xa, float xb, float z, int sign) => Box(trim, xa, 0f, sign < 0 ? z - td : z, xb, th, sign < 0 ? z : z + td, sign < 0 ? NZ | PY | NX | PX : PZ | PY | NX | PX, flat, false);
-            void TrimX(float x, float za, float zb, int sign) => Box(trim, sign < 0 ? x - td : x, 0f, za, sign < 0 ? x : x + td, th, zb, sign < 0 ? NX | PY | NZ | PZ : PX | PY | NZ | PZ, flat, false);
+            if (!baseboard) th = 0f;
+            void TrimZ(float xa, float xb, float z, int sign) { if (th > 0f) Box(trim, xa, 0f, sign < 0 ? z - td : z, xb, th, sign < 0 ? z : z + td, sign < 0 ? NZ | PY | NX | PX : PZ | PY | NX | PX, flat, false); }
+            void TrimX(float x, float za, float zb, int sign) { if (th > 0f) Box(trim, sign < 0 ? x - td : x, 0f, za, sign < 0 ? x : x + td, th, zb, sign < 0 ? NX | PY | NZ | PZ : PX | PY | NZ | PZ, flat, false); }
             TrimZ(-9f, openLeft, z0, -1);
             TrimZ(openRight, returnX0, z0, -1); TrimZ(returnX1, 9f, z0, -1);
             TrimX(returnX0, z0 - returnDepth, z0, -1); TrimX(returnX1, z0 - returnDepth, z0, 1);
@@ -237,9 +244,13 @@ namespace Backrooms.Camcorder
 
         float PanelFactor(float x) => Mathf.Lerp(panelLeftFactor, panelRightFactor, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(-4.5f, 4.5f, x)));
 
+        float SnapToTile(float v) => (Mathf.Floor(v / tileSize) + 0.5f) * tileSize;
+
         void AddPanel(Transform root, Vector2 p, MeshWriter lens, int i, bool back = false)
         {
-            lens.Box(new Vector3(p.x, ceilingHeight - 0.004f, p.y), new Vector3(1.17f, 0.006f, 0.57f), NY | NX | PX | NZ | PZ, MeshWriter.MetreUV);
+            p = new Vector2(SnapToTile(p.x), SnapToTile(p.y));
+            float side = tileSize - 0.02f;
+            lens.Box(new Vector3(p.x, ceilingHeight - 0.004f, p.y), new Vector3(side, 0.006f, side), NY | NX | PX | NZ | PZ, MeshWriter.MetreUV);
             var go = new GameObject("Panel_" + i);
             go.transform.SetParent(root, false);
             go.transform.position = new Vector3(p.x, ceilingHeight - 0.06f, p.y);

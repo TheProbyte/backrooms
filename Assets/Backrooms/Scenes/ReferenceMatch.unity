@@ -119,6 +119,103 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &50697068
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 50697070}
+  - component: {fileID: 50697069}
+  m_Layer: 0
+  m_Name: ReferenceRoom
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &50697069
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 50697068}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e8d7827b4c777744863f49ad196f870, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Camcorder.ReferenceRoom
+  wall: {fileID: 2100000, guid: be21841f48c44c14bb1ff1bc6be67e06, type: 2}
+  olive: {fileID: 2100000, guid: 8432cec2f8f956d4b8e42423d3ec9410, type: 2}
+  carpet: {fileID: 2100000, guid: 7e5fd626efe7a934bbb03313352267c3, type: 2}
+  trim: {fileID: 0}
+  ceilingTile: {fileID: 2100000, guid: 69ae959c8dc54f748b114823cd97fdbf, type: 2}
+  recess: {fileID: 2100000, guid: ff79b5f19dfb05a4f97d8316c259d612, type: 2}
+  panel: {fileID: 2100000, guid: 96c0922bd2e9c444e978a0dea3be648b, type: 2}
+  wallZ: 5.2
+  wallThickness: 0.5
+  openLeft: -2.1
+  openRight: 1.2
+  openHeight: 2.35
+  ceilingHeight: 2.7
+  partitionZ: 2.95
+  partitionThickness: 0.2
+  obliqueA: {x: -4.17, y: 1.08}
+  obliqueB: {x: -2.3, y: 4.6}
+  returnX0: 1.45
+  returnX1: 1.95
+  returnDepth: 0.5
+  oliveBandBottom: 2.7
+  headerRecessDepth: 0.35
+  headerRecessBottom: 2.35
+  backZ: 12.9
+  backLeftX: -5.5
+  backRightX: 6
+  recessHalfWidth: 1.6
+  recessDepth: 0.3
+  supportWidth: 0.45
+  supportDepth: 0.18
+  darkBandBottom: 2.05
+  darkBandTop: 2.3
+  baseboard: 0
+  trimHeight: 0.075
+  trimDepth: 0.012
+  tileSize: 0.6
+  panelIntensity: 5.2
+  panelRange: 9
+  panelSpotAngle: 160
+  panelInnerFraction: 0.9
+  fillIntensity: 9
+  fillRange: 7
+  fillAngle: 150
+  backFillIntensity: 12
+  backFillRange: 9
+  backPanelIntensity: 4.2
+  panelColor: {r: 1, g: 0.95, b: 0.8, a: 1}
+  fillColor: {r: 0.8, g: 0.7, b: 0.05, a: 1}
+  panelLeftFactor: 0.05
+  panelRightFactor: 0.95
+  fillColorRight: {r: 1, g: 0.97, b: 0.82, a: 1}
+  panelShadows: 1
+  ambientColor: {r: 0.28, g: 0.27, b: 0.1, a: 1}
+--- !u!4 &50697070
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 50697068}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &172139062
 GameObject:
   m_ObjectHideFlags: 0
@@ -215,7 +312,7 @@ Transform:
   - {fileID: 2038184442}
   m_Father: {fileID: 1731542563}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &538282696
+--- !u!1 &1685324904
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -223,103 +320,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 538282698}
-  - component: {fileID: 538282697}
-  m_Layer: 0
-  m_Name: ReferenceRoom
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &538282697
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 538282696}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1e8d7827b4c777744863f49ad196f870, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Camcorder.ReferenceRoom
-  wall: {fileID: 2100000, guid: be21841f48c44c14bb1ff1bc6be67e06, type: 2}
-  olive: {fileID: 2100000, guid: 8432cec2f8f956d4b8e42423d3ec9410, type: 2}
-  carpet: {fileID: 2100000, guid: 7e5fd626efe7a934bbb03313352267c3, type: 2}
-  trim: {fileID: 2100000, guid: 77646aa6a238c704fad88627cc2e9b85, type: 2}
-  ceilingTile: {fileID: 2100000, guid: 69ae959c8dc54f748b114823cd97fdbf, type: 2}
-  recess: {fileID: 2100000, guid: ff79b5f19dfb05a4f97d8316c259d612, type: 2}
-  panel: {fileID: 2100000, guid: 96c0922bd2e9c444e978a0dea3be648b, type: 2}
-  wallZ: 5.2
-  wallThickness: 0.5
-  openLeft: -2.1
-  openRight: 1.2
-  openHeight: 2.35
-  ceilingHeight: 2.7
-  partitionZ: 2.95
-  partitionThickness: 0.2
-  obliqueA: {x: -4.17, y: 1.08}
-  obliqueB: {x: -2.3, y: 4.6}
-  returnX0: 1.45
-  returnX1: 1.95
-  returnDepth: 0.5
-  oliveBandBottom: 2.7
-  headerRecessDepth: 0.35
-  headerRecessBottom: 2.35
-  backZ: 12.9
-  backLeftX: -5.5
-  backRightX: 6
-  recessHalfWidth: 1.6
-  recessDepth: 0.3
-  supportWidth: 0.45
-  supportDepth: 0.18
-  darkBandBottom: 2.05
-  darkBandTop: 2.3
-  trimHeight: 0.075
-  trimDepth: 0.012
-  panelIntensity: 5.2
-  panelRange: 9
-  panelSpotAngle: 160
-  panelInnerFraction: 0.9
-  fillIntensity: 9
-  fillRange: 7
-  fillAngle: 150
-  backFillIntensity: 12
-  backFillRange: 9
-  backPanelIntensity: 4.2
-  panelColor: {r: 1, g: 0.95, b: 0.8, a: 1}
-  fillColor: {r: 0.8, g: 0.7, b: 0.05, a: 1}
-  panelLeftFactor: 0.05
-  panelRightFactor: 0.95
-  fillColorRight: {r: 1, g: 0.97, b: 0.82, a: 1}
-  panelShadows: 1
-  ambientColor: {r: 0.28, g: 0.27, b: 0.1, a: 1}
---- !u!4 &538282698
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 538282696}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1328582300
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1328582302}
-  - component: {fileID: 1328582301}
+  - component: {fileID: 1685324906}
+  - component: {fileID: 1685324905}
   m_Layer: 0
   m_Name: ReferenceMatch
   m_TagString: Untagged
@@ -327,13 +329,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1328582301
+--- !u!114 &1685324905
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1328582300}
+  m_GameObject: {fileID: 1685324904}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9aecfe61bd92ebc4eb7624225c0d2884, type: 3}
@@ -346,13 +348,13 @@ MonoBehaviour:
   captureHeight: 1240
   applyPresetOnStart: 1
   presetIndex: 7
---- !u!4 &1328582302
+--- !u!4 &1685324906
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1328582300}
+  m_GameObject: {fileID: 1685324904}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -630,6 +632,7 @@ MonoBehaviour:
   blendSpeed: 3
   lookOvershoot: 0.5
   lookJitter: 0.5
+  roughness: 0
 --- !u!114 &2038184446
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -791,5 +794,5 @@ SceneRoots:
   - {fileID: 1751929926}
   - {fileID: 1731542563}
   - {fileID: 172139065}
-  - {fileID: 538282698}
-  - {fileID: 1328582302}
+  - {fileID: 50697070}
+  - {fileID: 1685324906}

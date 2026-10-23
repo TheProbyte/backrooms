@@ -30,8 +30,8 @@ positions through the estimated camera (eye height 1.58 m, about 75° vertical f
 | Left | A pale wall about 30° to the view, joined to the opening by a short return. The two pieces overlap at the corner, so no seam shows. |
 | Right | A pale wall with a projecting vertical return (0.5 m) and a shallow 0.35 m header recess along its top. |
 | Back room | A back wall at 12.9 m with a wide 0.3 m recess, a dark band near its top and two supports. |
-| Ceiling and floor | A suspended ceiling of tiles with flush panel lenses. One continuous carpet slab through both rooms. |
-| Trim | Narrow (7.5 cm) light trim close to the wall colour. |
+| Ceiling and floor | A suspended ceiling of square 0.6 m tiles; each light is a square panel one tile in size, centred on a tile. One continuous carpet slab through both rooms. |
+| Trim | None (`baseboard` is off; the baseline build turns it on). |
 | Props | None. |
 
 ## Lighting
@@ -51,14 +51,13 @@ like the wallpaper, the back-room ones are whiter. Real-time GI (APV or SSGI) is
 
 | Material | Description |
 |---|---|
-| `M_Ref_Wall` | Pale cream, with a faint striped wallpaper albedo (`RefWall_Albedo`, 1.2 m repeat) |
-| `M_Ref_WallOlive` | Olive, for the header |
-| `M_Ref_Carpet` | Tan, mottled at a large scale (`RefCarpet_Albedo`, 3 m repeat), so the carpet shades smoothly rather than tiling |
-| `M_Ref_Ceiling` | Subdued cream ceiling tile, so the white panels stand out |
-| `M_Ref_Trim` | Light trim |
+| `M_Ref_Wall` | A copy of the game's main wallpaper material (`M_Wallpaper`: its albedo, normal and detail-normal maps), mapped at the game's own scale and tinted pale cream. The tint is slightly above 1 because the wallpaper texture itself is darker and yellower. |
+| `M_Ref_WallOlive` | The same wallpaper tinted olive, for the header |
+| `M_Ref_Carpet` | The supplied carpet photo (`Textures/Source/RefCarpet_Source.png`), repeating every 0.5 m under a broad 3 m mottling, with a normal map made from its pile (`RefCarpet_Albedo` / `RefCarpet_Normal`). The textures are colour-neutral and the material tints them tan. |
+| `M_Ref_Ceiling` | Square 0.6 m mineral-fibre tiles with a soft recessed grid and fissures (`RefCeiling_Albedo` / `RefCeiling_Normal`, 4 × 4 tiles per repeat), tinted green-olive |
 | `M_Ref_Recess` | Dark band |
 
-All of these have low smoothness and no environment reflections. The textures come from
+All of these have low smoothness and no environment reflections. The carpet and ceiling textures come from
 `BackroomsTextureGenerator.GenerateReferenceMatch()`.
 
 ## Camera and camcorder (preset "Reference Match")
@@ -67,18 +66,40 @@ All of these have low smoothness and no environment reflections. The textures co
 |---|---|
 | Field of view | 75° |
 | Lens distortion | −0.08 |
-| Recording resolution | 340 lines (new). The image is box-averaged down to a virtual 340-line picture and bilinearly scaled back up. This gives the soft but stable standard-definition look, without the old blocky or shimmering downsample. |
-| Colour detail | 0.4 (new). Chroma is recorded at lower resolution than luma: more horizontally than vertically, and with a small chroma shift. |
+| Recording resolution | 536 lines, line-doubled. The picture is box-averaged down to a virtual 536-line recording. Brightness is shown with each line repeated rather than blended (*Line doubling* 1); colour is reconstructed smoothly. Softness 0.8 widens the averaging, because the footage resolves much less than its line count. |
+| Colour detail | 0.28. Colour is recorded at lower resolution than brightness, more so horizontally. |
+| Recording frame rate | 24 fps. The picture changes 24 times a second (a frame hold after the camcorder pass); the game itself still runs and takes input at full rate. |
 | Sharpening | 0.7, cored and clamped |
 | Exposure bias | 0.25, max gain 0.6. Exposed for the walls and carpet; the panels clip slightly, as in the photo. |
-| Noise | Low fine noise. The noise grid follows the recording resolution, so it scales with the recording rather than with screen pixels. Noise grows with gain. |
+| Noise | Very low (the footage has almost none). The noise grid follows the recording resolution, re-seeds once per recorded frame and grows with gain. |
 | Focus | Autofocus off, so depth of field is negligible |
-| Motion | Sensor blur 0.5 and motion blur 0.15 (tested while walking and panning, see captures 17 and 18) |
-| Secondary artifacts | Head-switching band 0.25 and blockiness 0.1, kept light |
+| Motion | Sensor blur 0.5, motion blur 0.15, and *Handheld roughness* 1.3: fast, irregular hand shake and a jolt on each step on top of the smooth bob |
+| Compression | Blockiness 0.15. With a recording resolution the blocks are the codec's 8 × 8 blocks of recorded pixels; low-contrast detail inside a block is flattened toward its mean, which leaves faint block borders. |
+| Bottom edge | *Bottom-edge line* 1: a steady lilac line over the last few lines, from about 46 % across, with a pink spot where it starts. The old tearing head-switching band is off. |
 
-The two new controls are in **F5 → IMAGE PROCESSING**: *Recording resolution (lines)* and *Colour detail*.
-They are saved with the user's settings like the other sliders. Setting lines to 0 keeps the old behaviour, so every
-other preset looks as before.
+New controls in **F5**:
+- *Recording resolution (lines)*, *Colour detail* (IMAGE PROCESSING)
+- *Recording frame rate*, *Line doubling*, *Bottom-edge line* (with the format effects)
+- *Handheld roughness* (with the motion settings)
+
+All of them are saved with your settings like the other sliders, and all default to off, so every other preset looks
+and moves as before.
+
+## What the episode footage shows (`2026-10-23 13-29-53.mp4`)
+
+The 60 fps screen recording was split into frames and measured; the same measurements were run on game captures.
+
+| Question | Finding | What the preset does |
+|---|---|---|
+| Frame rate | New pictures arrive on alternating 2 and 3 display frames: **24 fps** source | 24 fps recording frame rate |
+| Colour changing frame to frame? | No. Frame-to-frame changes in mean colour are about 0.3 Lab units, below what can be seen. Colour only drifts slowly with what is in view. | No per-frame colour effect added |
+| Camera motion | Jerky, not smooth. Walking without panning: about 1.8 px frame-to-frame jitter (on a 1071-line frame) both ways, 2.9 px of vertical movement per frame, 4 bounces a second | Handheld roughness 1.3. The game now measures 2.0 / 2.0 px, 2.7 px and 3.6 bounces a second. |
+| Resolution | 536 picture lines, each shown twice; detail is far below that, and colour detail is lower still | 536 lines, line doubling, softness 0.8, colour detail 0.28. The capture's brightness and colour detail now measure within about 10 % of the footage's. |
+| Compression | Faint 8 × 8 block edges at the source resolution, mostly visible on smooth areas | Blockiness 0.15 on the recording grid |
+| Noise | Almost none (about 0.3–1 grey level) | Noise 0.004 |
+| Bottom of frame | A thin, steady lilac line on the right part of the last few lines, no tearing | Bottom-edge line |
+| Motion blur | Mild; strong only on fast pans | Unchanged (sensor blur follows how fast the camera turns) |
+| Picture shape | 1.23 : 1 (the same as the reference still) | Not changed. The comparison captures use this shape; gameplay keeps the screen's shape. |
 
 ## Captures (`Docs/screenshots/refmatch`)
 
@@ -88,15 +109,20 @@ other preset looks as before.
 | `01`–`15` | Intermediate iterations |
 | `16_final.png` | Final capture from a fresh Play Mode start |
 | `16_repeat.png` | The same capture after walking around and returning with F8; pixel-identical to `16_final.png` |
-| `17_walking.png`, `18_walking_pan.png` | Normal (unfrozen) frames while moving |
+| `17_walking.png`, `18_walking_pan.png` | Normal (unfrozen) frames while moving (first pass) |
+| `20`–`22` | The new wallpaper, carpet and ceiling while tuning |
+| `30_final.png`, `31_final.png` | After matching the episode footage |
+| `compare_motion_episode_vs_game.png` | Four consecutive recorded frames from the footage and from the game while walking |
+
+`ReferenceMatch.CaptureSequence(folder, seconds)` saves every recorded frame (at 960 × 540) for comparisons of motion.
 
 The reference photo itself is kept out of the repository. The side-by-side sheets were made locally.
 
 ## Remaining differences
 
 - The opening's corners are square; the photo's are rounded. The jamb faces read a little narrower.
-- The photo is softer overall, with a stronger glow around bright areas. The capture still shows faint wallpaper
-  stripes the photo doesn't.
+- The game's wallpaper pattern is more visible than the photo's faint stripes (it is the game's own wallpaper, by request).
+- The footage's lens bends straight lines more strongly at the edges than the preset's −0.08 distortion.
 - The olive colour at the top of the photo's left wall is not reproduced; a band split there produced a hard line.
 - The carpet on the right is slightly darker than the photo's. The photo's carpet also has darker, uneven patches near
   the bottom left.

@@ -36,6 +36,7 @@ namespace Backrooms.EditorTools
                 if (go) Object.DestroyImmediate(go);
             }
             System.IO.Directory.CreateDirectory(MatFolder);
+            InfiniteWorldBuilder.EnsureFrameHold();
             BackroomsTextureGenerator.GenerateReferenceMatch();
             var assets = AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
 
@@ -44,16 +45,18 @@ namespace Backrooms.EditorTools
             if (baseline)
             {
                 room.wall = room.olive = assets.wallpaper; room.carpet = assets.carpet; room.trim = assets.baseboard; room.ceilingTile = assets.ceilingTile; room.recess = assets.baseboard;
-                room.trimHeight = 0.1f; room.trimDepth = 0.014f;
+                room.baseboard = true; room.trimHeight = 0.1f; room.trimDepth = 0.014f;
             }
             else
             {
                 Texture2D T(string n) => AssetDatabase.LoadAssetAtPath<Texture2D>($"{TexFolder}/{n}.png");
-                room.wall = Lit("M_Ref_Wall", new Color(0.86f, 0.80f, 0.52f), T("RefWall_Albedo"), 0.1f);
-                room.olive = Lit("M_Ref_WallOlive", new Color(0.70f, 0.70f, 0.12f), T("RefWall_Albedo"), 0.1f);
-                room.carpet = Lit("M_Ref_Carpet", new Color(0.58f, 0.52f, 0.32f), T("RefCarpet_Albedo"), 0.05f);
-                room.trim = Lit("M_Ref_Trim", new Color(0.88f, 0.84f, 0.66f), null, 0.15f);
-                room.ceilingTile = Lit("M_Ref_Ceiling", new Color(0.80f, 0.76f, 0.50f), assets.ceilingTile ? assets.ceilingTile.GetTexture("_BaseMap") as Texture2D : null, 0.05f);
+                // Walls: the game's own wallpaper (albedo, normal and detail maps) tinted to the reference's pale cream.
+                // The tint is slightly above 1 because the wallpaper texture itself is darker and yellower.
+                room.wall = Tinted("M_Ref_Wall", assets.wallpaper, new Color(1.075f, 1.04f, 1.10f));
+                room.olive = Tinted("M_Ref_WallOlive", assets.wallpaper, new Color(0.877f, 0.913f, 0.298f));
+                room.carpet = Lit("M_Ref_Carpet", CarpetTint, T("RefCarpet_Albedo"), 0.05f, T("RefCarpet_Normal"), 0.6f);
+                room.trim = null;                                        // no baseboard (ReferenceRoom.baseboard is off)
+                room.ceilingTile = Lit("M_Ref_Ceiling", new Color(0.62f, 0.62f, 0.34f), T("RefCeiling_Albedo"), 0.05f, T("RefCeiling_Normal"), 1f);
                 room.recess = Lit("M_Ref_Recess", new Color(0.35f, 0.31f, 0.12f), null, 0.05f);
             }
 
@@ -67,12 +70,34 @@ namespace Backrooms.EditorTools
             Debug.Log("[Backrooms] Reference Match scene built (" + (baseline ? "baseline" : "tuned") + ").");
         }
 
-        public static Material Lit(string name, Color c, Texture2D tex, float smooth)
+        // Carpet colour on top of RefCarpet_Albedo (whose mean is about 0.72): the tuned tan of the first match.
+        static readonly Color CarpetTint = new Color(0.80f, 0.71f, 0.44f);
+
+        /// <summary>A copy of a game material (all its maps and settings) with a different base colour.</summary>
+        public static Material Tinted(string name, Material source, Color c)
+        {
+            string path = $"{MatFolder}/{name}.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (!m) { m = new Material(source); AssetDatabase.CreateAsset(m, path); }
+            m.shader = source.shader;
+            m.CopyPropertiesFromMaterial(source);
+            m.shaderKeywords = source.shaderKeywords;
+            m.SetColor("_BaseColor", c);
+            if (m.HasProperty("_EnvironmentReflections")) m.SetFloat("_EnvironmentReflections", 0f);
+            m.EnableKeyword("_ENVIRONMENTREFLECTIONS_OFF");
+            m.SetShaderPassEnabled("MotionVectors", false);
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+
+        public static Material Lit(string name, Color c, Texture2D tex, float smooth, Texture2D normal = null, float normalScale = 1f)
         {
             string path = $"{MatFolder}/{name}.mat";
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (!m) { m = new Material(Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit")); AssetDatabase.CreateAsset(m, path); }
             m.SetColor("_BaseColor", c); m.SetTexture("_BaseMap", tex); m.SetTextureScale("_BaseMap", Vector2.one);
+            m.SetTexture("_BumpMap", normal); m.SetFloat("_BumpScale", normalScale);
+            if (normal) m.EnableKeyword("_NORMALMAP"); else m.DisableKeyword("_NORMALMAP");
             m.SetFloat("_Smoothness", smooth); m.SetFloat("_Metallic", 0f);
             if (m.HasProperty("_EnvironmentReflections")) m.SetFloat("_EnvironmentReflections", 0f);
             m.EnableKeyword("_ENVIRONMENTREFLECTIONS_OFF");

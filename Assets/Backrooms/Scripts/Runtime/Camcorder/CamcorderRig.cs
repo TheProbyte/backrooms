@@ -129,6 +129,7 @@ namespace Backrooms.Camcorder
                 shake.stabilization = s.stabilization;
                 shake.lookOvershoot = s.lookOvershoot;
                 shake.lookJitter = s.lookJitter;
+                shake.roughness = s.handheldRoughness;
             }
 
             // Sensor motion blur: the camera's turn rate (pan, tilt, handheld shake) times a shutter time gives a smear
@@ -152,15 +153,20 @@ namespace Backrooms.Camcorder
             _blurVel = Vector2.Lerp(_blurVel, blur, 1f - Mathf.Exp(-Time.deltaTime / 0.04f));
             var bv = Vector2.ClampMagnitude(_blurVel, 0.22f);
             Shader.SetGlobalVector(ID6, new Vector4(bv.x, bv.y, 0f, 0f));
-            Shader.SetGlobalVector(ID7, new Vector4(s.headSwitching, s.blockiness, 0f, 0f));
+            Shader.SetGlobalVector(ID7, new Vector4(s.headSwitching, s.blockiness, s.bottomLine, 0f));
+
+            // Recording frame rate: the picture only changes on recorded frames (see CamcorderFrameHold).
+            CamcorderFrameHold.Fps = freezeForStills ? 0f : s.recordFps;
+            CamcorderFrameHold.Tick();
+            int frameIndex = freezeForStills ? 7 : (s.recordFps > 0.01f ? CamcorderFrameHold.RecordedFrames : Time.frameCount) % 16777216;
 
             float gain = CurrentGainEV;
             Shader.SetGlobalVector(ID1, new Vector4(s.sharpening, s.softness, s.chromaBleed, s.chromaShift));
             Shader.SetGlobalVector(ID2, new Vector4(s.noise + s.gainNoise * gain, s.chromaNoise * (1f + gain), s.scanlines, s.trackingNoise));
             Shader.SetGlobalVector(ID3, new Vector4(s.pedestal, s.highlightKnee, freezeForStills ? 1f : Time.time, 1f));
-            // Frame index re-seeds the noise every rendered frame; the noise grid follows the recording resolution (720-line sensor otherwise); 480 video lines.
-            Shader.SetGlobalVector(ID4, new Vector4(freezeForStills ? 7 : Time.frameCount % 16777216, s.videoLines > 0 ? s.videoLines : 720f, 480f, s.grainSize));
-            Shader.SetGlobalVector(ID8, new Vector4(s.videoLines, s.chromaDetail, 0f, 0f));
+            // Frame index re-seeds the noise every recorded frame; the noise grid follows the recording resolution (720-line sensor otherwise); 480 video lines.
+            Shader.SetGlobalVector(ID4, new Vector4(frameIndex, s.videoLines > 0 ? s.videoLines : 720f, 480f, s.grainSize));
+            Shader.SetGlobalVector(ID8, new Vector4(s.videoLines, s.chromaDetail, s.lineDoubling, 0f));
             // OSD composite: curvature of the viewfinder overlay, and whether the OSD texture is in use.
             Shader.SetGlobalVector(ID5, new Vector4(s.osdCurvature, osd && osd.Curved ? 1f : 0f, 0f, 0f));
 

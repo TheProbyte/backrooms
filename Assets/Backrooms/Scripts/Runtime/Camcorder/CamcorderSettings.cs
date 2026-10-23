@@ -64,11 +64,15 @@ namespace Backrooms.Camcorder
         public float motionBlur = 0.344f;
         public float lookOvershoot = 0.5f;   // camera carries on a touch when you stop turning
         public float lookJitter = 0.5f;      // small wobble while turning
+        public float handheldRoughness = 0f; // fast irregular hand shake on top of the smooth bob (0 = off)
 
         // Format
         public float scanlines = 0.0977f;
         public float headSwitching = 0.4f;   // the flickering blue/magenta noise band along the bottom of VHS footage
         public float blockiness = 0.25f;     // blotchy compression: chroma and brightness held in blocks that change every few frames
+        public float recordFps = 0f;         // recording frame rate: the picture only changes this often (0 = every rendered frame)
+        public float lineDoubling = 0f;      // each recorded line shown twice (stair-stepped edges), as in field-doubled SD video
+        public float bottomLine = 0f;        // a thin steady lilac line along the very bottom edge (the episode's head-switching line)
         public float trackingNoise = 0.154f;
         public bool aspect43 = true;
         public bool showOSD = false;
@@ -177,12 +181,16 @@ namespace Backrooms.Camcorder
                 case 7: // Reference Match: tuned against a single reference photograph (see Docs/ReferenceMatch.md).
                     s.fieldOfView = 75f; s.lensDistortion = -0.08f; s.chromaticAberration = 0.02f; s.vignette = 0.1f;
                     s.bloom = 0.35f; s.bloomScatter = 0.6f;
-                    s.videoLines = 340; s.chromaDetail = 0.4f; s.sharpening = 0.7f; s.chromaShift = 0.4f;
-                    s.softness = 0f; s.chromaBleed = 0f;
-                    s.noise = 0.012f; s.gainNoise = 0.05f; s.chromaNoise = 0.02f; s.grainSize = 1f;
+                    // Measured from the episode: about 536 recorded lines shown line-doubled, very soft, 24 frames a second,
+                    // almost no visible noise, faint 8 x 8 compression blocks, a thin lilac line at the bottom edge.
+                    s.videoLines = 536; s.lineDoubling = 1f; s.recordFps = 24f; s.bottomLine = 1f;
+                    s.handheldRoughness = 1.3f;   // walking: ~1.5-1.9 px frame-to-frame jitter, 4 bounces a second, as measured in the episode
+                    s.chromaDetail = 0.28f; s.sharpening = 0.7f; s.chromaShift = 0.4f;
+                    s.softness = 0.8f; s.chromaBleed = 0f;
+                    s.noise = 0.004f; s.gainNoise = 0.01f; s.chromaNoise = 0.005f; s.grainSize = 1f;
                     s.pedestal = 0.02f; s.highlightKnee = 0.9f; s.saturation = 0f; s.contrast = 0f;
                     s.whiteBalanceTemp = 0f; s.whiteBalanceTint = 0f; s.exposureBias = 0.25f; s.maxGain = 0.6f;
-                    s.autofocus = false; s.scanlines = 0f; s.trackingNoise = 0f; s.headSwitching = 0.25f; s.blockiness = 0.1f;
+                    s.autofocus = false; s.scanlines = 0f; s.trackingNoise = 0f; s.headSwitching = 0f; s.blockiness = 0.15f;
                     s.sensorBlur = 0.5f; s.motionBlur = 0.15f; s.aspect43 = false; s.showOSD = false;
                     s.micColoration = 0.8f; s.autoGain = 0.75f; s.micHiss = 0.3f; s.handlingNoise = 0.6f; s.stereoWidth = 0.6f;
                     break;

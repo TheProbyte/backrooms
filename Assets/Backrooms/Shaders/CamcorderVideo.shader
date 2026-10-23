@@ -127,11 +127,15 @@ Shader "Backrooms/CamcorderVideo"
             // The picture as a recorder with a fixed pixel grid sees it: each recorded pixel averages the screen
             // pixels it covers (so nothing aliases), then the grid is reconstructed with plain bilinear
             // interpolation (smooth, never blocky), independent of the display resolution.
-            float3 FetchRecorded(float2 uv, float2 grid)
+            // _CamVideo8.z (line doubling) picks the nearest recorded line instead of blending two, so each line is
+            // shown as a solid band, as in field-doubled SD video. _CamVideo1.y (softness) widens the averaging
+            // footprint for optics and processing that are softer than the recorded grid.
+            float3 FetchRecorded(float2 uv, float2 grid, float doubling)
             {
                 float2 g = uv * grid - 0.5;
                 float2 i = floor(g), f = frac(g);
-                float2 foot = 1.0 / grid;
+                f.y = lerp(f.y, step(0.5, f.y), saturate(doubling));
+                float2 foot = (1.0 + max(_CamVideo1.y, 0)) / grid;
                 float3 a = FetchBox((i + 0.5) / grid, foot);
                 float3 b = FetchBox((i + float2(1, 0) + 0.5) / grid, foot);
                 float3 c = FetchBox((i + float2(0, 1) + 0.5) / grid, foot);
@@ -182,8 +186,8 @@ Shader "Backrooms/CamcorderVideo"
                     float2 gridL = float2(_CamVideo8.x * aspectR, _CamVideo8.x);
                     float cd = clamp(_CamVideo8.y, 0.2, 1.0);
                     float2 gridC = float2(gridL.x * cd, gridL.y * lerp(1.0, cd, 0.5));
-                    float3 cL = FetchRecorded(uv, gridL);
-                    float3 cC = FetchRecorded(uv + float2(_CamVideo1.w * px.x, 0), gridC);
+                    float3 cL = FetchRecorded(uv, gridL, _CamVideo8.z);          // brightness: line-doubled
+                    float3 cC = FetchRecorded(uv + float2(_CamVideo1.w * px.x, 0), gridC, 0.0);   // colour: smooth (measured: no colour stair-steps)
                     float yL = ToYCC(cL).x, yC = ToYCC(cC).x;
                     float edgeL = yL - yC;
                     float coredL = sign(edgeL) * max(abs(edgeL) - 0.006, 0);
@@ -238,8 +242,18 @@ Shader "Backrooms/CamcorderVideo"
                 float blk = _CamVideo7.y;
                 if (blk > 0.001)
                 {
-                    float2 bpx = floor(uv * res / 12.0);
-                    float2 buv = (bpx + 0.5) * 12.0 / res;
+                    // With a recording resolution the blocks are the codec's 8 x 8 blocks of recorded pixels, and fine
+                    // low-contrast detail inside each block is flattened toward the block's mean (strong edges survive),
+                    // which leaves faint steps at the block borders. Otherwise: 12 screen-pixel blotches.
+                    float bs = _CamVideo8.x > 1.0 ? 8.0 * res.y / _CamVideo8.x : 12.0;
+                    float2 bpx = floor(uv * res / bs);
+                    float2 buv = (bpx + 0.5) * bs / res;
+                    if (_CamVideo8.x > 1.0)
+                    {
+                        float yB = ToYCC(FetchBox(buv, bs * px)).x;
+                        float dy = y - yB;
+                        y = yB + dy * lerp(1.0, smoothstep(0.015, 0.07, abs(dy)), saturate(blk));
+                    }
                     float2 cb = ToYCC(FetchG(buv)).yz;
                     float rnd = Rand3(int2(bpx), frame / 3u, 55u).x;
                     cc = lerp(cc, cb, saturate(blk * (0.3 + 0.9 * rnd)));
@@ -304,6 +318,25 @@ Shader "Backrooms/CamcorderVideo"
                     float sp = GridNoise(float2(uv.x * 220.0, uv.y * res.y * 0.6), frame, 331u);
                     col = lerp(col, tint * (0.55 + 0.45 * saturate(sp * 0.5 + 0.5)), saturate(hsK * 0.55));
                     col += max(sp, 0) * 0.25 * hsK * step(uv.y, 0.012);          // the bottom few lines: bright static
+                }
+
+                // Bottom line (measured from the episode): the last few recorded lines turn lilac over the right part
+                // of the frame (from about 46 % across), with a small pink spot where it starts and only a faint tint
+                // to the left. Steady, no tearing.
+                float bl = _CamVideo7.z;
+                if (bl > 0.001)
+                {
+                    float lh = _CamVideo8.x > 1.0 ? 4.0 / _CamVideo8.x : 0.0075;   // about four recorded lines
+                    float v = saturate(1.0 - uv.y / lh);
+                    v *= v;
+                    if (v > 0)
+                    {
+                        float split = 0.46 + 0.004 * sin(t * 1.7);
+                        float right = smoothstep(split - 0.004, split + 0.004, uv.x);
+                        float spot = exp(-pow((uv.x - split - 0.006) / 0.009, 2.0));
+                        float3 lilac = float3(0.02, -0.05, 0.24);
+                        col += (lilac * lerp(0.2, 1.0, right) + float3(0.12, -0.04, 0.02) * spot) * v * bl;
+                    }
                 }
 
                 // Viewfinder OSD (drawn by its own camera), bent with a gentle barrel warp so the text

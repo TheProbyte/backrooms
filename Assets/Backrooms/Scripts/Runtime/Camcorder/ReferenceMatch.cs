@@ -78,6 +78,47 @@ namespace Backrooms.Camcorder
 
         public bool Capturing { get; private set; }
 
+        /// <summary>Saves every recorded frame (at the preset's recording frame rate) for <paramref name="seconds"/> as
+        /// numbered PNGs, without freezing anything, to compare camera motion with footage frame by frame.</summary>
+        public void CaptureSequence(string folder, float seconds) => StartCoroutine(SequenceRoutine(folder, seconds));
+
+        IEnumerator SequenceRoutine(string folder, float seconds)
+        {
+            // Frames are copied on the GPU, scaled to 960 x 540 and read back asynchronously so recording does not
+            // slow the game down; the PNGs are written at the end.
+            Capturing = true;
+            Directory.CreateDirectory(folder);
+            const int w = 960, h = 540;
+            var full = new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGB32);
+            var small = new RenderTexture(w, h, 0, RenderTextureFormat.ARGB32);
+            var shots = new System.Collections.Generic.List<byte[]>();
+            int pending = 0;
+            int wanted = Mathf.CeilToInt(seconds * Mathf.Max(CamcorderFrameHold.Fps, 24f));
+            float worst = 0f;
+            while (shots.Count < wanted)
+            {
+                yield return new WaitForEndOfFrame();
+                worst = Mathf.Max(worst, Time.unscaledDeltaTime);
+                if (!CamcorderFrameHold.RecordThisFrame) continue;
+                ScreenCapture.CaptureScreenshotIntoRenderTexture(full);
+                if (SystemInfo.graphicsUVStartsAtTop) Graphics.Blit(full, small, new Vector2(1f, -1f), new Vector2(0f, 1f));   // upright PNGs
+                else Graphics.Blit(full, small);
+                int index = shots.Count; shots.Add(null); pending++;
+                UnityEngine.Rendering.AsyncGPUReadback.Request(small, 0, TextureFormat.RGBA32, r => { if (!r.hasError) shots[index] = r.GetData<byte>().ToArray(); pending--; });
+            }
+            while (pending > 0) yield return null;
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            for (int i = 0; i < shots.Count; i++)
+            {
+                if (shots[i] == null) continue;
+                tex.LoadRawTextureData(shots[i]); tex.Apply();
+                File.WriteAllBytes(Path.Combine(folder, $"f{i:0000}.png"), tex.EncodeToPNG());
+            }
+            Destroy(tex); full.Release(); small.Release(); Destroy(full); Destroy(small);
+            Debug.Log($"[Backrooms] Saved {shots.Count} recorded frames to {folder} (longest frame {worst * 1000f:0} ms).");
+            Capturing = false;
+        }
+
         IEnumerator CaptureRoutine(string path, int settleFrames)
         {
             Capturing = true;

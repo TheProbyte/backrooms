@@ -291,6 +291,8 @@ namespace Backrooms.Camcorder
                 0f, 2f, "0.00", "x", () => S().lookOvershoot, v => S().lookOvershoot = v);
             Slider("Look jitter", "A small irregular wobble while you turn the camera. 0 = off.",
                 0f, 2f, "0.00", "x", () => S().lookJitter, v => S().lookJitter = v);
+            Slider("Handheld roughness", "Fast, irregular hand shake on top of the smooth walking bob, with a small jolt on each step: someone walking with the camera in one hand. 0 = off.",
+                0f, 3f, "0.00", "", () => S().handheldRoughness, v => S().handheldRoughness = v);
             Slider("Sensor motion blur", "Streaking of the whole frame in the direction you turn, in proportion to how fast, as if the shutter stays open for a fraction of a second. Strong on quick pans.",
                 0f, 3f, "0.00", "x", () => S().sensorBlur, v => S().sensorBlur = v);
             Slider("Motion blur (shutter)", "Smear when turning quickly, from the camera's shutter staying open for part of each frame.",
@@ -309,6 +311,12 @@ namespace Backrooms.Camcorder
                 0f, 1f, "0.00", "", () => S().headSwitching, v => S().headSwitching = v);
             Slider("Compression blotches", "Blotchy blocks of colour and brightness that hold for a few frames, like a low-bitrate recording.",
                 0f, 1f, "0.00", "", () => S().blockiness, v => S().blockiness = v);
+            Slider("Recording frame rate", "How often the recorded picture changes. The game still runs and responds at full speed; only the picture steps, like footage shot at 24 or 30 frames a second. 0 = every frame.",
+                0f, 60f, "0", " fps", () => S().recordFps, v => S().recordFps = v < 12f ? 0f : Mathf.Round(v), true);
+            Slider("Line doubling", "Each recorded line is shown twice instead of blended, giving the faint stair-steps on edges of standard-definition video. Needs a recording resolution.",
+                0f, 1f, "0.00", "", () => S().lineDoubling, v => S().lineDoubling = v);
+            Slider("Bottom-edge line", "A thin, steady lilac line along the very bottom of the frame, as in the episode footage.",
+                0f, 1f, "0.00", "", () => S().bottomLine, v => S().bottomLine = v);
             Slider("Tape tracking noise", "A soft band of wobble and brightening that drifts slowly up the frame, like a worn tape.",
                 0f, 1f, "0.00", "", () => S().trackingNoise, v => S().trackingNoise = v);
         }

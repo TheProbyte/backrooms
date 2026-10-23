@@ -33,40 +33,94 @@ namespace Backrooms.EditorTools
         }
 
 
-        /// <summary>Textures for the Reference Match scene: a pale wall with a restrained vertical stripe, and a broadly mottled tan carpet with directional pile.</summary>
+        public const string RefCarpetSource = Folder + "/Source/RefCarpet_Source.png";
+        public const float RefCarpetMeters = 3f;        // one repeat of the composite (the broad mottling)
+        public const float RefCarpetPileMeters = 0.5f;  // one repeat of the carpet photo inside it
+        public const float RefCeilingMeters = 2.4f;     // 4 x 4 square tiles of 0.6 m
+
+        /// <summary>
+        /// Textures for the Reference Match scene (the walls use the game's own wallpaper, tinted by the material):
+        /// a carpet made from the supplied carpet photo (repeating every 0.5 m) under a broad 3 m mottling, with a
+        /// normal map from the photo's pile; and a suspended ceiling of square 0.6 m fissured tiles with a dark grid.
+        /// The textures are near neutral in colour; the materials tint them.
+        /// </summary>
         public static void GenerateReferenceMatch()
         {
             Directory.CreateDirectory(Folder);
-            const int S = 512;
-            // Wall: 1.2 m per repeat, eight faint stripes (0.15 m apart), fine vertical streaks, broad soft mottling.
-            var wall = new Color[S * S];
-            for (int y = 0; y < S; y++)
-            for (int x = 0; x < S; x++)
-            {
-                float u = x / (float)S, v = y / (float)S;
-                float d = Mathf.Abs(((x % 64) + 64) % 64 - 32f);                           // distance to the stripe centre line (px)
-                float line = Mathf.Exp(-(d - 28f) * (d - 28f) / 10f);                          // a thin darker line at the stripe edge
-                float band = ((x / 64) & 1) == 0 ? 0.012f : -0.012f;
-                float streak = VNoise(u * 96, v * 3, 96, 3, 811) - 0.5f;
-                float mottle = Fbm(u, v, 2, 3, 823) - 0.5f;
-                float g = 1f - 0.055f * line + band + streak * 0.03f + mottle * 0.06f;
-                wall[y * S + x] = new Color(g, g, g, 1f);
-            }
-            Save("RefWall_Albedo", S, S, wall, true);
 
-            // Carpet: 3 m per repeat; long soft mottling, pile streaks running along the room (V), a little fine variation.
+            // ---- Carpet ----
+            const int P = 256;                                                     // pixels per photo repeat (2 mm per pixel)
+            int reps = Mathf.RoundToInt(RefCarpetMeters / RefCarpetPileMeters);
+            int S = P * reps;
+            var src = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            bool haveSrc = File.Exists(RefCarpetSource) && src.LoadImage(File.ReadAllBytes(RefCarpetSource));
+            var pile = new Color[P * P];
+            if (haveSrc)
+            {
+                // Box-filter the photo down to P x P (it tiles seamlessly), then normalise it around its mean colour.
+                int k = Mathf.Max(1, src.width / P);
+                var sp = src.GetPixels();
+                Color mean = Color.clear;
+                for (int y = 0; y < P; y++)
+                for (int x = 0; x < P; x++)
+                {
+                    Color s = Color.clear;
+                    for (int j = 0; j < k; j++) for (int i = 0; i < k; i++) s += sp[Mathf.Min(y * k + j, src.height - 1) * src.width + Mathf.Min(x * k + i, src.width - 1)];
+                    pile[y * P + x] = s / (k * k);
+                    mean += pile[y * P + x];
+                }
+                mean /= P * P;
+                for (int i = 0; i < pile.Length; i++)
+                    pile[i] = new Color(pile[i].r / mean.r, pile[i].g / mean.g, pile[i].b / mean.b, 1f);
+            }
+            else
+            {
+                Debug.LogWarning("[Backrooms] " + RefCarpetSource + " not found; the Reference Match carpet uses procedural pile.");
+                for (int y = 0; y < P; y++) for (int x = 0; x < P; x++) { float g = 0.85f + 0.3f * VNoise(x / 3f, y / 3f, P / 3 + 1, P / 3 + 1, 931); pile[y * P + x] = new Color(g, g, g, 1f); }
+            }
+            Object.DestroyImmediate(src);
+
             var carpet = new Color[S * S];
+            var height = new float[S * S];
             for (int y = 0; y < S; y++)
             for (int x = 0; x < S; x++)
             {
                 float u = x / (float)S, v = y / (float)S;
-                float mottle = Fbm(u, v, 3, 4, 907) - 0.5f;
-                float pile = VNoise(u * 80, v * 5, 80, 5, 919) - 0.5f;
-                float fine = VNoise(u * 160, v * 160, 160, 160, 929) - 0.5f;
-                float g = 1f + mottle * 0.30f + pile * 0.035f + fine * 0.015f;
-                carpet[y * S + x] = new Color(g, g, g, 1f);
+                float mottle = Fbm(u, v, 3, 4, 907) - 0.5f;                       // long soft mottling (the part that reads at a distance)
+                float lane = VNoise(u * 40, v * 3, 40, 3, 919) - 0.5f;             // faint pile direction streaks along the room
+                Color p = pile[(y % P) * P + (x % P)];
+                p = Color.white + (p - Color.white) * 0.85f;                          // keep the photo's grain, slightly calmer
+                float g = 0.72f * (1f + mottle * 0.30f + lane * 0.03f);
+                carpet[y * S + x] = new Color(p.r * g, p.g * g, p.b * g, 1f);
+                height[y * S + x] = (p.r + p.g + p.b) / 3f;
             }
             Save("RefCarpet_Albedo", S, S, carpet, true);
+            Save("RefCarpet_Normal", S, S, NormalFromHeight(height, S, S, 2.5f), false, true);
+
+            // ---- Ceiling: 4 x 4 tiles of 0.6 m; dark recessed grid, fissured mineral-fibre surface ----
+            const int C = 1024, T = C / 4;
+            var ceil = new Color[C * C];
+            var ch = new float[C * C];
+            for (int y = 0; y < C; y++)
+            for (int x = 0; x < C; x++)
+            {
+                float u = x / (float)C, v = y / (float)C;
+                int tx = x / T, ty = y / T;
+                float lx = x % T, ly = y % T;
+                float d = Mathf.Min(Mathf.Min(lx, T - 1 - lx), Mathf.Min(ly, T - 1 - ly));   // px to the tile edge
+                float tone = (Hash(tx, ty, 941) - 0.5f) * 0.05f;                                  // tile-to-tile variation
+                float fiss = Edge(0.64f, 0.74f, VNoise(u * 150, v * 150, 150, 150, 947)) * Edge(0.45f, 0.6f, VNoise(u * 40, v * 40, 40, 40, 953));
+                float streak = VNoise(u * 4, v * 160, 4, 160, 959) - 0.5f;
+                float speck = VNoise(u * 400, v * 400, 400, 400, 967) - 0.5f;
+                float grid = Edge(1.5f, 4.5f, d);                                     // 0 on the grid line
+                float bevel = Edge(4f, 14f, d);                                       // soft shadow where the tile meets the grid
+                float g = (0.86f + tone + streak * 0.03f + speck * 0.05f - fiss * 0.07f) * (0.93f + 0.07f * bevel);
+                g = Mathf.Lerp(0.66f, g, grid);
+                ceil[y * C + x] = new Color(g, g, g, 1f);
+                ch[y * C + x] = grid * 0.6f + bevel * 0.4f - fiss * 0.08f;
+            }
+            Save("RefCeiling_Albedo", C, C, ceil, true);
+            Save("RefCeiling_Normal", C, C, NormalFromHeight(ch, C, C, 2f), false, true);
             AssetDatabase.Refresh();
         }
 
@@ -494,6 +548,9 @@ namespace Backrooms.EditorTools
                 return (h & 0xFFFFFF) / 16777215f;
             }
         }
+
+        /// <summary>0 below a, 1 above b, smooth in between (GLSL smoothstep; Mathf.SmoothStep interpolates between its first two arguments instead).</summary>
+        static float Edge(float a, float b, float x) { float t = Mathf.Clamp01((x - a) / (b - a)); return t * t * (3f - 2f * t); }
 
         static int Mod(int a, int m) { int r = a % m; return r < 0 ? r + m : r; }
 

@@ -31,6 +31,7 @@ namespace Backrooms.EditorTools
 
             var assets = CreateBiomeAssets();
             EnsureVideoPass();
+            EnsureFrameHold();
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             ConfigureEnvironment();
@@ -432,6 +433,31 @@ namespace Backrooms.EditorTools
             feature.injectionPoint = FullScreenPassRendererFeature.InjectionPoint.AfterRenderingPostProcessing;
             feature.fetchColorBuffer = true;
             feature.requirements = ScriptableRenderPassInput.Color;
+            AssetDatabase.AddObjectToAsset(feature, data);
+            data.rendererFeatures.Add(feature);
+            var so = new SerializedObject(data);
+            var map = so.FindProperty("m_RendererFeatureMap");
+            if (map != null && AssetDatabase.TryGetGUIDAndLocalFileIdentifier(feature, out string _, out long localId))
+            {
+                map.arraySize++;
+                map.GetArrayElementAtIndex(map.arraySize - 1).longValue = localId;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+            data.SetDirty();
+            EditorUtility.SetDirty(data);
+            AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>Adds the camcorder frame hold (recording frame rate) to the PC renderer, after the video pass.
+        /// It does nothing until a camcorder preset sets a recording frame rate.</summary>
+        public static void EnsureFrameHold()
+        {
+            var data = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(RendererPath);
+            if (!data) { Debug.LogError("[Backrooms] PC_Renderer not found."); return; }
+            foreach (var f in data.rendererFeatures)
+                if (f is Backrooms.Camcorder.CamcorderFrameHold) return;
+            var feature = ScriptableObject.CreateInstance<Backrooms.Camcorder.CamcorderFrameHold>();
+            feature.name = "CamcorderFrameHold";
             AssetDatabase.AddObjectToAsset(feature, data);
             data.rendererFeatures.Add(feature);
             var so = new SerializedObject(data);
