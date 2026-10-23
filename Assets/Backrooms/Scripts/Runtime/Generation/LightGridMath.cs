@@ -30,6 +30,13 @@ namespace Backrooms.Generation
         static uint Kind(EdgeKind e) => e == EdgeKind.Wall ? Wall : e == EdgeKind.Door ? Door : e == EdgeKind.DoorHeader ? Header : Open;
         static uint Tenths(float metres) => (uint)Mathf.Clamp(Mathf.RoundToInt(metres * 10f), 0, 255);
 
+        /// <summary>An opening's top in tenths of a metre: low 6 bits at lowShift, bit 6 at highBit (up to 12.7 m, an atrium well is 11.7).</summary>
+        public static uint PackTop(uint tenths, int lowShift, int highBit)
+        {
+            tenths = Math.Min(127u, tenths);
+            return ((tenths & 63u) << lowShift) | (((tenths >> 6) & 1u) << highBit);
+        }
+
         /// <summary>Packs one layout cell: west and south edges (kind and opening top), ceiling, flags.</summary>
         public static uint Encode(OfficeLayout L, int x, int z, Func<int, int, OfficeLayout> neighbour)
         {
@@ -37,8 +44,8 @@ namespace Backrooms.Generation
             uint o = Loaded;
             uint west = Kind(L.vEdges[x, z]), south = Kind(L.hEdges[x, z]);
             o |= west | (south << 2);
-            if (west != Wall) o |= Math.Min(63u, Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, true, x, z, 1).top)) << 4;
-            if (south != Wall) o |= Math.Min(63u, Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, false, z, x, 1).top)) << 10;
+            if (west != Wall) o |= PackTop(Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, true, x, z, 1).top), 4, 27);
+            if (south != Wall) o |= PackTop(Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, false, z, x, 1).top), 10, 28);
             o |= Tenths(room.ceiling) << 16;
             if (L.Has(x, z, CellFlags.NoFloor)) o |= NoFloor;
             if (L.Has(x, z, CellFlags.OpenAbove)) o |= OpenAbove;
@@ -47,8 +54,8 @@ namespace Backrooms.Generation
 
         public static uint WestKind(uint o) => o & 3u;
         public static uint SouthKind(uint o) => (o >> 2) & 3u;
-        public static float WestTop(uint o) => ((o >> 4) & 63u) * 0.1f;
-        public static float SouthTop(uint o) => ((o >> 10) & 63u) * 0.1f;
+        public static float WestTop(uint o) => (((o >> 4) & 63u) | (((o >> 27) & 1u) << 6)) * 0.1f;
+        public static float SouthTop(uint o) => (((o >> 10) & 63u) | (((o >> 28) & 1u) << 6)) * 0.1f;
         public static float Ceiling(uint o) => ((o >> 16) & 255u) * 0.1f;
         public static bool IsLoaded(uint o) => (o & Loaded) != 0;
 

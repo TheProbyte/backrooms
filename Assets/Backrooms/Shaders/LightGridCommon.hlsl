@@ -18,8 +18,9 @@
 
 uint LG_WestKind(uint o) { return o & 3u; }
 uint LG_SouthKind(uint o) { return (o >> 2) & 3u; }
-float LG_WestTop(uint o) { return ((o >> 4) & 63u) * 0.1; }
-float LG_SouthTop(uint o) { return ((o >> 10) & 63u) * 0.1; }
+// Opening tops: 7 bits of tenths of a metre (6 low bits, then bit 27 / 28), up to 12.7 m.
+float LG_WestTop(uint o) { return (((o >> 4) & 63u) | (((o >> 27) & 1u) << 6)) * 0.1; }
+float LG_SouthTop(uint o) { return (((o >> 10) & 63u) | (((o >> 28) & 1u) << 6)) * 0.1; }
 float LG_Ceiling(uint o) { return ((o >> 16) & 255u) * 0.1; }
 bool LG_Loaded(uint o) { return (o & LG_LOADED) != 0u; }
 

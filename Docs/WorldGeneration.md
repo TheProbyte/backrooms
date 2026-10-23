@@ -108,6 +108,11 @@ Storey 0 streams everywhere; upper storeys stream only within a chunk of a multi
   the editor: the editor's stand-in binder could land after the grid had bound the real data). The editor
   binder no longer runs while playing. Debug tip: a quick check is to tint pixels by whether
   `LGrid_Occ` of their own cell is non-zero.
+- **Opening tops are 7 bits** (tenths of a metre, up to 12.7 m; `LightGridMath.PackTop`, `LG_WestTop`). They used
+  to be 6 bits (6.3 m max), so in rooms taller than that and in the atrium well (11.7 m) every line of sight
+  crossing a cell edge above 6.3 m counted as blocked: tall walls lit in striped blocks, hard-edged rectangles
+  on the well floor (real lights are tested with the same rule) and weak light on the upper walls of tall
+  halls. Tests: `OpeningTopsAboveSixMetresSurvivePacking`, `LightsHungHighInAnAtriumWellReachItsFloor`.
 - **Room-layer mode** (F5 > Graphics > Light grid off) is the phase-2 system, kept as a fallback: a large
   pool of unshadowed lights limited to their room's layer, plus doorway and bounce lights.
 

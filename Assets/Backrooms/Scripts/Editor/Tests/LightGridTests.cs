@@ -108,5 +108,40 @@ namespace Backrooms.Tests
                 }
             }
         }
+
+        [Test]
+        public void OpeningTopsAboveSixMetresSurvivePacking()
+        {
+            // 6 bits of tenths stopped at 6.3 m, which blocked light across every edge above that in tall rooms and atrium wells.
+            foreach (float top in new[] { 2.1f, 2.7f, 6.3f, 6.4f, 8.1f, 11.7f, 12.7f })
+            {
+                uint tenths = (uint)Mathf.RoundToInt(top * 10f);
+                Assert.AreEqual(top, LightGridMath.WestTop(LightGridMath.PackTop(tenths, 4, 27)), 0.001f, $"west {top}");
+                Assert.AreEqual(top, LightGridMath.SouthTop(LightGridMath.PackTop(tenths, 10, 28)), 0.001f, $"south {top}");
+            }
+        }
+
+        [Test]
+        public void LightsHungHighInAnAtriumWellReachItsFloor()
+        {
+            var gen = new WorldGenerator(1234, WorldGenSettings.Defaults());
+            LandmarkPlacement p = default; bool found = false;
+            for (int r = 0; r < 40 && !found; r++)
+            for (int x = -r; x <= r && !found; x++)
+            for (int z = -r; z <= r && !found; z++)
+            {
+                if (Mathf.Max(Mathf.Abs(x), Mathf.Abs(z)) != r) continue;
+                foreach (var l in gen.LandmarksIn(new Vector2Int(x, z))) if (l.kind == LandmarkKind.Atrium) { p = l; found = true; break; }
+            }
+            Assert.IsTrue(found, "no atrium near the origin");
+            var occ = LightGridMath.FromWorld(gen);
+            var c = p.WorldCells;
+            var light = new Vector3((c.x + c.width * 0.5f) * C, Pitch + 2.6f, (c.y + c.height * 0.5f) * C);
+            // Floor and the wall face of the well, every point on the well's side of the ring: all in view of a lamp hung from the top.
+            for (float dx = -3.6f; dx <= 3.6f; dx += 1.2f)
+            for (float dz = -3.6f; dz <= 3.6f; dz += 1.2f)
+                foreach (float y in new[] { 0.1f, 4f, 7f })
+                    Assert.IsTrue(LightGridMath.Visible(light, new Vector3(light.x + dx, y, light.z + dz), occ, Pitch), $"well point {dx},{y},{dz} not visible from the top lamp");
+        }
     }
 }
