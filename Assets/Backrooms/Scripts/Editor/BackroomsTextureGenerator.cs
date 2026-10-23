@@ -32,6 +32,44 @@ namespace Backrooms.EditorTools
             AssetDatabase.Refresh();
         }
 
+
+        /// <summary>Textures for the Reference Match scene: a pale wall with a restrained vertical stripe, and a broadly mottled tan carpet with directional pile.</summary>
+        public static void GenerateReferenceMatch()
+        {
+            Directory.CreateDirectory(Folder);
+            const int S = 512;
+            // Wall: 1.2 m per repeat, eight faint stripes (0.15 m apart), fine vertical streaks, broad soft mottling.
+            var wall = new Color[S * S];
+            for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float u = x / (float)S, v = y / (float)S;
+                float d = Mathf.Abs(((x % 64) + 64) % 64 - 32f);                           // distance to the stripe centre line (px)
+                float line = Mathf.Exp(-(d - 28f) * (d - 28f) / 10f);                          // a thin darker line at the stripe edge
+                float band = ((x / 64) & 1) == 0 ? 0.012f : -0.012f;
+                float streak = VNoise(u * 96, v * 3, 96, 3, 811) - 0.5f;
+                float mottle = Fbm(u, v, 2, 3, 823) - 0.5f;
+                float g = 1f - 0.055f * line + band + streak * 0.03f + mottle * 0.06f;
+                wall[y * S + x] = new Color(g, g, g, 1f);
+            }
+            Save("RefWall_Albedo", S, S, wall, true);
+
+            // Carpet: 3 m per repeat; long soft mottling, pile streaks running along the room (V), a little fine variation.
+            var carpet = new Color[S * S];
+            for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float u = x / (float)S, v = y / (float)S;
+                float mottle = Fbm(u, v, 3, 4, 907) - 0.5f;
+                float pile = VNoise(u * 80, v * 5, 80, 5, 919) - 0.5f;
+                float fine = VNoise(u * 160, v * 160, 160, 160, 929) - 0.5f;
+                float g = 1f + mottle * 0.30f + pile * 0.035f + fine * 0.015f;
+                carpet[y * S + x] = new Color(g, g, g, 1f);
+            }
+            Save("RefCarpet_Albedo", S, S, carpet, true);
+            AssetDatabase.Refresh();
+        }
+
         /// <summary>Textures for the infinite-world dressing: wall plates, upholstery and wood.</summary>
         public static void GenerateProps()
         {

@@ -255,6 +255,10 @@ namespace Backrooms.Camcorder
                 0.5f, 3f, "0.00", "x", () => S().grainSize, v => S().grainSize = v);
 
             Section("IMAGE PROCESSING", "Camcorder DSP: soft optics, edge enhancement, subsampled colour.");
+            Slider("Recording resolution (lines)", "Simulates the recorder's own picture size, independent of your display: the image is averaged down to this many lines and smoothly scaled back up. 0 turns it off. About 480 is a standard-definition recording.",
+                0f, 720f, "0", " lines", () => S().videoLines, v => S().videoLines = Mathf.RoundToInt(v / 10f) * 10, true);
+            Slider("Colour detail", "How much colour resolution the recording keeps compared with brightness detail (lower = softer, smoother colour, more at the sides than up and down).",
+                0.2f, 1f, "0.00", "", () => S().chromaDetail, v => S().chromaDetail = v);
             Slider("Softness / resolution", "Optical and sensor blur. Consumer video resolves far less detail than a modern screen; raise this for an authentic soft image.",
                 0f, 3f, "0.00", " px", () => S().softness, v => S().softness = v);
             Slider("Edge enhancement", "The camera's artificial sharpening, which draws light and dark halos along edges. High values give the crisp but fake video outline.",

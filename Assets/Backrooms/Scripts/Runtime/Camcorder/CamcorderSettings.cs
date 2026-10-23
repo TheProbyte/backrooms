@@ -41,6 +41,8 @@ namespace Backrooms.Camcorder
         public float grainSize = 1.2f;       // 1 = 720-line sensor; larger = coarser, clumpier grain
 
         // Image processing
+        public int videoLines = 0;           // simulated recording resolution in lines (0 = the display's own resolution)
+        public float chromaDetail = 0.5f;    // colour resolution as a fraction of the recorded luma resolution
         public float sharpening = 4f;
         public float softness = 3f;       // optical + resolution softness, in pixels
         public float chromaBleed = 10f;     // horizontal chroma smear, in pixels
@@ -113,7 +115,7 @@ namespace Backrooms.Camcorder
 
         // ---------------- Presets ----------------
 
-        public static readonly string[] PresetNames = { "Default", "Hi8 '98", "MiniDV '04", "Low light gain", "Clean", "VHS '96", "Found footage" };
+        public static readonly string[] PresetNames = { "Default", "Hi8 '98", "MiniDV '04", "Low light gain", "Clean", "VHS '96", "Found footage", "Reference Match" };
 
         public static CamcorderSettings Preset(int index)
         {
@@ -170,6 +172,18 @@ namespace Backrooms.Camcorder
                     s.saturation = -8f; s.contrast = 2f; s.whiteBalanceTemp = 12f; s.whiteBalanceTint = -6f;
                     s.motionBlur = 0.4f; s.sensorBlur = 1.8f; s.headSwitching = 0.8f; s.blockiness = 0.5f; s.exposureBias = 0.35f; s.maxGain = 1.1f;
                     s.scanlines = 0.03f; s.trackingNoise = 0.22f; s.aspect43 = true;
+                    s.micColoration = 0.8f; s.autoGain = 0.75f; s.micHiss = 0.3f; s.handlingNoise = 0.6f; s.stereoWidth = 0.6f;
+                    break;
+                case 7: // Reference Match: tuned against a single reference photograph (see Docs/ReferenceMatch.md).
+                    s.fieldOfView = 75f; s.lensDistortion = -0.08f; s.chromaticAberration = 0.02f; s.vignette = 0.1f;
+                    s.bloom = 0.35f; s.bloomScatter = 0.6f;
+                    s.videoLines = 340; s.chromaDetail = 0.4f; s.sharpening = 0.7f; s.chromaShift = 0.4f;
+                    s.softness = 0f; s.chromaBleed = 0f;
+                    s.noise = 0.012f; s.gainNoise = 0.05f; s.chromaNoise = 0.02f; s.grainSize = 1f;
+                    s.pedestal = 0.02f; s.highlightKnee = 0.9f; s.saturation = 0f; s.contrast = 0f;
+                    s.whiteBalanceTemp = 0f; s.whiteBalanceTint = 0f; s.exposureBias = 0.25f; s.maxGain = 0.6f;
+                    s.autofocus = false; s.scanlines = 0f; s.trackingNoise = 0f; s.headSwitching = 0.25f; s.blockiness = 0.1f;
+                    s.sensorBlur = 0.5f; s.motionBlur = 0.15f; s.aspect43 = false; s.showOSD = false;
                     s.micColoration = 0.8f; s.autoGain = 0.75f; s.micHiss = 0.3f; s.handlingNoise = 0.6f; s.stereoWidth = 0.6f;
                     break;
             }

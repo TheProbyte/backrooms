@@ -35,6 +35,10 @@ namespace Backrooms.Camcorder
         static readonly int ID5 = Shader.PropertyToID("_CamVideo5");
         static readonly int ID6 = Shader.PropertyToID("_CamVideo6");
         static readonly int ID7 = Shader.PropertyToID("_CamVideo7");
+        static readonly int ID8 = Shader.PropertyToID("_CamVideo8");
+
+        /// <summary>Set for repeatable stills: no handheld motion, exposure/focus locked, tape effects that vary with time stopped.</summary>
+        [System.NonSerialized] public bool freezeForStills;
         Quaternion _prevRot; bool _havePrev; Vector2 _blurVel;
 
         void Awake()
@@ -74,6 +78,13 @@ namespace Backrooms.Camcorder
         void LateUpdate()
         {
             var s = Settings;
+            if (freezeForStills)
+            {
+                s = s.Clone();
+                s.shakeIntensity = 0f; s.breathing = 0f; s.lookOvershoot = 0f; s.lookJitter = 0f; s.stabilization = 0f;
+                s.autofocus = false; s.autoExposure = false; s.fluorescentFlicker = 0f;
+                s.sensorBlur = 0f; s.motionBlur = 0f;
+            }
             if (!_player) _player = FindAnyObjectByType<CamcorderPlayerController>();
             _cam.fieldOfView = s.fieldOfView * (_player ? _player.FovMultiplier : 1f);
 
@@ -103,6 +114,7 @@ namespace Backrooms.Camcorder
             if (exposure)
             {
                 exposure.autoExposure = s.autoExposure;
+                exposure.snap = freezeForStills;
                 exposure.exposureBias = s.exposureBias;
                 exposure.speedScale = s.exposureSpeed;
                 exposure.maxEV = s.maxGain;
@@ -145,9 +157,10 @@ namespace Backrooms.Camcorder
             float gain = CurrentGainEV;
             Shader.SetGlobalVector(ID1, new Vector4(s.sharpening, s.softness, s.chromaBleed, s.chromaShift));
             Shader.SetGlobalVector(ID2, new Vector4(s.noise + s.gainNoise * gain, s.chromaNoise * (1f + gain), s.scanlines, s.trackingNoise));
-            Shader.SetGlobalVector(ID3, new Vector4(s.pedestal, s.highlightKnee, Time.time, 1f));
-            // Frame index re-seeds the noise every rendered frame; 720-line sensor grid; 480 video lines.
-            Shader.SetGlobalVector(ID4, new Vector4(Time.frameCount % 16777216, 720f, 480f, s.grainSize));
+            Shader.SetGlobalVector(ID3, new Vector4(s.pedestal, s.highlightKnee, freezeForStills ? 1f : Time.time, 1f));
+            // Frame index re-seeds the noise every rendered frame; the noise grid follows the recording resolution (720-line sensor otherwise); 480 video lines.
+            Shader.SetGlobalVector(ID4, new Vector4(freezeForStills ? 7 : Time.frameCount % 16777216, s.videoLines > 0 ? s.videoLines : 720f, 480f, s.grainSize));
+            Shader.SetGlobalVector(ID8, new Vector4(s.videoLines, s.chromaDetail, 0f, 0f));
             // OSD composite: curvature of the viewfinder overlay, and whether the OSD texture is in use.
             Shader.SetGlobalVector(ID5, new Vector4(s.osdCurvature, osd && osd.Curved ? 1f : 0f, 0f, 0f));
 
