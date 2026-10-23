@@ -35,6 +35,8 @@ Shader "Backrooms/CamcorderVideo"
             float4 _CamVideo3;   // x pedestal, y knee point, z time (s), w enabled (0/1)
             float4 _CamVideo4;   // x frame index, y sensor lines (noise grid), z scan lines, w grain size multiplier
             float4 _CamVideo5;   // x OSD curvature, y OSD texture enabled
+            float4 _CamVideo6;   // xy: motion smear vector in uv units (from the camera's turn rate)
+            float4 _CamVideo7;   // x head-switching band, y compression blotches
             TEXTURE2D(_CamOSDTex);
 
             // ---------------- Noise ----------------
@@ -140,6 +142,12 @@ Shader "Backrooms/CamcorderVideo"
                     uv.x += band * wob * 0.004 * tracking;
                 }
 
+                // Head-switching band along the bottom: the picture tears sideways there.
+                float hsw = _CamVideo7.x;
+                float hsK = hsw > 0.001 ? smoothstep(0.045, 0.0, uv.y) * hsw : 0;
+                if (hsK > 0.001)
+                    uv.x += GridNoise(float2(uv.y * 400.0, t * 40.0), frame, 303u) * 0.03 * hsK;
+
                 // Work in display (gamma) space like the camera's own signal processing.
                 float soft = _CamVideo1.y;
                 float r1 = max(soft, 0.75);
@@ -182,7 +190,31 @@ Shader "Backrooms/CamcorderVideo"
                 }
                 cc /= wsum;
 
+                // Compression blotches: chroma and brightness held in 12 px blocks that re-draw every few frames.
+                float blk = _CamVideo7.y;
+                if (blk > 0.001)
+                {
+                    float2 bpx = floor(uv * res / 12.0);
+                    float2 buv = (bpx + 0.5) * 12.0 / res;
+                    float2 cb = ToYCC(FetchG(buv)).yz;
+                    float rnd = Rand3(int2(bpx), frame / 3u, 55u).x;
+                    cc = lerp(cc, cb, saturate(blk * (0.3 + 0.9 * rnd)));
+                    y += (Rand3(int2(bpx), frame / 5u, 77u).y - 0.5) * 0.045 * blk;
+                }
+
                 float3 col = FromYCC(float3(y, cc));
+
+                // Sensor motion blur: smear along the camera's turn, mostly trailing behind the motion.
+                float2 mv = _CamVideo6.xy;
+                float mlen = length(mv * res);
+                if (mlen > 1.5)
+                {
+                    float3 acc = 0;
+                    [unroll] for (int m = 0; m < 16; m++)
+                        acc += FetchG(uv + mv * (m / 15.0 - 0.7));
+                    float3 mb = acc * (1.0 / 16.0);
+                    col = lerp(col, mb, saturate((mlen - 1.5) / 5.0));
+                }
 
                 // Highlight knee: compress above the knee point and clip at 100%.
                 float knee = _CamVideo3.y;
@@ -218,6 +250,16 @@ Shader "Backrooms/CamcorderVideo"
                 {
                     float spark = GridNoise(float2(uv.x * 160.0, uv.y * res.y * 0.5), frame, 211u);
                     col += (0.04 + max(spark, 0) * 0.12) * band * tracking;
+                }
+
+                // Head-switching noise: a band of blue / magenta static that changes colour and flickers.
+                if (hsK > 0.001)
+                {
+                    float hue = 0.5 + 0.5 * sin(t * 2.3 + uv.x * 5.0);
+                    float3 tint = lerp(float3(0.22, 0.3, 1.0), float3(1.0, 0.25, 0.75), hue);
+                    float sp = GridNoise(float2(uv.x * 220.0, uv.y * res.y * 0.6), frame, 331u);
+                    col = lerp(col, tint * (0.55 + 0.45 * saturate(sp * 0.5 + 0.5)), saturate(hsK * 0.55));
+                    col += max(sp, 0) * 0.25 * hsK * step(uv.y, 0.012);          // the bottom few lines: bright static
                 }
 
                 // Viewfinder OSD (drawn by its own camera), bent with a gentle barrel warp so the text

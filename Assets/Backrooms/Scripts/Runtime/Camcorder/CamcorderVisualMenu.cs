@@ -287,6 +287,8 @@ namespace Backrooms.Camcorder
                 0f, 2f, "0.00", "x", () => S().lookOvershoot, v => S().lookOvershoot = v);
             Slider("Look jitter", "A small irregular wobble while you turn the camera. 0 = off.",
                 0f, 2f, "0.00", "x", () => S().lookJitter, v => S().lookJitter = v);
+            Slider("Sensor motion blur", "Streaking of the whole frame in the direction you turn, in proportion to how fast, as if the shutter stays open for a fraction of a second. Strong on quick pans.",
+                0f, 3f, "0.00", "x", () => S().sensorBlur, v => S().sensorBlur = v);
             Slider("Motion blur (shutter)", "Smear when turning quickly, from the camera's shutter staying open for part of each frame.",
                 0f, 0.6f, "0.00", "", () => S().motionBlur, v => S().motionBlur = v);
 
@@ -299,6 +301,10 @@ namespace Backrooms.Camcorder
                 0f, 2f, "0.00", "", () => S().osdCurvature, v => S().osdCurvature = v);
             Slider("Scanlines","The faint horizontal line structure of 480-line interlaced video. Filtered so it never shimmers or forms moire.",
                 0f, 0.3f, "0.00", "", () => S().scanlines, v => S().scanlines = v);
+            Slider("Head-switching band", "The flickering blue and magenta band of noise along the bottom edge of the frame that VHS tapes show.",
+                0f, 1f, "0.00", "", () => S().headSwitching, v => S().headSwitching = v);
+            Slider("Compression blotches", "Blotchy blocks of colour and brightness that hold for a few frames, like a low-bitrate recording.",
+                0f, 1f, "0.00", "", () => S().blockiness, v => S().blockiness = v);
             Slider("Tape tracking noise", "A soft band of wobble and brightening that drifts slowly up the frame, like a worn tape.",
                 0f, 1f, "0.00", "", () => S().trackingNoise, v => S().trackingNoise = v);
         }

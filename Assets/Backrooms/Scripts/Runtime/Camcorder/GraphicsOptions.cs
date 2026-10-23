@@ -31,7 +31,8 @@ namespace Backrooms.Camcorder
         public float poolSmoothing = 0.5f;   // rounds off boxy light pools of far fixtures
         public float darkSpots = 0.35f;       // makes weakly lit areas darker
         public float shadowDarkness = 1f;     // real-light shadows
-        public int farLights = 56;            // distant fixtures that are real (unshadowed) lights: crisp far pools
+        public int farLights = 0;             // extra real (unshadowed) lights beyond the shadowed ones; 0 when per-pixel distant light is on
+        public bool perPixelFar = true;       // distant fixtures are lit exactly per pixel (no visible grid texels)
         public float flicker = 0.35f;         // faulty tubes: how often and how deep they stutter (1 = the original amount)
         public void ResetLighting()
         {
@@ -159,11 +160,12 @@ namespace Backrooms.Camcorder
                 _lights.lampRange = _baseLampRange * o.lightReach;
                 _lights.domeHeightBoost = o.tallBoost;
                 _lights.shadowStrength = o.shadowDarkness;
-                _lights.farRealLights = Mathf.Clamp(o.farLights, 0, 120);
+                _lights.farRealLights = Mathf.Clamp(o.perPixelFar ? 0 : o.farLights, 0, 120);   // per-pixel light makes extra real lights unnecessary
                 _lights.flickerAmount = Mathf.Clamp(o.flicker, 0f, 1.5f);
                 if (_lights.grid)
                 {
                     _lights.grid.bounceGain = o.fillLight;
+                    _lights.grid.perPixelDirect = o.perPixelFar;
                     _lights.grid.wrap = o.softness;
                     _lights.grid.smoothing = o.poolSmoothing;
                     _lights.grid.contrast = o.darkSpots;

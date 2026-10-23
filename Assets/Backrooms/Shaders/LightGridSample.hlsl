@@ -17,6 +17,19 @@ TEXTURE2D(_LGridBounce);
 SAMPLER(sampler_LGridBounce);
 StructuredBuffer<uint> _LGridOcc;      // [storey][z][x], toroidal
 
+// The grid's own light list, so surfaces can also evaluate its lights per pixel (no 0.6 m texels).
+struct LGridLight
+{
+    float3 pos;      float range;
+    float3 color;    float cosOuter;     // colour x intensity x the grid's share (0 while it is a real URP light)
+    float3 dir;      float cosInner;
+    float3 colorAll; float storey;
+};
+StructuredBuffer<LGridLight> _LGridLights;
+StructuredBuffer<uint2> _LGridTiles;     // (first index, count) per 4.8 m tile, toroidal
+StructuredBuffer<uint> _LGridTileLights;
+float4 _LGridFar;                        // x: per-pixel evaluation on (0/1), y: texels per tile, z: tiles per axis
+
 float4 _LGridSize;      // texels x, y, z, occupancy cells
 float4 _LGridParams;    // x: on (0/1), y: direct gain, z: bounce gain, w: storey pitch
 float4 _LGridWindow;    // world xz min, xz max of the valid window
@@ -48,6 +61,50 @@ float3 LGrid_Clamp(float3 p, float pitch)
     return p;
 }
 
+half LGrid_LightVisible(float3 P, float3 N, float3 L);
+
+float LGrid_DistAtten(float d2, float range)
+{
+    float f = d2 / (range * range);
+    float s = saturate(1.0 - f * f);
+    return s * s / max(d2, 0.0001);
+}
+
+float LGrid_AngleAtten(float cosAngle, float cosOuter, float cosInner)
+{
+    float inv = 1.0 / max(cosInner - cosOuter, 0.001);
+    float a = saturate(cosAngle * inv - cosOuter * inv);
+    return a * a;
+}
+
+// Direct light of the grid's lights evaluated exactly at the pixel: URP's falloffs, Lambert with the grid's wrap,
+// and the same wall line-of-sight test the real lights use. What the texels would have approximated.
+half3 LGrid_DirectPerPixel(float3 P, half3 N)
+{
+    float tileM = LG_TEXEL * _LGridFar.y;
+    int tiles = (int)_LGridFar.z;
+    int tx = ((int)floor(P.x / tileM)) & (tiles - 1), tz = ((int)floor(P.z / tileM)) & (tiles - 1);
+    uint2 range = _LGridTiles[tz * tiles + tx];
+    float wrap = _LGridShape.x;
+    half3 sum = 0;
+    [loop] for (uint i = 0; i < range.y; i++)
+    {
+        LGridLight L = _LGridLights[_LGridTileLights[range.x + i]];
+        float3 toL = L.pos - P;
+        float d2 = dot(toL, toL);
+        if (d2 >= L.range * L.range || dot(L.color, L.color) <= 0.0) continue;
+        float3 l = toL * rsqrt(max(d2, 1e-6));
+        float att = LGrid_DistAtten(max(d2, 0.04), L.range);
+        if (dot(L.dir, L.dir) > 0.5) att *= LGrid_AngleAtten(dot(L.dir, -l), L.cosOuter, L.cosInner);
+        float lam = saturate((dot(N, l) + wrap) / (1.0 + wrap));
+        float k = att * lam;
+        if (k <= 1e-5) continue;
+        if (LGrid_LightVisible(P, N, L.pos) < 0.5) continue;
+        sum += (half3)(L.color * k);
+    }
+    return sum;
+}
+
 half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
 {
     if (_LGridParams.x < 0.5) return 0;
@@ -58,28 +115,39 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
     float edge = saturate(min(inside.x, inside.y) / 4.0);
     if (edge <= 0.0) return 0;
 
-    float3 uvw = float3(p.x / (LG_TEXEL * _LGridSize.x), p.y / (LG_TEXEL * _LGridSize.y), p.z / (LG_TEXEL * _LGridSize.z));
-    // Plain trilinear ramps linearly between texel centres, which shows as boxy light pools at 0.6 m texels.
-    // An ease curve on the blend weight (still only the two nearest texels, so wall clamping holds) rounds them.
-    float3 tex = uvw * _LGridSize.xyz - 0.5;
-    float3 ti = floor(tex), tf = tex - ti;
-    tf = lerp(tf, tf * tf * (3.0 - 2.0 * tf), _LGridShape.z);
-    uvw = (ti + tf + 0.5) / _LGridSize.xyz;
-    float4 a = SAMPLE_TEXTURE3D_LOD(_LGridA, sampler_LGridA, uvw, 0);
-    float4 b = SAMPLE_TEXTURE3D_LOD(_LGridB, sampler_LGridA, uvw, 0);
-    float3 E = a.rgb;
-    float3 V = float3(b.x, a.w, b.y);
-    float lum = max(dot(E, float3(0.2126, 0.7152, 0.0722)), 1e-5);
-    float len = length(V);
-    float3 dir = len > 1e-6 ? V / len : float3(0, 1, 0);
-    // One light: plain Lambert. Light from many directions: tends to half, whatever the normal.
-    float spread = saturate(len / lum);
-    float wrapped = saturate((dot(normalWS, dir) + _LGridShape.x) / (1.0 + _LGridShape.x));
-    float facing = lerp(0.5, wrapped, spread);
-    // Ceiling fittings do not light their own ceiling plane (the sample point sits half a texel below it,
-    // under the fitting); ceilings get their light from the bounce term.
-    float notCeiling = saturate(1.0 + 1.25 * normalWS.y);
-    half3 direct = (half3)(E * facing * notCeiling * _LGridParams.y);
+    // Direct light: exactly at the pixel from the grid's light list (crisp pools at any distance), or from the texture.
+    half3 direct;
+    if (_LGridFar.x > 0.5)
+    {
+        float notCeil = saturate(1.0 + 1.25 * normalWS.y);
+        direct = LGrid_DirectPerPixel(positionWS, normalWS) * (half)(notCeil * _LGridParams.y);
+    }
+    else
+    {
+        float3 uvw = float3(p.x / (LG_TEXEL * _LGridSize.x), p.y / (LG_TEXEL * _LGridSize.y), p.z / (LG_TEXEL * _LGridSize.z));
+        // Plain trilinear ramps linearly between texel centres, which shows as boxy light pools at 0.6 m texels.
+        // An ease curve on the blend weight (still only the two nearest texels, so wall clamping holds) rounds them.
+        float3 tex = uvw * _LGridSize.xyz - 0.5;
+        float3 ti = floor(tex), tf = tex - ti;
+        tf = lerp(tf, tf * tf * (3.0 - 2.0 * tf), _LGridShape.z);
+        uvw = (ti + tf + 0.5) / _LGridSize.xyz;
+        float4 a = SAMPLE_TEXTURE3D_LOD(_LGridA, sampler_LGridA, uvw, 0);
+        float4 b = SAMPLE_TEXTURE3D_LOD(_LGridB, sampler_LGridA, uvw, 0);
+        float3 E = a.rgb;
+        float3 V = float3(b.x, a.w, b.y);
+        float lum = max(dot(E, float3(0.2126, 0.7152, 0.0722)), 1e-5);
+        float len = length(V);
+        float3 dir = len > 1e-6 ? V / len : float3(0, 1, 0);
+        // One light: plain Lambert. Light from many directions: tends to half, whatever the normal.
+        float spread = saturate(len / lum);
+        float wrapped = saturate((dot(normalWS, dir) + _LGridShape.x) / (1.0 + _LGridShape.x));
+        float facing = lerp(0.5, wrapped, spread);
+        // Ceiling fittings do not light their own ceiling plane (the sample point sits half a texel below it,
+        // under the fitting); ceilings get their light from the bounce term.
+        float notCeiling = saturate(1.0 + 1.25 * normalWS.y);
+        direct = (half3)(E * facing * notCeiling * _LGridParams.y);
+
+    }
 
     // Bounce: light that hit the floor nearby, mostly lighting ceilings and upper walls.
     half3 bounce = 0;

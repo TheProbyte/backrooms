@@ -45,7 +45,8 @@ generation and lighting work now.
 ## F5 menu tabs
 CAMERA, PLAYER, WORLD, AUDIO, SOUND, DISPLAY, LIGHT (strength, reach, darkness, distant crisp lights, flicker,
 pool shape; "Even & pale" preset), PLACES (jump to atriums, balconies, stairs, elevators, colonnade halls,
-spawn; press again for the next nearest). Camera preset "Found footage" matches the reference series.
+spawn; press again for the next nearest). Camera preset "Found footage" matches the reference series (sensor motion blur from the camera turn rate,
+head-switching band, compression blotches are the new CAMERA sliders; `Debug/SpinProbe` turns the camera for screenshots).
 V toggles noclip. Teleports hold you in place until the floor has loaded (`TeleportSafe`).
 
 ## Debug tools

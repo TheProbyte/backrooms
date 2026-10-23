@@ -9,7 +9,7 @@ namespace Backrooms.Generation
     /// </summary>
     public static class LightGridGlobals
     {
-        static ComputeBuffer s_occ;
+        static ComputeBuffer s_occ, s_lights, s_tiles, s_tileLights;
         static Texture3D s_tex3D;
         static Texture2D s_tex2D;
 
@@ -30,6 +30,13 @@ namespace Backrooms.Generation
                 s_tex2D = new Texture2D(1, 1, TextureFormat.RGBAHalf, false) { hideFlags = HideFlags.HideAndDontSave, name = "LightGridEmpty2D" };
                 s_tex2D.SetPixel(0, 0, Color.clear); s_tex2D.Apply(false, true);
             }
+            if (s_lights == null || !s_lights.IsValid()) { s_lights = new ComputeBuffer(1, LightGridMath.GridLight.Stride); s_lights.SetData(new LightGridMath.GridLight[1]); }
+            if (s_tiles == null || !s_tiles.IsValid()) { s_tiles = new ComputeBuffer(1, 8); s_tiles.SetData(new uint[2]); }
+            if (s_tileLights == null || !s_tileLights.IsValid()) { s_tileLights = new ComputeBuffer(1, 4); s_tileLights.SetData(new uint[1]); }
+            Shader.SetGlobalBuffer(Shader.PropertyToID("_LGridLights"), s_lights);
+            Shader.SetGlobalBuffer(Shader.PropertyToID("_LGridTiles"), s_tiles);
+            Shader.SetGlobalBuffer(Shader.PropertyToID("_LGridTileLights"), s_tileLights);
+            Shader.SetGlobalVector(Shader.PropertyToID("_LGridFar"), Vector4.zero);
             Shader.SetGlobalBuffer(GOcc, s_occ);
             Shader.SetGlobalTexture(GA, s_tex3D);
             Shader.SetGlobalTexture(GB, s_tex3D);

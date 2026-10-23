@@ -26,7 +26,9 @@ namespace Backrooms.Camcorder
             Slider("Shadow darkness", "How dark shadows from nearby lights are. Below 1 lets a little light into shadows.",
                 0f, 1f, "0.00", "", () => O().shadowDarkness, v => { O().shadowDarkness = v; O().Save(); });
 
-            Section("DISTANCE", "Far fixtures can be real lights too (without shadows), so distant walls look as crisp as near ones.");
+            Section("DISTANCE", "How far-away lights are drawn. Per pixel makes distant light pools as crisp as near ones, with no change as you walk closer.");
+            Toggle("Per-pixel distant light", "Every fixture's light is worked out at each pixel (still blocked by walls) instead of being read from a coarse grid. Removes the blocky look of far pools. Costs a little speed.",
+                () => O().perPixelFar, v => { O().perPixelFar = v; O().Save(); });
             Slider("Distant crisp lights", "How many more fixtures, beyond the shadow-casting ones, are real lights. Walls still stop them. 0 uses the soft light grid for everything far away. Costs a little speed.",
                 0f, 120f, "0", "", () => O().farLights, v => { O().farLights = Mathf.RoundToInt(v); O().Save(); }, true);
 

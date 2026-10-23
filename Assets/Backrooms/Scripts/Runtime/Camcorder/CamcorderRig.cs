@@ -33,6 +33,9 @@ namespace Backrooms.Camcorder
         static readonly int ID3 = Shader.PropertyToID("_CamVideo3");
         static readonly int ID4 = Shader.PropertyToID("_CamVideo4");
         static readonly int ID5 = Shader.PropertyToID("_CamVideo5");
+        static readonly int ID6 = Shader.PropertyToID("_CamVideo6");
+        static readonly int ID7 = Shader.PropertyToID("_CamVideo7");
+        Quaternion _prevRot; bool _havePrev; Vector2 _blurVel;
 
         void Awake()
         {
@@ -115,6 +118,29 @@ namespace Backrooms.Camcorder
                 shake.lookOvershoot = s.lookOvershoot;
                 shake.lookJitter = s.lookJitter;
             }
+
+            // Sensor motion blur: the camera's turn rate (pan, tilt, handheld shake) times a shutter time gives a smear
+            // vector in screen units, so a fast pan streaks the whole frame the way footage from a camcorder does.
+            Vector2 blur = Vector2.zero;
+            if (Time.deltaTime > 1e-4f)
+            {
+                var rot = transform.rotation;
+                if (_havePrev)
+                {
+                    var d = Quaternion.Inverse(_prevRot) * rot;
+                    d.ToAngleAxis(out float ang, out Vector3 axis);
+                    if (ang > 180f) ang -= 360f;
+                    Vector3 w = axis * ang;                                  // degrees turned this frame, in the camera's own axes
+                    float vf = _cam.fieldOfView, hf = 2f * Mathf.Atan(Mathf.Tan(vf * 0.5f * Mathf.Deg2Rad) * _cam.aspect) * Mathf.Rad2Deg;
+                    var perSec = new Vector2(-w.y / hf, w.x / vf) / Time.deltaTime;      // screen fractions per second (right turn moves the image left)
+                    blur = perSec * (0.033f * s.sensorBlur);                              // open shutter for about 1/30 s
+                }
+                _prevRot = rot; _havePrev = true;
+            }
+            _blurVel = Vector2.Lerp(_blurVel, blur, 1f - Mathf.Exp(-Time.deltaTime / 0.04f));
+            var bv = Vector2.ClampMagnitude(_blurVel, 0.22f);
+            Shader.SetGlobalVector(ID6, new Vector4(bv.x, bv.y, 0f, 0f));
+            Shader.SetGlobalVector(ID7, new Vector4(s.headSwitching, s.blockiness, 0f, 0f));
 
             float gain = CurrentGainEV;
             Shader.SetGlobalVector(ID1, new Vector4(s.sharpening, s.softness, s.chromaBleed, s.chromaShift));

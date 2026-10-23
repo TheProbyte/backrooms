@@ -144,6 +144,11 @@ Storey 0 streams everywhere; upper storeys stream only within a chunk of a multi
 - **Soft pools**: a downlight's pool on a wall is narrow and very bright near the fixture, so one sample per
   0.6 m texel aliased into boxes. `Direct` averages the falloff over eight points in each texel (line of
   sight stays one test at the centre) and the shader eases the trilinear weights (`LightGrid.smoothing`).
+- **Per-pixel distant light** (`LightGrid.perPixelDirect`, default on; `LGrid_DirectPerPixel` in
+  `LightGridSample.hlsl`): the shader loops the grid's own light list for the pixel's 4.8 m tile (the same
+  buffers the compute pass uses) and evaluates URP's falloffs, Lambert and the wall line-of-sight test exactly
+  at the pixel. Far pools are as crisp as near ones and nothing changes as you walk closer; the 0.6 m texture
+  now only carries bounce. F5 > LIGHT > Per-pixel distant light turns it off.
 - **Distant real lights** (`FixtureLightManager.farRealLights`, default 56): beyond the shadow-casting
   fixtures, more fixtures are real lights with shadows off. The wall line-of-sight test in the shader still
   stops them at walls, so only furniture shadows are missing, far away. The grid then only lights what is

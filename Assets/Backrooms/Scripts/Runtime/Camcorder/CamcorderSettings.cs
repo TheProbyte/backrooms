@@ -11,74 +11,77 @@ namespace Backrooms.Camcorder
     [Serializable]
     public class CamcorderSettings
     {
-        // Defaults are the look the player tuned by hand in the F5 panel (2026-10-20).
+        // Defaults are the look the player tuned by hand in the F5 panel (saved from their settings, 2026-10-23).
 
         // Lens
-        public float fieldOfView = 50f;
-        public float lensDistortion = 0.2f;
-        public float chromaticAberration = 0.15f;
-        public float vignette = 0.24f;
-        public float bloom = 0.875f;
-        public float bloomScatter = 0.71f;
+        public float fieldOfView = 54.5f;
+        public float lensDistortion = 0.252f;
+        public float chromaticAberration = 0.081f;
+        public float vignette = 0.316f;
+        public float bloom = 1.276f;
+        public float bloomScatter = 0.646f;
 
         // Focus
         public bool autofocus = true;
         public float aperture = 4f;          // f-number for the depth-of-field effect
-        public float focusSpeed = 0.8f;      // how fast the AF motor drives
-        public float focusHunting = 0.35f;   // overshoot and settling when focus changes
+        public float focusSpeed = 0.799f;      // how fast the AF motor drives
+        public float focusHunting = 0.317f;   // overshoot and settling when focus changes
 
         // Exposure / iris
         public bool autoExposure = true;
-        public float exposureBias = 0f;      // EV
-        public float exposureSpeed = 1f;     // multiplier on iris response
-        public float maxGain = 0.35f;        // EV the auto-iris may open beyond nominal
+        public float exposureBias = 0.5f;      // EV
+        public float exposureSpeed = 0.642f;     // multiplier on iris response
+        public float maxGain = 1.6f;        // EV the auto-iris may open beyond nominal
         public float fluorescentFlicker = 0.25f; // shutter beating against 60 Hz tubes
 
         // Sensor gain noise
-        public float noise = 0.062f;
-        public float gainNoise = 0.10f;      // extra noise per EV of gain
-        public float chromaNoise = 0.032f;
+        public float noise = 0.017f;
+        public float gainNoise = 0.1603f;      // extra noise per EV of gain
+        public float chromaNoise = 0.08f;
         public float grainSize = 1.2f;       // 1 = 720-line sensor; larger = coarser, clumpier grain
 
         // Image processing
-        public float sharpening = 3f;
-        public float softness = 1.78f;       // optical + resolution softness, in pixels
-        public float chromaBleed = 5.1f;     // horizontal chroma smear, in pixels
-        public float chromaShift = 1.4f;
-        public float highlightKnee = 0.88f;
-        public float pedestal = 0.02f;
+        public float sharpening = 4f;
+        public float softness = 3f;       // optical + resolution softness, in pixels
+        public float chromaBleed = 10f;     // horizontal chroma smear, in pixels
+        public float chromaShift = 3f;
+        public float highlightKnee = 1f;
+        public float pedestal = 0.0698f;
 
         // Colour
-        public float whiteBalanceTemp = 0f;
-        public float whiteBalanceTint = 10f;
-        public float saturation = 11.5f;
-        public float contrast = 11.6f;
+        public float whiteBalanceTemp = 1.9f;
+        public float whiteBalanceTint = -5.2f;
+        public float saturation = 10.1f;
+        public float contrast = 22.8f;
 
         // Motion
         public float shakeIntensity = 1.23f;
         public float breathing = 1.48f;
         public float stabilization = 0f;
-        public float motionBlur = 0.12f;
+        public float sensorBlur = 0.8f;       // directional smear from how fast the camera turns (shutter open for part of each frame)
+        public float motionBlur = 0.344f;
         public float lookOvershoot = 0.5f;   // camera carries on a touch when you stop turning
         public float lookJitter = 0.5f;      // small wobble while turning
 
         // Format
-        public float scanlines = 0.049f;
-        public float trackingNoise = 0.345f;
+        public float scanlines = 0.0977f;
+        public float headSwitching = 0.4f;   // the flickering blue/magenta noise band along the bottom of VHS footage
+        public float blockiness = 0.25f;     // blotchy compression: chroma and brightness held in blocks that change every few frames
+        public float trackingNoise = 0.154f;
         public bool aspect43 = true;
-        public bool showOSD = true;
-        public float osdCurvature = 0.8f;    // viewfinder overlay bends with the lens (0 = flat)
+        public bool showOSD = false;
+        public float osdCurvature = 0.961f;    // viewfinder overlay bends with the lens (0 = flat)
         public int frameRateCap = 0;         // legacy; frame pacing moved to GraphicsOptions
 
         // Audio: the camcorder's microphone and recording chain (independent of the visual exposure).
         // New fields keep their defaults when older saved settings are loaded.
         public float audioVolume = 0.8f;     // output volume, applied last
         public bool audioProcessing = true;  // camcorder chain on (off = clean reference)
-        public float micColoration = 0.6f;   // bass cut + softened highs
-        public float autoGain = 0.6f;        // AGC strength
-        public float micHiss = 0.2f;          // mic self-noise
-        public float handlingNoise = 0.5f;   // body noise from walking
-        public float stereoWidth = 0.8f;     // 0 mono, 1 natural
+        public float micColoration = 0.85f;   // bass cut + softened highs
+        public float autoGain = 0.8f;        // AGC strength
+        public float micHiss = 0.036f;          // mic self-noise
+        public float handlingNoise = 0.6f;   // body noise from walking
+        public float stereoWidth = 0.55f;     // 0 mono, 1 natural
 
         public CamcorderSettings Clone() => (CamcorderSettings)MemberwiseClone();
 
@@ -165,7 +168,7 @@ namespace Backrooms.Camcorder
                     s.softness = 3.2f; s.sharpening = 0f; s.chromaBleed = 7f; s.chromaShift = 1.2f;
                     s.pedestal = 0.07f; s.highlightKnee = 0.66f; s.noise = 0.05f; s.chromaNoise = 0.05f; s.gainNoise = 0.06f;
                     s.saturation = -8f; s.contrast = 2f; s.whiteBalanceTemp = 12f; s.whiteBalanceTint = -6f;
-                    s.motionBlur = 0.4f; s.exposureBias = 0.35f; s.maxGain = 1.1f;
+                    s.motionBlur = 0.4f; s.sensorBlur = 1.8f; s.headSwitching = 0.8f; s.blockiness = 0.5f; s.exposureBias = 0.35f; s.maxGain = 1.1f;
                     s.scanlines = 0.03f; s.trackingNoise = 0.22f; s.aspect43 = true;
                     s.micColoration = 0.8f; s.autoGain = 0.75f; s.micHiss = 0.3f; s.handlingNoise = 0.6f; s.stereoWidth = 0.6f;
                     break;
