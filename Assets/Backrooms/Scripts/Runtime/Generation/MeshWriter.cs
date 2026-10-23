@@ -51,6 +51,32 @@ namespace Backrooms.Generation
             else { _i.Add(s); _i.Add(s + 2); _i.Add(s + 1); _i.Add(s); _i.Add(s + 3); _i.Add(s + 2); }
         }
 
+        /// <summary>A quad with its own normal at each corner (smooth surfaces such as the curved underside of an arch) and explicit UVs.</summary>
+        public void SmoothQuad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 na, Vector3 nb, Vector3 nc, Vector3 nd, Vector2 ua, Vector2 ub, Vector2 uc, Vector2 ud)
+        {
+            int s = _v.Count;
+            _v.Add(a); _v.Add(b); _v.Add(c); _v.Add(d);
+            _uv.Add(ua); _uv.Add(ub); _uv.Add(uc); _uv.Add(ud);
+            _n.Add(na); _n.Add(nb); _n.Add(nc); _n.Add(nd);
+            Vector3 avg = (na + nb + nc + nd).normalized;
+            Vector3 e1 = b - a, e2 = d - a;
+            Vector2 d1 = ub - ua, d2 = ud - ua;
+            float det = d1.x * d2.y - d2.x * d1.y;
+            Vector3 tan = Mathf.Abs(det) > 1e-9f ? (e1 * d2.y - e2 * d1.y) / det : e1;
+            Vector3 bit = Mathf.Abs(det) > 1e-9f ? (e2 * d1.x - e1 * d2.x) / det : e2;
+            for (int k = 0; k < 4; k++)
+            {
+                Vector3 nk = k == 0 ? na : k == 1 ? nb : k == 2 ? nc : nd;
+                Vector3 tk = (tan - nk * Vector3.Dot(nk, tan)).normalized;
+                if (tk.sqrMagnitude < 1e-8f) tk = Vector3.Cross(nk, Vector3.up).normalized;
+                float w = Vector3.Dot(Vector3.Cross(nk, tk), bit) < 0f ? -1f : 1f;
+                _t.Add(new Vector4(tk.x, tk.y, tk.z, w));
+            }
+            bool front = Vector3.Dot(Vector3.Cross(b - a, c - a), avg) > 0f;
+            if (front) { _i.Add(s); _i.Add(s + 1); _i.Add(s + 2); _i.Add(s); _i.Add(s + 2); _i.Add(s + 3); }
+            else { _i.Add(s); _i.Add(s + 2); _i.Add(s + 1); _i.Add(s); _i.Add(s + 3); _i.Add(s + 2); }
+        }
+
         /// <summary>Faces of an oriented box. faceMask bits: 1 -X, 2 +X, 4 -Y, 8 +Y, 16 -Z, 32 +Z.</summary>
         public void Box(Vector3 center, Vector3 size, Quaternion rot, int faceMask, UVProjector uv)
         {

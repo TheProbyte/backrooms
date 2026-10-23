@@ -470,12 +470,21 @@ namespace Backrooms.Generation
         /// </summary>
         void ArchFaces(Room room, uint cm, bool vertical, float l, float f, float a0, float a1, Vector3 n, float myCeil)
         {
-            const int K = 14;
+            // Enough segments that the curve reads as smooth (5 degrees each), with a smooth normal at every
+            // vertex of the curved underside instead of one flat normal per facet.
+            const int K = 36;
             var w = WMask(WallMat(room), cm);
             Vector3 alongDir = vertical ? Vector3.forward : Vector3.right;
             Vector3 P(float plane, float at, float y) => (vertical ? new Vector3(plane, 0, at) : new Vector3(at, 0, plane)) + Vector3.up * y;
             float r = (a1 - a0) * 0.5f, mid = (a0 + a1) * 0.5f, spring = ArchApex - r;
+            float depth = Mathf.Abs(f - l);
             if (myCeil > ArchApex + 0.001f) WallFace(room, cm, P(f, a0, 0), P(f, a1, 0), ArchApex, myCeil, n);
+
+            // Wallpaper wraps around the corner: the face\x27s texture coordinates continue onto the underside in
+            // the direction the surface turns (into the opening), so stripes flow through the reveal with no seams.
+            Vector2 FaceUV(float at, float y) => MeshWriter.WallUV(P(f, at, y) + w.worldOffset, n);
+            Vector3 Inward(float t) => -(alongDir * Mathf.Cos(t) + Vector3.up * Mathf.Sin(t));
+
             for (int i = 0; i < K; i++)
             {
                 float t0 = Mathf.PI * (1f - i / (float)K), t1 = Mathf.PI * (1f - (i + 1) / (float)K);
@@ -483,10 +492,12 @@ namespace Backrooms.Generation
                 float x1 = mid + r * Mathf.Cos(t1), y1 = spring + r * Mathf.Sin(t1);
                 // Spandrel strip on the face.
                 w.Quad(P(f, x0, y0), P(f, x1, y1), P(f, x1, ArchApex), P(f, x0, ArchApex), n, MeshWriter.WallUV);
-                // Intrados: faces the arch's centre.
-                float tm = (t0 + t1) * 0.5f;
-                Vector3 nn = -(alongDir * Mathf.Cos(tm) + Vector3.up * Mathf.Sin(tm));
-                w.Quad(P(l, x0, y0), P(f, x0, y0), P(f, x1, y1), P(l, x1, y1), nn, MeshWriter.WallUV);
+                // Underside (intrados): faces the arch\x27s centre, smooth normals, wrapped texture.
+                Vector3 n0 = Inward(t0), n1 = Inward(t1);
+                Vector2 uf0 = FaceUV(x0, y0), uf1 = FaceUV(x1, y1);
+                Vector2 ul0 = FaceUV(x0 + Mathf.Cos(t0) * -depth, y0 + Mathf.Sin(t0) * -depth);
+                Vector2 ul1 = FaceUV(x1 + Mathf.Cos(t1) * -depth, y1 + Mathf.Sin(t1) * -depth);
+                w.SmoothQuad(P(l, x0, y0), P(f, x0, y0), P(f, x1, y1), P(l, x1, y1), n0, n0, n1, n1, ul0, uf0, uf1, ul1);
             }
         }
 

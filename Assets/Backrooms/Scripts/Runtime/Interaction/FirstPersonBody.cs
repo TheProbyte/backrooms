@@ -17,7 +17,7 @@ namespace Backrooms.Interaction
     public class FirstPersonBody : MonoBehaviour
     {
         [Tooltip("Body pushed back from the eye so looking down shows chest and feet, not the inside of the torso.")]
-        public float bodyBack = 0.1f;
+        public float bodyBack = 0.16f;
         public bool showBody = true;
         public bool castShadows = true;
 

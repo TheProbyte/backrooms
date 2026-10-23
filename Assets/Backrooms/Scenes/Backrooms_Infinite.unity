@@ -119,7 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &63457799
+--- !u!1 &25566450
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -127,41 +127,9 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 63457800}
-  m_Layer: 0
-  m_Name: CameraPivot
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &63457800
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 63457799}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1.58, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 1515278712}
-  m_Father: {fileID: 1329424803}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &227820349
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 227820352}
-  - component: {fileID: 227820350}
-  - component: {fileID: 227820351}
+  - component: {fileID: 25566453}
+  - component: {fileID: 25566451}
+  - component: {fileID: 25566452}
   m_Layer: 0
   m_Name: CamcorderUI
   m_TagString: Untagged
@@ -169,13 +137,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &227820350
+--- !u!114 &25566451
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 227820349}
+  m_GameObject: {fileID: 25566450}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b541c911b056d584b89ca1f03108ad9f, type: 3}
@@ -186,27 +154,27 @@ MonoBehaviour:
   showDebug: 0
   startDate: 1998-10-19 22:41:00
   uiRendererIndex: 1
---- !u!114 &227820351
+--- !u!114 &25566452
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 227820349}
+  m_GameObject: {fileID: 25566450}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2458db6c8ed0ac148bc190d130276be8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Camcorder.CamcorderVisualMenu
-  rig: {fileID: 1515278713}
-  player: {fileID: 1329424804}
---- !u!4 &227820352
+  rig: {fileID: 117854673}
+  player: {fileID: 1711972568}
+--- !u!4 &25566453
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 227820349}
+  m_GameObject: {fileID: 25566450}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -215,7 +183,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &241474096
+--- !u!1 &117854671
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -223,289 +191,15 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 241474098}
-  - component: {fileID: 241474097}
-  m_Layer: 0
-  m_Name: Camcorder_PostVolume
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &241474097
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 241474096}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
-  m_IsGlobal: 1
-  priority: 10
-  blendDistance: 0
-  weight: 1
-  sharedProfile: {fileID: 11400000, guid: 7bbd21ca9a98f03448c9edd8099b4387, type: 2}
---- !u!4 &241474098
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 241474096}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &590100733
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 590100737}
-  - component: {fileID: 590100736}
-  - component: {fileID: 590100735}
-  - component: {fileID: 590100734}
-  m_Layer: 0
-  m_Name: World
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &590100734
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 590100733}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b809fc1f5b73ec74ca9095a0758b24e8, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Audio.BuildingAudio
-  streamer: {fileID: 590100735}
-  lights: {fileID: 590100736}
-  listener: {fileID: 1515278712}
---- !u!114 &590100735
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 590100733}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3bc1d99131900cf48be1dd8f7ecd4896, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.WorldStreamer
-  seed: 0
-  loadRadius: 3
-  unloadRadius: 4
-  frameBudgetMs: 4
-  assets: {fileID: 11400000, guid: cd0631eae779e64479479e398a7f876c, type: 2}
-  player: {fileID: 1329424803}
-  lightManager: {fileID: 590100736}
-  strikeOnStream: 0
---- !u!114 &590100736
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 590100733}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 74b78b28035e35b4aae2c7d18dac1344, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.FixtureLightManager
-  mode: 0
-  grid: {fileID: 0}
-  faultyRealLights: 10
-  realLamps: 2
-  handoverTime: 0.6
-  gridDistance: 40
-  viewer: {fileID: 1515278712}
-  tubeColor: {r: 1, g: 0.965, b: 0.86, a: 1}
-  tubeIntensity: 7
-  tubeRange: 6
-  bounceIntensity: 0.8
-  bounceRange: 4.4
-  domeHeightBoost: 0.3
-  lampColor: {r: 1, g: 0.74, b: 0.47, a: 1}
-  lampIntensity: 1.8
-  lampRange: 5
-  stripColor: {r: 0.9, g: 0.95, b: 1, a: 1}
-  maxTroffers: 168
-  maxLamps: 10
-  maxDistance: 36
-  fadeStart: 28
-  bounceCount: 32
-  bounceDistance: 18
-  shadowedTroffers: 24
-  shadowedLamps: 1
-  shadowDistance: 20
-  shadowHysteresis: 0.22
-  shadowFade: 0.5
-  shadowTier: 1
-  powerFlickerTime: 1.1
-  doorwayLights: 32
-  doorwayGain: 0.55
-  doorwayDistance: 18
---- !u!4 &590100737
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 590100733}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1329424802
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1329424803}
-  - component: {fileID: 1329424806}
-  - component: {fileID: 1329424804}
-  - component: {fileID: 1329424805}
-  m_Layer: 0
-  m_Name: Player
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &1329424803
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1329424802}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 63457800}
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1329424804
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1329424802}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2cafd59a05bf66e47bbde1e5fa44afb4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.CamcorderPlayerController
-  mouseSensitivity: 0.08
-  invertY: 0
-  requireWindowFocus: 1
-  pitchLimit: 82
-  walkSpeed: 1.35
-  runSpeed: 3.6
-  crouchSpeed: 0.8
-  crawlSpeed: 0.45
-  acceleration: 6
-  deceleration: 8
-  gravity: -19.6
-  standEye: 1.58
-  crouchEye: 1.02
-  crawlEye: 0.42
-  standHeight: 1.75
-  crouchHeight: 1.2
-  crawlHeight: 0.62
-  hopHeight: 0.22
-  chargedJumpHeight: 0.5
-  chargeTime: 0.45
-  maxZoomFov: 0.25
-  zoomRate: 0.3
-  cameraPitchPivot: {fileID: 63457800}
-  noclip: 0
-  noclipSpeed: 4
---- !u!114 &1329424805
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1329424802}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e8d7b5a186e21e543bc750478cc6df7e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Audio.PlayerAudio
-  walkStride: 0.72
-  runStride: 1.05
---- !u!143 &1329424806
-CharacterController:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1329424802}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Height: 1.75
-  m_Radius: 0.3
-  m_SlopeLimit: 40
-  m_StepOffset: 0.25
-  m_SkinWidth: 0.03
-  m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0.875, z: 0}
---- !u!1 &1515278711
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1515278712}
-  - component: {fileID: 1515278720}
-  - component: {fileID: 1515278719}
-  - component: {fileID: 1515278718}
-  - component: {fileID: 1515278717}
-  - component: {fileID: 1515278716}
-  - component: {fileID: 1515278715}
-  - component: {fileID: 1515278714}
-  - component: {fileID: 1515278713}
+  - component: {fileID: 117854672}
+  - component: {fileID: 117854680}
+  - component: {fileID: 117854679}
+  - component: {fileID: 117854678}
+  - component: {fileID: 117854677}
+  - component: {fileID: 117854676}
+  - component: {fileID: 117854675}
+  - component: {fileID: 117854674}
+  - component: {fileID: 117854673}
   m_Layer: 0
   m_Name: Camcorder
   m_TagString: MainCamera
@@ -513,50 +207,50 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &1515278712
+--- !u!4 &117854672
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1515278711}
+  m_GameObject: {fileID: 117854671}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 63457800}
+  m_Father: {fileID: 1810352140}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1515278713
+--- !u!114 &117854673
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1515278711}
+  m_GameObject: {fileID: 117854671}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 186e7c5f26454034a8ee25f034dbd28d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Camcorder.CamcorderRig
-  volume: {fileID: 241474097}
-  exposure: {fileID: 1515278714}
-  shake: {fileID: 1515278715}
-  osd: {fileID: 227820350}
---- !u!114 &1515278714
+  volume: {fileID: 871930765}
+  exposure: {fileID: 117854674}
+  shake: {fileID: 117854675}
+  osd: {fileID: 25566451}
+--- !u!114 &117854674
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1515278711}
+  m_GameObject: {fileID: 117854671}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d01bcde24a7c3d64e9c0db50307a5a2b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.CamcorderAutoExposure
-  volume: {fileID: 241474097}
+  volume: {fileID: 871930765}
   targetLuminance: 0.018
   minEV: -1
   maxEV: 0.35
@@ -568,19 +262,19 @@ MonoBehaviour:
   speedScale: 1
   flicker: 0
   sampleRate: 6
---- !u!114 &1515278715
+--- !u!114 &117854675
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1515278711}
+  m_GameObject: {fileID: 117854671}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 896e6ac11fb202746ac8a5ec30921065, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.HandheldCameraShake
-  player: {fileID: 1329424804}
+  player: {fileID: 1711972568}
   shakeIntensity: 1
   idleSwayDegrees: 0.35
   idleSwayFrequency: 0.22
@@ -597,13 +291,13 @@ MonoBehaviour:
   blendSpeed: 3
   lookOvershoot: 0.5
   lookJitter: 0.5
---- !u!114 &1515278716
+--- !u!114 &117854676
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1515278711}
+  m_GameObject: {fileID: 117854671}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1d3d95b2c477174469461e4ffc95abf8, type: 3}
@@ -625,13 +319,13 @@ MonoBehaviour:
   agcMaxRiseDbPerSec: 4
   compression: 0.4
   saturation: 0.3
---- !u!164 &1515278717
+--- !u!164 &117854677
 AudioReverbFilter:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1515278711}
+  m_GameObject: {fileID: 117854671}
   m_Enabled: 1
   m_DryLevel: 0
   m_Room: -10000
@@ -648,21 +342,21 @@ AudioReverbFilter:
   m_LFReference: 250
   m_ReflectionsDelay: 0
   m_ReverbPreset: 0
---- !u!81 &1515278718
+--- !u!81 &117854678
 AudioListener:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1515278711}
+  m_GameObject: {fileID: 117854671}
   m_Enabled: 1
---- !u!114 &1515278719
+--- !u!114 &117854679
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1515278711}
+  m_GameObject: {fileID: 117854671}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
@@ -700,13 +394,13 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
---- !u!20 &1515278720
+--- !u!20 &117854680
 Camera:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1515278711}
+  m_GameObject: {fileID: 117854671}
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 2
@@ -751,11 +445,318 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
+--- !u!1 &871930764
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 871930766}
+  - component: {fileID: 871930765}
+  m_Layer: 0
+  m_Name: Camcorder_PostVolume
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &871930765
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 871930764}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
+  m_IsGlobal: 1
+  priority: 10
+  blendDistance: 0
+  weight: 1
+  sharedProfile: {fileID: 11400000, guid: 7bbd21ca9a98f03448c9edd8099b4387, type: 2}
+--- !u!4 &871930766
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 871930764}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1301635027
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1301635031}
+  - component: {fileID: 1301635030}
+  - component: {fileID: 1301635029}
+  - component: {fileID: 1301635028}
+  m_Layer: 0
+  m_Name: World
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1301635028
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1301635027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b809fc1f5b73ec74ca9095a0758b24e8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Audio.BuildingAudio
+  streamer: {fileID: 1301635029}
+  lights: {fileID: 1301635030}
+  listener: {fileID: 117854672}
+--- !u!114 &1301635029
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1301635027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3bc1d99131900cf48be1dd8f7ecd4896, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.WorldStreamer
+  seed: 0
+  loadRadius: 3
+  unloadRadius: 4
+  frameBudgetMs: 4
+  assets: {fileID: 11400000, guid: cd0631eae779e64479479e398a7f876c, type: 2}
+  player: {fileID: 1711972567}
+  lightManager: {fileID: 1301635030}
+  strikeOnStream: 0
+--- !u!114 &1301635030
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1301635027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 74b78b28035e35b4aae2c7d18dac1344, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.FixtureLightManager
+  mode: 0
+  grid: {fileID: 0}
+  faultyRealLights: 6
+  realLamps: 1
+  handoverTime: 0.6
+  gridDistance: 40
+  viewer: {fileID: 117854672}
+  tubeColor: {r: 1, g: 0.965, b: 0.86, a: 1}
+  tubeIntensity: 7
+  tubeRange: 6
+  bounceIntensity: 0.8
+  bounceRange: 4.4
+  domeHeightBoost: 0.3
+  lampColor: {r: 1, g: 0.74, b: 0.47, a: 1}
+  lampIntensity: 1.8
+  lampRange: 5
+  stripColor: {r: 0.9, g: 0.95, b: 1, a: 1}
+  maxTroffers: 168
+  maxLamps: 10
+  maxDistance: 36
+  fadeStart: 28
+  bounceCount: 32
+  bounceDistance: 18
+  shadowedTroffers: 24
+  shadowedLamps: 1
+  shadowDistance: 20
+  shadowHysteresis: 0.22
+  shadowFade: 0.5
+  shadowTier: 1
+  powerFlickerTime: 1.1
+  doorwayLights: 32
+  doorwayGain: 0.55
+  doorwayDistance: 18
+--- !u!4 &1301635031
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1301635027}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1711972566
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1711972567}
+  - component: {fileID: 1711972570}
+  - component: {fileID: 1711972568}
+  - component: {fileID: 1711972569}
+  m_Layer: 0
+  m_Name: Player
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1711972567
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1711972566}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1810352140}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1711972568
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1711972566}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2cafd59a05bf66e47bbde1e5fa44afb4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.CamcorderPlayerController
+  mouseSensitivity: 0.08
+  invertY: 0
+  requireWindowFocus: 1
+  pitchLimit: 82
+  pitchLimitDown: 52
+  walkSpeed: 1.35
+  runSpeed: 3.6
+  crouchSpeed: 0.8
+  crawlSpeed: 0.45
+  acceleration: 6
+  deceleration: 8
+  gravity: -19.6
+  standEye: 1.58
+  crouchEye: 1.02
+  crawlEye: 0.42
+  standHeight: 1.75
+  crouchHeight: 1.2
+  crawlHeight: 0.62
+  hopHeight: 0.22
+  chargedJumpHeight: 0.5
+  chargeTime: 0.45
+  maxZoomFov: 0.25
+  zoomRate: 0.3
+  cameraPitchPivot: {fileID: 1810352140}
+  noclip: 0
+  noclipSpeed: 4
+--- !u!114 &1711972569
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1711972566}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e8d7b5a186e21e543bc750478cc6df7e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Audio.PlayerAudio
+  walkStride: 0.72
+  runStride: 1.05
+--- !u!143 &1711972570
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1711972566}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 1.75
+  m_Radius: 0.3
+  m_SlopeLimit: 40
+  m_StepOffset: 0.25
+  m_SkinWidth: 0.03
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0.875, z: 0}
+--- !u!1 &1810352139
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1810352140}
+  m_Layer: 0
+  m_Name: CameraPivot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1810352140
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1810352139}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 1.58, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 117854672}
+  m_Father: {fileID: 1711972567}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 241474098}
-  - {fileID: 1329424803}
-  - {fileID: 227820352}
-  - {fileID: 590100737}
+  - {fileID: 871930766}
+  - {fileID: 1711972567}
+  - {fileID: 25566453}
+  - {fileID: 1301635031}

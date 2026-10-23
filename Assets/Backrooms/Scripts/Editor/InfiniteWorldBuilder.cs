@@ -131,6 +131,17 @@ namespace Backrooms.EditorTools
             m.SetColor("_BaseColor", new Color(0.93f, 0.92f, 0.86f));
             m.SetTextureScale("_BaseMap", new Vector2(2f, 4.5f));
             if (nrm) { m.SetTexture("_BumpMap", nrm); m.SetFloat("_BumpScale", 0.5f); m.EnableKeyword("_NORMALMAP"); }
+            // Paper grain: the scanned paper normal as a fine detail layer (0.3 m repeat) on top of the stripe relief,
+            // so the surface has real fibre texture that catches the light at grazing angles.
+            var grain = CC0Tex("WallpaperPaper_Normal.jpg", true, true);
+            if (grain)
+            {
+                m.SetTexture("_DetailNormalMap", grain);
+                m.SetTextureScale("_DetailNormalMap", new Vector2(4f, 9f));
+                m.SetTextureScale("_DetailAlbedoMap", new Vector2(4f, 9f));          // the detail UVs come from this one
+                m.SetFloat("_DetailNormalMapScale", 0.9f);
+                m.EnableKeyword("_DETAIL_MULX2");
+            }
             m.SetFloat("_Smoothness", 0.18f);
             EditorUtility.SetDirty(m);
         }
@@ -315,6 +326,7 @@ namespace Backrooms.EditorTools
             foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { MatFolder }))
             {
                 var m = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
+                if (m && m.name != "M_CamcorderVideo") { m.SetShaderPassEnabled("MotionVectors", false); EditorUtility.SetDirty(m); }   // static world: no motion-vector pass (a rebuild re-enables it otherwise)
                 if (!m || m.shader == null || m.shader.name != "Universal Render Pipeline/Lit") continue;
                 bool motion = m.GetShaderPassEnabled("MotionVectors");
                 m.shader = lit;

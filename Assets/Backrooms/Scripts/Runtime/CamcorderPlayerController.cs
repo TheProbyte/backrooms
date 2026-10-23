@@ -25,6 +25,8 @@ namespace Backrooms
         public bool requireWindowFocus = true;
         [Tooltip("How far up/down the player can look, in degrees.")]
         [Range(45f, 89f)] public float pitchLimit = 82f;
+        [Tooltip("How far down the player can look, in degrees (less than looking up, so you see your feet and not your chest).")]
+        [Range(30f, 89f)] public float pitchLimitDown = 62f;
 
         [Header("Movement (metres per second)")]
         [Tooltip("Slow, careful walking pace.")]
@@ -117,7 +119,7 @@ namespace Backrooms
         public void AddLook(float yaw, float pitch)
         {
             _yaw += yaw;
-            _pitch = Mathf.Clamp(_pitch + pitch, -pitchLimit, pitchLimit);
+            _pitch = Mathf.Clamp(_pitch + pitch, -pitchLimit, pitchLimitDown);
             transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
             if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
@@ -175,7 +177,7 @@ namespace Backrooms
             _controller.enabled = false;
             transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
             _controller.enabled = !noclip;
-            _yaw = yaw; _pitch = pitch; _verticalVelocity = 0f;
+            _yaw = yaw; _pitch = Mathf.Clamp(pitch, -pitchLimit, pitchLimitDown); _verticalVelocity = 0f;
             PlanarVelocity = Vector3.zero;
             if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
@@ -190,10 +192,10 @@ namespace Backrooms
             float py = _pitch;
             _yaw += delta.x * mouseSensitivity;
             _pitch += (invertY ? delta.y : -delta.y) * mouseSensitivity;
-            float dp = Mathf.Clamp(_pitch, -pitchLimit, pitchLimit) - py;
+            float dp = Mathf.Clamp(_pitch, -pitchLimit, pitchLimitDown) - py;
             _lookDelta = new Vector2(delta.x * mouseSensitivity, dp);
             _lookFrame = Time.frameCount;
-            _pitch = Mathf.Clamp(_pitch, -pitchLimit, pitchLimit);
+            _pitch = Mathf.Clamp(_pitch, -pitchLimit, pitchLimitDown);
             transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
             if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
