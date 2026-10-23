@@ -92,6 +92,15 @@ Storey 0 streams everywhere; upper storeys stream only within a chunk of a multi
 - `Backrooms/Lit` is a copy of URP 17.4 Lit with two lines added (see the shader header). All world
   materials use it (`InfiniteWorldBuilder.UseProjectLitShader`). Its forward pass also carries a copy of URP's `UniversalFragmentPBR` with the wall test in the
   additional-light loop (marked `Backrooms:`).
+- **Bounce stays in its room**: the 2D bounce field blends only across open floor (doors, arches and walls pass
+  nothing, in the compute blur and in the shader's smooth sampling), because even a few percent of a lit
+  room's bounce showed as light in a dark room next door once auto-exposure lifted it.
+- **Globals are re-bound every frame** (`LightGrid.Tick`): the occupancy buffer and grid textures the shader
+  reads are set again each frame. If they ever point at the empty stand-ins from `LightGridGlobals` the shader
+  sees no walls and every wall-aware test passes silently (this was the cause of light "through walls" in
+  the editor: the editor's stand-in binder could land after the grid had bound the real data). The editor
+  binder no longer runs while playing. Debug tip: a quick check is to tint pixels by whether
+  `LGrid_Occ` of their own cell is non-zero.
 - **Room-layer mode** (F5 > Graphics > Light grid off) is the phase-2 system, kept as a fallback: a large
   pool of unshadowed lights limited to their room's layer, plus doorway and bounce lights.
 

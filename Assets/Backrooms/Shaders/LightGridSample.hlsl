@@ -86,11 +86,12 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
         float2 q = p.xz;
         int2 cell = bcell;
         uint o = bocc, oe = LGrid_Occ(cell + int2(1, 0), 0u), on = LGrid_Occ(cell + int2(0, 1), 0u);
+        // Bounce is stored per 1.2 m cell and blends smoothly with its neighbours: keep the sample at the cell centre on every side that is not open floor (walls, doors and arches alike), so a lit room never bleeds into a dark one.
         float2 mid = (cell + 0.5) * LG_CELL;
-        if (LG_WestKind(o) == LG_EDGE_WALL) q.x = max(q.x, mid.x);
-        if (LG_WestKind(oe) == LG_EDGE_WALL) q.x = min(q.x, mid.x);
-        if (LG_SouthKind(o) == LG_EDGE_WALL) q.y = max(q.y, mid.y);
-        if (LG_SouthKind(on) == LG_EDGE_WALL) q.y = min(q.y, mid.y);
+        if (LG_WestKind(o) != LG_EDGE_OPEN) q.x = max(q.x, mid.x);
+        if (LG_WestKind(oe) != LG_EDGE_OPEN) q.x = min(q.x, mid.x);
+        if (LG_SouthKind(o) != LG_EDGE_OPEN) q.y = max(q.y, mid.y);
+        if (LG_SouthKind(on) != LG_EDGE_OPEN) q.y = min(q.y, mid.y);
         float2 buv = (q - 0.5 * LG_CELL) / (LG_CELL * _LGridSize.w) + 0.5 / _LGridSize.w;
         float3 B = SAMPLE_TEXTURE2D_LOD(_LGridBounce, sampler_LGridBounce, buv, 0).rgb;
         // Light from the floor reaches the ceiling and upper walls; floors get very little, and tall

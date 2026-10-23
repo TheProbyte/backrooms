@@ -196,10 +196,13 @@ void BounceSource(uint3 id : SV_DispatchThreadID)
     _BounceSrc[wi] = float4(sum * _GridMisc.y, 1);
 }
 
-float EdgePass(uint kind) { return kind == LG_EDGE_OPEN ? 1.0 : (kind == LG_EDGE_WALL ? 0.0 : 0.08); }
+float EdgePass(uint kind) { return kind == LG_EDGE_OPEN ? 1.0 : 0.0; }     // doors and arches pass no bounce (see the note below)
 
-// One blur step: a cell's bounce is its own floor light mixed with the weighted average of itself and its
-// neighbours (walls excluded, doorways weak), so light spreads without adding energy.
+// One blur step: a cell's bounce is its own floor light mixed with the average of itself and its neighbours
+// across open floor only, so light spreads without adding energy. Walls, doors and arches pass nothing: a
+// blurred field cannot know what a doorway lets through, and even a few percent of a lit room's bounce shows
+// up as light "through the wall" in a dark room (the camcorder's auto-exposure lifts it). Light that really
+// enters a dark room through a doorway lands on its floor and is picked up by BounceSource directly.
 [numthreads(8, 8, 1)]
 void BounceDiffuse(uint3 id : SV_DispatchThreadID)
 {

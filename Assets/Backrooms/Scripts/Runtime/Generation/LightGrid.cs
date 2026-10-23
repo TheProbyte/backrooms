@@ -43,6 +43,7 @@ namespace Backrooms.Generation
 
         RenderTexture _a, _b, _bounceSrc, _bounce0, _bounce1;
         ComputeBuffer _occ;                  // layout occupancy: OccN x OccN cells x 2 storeys, toroidal
+        RenderTexture _bounceCur;            // the bounce field the shader samples (the last diffuse step's output)
         readonly uint[] _occData = new uint[OccN * OccN * 2];
         ComputeBuffer _lights, _tiles, _tileLights;
         LightGridMath.GridLight[] _lightArr = new LightGridMath.GridLight[256];
@@ -246,9 +247,14 @@ namespace Backrooms.Generation
                     compute.Dispatch(_kBounceDiff, OccN / 8, OccN / 8, 1);
                     src = dst;
                 }
-                Shader.SetGlobalTexture(GBounce, dst);
+                _bounceCur = dst;
             }
 
+            // Bind the real resources every frame. Something else (the editor's stand-in binder after a domain reload,
+            // another system calling BindFallbacks) can point these globals at empty stand-ins; the shader then sees
+            // no walls at all and every wall-aware test (real lights, sample clamps, bounce clamps) silently passes.
+            Shader.SetGlobalTexture(GA, _a); Shader.SetGlobalTexture(GB, _b); Shader.SetGlobalBuffer(GOcc, _occ);
+            Shader.SetGlobalTexture(GBounce, _bounceCur ? _bounceCur : _bounce0);
             Shader.SetGlobalVector(GSize, new Vector4(GX, GY, GZ, OccN));
             Shader.SetGlobalVector(GParams, new Vector4(1f, directGain, bounceGain > 0f && _lightCount > 0 ? bounceGain : 0f, _pitch));
             Shader.SetGlobalVector(GWindow, new Vector4(_texMin.x * T, _texMin.y * T, (_texMin.x + GX) * T, (_texMin.y + GZ) * T));

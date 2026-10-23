@@ -55,6 +55,59 @@ namespace Backrooms.DebugTools
             Busy = false;
         }
 
+        public string IsolateReport = "";
+        public bool Isolating;
+        public void RunIsolate(Rect region, float radius)
+        {
+            if (Isolating) return;
+            Isolating = true; IsolateReport = "";
+            StartCoroutine(Isolate(region, radius, r => { IsolateReport = r; Isolating = false; }));
+        }
+
+        /// <summary>Lights each real light near the camera on its own (grid off) and prints the mean brightness of a screen region (0..1 of the screen), to find which light brightens a surface.</summary>
+        public IEnumerator Isolate(Rect region, float radius, System.Action<string> done)
+        {
+            var lm = FindAnyObjectByType<FixtureLightManager>();
+            var grid = FindAnyObjectByType<LightGrid>();
+            float dg = grid.directGain, bg = grid.bounceGain;
+            var all = new List<Light>();
+            var cam = Camera.main.transform.position;
+            foreach (var l in FindObjectsByType<Light>()) if (l.enabled && l.gameObject.activeInHierarchy && l.type != LightType.Directional && (l.transform.position - cam).magnitude < radius) all.Add(l);
+            lm.enabled = false;                               // freeze the manager so it does not re-assign lights
+            var sb = new System.Text.StringBuilder();
+            yield return new WaitForSecondsRealtime(1f);
+            ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(folder, "iso_all.png"));
+            yield return new WaitForSecondsRealtime(0.5f);
+            foreach (var l in all) l.enabled = false;
+            yield return new WaitForSecondsRealtime(1f);
+            ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(folder, "iso_none.png"));
+            yield return new WaitForSecondsRealtime(0.5f);
+            foreach (var l in all) l.enabled = true;
+            for (int i = 0; i < all.Count; i++)
+            {
+                var l = all[i];
+                l.enabled = false;                              // everything on except this one
+                yield return new WaitForSecondsRealtime(0.6f);
+                ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(folder, "iso_" + i.ToString("D2") + ".png"));
+                yield return new WaitForSecondsRealtime(0.4f);
+                sb.AppendLine(i.ToString("D2") + " " + l.name + " at " + l.transform.position.ToString("F1") + " I=" + l.intensity.ToString("F1"));
+                l.enabled = true;
+            }
+            foreach (var l in all) l.enabled = true;
+            lm.enabled = true; grid.directGain = dg; grid.bounceGain = bg;
+            done(sb.ToString());
+        }
+
+        float Measure(Rect r)
+        {
+            var tex = ScreenCapture.CaptureScreenshotAsTexture();
+            int x0 = (int)(r.xMin * tex.width), x1 = (int)(r.xMax * tex.width), y0 = (int)(r.yMin * tex.height), y1 = (int)(r.yMax * tex.height);
+            var px = tex.GetPixels(x0, y0, x1 - x0, y1 - y0);
+            float sum = 0; foreach (var p in px) sum += p.grayscale;
+            Destroy(tex);
+            return sum / px.Length;
+        }
+
         IEnumerator Capture(Shot s, string tag, FixtureLightManager lm, FixtureLightManager.LightingMode mode, int real, int faulty, int lamps)
         {
             lm.mode = mode; lm.shadowedTroffers = real; lm.faultyRealLights = faulty; lm.realLamps = lamps;
