@@ -167,6 +167,7 @@ namespace Backrooms
             bool hasFocus = !blocked && Cursor.lockState == CursorLockMode.Locked && (Application.isFocused || !requireWindowFocus);
             HasFocus = hasFocus;
             if (hasFocus) UpdateLook(mouse.delta.ReadValue() * FovMultiplier * lookScale);   // aim slows down when zoomed in
+            if (hasFocus && keyboard.vKey.wasPressedThisFrame) SetNoclip(!noclip);             // V: fly through everything (quick testing)
             UpdateZoom(keyboard, hasFocus);
             UpdateStance(keyboard, hasFocus);
             UpdateMove(keyboard, hasFocus);
@@ -183,6 +184,14 @@ namespace Backrooms
             PlanarVelocity = Vector3.zero;
             if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
+
+        /// <summary>Like <see cref="Teleport"/>, but holds the player still (no falling) until floor collision exists below, for places whose chunks are still loading.</summary>
+        public void TeleportSafe(Vector3 position, float yaw, float pitch = 0f)
+        {
+            Teleport(position, yaw, pitch);
+            _holdForGround = 8f;
+        }
+        float _holdForGround;
 
         /// <summary>Degrees turned this frame (x = yaw, y = pitch), for the handheld look motion.</summary>
         public Vector2 LookDelta => _lookFrame == Time.frameCount ? _lookDelta : Vector2.zero;
@@ -233,6 +242,13 @@ namespace Backrooms
                 transform.position += PlanarVelocity * Time.deltaTime;
                 IsRunning = false;
                 return;
+            }
+
+            if (_holdForGround > 0f)
+            {
+                _holdForGround -= Time.deltaTime;
+                if (Physics.Raycast(transform.position + Vector3.up * 0.6f, Vector3.down, 1.2f, ~0, QueryTriggerInteraction.Ignore)) _holdForGround = 0f;
+                else { _verticalVelocity = 0f; PlanarVelocity = Vector3.zero; return; }
             }
 
             // Running only makes sense standing and moving mostly forward.

@@ -188,8 +188,8 @@ namespace Backrooms.Interaction
         void FixedUpdate()
         {
             if (Body.isKinematic) return;
-            // Fell out of the world (unloaded floor, deep overlap): put it back where it last rested.
-            if (transform.position.y < _lastGoodPos.y - 3f)
+            // Fell out of the world (unloaded floor, deep overlap): put it back where it last rested. Falling to a lower storey is fine.
+            if (transform.position.y < -4f)                       // below the ground storey: through an unloaded floor
             {
                 Body.linearVelocity = Vector3.zero; Body.angularVelocity = Vector3.zero;
                 Body.position = _lastGoodPos; Body.rotation = _lastGoodRot;

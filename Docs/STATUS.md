@@ -42,6 +42,12 @@ generation and lighting work now.
 - Build Infinite Offices Scene now keeps an existing post profile (the owner's VHS '96 tuning) instead of
   recreating it.
 
+## F5 menu tabs
+CAMERA, PLAYER, WORLD, AUDIO, SOUND, DISPLAY, LIGHT (strength, reach, darkness, distant crisp lights, flicker,
+pool shape; "Even & pale" preset), PLACES (jump to atriums, balconies, stairs, elevators, colonnade halls,
+spawn; press again for the next nearest). Camera preset "Found footage" matches the reference series.
+V toggles noclip. Teleports hold you in place until the floor has loaded (`TeleportSafe`).
+
 ## Debug tools
 
 - Backrooms > World Map (top-down zones/biomes/districts/rooms/light layers + consistency checks).

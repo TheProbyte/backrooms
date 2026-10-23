@@ -34,6 +34,9 @@ namespace Backrooms.Generation
         [Range(0, 6)] public int realLamps = 1;
         [Tooltip("Seconds for a fixture's light to hand over between the grid and its real light.")]
         public float handoverTime = 0.6f;
+        [Tooltip("Further fixtures (after the shadowed ones) that are also real lights, but without shadows: crisp pools on distant walls.\n" +
+                 "Walls still stop them (the shader tests line of sight), so only furniture shadows are missing, far away.")]
+        [Range(0, 120)] public int farRealLights = 56;
         [Tooltip("Fixtures within this distance feed the grid (the grid covers about 38 m around you).")]
         public float gridDistance = 40f;
 
@@ -46,6 +49,7 @@ namespace Backrooms.Generation
         class Share
         {
             public LightSource src;
+            public bool shadowed;           // its real light casts shadows (the nearest ones)
             public float w, target;         // real-light share now / wanted
             public float lastGrid = -1f;    // grid intensity last written (to detect changes)
             public int frame;
@@ -143,14 +147,18 @@ namespace Backrooms.Generation
             // tier URP lowers the resolution itself to fit.)
             const int atlasMaps = 64;
             int capacity = atlasMaps - faultyRealLights - realLamps * 6 - 4;
-            int nReal = Mathf.Clamp(Mathf.Min(Mathf.Min(shadowedTroffers, MaxRealTubes), capacity), 0, _troffers.Count - faultyRealLights - 4);
-            float cutoff = float.MaxValue;
+            int nShadow = Mathf.Clamp(Mathf.Min(Mathf.Min(shadowedTroffers, MaxRealTubes), capacity), 0, _troffers.Count - faultyRealLights - 4);
+            int nReal = Mathf.Clamp(nShadow + farRealLights, 0, _troffers.Count - faultyRealLights - 4);       // shadowed + far (unshadowed) real tubes
+            float cutoff = float.MaxValue, shadowCutoff = float.MaxValue;
             int counted = 0;
             foreach (var c in _candidates)
             {
                 if (c.isLamp || c.faultyId >= 0) continue;
-                if (++counted == nReal) { cutoff = Vector3.Distance(c.position, eye); break; }
+                counted++;
+                if (counted == nShadow) shadowCutoff = Vector3.Distance(c.position, eye);
+                if (counted == nReal) { cutoff = Vector3.Distance(c.position, eye); break; }
             }
+            if (nShadow <= 0) shadowCutoff = -1f;
             if (nReal <= 0) cutoff = -1f;
             int tubes = 0, faulty = 0, lamps = 0;
             foreach (var c in _candidates)
@@ -166,8 +174,10 @@ namespace Backrooms.Generation
                 {
                     bool was = sh.target > 0.5f;
                     real = was ? d * (1f - shadowHysteresis) <= cutoff : d <= cutoff;
-                    if (real && tubes >= nReal + 4) real = false;          // hard cap (slots, shadow atlas)
+                    if (real && tubes >= nReal + 4) real = false;          // hard cap (slots)
+                    sh.shadowed = sh.shadowed ? d * (1f - shadowHysteresis) <= shadowCutoff : d <= shadowCutoff;
                 }
+                if (c.isLamp || c.faultyId >= 0) sh.shadowed = true;
                 if (real) { if (c.isLamp) lamps++; else if (c.faultyId >= 0) faulty++; else tubes++; }
                 sh.target = real ? 1f : 0f;
                 // Something that only just loaded starts where it should be: nothing to hand over yet.
@@ -235,7 +245,7 @@ namespace Backrooms.Generation
                 L.range = range;
                 L.color = col;
                 if (!c.isLamp) { L.spotAngle = outer; L.innerSpotAngle = inner; }
-                var sm = L.enabled ? LightShadows.Soft : LightShadows.None;
+                var sm = L.enabled && sh.shadowed ? LightShadows.Soft : LightShadows.None;
                 if (L.shadows != sm) L.shadows = sm;
                 L.shadowStrength = shadowStrength;
                 L.shadowBias = c.dome || c.strip ? 0.08f : 0.03f;

@@ -600,12 +600,19 @@ namespace Backrooms.Generation
         }
 
         /// <summary>Mostly steady, with rare bursts of rapid stutter lasting under a second.</summary>
-        static float FaultyCurve(float now, float seed)
+        /// <summary>1 = the original amount of flicker, 0 = none; above 1 more often and deeper.</summary>
+        [Range(0f, 1.5f)] public float flickerAmount = 1f;
+
+        float FaultyCurve(float now, float seed)
         {
+            float a = flickerAmount;
+            if (a <= 0.001f) return 1f;
             float burst = Mathf.PerlinNoise(now * 0.18f, seed * 31f);
-            if (burst < 0.72f) return 1f;
+            float threshold = a <= 1f ? Mathf.Lerp(1.01f, 0.72f, a) : Mathf.Lerp(0.72f, 0.55f, a - 1f);      // how often a tube has a bad spell
+            if (burst < threshold) return 1f;
             float s = Mathf.PerlinNoise(now * 28f, seed * 7f);
-            return s > 0.5f ? 1f : 0.08f + s * 0.3f;
+            float low = Mathf.Lerp(1f, 0.08f + s * 0.3f, Mathf.Clamp01(a));                               // how deep the dips go
+            return s > 0.5f ? 1f : low;
         }
 
         static float Hash01(Vector3 p)

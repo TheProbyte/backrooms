@@ -110,7 +110,7 @@ namespace Backrooms.Camcorder
 
         // ---------------- Presets ----------------
 
-        public static readonly string[] PresetNames = { "Default", "Hi8 '98", "MiniDV '04", "Low light gain", "Clean", "VHS '96" };
+        public static readonly string[] PresetNames = { "Default", "Hi8 '98", "MiniDV '04", "Low light gain", "Clean", "VHS '96", "Found footage" };
 
         public static CamcorderSettings Preset(int index)
         {
@@ -157,6 +157,17 @@ namespace Backrooms.Camcorder
                     s.scanlines = 0.04f; s.trackingNoise = 0.18f; s.aspect43 = true;
                     s.chromaticAberration = 0.18f; s.lensDistortion = -0.18f; s.fieldOfView = 60f; s.maxGain = 1.4f;
                     s.micColoration = 0.85f; s.autoGain = 0.8f; s.micHiss = 0.4f; s.handlingNoise = 0.6f; s.stereoWidth = 0.55f;
+                    break;
+                case 6: // Found footage: the frames of the owner's reference series. Soft and low-res, flat and pale, lifted
+                        // blacks, blown-out glowing tubes, wide barrel lens, smeared colour, a lot of motion blur.
+                    s.fieldOfView = 68f; s.lensDistortion = -0.16f; s.chromaticAberration = 0.12f; s.vignette = 0.2f;
+                    s.bloom = 1.4f; s.bloomScatter = 0.9f;
+                    s.softness = 3.2f; s.sharpening = 0f; s.chromaBleed = 7f; s.chromaShift = 1.2f;
+                    s.pedestal = 0.07f; s.highlightKnee = 0.66f; s.noise = 0.05f; s.chromaNoise = 0.05f; s.gainNoise = 0.06f;
+                    s.saturation = -8f; s.contrast = 2f; s.whiteBalanceTemp = 12f; s.whiteBalanceTint = -6f;
+                    s.motionBlur = 0.4f; s.exposureBias = 0.35f; s.maxGain = 1.1f;
+                    s.scanlines = 0.03f; s.trackingNoise = 0.22f; s.aspect43 = true;
+                    s.micColoration = 0.8f; s.autoGain = 0.75f; s.micHiss = 0.3f; s.handlingNoise = 0.6f; s.stereoWidth = 0.6f;
                     break;
             }
             return s;

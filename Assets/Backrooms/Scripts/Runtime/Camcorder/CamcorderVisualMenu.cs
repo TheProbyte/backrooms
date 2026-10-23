@@ -95,7 +95,7 @@ namespace Backrooms.Camcorder
             var rule = new VisualElement(); rule.AddToClassList("cc-rule"); _panel.Add(rule);
 
             var tabs = BtnRow(_panel);
-            string[] names = { "CAMERA", "PLAYER", "WORLD", "AUDIO", "SOUND", "DISPLAY", "LIGHT" };
+            string[] names = { "CAMERA", "PLAYER", "WORLD", "AUDIO", "SOUND", "DISPLAY", "LIGHT", "PLACES" };
             _tabButtons = new Button[names.Length];
             for (int i = 0; i < names.Length; i++)
             {
@@ -123,6 +123,7 @@ namespace Backrooms.Camcorder
             _list = _views[4] = MakeList(); BuildSound();
             _list = _views[5] = MakeList(); BuildGraphics();
             _list = _views[6] = MakeList(); BuildLighting();
+            _list = _views[7] = MakeList(); BuildLocations();
 
             // Footer.
             var footer = BtnRow(_panel);
@@ -134,7 +135,7 @@ namespace Backrooms.Camcorder
             ShowTab(0);
         }
 
-        static readonly string[] PageNames = { "CAMERA SET", "PLAYER SET", "WORLD SET", "AUDIO SET", "SOUND LIST", "DISPLAY SET", "LIGHTING SET" };
+        static readonly string[] PageNames = { "CAMERA SET", "PLAYER SET", "WORLD SET", "AUDIO SET", "SOUND LIST", "DISPLAY SET", "LIGHTING SET", "LOCATIONS" };
         Label _pageLabel, _stby;
 
         /// <summary>A monospaced system font reads closer to a camcorder's character generator; falls back

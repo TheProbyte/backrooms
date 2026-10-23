@@ -26,6 +26,14 @@ namespace Backrooms.Camcorder
             Slider("Shadow darkness", "How dark shadows from nearby lights are. Below 1 lets a little light into shadows.",
                 0f, 1f, "0.00", "", () => O().shadowDarkness, v => { O().shadowDarkness = v; O().Save(); });
 
+            Section("DISTANCE", "Far fixtures can be real lights too (without shadows), so distant walls look as crisp as near ones.");
+            Slider("Distant crisp lights", "How many more fixtures, beyond the shadow-casting ones, are real lights. Walls still stop them. 0 uses the soft light grid for everything far away. Costs a little speed.",
+                0f, 120f, "0", "", () => O().farLights, v => { O().farLights = Mathf.RoundToInt(v); O().Save(); }, true);
+
+            Section("FLICKER", "Faulty ceiling tubes that stutter now and then.");
+            Slider("Flicker", "How often faulty tubes stutter and how deep the dips go. 0 turns it off; 1 is the original amount.",
+                0f, 1.5f, "0.00", "x", () => O().flicker, v => { O().flicker = v; O().Save(); });
+
             Section("SHAPE", "How light pools look on walls and floors.");
             Slider("Pool smoothing", "Rounds off the boxy look of light pools from distant fixtures (they are stored on a 0.6 m grid). 0 is the raw grid; higher is rounder and softer.",
                 0f, 1f, "0.00", "", () => O().poolSmoothing, v => { O().poolSmoothing = v; O().Save(); });
@@ -33,6 +41,7 @@ namespace Backrooms.Camcorder
                 0f, 1f, "0.00", "", () => O().softness, v => { O().softness = v; O().Save(); });
 
             var row = BtnRow(_list);
+            Button(row, "EVEN & PALE", () => { O().ApplyEvenLighting(); O().Save(); RefreshAll(); });
             Button(row, "RESET LIGHTING", () => { O().ResetLighting(); O().Save(); RefreshAll(); });
         }
     }

@@ -144,6 +144,14 @@ Storey 0 streams everywhere; upper storeys stream only within a chunk of a multi
 - **Soft pools**: a downlight's pool on a wall is narrow and very bright near the fixture, so one sample per
   0.6 m texel aliased into boxes. `Direct` averages the falloff over eight points in each texel (line of
   sight stays one test at the centre) and the shader eases the trilinear weights (`LightGrid.smoothing`).
+- **Distant real lights** (`FixtureLightManager.farRealLights`, default 56): beyond the shadow-casting
+  fixtures, more fixtures are real lights with shadows off. The wall line-of-sight test in the shader still
+  stops them at walls, so only furniture shadows are missing, far away. The grid then only lights what is
+  beyond them, plus bounce. Far pools are as crisp as near ones; cost is small (the pixel loop only runs the
+  lights in range).
+- **Ceilings are solid** (`OfficeChunkBuilder.BuildCeilingColliders`): a thin collider above every ceiling
+  cell (not over wells), so nothing can get above a ceiling. The upper storey's floor edge beside a void
+  carries a strip over the half-wall-thickness slit between the floor and the wall faces below.
 - **F5 > LIGHT tab** (`CamcorderVisualMenu.Lighting.cs`, values in `GraphicsOptions`, applied by
   `GraphicsController`): light strength, reach, high-ceiling boost, dark spots (contrast curve on grid light),
   fill light (bounce gain), shadow darkness, pool smoothing, light wrap, reset. Strength, reach and boost change

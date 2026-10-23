@@ -140,6 +140,28 @@ namespace Backrooms.Generation
             BuildPlates();
             BuildProps(lights);
             BuildAnnex();
+            BuildCeilingColliders();
+        }
+
+        /// <summary>Ceilings are solid for the player and for props: nothing can climb into the space above them. Runs of cells of one room per row.</summary>
+        void BuildCeilingColliders()
+        {
+            int n = _L.N;
+            for (int z = 0; z < n; z++)
+            {
+                int start = -1; float h0 = 0f;
+                for (int x = 0; x <= n; x++)
+                {
+                    bool solid = x < n && !_L.Has(x, z, CellFlags.OpenAbove);
+                    float h = solid ? _L.CeilingAt(x, z) : 0f;
+                    if (start >= 0 && (!solid || Mathf.Abs(h - h0) > 0.001f))
+                    {
+                        _boxes.Add((new Vector3((start + x) * 0.5f * C, h0 + 0.1f, (z + 0.5f) * C), new Vector3((x - start) * C, 0.2f, C)));
+                        start = -1;
+                    }
+                    if (solid && start < 0) { start = x; h0 = h; }
+                }
+            }
         }
 
         /// <summary>Phase 2 (main thread): meshes, renderers and colliders.</summary>
@@ -293,7 +315,17 @@ namespace Backrooms.Generation
                 uint m = CellMask(x, z);
                 float x0 = x * C, z0 = z * C, x1 = x0 + C, z1 = z0 + C, h = r.ceiling;
                 if (!_L.Has(x, z, CellFlags.NoFloor))
+                {
                     WMask(_a.carpet, m).Quad(new Vector3(x0, 0, z0), new Vector3(x0, 0, z1), new Vector3(x1, 0, z1), new Vector3(x1, 0, z0), Vector3.up, MeshWriter.FloorUV);
+                    // Beside a void (a well, a stair hall, an elevator shaft) the wall faces below sit half a wall thickness
+                    // out from the cell edge: cover that strip so no slit shows from above.
+                    float e = T * 0.5f;
+                    var fm = WMask(_a.carpet, m);
+                    if (x > 0 && _L.Has(x - 1, z, CellFlags.NoFloor)) fm.Quad(new Vector3(x0 - e, 0, z0), new Vector3(x0 - e, 0, z1), new Vector3(x0, 0, z1), new Vector3(x0, 0, z0), Vector3.up, MeshWriter.FloorUV);
+                    if (x < _L.N - 1 && _L.Has(x + 1, z, CellFlags.NoFloor)) fm.Quad(new Vector3(x1, 0, z0), new Vector3(x1, 0, z1), new Vector3(x1 + e, 0, z1), new Vector3(x1 + e, 0, z0), Vector3.up, MeshWriter.FloorUV);
+                    if (z > 0 && _L.Has(x, z - 1, CellFlags.NoFloor)) fm.Quad(new Vector3(x0, 0, z0 - e), new Vector3(x0, 0, z0), new Vector3(x1, 0, z0), new Vector3(x1, 0, z0 - e), Vector3.up, MeshWriter.FloorUV);
+                    if (z < _L.N - 1 && _L.Has(x, z + 1, CellFlags.NoFloor)) fm.Quad(new Vector3(x0, 0, z1), new Vector3(x0, 0, z1 + e), new Vector3(x1, 0, z1 + e), new Vector3(x1, 0, z1), Vector3.up, MeshWriter.FloorUV);
+                }
                 if (_L.Has(x, z, CellFlags.OpenAbove)) continue;     // the storey above closes it
                 var ceil = r.Tall && _a.ceilingPlaster ? _a.ceilingPlaster : _a.ceilingTile;
                 WMask(ceil, m).Quad(new Vector3(x0, h, z0), new Vector3(x1, h, z0), new Vector3(x1, h, z1), new Vector3(x0, h, z1), Vector3.down,

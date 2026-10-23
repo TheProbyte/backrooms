@@ -31,11 +31,20 @@ namespace Backrooms.Camcorder
         public float poolSmoothing = 0.5f;   // rounds off boxy light pools of far fixtures
         public float darkSpots = 0.35f;       // makes weakly lit areas darker
         public float shadowDarkness = 1f;     // real-light shadows
+        public int farLights = 56;            // distant fixtures that are real (unshadowed) lights: crisp far pools
+        public float flicker = 0.35f;         // faulty tubes: how often and how deep they stutter (1 = the original amount)
         public void ResetLighting()
         {
             var d = new GraphicsOptions();
             lightStrength = d.lightStrength; lightReach = d.lightReach; tallBoost = d.tallBoost; fillLight = d.fillLight;
             softness = d.softness; poolSmoothing = d.poolSmoothing; darkSpots = d.darkSpots; shadowDarkness = d.shadowDarkness;
+            farLights = d.farLights; flicker = d.flicker;
+        }
+        /// <summary>Evenly lit and pale, like the found-footage references: little contrast, a lot of fill, soft shadows.</summary>
+        public void ApplyEvenLighting()
+        {
+            lightStrength = 1.35f; lightReach = 1.3f; tallBoost = 0.3f; fillLight = 2f; softness = 0.6f;
+            poolSmoothing = 0.8f; darkSpots = 0f; shadowDarkness = 0.6f;
         }
 
         const string Key = "Backrooms.Graphics.v1";
@@ -150,6 +159,8 @@ namespace Backrooms.Camcorder
                 _lights.lampRange = _baseLampRange * o.lightReach;
                 _lights.domeHeightBoost = o.tallBoost;
                 _lights.shadowStrength = o.shadowDarkness;
+                _lights.farRealLights = Mathf.Clamp(o.farLights, 0, 120);
+                _lights.flickerAmount = Mathf.Clamp(o.flicker, 0f, 1.5f);
                 if (_lights.grid)
                 {
                     _lights.grid.bounceGain = o.fillLight;
