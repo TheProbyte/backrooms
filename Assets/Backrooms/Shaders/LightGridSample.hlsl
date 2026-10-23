@@ -20,7 +20,7 @@ StructuredBuffer<uint> _LGridOcc;      // [storey][z][x], toroidal
 float4 _LGridSize;      // texels x, y, z, occupancy cells
 float4 _LGridParams;    // x: on (0/1), y: direct gain, z: bounce gain, w: storey pitch
 float4 _LGridWindow;    // world xz min, xz max of the valid window
-float4 _LGridShape;     // x: directional wrap (0..1), y: normal offset, z, w: unused
+float4 _LGridShape;     // x: directional wrap (0..1), y: normal offset, z: texel smoothing (0..1), w: contrast of dim light (0..1)
 
 uint LGrid_Occ(int2 cell, uint storey)
 {
@@ -59,6 +59,12 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
     if (edge <= 0.0) return 0;
 
     float3 uvw = float3(p.x / (LG_TEXEL * _LGridSize.x), p.y / (LG_TEXEL * _LGridSize.y), p.z / (LG_TEXEL * _LGridSize.z));
+    // Plain trilinear ramps linearly between texel centres, which shows as boxy light pools at 0.6 m texels.
+    // An ease curve on the blend weight (still only the two nearest texels, so wall clamping holds) rounds them.
+    float3 tex = uvw * _LGridSize.xyz - 0.5;
+    float3 ti = floor(tex), tf = tex - ti;
+    tf = lerp(tf, tf * tf * (3.0 - 2.0 * tf), _LGridShape.z);
+    uvw = (ti + tf + 0.5) / _LGridSize.xyz;
     float4 a = SAMPLE_TEXTURE3D_LOD(_LGridA, sampler_LGridA, uvw, 0);
     float4 b = SAMPLE_TEXTURE3D_LOD(_LGridB, sampler_LGridA, uvw, 0);
     float3 E = a.rgb;
@@ -103,7 +109,11 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
         float height = 3.0 / max(3.0, ceilingH);
         bounce = (half3)(B * _LGridParams.z * facing * height);
     }
-    return (direct + bounce) * edge;
+    half3 lit = direct + bounce;
+    // Contrast: weakly lit spots fall away faster than bright ones (reference level about a lit wall).
+    half lumLit = max(dot(lit, half3(0.2126, 0.7152, 0.0722)), 1e-5);
+    lit *= pow(saturate(lumLit), _LGridShape.w * 1.2);
+    return lit * edge;
 }
 
 // ---------------- Real lights: wall line of sight ----------------

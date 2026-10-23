@@ -34,6 +34,10 @@ namespace Backrooms.Generation
         [Range(0, 12)] public int bounceSteps = 6;
         [Tooltip("Lambert wrap for grid light (0 = plain Lambert).")]
         [Range(0f, 1f)] public float wrap = 0.15f;
+        [Tooltip("Rounds off the grid's texel steps so distant light pools are soft blobs instead of boxes (0 = plain trilinear).")]
+        [Range(0f, 1f)] public float smoothing = 0.5f;
+        [Tooltip("Deepens dim areas of grid light: 0 leaves it as is, 1 makes weakly lit spots clearly darker.")]
+        [Range(0f, 1f)] public float contrast = 0f;
         [Tooltip("Sample point offset off the surface, metres (half a texel keeps samples on the room's side).")]
         public float normalOffset = 0.3f;
 
@@ -164,6 +168,9 @@ namespace Backrooms.Generation
         }
 
         /// <summary>Recompute the grid within radius of a point (a light whose share or power changed).</summary>
+        /// <summary>Recompute every texel (a light setting that changes every fixture's output, such as strength or reach).</summary>
+        public void MarkAllDirty() { _full = true; }
+
         public void MarkDirty(Vector3 centre, float radius)
         {
             var min = new Vector3Int(Mathf.FloorToInt((centre.x - radius) / T), Mathf.FloorToInt((centre.y - radius) / T), Mathf.FloorToInt((centre.z - radius) / T));
@@ -258,7 +265,7 @@ namespace Backrooms.Generation
             Shader.SetGlobalVector(GSize, new Vector4(GX, GY, GZ, OccN));
             Shader.SetGlobalVector(GParams, new Vector4(1f, directGain, bounceGain > 0f && _lightCount > 0 ? bounceGain : 0f, _pitch));
             Shader.SetGlobalVector(GWindow, new Vector4(_texMin.x * T, _texMin.y * T, (_texMin.x + GX) * T, (_texMin.y + GZ) * T));
-            Shader.SetGlobalVector(GShape, new Vector4(wrap, normalOffset, 0f, 0f));
+            Shader.SetGlobalVector(GShape, new Vector4(wrap, normalOffset, smoothing, contrast));
             LastGpuSubmitMs = (float)sw.Elapsed.TotalMilliseconds;
         }
 

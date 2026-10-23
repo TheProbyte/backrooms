@@ -155,14 +155,24 @@ void Direct(uint3 id : SV_DispatchThreadID)
         {
             GridLight L = _Lights[_TileLights[range.x + i]];
             if (dot(L.color, L.color) <= 0.0) continue;
-            float3 toLight;
-            float att = Attenuation(L, Q, toLight);
-            if (att <= 1e-6 || !VisibleSolid(L.pos, Q)) continue;
+            // A fixture's pool is narrow and very bright near the light (a wall pool is only a texel or two wide at
+            // its top), so a single sample per 0.6 m texel aliases into boxes. The falloff is averaged over eight
+            // points inside the texel instead; line of sight is still tested once (conservative, at the centre).
+            float attSum = 0; float3 dirSum = 0;
+            [unroll] for (int s = 0; s < 8; s++)
+            {
+                float3 off = float3((s & 1) ? 0.15 : -0.15, (s & 2) ? 0.15 : -0.15, (s & 4) ? 0.15 : -0.15);
+                float3 tl;
+                float a = Attenuation(L, Q + off, tl);
+                attSum += a; dirSum += a * tl;
+            }
+            if (attSum <= 8e-6 || !VisibleSolid(L.pos, Q)) continue;
+            float att = attSum * 0.125;
             float3 e = L.color * att;
-            float lum = dot(e, LUM);
+            float lum = dot(L.color, LUM);
             A.rgb += e;
-            A.w += lum * toLight.y;
-            B.xy += lum * toLight.xz;
+            A.w += lum * dirSum.y * 0.125;
+            B.xy += lum * dirSum.xz * 0.125;
         }
     }
     _GridA[w] = A;

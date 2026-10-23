@@ -113,6 +113,13 @@ Storey 0 streams everywhere; upper storeys stream only within a chunk of a multi
   crossing a cell edge above 6.3 m counted as blocked: tall walls lit in striped blocks, hard-edged rectangles
   on the well floor (real lights are tested with the same rule) and weak light on the upper walls of tall
   halls. Tests: `OpeningTopsAboveSixMetresSurvivePacking`, `LightsHungHighInAnAtriumWellReachItsFloor`.
+- **Soft pools**: a downlight's pool on a wall is narrow and very bright near the fixture, so one sample per
+  0.6 m texel aliased into boxes. `Direct` averages the falloff over eight points in each texel (line of
+  sight stays one test at the centre) and the shader eases the trilinear weights (`LightGrid.smoothing`).
+- **F5 > LIGHT tab** (`CamcorderVisualMenu.Lighting.cs`, values in `GraphicsOptions`, applied by
+  `GraphicsController`): light strength, reach, high-ceiling boost, dark spots (contrast curve on grid light),
+  fill light (bounce gain), shadow darkness, pool smoothing, light wrap, reset. Strength, reach and boost change
+  every fixture's grid light, so the manager recomputes the whole grid when they change (`MarkAllDirty`).
 - **Room-layer mode** (F5 > Graphics > Light grid off) is the phase-2 system, kept as a fallback: a large
   pool of unshadowed lights limited to their room's layer, plus doorway and bounce lights.
 

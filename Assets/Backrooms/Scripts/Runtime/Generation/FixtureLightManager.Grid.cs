@@ -37,6 +37,9 @@ namespace Backrooms.Generation
         [Tooltip("Fixtures within this distance feed the grid (the grid covers about 38 m around you).")]
         public float gridDistance = 40f;
 
+        [Tooltip("How dark the shadows of real lights are (1 = black, lower lets some light through).")]
+        [Range(0f, 1f)] public float shadowStrength = 1f;
+
         /// <summary>Most ceiling tubes that are real lights at once in grid mode (the F5 setting is clamped to this).</summary>
         public const int MaxRealTubes = 32;
 
@@ -108,9 +111,16 @@ namespace Backrooms.Generation
             col = src.strip ? stripColor : tubeColor;
         }
 
+        int _fixtureParams;
+        bool _haveFixtureParams;
+
         void LateUpdateGrid(Vector3 eye, float now)
         {
             _gridFrame++;
+            // Strength, reach and tall-room boost change every fixture's grid light: recompute the whole grid.
+            int fp = System.HashCode.Combine(tubeIntensity, tubeRange, domeHeightBoost, lampIntensity, lampRange);
+            if (_haveFixtureParams && fp != _fixtureParams && grid) grid.MarkAllDirty();
+            _fixtureParams = fp; _haveFixtureParams = true;
             float dt = Time.deltaTime;
 
             // Every registered light near the viewer, nearest first.
@@ -227,7 +237,7 @@ namespace Backrooms.Generation
                 if (!c.isLamp) { L.spotAngle = outer; L.innerSpotAngle = inner; }
                 var sm = L.enabled ? LightShadows.Soft : LightShadows.None;
                 if (L.shadows != sm) L.shadows = sm;
-                L.shadowStrength = 1f;                                       // shadows are what keep it inside walls
+                L.shadowStrength = shadowStrength;
                 L.shadowBias = c.dome || c.strip ? 0.08f : 0.03f;
                 L.shadowNormalBias = 0.15f;
                 if (L.enabled) { enabled++; if (sm != LightShadows.None) shadowed++; }
