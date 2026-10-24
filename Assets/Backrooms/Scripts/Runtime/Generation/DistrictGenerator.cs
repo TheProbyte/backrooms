@@ -181,6 +181,7 @@ namespace Backrooms.Generation
                 room.ceiling = spec.ceiling; room.painted = spec.painted; room.lights = spec.lights;
                 room.openAbove = spec.openAbove; room.noFloor = spec.noFloor; room.landmark = placements[lm].name;
                 room.noDoors = spec.noDoors; room.role = spec.role;
+                room.custom = placements[lm].kind == LandmarkKind.Custom;
                 for (int x = spec.rect.xMin; x < spec.rect.xMax; x++)
                 for (int z = spec.rect.yMin; z < spec.rect.yMax; z++)
                     L.flags[x, z] |= (spec.openAbove ? CellFlags.OpenAbove : 0) | (spec.noFloor ? CellFlags.NoFloor : 0);
@@ -291,7 +292,7 @@ namespace Backrooms.Generation
             return false;
         }
 
-        static Room MakeRoom(OfficeLayout L, RectInt r, RoomKind kind)
+        internal static Room MakeRoom(OfficeLayout L, RectInt r, RoomKind kind)
         {
             var room = new Room { id = L.rooms.Count, globalId = L.rooms.Count, rect = r, fullRect = r, kind = kind };
             L.rooms.Add(room);
@@ -331,6 +332,10 @@ namespace Backrooms.Generation
             }
         }
 
+        /// <summary>Doorways of a player-built room keep exactly the shape the blueprint gave them.</summary>
+        static bool TouchesCustom(OfficeLayout L, int ax, int az, int bx, int bz) =>
+            (L.InChunk(ax, az) && L.RoomAt(ax, az).custom) || (L.InChunk(bx, bz) && L.RoomAt(bx, bz).custom);
+
         /// <summary>Round tops on interior headed doorways, by the biome's chance, decided once per edge.</summary>
         static void PlaceArches(OfficeLayout L)
         {
@@ -345,10 +350,10 @@ namespace Backrooms.Generation
             }
             for (int x = 1; x < n; x++)
             for (int z = 0; z < n; z++)
-                if (L.vEdges[x, z] == EdgeKind.DoorHeader && !L.archV[x, z] && Roll(ox + x, oz + z, true, L.RulesAt(x, z).archedDoors)) L.archV[x, z] = true;
+                if (L.vEdges[x, z] == EdgeKind.DoorHeader && !L.archV[x, z] && !TouchesCustom(L, x - 1, z, x, z) && Roll(ox + x, oz + z, true, L.RulesAt(x, z).archedDoors)) L.archV[x, z] = true;
             for (int x = 0; x < n; x++)
             for (int z = 1; z < n; z++)
-                if (L.hEdges[x, z] == EdgeKind.DoorHeader && !L.archH[x, z] && Roll(ox + x, oz + z, false, L.RulesAt(x, z).archedDoors)) L.archH[x, z] = true;
+                if (L.hEdges[x, z] == EdgeKind.DoorHeader && !L.archH[x, z] && !TouchesCustom(L, x, z - 1, x, z) && Roll(ox + x, oz + z, false, L.RulesAt(x, z).archedDoors)) L.archH[x, z] = true;
         }
 
         // ---------------- Connectivity ----------------
@@ -535,7 +540,7 @@ namespace Backrooms.Generation
         /// x/z parity), so neighbouring districts, diagonals included, never share a layer where their light
         /// could meet; zones deeper inside may use any of the 28.
         /// </summary>
-        static void AssignColors(OfficeLayout L)
+        internal static void AssignColors(OfficeLayout L)
         {
             int n = L.N, R = L.rooms.Count;
             const float C = OfficeBiome.CellSize;
@@ -673,11 +678,11 @@ namespace Backrooms.Generation
             for (int i = 0; i < L.props.Count; i++) { var p = L.props[i]; p.roomColor = roomColor[p.roomColor]; L.props[i] = p; }
         }
 
-        static void PlaceFixtures(OfficeLayout L, System.Random rng)
+        internal static void PlaceFixtures(OfficeLayout L, System.Random rng)
         {
             foreach (var r in L.rooms)
             {
-                if (r.kind == RoomKind.Crawl || r.noFloor || r.role != AnnexRole.None) continue;      // a well's light belongs to the storey below; stair halls and shafts light themselves
+                if (r.kind == RoomKind.Crawl || r.noFloor || r.role != AnnexRole.None || r.custom) continue;      // custom rooms place their own lights      // a well's light belongs to the storey below; stair halls and shafts light themselves
                 var R = L.RulesAt(r.rect);
                 // Troffers every 2 cells (2.4 m); tall rooms use brighter fittings every 3 cells (3.6 m).
                 int step = r.Tall ? 3 : 2;

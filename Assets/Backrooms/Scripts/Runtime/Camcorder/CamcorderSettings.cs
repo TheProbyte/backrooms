@@ -72,6 +72,7 @@ namespace Backrooms.Camcorder
         public float blockiness = 0.25f;     // blotchy compression: chroma and brightness held in blocks that change every few frames
         public float recordFps = 0f;         // recording frame rate: the picture only changes this often (0 = every rendered frame)
         public float lineDoubling = 0f;      // each recorded line shown twice (stair-stepped edges), as in field-doubled SD video
+        public float colourFlicker = 0f;     // each recorded frame is a touch lighter/darker and tinted differently, like film or a tired sensor (0 = off)
         public float bottomLine = 0f;        // a thin steady lilac line along the very bottom edge (the episode's head-switching line)
         public float trackingNoise = 0.154f;
         public bool aspect43 = true;
@@ -101,6 +102,29 @@ namespace Backrooms.Camcorder
                 if (!string.IsNullOrEmpty(json)) return JsonUtility.FromJson<CamcorderSettings>(json);
             }
             catch (Exception e) { Debug.LogWarning("[Backrooms] Could not load camcorder settings: " + e.Message); }
+            return UserDefault();
+        }
+
+        const string DefaultKey = "Backrooms.CamcorderSettings.UserDefault";
+
+        /// <summary>Remembers the current settings as the player's own default: RESET, the "Default" preset and a fresh start use them.</summary>
+        public void SaveAsDefault()
+        {
+            PlayerPrefs.SetString(DefaultKey, JsonUtility.ToJson(this));
+            Save();
+        }
+
+        public static bool HasUserDefault => PlayerPrefs.HasKey(DefaultKey);
+
+        /// <summary>The player's saved default, or the built-in one.</summary>
+        public static CamcorderSettings UserDefault()
+        {
+            try
+            {
+                string json = PlayerPrefs.GetString(DefaultKey, "");
+                if (!string.IsNullOrEmpty(json)) return JsonUtility.FromJson<CamcorderSettings>(json);
+            }
+            catch (Exception e) { Debug.LogWarning("[Backrooms] Could not load the saved default: " + e.Message); }
             return new CamcorderSettings();
         }
 
@@ -124,6 +148,7 @@ namespace Backrooms.Camcorder
         public static CamcorderSettings Preset(int index)
         {
             var s = new CamcorderSettings();
+            if (index == 0) return UserDefault();
             switch (index)
             {
                 case 1: // Hi8: soft, smeared chroma, lifted blacks, warm, visible scanlines, 4:3

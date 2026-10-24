@@ -153,7 +153,7 @@ namespace Backrooms.Camcorder
             _blurVel = Vector2.Lerp(_blurVel, blur, 1f - Mathf.Exp(-Time.deltaTime / 0.04f));
             var bv = Vector2.ClampMagnitude(_blurVel, 0.22f);
             Shader.SetGlobalVector(ID6, new Vector4(bv.x, bv.y, 0f, 0f));
-            Shader.SetGlobalVector(ID7, new Vector4(s.headSwitching, s.blockiness, s.bottomLine, 0f));
+            Shader.SetGlobalVector(ID7, new Vector4(s.headSwitching, s.blockiness, s.bottomLine, freezeForStills ? 0f : s.colourFlicker));
 
             // Recording frame rate: the picture only changes on recorded frames (see CamcorderFrameHold).
             CamcorderFrameHold.Fps = freezeForStills ? 0f : s.recordFps;

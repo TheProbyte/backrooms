@@ -64,6 +64,7 @@ namespace Backrooms.Generation
         void Awake()
         {
             Seed = seed != 0 ? seed : new System.Random().Next(1, int.MaxValue);
+            Backrooms.CustomRooms.RoomLibrary.Reload();        // the player's custom rooms join the landmark pool
             Settings = WorldGenSettings.Load();
             _world = new WorldGenerator(Seed, Settings);
             // Movable props: the list of moved ones, and the player's free hand.

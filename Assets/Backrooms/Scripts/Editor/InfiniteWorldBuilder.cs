@@ -176,6 +176,7 @@ namespace Backrooms.EditorTools
                 m.SetTextureScale("_BaseMap", Vector2.one); m.SetTextureOffset("_BaseMap", Vector2.zero);
             }
             ApplyChevronWallpaper(a.wallpaper);
+            OfficeReferenceLook.Apply(a);        // the Reference Match look: tan-yellow wallpaper, supplied carpet, square ceiling tiles, no baseboard
 
             var plate = Lit("M_WallPlate", Color.white, Tex("WallPlate_Atlas"), null, 0.42f);
             a.wallPlate = plate;

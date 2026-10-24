@@ -148,7 +148,7 @@ namespace Backrooms.Generation
             return new Vector2(along / OfficeBiome.CellSize, w.y / OfficeBiome.CeilingHeight);
         }
 
-        public static Vector2 FloorUV(Vector3 w, Vector3 n) => new Vector2(w.x / 4f, w.z / 4f);
+        public static Vector2 FloorUV(Vector3 w, Vector3 n) => new Vector2(w.x / 3f, w.z / 3f);   // one carpet texture repeat = 3 m
         public static Vector2 CeilingUV(Vector3 w, Vector3 n) => new Vector2(w.x / 2.4f, (w.z - OfficeBiome.TileGridOffset) / 2.4f);
 
         /// <summary>Box mapping in metres (1 UV unit = 1 m) for trim, fabric and wood.</summary>

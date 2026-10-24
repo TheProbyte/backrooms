@@ -129,6 +129,7 @@ namespace Backrooms.Camcorder
             var footer = BtnRow(_panel);
             footer.AddToClassList("cc-footer");
             _resetVisuals = Button(footer, "RESET", () => ApplyPreset(0));
+            _setDefault = Button(footer, "SET AS DEFAULT", () => { if (rig) { rig.Settings.SaveAsDefault(); _setDefault.text = "SAVED"; _setDefault.schedule.Execute(() => _setDefault.text = "SET AS DEFAULT").StartingIn(1200); } });
             Button(footer, "END", () => SetOpen(false));
 
             BuildMinimap();
@@ -159,7 +160,7 @@ namespace Backrooms.Camcorder
         ScrollView[] _views;
         Button[] _tabButtons;
         VisualElement _presets;
-        Button _resetVisuals;
+        Button _resetVisuals, _setDefault;
 
         ScrollView MakeList()
         {
@@ -315,6 +316,8 @@ namespace Backrooms.Camcorder
                 0f, 60f, "0", " fps", () => S().recordFps, v => S().recordFps = v < 12f ? 0f : Mathf.Round(v), true);
             Slider("Line doubling", "Each recorded line is shown twice instead of blended, giving the faint stair-steps on edges of standard-definition video. Needs a recording resolution.",
                 0f, 1f, "0.00", "", () => S().lineDoubling, v => S().lineDoubling = v);
+            Slider("Colour flicker (per frame)", "Every recorded frame gets its own tiny change in brightness and tint, like film or a tired sensor. 0 = none, about 0.15 is barely noticeable, 1 is plainly visible, 3 is a lot.",
+                0f, 3f, "0.00", "", () => S().colourFlicker, v => S().colourFlicker = v);
             Slider("Bottom-edge line", "A thin, steady lilac line along the very bottom of the frame, as in the episode footage.",
                 0f, 1f, "0.00", "", () => S().bottomLine, v => S().bottomLine = v);
             Slider("Tape tracking noise", "A soft band of wobble and brightening that drifts slowly up the frame, like a worn tape.",

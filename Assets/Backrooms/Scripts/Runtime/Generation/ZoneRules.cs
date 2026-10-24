@@ -87,6 +87,8 @@ namespace Backrooms.Generation
         ColonnadeHall,
         /// <summary>Two-storey lightwell: an arcade around a void, with a railed balcony on the storey above.</summary>
         Atrium,
+        /// <summary>A room built by the player in build mode (CustomRooms); the rule name is the blueprint id.</summary>
+        Custom,
     }
 
     /// <summary>A rare set piece, placed on a sparse grid and reserved before rooms fill in.</summary>
@@ -136,6 +138,9 @@ namespace Backrooms.Generation
         public int connectors;        // AtriumAnnex.Stairs | AtriumAnnex.Elevator
         public int storeys;           // spans storeys 0 .. storeys - 1
         public int seed;              // for the landmark's own dice
+        public string blueprint;      // custom rooms: the blueprint id
+        public int variant;           // custom rooms: which layout of the blueprint
+        public int rot;               // custom rooms: quarter turns of the blueprint
         public RectInt WorldCells => new RectInt(district.x * WorldGenSettings.DistrictCells + rect.x, district.y * WorldGenSettings.DistrictCells + rect.y, rect.width, rect.height);
     }
 }

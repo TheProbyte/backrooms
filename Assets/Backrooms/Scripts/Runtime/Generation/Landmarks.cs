@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Backrooms.CustomRooms;
 using UnityEngine;
 
 namespace Backrooms.Generation
@@ -21,7 +22,11 @@ namespace Backrooms.Generation
         public static bool TryPlace(WorldGenSettings set, int seed, Vector2Int gridCell, out LandmarkPlacement p)
         {
             p = default;
-            if (set.landmarks == null || set.landmarks.Count == 0) return false;
+            // The world's own landmarks plus the player's enabled custom rooms (published by RoomLibrary).
+            var candidates = new List<LandmarkRules>();
+            if (set.landmarks != null) candidates.AddRange(set.landmarks);
+            candidates.AddRange(RoomLibrary.Rules);
+            if (candidates.Count == 0) return false;
             int sp = Mathf.Max(1, set.landmarkSpacing);
             int h = OfficeLayoutHash(seed, gridCell.x, gridCell.y, 0x1A4D);
             var rng = new System.Random(h);
@@ -34,17 +39,21 @@ namespace Backrooms.Generation
             var centreChunk = new Vector2Int(district.x * WorldGenSettings.DistrictChunks + 2, district.y * WorldGenSettings.DistrictChunks + 2);
             string biome = set.Evaluate(seed, centreChunk).Dominant;
             float total = 0f;
-            foreach (var l in set.landmarks) if (Allowed(l, zone, biome)) total += Mathf.Max(0f, l.weight);
+            foreach (var l in candidates) if (Allowed(l, zone, biome)) total += Mathf.Max(0f, l.weight);
             if (total <= 0f) return false;
             float pick = (float)rng.NextDouble() * total;
             LandmarkRules chosen = null;
-            foreach (var l in set.landmarks)
+            foreach (var l in candidates)
             {
                 if (!Allowed(l, zone, biome)) continue;
                 pick -= Mathf.Max(0f, l.weight);
                 if (pick < 0f) { chosen = l; break; }
             }
             if (chosen == null || rng.NextDouble() >= chosen.chance) return false;
+
+            // A player-built room: its own variant, turn and footprint.
+            string bpId = null, bpName = null; int bpVariant = 0, bpRot = 0, cw = 0, cd = 0;
+            if (chosen.kind == LandmarkKind.Custom && !CustomRoomStamp.Choose(chosen, rng, out bpId, out bpName, out bpVariant, out bpRot, out cw, out cd)) return false;
 
             bool turn = rng.NextDouble() < 0.5;
             int w = Mathf.Clamp(turn ? chosen.depth : chosen.width, 4, D - 2 * Margin);
@@ -59,6 +68,7 @@ namespace Backrooms.Generation
                 if (side < 2) { w = Mathf.Max(w, AtriumAnnex.MinLength); bw = w; bh = d + AtriumAnnex.Depth; }
                 else { d = Mathf.Max(d, AtriumAnnex.MinLength); bw = w + AtriumAnnex.Depth; bh = d; }
             }
+            if (chosen.kind == LandmarkKind.Custom) { w = bw = Mathf.Min(cw, D - 2 * Margin); d = bh = Mathf.Min(cd, D - 2 * Margin); }
             int lo = Margin;
             // The spawn hall fills the first chunk of district (0, 0): stay clear of it.
             if (district == Vector2Int.zero) lo = OfficeBiome.ChunkCells + Margin;
@@ -80,7 +90,9 @@ namespace Backrooms.Generation
             {
                 name = chosen.name, kind = chosen.kind, district = district, rect = rect, core = core, annex = annex, side = side,
                 connectors = connectors, storeys = Mathf.Max(1, chosen.storeys), seed = rng.Next(),
+                blueprint = bpId, variant = bpVariant, rot = bpRot,
             };
+            if (bpName != null) p.name = bpName;
             return true;
         }
 
@@ -90,6 +102,8 @@ namespace Backrooms.Generation
         /// <summary>Landmarks whose rectangle lies in this district (any storey they span).</summary>
         public static void InDistrict(WorldGenSettings set, int seed, Vector2Int district, List<LandmarkPlacement> into)
         {
+            // Build mode's "test in world": the room under test replaces whatever would stand beside the spawn hall.
+            if (district == Vector2Int.zero && CustomRoomTest.Active) { into.Add(CustomRoomTest.Placement()); return; }
             int sp = Mathf.Max(1, set.landmarkSpacing);
             var cell = new Vector2Int(FloorDiv(district.x, sp), FloorDiv(district.y, sp));
             if (TryPlace(set, seed, cell, out var p) && p.district == district) into.Add(p);
@@ -119,6 +133,10 @@ namespace Backrooms.Generation
             var r = p.rect;
             switch (p.kind)
             {
+                case LandmarkKind.Custom:
+                    CustomRoomStamp.Rooms(p, list);
+                    break;
+
                 case LandmarkKind.ColonnadeHall:
                     list.Add(new RoomSpec { rect = r, kind = RoomKind.BigOffice, ceiling = 5.4f, painted = true, lights = LightMode.AllOn });
                     break;
@@ -220,6 +238,9 @@ namespace Backrooms.Generation
             var r = p.rect;
             switch (p.kind)
             {
+                case LandmarkKind.Custom:
+                    CustomRoomStamp.Connect(L, p, rooms);
+                    break;
                 case LandmarkKind.ColonnadeHall:
                 {
                     // Arched doorways in the middle of each side, where the room beyond can be walked into.
@@ -277,6 +298,9 @@ namespace Backrooms.Generation
             var r = p.rect;
             switch (p.kind)
             {
+                case LandmarkKind.Custom:
+                    CustomRoomStamp.Decorate(L, p, rooms);
+                    break;
                 case LandmarkKind.ColonnadeHall:
                 {
                     var room = rooms[0];

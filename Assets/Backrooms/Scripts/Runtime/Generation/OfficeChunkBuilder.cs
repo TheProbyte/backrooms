@@ -124,7 +124,8 @@ namespace Backrooms.Generation
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear(); _movables.Clear(); doorways.Clear();
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
-            foreach (var f in layout.fixtures) _fixtureCells.Add(f.cell);
+            // Square panels sit inside a ceiling tile and need no gap in the grid; only round domes sit on a cross tee.
+            foreach (var f in layout.fixtures) if (f.dome) _fixtureCells.Add(f.cell);
 
             _cellMask = LightLayers.CellMasks(_L, Neighbour);
             BuildFloorAndCeiling();
@@ -543,6 +544,7 @@ namespace Backrooms.Generation
 
         void Baseboard(uint mask, Vector3 a, Vector3 b, Vector3 n)
         {
+            if (_a.noBaseboard) return;
             var w = WMask(_a.baseboard, mask);
             Vector3 fa = a + n * BD, fb = b + n * BD;
             w.Quad(fa, fb, fb + Vector3.up * BB, fa + Vector3.up * BB, n, MeshWriter.MetreUV);
@@ -654,7 +656,7 @@ namespace Backrooms.Generation
                     if (wall)
                     {
                         w.Box(new Vector3(x * C, FH * 0.5f, z * C), new Vector3(T, FH, T), bit, MeshWriter.WallUV);
-                        WMask(_a.baseboard, pm).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit, MeshWriter.MetreUV);
+                        if (!_a.noBaseboard) WMask(_a.baseboard, pm).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit, MeshWriter.MetreUV);
                     }
                     else
                     {
@@ -667,7 +669,7 @@ namespace Backrooms.Generation
                 if (x < N && z < N)
                 {
                     var room = _L.RoomAt(x, z);
-                    if (wall) WMask(_a.baseboard, CellMask(x, z)).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), 8, MeshWriter.MetreUV);
+                    if (wall && !_a.noBaseboard) WMask(_a.baseboard, CellMask(x, z)).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), 8, MeshWriter.MetreUV);
                     else
                     {
                         float hy = blockBottom;
@@ -751,7 +753,7 @@ namespace Backrooms.Generation
                 float h = room.ceiling;
                 var c = new Vector3(p.vertex.x * C, h * 0.5f, p.vertex.y * C);
                 W(WallMat(room), p.roomColor).Box(c, new Vector3(p.size, h, p.size), 1 | 2 | 16 | 32, MeshWriter.WallUV);
-                W(_a.baseboard, p.roomColor).Box(new Vector3(c.x, BB * 0.5f, c.z), new Vector3(p.size + BD * 2f, BB, p.size + BD * 2f), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
+                if (!_a.noBaseboard) W(_a.baseboard, p.roomColor).Box(new Vector3(c.x, BB * 0.5f, c.z), new Vector3(p.size + BD * 2f, BB, p.size + BD * 2f), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
                 _boxes.Add((c, new Vector3(p.size, h, p.size)));
             }
         }
@@ -771,7 +773,7 @@ namespace Backrooms.Generation
                 Vector3 capS = s + new Vector3(0.02f, 0f, 0.02f); capS.y = cap;
                 W(_a.halfWallCap, hw.roomColor).Box(new Vector3(c.x, hh + cap * 0.5f, c.z), capS, 63, MeshWriter.MetreUV);
                 Vector3 bbS = s + new Vector3(BD * 2f, 0f, BD * 2f); bbS.y = BB;
-                W(_a.baseboard, hw.roomColor).Box(new Vector3(c.x, BB * 0.5f, c.z), bbS, 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
+                if (!_a.noBaseboard) W(_a.baseboard, hw.roomColor).Box(new Vector3(c.x, BB * 0.5f, c.z), bbS, 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
                 _boxes.Add((new Vector3(c.x, (hh + cap) * 0.5f, c.z), new Vector3(s.x, hh + cap, s.z)));
             }
         }
@@ -865,6 +867,9 @@ namespace Backrooms.Generation
 
         // ---------------- Fixtures ----------------
 
+        /// <summary>A square panel fills the tile just west of its cell's centre (centre of a 0.6 m ceiling tile).</summary>
+        static readonly Vector3 SquareFixtureShift = new Vector3(-0.3f, 0f, 0f);
+
         void BuildFixtures(List<LightSource> lights)
         {
             // Grid cut-outs must be known before the ceiling grid is written, so collect first.
@@ -900,18 +905,20 @@ namespace Backrooms.Generation
                 }
                 else
                 {
-                    lens.Box(c + Vector3.down * 0.004f, new Vector3(1.17f, 0.006f, 0.57f), 4 | 1 | 2 | 16 | 32, MeshWriter.MetreUV);
+                    // Square troffer: one 0.6 m ceiling tile, in the tile just west of the cell centre.
+                    var sc = c + SquareFixtureShift;
+                    lens.Box(sc + Vector3.down * 0.004f, new Vector3(0.57f, 0.006f, 0.57f), 4 | 1 | 2 | 16 | 32, MeshWriter.MetreUV);
                     var hw = W(_a.fixtureHousing, f.roomColor);
                     const int m = 1 | 2 | 4 | 16 | 32;
-                    hw.Box(c + new Vector3(0, -0.009f, 0.291f), new Vector3(1.2f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
-                    hw.Box(c + new Vector3(0, -0.009f, -0.291f), new Vector3(1.2f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
-                    hw.Box(c + new Vector3(0.591f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
-                    hw.Box(c + new Vector3(-0.591f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
+                    hw.Box(sc + new Vector3(0, -0.009f, 0.291f), new Vector3(0.6f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
+                    hw.Box(sc + new Vector3(0, -0.009f, -0.291f), new Vector3(0.6f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
+                    hw.Box(sc + new Vector3(0.291f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
+                    hw.Box(sc + new Vector3(-0.291f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
                 }
                 if (f.on)
                     lights.Add(new LightSource
                     {
-                        position = _origin + c + (f.dome ? Vector3.down * 0.07f : f.strip ? Vector3.down * 0.03f : Vector3.zero),
+                        position = _origin + c + (f.dome ? Vector3.down * 0.07f : f.strip ? Vector3.down * 0.03f : SquareFixtureShift),
                         isLamp = false, dome = f.dome, strip = f.strip, ceiling = h, roomLayer = LayerBit(f.roomColor),
                         faultyId = f.faulty ? faultyLenses.Count - 1 : -1,
                     });

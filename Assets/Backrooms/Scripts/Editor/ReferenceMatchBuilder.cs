@@ -52,11 +52,11 @@ namespace Backrooms.EditorTools
                 Texture2D T(string n) => AssetDatabase.LoadAssetAtPath<Texture2D>($"{TexFolder}/{n}.png");
                 // Walls: the game's own wallpaper (albedo, normal and detail maps) tinted to the reference's pale cream.
                 // The tint is slightly above 1 because the wallpaper texture itself is darker and yellower.
-                room.wall = Tinted("M_Ref_Wall", assets.wallpaper, new Color(1.075f, 1.04f, 1.10f));
-                room.olive = Tinted("M_Ref_WallOlive", assets.wallpaper, new Color(0.877f, 0.913f, 0.298f));
+                room.wall = Tinted("M_Ref_Wall", assets.wallpaper, WallTint);
+                room.olive = Tinted("M_Ref_WallOlive", assets.wallpaper, OliveTint);
                 room.carpet = Lit("M_Ref_Carpet", CarpetTint, T("RefCarpet_Albedo"), 0.05f, T("RefCarpet_Normal"), 0.6f);
                 room.trim = null;                                        // no baseboard (ReferenceRoom.baseboard is off)
-                room.ceilingTile = Lit("M_Ref_Ceiling", new Color(0.62f, 0.62f, 0.34f), T("RefCeiling_Albedo"), 0.05f, T("RefCeiling_Normal"), 1f);
+                room.ceilingTile = Lit("M_Ref_Ceiling", CeilingTint, T("RefCeiling_Albedo"), 0.05f, T("RefCeiling_Normal"), 1f);
                 room.recess = Lit("M_Ref_Recess", new Color(0.35f, 0.31f, 0.12f), null, 0.05f);
             }
 
@@ -71,7 +71,10 @@ namespace Backrooms.EditorTools
         }
 
         // Carpet colour on top of RefCarpet_Albedo (whose mean is about 0.72): the tuned tan of the first match.
-        static readonly Color CarpetTint = new Color(0.80f, 0.71f, 0.44f);
+        public static readonly Color CarpetTint = new Color(0.80f, 0.71f, 0.44f);
+        public static readonly Color CeilingTint = new Color(0.62f, 0.62f, 0.34f);
+        public static readonly Color WallTint = new Color(1.075f, 1.04f, 1.10f);
+        public static readonly Color OliveTint = new Color(0.877f, 0.913f, 0.298f);
 
         /// <summary>A copy of a game material (all its maps and settings) with a different base colour.</summary>
         public static Material Tinted(string name, Material source, Color c)

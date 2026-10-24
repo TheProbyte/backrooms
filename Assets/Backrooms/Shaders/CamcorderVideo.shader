@@ -262,6 +262,16 @@ Shader "Backrooms/CamcorderVideo"
 
                 float3 col = FromYCC(float3(y, cc));
 
+                // Colour flicker: every recorded frame gets its own small random lift in brightness and shift in tint
+                // (film-like frame-to-frame colour change). 1 is plainly visible; the slider goes well past that.
+                float cfl = _CamVideo7.w;
+                if (cfl > 0.001)
+                {
+                    float3 fr = Rand3(int2(3, 5), frame, 901u) - 0.5;
+                    col *= 1.0 + fr.x * 0.07 * cfl;
+                    col += FromYCC(float3(0, fr.y * 0.035 * cfl, fr.z * 0.035 * cfl));
+                }
+
                 // Sensor motion blur: smear along the camera's turn, mostly trailing behind the motion.
                 float2 mv = _CamVideo6.xy;
                 float mlen = length(mv * res);

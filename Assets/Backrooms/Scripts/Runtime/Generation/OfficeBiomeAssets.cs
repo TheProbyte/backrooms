@@ -6,6 +6,8 @@ namespace Backrooms.Generation
     [CreateAssetMenu(menuName = "Backrooms/Office Biome Assets")]
     public class OfficeBiomeAssets : ScriptableObject
     {
+        [Tooltip("No baseboard trim along the walls (the Reference Match look). The baseboard material is still used for invisible shadow proxies.")]
+        public bool noBaseboard = true;
         public Material carpet, wallpaper, ceilingTile, ceilingGrid, baseboard;
         public Material lensOn, lensOff, fixtureHousing;
         public Material wallPlate, halfWallCap;
