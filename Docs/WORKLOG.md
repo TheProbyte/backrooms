@@ -15,6 +15,22 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-24 14:28  ChatGPT  Performance and realistic-lighting review (recommendations only)
+- Added Docs/PerformanceLightingReview.md with source-specific findings, measurement limits and an investigation order.
+  Efficiency candidates: unused direct-grid dispatch in per-pixel mode; unchanged bounce/buffer recomputation; preview
+  mesh ownership; portal allocations/lookups; unbounded landmark cache; upload/streaming spikes; batching investigation.
+  Lighting candidates: finite panel emitters; upper-storey and surface-aware bounce; shadow-strength transitions;
+  real/grid specular consistency; furniture contact occlusion; bounded indoor reflections. APV is baked indirect data,
+  not automatic runtime GI for arbitrary procedural rooms; standard URP Area lights are baked-only.
+- Why: requested audit alongside feature work, without implementing optimization or lighting changes.
+- Checked: reviewed actual streamer/grid/compute/shader/portal/builder code and Unity documentation. 120 valid editor
+  frames at 1080p: CPU median 16.81 ms / p95 31.58; GPU median 14.40 ms / p95 27.90. 62 chunks, 43 shadowed lights at the
+  test pose. Light-manager CPU mean 1.28 ms (includes grid submit mean 0.25 ms). Not a standalone-player benchmark.
+- Open: no gains claimed and none of the proposals implemented. GPU capture, multiple views, streaming routes and a
+  standalone build are needed before prioritizing by measured cost. Final 18 CustomRoomTests pass; earlier full 35-test
+  suite passed. Normal library restored; original Backrooms_Infinite scene reopened with Play Mode stopped. Feature work
+  is local commits on chatgpt/build-mode-tools; no push or PR. Existing unrelated dirty files remain outside the commits.
+
 ## 2026-10-24 14:25  ChatGPT  Builder icons, tooltips, help and complete area copy/paste
 - Added drawn tool icons, wrapped panel hints, hover tooltips, F1 help, and COPY/PASTE AREA buttons with Ctrl+C/Ctrl+V.
   Clipboard snapshots the selected painted area including edges/settings/lights/pillars/props/loot; click to paste with
