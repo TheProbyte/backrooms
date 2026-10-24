@@ -126,6 +126,7 @@ namespace Backrooms.CustomRooms
             BuildSession.Editing = _bp;
             _undo.Clear(); _redo.Clear();
             _selected = Selection.None;
+            _pastingArea = false; _showHelp = false;
             _needRebuild = true;
             if (frame) FrameRoom();
         }
@@ -338,7 +339,7 @@ namespace Backrooms.CustomRooms
 
         void OnEndCamera(ScriptableRenderContext ctx, Camera cam)
         {
-            if (cam != _cam || _screen != ScreenKind.Editor || _bp == null) return;
+            if (cam != _cam || _screen != ScreenKind.Editor || _bp == null || _showHelp || _modal != Modal.None) return;
             EnsureLineMaterial();
             _lineMat.SetInt("_ZTest", (int)CompareFunction.LessEqual);
             _lineMat.SetPass(0);

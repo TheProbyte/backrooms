@@ -14,6 +14,7 @@ namespace Backrooms.CustomRooms
         Vector2 _rightScroll, _libScroll;
         float _rightContentH = 900f;
         bool _clearFocus;
+        bool _showHelp;
         readonly Dictionary<string, (string stamp, Texture2D tex)> _thumbCache = new Dictionary<string, (string, Texture2D)>();
         List<string> _biomeNames, _zoneNames;
 
@@ -25,7 +26,7 @@ namespace Backrooms.CustomRooms
         bool OverUi(Vector2 p)
         {
             if (_screen == ScreenKind.Library) return true;
-            return LeftRect.Contains(p) || RightRect.Contains(p) || TopRect.Contains(p) || BottomRect.Contains(p);
+            return _showHelp || LeftRect.Contains(p) || RightRect.Contains(p) || TopRect.Contains(p) || BottomRect.Contains(p);
         }
 
         void HandleLibraryKeys()
@@ -48,6 +49,8 @@ namespace Backrooms.CustomRooms
             if (_screen == ScreenKind.Library) DrawLibrary();
             else if (_bp != null) DrawEditor();
             DrawModal();
+            if (_showHelp) DrawHelp();
+            else ImUi.DrawTooltip();
             _textFocus = GUI.GetNameOfFocusedControl().StartsWith("tf_");
             if (_clearFocus || (Event.current.type == EventType.MouseDown && !OverUi(ImUi.Pointer) && _modal == Modal.None)) { GUI.FocusControl(null); _clearFocus = false; }
             ImUi.End();
@@ -172,6 +175,7 @@ namespace Backrooms.CustomRooms
             }
             if (ImUi.Button(new Rect(x + 10, 8, 64, 36), "GRID", _showGrid, "Show or hide the grid. [G]")) _showGrid = !_showGrid;
             if (ImUi.Button(new Rect(ImUi.Width - 110, 8, 98, 36), "MENU")) PauseMenu.Instance?.Open();
+            if (ImUi.Button(new Rect(ImUi.Width - 204, 8, 86, 36), "HELP", _showHelp, "Controls and placement guide. [F1]")) _showHelp = !_showHelp;
         }
 
         void DrawLeftBar()
@@ -182,7 +186,7 @@ namespace Backrooms.CustomRooms
             for (int i = 0; i < ToolNames.Length; i++)
             {
                 var b = col.Row();
-                if (ImUi.Button(b, $"{ToolNames[i]}", _tool == (BuilderTool)i, ToolTips[i] + $"  [{(i + 1) % 10}]")) SetTool((BuilderTool)i);
+                if (ImUi.ToolButton(b, ToolNames[i], i, _tool == (BuilderTool)i, ToolTips[i] + $"  [{(i + 1) % 10}]")) SetTool((BuilderTool)i);
                 GUI.Label(new Rect(b.xMax - 30, b.y, 26, b.height), ((i + 1) % 10).ToString(), new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleRight, normal = { textColor = _tool == (BuilderTool)i ? Color.black : ImUi.Dim } });
             }
             col.Space(10);
@@ -234,6 +238,8 @@ namespace Backrooms.CustomRooms
         }
 
         string[] _kindNames = { "OFFICE", "BIG OFFICE", "HALLWAY", "LOUNGE", "CONFERENCE" };
+        static readonly string[] WallFinishNames = { "DEFAULT", "WALLPAPER", "PAINTED PLASTER", "REFERENCE CREAM", "REFERENCE OLIVE" };
+        static readonly string[] FloorFinishNames = { "DEFAULT CARPET", "REFERENCE CARPET", "DARK WOOD", "LAMINATE" };
         RoomKind[] _kinds = { RoomKind.Office, RoomKind.BigOffice, RoomKind.Hallway, RoomKind.Lounge, RoomKind.Conference };
 
         void DrawRightBar()
@@ -303,6 +309,9 @@ namespace Backrooms.CustomRooms
             // ---- Areas ----
             ImUi.Header(col.Row(24), "Areas");
             ImUi.Dimmed(col.Row(34), "Paint areas with the FLOOR AREAS tool. Each has its own ceiling, walls and lighting.");
+            var copyRow = col.Row();
+            if (ImUi.Button(new Rect(copyRow.x, copyRow.y, copyRow.width * 0.5f - 3, copyRow.height), "COPY AREA", false, "Copy the selected area's shape, settings, boundary walls, lights, props and loot. [Ctrl+C]")) CopyArea();
+            if (ImUi.Button(new Rect(copyRow.center.x + 3, copyRow.y, copyRow.width * 0.5f - 3, copyRow.height), "PASTE AREA", _pastingArea, "Click a destination cell after pasting. Replaces that footprint in one undoable action. [Ctrl+V]")) BeginPasteArea();
             for (int i = 0; i < v.rooms.Count; i++)
             {
                 var b = col.Row(30);
@@ -331,6 +340,10 @@ namespace Backrooms.CustomRooms
             bool painted = rs.painted;
             Toggled(ref painted, col.Row(), "Painted walls (not wallpaper)", "Plaster instead of the wallpaper. Tall ceilings always use plaster.");
             if (painted != rs.painted) { PushUndo(); rs.painted = painted; Changed(); }
+            if (ImUi.Button(col.Row(), "WALL: " + WallFinishNames[Mathf.Clamp((int)rs.wallFinish, 0, WallFinishNames.Length - 1)], false, "Cycle existing wall materials. Default follows Painted walls; an explicit choice also works in tall rooms."))
+            { PushUndo(); rs.wallFinish = (WallFinish)(((int)rs.wallFinish + 1) % System.Enum.GetValues(typeof(WallFinish)).Length); Changed(); }
+            if (ImUi.Button(col.Row(), "FLOOR: " + FloorFinishNames[Mathf.Clamp((int)rs.floorFinish, 0, FloorFinishNames.Length - 1)], false, "Cycle existing carpet, Reference Match carpet, dark wood and table laminate materials. No new textures."))
+            { PushUndo(); rs.floorFinish = (FloorFinish)(((int)rs.floorFinish + 1) % System.Enum.GetValues(typeof(FloorFinish)).Length); Changed(); }
             var lr = col.Row();
             string[] ln = { "ALL ON", "MIXED", "DARK" };
             for (int i = 0; i < 3; i++)
@@ -459,6 +472,33 @@ namespace Backrooms.CustomRooms
         }
 
         // ---------------- Save / test ----------------
+
+        void DrawHelp()
+        {
+            ImUi.Fill(new Rect(0, 0, ImUi.Width, ImUi.Height), new Color(0, 0, 0, 0.72f));
+            float width = Mathf.Min(780f, ImUi.Width - 40f);
+            var box = new Rect((ImUi.Width - width) * 0.5f, 140f, width, 760f);
+            ImUi.PanelBox(box);
+            var col = new ImUi.Column(box.x + 24, box.y + 18, box.width - 48, 36, 10);
+            GUI.Label(col.Row(42), "BUILD MODE HELP", ImUi.Title);
+            string[] lines =
+            {
+                "1–0: select tools. Click or drag grid edges for walls and openings.",
+                "Floor areas: paint cells with the selected area's settings.",
+                "Props: select and drag. R rotates floor props; Delete removes the selection.",
+                "Racks / clocks: click the floor beside a solid wall; drag to another wall.",
+                "RMB: orbit. MMB or Shift+RMB: pan. Wheel: zoom.",
+                "WASD: pan. Q / E: rotate. F: frame the room.",
+                "Tab: cycle views. G: show or hide grid.",
+                "Ctrl+Z / Ctrl+Y: undo / redo. Ctrl+S: save.",
+                "Ctrl+C: copy selected area. Ctrl+V, then click: paste; Escape cancels.",
+                "Open an outer wall to give the room an entrance and exit.",
+                "Save to game: enable world spawning. Test in world: play your current edits.",
+                "Escape during a world test: return to the builder with edits intact.",
+            };
+            foreach (var line in lines) GUI.Label(col.Row(38), line, new GUIStyle(ImUi.Label) { wordWrap = true });
+            if (ImUi.Button(new Rect(box.xMax - 170, box.yMax - 62, 146, 40), "CLOSE  [F1]", true)) _showHelp = false;
+        }
 
         void SaveBlueprint(bool toGame)
         {

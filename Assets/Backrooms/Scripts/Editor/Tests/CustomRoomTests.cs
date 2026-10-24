@@ -224,6 +224,69 @@ namespace Backrooms.Tests
         }
 
         [Test]
+        public void AreaCopyPastesShapeEdgesSettingsAndDressingAsDetachedData()
+        {
+            var source = Sample().variants[0];
+            source.cellRoom[4] = 0; // leave a hole in the copied east area's footprint
+            source.rooms[1].floorFinish = FloorFinish.DarkWood;
+            source.props.Add(new PropDef { kind = PropKind.WallClock, x = 6f, z = 4f, yaw = 90f, size = new Vector3(0.36f, 2.1f, 0.06f) });
+            source.loot.Add(new LootDef { x = 7f, z = 4f, item = "Hammer", note = "copied", chance = 0.7f });
+            source.pillars.Add(new PillarDef { x = 6, z = 3 });
+            var copy = AreaClipboard.Capture(source, 1);
+            Assert.IsNotNull(copy);
+            source.rooms[1].floorFinish = FloorFinish.Laminate;
+            var target = RoomVariant.CreateDefault(12, 12);
+            var anchor = new Vector2Int(2, 3);
+            target.props.Add(new PropDef { x = 4f, z = 6f }); // replaced inside footprint
+            target.props.Add(new PropDef { x = 12f, z = 12f }); // outside remains
+            Assert.IsTrue(copy.Paste(target, anchor, out int area));
+            Assert.AreEqual(0, target.RoomOf(anchor.x, anchor.y), "hole in source shape does not overwrite target");
+            Assert.AreEqual(area, target.RoomOf(anchor.x + 1, anchor.y));
+            Assert.AreEqual(FloorFinish.DarkWood, target.rooms[area].floorFinish, "clipboard is a snapshot");
+            Assert.AreEqual(EdgeCode.Header, target.V(2, 5), "middle doorway moves with area");
+            Assert.AreEqual(2, target.props.Count, "replace destination prop and preserve outside prop");
+            Assert.IsTrue(target.props.Exists(p => p.kind == PropKind.WallClock && p.yaw == 90f && p.size.y == 2.1f));
+            Assert.AreEqual("Hammer", target.loot[0].item);
+            Assert.AreEqual("copied", target.loot[0].note);
+            Assert.IsTrue(target.pillars.Exists(p => p.x == 4 && p.z == 6));
+            int fixtures = target.fixtures.Count;
+            Assert.IsTrue(copy.Paste(target, anchor, out _));
+            Assert.AreEqual(fixtures, target.fixtures.Count, "repeated paste does not stack fixtures");
+            Assert.AreEqual(2, target.props.Count, "repeated paste does not stack props");
+            string before = JsonUtility.ToJson(target);
+            Assert.IsFalse(copy.Paste(target, new Vector2Int(11, 11), out _));
+            Assert.AreEqual(before, JsonUtility.ToJson(target), "rejected paste makes no edits");
+            Assert.IsNull(AreaClipboard.Capture(source, 9), "empty/nonexistent area is not copied");
+        }
+
+        [Test]
+        public void UndoAfterSaveMarksTheRestoredBlueprintDirty()
+        {
+            var previous = BuildSession.Editing;
+            bool previousDirty = BuildSession.Dirty;
+            var root = new GameObject("Inactive builder undo test");
+            root.SetActive(false); // exercise undo without starting the renderer or loading the library
+            try
+            {
+                var app = root.AddComponent<BuilderApp>();
+                const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                var type = typeof(BuilderApp);
+                var bp = Sample();
+                type.GetField("_bp", flags).SetValue(app, bp);
+                type.GetMethod("PushUndo", flags).Invoke(app, null);
+                bp.variants[0].rooms.Add(new RoomSettings { name = "Pasted" });
+                type.GetField("_dirty", flags).SetValue(app, false); BuildSession.Dirty = false;
+                type.GetMethod("Undo", flags).Invoke(app, null);
+                Assert.IsTrue((bool)type.GetField("_dirty", flags).GetValue(app));
+                Assert.IsTrue(BuildSession.Dirty);
+                Assert.AreEqual(2, BuildSession.Editing.variants[0].rooms.Count);
+                type.GetMethod("Redo", flags).Invoke(app, null);
+                Assert.AreEqual(3, BuildSession.Editing.variants[0].rooms.Count);
+            }
+            finally { Object.DestroyImmediate(root); BuildSession.Editing = previous; BuildSession.Dirty = previousDirty; }
+        }
+
+        [Test]
         public void AreaFinishesSurviveJsonRotationsAndChunkSlices([Values(0, 1, 2, 3)] int rot)
         {
             var bp = Sample();

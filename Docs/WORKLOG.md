@@ -15,6 +15,23 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-24 14:25  ChatGPT  Builder icons, tooltips, help and complete area copy/paste
+- Added drawn tool icons, wrapped panel hints, hover tooltips, F1 help, and COPY/PASTE AREA buttons with Ctrl+C/Ctrl+V.
+  Clipboard snapshots the selected painted area including edges/settings/lights/pillars/props/loot; click to paste with
+  a green/red footprint, replacement of destination contents, and one-step undo/redo. Clipboard works across designs.
+  Undo/redo now marks restored edits dirty (including after saving); help blocks editing and hides the GL overlay.
+  Included the per-area finish picker UI from the preceding data/material commit; updated Docs/BuildMode.md.
+- Why: make tools discoverable and let the player duplicate complete areas rather than repaint and replace every object.
+- Checked: Unity ran the full 35-test Edit Mode suite successfully; the final 18 CustomRoomTests passed, including undo
+  after save and snapshot isolation,
+  nonrectangular shape, edge/settings/dressing transfer, repeat-paste deduplication and rejected out-of-bounds paste.
+  In Play Mode invoked builder paste/undo/redo and wall placement, inspected palette/finish/help screenshots; tested a
+  temporary saved design via Test in world and F5 MY ROOMS, verified arrival inside it with no capsule-obstacle overlap,
+  and verified no-match feedback. No new runtime errors. Added a dedicated regression for undo-after-save dirty state.
+- Open: UI interactions were exercised through Unity automation, not a human mouse session. Please hand-test wall-side
+  dragging, scrolled tooltips, Ctrl+C/V between designs, undo after save, F1/Escape and Save/Test/return. Clipboard has no
+  rotation/mirroring and replaces its footprint (undoable). Smoke files/captures are in Temp/ChatGPTChecks, not the library.
+
 ## 2026-10-24 14:16  ChatGPT  Custom room destinations and per-area existing finishes
 - F5 > PLACES > MY ROOMS now finds the nearest generated custom placement (all designs or one enabled design), picks
   a cell clear of authored furniture/pillars/half walls, and uses TeleportSafe while chunks load. Reports no-match cases.

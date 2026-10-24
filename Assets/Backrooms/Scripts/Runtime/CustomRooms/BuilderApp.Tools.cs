@@ -22,6 +22,8 @@ namespace Backrooms.CustomRooms
         int _activeRoom;
         float _pillarSize = 0.6f;
         bool _dragging;
+        static AreaClipboard _areaClipboard;
+        bool _pastingArea;
 
         // Undo
         readonly Stack<string> _undo = new Stack<string>(), _redo = new Stack<string>();
@@ -59,7 +61,7 @@ namespace Backrooms.CustomRooms
 
             bool overUi = OverUi(ImUi.Pointer) || _modal != Modal.None || PauseMenu.IsOpen;
             HandleKeys(kb);
-            if (PauseMenu.IsOpen) return;
+            if (PauseMenu.IsOpen || _showHelp) return;
             UpdateCamera(overUi);
 
             if (!overUi && !_textFocus)
@@ -85,13 +87,19 @@ namespace Backrooms.CustomRooms
             if (kb.escapeKey.wasPressedThisFrame && PauseMenu.ToggledFrame != Time.frameCount)
             {
                 if (PauseMenu.IsOpen) PauseMenu.Instance.Close();
+                else if (_showHelp) _showHelp = false;
+                else if (_pastingArea) _pastingArea = false;
                 else if (_modal != Modal.None) _modal = Modal.None;
                 else if (_stroking) EndStroke();
                 else if (_selected.kind != SelKind.None) _selected = Selection.None;
                 else PauseMenu.Instance?.Open();
             }
             if (_textFocus || _modal != Modal.None || PauseMenu.IsOpen) return;
+            if (kb.f1Key.wasPressedThisFrame) _showHelp = !_showHelp;
+            if (_showHelp) return;
             bool ctrl = kb.leftCtrlKey.isPressed || kb.rightCtrlKey.isPressed;
+            if (ctrl && kb.cKey.wasPressedThisFrame) CopyArea();
+            if (ctrl && kb.vKey.wasPressedThisFrame) BeginPasteArea();
             if (ctrl && kb.zKey.wasPressedThisFrame) Undo();
             if (ctrl && kb.yKey.wasPressedThisFrame) Redo();
             if (ctrl && kb.sKey.wasPressedThisFrame) SaveBlueprint(false);
@@ -103,7 +111,28 @@ namespace Backrooms.CustomRooms
             for (int i = 0; i < keys.Length; i++) if (kb[keys[i]].wasPressedThisFrame && !ctrl) SetTool((BuilderTool)i);
         }
 
-        void SetTool(BuilderTool t) { _tool = t; if (t != BuilderTool.Select) _selected = Selection.None; }
+        void SetTool(BuilderTool t) { _tool = t; _pastingArea = false; if (t != BuilderTool.Select) _selected = Selection.None; }
+
+        void CopyArea()
+        {
+            _areaClipboard = AreaClipboard.Capture(V, _activeRoom);
+            SetStatus(_areaClipboard == null ? "This area has no painted cells to copy." : $"Copied '{_areaClipboard.Name}'. Ctrl+V, then click its new lower-left cell. Paste replaces that footprint; Ctrl+Z undoes it.", 8f);
+        }
+
+        void BeginPasteArea()
+        {
+            if (_areaClipboard == null) { SetStatus("Select an area and copy it first. [Ctrl+C]"); return; }
+            _pastingArea = true; _selected = Selection.None; _stroking = false;
+            SetStatus("Click the copied area's lower-left destination cell. Red means it will not fit. Escape cancels. Existing contents in the footprint are replaced.", 12f);
+        }
+
+        void PasteArea()
+        {
+            if (!_hoverCellValid || !_areaClipboard.Fits(V, _hoverCell)) { SetStatus("The complete area must fit inside this room. Resize the room or choose another cell."); return; }
+            PushUndo();
+            if (_areaClipboard.Paste(V, _hoverCell, out int area))
+            { _activeRoom = area; _pastingArea = false; Changed(); SetStatus("Area pasted. Ctrl+Z undoes the whole paste."); }
+        }
 
         void SetView(BuilderView v)
         {
@@ -150,7 +179,8 @@ namespace Backrooms.CustomRooms
             _vi = Mathf.Clamp(_vi, 0, b.variants.Count - 1);
             _activeRoom = Mathf.Clamp(_activeRoom, 0, V.rooms.Count - 1);
             _selected = Selection.None;
-            Changed(false);
+            _pastingArea = false;
+            Changed();
         }
 
         void Changed(bool dirty = true)
@@ -206,6 +236,7 @@ namespace Backrooms.CustomRooms
 
         void BeginStroke(Vector2 screen)
         {
+            if (_pastingArea) { PasteArea(); return; }
             _stroking = true; _strokeLocked = false; _lastAlong = int.MinValue; _lastMouse = screen; _strokeChanged = false; _dragging = false;
             switch (_tool)
             {
@@ -449,6 +480,18 @@ namespace Backrooms.CustomRooms
             var v = V;
             // Cell highlight (Floor tool, Light tool).
             GL.Begin(GL.QUADS);
+            if (_pastingArea && _areaClipboard != null && _hoverCellValid)
+            {
+                bool fits = _areaClipboard.Fits(v, _hoverCell);
+                var colour = fits ? new Color(0.45f, 0.95f, 0.5f, 0.45f) : new Color(1f, 0.2f, 0.15f, 0.45f);
+                for (int z = 0; z < _areaClipboard.bounds.height; z++)
+                for (int x = 0; x < _areaClipboard.bounds.width; x++)
+                {
+                    if (!_areaClipboard.Cell(x, z)) continue;
+                    float x0 = (_hoverCell.x + x) * C, z0 = (_hoverCell.y + z) * C;
+                    Quad(W3(x0, z0, 0.08f), W3(x0 + C, z0, 0.08f), W3(x0 + C, z0 + C, 0.08f), W3(x0, z0 + C, 0.08f), colour);
+                }
+            }
             if (_hoverCellValid && (_tool == BuilderTool.Floor || _tool == BuilderTool.Light))
             {
                 float x0 = _hoverCell.x * C, z0 = _hoverCell.y * C;
