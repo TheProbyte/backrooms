@@ -14,6 +14,11 @@ namespace Backrooms.Camcorder
         Label _locReadout;
         readonly Dictionary<string, int> _locCycle = new Dictionary<string, int>();
         int _locSearch;
+        void CancelLocationSearch()
+        {
+            _locSearch++;
+            if (_locReadout != null && _locReadout.text == "Searching nearby districts…") _locReadout.text = "Search cancelled.";
+        }
 
         /// <summary>Landmarks of a kind within about 10 districts of the player, nearest first.</summary>
         void NearbyLandmarks(LandmarkKind kind, int needConnectors, string blueprint, System.Action<List<(LandmarkPlacement p, float dist)>> found)

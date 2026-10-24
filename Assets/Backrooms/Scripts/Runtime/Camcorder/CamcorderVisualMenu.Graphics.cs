@@ -69,7 +69,7 @@ namespace Backrooms.Camcorder
             sb.Append("Set-pass calls ").Append(p.SetPassCalls).Append("   shadow casters ").Append(p.ShadowCasters)
               .Append("   triangles ").Append(p.Triangles / 1000).Append("k\n");
             if (lm) sb.Append("Lights on ").Append(lm.EnabledLights).Append(" (of 256 allowed)   with shadows ").Append(lm.ShadowedLights).Append("   mode ").Append(lm.mode).Append('\n');
-            if (lm && lm.grid && lm.grid.Ready) sb.Append("Light grid: ").Append(lm.grid.DirtyTexelsLastFrame).Append(" texels recomputed last frame, ").Append(lm.grid.LastGpuSubmitMs.ToString("0.00")).Append(" ms to submit\n");
+            if (lm && lm.grid && lm.grid.Ready) sb.Append("Light grid: ").Append(lm.grid.DirtyTexelsLastFrame).Append(" texels recomputed last frame, ").Append(lm.grid.LastGpuSubmitMs.ToString("0.00")).Append(" ms CPU submit, bounce passes ").Append(lm.grid.BounceDispatchesLastFrame).Append(", uploads ").Append(lm.grid.BufferUploadsLastFrame).Append(", furniture boxes ").Append(lm.grid.OccluderCount).Append("\n");
             if (ws) sb.Append("Chunks loaded ").Append(ws.LoadedChunks).Append("   chunk build ").Append(ws.AverageBuildMs.ToString("0.0")).Append(" ms (worker), upload ").Append(ws.AverageUploadMs.ToString("0.0")).Append(" ms (main, per chunk)\n");
             sb.Append("VSync ").Append(QualitySettings.vSyncCount > 0 ? "on" : "off").Append("   target ").Append(Application.targetFrameRate > 0 ? Application.targetFrameRate + " fps" : "unlimited").Append('\n');
             _gfxReadout.text = sb.ToString();

@@ -213,8 +213,9 @@ namespace Backrooms.Generation
             {
                 var sh = _shares[c.position];
                 Describe(c, out var pos, out var dir, out float intensity, out float range, out float outer, out float inner, out var col);
-                // Power quantised so a steady light never re-dirties the grid.
-                float power = Mathf.Round(Mathf.Clamp01(PowerLevel(c, now)) * 64f) / 64f;
+                // Quantise distant power fades, but retain the exact waveform of a faulty tube.
+                float rawPower = Mathf.Clamp01(PowerLevel(c, now));
+                float power = c.faultyId >= 0 ? rawPower : Mathf.Round(rawPower * 64f) / 64f;
                 float gridShare = (1f - sh.w) * power;
                 if (Mathf.Abs(gridShare - sh.lastGrid) > 0.003f)
                 {

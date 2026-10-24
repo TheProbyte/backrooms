@@ -84,5 +84,34 @@ namespace Backrooms.Tests
             }
             finally { var grid = root.GetComponent<LightGrid>(); if (grid && grid.Ready) typeof(LightGrid).GetMethod("OnDisable", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(grid, null); Object.DestroyImmediate(root); }
         }
+        [Test]
+        public void MovedFurnitureInvalidatesOcclusionAndStationaryFurnitureDoesNot()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("Compute shaders unavailable");
+            var root = new GameObject("Occlusion cache test"); root.SetActive(false);
+            var furniture = new GameObject("Furniture");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var box = furniture.AddComponent<BoxCollider>(); box.size = Vector3.one;
+            var owner = furniture.AddComponent<LightingOccluder>();
+            typeof(LightingOccluder).GetMethod("OnEnable", flags).Invoke(owner, null);
+            try
+            {
+                var grid = root.AddComponent<LightGrid>(); grid.compute = Resources.Load<ComputeShader>("LightGrid");
+                typeof(LightGrid).GetMethod("OnEnable", flags).Invoke(grid, null);
+                var lights = new List<LightGridMath.GridLight>();
+                Physics.SyncTransforms(); grid.Tick(Vector3.zero, lights);
+                Assert.AreEqual(1, grid.OccluderCount); int revision = grid.OcclusionRevision;
+                grid.Tick(Vector3.zero, lights); Assert.AreEqual(revision, grid.OcclusionRevision); Assert.AreEqual(0, grid.BufferUploadsLastFrame);
+                furniture.transform.position = new Vector3(2, 0, 0); Physics.SyncTransforms(); grid.Tick(Vector3.zero, lights);
+                Assert.Greater(grid.OcclusionRevision, revision); Assert.Greater(grid.BufferUploadsLastFrame, 0);
+                grid.contactOcclusion = 0; grid.Tick(Vector3.zero, lights); Assert.AreEqual(0, grid.OccluderCount);
+            }
+            finally
+            {
+                typeof(LightingOccluder).GetMethod("OnDisable", flags).Invoke(owner, null);
+                var grid = root.GetComponent<LightGrid>(); if (grid && grid.Ready) typeof(LightGrid).GetMethod("OnDisable", flags).Invoke(grid, null);
+                Object.DestroyImmediate(furniture); Object.DestroyImmediate(root);
+            }
+        }
     }
 }

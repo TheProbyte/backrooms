@@ -59,6 +59,7 @@ namespace Backrooms.Interaction
         {
             var main = Camera.main;
             if (!main || CrawlPortalView.All.Count == 0) { ReleaseViews(); return; }
+            if (!cameras.Contains(main)) return; // reflection/auxiliary contexts must not warp or prepare main-camera portals
             if (_main != main || !_player) { _main = main; _player = main.GetComponentInParent<CamcorderPlayerController>(); }
             TryWarp(main);
             UpdateViews(main);

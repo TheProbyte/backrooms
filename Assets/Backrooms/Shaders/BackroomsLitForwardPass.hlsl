@@ -239,7 +239,7 @@ half3 BackroomsDistantPBR(InputData data, BRDFData brdf, BRDFData coat, SurfaceD
     {
         LGridLight f = _LGridLights[_LGridTileLights[tile.x + i]];
         if (dot(f.color, f.color) < 1e-10) continue;
-        sum += BackroomsFixturePBR(f, f.color, ao, data, brdf, coat, surface, noSpecular);
+        sum += BackroomsFixturePBR(f, f.color, ao * LocalLightVisibility(data.positionWS, data.normalWS, f.pos), data, brdf, coat, surface, noSpecular);
     }
     return sum * edge;
 }
@@ -270,6 +270,7 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
     MixRealtimeAndBakedGI(mainLight, inputData.normalWS, inputData.bakedGI);
     LightingData lightingData = CreateLightingData(inputData, surfaceData);
     lightingData.additionalLightsColor += BackroomsDistantPBR(inputData, brdfData, brdfDataClearCoat, surfaceData, specularHighlightsOff, aoFactor.directAmbientOcclusion);
+    aoFactor.indirectAmbientOcclusion = min(aoFactor.indirectAmbientOcclusion, (half)LocalIndirectVisibility(inputData.positionWS, inputData.normalWS));
     lightingData.giColor = GlobalIllumination(brdfData, brdfDataClearCoat, surfaceData.clearCoatMask,
                                               inputData.bakedGI, aoFactor.indirectAmbientOcclusion, inputData.positionWS,
                                               inputData.normalWS, inputData.viewDirectionWS, inputData.normalizedScreenSpaceUV);

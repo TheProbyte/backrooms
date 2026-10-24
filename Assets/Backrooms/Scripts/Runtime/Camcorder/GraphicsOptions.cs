@@ -36,13 +36,15 @@ namespace Backrooms.Camcorder
         public float flicker = 0.35f;         // faulty tubes: how often and how deep they stutter (1 = the original amount)
         public float roomFill = 0.6f;         // bounced light that evens out walls (a stand-in for global illumination)
         public float fixtureSpread = 0.8f;    // how broadly ceiling fixtures throw light (0 = lamp-like cone, 1 = diffuse troffer)
+        public float contactOcclusion = 0.65f;
+        public bool indoorReflections = true;
         public float panelSize = 1f;           // finite emitter size relative to the visible fitting
         public void ResetLighting()
         {
             var d = new GraphicsOptions();
             lightStrength = d.lightStrength; lightReach = d.lightReach; tallBoost = d.tallBoost; fillLight = d.fillLight;
             softness = d.softness; poolSmoothing = d.poolSmoothing; darkSpots = d.darkSpots; shadowDarkness = d.shadowDarkness;
-            panelSize = d.panelSize; farLights = d.farLights; flicker = d.flicker; fixtureSpread = d.fixtureSpread; roomFill = d.roomFill;
+            contactOcclusion = d.contactOcclusion; indoorReflections = d.indoorReflections; panelSize = d.panelSize; farLights = d.farLights; flicker = d.flicker; fixtureSpread = d.fixtureSpread; roomFill = d.roomFill;
         }
         /// <summary>Evenly lit and pale, like the found-footage references: little contrast, a lot of fill, soft shadows.</summary>
         public void ApplyEvenLighting()
@@ -170,6 +172,7 @@ namespace Backrooms.Camcorder
                 if (_lights.grid)
                 {
                     _lights.grid.bounceGain = o.fillLight;
+                    _lights.grid.contactOcclusion = Mathf.Clamp01(o.contactOcclusion);
                     _lights.grid.roomFill = Mathf.Clamp01(o.roomFill);
                     _lights.grid.perPixelDirect = o.perPixelFar;
                     _lights.grid.wrap = o.softness;

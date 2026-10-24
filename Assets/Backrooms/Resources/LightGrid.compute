@@ -7,6 +7,7 @@
 #pragma kernel BounceDiffuse
 
 #include "Assets/Backrooms/Shaders/LightGridCommon.hlsl"
+#include "Assets/Backrooms/Shaders/LightGridOcclusion.hlsl"
 
 struct GridLight
 {
@@ -206,7 +207,7 @@ float3 SurfaceLight(float3 Q, float3 normal, uint2 lights)
         float att = Attenuation(L, Q, direction);
         float facing = saturate(dot(normal, direction));
         if (att * facing <= 1e-6 || !Visible(L.pos, Q)) continue;
-        sum += L.colorAll * att * facing;
+        sum += L.colorAll * att * facing * LocalLightVisibility(Q, normal, L.pos);
     }
     return sum;
 }
@@ -281,10 +282,12 @@ void BounceDiffuse(uint3 id : SV_DispatchThreadID)
     uint surfaceIndex = (storey * n + Wrap(cell.y, n)) * n + Wrap(cell.x, n);
     float3 own = _BounceSrcIn[wi].rgb;
     float3 floorResult = lerp(own, floorAcc / count, _GridMisc.z);
-    float3 wallResult = lerp(_WallSrcIn[wi].rgb, wallAcc / count, _GridMisc.z);
-    // Small bounded second-order floor -> ceiling -> room term, tinted by the actual ceiling.
-    wallResult += floorResult * _Surfaces[surfaceIndex].ceiling.rgb * 0.08;
+    // This belongs to the fixed source, not an addition after each iteration (which would accumulate energy).
+    float3 ceilingReturn = own * _Surfaces[surfaceIndex].ceiling.rgb * 0.08;
+    float3 wallResult = lerp(_WallSrcIn[wi].rgb + ceilingReturn, wallAcc / count, _GridMisc.z);
+    float4 ownDirection = _DirectionSrcIn[wi];
+    ownDirection.w += dot(ceilingReturn, LUM); // isotropic return adds energy, but no preferred direction
     _BounceOut[wi] = float4(floorResult, 1);
     _WallOut[wi] = float4(wallResult, 1);
-    _DirectionOut[wi] = lerp(_DirectionSrcIn[wi], directionAcc / count, _GridMisc.z);
+    _DirectionOut[wi] = lerp(ownDirection, directionAcc / count, _GridMisc.z);
 }

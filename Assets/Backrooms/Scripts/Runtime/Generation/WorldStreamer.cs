@@ -76,6 +76,7 @@ namespace Backrooms.Generation
             Backrooms.CustomRooms.RoomLibrary.Reload();        // the player's custom rooms join the landmark pool
             Settings = WorldGenSettings.Load();
             _world = new WorldGenerator(Seed, Settings);
+            if (!GetComponent<RuntimeIndoorReflections>()) gameObject.AddComponent<RuntimeIndoorReflections>();
             // Movable props: the list of moved ones, and the player's free hand.
             if (!GetComponentInChildren<Interaction.MovablePropManager>())
             {
@@ -233,9 +234,14 @@ namespace Backrooms.Generation
             finally
             {
                 _uploadMs += (Time.realtimeSinceStartup - start) * 1000f;
-                LastUploadMs = _uploadMs;
-                if (_upload == null) AverageUploadMs = Mathf.Lerp(AverageUploadMs <= 0f ? _uploadMs : AverageUploadMs, _uploadMs, 0.1f);
+                RecordUpload(_uploadMs, _upload == null);
             }
+        }
+
+        void RecordUpload(float ms, bool complete = true)
+        {
+            LastUploadMs = ms;
+            if (complete) AverageUploadMs = Mathf.Lerp(AverageUploadMs <= 0f ? ms : AverageUploadMs, ms, 0.1f);
         }
 
         void CancelUpload()
@@ -317,6 +323,7 @@ namespace Backrooms.Generation
                 if (lightManager) { lightManager.Register(coord, old.lights, old.lenses, old.faulty, false); lightManager.RegisterDoorways(coord, old.doors); }
                 return;
             }
+            var uploadTimer = ready ? null : System.Diagnostics.Stopwatch.StartNew();
             var go = ready ? ready : built.Instantiate(transform);
             var ch = new Chunk { go = go, lights = new List<LightSource>(built.lights),
                 lenses = new List<Renderer>(built.litLensRenderers), faulty = new List<Renderer>(built.faultyRenderers),
@@ -327,6 +334,7 @@ namespace Backrooms.Generation
             if (lightManager) lightManager.Register(coord, ch.lights, ch.lenses, ch.faulty, animate && strikeOnStream);
             if (lightManager) lightManager.RegisterDoorways(coord, ch.doors);
             ChunkLoaded?.Invoke(coord, go);
+            if (uploadTimer != null) RecordUpload((float)uploadTimer.Elapsed.TotalMilliseconds);
         }
 
         readonly Dictionary<Vector3Int, Chunk> _dying = new Dictionary<Vector3Int, Chunk>();

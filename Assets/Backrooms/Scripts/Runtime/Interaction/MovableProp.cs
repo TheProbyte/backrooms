@@ -111,10 +111,12 @@ namespace Backrooms.Interaction
 
             root.transform.SetParent(parent, false);
             root.transform.SetPositionAndRotation(position, rotation);
+            root.AddComponent<LightingOccluder>();
             var mp = root.AddComponent<MovableProp>();
             mp.Spec = spec; mp.Shape = shape; mp.Body = rb;
             mp._ownedMeshes = builtMeshes;
             mp._lastGoodPos = position; mp._lastGoodRot = rotation;
+            RuntimeIndoorReflections.Instance?.Prepare(root);
             return mp;
         }
 

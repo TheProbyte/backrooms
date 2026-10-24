@@ -111,3 +111,94 @@ First profile/verify unused direct-grid work, unchanged bounce work and preview 
 cost while preserving the image. Then prototype finite panel emission and upper-storey/material-aware bounce against fixed
 reference views. Evaluate shadow transitions and specular continuity while moving. Keep true darkness, faulty fixtures,
 portal views and saved camcorder exposure among the regression cases. None of these proposals has been implemented.
+
+
+## Implementation follow-up — chatgpt/lighting-performance
+
+The recommendations above describe the original audit; implementation now lives on `chatgpt/lighting-performance`.
+See `RuntimeLighting.md` for the algorithms, quality controls and approximation limits, and WORKLOG.md for commit-by-commit
+validation. Efficiency items 1–6 and the eight lighting items now have implementations/architectural decisions. Item 7
+was an audit: the existing SRP Batcher remains in use rather than enabling instancing globally without evidence.
+
+A live Frame Debugger capture at the final seed-1234 tour pose contained 164 events: 104 SRPBatch, 27 Mesh, 29 procedural,
+2 GL and 2 clears. Both opaque geometry and additional-light shadow passes used SRP batches. No instanced event was
+observed. This confirms the shared meshes are not automatically instanced. Detail fields were unavailable for most events
+through the debugger API, so no instance/draw count or specific batch-break reason is inferred from an SRPBatch event.
+Light-layer/material/keyword and per-renderer emission-property differences remain reasons to inspect individual draws.
+The PC pipeline already enables Forward+ and SRP batching; its rendering settings and base materials were not changed.
+
+The runtime contact and reflection paths add bounded work. Finite emitters also add shading cost; all lighting changes
+must be profiled together rather than advertising the efficiency changes as an overall FPS gain. Early 1080p warmed
+editor samples (120 distinct FrameTimingManager frames each, same random-seed spawn pose, 2 local boxes) measured:
+
+| Same new lighting path | CPU median / p95 ms | GPU median / p95 ms |
+| --- | --- | --- |
+| Panel size 1, contact 0.65 | 35.54 / 41.91 | 28.57 / 38.87 |
+| Panel size 0, contact 0.65 | 31.97 / 38.58 | 25.33 / 35.50 |
+| Panel size 0, contact 0 | 31.73 / 37.97 | 25.21 / 34.87 |
+
+These are feature-cost A/B samples, not a before/after benchmark against the original audit (different seed, pose and
+loaded world). Reflection captures are cached and not guaranteed to occur equally in each short sample. First-use shader
+compilation caused large editor startup stalls and is excluded by warm-up; standalone startup/variant warm-up needs its
+own profile. Raw local files: `Temp/LightingPerformance/final_panel*.json`. Final tour/profile results follow below.
+
+
+## Delivery map
+
+| # | Recommendation | Result |
+| --- | --- | --- |
+| 1 | Skip unused Direct compute | Per-pixel mode does not dispatch it; texture mode forces a refresh. |
+| 2 | Reuse stable bounce/buffers | Separate power from shares, stable position ordering, dirty inputs and locomotion-anchored window. |
+| 3 | Generated-resource ownership | Owned/serialized chunk meshes, preview/thumbnail/material cleanup; shared assets retained. |
+| 4 | Portal/menu allocations | Reused scratch storage/cached references; main-camera contexts only. |
+| 5 | Landmark growth/search hitch | Deterministic eviction and cancellable incremental F5 search. |
+| 6 | Main-thread upload budget | Hidden phased chunk publication; startup remains immediate; both upload paths are timed. |
+| 7 | Batching audit | Verified SRP batches; retained the current batching path. No speculative material/instancing rewrite. |
+| 8 | Finite emitters | Energy-normalised fitting-size quadrature, shared across tiers. |
+| 9 | Upper-storey bounce | Separate floor layers, floorless-well handling and slab isolation. |
+| 10 | Surface/direction-aware bounce | Cached existing material reflectance and directional wall patches. |
+| 11 | Independent shadow fades | Strength ramp, distance/hysteresis and atlas admission during fade-out. |
+| 12 | Material continuity | One URP BRDF for real/per-pixel grid direct light. |
+| 13 | Furniture contact | Bounded, tiled oriented collider rays; follows moved furniture. |
+| 14 | Indoor reflections | Two cached room-bounded probes; no sky/portal capture; temporary shared material variants. |
+| 15 | Runtime GI choice | Extended compute grid; APV/baked Area limitations documented. |
+
+Final validation: full 44-test EditMode suite passes, including GPU checks for bounded diffusion/ceiling energy and
+isotropic direction moments; Lit and compute shaders have no messages. All 11 seed-1234 tour
+poses were captured after implementation. An incremental F5 atrium search jumped 486 m onto an upper floor, drained to
+65 chunks/zero queued work and kept the player above its floor. Readback of the live upper-floor bounce field was
+RGB (0.518, 0.365, 0.099). A 40-frame shadow transition used at most 54 of 64 maps, recorded 12 strength changes and no
+fade-rate violations. Two hundred preview-sized rebuilds tracked 1,000 generated meshes: zero remained alive afterward.
+A moved box advanced the occlusion revision; toggling reflections off/on changed active probes from zero back to one,
+completed captures and advanced native texture updates. The runtime quality flag restored to its original false value
+on exiting Play Mode. Local raw reports/screenshots are in Temp/LightingPerformance.
+
+Still test in a standalone player: long rapid travel, repeated portal crossings, reflective materials while moving
+between rooms, physical dragging near the 160-box cap, low-end GPU budgets, shader startup and longer streaming routes.
+The editor checks do not establish an overall FPS improvement or physically exact area shadows/GI/reflections.
+
+
+### Final controlled editor sample
+
+After warming shaders, the final replay pose was sampled with menus disabled, time scale 1, VSync/frame cap off and the
+Game view visible. All 150 warm-up/sample frames rendered the main camera. The 120 distinct timing samples were at
+1920 x 1080, seed 1234, 61 chunks/zero queued, 15 local furniture boxes and 38 shadowed lights. No reflection capture
+occurred during the sample. The player's saved quality choices were retained (48 requested shadow lights, 30 m shadow
+distance, 1.5x light reach, 2x fill, room fill/spread 1; actual atlas admission remains bounded).
+
+Finite panels/contact/reflections on: CPU median **31.03 ms**, p95 **37.66**; GPU median **24.08 ms**, p95 **34.10**.
+This still is not the original audit's custom-room pose or a standalone-player result. It establishes a final cost on
+one warmed view, not an overall speedup. Raw metadata and timings: `verified_seed1234_default.json` in the local folder.
+
+
+At the same final pose with only Panel size changed to 0, CPU median/p95 was **29.62 / 36.55 ms** and GPU
+**22.78 / 32.70 ms** (120 samples, 150 main-camera renders). One cached reflection refresh occurred in this second sample,
+versus none in the first, so the difference is an approximate feature-cost observation rather than an isolated GPU pass
+time. All other saved quality choices stayed the same. Raw file: `verified_seed1234_point.json`. Panel size was restored
+to 1 afterward without saving experimental preferences.
+
+
+A live warmed portal view rendered its destination into an active render texture and crossing advanced LastWarpFrame
+at the paired opening; no portal shader errors. The initial cyan image was shader warm-up, resolved after compilation.
+A native Persistent-allocation warning appeared during editor cycles; fallback global resource teardown is being checked
+before final delivery. This warning is not being classified as an FPS result or hidden by lowering leak detection.

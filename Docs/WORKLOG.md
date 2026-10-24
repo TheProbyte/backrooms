@@ -16,6 +16,28 @@ Keep entries short and factual. Do not rewrite old entries.
 ---
 
 
+## 2026-10-24 16:08  ChatGPT  Furniture contact, bounded indoor reflections and full lighting validation
+- Added LightingOccluder/LightGrid.Occlusion: tiled oriented furniture boxes (up to 160 within 14 m), local indirect/direct
+  occlusion and floor-source blocking; follows moved props. F5 LIGHT saves Furniture contact and Indoor reflections.
+- RuntimeIndoorReflections owns two 128px room-bounded probes, one time-sliced capture at a time; excludes portal quads,
+  shares temporary reflective material variants, restores/releases them on disable, and restores the original runtime
+  realtime-probe quality flag. Includes Unity 6000.4 UUM-129405 texture-update workaround. No base material/settings edits.
+- Finalized bounce isotropic moments/fixed ceiling source (no repeated energy injection), locomotion-root grid anchoring,
+  exact faulty-tube waveform, serialized generated-mesh ownership, startup upload timing and cancelled-search feedback.
+  Docs/RuntimeLighting.md and PerformanceLightingReview.md explain all 15 recommendations, costs and approximation limits.
+- Checked: Unity full 44-test EditMode suite passes, including real GPU source/diffusion readback, moved-box invalidation,
+  room-boundary and shared-material tests. Lit/compute have zero messages. Replayed all 11 seed-1234 tour poses; F5 search
+  safely jumped 486 m upstairs (65 chunks, queue 0); live upper bounce readback >0. 200 rebuilds released all 1,000 meshes.
+  Forty shadow-transition frames: 54 maps maximum, 12 strength changes, zero rate violations. Moved-prop revision, probe
+  toggle/capture/texture updates and disable-time material/quality restoration passed. Live portal view and warp passed.
+- Profiling: SRP batches confirmed; kept batching unchanged. Final 1080p, 120-frame seeded editor sample: CPU median/p95
+  31.03/37.66 ms, GPU 24.08/34.10; point-emitter comparison 29.62/36.55 and 22.78/32.70. Different from original audit pose;
+  no overall FPS gain or standalone benchmark claimed. Raw captures/reports: Temp/LightingPerformance.
+- Open: a native Persistent allocation warning (7 allocations) appeared during editor cycles. Fallback globals still need
+  explicit teardown; this is being investigated next. Area shadows/GI/reflections remain bounded approximations; long
+  travel, repeated portal routes and low-end/standalone profiling remain manual checks. Unrelated dirty assets retained.
+
+
 ## 2026-10-24 15:43  ChatGPT  Runtime finite fixtures, consistent PBR, two-storey surface-aware bounce
 - Extended the runtime grid/shaders with finite panel/tube emitters at constant output and a saved F5 Panel size control.
   Real and per-pixel grid shares use the same URP BRDF/contrast/diffuse wrap instead of grid direct being bakedGI.

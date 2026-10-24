@@ -47,7 +47,7 @@ namespace Backrooms.Camcorder
 
         public void SetOpen(bool open)
         {
-            if (!open) _locSearch++;
+            if (!open) CancelLocationSearch();
             IsOpen = open;
             if (_panel != null) Show(_panel, open);
             CamcorderPlayerController.InputBlocked = open;
@@ -173,7 +173,7 @@ namespace Backrooms.Camcorder
 
         void ShowTab(int i)
         {
-            if (i != 7) _locSearch++;
+            if (i != 7) CancelLocationSearch();
             for (int k = 0; k < _views.Length; k++)
             {
                 Show(_views[k], k == i);

@@ -9,6 +9,7 @@
 #define BACKROOMS_LIGHT_GRID_SAMPLE
 
 #include "LightGridCommon.hlsl"
+#include "LightGridOcclusion.hlsl"
 
 TEXTURE3D(_LGridA);
 TEXTURE3D(_LGridB);
@@ -104,20 +105,19 @@ bool LGrid_FindFixture(float3 position, float3 receiver, out LGridLight fixture)
     return false;
 }
 
-// One hardware-filtered tap normally; two vertical taps only at a toroidal layer seam.
-float4 LGrid_SampleBounceAtlas(TEXTURE2D_PARAM(tex, samp), float2 metresXZ, uint storey)
+// Wrap a seam inside one atlas layer; texture objects stay explicit at the call site.
+void LGrid_BounceCoordinates(float2 metresXZ, uint storey, out float2 uvA, out float2 uvB, out float blend)
 {
     float n = _LGridSize.w;
     float2 uv = frac(metresXZ / (LG_CELL * n));
+    uvA = float2(uv.x, (uv.y + storey) * 0.5); uvB = uvA; blend = 0;
     if (uv.y < 0.5 / n || uv.y > 1 - 0.5 / n)
     {
         float row = uv.y * n - 0.5;
         int y0 = ((int)floor(row)) & ((int)n - 1), y1 = (y0 + 1) & ((int)n - 1);
-        float4 a = SAMPLE_TEXTURE2D_LOD(tex, samp, float2(uv.x, (y0 + storey * n + 0.5) / (n * 2)), 0);
-        float4 b = SAMPLE_TEXTURE2D_LOD(tex, samp, float2(uv.x, (y1 + storey * n + 0.5) / (n * 2)), 0);
-        return lerp(a, b, frac(row));
+        uvA.y = (y0 + storey * n + 0.5) / (n * 2);
+        uvB.y = (y1 + storey * n + 0.5) / (n * 2); blend = frac(row);
     }
-    return SAMPLE_TEXTURE2D_LOD(tex, samp, float2(uv.x, (uv.y + storey) * 0.5), 0);
 }
 
 half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
@@ -180,9 +180,17 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
         if (LG_WestKind(oe) != LG_EDGE_OPEN) q.x = min(q.x, mid.x);
         if (LG_SouthKind(o) != LG_EDGE_OPEN) q.y = max(q.y, mid.y);
         if (LG_SouthKind(on) != LG_EDGE_OPEN) q.y = min(q.y, mid.y);
-        float3 B = LGrid_SampleBounceAtlas(TEXTURE2D_ARGS(_LGridBounce, sampler_LGridBounce), q, bounceStorey).rgb;
-        float3 wallB = LGrid_SampleBounceAtlas(TEXTURE2D_ARGS(_LGridWallBounce, sampler_LGridBounce), q, bounceStorey).rgb;
-        float4 moment = LGrid_SampleBounceAtlas(TEXTURE2D_ARGS(_LGridBounceDirection, sampler_LGridBounce), q, bounceStorey);
+        float2 uvA, uvB; float atlasBlend;
+        LGrid_BounceCoordinates(q, bounceStorey, uvA, uvB, atlasBlend);
+        float3 B = SAMPLE_TEXTURE2D_LOD(_LGridBounce, sampler_LGridBounce, uvA, 0).rgb;
+        float3 wallB = SAMPLE_TEXTURE2D_LOD(_LGridWallBounce, sampler_LGridBounce, uvA, 0).rgb;
+        float4 moment = SAMPLE_TEXTURE2D_LOD(_LGridBounceDirection, sampler_LGridBounce, uvA, 0);
+        [branch] if (atlasBlend > 0)
+        {
+            B = lerp(B, SAMPLE_TEXTURE2D_LOD(_LGridBounce, sampler_LGridBounce, uvB, 0).rgb, atlasBlend);
+            wallB = lerp(wallB, SAMPLE_TEXTURE2D_LOD(_LGridWallBounce, sampler_LGridBounce, uvB, 0).rgb, atlasBlend);
+            moment = lerp(moment, SAMPLE_TEXTURE2D_LOD(_LGridBounceDirection, sampler_LGridBounce, uvB, 0), atlasBlend);
+        }
         // Light from the floor reaches the ceiling and upper walls; floors get very little, and tall
         // ceilings less than low ones (as the old upward bounce lights did).
         float ceilingH = max(LG_Ceiling(o), 2.0);

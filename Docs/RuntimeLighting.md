@@ -36,12 +36,17 @@ The legacy Floor albedo field scales floor reflectance relative to its old 0.25 
 The source kernel samples floor and actual solid-wall patches. The direction moment makes a wall facing a lit side
 respond differently from one facing away. Diffusion stays inside open floor edges: doors/arches do not smear indirect
 light through their walls. Direct rays passing through an opening create reflected sources in the receiving room.
-A restrained ceiling-reflectance term approximates second-order floor-to-ceiling-to-room light. This is low-frequency
+A restrained ceiling-reflectance term approximates second-order floor-to-ceiling-to-room light. It belongs to the fixed
+source, so repeated smoothing cannot accumulate extra energy, and its isotropic energy enters the direction moment. This is low-frequency
 transport with architectural occlusion, not a general physical multi-bounce GI solver; small recesses and exact colour
 bleeding/energy transport remain approximations. Empty unlit areas receive no invented ambient source.
 
 Sources/diffusion and GPU uploads are invalidated by actual relevant changes (power, geometry, surfaces, window, tuning),
 not by an unchanged frame or real/grid share alone. Light records have stable position order independent of distance rank.
+The window follows the player locomotion root, so handheld shake at a cell boundary cannot churn its inputs. Faulty
+tubes retain their exact power waveform; other distance/power fades retain the existing 64-step quantisation.
+Upload timing includes immediate startup chunks as well as accumulated phased upload time. Generated mesh ownership
+is serialized so surviving objects retain their mesh list through a Unity script reload.
 
 ## Validation and costs
 
@@ -53,3 +58,33 @@ LightingTour views are also checked. Baseline, efficiency and lighting captures 
 Finite samples and material BRDF lighting cost more than the old grid diffuse shortcut. Four light samples must not be
 sold as a free FPS gain. Reused centre architectural visibility and filtered atlas taps reduce redundant shader work;
 profile the final warmed player build on representative rooms, streaming routes and portal views before choosing budgets.
+
+
+## Furniture contact and reflections
+
+LightingOccluder registers existing furniture BoxColliders. A tiled list of up to 160 boxes within 14 m follows actual
+transforms, including dragged/rotated props. Stable boxes reuse GPU data. Four short hemisphere rays add restrained
+indirect contact; local direct rays also occlude the grid's unshadowed fixtures and floor-bounce sources. Native shadow
+maps remain responsible for nearby direct furniture shadows. Existing SSAO and local indirect visibility combine by
+minimum rather than multiplying the same contact cue. This uses collision proxies, not exact triangle silhouettes, and
+has a finite reach (indirect 1.15 m, direct 2 m). F5 > LIGHT > Furniture contact controls it; zero disables collection.
+
+RuntimeIndoorReflections keeps two 128-pixel HDR probes at most and permits one time-sliced capture at a time. It grows
+a loaded-cell rectangle only across completely open edges of the same room identity, so even an internal wall inside
+one custom area bounds the reflection volume. Probe volumes include floor/ceiling surfaces. Captures use black clearing,
+box projection, a bounded clip distance and exclude portal quads. Portal preparation/warping runs only in a context that
+contains the main camera, not reflection-only contexts. Newly captured reflections ease their intensity in.
+
+Captures refresh after light/prop/streaming changes with a four-second minimum interval; unchanged probes remain cached.
+They are room reflections, not live mirrors, and moving props/flicker can temporarily differ between the scene and its
+cached reflection. Only the current room is refreshed; a nearby previous room keeps the second cache. The world renderer
+uses per-pixel probe volumes in the existing Forward+ path with probe blending/box projection already enabled.
+
+Reflective materials with environment reflections disabled get shared temporary variants; base asset materials remain
+unchanged. Variants/probes are released and original materials restored on disable, including script reloads. The project disables realtime reflection probes in
+quality settings; this component enables that setting in memory during its lifetime and restores its original value.
+No ProjectSettings file is edited. F5 > LIGHT > Indoor reflections switches the probes off/on.
+
+Unity 6000.4 Forward+ has a scripted-probe atlas refresh bug. After a completed capture the code calls
+Texture.IncrementUpdateCount(), Unity's published workaround for
+[UUM-129405](https://issuetracker.unity.com/issues/4781/urp-realtime-reflection-probes-do-not-update-when-renderprobe-is-being-called-once-per-second).

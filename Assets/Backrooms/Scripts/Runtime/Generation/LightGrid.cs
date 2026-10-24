@@ -49,6 +49,7 @@ namespace Backrooms.Generation
         public float LastGpuSubmitMs { get; private set; }
         public int BounceDispatchesLastFrame { get; private set; }
         public int BufferUploadsLastFrame { get; private set; }
+        public int LightingRevision { get; private set; }
 
         RenderTexture _a, _b, _bounceSrc, _bounce0, _bounce1;
         ComputeBuffer _occ;                  // layout occupancy: OccN x OccN cells x 2 storeys, toroidal
@@ -93,7 +94,7 @@ namespace Backrooms.Generation
             _a = Make3D("LightGridA"); _b = Make3D("LightGridB");
             _bounceSrc = Make2D("LightGridBounceSrc"); _bounce0 = Make2D("LightGridBounce0"); _bounce1 = Make2D("LightGridBounce1");
             _occ = new ComputeBuffer(OccN * OccN * 2, 4);
-            InitSurfaces();
+            InitSurfaces(); InitOccluders();
             _lights = new ComputeBuffer(_lightArr.Length, LightGridMath.GridLight.Stride);
             _tiles = new ComputeBuffer(Tiles * Tiles, 8);
             _tileLights = new ComputeBuffer(8192, 4);
@@ -114,7 +115,7 @@ namespace Backrooms.Generation
             _occ?.Release(); _lights?.Release(); _tiles?.Release(); _tileLights?.Release();
             _occ = _lights = _tiles = _tileLights = null;
             _encoded.Clear();
-            ReleaseSurfaces();
+            ReleaseSurfaces(); ReleaseOccluders();
         }
 
         static RenderTexture Make3D(string name)
@@ -159,6 +160,7 @@ namespace Backrooms.Generation
                 upload |= illumination || !l.color.Equals(old.color) || !l.colorAll.Equals(old.colorAll);
             }
             _bounceDirty |= bounce;
+            if (bounce) LightingRevision++;
             if (!upload && !bins) return;
             if (lights.Count > _lightArr.Length)
             {
@@ -233,8 +235,9 @@ namespace Backrooms.Generation
             if (_wasPerPixel && !perPixelDirect) _full = true;
             _wasPerPixel = perPixelDirect;
 
-            // Window: centred on the viewer, snapped to whole layout cells (two texels).
-            var newMin = new Vector2Int(FloorDiv(Mathf.FloorToInt(viewer.x / C), 1) * 2 - GX / 2, FloorDiv(Mathf.FloorToInt(viewer.z / C), 1) * 2 - GZ / 2);
+            // Follow locomotion rather than handheld camera shake, which can straddle a cell boundary at rest.
+            var anchor = streamer && streamer.player ? streamer.player.position : viewer;
+            var newMin = new Vector2Int(FloorDiv(Mathf.FloorToInt(anchor.x / C), 1) * 2 - GX / 2, FloorDiv(Mathf.FloorToInt(anchor.z / C), 1) * 2 - GZ / 2);
             if (newMin != _texMin)
             {
                 if (_texMin.x == int.MinValue || Mathf.Abs(newMin.x - _texMin.x) >= GX || Mathf.Abs(newMin.y - _texMin.y) >= GZ) _full = true;
@@ -251,6 +254,7 @@ namespace Backrooms.Generation
             }
             if (_occDirty) { RebuildOccupancy(); _bounceDirty = true; }
             SetLights(lights);
+            UpdateOccluders(viewer);
             var bounceParameters = new Vector4(floorAlbedo, bounceSpread, bounceSteps, _pitch);
             if (!_bounceParameters.Equals(bounceParameters)) { _bounceDirty = true; _bounceParameters = bounceParameters; }
 

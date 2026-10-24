@@ -7,6 +7,7 @@ namespace Backrooms.Tests
 {
     public class RuntimeBounceTests
     {
+        struct Box { public Vector4 centre, halfSize, inverseRotation; }
         struct Surface { public Vector4 floor, wall, ceiling; }
 
         [Test]
@@ -48,6 +49,11 @@ namespace Backrooms.Tests
                 shader.SetInts("_CellMin", 0, 0, 0, 0); shader.SetVector("_GridMisc", new Vector4(9, 0.25f, 0.6f, 0));
                 shader.SetBuffer(kernel, "_Occ", occ); shader.SetBuffer(kernel, "_Surfaces", material); shader.SetBuffer(kernel, "_Lights", lights);
                 shader.SetBuffer(kernel, "_Tiles", tiles); shader.SetBuffer(kernel, "_TileLights", indices);
+                var localBoxes = Buffer(1, 48);
+                var localTiles = Buffer(LightGrid.Tiles * LightGrid.Tiles, 8); localTiles.SetData(new uint[LightGrid.Tiles * LightGrid.Tiles * 2]);
+                var localIndices = Buffer(1, 4); localIndices.SetData(new uint[1]);
+                shader.SetBuffer(kernel, "_LocalOccBoxes", localBoxes); shader.SetBuffer(kernel, "_LocalOccTiles", localTiles); shader.SetBuffer(kernel, "_LocalOccIndices", localIndices);
+                shader.SetVector("_LocalOccInfo", new Vector4(4.8f, LightGrid.Tiles, 0, 0));
                 shader.SetTexture(kernel, "_BounceSrc", source); shader.SetTexture(kernel, "_WallSrc", wall); shader.SetTexture(kernel, "_DirectionSrc", direction);
                 shader.Dispatch(kernel, n / 8, n / 8, 2);
                 float pale = Pixel(source, 0, n).r;
@@ -58,11 +64,43 @@ namespace Backrooms.Tests
                 var tinted = Pixel(source, 0, n);
                 Assert.AreEqual(pale * 0.1f, tinted.r, pale * 0.002f);
                 Assert.Greater(tinted.b, tinted.r * 2.8f, "reflected colour must follow the floor material");
+                var contactTiles = new uint[LightGrid.Tiles * LightGrid.Tiles * 2];
+                for (int i = 1; i < contactTiles.Length; i += 2) contactTiles[i] = 1;
+                localTiles.SetData(contactTiles);
+                localBoxes.SetData(new[] { new Box { centre = new Vector4(0.6f, 9.6f, 0.6f, 0), halfSize = new Vector4(0.4f, 0.3f, 0.4f, 0), inverseRotation = new Vector4(0, 0, 0, 1) } });
+                shader.SetVector("_LocalOccInfo", new Vector4(4.8f, LightGrid.Tiles, 1, 1));
+                shader.Dispatch(kernel, n / 8, n / 8, 2);
+                Assert.Less(Pixel(source, 0, n).r, tinted.r * 0.1f, "a furniture box must occlude the floor bounce source");
+                shader.SetVector("_LocalOccInfo", new Vector4(4.8f, LightGrid.Tiles, 0, 0));
                 occupancy[n * n] = (occupancy[n * n] & ~3u) | LightGridMath.Wall; occ.SetData(occupancy);
                 light.pos.x = 2.4f; lights.SetData(new[] { light });
                 shader.Dispatch(kernel, n / 8, n / 8, 2);
                 Assert.Greater(Pixel(wall, 0, n).r, 0.0001f);
                 Assert.Less(Pixel(direction, 0, n).r, -0.0001f, "west wall must supply light from the west");
+                // Uniform reflected source: diffusion must not repeatedly inject the ceiling return.
+                void Clear(RenderTexture target, Color color)
+                {
+                    var old = RenderTexture.active; RenderTexture.active = target; GL.Clear(false, true, color); RenderTexture.active = old;
+                }
+                Clear(source, Color.white); Clear(wall, Color.clear); Clear(direction, Color.clear);
+                var floor0 = Texture(); var floor1 = Texture(); var wall0 = Texture(); var wall1 = Texture(); var dir0 = Texture(); var dir1 = Texture();
+                int diffuse = shader.FindKernel("BounceDiffuse");
+                shader.SetBuffer(diffuse, "_Occ", occ); shader.SetBuffer(diffuse, "_Surfaces", material);
+                shader.SetTexture(diffuse, "_BounceSrcIn", source); shader.SetTexture(diffuse, "_WallSrcIn", wall); shader.SetTexture(diffuse, "_DirectionSrcIn", direction);
+                RenderTexture floorRead = source, wallRead = wall, dirRead = direction;
+                for (int step = 0; step < 6; step++)
+                {
+                    var floorWrite = (step & 1) == 0 ? floor0 : floor1; var wallWrite = (step & 1) == 0 ? wall0 : wall1; var dirWrite = (step & 1) == 0 ? dir0 : dir1;
+                    shader.SetTexture(diffuse, "_BounceIn", floorRead); shader.SetTexture(diffuse, "_WallIn", wallRead); shader.SetTexture(diffuse, "_DirectionIn", dirRead);
+                    shader.SetTexture(diffuse, "_BounceOut", floorWrite); shader.SetTexture(diffuse, "_WallOut", wallWrite); shader.SetTexture(diffuse, "_DirectionOut", dirWrite);
+                    shader.Dispatch(diffuse, n / 8, n / 8, 2);
+                    floorRead = floorWrite; wallRead = wallWrite; dirRead = dirWrite;
+                }
+                var ceilingBounce = Pixel(wallRead, 5, 5); var isotropic = Pixel(dirRead, 5, 5);
+                Assert.Greater(ceilingBounce.r, 0.01f);
+                Assert.LessOrEqual(ceilingBounce.r, 0.08f * 0.7f + 0.0002f, "diffusion must not amplify its fixed source");
+                Assert.AreEqual(ceilingBounce.r, isotropic.a, 0.0002f, "isotropic light must reduce directional anisotropy");
+                Assert.AreEqual(0, isotropic.r, 0.0002f);
             }
             finally
             {

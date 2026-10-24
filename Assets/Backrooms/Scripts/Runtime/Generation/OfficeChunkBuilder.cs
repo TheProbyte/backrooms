@@ -280,6 +280,7 @@ namespace Backrooms.Generation
                 go.transform.localPosition = c;
                 go.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
                 go.AddComponent<BoxCollider>().size = s;
+                go.AddComponent<LightingOccluder>();
                 yield return root;
             }
             root.SetActive(true);

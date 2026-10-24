@@ -48,6 +48,10 @@ namespace Backrooms.Camcorder
                 0f, 1f, "0.00", "", () => O().fixtureSpread, v => { O().fixtureSpread = v; O().Save(); });
             Slider("Panel size", "0 treats a fitting as a point. 1 spreads the same light over the visible panel or tubes, softening near-wall hotspots. Furniture still uses a central soft shadow map.",
                 0f, 1f, "0.00", "", () => O().panelSize, v => { O().panelSize = v; O().Save(); });
+            Slider("Furniture contact", "Restrained local furniture occlusion in indirect and distant lighting. Uses up to 160 nearby physical boxes and follows moved props; 0 disables it. Existing SSAO is combined by taking the darker result, not multiplying twice.",
+                0f, 1f, "0.00", "", () => O().contactOcclusion, v => { O().contactOcclusion = v; O().Save(); });
+            Toggle("Indoor reflections", "Two local room-bounded reflection probes, captured one at a time across frames. Useful on metal and laminate; captures exclude portal surfaces. These are cached reflections, so moved objects and power changes take a moment to refresh.",
+                () => O().indoorReflections, v => { O().indoorReflections = v; O().Save(); });
             var row = BtnRow(_list);
             Button(row, "EVEN & PALE", () => { O().ApplyEvenLighting(); O().Save(); RefreshAll(); });
             Button(row, "RESET LIGHTING", () => { O().ResetLighting(); O().Save(); RefreshAll(); });

@@ -7,7 +7,7 @@ namespace Backrooms.Generation
     [ExecuteAlways]
     public sealed class GeneratedChunkResources : MonoBehaviour
     {
-        readonly List<Mesh> _meshes = new List<Mesh>();
+        [SerializeField, HideInInspector] List<Mesh> _meshes = new List<Mesh>();
         public int MeshCount => _meshes.Count;
         public Mesh Own(Mesh mesh) { _meshes.Add(mesh); return mesh; }
         void OnDestroy() => Release();

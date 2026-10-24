@@ -10,6 +10,7 @@ namespace Backrooms.Generation
     public static class LightGridGlobals
     {
         static ComputeBuffer s_occ, s_lights, s_tiles, s_tileLights;
+        static ComputeBuffer s_occBoxes, s_occTiles, s_occIndices;
         static Texture3D s_tex3D;
         static Texture2D s_tex2D;
 
@@ -37,6 +38,11 @@ namespace Backrooms.Generation
             Shader.SetGlobalBuffer(Shader.PropertyToID("_LGridTiles"), s_tiles);
             Shader.SetGlobalBuffer(Shader.PropertyToID("_LGridTileLights"), s_tileLights);
             Shader.SetGlobalVector(Shader.PropertyToID("_LGridFar"), Vector4.zero);
+            if (s_occBoxes == null || !s_occBoxes.IsValid()) { s_occBoxes = new ComputeBuffer(1, 48); }
+            if (s_occTiles == null || !s_occTiles.IsValid()) { s_occTiles = new ComputeBuffer(LightGrid.Tiles * LightGrid.Tiles, 8); s_occTiles.SetData(new uint[LightGrid.Tiles * LightGrid.Tiles * 2]); }
+            if (s_occIndices == null || !s_occIndices.IsValid()) { s_occIndices = new ComputeBuffer(1, 4); s_occIndices.SetData(new uint[1]); }
+            Shader.SetGlobalBuffer("_LocalOccBoxes", s_occBoxes); Shader.SetGlobalBuffer("_LocalOccTiles", s_occTiles); Shader.SetGlobalBuffer("_LocalOccIndices", s_occIndices);
+            Shader.SetGlobalVector("_LocalOccInfo", new Vector4(4.8f, LightGrid.Tiles, 0, 0));
             Shader.SetGlobalBuffer(GOcc, s_occ);
             Shader.SetGlobalTexture(GA, s_tex3D);
             Shader.SetGlobalTexture(GB, s_tex3D);
