@@ -34,18 +34,20 @@ namespace Backrooms.Camcorder
         public int farLights = 0;             // extra real (unshadowed) lights beyond the shadowed ones; 0 when per-pixel distant light is on
         public bool perPixelFar = true;       // distant fixtures are lit exactly per pixel (no visible grid texels)
         public float flicker = 0.35f;         // faulty tubes: how often and how deep they stutter (1 = the original amount)
+        public float roomFill = 0.6f;         // bounced light that evens out walls (a stand-in for global illumination)
+        public float fixtureSpread = 0.8f;    // how broadly ceiling fixtures throw light (0 = lamp-like cone, 1 = diffuse troffer)
         public void ResetLighting()
         {
             var d = new GraphicsOptions();
             lightStrength = d.lightStrength; lightReach = d.lightReach; tallBoost = d.tallBoost; fillLight = d.fillLight;
             softness = d.softness; poolSmoothing = d.poolSmoothing; darkSpots = d.darkSpots; shadowDarkness = d.shadowDarkness;
-            farLights = d.farLights; flicker = d.flicker;
+            farLights = d.farLights; flicker = d.flicker; fixtureSpread = d.fixtureSpread; roomFill = d.roomFill;
         }
         /// <summary>Evenly lit and pale, like the found-footage references: little contrast, a lot of fill, soft shadows.</summary>
         public void ApplyEvenLighting()
         {
             lightStrength = 1.35f; lightReach = 1.3f; tallBoost = 0.3f; fillLight = 2f; softness = 0.6f;
-            poolSmoothing = 0.8f; darkSpots = 0f; shadowDarkness = 0.6f;
+            poolSmoothing = 0.8f; darkSpots = 0f; shadowDarkness = 0.6f; fixtureSpread = 1f; roomFill = 1f;
         }
 
         const string Key = "Backrooms.Graphics.v1";
@@ -162,9 +164,11 @@ namespace Backrooms.Camcorder
                 _lights.shadowStrength = o.shadowDarkness;
                 _lights.farRealLights = Mathf.Clamp(o.perPixelFar ? 0 : o.farLights, 0, 120);   // per-pixel light makes extra real lights unnecessary
                 _lights.flickerAmount = Mathf.Clamp(o.flicker, 0f, 1.5f);
+                _lights.spread = Mathf.Clamp01(o.fixtureSpread);
                 if (_lights.grid)
                 {
                     _lights.grid.bounceGain = o.fillLight;
+                    _lights.grid.roomFill = Mathf.Clamp01(o.roomFill);
                     _lights.grid.perPixelDirect = o.perPixelFar;
                     _lights.grid.wrap = o.softness;
                     _lights.grid.smoothing = o.poolSmoothing;

@@ -185,5 +185,34 @@ namespace Backrooms.Tests
             }
             Assert.Greater(found, 0, "no crawl holes near the origin");
         }
+    
+        [Test]
+        public void ChunksWithCrawlTunnelsBuildOnAWorkerThread()
+        {
+            var assets = UnityEditor.AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
+            Assert.IsNotNull(assets);
+            var gen = new WorldGenerator(1234, WorldGenSettings.Defaults());
+            int built = 0;
+            for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+            {
+                var plan = gen.District(new Vector3Int(dx, 0, dz));
+                foreach (var p in plan.portals)
+                {
+                    int cx = (dx * WorldGenSettings.DistrictCells + p.cell.x) / OfficeBiome.ChunkCells, cz = (dz * WorldGenSettings.DistrictCells + p.cell.y) / OfficeBiome.ChunkCells;
+                    var layout = gen.Chunk(new Vector3Int(cx, 0, cz));
+                    Assert.Greater(layout.portals.Count, 0, "the chunk holds the hole");
+                    // BuildData runs on worker threads in the game: it must not touch Unity objects (e.g. create materials).
+                    System.Exception error = null;
+                    var t = new System.Threading.Thread(() => { try { new OfficeChunkBuilder(assets).BuildData(layout); } catch (System.Exception e) { error = e; } });
+                    t.Start(); t.Join();
+                    Assert.IsNull(error, error?.ToString());
+                    built++;
+                    goto done;
+                }
+            }
+            done:
+            Assert.Greater(built, 0, "no chunk with a crawl hole found");
+        }
     }
 }

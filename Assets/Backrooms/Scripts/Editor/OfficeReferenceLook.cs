@@ -56,6 +56,19 @@ namespace Backrooms.EditorTools
                 Finish(m);
             }
             a.noBaseboard = true;
+            // Crawl tunnels: the wallpaper with a trace of self-light.
+            if (a.wallpaper)
+            {
+                const string tunnelPath = "Assets/Backrooms/Materials/M_Tunnel.mat";
+                var t = AssetDatabase.LoadAssetAtPath<Material>(tunnelPath);
+                if (!t) { t = new Material(a.wallpaper); AssetDatabase.CreateAsset(t, tunnelPath); }
+                t.CopyPropertiesFromMaterial(a.wallpaper);
+                t.EnableKeyword("_EMISSION");
+                t.SetColor("_EmissionColor", new Color(0.075f, 0.068f, 0.045f));
+                t.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                Finish(t);
+                a.tunnel = t;
+            }
             EditorUtility.SetDirty(a);
         }
 

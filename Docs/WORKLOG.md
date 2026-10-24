@@ -15,6 +15,19 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-24  Claude Code  Real crawl tunnels; broader ceiling light and room fill
+- Crawl holes are now real tunnels: each hole opens into a boxed crawlspace about 2.3 m long on the far side of the wall
+  (solid, walkable around the outside). The crossing plane lies inside the tunnel (1.75 m in), so you crawl about 2 m in,
+  cross, and crawl about 2 m out of the partner hole. Holes need two free cells behind the wall. Tunnel inside has a trace
+  of self-light (`OfficeBiomeAssets.tunnel`, material made by Apply Reference Look To Office Biome).
+- Lighting: new `FixtureLightManager.spread` / `GraphicsOptions.fixtureSpread` (default 0.8; 0 = old lamp-like cone, 1 = diffuse
+  panel) and `LightGrid.roomFill` / `GraphicsOptions.roomFill` (default 0.6; lifts the wall bounce term in `LightGridSample.hlsl`).
+  F5 > LIGHT has sliders for both; EVEN & PALE sets both to 1. Old saved settings pick up the new defaults.
+- Checked: 27 edit-mode tests (new worker-thread build of a chunk with a tunnel: creating a Material in BuildData broke chunk
+  builds once, so never create Unity objects there); played: looked down a tunnel, crawled through, A/B screenshots of the same room.
+- Open: wall pools under fixtures remain (inverse-square near a point source); true global illumination (baked or probe-based
+  indirect, per-room area-light shadows) is the next step if the look is still not enough.
+
 ## 2026-10-24  Claude Code  Crawl holes (first non-Euclidean feature)
 - Pairs of low square holes (0.8 m) at the foot of walls. Behind each wall is a shallow boxed duct you can walk around,
   but crawling into one hole brings you out of the other, 12-30 m away in a room you could only reach by a long walk.

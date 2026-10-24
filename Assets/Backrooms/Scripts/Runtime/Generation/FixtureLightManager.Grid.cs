@@ -110,8 +110,7 @@ namespace Backrooms.Generation
             dir = Vector3.down;
             intensity = tubeIntensity * boost;
             range = src.dome || src.strip ? tubeRange + extra * 1.3f : tubeRange;
-            outer = src.dome ? 170f : src.strip ? 160f : 150f;
-            inner = src.dome ? 40f : 60f;
+            TrofferCone(spread, src.dome, src.strip, out outer, out inner);
             col = src.strip ? stripColor : tubeColor;
         }
 
@@ -122,7 +121,7 @@ namespace Backrooms.Generation
         {
             _gridFrame++;
             // Strength, reach and tall-room boost change every fixture's grid light: recompute the whole grid.
-            int fp = System.HashCode.Combine(tubeIntensity, tubeRange, domeHeightBoost, lampIntensity, lampRange);
+            int fp = System.HashCode.Combine(tubeIntensity, tubeRange, domeHeightBoost, lampIntensity, lampRange, spread);
             if (_haveFixtureParams && fp != _fixtureParams && grid) grid.MarkAllDirty();
             _fixtureParams = fp; _haveFixtureParams = true;
             float dt = Time.deltaTime;

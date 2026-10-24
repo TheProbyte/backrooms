@@ -15,6 +15,10 @@ namespace Backrooms.Generation
         readonly Dictionary<(bool, int, int), (int portal, int entry)> _holes = new Dictionary<(bool, int, int), (int, int)>();
         readonly List<CrawlPortal> _portalViews = new List<CrawlPortal>();
 
+        /// <summary>The inside of crawl tunnels: the wall finish with a trace of self-light (a pitch-black tube hides where you are crawling).
+        /// Materials cannot be created on the worker thread, so it is an asset (see OfficeBiomeAssets.tunnel).</summary>
+        Material TunnelMat(Room room) => _a.tunnel ? _a.tunnel : WallMat(room);
+
         void IndexHoles()
         {
             _holes.Clear(); _portalViews.Clear();
@@ -74,7 +78,7 @@ namespace Backrooms.Generation
                 float sign = entry == 1 ? -1f : 1f;                    // from the wall into the far cell
                 float l = line * C, fb = l + sign * T * 0.5f;
                 float mid = (along + 0.5f) * C, h0 = mid - HS * 0.5f, h1 = mid + HS * 0.5f;
-                var w = WMask(WallMat(roomB), mask);
+                var w = WMask(TunnelMat(roomB), mask);
                 Vector3 Box3(float d0, float d1, float a0, float a1, float y0, float y1, out Vector3 size)
                 {
                     float dmin = Mathf.Min(d0, d1), dmax = Mathf.Max(d0, d1);

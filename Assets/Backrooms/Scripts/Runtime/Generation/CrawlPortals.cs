@@ -15,7 +15,8 @@ namespace Backrooms.Generation
     public static class CrawlPortals
     {
         public const float HoleSize = 0.8f, HoleHalf = HoleSize * 0.5f;           // square opening (the crawling player is 0.62 m tall, 0.6 m wide)
-        public const float DuctDepth = 0.7f;          // how far the boxed duct sticks out on the far side
+        public const float DuctDepth = 2.3f;          // how far the boxed tunnel sticks out on the far side of the wall
+        public const float PlaneDepth = 1.75f;        // where the crossing plane lies in it; the last 0.55 m is a solid tail the player never reaches
         public const float MinApart = 12f, MaxApart = 30f;
         public const int MinWalkCells = 26;           // shortest walk between the two ends, in cells (about 31 m), unless unreachable
 
@@ -36,6 +37,7 @@ namespace Backrooms.Generation
                 default: position = new Vector3(cx, y, (cell.y + 1) * C - T * 0.5f); normal = Vector3.back; break;
             }
             position += new Vector3(ox, 0f, oz);
+            position -= normal * (T + PlaneDepth);          // the crossing plane is inside the tunnel, not on the wall
         }
 
         public static void Place(OfficeLayout L, WorldGenSettings set, System.Random rng)
@@ -126,6 +128,10 @@ namespace Backrooms.Generation
                     bool doorBeside = false;
                     for (int s = 0; s < 4; s++) { var e = L.EdgeOf(o.x, o.y, s); if (e == EdgeKind.Door || e == EdgeKind.DoorHeader) doorBeside = true; }
                     if (doorBeside) continue;
+                    // The tunnel runs about two cells deep: the next cell along must be free, in the same room, with no wall between.
+                    var o2 = o + Step(side);
+                    if (!Ordinary(o2.x, o2.y) || busy.Contains(o2) || L.roomOf[o.x, o.y] != L.roomOf[o2.x, o2.y]) continue;
+                    if (L.EdgeOf(o.x, o.y, side) != EdgeKind.Open) continue;
                     list.Add((new Vector2Int(x, z), side));
                 }
             }

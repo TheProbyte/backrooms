@@ -31,6 +31,8 @@ namespace Backrooms.Generation
         public Color tubeColor = new Color(1.0f, 0.965f, 0.86f);
         [Range(0f, 30f)] public float tubeIntensity = 7f;
         [Range(2f, 10f)] public float tubeRange = 6f;
+        [Range(0f, 1f)] [Tooltip("How broadly a ceiling fixture throws its light. 0 = a lamp-like cone with an edge (pools on nearby walls); 1 = a near-hemisphere falloff like a diffuse troffer, which washes the room evenly.")]
+        public float spread = 0.8f;
         [Range(0f, 3f)] public float bounceIntensity = 0.8f;
         [Range(1f, 8f)] public float bounceRange = 4.4f;
         [Tooltip("Dome fittings on tall ceilings: intensity multiplier per metre of extra height.")]
@@ -171,6 +173,15 @@ namespace Backrooms.Generation
             _mpb = new MaterialPropertyBlock();
             for (int i = 0; i < maxTroffers; i++) _troffers.Add(MakeSlot(false, i));
             for (int i = 0; i < maxLamps; i++) _lamps.Add(MakeSlot(true, i));
+        }
+
+        /// <summary>Spot cone of a ceiling fixture for a given spread (see <see cref="spread"/>).</summary>
+        public static void TrofferCone(float spread, bool dome, bool strip, out float outer, out float inner)
+        {
+            float o0 = dome ? 170f : strip ? 160f : 150f, i0 = dome ? 40f : 60f;
+            spread = Mathf.Clamp01(spread);
+            outer = Mathf.Lerp(o0, 179f, spread);
+            inner = Mathf.Lerp(i0, dome ? 10f : 18f, spread);
         }
 
         Slot MakeSlot(bool lamp, int i)
@@ -424,7 +435,7 @@ namespace Backrooms.Generation
                 float range = s.src.dome || s.src.strip ? tubeRange + extra * 1.3f : tubeRange;
                 // Domes light the whole hemisphere: a near-180 cone with a wide soft falloff, so no
                 // cone edge is drawn across tall walls. Strips are a little narrower.
-                float angle = s.src.dome ? 170f : s.src.strip ? 160f : 150f, inner = s.src.dome ? 40f : 60f;
+                TrofferCone(spread, s.src.dome, s.src.strip, out float angle, out float inner);
                 Color col = s.src.strip ? stripColor : tubeColor;
 
                 // Ceiling lights only ever light their own room (rendering layer), so no light can pass

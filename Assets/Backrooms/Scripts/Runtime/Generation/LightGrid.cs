@@ -38,6 +38,7 @@ namespace Backrooms.Generation
         [Range(0f, 1f)] public float smoothing = 0.5f;
         [Tooltip("Deepens dim areas of grid light: 0 leaves it as is, 1 makes weakly lit spots clearly darker.")]
         [Range(0f, 1f)] public float contrast = 0f;
+        [Range(0f, 1f)] [Tooltip("Evens out walls with bounced light (a stand-in for global illumination): 0 = the old low wall fill, 1 = walls almost as lit as the ceiling above them.")] public float roomFill = 0.6f;
         [Tooltip("Evaluate the grid's lights per pixel in the shader (exact pools at any distance) instead of reading the 0.6 m texture. Bounce still comes from the grid.")]
         public bool perPixelDirect = true;
         [Tooltip("Sample point offset off the surface, metres (half a texel keeps samples on the room's side).")]
@@ -72,7 +73,7 @@ namespace Backrooms.Generation
             IdBounceIn = Shader.PropertyToID("_BounceIn"), IdBounceOut = Shader.PropertyToID("_BounceOut");
         static readonly int GA = Shader.PropertyToID("_LGridA"), GB = Shader.PropertyToID("_LGridB"), GBounce = Shader.PropertyToID("_LGridBounce"),
             GOcc = Shader.PropertyToID("_LGridOcc"), GSize = Shader.PropertyToID("_LGridSize"), GParams = Shader.PropertyToID("_LGridParams"),
-            GWindow = Shader.PropertyToID("_LGridWindow"), GShape = Shader.PropertyToID("_LGridShape"),
+            GWindow = Shader.PropertyToID("_LGridWindow"), GShape = Shader.PropertyToID("_LGridShape"), GFill = Shader.PropertyToID("_LGridFillAmt"),
             GLights = Shader.PropertyToID("_LGridLights"), GTiles = Shader.PropertyToID("_LGridTiles"), GTileLights = Shader.PropertyToID("_LGridTileLights"), GFar = Shader.PropertyToID("_LGridFar");
 
         public static bool Supported => SystemInfo.supportsComputeShaders;
@@ -269,6 +270,7 @@ namespace Backrooms.Generation
             Shader.SetGlobalVector(GParams, new Vector4(1f, directGain, bounceGain > 0f && _lightCount > 0 ? bounceGain : 0f, _pitch));
             Shader.SetGlobalVector(GWindow, new Vector4(_texMin.x * T, _texMin.y * T, (_texMin.x + GX) * T, (_texMin.y + GZ) * T));
             Shader.SetGlobalVector(GShape, new Vector4(wrap, normalOffset, smoothing, contrast));
+            Shader.SetGlobalFloat(GFill, roomFill);
             Shader.SetGlobalBuffer(GLights, _lights); Shader.SetGlobalBuffer(GTiles, _tiles); Shader.SetGlobalBuffer(GTileLights, _tileLights);
             Shader.SetGlobalVector(GFar, new Vector4(perPixelDirect ? 1f : 0f, TileTexels, Tiles, 0f));
             LastGpuSubmitMs = (float)sw.Elapsed.TotalMilliseconds;

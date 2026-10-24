@@ -97,7 +97,7 @@ namespace Backrooms.Interaction
                 if (!v || !v.quad) continue;
                 float d = Vector3.Distance(eye, v.position);
                 bool front = Vector3.Dot(eye - v.position, v.normal) > -0.05f;
-                bool seen = front && d < ViewDistance && GeometryUtility.TestPlanesAABB(planes, v.quad.bounds);
+                bool seen = front && d < ViewDistance && GeometryUtility.TestPlanesAABB(planes, v.quad.bounds) && Unobstructed(eye, v);
                 if (seen) visible.Add((v, d));
                 else v.material.SetFloat("_Fade", 0f);
             }
@@ -119,6 +119,18 @@ namespace Backrooms.Interaction
             }
             foreach (var v in visible) if (!want.Contains(v.v)) v.v.material.SetFloat("_Fade", 0f);
             foreach (var s in _slots) if (s.view == null && s.cam) s.cam.enabled = false;
+        }
+
+        /// <summary>Is any part of the hole's end plane in line of sight (through the opening)? Saves rendering views of holes behind walls.</summary>
+        static bool Unobstructed(Vector3 eye, CrawlPortalView v)
+        {
+            var right = Vector3.Cross(Vector3.up, v.normal);
+            float h = CrawlPortals.HoleHalf * 0.8f;
+            Vector3 c = v.position + v.normal * 0.05f;
+            var pts = new[] { c, c + right * h + Vector3.up * h, c - right * h + Vector3.up * h, c + right * h - Vector3.up * h, c - right * h - Vector3.up * h };
+            if ((eye - c).sqrMagnitude < 1.5f) return true;
+            foreach (var p in pts) if (!Physics.Linecast(eye, p, ~0, QueryTriggerInteraction.Ignore)) return true;
+            return false;
         }
 
         Slot NewSlot()

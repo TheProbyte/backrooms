@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: OfficeBiome_Assets
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.OfficeBiomeAssets
   noBaseboard: 1
+  tunnel: {fileID: 2100000, guid: f7d11b9b57c398346ac0c5861920becc, type: 2}
   carpet: {fileID: 2100000, guid: 397ef6f0d53c9e1439e9b62248d6573c, type: 2}
   wallpaper: {fileID: 2100000, guid: 68048d61b07f2f84eb4fd8744f50dccb, type: 2}
   ceilingTile: {fileID: 2100000, guid: ba895fbedca018e4bbee1b1376af7702, type: 2}

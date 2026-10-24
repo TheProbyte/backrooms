@@ -8,6 +8,8 @@ namespace Backrooms.Generation
     {
         [Tooltip("No baseboard trim along the walls (the Reference Match look). The baseboard material is still used for invisible shadow proxies.")]
         public bool noBaseboard = true;
+        [Tooltip("Wall finish with a trace of self-light, for the inside of crawl tunnels (made by Backrooms > Apply Reference Look To Office Biome).")]
+        public Material tunnel;
         public Material carpet, wallpaper, ceilingTile, ceilingGrid, baseboard;
         public Material lensOn, lensOff, fixtureHousing;
         public Material wallPlate, halfWallCap;

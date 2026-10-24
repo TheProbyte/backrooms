@@ -33,6 +33,7 @@ float4 _LGridFar;                        // x: per-pixel evaluation on (0/1), y:
 float4 _LGridSize;      // texels x, y, z, occupancy cells
 float4 _LGridParams;    // x: on (0/1), y: direct gain, z: bounce gain, w: storey pitch
 float4 _LGridWindow;    // world xz min, xz max of the valid window
+float _LGridFillAmt;    // room fill 0..1: how much light bounced off floors, walls and ceilings evens out the walls (lifts the low-wall bounce term)
 float4 _LGridShape;     // x: directional wrap (0..1), y: normal offset, z: texel smoothing (0..1), w: contrast of dim light (0..1)
 
 uint LGrid_Occ(int2 cell, uint storey)
@@ -172,7 +173,7 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
         // ceilings less than low ones (as the old upward bounce lights did).
         float ceilingH = max(LG_Ceiling(o), 2.0);
         float h = saturate(p.y / ceilingH);
-        float wallTerm = lerp(0.12, 0.55, h);
+        float wallTerm = lerp(lerp(0.12, 0.42, _LGridFillAmt), lerp(0.55, 0.72, _LGridFillAmt), h);
         float facing = normalWS.y < 0.0 ? lerp(wallTerm, 1.0, -normalWS.y) : lerp(wallTerm, 0.04, normalWS.y);
         float height = 3.0 / max(3.0, ceilingH);
         bounce = (half3)(B * _LGridParams.z * facing * height);

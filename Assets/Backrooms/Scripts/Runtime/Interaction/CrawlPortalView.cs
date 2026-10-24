@@ -27,7 +27,7 @@ namespace Backrooms.Interaction
             var go = new GameObject("CrawlPortal_" + p.id.ToString("X"));
             go.transform.SetParent(parent, true);
             go.layer = Layer;
-            go.transform.SetPositionAndRotation(p.position, Quaternion.LookRotation(-p.normal, Vector3.up));   // quad faces out of the wall
+            go.transform.SetPositionAndRotation(p.position + p.normal * 0.02f, Quaternion.LookRotation(-p.normal, Vector3.up));   // at the crossing plane, facing back along the tunnel
             var v = go.AddComponent<CrawlPortalView>();
             v.position = p.position; v.normal = p.normal; v.partnerPosition = p.partnerPosition; v.partnerNormal = p.partnerNormal; v.id = p.id;
             if (!_quadMesh) _quadMesh = MakeQuad(CrawlPortals.HoleSize);

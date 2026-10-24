@@ -42,6 +42,10 @@ namespace Backrooms.Camcorder
             Slider("Light wrap", "How far light bends around surfaces that face slightly away from it. Lower gives crisper falloff on walls.",
                 0f, 1f, "0.00", "", () => O().softness, v => { O().softness = v; O().Save(); });
 
+            Slider("Room fill", "Bounced light that evens out the walls, like global illumination. 0 = walls are lit mostly by pools under each fixture. 1 = walls glow almost as evenly as the ceiling above them.",
+                0f, 1f, "0.00", "", () => O().roomFill, v => { O().roomFill = v; O().Save(); });
+            Slider("Fixture spread", "How broadly a ceiling light throws its light. Low: a lamp-like cone that pools on nearby walls. High: a diffuse panel that washes the whole room.",
+                0f, 1f, "0.00", "", () => O().fixtureSpread, v => { O().fixtureSpread = v; O().Save(); });
             var row = BtnRow(_list);
             Button(row, "EVEN & PALE", () => { O().ApplyEvenLighting(); O().Save(); RefreshAll(); });
             Button(row, "RESET LIGHTING", () => { O().ResetLighting(); O().Save(); RefreshAll(); });
