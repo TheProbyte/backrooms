@@ -62,6 +62,7 @@ namespace Backrooms.CustomRooms
         {
             string stamp = bp.modified + bp.variants.Count;
             if (_thumbCache.TryGetValue(bp.id, out var c) && c.stamp == stamp && c.tex) return c.tex;
+            if (c.tex) Destroy(c.tex);
             var t = RoomThumbnails.Make(bp);
             _thumbCache[bp.id] = (stamp, t);
             return t;
@@ -565,7 +566,7 @@ namespace Backrooms.CustomRooms
                     if (saved != null) { _bp = saved.Clone(); BuildSession.Editing = _bp; _vi = Mathf.Clamp(_vi, 0, _bp.variants.Count - 1); _undo.Clear(); _redo.Clear(); _selected = Selection.None; _dirty = false; BuildSession.Dirty = false; _needRebuild = true; }
                     else { _bp = RoomBlueprint.CreateNew("New room"); _bp.id = RoomLibrary.NewId(); _vi = 0; BuildSession.Editing = _bp; _dirty = true; _needRebuild = true; }
                 }
-                else if (m == Modal.Delete) { RoomLibrary.Delete(_modalTarget); _thumbCache.Remove(_modalTarget); }
+                else if (m == Modal.Delete) { RoomLibrary.Delete(_modalTarget); if (_thumbCache.TryGetValue(_modalTarget, out var thumb) && thumb.tex) Destroy(thumb.tex); _thumbCache.Remove(_modalTarget); }
                 else if (m == Modal.NoExit) { _noExitAcknowledged = true; DoSave(_pendingToGame); _noExitAcknowledged = false; }
             }
             if (ImUi.Button(new Rect(box.xMax - 24 - 140, by, 140, 40), "CANCEL")) _modal = Modal.None;

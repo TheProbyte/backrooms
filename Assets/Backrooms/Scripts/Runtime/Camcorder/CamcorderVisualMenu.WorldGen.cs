@@ -219,7 +219,7 @@ namespace Backrooms.Camcorder
             }
             var lm = FindAnyObjectByType<FixtureLightManager>();
             sb.AppendLine($"<b>Streaming:</b> {_ws.LoadedChunks} chunks loaded, {_ws.QueuedChunks} queued, {_ws.ChunksBuilt} built this session");
-            sb.AppendLine($"   chunk data {_ws.AverageBuildMs:0.0} ms avg (worker threads), {(lm ? lm.ActiveLights : 0)} pooled lights active");
+            sb.AppendLine($"   chunk data {_ws.AverageBuildMs:0.0} ms avg (worker), upload {_ws.AverageUploadMs:0.0} ms (main), {(lm ? lm.ActiveLights : 0)} pooled lights active");
             sb.AppendLine($"   {1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):0} fps");
             _wgReadout.text = sb.ToString();
         }

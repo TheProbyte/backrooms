@@ -27,6 +27,13 @@ namespace Backrooms.Interaction
         }
         readonly List<Slot> _slots = new List<Slot>();
         readonly Dictionary<CrawlPortalView, Vector3> _lastLocal = new Dictionary<CrawlPortalView, Vector3>();
+        readonly List<(CrawlPortalView v, float d)> _visible = new List<(CrawlPortalView, float)>(16);
+        readonly List<CrawlPortalView> _wanted = new List<CrawlPortalView>(MaxViews);
+        readonly List<CrawlPortalView> _stale = new List<CrawlPortalView>();
+        readonly Plane[] _planes = new Plane[6];
+        CamcorderPlayerController _player;
+        Camera _main;
+        static readonly System.Comparison<(CrawlPortalView v, float d)> ByDistance = (a, b) => a.d.CompareTo(b.d);
         int _rendererIndex = -2;
 
         /// <summary>Frame number of the last trip through a hole (the camcorder resets its motion smear on it).</summary>
@@ -52,6 +59,7 @@ namespace Backrooms.Interaction
         {
             var main = Camera.main;
             if (!main || CrawlPortalView.All.Count == 0) { ReleaseViews(); return; }
+            if (_main != main || !_player) { _main = main; _player = main.GetComponentInParent<CamcorderPlayerController>(); }
             TryWarp(main);
             UpdateViews(main);
         }
@@ -60,11 +68,14 @@ namespace Backrooms.Interaction
 
         void TryWarp(Camera main)
         {
-            var player = FindFirstObjectByType<CamcorderPlayerController>();
+            var player = _player;
             if (!player) return;
             var eye = main.transform.position;
             float trigger = main.nearClipPlane + 0.03f;          // before the near plane can cut into the opening
             CrawlPortalView through = null;
+            _stale.Clear();
+            foreach (var entry in _lastLocal) if (!entry.Key || !CrawlPortalView.All.Contains(entry.Key)) _stale.Add(entry.Key);
+            foreach (var v in _stale) _lastLocal.Remove(v);
             foreach (var v in CrawlPortalView.All)
             {
                 if (!v || (v.position - eye).sqrMagnitude > 4f) continue;
@@ -90,29 +101,31 @@ namespace Backrooms.Interaction
         void UpdateViews(Camera main)
         {
             var eye = main.transform.position;
-            var planes = GeometryUtility.CalculateFrustumPlanes(main);
-            var visible = new List<(CrawlPortalView v, float d)>();
+            GeometryUtility.CalculateFrustumPlanes(main, _planes);
+            var visible = _visible; visible.Clear();
             foreach (var v in CrawlPortalView.All)
             {
                 if (!v || !v.quad) continue;
                 float d = Vector3.Distance(eye, v.position);
                 bool front = Vector3.Dot(eye - v.position, v.normal) > -0.05f;
-                bool seen = front && d < ViewDistance && GeometryUtility.TestPlanesAABB(planes, v.quad.bounds) && Unobstructed(eye, v);
+                bool seen = front && d < ViewDistance && GeometryUtility.TestPlanesAABB(_planes, v.quad.bounds) && Unobstructed(eye, v);
                 if (seen) visible.Add((v, d));
                 else v.material.SetFloat("_Fade", 0f);
             }
-            visible.Sort((a, b) => a.d.CompareTo(b.d));
+            visible.Sort(ByDistance);
 
             // Keep slots that still show a visible hole (no one-frame black flash), hand the rest out again.
-            var want = new List<CrawlPortalView>();
+            var want = _wanted; want.Clear();
             for (int i = 0; i < visible.Count && i < MaxViews; i++) want.Add(visible[i].v);
             foreach (var s in _slots) if (s.view && !want.Contains(s.view)) { s.view.material.SetFloat("_Fade", 0f); s.view = null; }
             foreach (var v in want)
             {
-                var slot = _slots.Find(s => s.view == v);
+                Slot slot = null;
+                foreach (var s in _slots) if (s.view == v) { slot = s; break; }
                 if (slot == null)
                 {
-                    slot = _slots.Find(s => s.view == null) ?? NewSlot();
+                    foreach (var s in _slots) if (s.view == null) { slot = s; break; }
+                    if (slot == null) slot = NewSlot();
                     slot.view = v; slot.renderedFrames = 0;
                 }
                 Render(slot, main);
@@ -127,9 +140,12 @@ namespace Backrooms.Interaction
             var right = Vector3.Cross(Vector3.up, v.normal);
             float h = CrawlPortals.HoleHalf * 0.8f;
             Vector3 c = v.position + v.normal * 0.05f;
-            var pts = new[] { c, c + right * h + Vector3.up * h, c - right * h + Vector3.up * h, c + right * h - Vector3.up * h, c - right * h - Vector3.up * h };
             if ((eye - c).sqrMagnitude < 1.5f) return true;
-            foreach (var p in pts) if (!Physics.Linecast(eye, p, ~0, QueryTriggerInteraction.Ignore)) return true;
+            for (int i = 0; i < 5; i++)
+            {
+                var p = i == 0 ? c : c + right * ((i & 1) == 0 ? -h : h) + Vector3.up * (i < 3 ? h : -h);
+                if (!Physics.Linecast(eye, p, ~0, QueryTriggerInteraction.Ignore)) return true;
+            }
             return false;
         }
 

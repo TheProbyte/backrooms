@@ -48,10 +48,19 @@ namespace Backrooms.Generation
         public Vector2Int? FrozenChunk => _frozen;
 
         // Stats for the World Gen tab.
-        public int QueuedChunks => _queue.Count + _pending.Count;
+        public int QueuedChunks => _queue.Count + _pending.Count + (_upload != null ? 1 : 0);
         public float LastBuildMs { get; private set; }
         public float AverageBuildMs { get; private set; }
         public int ChunksBuilt { get; private set; }
+        public float LastUploadMs { get; private set; }
+        public float AverageUploadMs { get; private set; }
+        readonly List<Vector3Int> _done = new List<Vector3Int>(4);
+        IEnumerator<GameObject> _upload;
+        OfficeChunkBuilder _uploadBuilder;
+        GameObject _uploadRoot;
+        Vector3Int _uploadKey;
+        int _uploadGeneration;
+        float _uploadMs;
 
         class Chunk { public List<Doorway> doors; public GameObject go; public List<LightSource> lights; public List<Renderer> lenses, faulty; public int generation; public OfficeLayout layout; }
 
@@ -103,6 +112,7 @@ namespace Backrooms.Generation
         /// <summary>New seed: a different world. Everything is rebuilt and the player is moved to the new spawn.</summary>
         public void SetSeed(int newSeed)
         {
+            CancelUpload();
             Seed = newSeed;
             _world = new WorldGenerator(Seed, Settings);
             _generation++;
@@ -151,11 +161,7 @@ namespace Backrooms.Generation
         void DestroyChunkObject(Vector3Int coord, Chunk ch)
         {
             ChunkUnloaded?.Invoke(coord, ch.go);
-            // Only meshes generated at runtime (negative instance ids); prop meshes are shared assets.
-#pragma warning disable CS0618
-            foreach (var mf in ch.go.GetComponentsInChildren<MeshFilter>())
-                if (mf.sharedMesh && mf.sharedMesh.GetInstanceID() < 0) Destroy(mf.sharedMesh);
-#pragma warning restore CS0618
+            // GeneratedChunkResources releases owned meshes; movable props own their own runtime meshes.
             Destroy(ch.go);
         }
 
@@ -184,10 +190,12 @@ namespace Backrooms.Generation
                 _pending[coord] = Task.Run(() => Prepare(w, coord, a));
             }
 
-            // Finished data becomes meshes on the main thread, within the frame budget.
-            if (_pending.Count == 0) return;
             float start = Time.realtimeSinceStartup;
-            var done = new List<Vector3Int>();
+            if (_upload != null) AdvanceUpload(start);
+            if (_upload != null || (Time.realtimeSinceStartup - start) * 1000f >= frameBudgetMs) return;
+            // Finished data becomes meshes on the main thread, yielding between individual uploads.
+            if (_pending.Count == 0) return;
+            var done = _done; done.Clear();
             foreach (var kv in _pending)
             {
                 if (!kv.Value.IsCompleted) continue;
@@ -196,17 +204,47 @@ namespace Backrooms.Generation
                 int gen = _pendingGen.TryGetValue(kv.Key, out int g) ? g : -1;
                 if (gen != _generation) { _queue.Insert(0, kv.Key); continue; }       // settings changed meanwhile
                 if (!InRadius(Column(kv.Key), _center, unloadRadius)) continue;
-                if (_chunks.TryGetValue(kv.Key, out var old))
-                {
-                    if (old.generation == _generation) continue;
-                    DestroyNow(kv.Key);                                                  // live settings swap
-                    Instantiate(kv.Key, kv.Value.Result, false);
-                }
-                else Instantiate(kv.Key, kv.Value.Result, _started);
-                if ((Time.realtimeSinceStartup - start) * 1000f > frameBudgetMs) break;
+                if (_chunks.TryGetValue(kv.Key, out var old) && old.generation == _generation) continue;
+                _uploadKey = kv.Key; _uploadBuilder = kv.Value.Result; _uploadGeneration = _generation; _uploadMs = 0f;
+                _upload = _uploadBuilder.InstantiateSteps(transform);
+                AdvanceUpload(start);
+                break;
             }
             foreach (var k in done) { _pending.Remove(k); _pendingGen.Remove(k); }
         }
+
+        void AdvanceUpload(float frameStart)
+        {
+            if (_uploadGeneration != _generation || !InRadius(Column(_uploadKey), _center, unloadRadius))
+            { var key = _uploadKey; CancelUpload(); if (InRadius(Column(key), _center, loadRadius)) _queue.Add(key); return; }
+            float start = Time.realtimeSinceStartup;
+            try
+            {
+                while (_upload.MoveNext())
+                {
+                    _uploadRoot = _upload.Current;
+                    if ((Time.realtimeSinceStartup - frameStart) * 1000f >= frameBudgetMs) return;
+                }
+                if (_chunks.ContainsKey(_uploadKey)) DestroyNow(_uploadKey);
+                Instantiate(_uploadKey, _uploadBuilder, _started, _uploadRoot);
+                _uploadRoot = null; _upload.Dispose(); _upload = null;
+            }
+            catch (System.Exception e) { Debug.LogException(e); CancelUpload(); }
+            finally
+            {
+                _uploadMs += (Time.realtimeSinceStartup - start) * 1000f;
+                LastUploadMs = _uploadMs;
+                if (_upload == null) AverageUploadMs = Mathf.Lerp(AverageUploadMs <= 0f ? _uploadMs : AverageUploadMs, _uploadMs, 0.1f);
+            }
+        }
+
+        void CancelUpload()
+        {
+            _upload?.Dispose(); _upload = null;
+            if (_uploadRoot) Destroy(_uploadRoot);
+            _uploadRoot = null;
+        }
+        void OnDestroy() { CancelUpload(); }
 
         OfficeChunkBuilder Prepare(WorldGenerator world, Vector3Int coord, OfficeBiomeAssets assets)
         {
@@ -222,7 +260,7 @@ namespace Backrooms.Generation
         /// <summary>Drops cached layouts far from the player.</summary>
         void TrimLayoutCache()
         {
-            if (_world.CachedChunks >= 300) _world.Trim(_center, unloadRadius + 2);
+            if (_world.CachedChunks >= 300 || _world.CachedLandmarks > 512) _world.Trim(_center, unloadRadius + 2);
         }
 
         public static Vector2Int ChunkOf(Vector3 world) =>
@@ -240,7 +278,7 @@ namespace Backrooms.Generation
                 if (!InRadius(Column(kv.Key), _center, unloadRadius) || (kv.Key.y > 0 && kv.Key.y > _world.TopStoreyAt(Column(kv.Key)))) drop.Add(kv.Key);
             foreach (var k in drop) UnloadChunk(k);
 
-            // Queue missing chunks nearest first; the inner rings are always built synchronously.
+            // Queue missing chunks nearest first; only initial coverage is built synchronously.
             _queue.Clear();
             foreach (var (c, r) in Wanted())
             {
@@ -249,7 +287,8 @@ namespace Backrooms.Generation
                     if (have.generation != _generation && !_pending.ContainsKey(c)) _queue.Add(c);   // stale after a settings change
                     continue;
                 }
-                if (immediate || r <= 1) { _pending.Remove(c); _pendingGen.Remove(c); _syncBuild.Add(c); }
+                if (_upload != null && c == _uploadKey) continue;
+                if (immediate) { _pending.Remove(c); _pendingGen.Remove(c); _syncBuild.Add(c); }
                 else if (!_pending.ContainsKey(c)) _queue.Add(c);
             }
             // Chunks needed right now are prepared in parallel on all cores, then instantiated in order.
@@ -266,18 +305,19 @@ namespace Backrooms.Generation
 
         readonly List<Vector3Int> _syncBuild = new List<Vector3Int>();
 
-        void Instantiate(Vector3Int coord, OfficeChunkBuilder built, bool animate)
+        void Instantiate(Vector3Int coord, OfficeChunkBuilder built, bool animate, GameObject ready = null)
         {
             ChunksBuilt++;
             // A chunk still stuttering off from an earlier unload is simply kept.
             if (_dying.TryGetValue(coord, out var old))
             {
+                if (ready) Destroy(ready);
                 _dying.Remove(coord);
                 _chunks[coord] = old;
                 if (lightManager) { lightManager.Register(coord, old.lights, old.lenses, old.faulty, false); lightManager.RegisterDoorways(coord, old.doors); }
                 return;
             }
-            var go = built.Instantiate(transform);
+            var go = ready ? ready : built.Instantiate(transform);
             var ch = new Chunk { go = go, lights = new List<LightSource>(built.lights),
                 lenses = new List<Renderer>(built.litLensRenderers), faulty = new List<Renderer>(built.faultyRenderers),
                 generation = _generation, layout = built.Layout, doors = new List<Doorway>(built.doorways) };

@@ -35,6 +35,7 @@ namespace Backrooms.CustomRooms
         public static int ToggledFrame { get; private set; } = -1;
 
         bool _open, _f5WasOpen;
+        CamcorderVisualMenu _visualMenu;
         float _prevTimeScale = 1f;
         CursorLockMode _prevLock;
         bool _prevCursorVisible;
@@ -51,6 +52,7 @@ namespace Backrooms.CustomRooms
         }
 
         void OnEnable() { SceneManager.sceneLoaded += OnSceneLoaded; }
+        void Start() { _visualMenu = FindFirstObjectByType<CamcorderVisualMenu>(); }
         void OnDisable() { SceneManager.sceneLoaded -= OnSceneLoaded; }
 
         void OnSceneLoaded(Scene s, LoadSceneMode m)
@@ -60,6 +62,7 @@ namespace Backrooms.CustomRooms
             Time.timeScale = 1f;
             CamcorderPlayerController.InputBlocked = false;
             _status = "";
+            _visualMenu = FindFirstObjectByType<CamcorderVisualMenu>();
             if (s.name == SceneIds.Build) CustomRoomTest.End();      // back from a test: the room stays open in the editor
             CustomRoomTest.OnLoad();
         }
@@ -80,8 +83,7 @@ namespace Backrooms.CustomRooms
         void LateUpdate()
         {
             // The F5 panel closes itself on Escape; remember whether it was open when the frame began.
-            var menu = FindFirstObjectByType<CamcorderVisualMenu>();
-            _f5WasOpen = menu && menu.IsOpen;
+            _f5WasOpen = _visualMenu && _visualMenu.IsOpen;
         }
 
         public void Open()

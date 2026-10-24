@@ -170,10 +170,21 @@ namespace Backrooms.Generation
         /// <summary>Phase 2 (main thread): meshes, renderers and colliders.</summary>
         public GameObject Instantiate(Transform parent)
         {
+            GameObject root = null;
+            using (var steps = InstantiateSteps(parent)) while (steps.MoveNext()) root = steps.Current;
+            return root;
+        }
+
+        /// <summary>Build hidden, yielding between uploads/props/colliders; publish the complete chunk atomically.</summary>
+        public IEnumerator<GameObject> InstantiateSteps(Transform parent)
+        {
             var root = new GameObject(_L.storey == 0 ? $"Chunk_{_L.coord.x}_{_L.coord.y}" : $"Chunk_{_L.coord.x}_{_L.coord.y}_s{_L.storey}");
+            var resources = root.AddComponent<GeneratedChunkResources>();
+            root.SetActive(false);
             root.transform.SetParent(parent, false);
             root.transform.localPosition = _origin;
             root.isStatic = true;
+            yield return root;
 
             foreach (var kv in _writers)
             {
@@ -181,7 +192,7 @@ namespace Backrooms.Generation
                 if (kv.Value.VertexCount == 0) continue;
                 var go = new GameObject(mat.name + "_" + mask.ToString("X2"));
                 go.transform.SetParent(root.transform, false);
-                go.AddComponent<MeshFilter>().sharedMesh = kv.Value.ToMesh(go.name);
+                go.AddComponent<MeshFilter>().sharedMesh = resources.Own(kv.Value.ToMesh(go.name));
                 var r = go.AddComponent<MeshRenderer>();
                 r.sharedMaterial = mat;
                 r.renderingLayerMask = mask;
@@ -200,6 +211,7 @@ namespace Backrooms.Generation
                 }
                 r.lightProbeUsage = LightProbeUsage.Off;
                 r.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                yield return root;
             }
 
             for (int i = 0; i < faultyLenses.Count; i++)
@@ -207,13 +219,14 @@ namespace Backrooms.Generation
                 var (w, dome) = faultyLenses[i];
                 var go = new GameObject("FaultyLens_" + i);
                 go.transform.SetParent(root.transform, false);
-                go.AddComponent<MeshFilter>().sharedMesh = w.ToMesh(go.name);
+                go.AddComponent<MeshFilter>().sharedMesh = resources.Own(w.ToMesh(go.name));
                 var r = go.AddComponent<MeshRenderer>();
                 r.sharedMaterial = dome && _a.domeOn ? _a.domeOn : _a.lensOn;
                 r.shadowCastingMode = ShadowCastingMode.Off;
                 r.lightProbeUsage = LightProbeUsage.Off;
                 r.reflectionProbeUsage = ReflectionProbeUsage.Off;
                 faultyRenderers.Add(r);
+                yield return root;
             }
 
             // Prop instances (shared meshes from the Blender prefabs). Colliders come from _rotBoxes/_boxes.
@@ -227,7 +240,7 @@ namespace Backrooms.Generation
                 var col = go.GetComponent<Collider>();
                 if (col && pi.prefab.GetComponent<BoxCollider>() && pi.scale == Vector3.one) { /* keep prefab collider */ }
                 else if (col) Object.Destroy(col);
-                foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
+                foreach (var r in go.GetComponentsInChildren<MeshRenderer>(true))
                 {
                     r.renderingLayerMask = pi.mask;
                     if (pi.noShadow) r.shadowCastingMode = ShadowCastingMode.Off;
@@ -237,23 +250,28 @@ namespace Backrooms.Generation
                     r.sharedMaterials = mats;
                     litLensRenderers.Add(r);
                 }
+                yield return root;
             }
 
             // Movable props (skipped if they have been moved: they live with MovablePropManager now).
             var moved = MovablePropManager.Instance;
             foreach (var s in _movables)
+            {
                 if (!moved || !moved.IsMoved(s.id))
                     MovableProp.Spawn(s, root.transform, s.position, Quaternion.Euler(0f, s.yaw, 0f));
+                yield return root;
+            }
 
             InstantiatePortals(root.transform);
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
             AddFloorColliders(root);
-            foreach (var e in _elevators) ElevatorSystem.Spawn(root.transform, e);
+            foreach (var e in _elevators) { ElevatorSystem.Spawn(root.transform, e); yield return root; }
             foreach (var (c, s) in _boxes)
             {
                 var b = root.AddComponent<BoxCollider>();
                 b.center = c; b.size = s;
+                yield return root;
             }
             foreach (var (c, s, yaw) in _rotBoxes)
             {
@@ -262,8 +280,9 @@ namespace Backrooms.Generation
                 go.transform.localPosition = c;
                 go.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
                 go.AddComponent<BoxCollider>().size = s;
+                yield return root;
             }
-            return root;
+            root.SetActive(true);
         }
 
         public GameObject Build(OfficeLayout layout, Transform parent, List<LightSource> outLights)

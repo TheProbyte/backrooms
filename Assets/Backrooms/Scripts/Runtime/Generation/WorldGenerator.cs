@@ -189,6 +189,7 @@ namespace Backrooms.Generation
 
         public int CachedChunks => _chunks.Count;
         public int CachedDistricts => _districts.Count;
+        public int CachedLandmarks => _landmarks.Count;
 
         /// <summary>Forgets chunks farther than radius (in chunks) from the centre, and districts no longer near.</summary>
         public void Trim(Vector2Int centre, int radius)
@@ -201,6 +202,9 @@ namespace Backrooms.Generation
             foreach (var k in _districts.Keys)
                 if (Mathf.Abs(k.x - dc.x) > dr || Mathf.Abs(k.z - dc.y) > dr)
                     _districts.TryRemove(k, out _);
+            foreach (var k in _landmarks.Keys)
+                if (Mathf.Abs(k.x - dc.x) > dr || Mathf.Abs(k.y - dc.y) > dr)
+                    _landmarks.TryRemove(k, out _);
         }
     }
 }

@@ -70,7 +70,7 @@ namespace Backrooms.Camcorder
               .Append("   triangles ").Append(p.Triangles / 1000).Append("k\n");
             if (lm) sb.Append("Lights on ").Append(lm.EnabledLights).Append(" (of 256 allowed)   with shadows ").Append(lm.ShadowedLights).Append("   mode ").Append(lm.mode).Append('\n');
             if (lm && lm.grid && lm.grid.Ready) sb.Append("Light grid: ").Append(lm.grid.DirtyTexelsLastFrame).Append(" texels recomputed last frame, ").Append(lm.grid.LastGpuSubmitMs.ToString("0.00")).Append(" ms to submit\n");
-            if (ws) sb.Append("Chunks loaded ").Append(ws.LoadedChunks).Append("   chunk build ").Append(ws.AverageBuildMs.ToString("0.0")).Append(" ms (worker thread)\n");
+            if (ws) sb.Append("Chunks loaded ").Append(ws.LoadedChunks).Append("   chunk build ").Append(ws.AverageBuildMs.ToString("0.0")).Append(" ms (worker), upload ").Append(ws.AverageUploadMs.ToString("0.0")).Append(" ms (main, per chunk)\n");
             sb.Append("VSync ").Append(QualitySettings.vSyncCount > 0 ? "on" : "off").Append("   target ").Append(Application.targetFrameRate > 0 ? Application.targetFrameRate + " fps" : "unlimited").Append('\n');
             _gfxReadout.text = sb.ToString();
         }

@@ -15,6 +15,25 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+
+## 2026-10-24 15:24  ChatGPT  Remove redundant lighting work and phase streamed chunk uploads
+- LightGrid skips unused Direct compute in per-pixel mode; stable lights reuse uploads, bins and bounce. Full refresh
+  is retained on texture-mode switches, power/shape/window/occupancy changes. Added CPU submission/dispatch counters.
+- GeneratedChunkResources owns combined meshes in chunks/previews (imported meshes stay shared); thumbnail/line-material
+  lifetimes are explicit. Portal lists/frustum points/player lookups and pause-menu lookups are reused/cached.
+- Landmark caches evict deterministically; F5 searches scan incrementally with feedback/cancellation. WorldStreamer builds
+  streamed chunks while inactive, yields between mesh/prop/collider uploads, then publishes complete geometry; startup
+  stays immediate. DISPLAY/WORLD distinguish worker preparation from accumulated main-thread upload time per chunk.
+- Why: implement efficiency recommendations 1–6 without reducing geometry, light range, resolution or shadow quality.
+- Checked: Unity full EditMode suite 40/40 passed (four new ownership/cache/hidden-upload/eviction regressions). Played
+  seed 1234 through all 11 saved LightingTour poses; queue drained (61 chunks), no runtime errors. Stable final-pose grid
+  submission 0.054 ms with zero bounce dispatches; accumulated upload mean 3.56 ms per chunk (single observation, not FPS).
+  Matching baseline/efficiency captures are in Temp/LightingPerformance; no image-quality/FPS gain inferred from one pose.
+- Open: an individual mesh/collider upload cannot be preempted; initial spawn remains synchronous. Standalone profiling,
+  rapid teleports, long travel, portal crossings and repeated builder edits still need broader validation. Lighting and
+  batching recommendations remain for subsequent commits. Branch chatgpt/lighting-performance; unrelated dirty assets
+  and ProjectSettings preserved. No push/PR.
+
 ## 2026-10-24 14:28  ChatGPT  Performance and realistic-lighting review (recommendations only)
 - Added Docs/PerformanceLightingReview.md with source-specific findings, measurement limits and an investigation order.
   Efficiency candidates: unused direct-grid dispatch in per-pixel mode; unchanged bounce/buffer recomputation; preview

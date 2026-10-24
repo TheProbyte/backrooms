@@ -47,6 +47,8 @@ namespace Backrooms.Generation
         public bool Ready { get; private set; }
         public int DirtyTexelsLastFrame { get; private set; }
         public float LastGpuSubmitMs { get; private set; }
+        public int BounceDispatchesLastFrame { get; private set; }
+        public int BufferUploadsLastFrame { get; private set; }
 
         RenderTexture _a, _b, _bounceSrc, _bounce0, _bounce1;
         ComputeBuffer _occ;                  // layout occupancy: OccN x OccN cells x 2 storeys, toroidal
@@ -60,6 +62,9 @@ namespace Backrooms.Generation
         readonly List<int>[] _tileBins = new List<int>[Tiles * Tiles];
         Vector2Int _texMin = new Vector2Int(int.MinValue, int.MinValue);
         bool _occDirty = true, _full = true;
+        bool _inputsValid, _bounceDirty = true, _wasPerPixel;
+        Vector2Int _binnedMin;
+        Vector4 _bounceParameters;
         readonly List<(Vector3Int min, Vector3Int max)> _dirty = new List<(Vector3Int, Vector3Int)>();
         readonly Dictionary<Vector3Int, uint[]> _encoded = new Dictionary<Vector3Int, uint[]>();
         int _kDirect = -1, _kBounceSrc, _kBounceDiff;
@@ -94,7 +99,7 @@ namespace Backrooms.Generation
             if (streamer) { streamer.ChunkLoaded += OnChunkChanged; streamer.ChunkUnloaded += OnChunkUnloaded; }
             Shader.SetGlobalTexture(GA, _a); Shader.SetGlobalTexture(GB, _b); Shader.SetGlobalBuffer(GOcc, _occ);
             Shader.SetGlobalTexture(GBounce, _bounce0);
-            _full = true; _occDirty = true;
+            _full = true; _occDirty = true; _inputsValid = false; _bounceDirty = true;
             Ready = true;
         }
 
@@ -103,7 +108,7 @@ namespace Backrooms.Generation
             Ready = false;
             LightGridGlobals.BindFallbacks();          // never leave the shader pointing at released resources
             if (streamer) { streamer.ChunkLoaded -= OnChunkChanged; streamer.ChunkUnloaded -= OnChunkUnloaded; }
-            void Rel(RenderTexture r) { if (r) { r.Release(); Destroy(r); } }
+            void Rel(RenderTexture r) { if (r) { r.Release(); if (Application.isPlaying) Destroy(r); else DestroyImmediate(r); } }
             Rel(_a); Rel(_b); Rel(_bounceSrc); Rel(_bounce0); Rel(_bounce1);
             _occ?.Release(); _lights?.Release(); _tiles?.Release(); _tileLights?.Release();
             _occ = _lights = _tiles = _tileLights = null;
@@ -137,6 +142,22 @@ namespace Backrooms.Generation
         /// </summary>
         void SetLights(List<LightGridMath.GridLight> lights)
         {
+            bool upload = !_inputsValid || lights.Count != _lightCount;
+            bool bins = upload || _binnedMin != _texMin;
+            bool bounce = bins;
+            for (int i = 0; i < lights.Count; i++)
+            {
+                var l = lights[i];
+                if (i >= _lightCount || !_inputsValid) { upload = bins = bounce = true; continue; }
+                var old = _lightArr[i];
+                bool geometry = !l.pos.Equals(old.pos) || l.range != old.range;
+                bool illumination = geometry || !l.dir.Equals(old.dir) || l.cosOuter != old.cosOuter || l.cosInner != old.cosInner || l.storey != old.storey;
+                bins |= geometry;
+                bounce |= illumination || !l.colorAll.Equals(old.colorAll);
+                upload |= illumination || !l.color.Equals(old.color) || !l.colorAll.Equals(old.colorAll);
+            }
+            _bounceDirty |= bounce;
+            if (!upload && !bins) return;
             if (lights.Count > _lightArr.Length)
             {
                 int size = Mathf.NextPowerOfTwo(lights.Count);
@@ -145,7 +166,10 @@ namespace Backrooms.Generation
             }
             _lightCount = lights.Count;
             for (int i = 0; i < lights.Count; i++) _lightArr[i] = lights[i];
-            _lights.SetData(_lightArr, 0, 0, _lightCount);
+            if (upload && _lightCount > 0) { _lights.SetData(_lightArr, 0, 0, _lightCount); BufferUploadsLastFrame++; }
+            _inputsValid = true;
+            if (!bins) return;
+            _binnedMin = _texMin;
 
             // Bin lights into the window's tiles (absolute tile -> wrapped slot).
             foreach (var b in _tileBins) b.Clear();
@@ -169,11 +193,12 @@ namespace Backrooms.Generation
             if (_tileList.Count > _tileLights.count) { _tileLights.Release(); _tileLights = new ComputeBuffer(Mathf.NextPowerOfTwo(_tileList.Count), 4); }
             _tiles.SetData(_tileArr);
             if (_tileList.Count > 0) _tileLights.SetData(_tileList);
+            BufferUploadsLastFrame += _tileList.Count > 0 ? 2 : 1;
         }
 
         /// <summary>Recompute the grid within radius of a point (a light whose share or power changed).</summary>
         /// <summary>Recompute every texel (a light setting that changes every fixture's output, such as strength or reach).</summary>
-        public void MarkAllDirty() { _full = true; }
+        public void MarkAllDirty() { _full = true; _bounceDirty = true; }
 
         public void MarkDirty(Vector3 centre, float radius)
         {
@@ -186,6 +211,7 @@ namespace Backrooms.Generation
         {
             for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) _encoded.Remove(new Vector3Int(c.x + dx, c.y, c.z + dz));
             _occDirty = true;
+            _bounceDirty = true;
             float S = OfficeBiome.ChunkSize, reach = 18f;
             var centre = new Vector3((c.x + 0.5f) * S, c.y * _pitch + 4f, (c.z + 0.5f) * S);
             MarkDirty(centre, S * 0.75f + reach);
@@ -201,6 +227,9 @@ namespace Backrooms.Generation
             if (!Ready || _kDirect < 0) return;
             _pitch = streamer && streamer.Settings != null ? streamer.Settings.storeyPitch : 9f;
             var sw = System.Diagnostics.Stopwatch.StartNew();
+            BufferUploadsLastFrame = BounceDispatchesLastFrame = 0;
+            if (_wasPerPixel && !perPixelDirect) _full = true;
+            _wasPerPixel = perPixelDirect;
 
             // Window: centred on the viewer, snapped to whole layout cells (two texels).
             var newMin = new Vector2Int(FloorDiv(Mathf.FloorToInt(viewer.x / C), 1) * 2 - GX / 2, FloorDiv(Mathf.FloorToInt(viewer.z / C), 1) * 2 - GZ / 2);
@@ -218,8 +247,10 @@ namespace Backrooms.Generation
                 _texMin = newMin;
                 _occDirty = true;
             }
-            if (_occDirty) RebuildOccupancy();
+            if (_occDirty) { RebuildOccupancy(); _bounceDirty = true; }
             SetLights(lights);
+            var bounceParameters = new Vector4(floorAlbedo, bounceSpread, bounceSteps, _pitch);
+            if (!_bounceParameters.Equals(bounceParameters)) { _bounceDirty = true; _bounceParameters = bounceParameters; }
 
             var cellMin = new Vector2Int(_texMin.x / 2, _texMin.y / 2);
             compute.SetInts(IdGridSize, GX, GY, GZ, OccN);
@@ -229,6 +260,8 @@ namespace Backrooms.Generation
 
             // Direct light in the dirty boxes (clipped to the window; merged into one full pass if large).
             int texels = 0;
+            if (!perPixelDirect)
+            {
             compute.SetTexture(_kDirect, IdA, _a); compute.SetTexture(_kDirect, IdB, _b); compute.SetBuffer(_kDirect, IdOcc, _occ);
             compute.SetBuffer(_kDirect, IdLights, _lights); compute.SetBuffer(_kDirect, IdTiles, _tiles); compute.SetBuffer(_kDirect, IdTileLights, _tileLights);
             if (!_full)
@@ -239,15 +272,17 @@ namespace Backrooms.Generation
             }
             if (_full) { texels += Dispatch(new Vector3Int(_texMin.x, 0, _texMin.y), new Vector3Int(_texMin.x + GX, GY, _texMin.y + GZ)); _full = false; }
             else foreach (var (mn, mx) in _dirty) texels += Dispatch(mn, mx);
+            }
             _dirty.Clear();
             DirtyTexelsLastFrame = texels;
 
             // Bounce: floor light from every powered fixture, then a few diffusion steps.
-            if (_lightCount > 0 && bounceGain > 0f)
+            if (_bounceDirty && _lightCount > 0 && bounceGain > 0f)
             {
                 compute.SetBuffer(_kBounceSrc, IdOcc, _occ); compute.SetTexture(_kBounceSrc, IdBounceSrc, _bounceSrc);
                 compute.SetBuffer(_kBounceSrc, IdLights, _lights); compute.SetBuffer(_kBounceSrc, IdTiles, _tiles); compute.SetBuffer(_kBounceSrc, IdTileLights, _tileLights);
                 compute.Dispatch(_kBounceSrc, OccN / 8, OccN / 8, 1);
+                BounceDispatchesLastFrame++;
                 compute.SetBuffer(_kBounceDiff, IdOcc, _occ); compute.SetTexture(_kBounceDiff, IdBounceSrcIn, _bounceSrc);
                 RenderTexture src = _bounceSrc, dst = _bounce0;
                 int steps = Mathf.Max(1, bounceSteps);
@@ -256,9 +291,11 @@ namespace Backrooms.Generation
                     dst = (i & 1) == 0 ? _bounce0 : _bounce1;
                     compute.SetTexture(_kBounceDiff, IdBounceIn, src); compute.SetTexture(_kBounceDiff, IdBounceOut, dst);
                     compute.Dispatch(_kBounceDiff, OccN / 8, OccN / 8, 1);
+                    BounceDispatchesLastFrame++;
                     src = dst;
                 }
                 _bounceCur = dst;
+                _bounceDirty = false;
             }
 
             // Bind the real resources every frame. Something else (the editor's stand-in binder after a domain reload,

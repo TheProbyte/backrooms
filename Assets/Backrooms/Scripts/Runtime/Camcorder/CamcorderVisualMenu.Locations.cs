@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections;
 using Backrooms.CustomRooms;
 using Backrooms.Generation;
 using UnityEngine;
@@ -12,18 +13,30 @@ namespace Backrooms.Camcorder
         const float LocC = OfficeBiome.CellSize;
         Label _locReadout;
         readonly Dictionary<string, int> _locCycle = new Dictionary<string, int>();
+        int _locSearch;
 
         /// <summary>Landmarks of a kind within about 10 districts of the player, nearest first.</summary>
-        List<(LandmarkPlacement p, float dist)> NearbyLandmarks(LandmarkKind kind, int needConnectors = 0, string blueprint = null)
+        void NearbyLandmarks(LandmarkKind kind, int needConnectors, string blueprint, System.Action<List<(LandmarkPlacement p, float dist)>> found)
         {
-            var result = new List<(LandmarkPlacement, float)>();
+            int request = ++_locSearch;
+            if (_locReadout != null) _locReadout.text = "Searching nearby districts…";
+            StartCoroutine(SearchLandmarks(request, kind, needConnectors, blueprint, found));
+        }
+
+        IEnumerator SearchLandmarks(int request, LandmarkKind kind, int needConnectors, string blueprint, System.Action<List<(LandmarkPlacement p, float dist)>> found)
+        {
+            var result = new List<(LandmarkPlacement p, float dist)>();
             var ws = FindAnyObjectByType<WorldStreamer>();
-            if (ws == null || player == null) return result;
+            if (ws == null || player == null) { found(result); yield break; }
+            var world = ws.World;
             var here = player.transform.position;
             var dh = WorldGenerator.DistrictOf(WorldStreamer.ChunkOf(here));
+            int scanned = 0;
             for (int dx = -10; dx <= 10; dx++)
             for (int dz = -10; dz <= 10; dz++)
-                foreach (var l in ws.World.LandmarksIn(new Vector2Int(dh.x + dx, dh.y + dz)))
+            {
+                if (request != _locSearch || world != ws.World) yield break;
+                foreach (var l in world.LandmarksIn(new Vector2Int(dh.x + dx, dh.y + dz)))
                 {
                     if (l.kind != kind || (needConnectors != 0 && (l.connectors & needConnectors) == 0)) continue;
                     if (blueprint != null && l.blueprint != blueprint) continue;
@@ -31,8 +44,11 @@ namespace Backrooms.Camcorder
                     var centre = new Vector3((l.district.x * WorldGenSettings.DistrictCells + c.center.x) * LocC, 0f, (l.district.y * WorldGenSettings.DistrictCells + c.center.y) * LocC);
                     result.Add((l, Vector2.Distance(new Vector2(centre.x, centre.z), new Vector2(here.x, here.z))));
                 }
+                if (++scanned % 8 == 0) yield return null;
+            }
             result.Sort((a, b) => a.Item2.CompareTo(b.Item2));
-            return result;
+            world.Trim(WorldStreamer.ChunkOf(player.transform.position), ws.unloadRadius + 2);
+            if (request == _locSearch) found(result);
         }
 
         static Vector2 DistrictOrigin(in LandmarkPlacement l) => new Vector2(l.district.x, l.district.y) * (WorldGenSettings.DistrictCells * LocC);
@@ -50,13 +66,15 @@ namespace Backrooms.Camcorder
         /// <summary>Picks the next place of a kind each time it is pressed (nearest first, then the next nearest...).</summary>
         void GoLandmark(string key, LandmarkKind kind, int needConnectors, System.Func<LandmarkPlacement, (Vector3 pos, Vector3 look, string what)> where)
         {
-            var list = NearbyLandmarks(kind, needConnectors);
-            if (list.Count == 0) { if (_locReadout != null) _locReadout.text = "None found within about 10 districts. Walk somewhere else and try again."; return; }
-            _locCycle.TryGetValue(key, out int i);
-            i = i % list.Count;
-            _locCycle[key] = i + 1;
-            var (pos, look, what) = where(list[i].p);
-            Go(pos, look, $"{what} {i + 1} of {list.Count}");
+            NearbyLandmarks(kind, needConnectors, null, list =>
+            {
+                if (list.Count == 0) { if (_locReadout != null) _locReadout.text = "None found within about 10 districts. Walk somewhere else and try again."; return; }
+                _locCycle.TryGetValue(key, out int i);
+                i = i % list.Count;
+                _locCycle[key] = i + 1;
+                var (pos, look, what) = where(list[i].p);
+                Go(pos, look, $"{what} {i + 1} of {list.Count}");
+            });
         }
 
         (Vector3, Vector3, string) AtriumSpot(LandmarkPlacement l, bool upper)
@@ -121,18 +139,21 @@ namespace Backrooms.Camcorder
         {
             var ws = FindAnyObjectByType<WorldStreamer>();
             if (ws == null || player == null) { if (_locReadout != null) _locReadout.text = "Custom rooms are available in the procedural world."; return; }
-            foreach (var hit in NearbyLandmarks(LandmarkKind.Custom, 0, blueprint))
+            NearbyLandmarks(LandmarkKind.Custom, 0, blueprint, list =>
             {
-                var l = hit.p;
-                var plan = ws.World.District(new Vector3Int(l.district.x, 0, l.district.y));
-                if (!CustomRoomStamp.TryArrival(plan, l.rect, out var local)) continue;
-                var o = DistrictOrigin(l);
-                var pos = new Vector3(o.x + local.x, 0.05f, o.y + local.y);
-                var look = new Vector3(o.x + l.rect.center.x * LocC, 0f, o.y + l.rect.center.y * LocC);
-                Go(pos, look, l.name);
-                return;
-            }
-            if (_locReadout != null) _locReadout.text = "No reachable custom room found within about 10 districts. Enable and save a room, then start or regenerate the world. Spawn chance and biome filters still apply.";
+                foreach (var hit in list)
+            {
+                    var l = hit.p;
+                    var plan = ws.World.District(new Vector3Int(l.district.x, 0, l.district.y));
+                    if (!CustomRoomStamp.TryArrival(plan, l.rect, out var local)) continue;
+                    var o = DistrictOrigin(l);
+                    var pos = new Vector3(o.x + local.x, 0.05f, o.y + local.y);
+                    var look = new Vector3(o.x + l.rect.center.x * LocC, 0f, o.y + l.rect.center.y * LocC);
+                    Go(pos, look, l.name);
+                    return;
+                }
+                if (_locReadout != null) _locReadout.text = "No reachable custom room found within about 10 districts. Enable and save a room, then start or regenerate the world. Spawn chance and biome filters still apply.";
+            });
         }
     }
 }

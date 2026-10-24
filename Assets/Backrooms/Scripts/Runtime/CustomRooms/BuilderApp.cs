@@ -68,7 +68,18 @@ namespace Backrooms.CustomRooms
 
         void OnEnable() { RenderPipelineManager.endCameraRendering += OnEndCamera; }
         void OnDisable() { RenderPipelineManager.endCameraRendering -= OnEndCamera; }
-        void OnDestroy() { if (Current == this) Current = null; }
+        void OnDestroy()
+        {
+            if (Current == this) Current = null;
+            ClearThumbnails();
+            if (_lineMat) Destroy(_lineMat);
+        }
+
+        void ClearThumbnails()
+        {
+            foreach (var entry in _thumbCache.Values) if (entry.tex) Destroy(entry.tex);
+            _thumbCache.Clear();
+        }
 
         void Start()
         {
@@ -115,7 +126,7 @@ namespace Backrooms.CustomRooms
             RoomLibrary.Reload();
             _screen = ScreenKind.Library;
             ClearPreview();
-            _thumbCache.Clear();
+            ClearThumbnails();
             BuildSession.Editing = null;
             _modal = Modal.None;
         }
