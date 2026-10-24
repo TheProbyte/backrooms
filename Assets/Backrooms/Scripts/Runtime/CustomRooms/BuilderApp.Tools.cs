@@ -343,6 +343,10 @@ namespace Backrooms.CustomRooms
                 case PropKind.ConferenceTable: return new Vector3(2.4f, 0.74f, 1.1f);
                 case PropKind.Pallet: return new Vector3(1.2f, 1.6f, 1.0f);
                 case PropKind.FloorLamp: return new Vector3(0.4f, 1.6f, 0.4f);
+                case PropKind.WallClock: return new Vector3(0.36f, 2.1f, 0.06f);
+                case PropKind.StorageRack: return new Vector3(2.3f, 2.4f, 0.95f);
+                case PropKind.Armchair: return new Vector3(0.9f, 0.85f, 0.9f);
+                case PropKind.OfficeChair: return new Vector3(0.6f, 1.0f, 0.6f);
                 default: return new Vector3(0.6f, 0.5f, 0.5f);
             }
         }
@@ -356,9 +360,13 @@ namespace Backrooms.CustomRooms
             if (!_hoverGround) return;
             var m = Snap(_hoverMetres);
             if (!InsideRoom(m)) { SetStatus("Place props inside the room."); return; }
+            var size = DefaultSize(_propKind);
+            float yaw = 0f;
+            if (WallProp(_propKind) && !V.TryWallPlacement(_hoverMetres, size, out m, out yaw))
+            { SetStatus("Click near a solid wall with enough space. Openings cannot support this prop."); return; }
             PushUndo();
             var v = V;
-            v.props.Add(new PropDef { kind = _propKind, x = m.x, z = m.y, size = DefaultSize(_propKind), lit = true, variant = Random.Range(0, 1 << 16) });
+            v.props.Add(new PropDef { kind = _propKind, x = m.x, z = m.y, yaw = yaw, size = size, lit = true, variant = Random.Range(0, 1 << 16) });
             _selected = new Selection { kind = SelKind.Prop, index = v.props.Count - 1 };
             _tool = BuilderTool.Select;
             Changed();
@@ -402,9 +410,19 @@ namespace Backrooms.CustomRooms
             var v = V;
             var m = Snap(_hoverMetres);
             if (!InsideRoom(m)) return;
+            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count && WallProp(v.props[_selected.index].kind))
+            {
+                var p = v.props[_selected.index];
+                if (!v.TryWallPlacement(_hoverMetres, p.size, out m, out float yaw)) return;
+                if (p.x != m.x || p.z != m.y || p.yaw != yaw)
+                { p.x = m.x; p.z = m.y; p.yaw = yaw; _strokeChanged = true; _needRebuild = true; }
+                return;
+            }
             if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count) { if (v.props[_selected.index].x != m.x || v.props[_selected.index].z != m.y) { v.props[_selected.index].x = m.x; v.props[_selected.index].z = m.y; _strokeChanged = true; _needRebuild = true; } }
             if (_selected.kind == SelKind.Loot && _selected.index < v.loot.Count) { if (v.loot[_selected.index].x != m.x || v.loot[_selected.index].z != m.y) { v.loot[_selected.index].x = m.x; v.loot[_selected.index].z = m.y; _strokeChanged = true; _needRebuild = true; } }
         }
+
+        static bool WallProp(PropKind kind) => kind == PropKind.WallClock || kind == PropKind.StorageRack;
 
         void DeleteSelected()
         {
@@ -419,6 +437,8 @@ namespace Backrooms.CustomRooms
         void RotateSelected()
         {
             var v = V;
+            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count && WallProp(v.props[_selected.index].kind))
+            { SetStatus("Drag this prop to another wall to change its facing."); return; }
             if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count) { PushUndo(); v.props[_selected.index].yaw = (v.props[_selected.index].yaw + 45f) % 360f; Changed(); }
         }
 
@@ -486,7 +506,9 @@ namespace Backrooms.CustomRooms
             if (_hoverGround && (_tool == BuilderTool.Prop || _tool == BuilderTool.Loot))
             {
                 var m = Snap(_hoverMetres);
-                Marker(W3(m.x, m.y, 0.06f), 0.22f, 0f, new Color(1f, 1f, 1f, 0.7f), _tool == BuilderTool.Prop);
+                float yaw = 0f;
+                bool valid = _tool != BuilderTool.Prop || !WallProp(_propKind) || v.TryWallPlacement(_hoverMetres, DefaultSize(_propKind), out m, out yaw);
+                Marker(W3(m.x, m.y, 0.06f), 0.22f, yaw, valid ? new Color(1f, 1f, 1f, 0.7f) : ImUi.Bad, _tool == BuilderTool.Prop);
             }
             // Exits: arrows on the outside of perimeter openings
             DrawExits(v);

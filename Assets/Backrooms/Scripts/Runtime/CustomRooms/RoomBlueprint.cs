@@ -114,6 +114,41 @@ namespace Backrooms.CustomRooms
         public bool InBounds(int x, int z) => x >= 0 && z >= 0 && x < width && z < depth;
         public RoomSettings RoomAt(int x, int z) => rooms[Mathf.Clamp(RoomOf(x, z), 0, rooms.Count - 1)];
 
+        /// <summary>Snap to a solid wall on the pointer's side. The prop's local +Z faces into that area.</summary>
+        public bool TryWallPlacement(Vector2 pointer, Vector3 size, out Vector2 position, out float yaw)
+        {
+            position = default; yaw = 0f;
+            const float c = OfficeBiome.CellSize;
+            int cx = Mathf.FloorToInt(pointer.x / c), cz = Mathf.FloorToInt(pointer.y / c);
+            if (!InBounds(cx, cz)) return false;
+            float best = 0.95f;
+            for (int side = 0; side < 4; side++)
+            {
+                bool vertical = side < 2;
+                int line = vertical ? cx + side : cz + side - 2;
+                int along = vertical ? cz : cx;
+                if (EdgeCode.Kind(vertical ? V(line, along) : H(along, line)) != EdgeCode.Wall) continue;
+                float edge = line * c;
+                float distance = Mathf.Abs((vertical ? pointer.x : pointer.y) - edge);
+                if (distance >= best) continue;
+                float centre = vertical ? pointer.y : pointer.x;
+                // Find the continuous solid run so wide racks cannot cover a doorway or project past a corner.
+                int lo = along, hi = along + 1, limit = vertical ? depth : width;
+                while (lo > 0 && EdgeCode.Kind(vertical ? V(line, lo - 1) : H(lo - 1, line)) == EdgeCode.Wall) lo--;
+                while (hi < limit && EdgeCode.Kind(vertical ? V(line, hi) : H(hi, line)) == EdgeCode.Wall) hi++;
+                float half = size.x * 0.5f + 0.03f;
+                if ((hi - lo) * c < half * 2f) continue;
+                centre = Mathf.Clamp(Mathf.Round(centre / 0.15f) * 0.15f, lo * c + half, hi * c - half);
+                float offset = OfficeBiome.WallThickness * 0.5f + size.z * 0.5f + 0.02f;
+                bool positive = side == 0 || side == 2;
+                position = vertical ? new Vector2(edge + (positive ? offset : -offset), centre)
+                    : new Vector2(centre, edge + (positive ? offset : -offset));
+                yaw = side == 0 ? 90f : side == 1 ? -90f : side == 2 ? 0f : 180f;
+                best = distance;
+            }
+            return best < 0.95f;
+        }
+
         /// <summary>A simple room: four walls, one doorway in the south wall, a light every two cells.</summary>
         public static RoomVariant CreateDefault(int w = 6, int d = 6, string name = "Variant 1")
         {

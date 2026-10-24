@@ -199,9 +199,9 @@ namespace Backrooms.CustomRooms
                 case BuilderTool.Prop:
                 {
                     ImUi.Header(col.Row(24), "Prop");
-                    PropKind[] kinds = { PropKind.Box, PropKind.Pallet, PropKind.Sofa, PropKind.ConferenceTable, PropKind.FloorLamp };
-                    string[] n = { "BOX", "PALLET", "SOFA", "TABLE", "FLOOR LAMP" };
-                    for (int i = 0; i < kinds.Length; i++) if (ImUi.Button(col.Row(30), n[i], _propKind == kinds[i])) _propKind = kinds[i];
+                    PropKind[] kinds = { PropKind.Box, PropKind.Pallet, PropKind.Sofa, PropKind.Armchair, PropKind.OfficeChair, PropKind.ConferenceTable, PropKind.FloorLamp, PropKind.StorageRack, PropKind.WallClock };
+                    string[] n = { "BOX", "PALLET", "SOFA", "ARMCHAIR", "OFFICE CHAIR", "TABLE", "FLOOR LAMP", "STORAGE RACK", "WALL CLOCK" };
+                    for (int i = 0; i < kinds.Length; i++) if (ImUi.Button(col.Row(30), n[i], _propKind == kinds[i], WallProp(kinds[i]) ? "Click beside a solid wall. Drag after placing to choose another wall." : "Click the floor to place. Select and drag to move; R rotates.")) _propKind = kinds[i];
                     break;
                 }
                 case BuilderTool.Loot:
@@ -365,12 +365,19 @@ namespace Backrooms.CustomRooms
             {
                 var p = v.props[_selected.index];
                 ImUi.Header(col.Row(24), "Selected prop: " + p.kind);
-                float yaw = Slide(col.Row(), "Turn (°)", p.yaw, 0f, 359f, "0");
+                if (WallProp(p.kind)) ImUi.Dimmed(col.Row(34), "Wall-aligned: drag beside a wall to reposition.");
+                float yaw = WallProp(p.kind) ? p.yaw : Slide(col.Row(), "Turn (°)", p.yaw, 0f, 359f, "0");
                 if (Mathf.Abs(yaw - p.yaw) > 0.01f) { p.yaw = Mathf.Round(yaw / 5f) * 5f; _dirty = true; _needRebuild = true; }
                 float ch = Slide(col.Row(), "Chance", p.chance, 0.05f, 1f, "0.00", "Chance this prop is there each time the room is placed.");
                 if (Mathf.Abs(ch - p.chance) > 0.001f) { p.chance = ch; _dirty = true; }
                 if (p.kind == PropKind.ConferenceTable) { float len = Slide(col.Row(), "Length (m)", p.size.x, 1.2f, 4.8f, "0.0"); if (Mathf.Abs(len - p.size.x) > 0.01f) { p.size.x = len; _dirty = true; _needRebuild = true; } }
                 if (p.kind == PropKind.FloorLamp) { bool lit = p.lit; Toggled(ref lit, col.Row(), "Lit"); if (lit != p.lit) { p.lit = lit; _dirty = true; _needRebuild = true; } }
+                if (p.kind == PropKind.WallClock)
+                {
+                    int cx = Mathf.Clamp(Mathf.FloorToInt(p.x / C), 0, v.width - 1), cz = Mathf.Clamp(Mathf.FloorToInt(p.z / C), 0, v.depth - 1);
+                    float height = Slide(col.Row(), "Height (m)", p.size.y, 0.4f, v.RoomAt(cx, cz).ceiling - 0.25f, "0.00", "Clock centre above the floor.");
+                    if (Mathf.Abs(height - p.size.y) > 0.001f) { PushUndo(); p.size.y = height; Changed(); }
+                }
                 if (ImUi.Button(col.Row(), "DELETE PROP  [Del]")) DeleteSelected();
                 col.Space(4);
             }

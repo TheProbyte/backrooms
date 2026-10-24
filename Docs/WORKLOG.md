@@ -15,6 +15,16 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-24 14:10  ChatGPT  Wall-placed props and explicit chairs in build mode
+- Added racks, wall clocks, armchairs and office chairs to the builder palette. Racks/clocks snap to a solid wall on the
+  clicked side (rejecting doorways and too-short runs); dragging reattaches them; clock mounting height is editable.
+  Rack geometry, normals, tangents, shadow proxies and collision now rotate together. Existing enum values are preserved.
+- Why: custom rooms need the existing prop library, including wall placement, in both preview and streamed chunks.
+- Checked: Unity compiled; all 11 CustomRoomTests passed, including wall placement/rejected openings and worker-thread
+  mesh building with rotated rack collision, explicit chair specs and clock height. Play-mode UI checks follow later.
+- Open: no new models. Rack placement uses the floor projection near a wall, not a wall-surface raycast. World version
+  bumped 7 -> 8 for changed generated geometry. Existing unrelated material/ProjectSettings changes are not in this commit.
+
 ## 2026-10-24  Claude Code  Real crawl tunnels; broader ceiling light and room fill
 - Crawl holes are now real tunnels: each hole opens into a boxed crawlspace about 2.3 m long on the far side of the wall
   (solid, walkable around the outside). The crossing plane lies inside the tunnel (1.75 m in), so you crawl about 2 m in,

@@ -63,6 +63,21 @@ namespace Backrooms.Generation
         /// <summary>Steel pallet rack: four slotted uprights, orange box beams, deck boards, end bracing, loaded shelves.</summary>
         void Rack(Prop p, Vector3 at)
         {
+            if (Mathf.Abs(p.yaw) < 0.001f) { RackUnrotated(p, at); return; }
+            var starts = new Dictionary<MeshWriter, int>();
+            foreach (var w in _writers.Values) starts[w] = w.VertexCount;
+            int boxes = _boxes.Count;
+            RackUnrotated(p, at);
+            var rotation = Quaternion.Euler(0f, p.yaw, 0f);
+            foreach (var w in _writers.Values)
+            { starts.TryGetValue(w, out int start); w.RotateFrom(start, at, rotation); }
+            for (int i = boxes; i < _boxes.Count; i++)
+            { var b = _boxes[i]; _rotBoxes.Add((at + rotation * (b.c - at), b.s, p.yaw)); }
+            _boxes.RemoveRange(boxes, _boxes.Count - boxes);
+        }
+
+        void RackUnrotated(Prop p, Vector3 at)
+        {
             int col = p.roomColor;
             float L = p.size.x, h = p.size.y, D = p.size.z;
             var rng = new System.Random(p.variant ^ 0x5EED);

@@ -1007,6 +1007,9 @@ namespace Backrooms.Generation
                     case PropKind.StorageRack: Rack(p, at); break;
                     case PropKind.Box: BoxProp(p, at); break;
                     case PropKind.Pallet: Pallet(p, at, rot); break;
+                    case PropKind.Armchair: Sofa(p, at, rot); break;
+                    case PropKind.OfficeChair: Chair(p.roomColor, at, rot, p.yaw); break;
+                    case PropKind.WallClock: PlaceClock(p, at); break;
                 }
             }
         }
@@ -1035,6 +1038,15 @@ namespace Backrooms.Generation
             int col = p.roomColor;
             switch (p.kind)
             {
+                case PropKind.Armchair:
+                    if (_a.armchairPrefabs != null && _a.armchairPrefabs.Length > 0)
+                        Movable(p.id, MovableKind.Armchair, at, p.yaw, col).AddPrefab(_a.armchairPrefabs[(p.variant & int.MaxValue) % _a.armchairPrefabs.Length], Vector3.zero);
+                    else Sofa(p, at, rot);
+                    break;
+                case PropKind.OfficeChair:
+                    if (_a.officeChairPrefab) Movable(p.id, MovableKind.OfficeChair, at, p.yaw, col).AddPrefab(_a.officeChairPrefab, Vector3.zero);
+                    else Chair(col, at, rot, p.yaw);
+                    break;
                 case PropKind.Sofa:
                 {
                     // Variant picks the model and fabric; small rooms and every fourth seat get an armchair.
@@ -1083,7 +1095,7 @@ namespace Backrooms.Generation
                     BoxProp(p, at);
                     break;
                 case PropKind.WallClock:
-                    if (_a.wallClockPrefab) Place(_a.wallClockPrefab, new Vector3(at.x, p.size.y, at.z), p.yaw, col, null, false, true);
+                    PlaceClock(p, at);
                     break;
                 case PropKind.StorageRack:
                     Rack(p, at);
@@ -1094,6 +1106,14 @@ namespace Backrooms.Generation
             }
         }
 
+
+        void PlaceClock(Prop p, Vector3 at)
+        {
+            float ceiling = _L.RoomAt(Mathf.Clamp(Mathf.FloorToInt(at.x / C), 0, _L.N - 1), Mathf.Clamp(Mathf.FloorToInt(at.z / C), 0, _L.N - 1)).ceiling;
+            at.y = Mathf.Clamp(p.size.y, 0.4f, ceiling - 0.25f);
+            if (_a.wallClockPrefab) Place(_a.wallClockPrefab, at, p.yaw, p.roomColor, null, false, true);
+            else Part(_a.laminate, p.roomColor, at, Quaternion.Euler(0f, p.yaw, 0f), Vector3.zero, new Vector3(0.32f, 0.32f, 0.04f));
+        }
 
         void Part(Material m, int color, Vector3 at, Quaternion rot, Vector3 localCenter, Vector3 size, int mask = 63)
         {

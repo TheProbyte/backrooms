@@ -60,6 +60,52 @@ namespace Backrooms.Tests
             v.Validate();
         }
 
+        [Test]
+        public void WallPropsSnapToAllFourSidesButNotOpenings()
+        {
+            var v = RoomVariant.CreateDefault();
+            var size = new Vector3(0.36f, 2.1f, 0.06f);
+            float edge = v.width * OfficeBiome.CellSize;
+            var points = new[] { new Vector2(0.2f, 3f), new Vector2(edge - 0.2f, 3f), new Vector2(3f, 0.2f), new Vector2(3f, edge - 0.2f) };
+            float[] angles = { 90f, -90f, 0f, 180f };
+            for (int i = 0; i < points.Length; i++)
+            {
+                Assert.IsTrue(v.TryWallPlacement(points[i], size, out var p, out float yaw));
+                Assert.AreEqual(angles[i], yaw);
+                Assert.That(p.x, Is.InRange(0.05f, edge - 0.05f));
+                Assert.That(p.y, Is.InRange(0.05f, edge - 0.05f));
+            }
+            Assert.IsFalse(v.TryWallPlacement(new Vector2(4.2f, 0.1f), size, out _, out _), "default doorway cannot support a clock");
+            Assert.IsFalse(v.TryWallPlacement(new Vector2(3f, 3f), size, out _, out _), "no distant wall snapping");
+            v.SetV(0, 1, EdgeCode.Header); v.SetV(0, 3, EdgeCode.Header);
+            Assert.IsFalse(v.TryWallPlacement(new Vector2(0.2f, 3f), new Vector3(2.3f, 2.4f, 0.95f), out _, out _), "rack cannot fit between nearby doorways");
+        }
+
+        [Test]
+        public void NewPropsBuildOnWorkerAndRackCollisionRotates()
+        {
+            var assets = UnityEditor.AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
+            var bp = RoomBlueprint.CreateNew();
+            var v = bp.variants[0];
+            v.props.Add(new PropDef { kind = PropKind.StorageRack, x = 1f, z = 3f, yaw = 90f, size = new Vector3(2.3f, 2.4f, 0.95f) });
+            v.props.Add(new PropDef { kind = PropKind.WallClock, x = 3f, z = 7f, yaw = 180f, size = new Vector3(0.36f, 2.1f, 0.06f) });
+            v.props.Add(new PropDef { kind = PropKind.Armchair, x = 4f, z = 4f, size = new Vector3(0.9f, 0.85f, 0.9f) });
+            v.props.Add(new PropDef { kind = PropKind.OfficeChair, x = 5f, z = 4f });
+            var layout = CustomRoomHarness.BuildLayout(bp, 0, 0, out _);
+            var builder = new OfficeChunkBuilder(assets);
+            System.Exception error = null;
+            var worker = new System.Threading.Thread(() => { try { builder.BuildData(layout); } catch (System.Exception e) { error = e; } });
+            worker.Start(); worker.Join();
+            Assert.IsNull(error, error?.ToString());
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var boxes = (List<(Vector3 c, Vector3 s, float yaw)>)typeof(OfficeChunkBuilder).GetField("_rotBoxes", flags).GetValue(builder);
+            Assert.IsTrue(boxes.Any(b => Mathf.Abs(b.s.x - 2.3f) < 0.01f && Mathf.Abs(b.yaw - 90f) < 0.01f), "rack collider follows its rotated geometry");
+            var instances = (List<OfficeChunkBuilder.PropInstance>)typeof(OfficeChunkBuilder).GetField("_instances", flags).GetValue(builder);
+            Assert.IsTrue(instances.Any(p => p.prefab == assets.wallClockPrefab && Mathf.Abs(p.position.y - 2.1f) < 0.01f), "clock mounts at its saved height");
+            var movables = (System.Collections.IList)typeof(OfficeChunkBuilder).GetField("_movables", flags).GetValue(builder);
+            Assert.AreEqual(2, movables.Count, "explicit armchair and office chair are movable");
+        }
+
         static bool Reaches(OfficeLayout L, Vector2Int from, System.Func<Vector2Int, bool> goal)
         {
             var seen = new HashSet<Vector2Int> { from };

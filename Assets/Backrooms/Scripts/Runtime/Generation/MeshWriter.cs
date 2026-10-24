@@ -22,6 +22,19 @@ namespace Backrooms.Generation
         public Vector3 worldOffset;   // added to local positions before UV projection
         public int VertexCount => _v.Count;
 
+        /// <summary>Rotate only newly appended geometry, preserving UVs and rotating normals and tangents with it.</summary>
+        public void RotateFrom(int start, Vector3 pivot, Quaternion rotation)
+        {
+            for (int i = start; i < _v.Count; i++)
+            {
+                _v[i] = pivot + rotation * (_v[i] - pivot);
+                _n[i] = rotation * _n[i];
+                var t = _t[i];
+                var xyz = rotation * new Vector3(t.x, t.y, t.z);
+                _t[i] = new Vector4(xyz.x, xyz.y, xyz.z, t.w);
+            }
+        }
+
         public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal, UVProjector uv)
         {
             Quad(a, b, c, d, normal, uv(a + worldOffset, normal), uv(b + worldOffset, normal), uv(c + worldOffset, normal), uv(d + worldOffset, normal));

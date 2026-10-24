@@ -66,7 +66,7 @@ namespace Backrooms.Generation
     /// <summary>Electrical plate on a wall face. Face is the cell side the plate is visible from.</summary>
     public struct WallPlate { public Vector2Int cell; public int side; public float t; public float height; public bool isSwitch; public int roomColor; }
 
-    public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock, StorageRack, Box, Pallet }
+    public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock, StorageRack, Box, Pallet, Armchair, OfficeChair }
 
     /// <summary>
     /// A crawl hole: a low square opening at the foot of a wall. The wall has a short boxed duct behind it on the other side,
