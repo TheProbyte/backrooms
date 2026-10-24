@@ -33,6 +33,13 @@ namespace Backrooms.Camcorder
         static readonly int ID3 = Shader.PropertyToID("_CamVideo3");
         static readonly int ID4 = Shader.PropertyToID("_CamVideo4");
         static readonly int ID5 = Shader.PropertyToID("_CamVideo5");
+        static readonly int ID6 = Shader.PropertyToID("_CamVideo6");
+        static readonly int ID7 = Shader.PropertyToID("_CamVideo7");
+        static readonly int ID8 = Shader.PropertyToID("_CamVideo8");
+
+        /// <summary>Set for repeatable stills: no handheld motion, exposure/focus locked, tape effects that vary with time stopped.</summary>
+        [System.NonSerialized] public bool freezeForStills;
+        Quaternion _prevRot; bool _havePrev; Vector2 _blurVel;
 
         void Awake()
         {
@@ -71,6 +78,13 @@ namespace Backrooms.Camcorder
         void LateUpdate()
         {
             var s = Settings;
+            if (freezeForStills)
+            {
+                s = s.Clone();
+                s.shakeIntensity = 0f; s.breathing = 0f; s.lookOvershoot = 0f; s.lookJitter = 0f; s.stabilization = 0f;
+                s.autofocus = false; s.autoExposure = false; s.fluorescentFlicker = 0f;
+                s.sensorBlur = 0f; s.motionBlur = 0f;
+            }
             if (!_player) _player = FindAnyObjectByType<CamcorderPlayerController>();
             _cam.fieldOfView = s.fieldOfView * (_player ? _player.FovMultiplier : 1f);
 
@@ -100,6 +114,7 @@ namespace Backrooms.Camcorder
             if (exposure)
             {
                 exposure.autoExposure = s.autoExposure;
+                exposure.snap = freezeForStills;
                 exposure.exposureBias = s.exposureBias;
                 exposure.speedScale = s.exposureSpeed;
                 exposure.maxEV = s.maxGain;
@@ -114,14 +129,45 @@ namespace Backrooms.Camcorder
                 shake.stabilization = s.stabilization;
                 shake.lookOvershoot = s.lookOvershoot;
                 shake.lookJitter = s.lookJitter;
+                shake.roughness = s.handheldRoughness;
             }
+
+            // Sensor motion blur: the camera's turn rate (pan, tilt, handheld shake) times a shutter time gives a smear
+            // vector in screen units, so a fast pan streaks the whole frame the way footage from a camcorder does.
+            Vector2 blur = Vector2.zero;
+            if (Interaction.CrawlPortalSystem.LastWarpFrame >= Time.frameCount - 1) _havePrev = false;   // a trip through a crawl hole is not a whip pan
+            if (Time.deltaTime > 1e-4f)
+            {
+                var rot = transform.rotation;
+                if (_havePrev)
+                {
+                    var d = Quaternion.Inverse(_prevRot) * rot;
+                    d.ToAngleAxis(out float ang, out Vector3 axis);
+                    if (ang > 180f) ang -= 360f;
+                    Vector3 w = axis * ang;                                  // degrees turned this frame, in the camera's own axes
+                    float vf = _cam.fieldOfView, hf = 2f * Mathf.Atan(Mathf.Tan(vf * 0.5f * Mathf.Deg2Rad) * _cam.aspect) * Mathf.Rad2Deg;
+                    var perSec = new Vector2(-w.y / hf, w.x / vf) / Time.deltaTime;      // screen fractions per second (right turn moves the image left)
+                    blur = perSec * (0.033f * s.sensorBlur);                              // open shutter for about 1/30 s
+                }
+                _prevRot = rot; _havePrev = true;
+            }
+            _blurVel = Vector2.Lerp(_blurVel, blur, 1f - Mathf.Exp(-Time.deltaTime / 0.04f));
+            var bv = Vector2.ClampMagnitude(_blurVel, 0.22f);
+            Shader.SetGlobalVector(ID6, new Vector4(bv.x, bv.y, 0f, 0f));
+            Shader.SetGlobalVector(ID7, new Vector4(s.headSwitching, s.blockiness, s.bottomLine, freezeForStills ? 0f : s.colourFlicker));
+
+            // Recording frame rate: the picture only changes on recorded frames (see CamcorderFrameHold).
+            CamcorderFrameHold.Fps = freezeForStills ? 0f : s.recordFps;
+            CamcorderFrameHold.Tick();
+            int frameIndex = freezeForStills ? 7 : (s.recordFps > 0.01f ? CamcorderFrameHold.RecordedFrames : Time.frameCount) % 16777216;
 
             float gain = CurrentGainEV;
             Shader.SetGlobalVector(ID1, new Vector4(s.sharpening, s.softness, s.chromaBleed, s.chromaShift));
             Shader.SetGlobalVector(ID2, new Vector4(s.noise + s.gainNoise * gain, s.chromaNoise * (1f + gain), s.scanlines, s.trackingNoise));
-            Shader.SetGlobalVector(ID3, new Vector4(s.pedestal, s.highlightKnee, Time.time, 1f));
-            // Frame index re-seeds the noise every rendered frame; 720-line sensor grid; 480 video lines.
-            Shader.SetGlobalVector(ID4, new Vector4(Time.frameCount % 16777216, 720f, 480f, s.grainSize));
+            Shader.SetGlobalVector(ID3, new Vector4(s.pedestal, s.highlightKnee, freezeForStills ? 1f : Time.time, 1f));
+            // Frame index re-seeds the noise every recorded frame; the noise grid follows the recording resolution (720-line sensor otherwise); 480 video lines.
+            Shader.SetGlobalVector(ID4, new Vector4(frameIndex, s.videoLines > 0 ? s.videoLines : 720f, 480f, s.grainSize));
+            Shader.SetGlobalVector(ID8, new Vector4(s.videoLines, s.chromaDetail, s.lineDoubling, 0f));
             // OSD composite: curvature of the viewfinder overlay, and whether the OSD texture is in use.
             Shader.SetGlobalVector(ID5, new Vector4(s.osdCurvature, osd && osd.Curved ? 1f : 0f, 0f, 0f));
 

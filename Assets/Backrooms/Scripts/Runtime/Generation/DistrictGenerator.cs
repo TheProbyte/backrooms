@@ -4,53 +4,77 @@ using UnityEngine;
 namespace Backrooms.Generation
 {
     /// <summary>
-    /// Deterministic layout rules for the "offices" biome. Each chunk is generated from (seed, coord)
-    /// alone, so chunks can be built in any order and rebuilt identically after unloading.
+    /// Plans a whole district (4 x 4 chunks, 48 x 48 cells) of one storey at once: rooms, hallways,
+    /// connections, open-plan areas, light zones, tall spaces and dressing. A district depends only on the
+    /// seed, the settings, the zone and biome fields and the landmark grid, never on other districts or on
+    /// generation order. Neighbouring districts agree only on their shared edges: the openings on a district
+    /// edge (positions, widths, headers) come from a hash of that edge, per chunk-length segment.
+    /// Storeys agree on multi-storey volumes the same way: through landmarks both storeys look up.
     ///
     /// Rules that keep the world sealed and connected:
-    ///  - Chunk borders are walls except for openings derived from the shared edge key, which both
-    ///    neighbours compute identically.
-    ///  - Every walkable room is connected to every other walkable room inside the chunk (verified by
-    ///    flood fill and repaired), so every border opening reaches every other one.
-    ///  - Cells next to a border opening are always walkable.
+    ///  - District edges are walls except for the shared-edge openings.
+    ///  - Every walkable room is connected to every other walkable room inside the district (verified by
+    ///    flood fill and repaired), so every edge opening reaches every other one.
+    ///  - Cells next to an edge opening are always walkable.
     ///  - Crawl spaces are dead-end slots too narrow for the player and never carry connectivity.
+    /// Streaming chunks are slices of the plan (see <see cref="WorldGenerator"/>).
     /// </summary>
-    public static class OfficeLayoutGenerator
+    public static class DistrictGenerator
     {
         public const int MinRoom = 2;
+        const int ChunkN = OfficeBiome.ChunkCells, DC = WorldGenSettings.DistrictChunks;
 
-        /// <summary>Default rules (offices) - used by tools and tests that don't care about biomes.</summary>
-        public static OfficeLayout Generate(int seed, Vector2Int coord, int n) => Generate(seed, coord, n, BiomeRules.Offices(), "Offices");
-
-        /// <summary>
-        /// Builds one chunk from (seed, coord) using the given biome rules. Border openings never depend on
-        /// the rules, so chunks generated with different biomes (or different live settings) always join up.
-        /// </summary>
-        public static OfficeLayout Generate(int seed, Vector2Int coord, int n, BiomeRules rules, string biomeName)
+        /// <summary>Plans district (x, z) of a storey.</summary>
+        public static OfficeLayout Generate(WorldGenSettings set, int seed, Vector2Int district, int storey)
         {
-            var L = new OfficeLayout(n, coord) { rules = rules ?? BiomeRules.Offices(), biomeName = biomeName };
-            var R = L.rules;
-            var rng = new System.Random(Hash(seed, coord.x, coord.y, 0x51ED));
+            int n = WorldGenSettings.DistrictCells;
+            var L = new OfficeLayout(n, district, storey) { storeyPitch = set.storeyPitch };
+            // Rules per chunk: biomes blend across the district.
+            L.chunkRules = new BiomeRules[DC, DC];
+            L.chunkBiomes = new string[DC, DC];
+            for (int cx = 0; cx < DC; cx++)
+            for (int cz = 0; cz < DC; cz++)
+            {
+                var sm = set.Evaluate(seed, new Vector2Int(district.x * DC + cx, district.y * DC + cz));
+                L.chunkRules[cx, cz] = sm.rules; L.chunkBiomes[cx, cz] = sm.Dominant;
+                if (cx == DC / 2 && cz == DC / 2) { L.rules = sm.rules; L.biomeName = sm.Dominant; L.zoneName = sm.zone; }
+            }
+            int sseed = StoreySeed(seed, storey);
+            var rng = new System.Random(Hash(sseed, district.x, district.y, 0xD157));
 
-            // 1. Border openings first: they constrain where crawl spaces may go.
+            // 1. Edge contracts first: they constrain where crawl spaces may go. Each chunk-length segment
+            //    of a district edge is keyed like the old chunk borders, so both districts agree.
             var openings = new List<(int x, int z, int side, bool header)>();
-            AddBorder(openings, seed, coord.x, coord.y, true, n, 0);           // west  (line X = 0)
-            AddBorder(openings, seed, coord.x + 1, coord.y, true, n, 1);       // east  (line X = N)
-            AddBorder(openings, seed, coord.x, coord.y, false, n, 2);          // south (line Z = 0)
-            AddBorder(openings, seed, coord.x, coord.y + 1, false, n, 3);      // north (line Z = N)
+            int c0x = district.x * DC, c0z = district.y * DC;
+            for (int k = 0; k < DC; k++)
+            {
+                AddBorder(openings, sseed, c0x, c0z + k, true, n, 0, k);          // west  (line X = 0)
+                AddBorder(openings, sseed, c0x + DC, c0z + k, true, n, 1, k);     // east  (line X = n)
+                AddBorder(openings, sseed, c0x + k, c0z, false, n, 2, k);         // south (line Z = 0)
+                AddBorder(openings, sseed, c0x + k, c0z + DC, false, n, 3, k);    // north (line Z = n)
+            }
             var openingCells = new HashSet<Vector2Int>();
             foreach (var o in openings) openingCells.Add(new Vector2Int(o.x, o.z));
 
-            // 2. Partition into rooms and hallways.
+            // 2. Reserved areas: landmarks that reach this storey, and the spawn hall (the first chunk at the
+            //    origin is always one big room).
             for (int x = 0; x < n; x++) for (int z = 0; z < n; z++) L.roomOf[x, z] = -1;
-            // The starting chunk is always one big hall; elsewhere big open halls are common.
-            bool bigHall = rng.NextDouble() < R.bigHallChance || coord == Vector2Int.zero;
-            Split(L, rng, new RectInt(0, 0, n, n), 0, bigHall, openingCells);
+            var placements = new List<LandmarkPlacement>();
+            Landmarks.InDistrict(set, seed, district, placements);
+            var reserved = new List<(RectInt rect, int landmark)>();
+            for (int i = 0; i < placements.Count; i++)
+                if (storey < placements[i].storeys) { reserved.Add((placements[i].rect, i)); L.landmarks.Add(placements[i]); }
+            if (district == Vector2Int.zero && storey == 0) reserved.Add((new RectInt(0, 0, ChunkN, ChunkN), -1));
 
-            // 3. Room kinds.
+            // 3. Partition around the reserved areas, then into rooms and hallways.
+            var landmarkRooms = new List<Room>[placements.Count];
+            SplitAround(L, rng, new RectInt(0, 0, n, n), reserved, openingCells, landmarkRooms, placements);
+
+            // Room kinds (landmarks keep theirs).
             foreach (var r in L.rooms)
             {
-                if (r.kind != RoomKind.Office) continue;
+                if (r.kind != RoomKind.Office || r.landmark != null) continue;
+                var R = L.RulesAt(r.rect);
                 int area = r.rect.width * r.rect.height, minDim = Mathf.Min(r.rect.width, r.rect.height);
                 double p = rng.NextDouble();
                 if (area >= 30 && minDim >= 5) r.kind = RoomKind.BigOffice;
@@ -62,6 +86,8 @@ namespace Backrooms.Generation
             // ordinary rooms and lounges do too. Heights step in 0.3 m so trims line up.
             foreach (var r in L.rooms)
             {
+                if (r.landmark != null) continue;
+                var R = L.RulesAt(r.rect);
                 int area = r.rect.width * r.rect.height;
                 double tallChance = r.kind == RoomKind.BigOffice ? Mathf.Clamp01(R.tallChanceBig + (area >= 100 ? 0.2f : 0f))
                                   : (r.kind == RoomKind.Lounge || r.kind == RoomKind.Office) && area >= 16 ? R.tallChanceSmall : 0.0;
@@ -77,7 +103,7 @@ namespace Backrooms.Generation
                 else r.painted = rng.NextDouble() < R.paintedChance * 0.5f;
             }
 
-            // 4. Walls everywhere rooms differ, plus the chunk boundary.
+            // 4. Walls everywhere rooms differ, plus the district edge.
             for (int x = 0; x <= n; x++)
             for (int z = 0; z < n; z++)
                 L.vEdges[x, z] = (x == 0 || x == n || L.roomOf[x - 1, z] != L.roomOf[x, z]) ? EdgeKind.Wall : EdgeKind.Open;
@@ -91,14 +117,21 @@ namespace Backrooms.Generation
                 if (r.kind == RoomKind.Crawl) OpenCrawlMouth(L, r);
 
             // 5. Doors: random spanning tree over walkable rooms, plus loops and occasional open plan.
+            //    Landmarks then open their insides and force their entrances.
             ConnectRooms(L, rng);
+            for (int i = 0; i < placements.Count; i++)
+                if (landmarkRooms[i] != null) Landmarks.Connect(L, placements[i], landmarkRooms[i]);
             EnsureConnected(L, rng);
             EncloseTallRooms(L);
+            PlaceArches(L);
 
-            // 6. Lighting, colours and dressing.
-            AssignColors(L);
+            // 6. Lighting and dressing. Placements record the room id in their colour field; light colours
+            // are assigned afterwards, once every light's position is known, and stamped in.
+            foreach (var r in L.rooms) r.color = r.id;
             foreach (var r in L.rooms)
             {
+                if (r.landmark != null) continue;
+                var R = L.RulesAt(r.rect);
                 double p = rng.NextDouble();
                 r.lights = p < R.lightsAllOn ? LightMode.AllOn : p < R.lightsAllOn + R.lightsMixed ? LightMode.Mixed : LightMode.Dark;
                 if (r.kind == RoomKind.Lounge && rng.NextDouble() < 0.5) r.lights = LightMode.Dark; // lamps carry the room
@@ -107,36 +140,92 @@ namespace Backrooms.Generation
             PlacePillarsAndHalfWalls(L, rng);
             PlaceProps(L, rng);
             PlacePlates(L, rng);
+            for (int i = 0; i < placements.Count; i++)
+                if (landmarkRooms[i] != null) Landmarks.Decorate(L, placements[i], landmarkRooms[i]);
+            // Loose cardboard boxes (movable). Their own dice, so the rest of the plan is unchanged.
+            PlaceBoxes(L, new System.Random(Hash(seed, district.x, district.y, 0x0B0C5 + storey)));
+            // Crawl holes: their own dice too.
+            CrawlPortals.Place(L, set, new System.Random(Hash(seed, district.x, district.y, 0x9047A1 + storey)));
+            AssignColors(L);
             return L;
         }
 
+        /// <summary>Upper and lower storeys get their own dice (storey 0 keeps the plain seed).</summary>
+        public static int StoreySeed(int seed, int storey) => storey == 0 ? seed : Hash(seed, storey, 0x5704, 0x77);
+
         // ---------------- Partition ----------------
 
-        static void Split(OfficeLayout L, System.Random rng, RectInt r, int depth, bool bigHall, HashSet<Vector2Int> openingCells)
+        /// <summary>
+        /// Guillotine cuts around each reserved rectangle (strips west and east of it, then south and north),
+        /// so the reserved area becomes its own room(s) and everything else is split normally.
+        /// Assumes reserved rectangles do not straddle each other's extents (one landmark per district,
+        /// kept clear of the spawn hall).
+        /// </summary>
+        static void SplitAround(OfficeLayout L, System.Random rng, RectInt r, List<(RectInt rect, int landmark)> reserved,
+                                HashSet<Vector2Int> openingCells, List<Room>[] landmarkRooms, List<LandmarkPlacement> placements)
+        {
+            if (r.width <= 0 || r.height <= 0) return;
+            int pick = -1;
+            for (int i = 0; i < reserved.Count; i++) if (r.Overlaps(reserved[i].rect)) { pick = i; break; }
+            if (pick < 0) { Split(L, rng, r, 0, openingCells); return; }
+            var q = reserved[pick].rect;
+            SplitAround(L, rng, new RectInt(r.x, r.y, q.x - r.x, r.height), reserved, openingCells, landmarkRooms, placements);
+            SplitAround(L, rng, new RectInt(q.xMax, r.y, r.xMax - q.xMax, r.height), reserved, openingCells, landmarkRooms, placements);
+            SplitAround(L, rng, new RectInt(q.x, r.y, q.width, q.y - r.y), reserved, openingCells, landmarkRooms, placements);
+            SplitAround(L, rng, new RectInt(q.x, q.yMax, q.width, r.yMax - q.yMax), reserved, openingCells, landmarkRooms, placements);
+
+            int lm = reserved[pick].landmark;
+            if (lm < 0) { MakeRoom(L, q, RoomKind.Office); return; }                 // plain reserved hall (spawn)
+            var rooms = landmarkRooms[lm] = new List<Room>();
+            foreach (var spec in Landmarks.Rooms(placements[lm], L.storey, L.storeyPitch))
+            {
+                var room = MakeRoom(L, spec.rect, spec.kind);
+                room.ceiling = spec.ceiling; room.painted = spec.painted; room.lights = spec.lights;
+                room.openAbove = spec.openAbove; room.noFloor = spec.noFloor; room.landmark = placements[lm].name;
+                room.noDoors = spec.noDoors; room.role = spec.role;
+                room.custom = placements[lm].kind == LandmarkKind.Custom;
+                for (int x = spec.rect.xMin; x < spec.rect.xMax; x++)
+                for (int z = spec.rect.yMin; z < spec.rect.yMax; z++)
+                    L.flags[x, z] |= (spec.openAbove ? CellFlags.OpenAbove : 0) | (spec.noFloor ? CellFlags.NoFloor : 0);
+                rooms.Add(room);
+            }
+        }
+
+        /// <summary>
+        /// Binary split. Regions longer than the biome's largest room always split (district scale, often
+        /// with a hallway along the cut). A region that first fits is "top level": like a whole chunk used
+        /// to be, it may stay one big hall. Smaller regions stop by size.
+        /// </summary>
+        static void Split(OfficeLayout L, System.Random rng, RectInt r, int depth, HashSet<Vector2Int> openingCells)
         {
             int w = r.width, h = r.height;
+            if (w <= 0 || h <= 0) return;
+            var R = L.RulesAt(r);
+            int maxRoom = Mathf.Max(MinRoom * 2, Mathf.RoundToInt(R.maxRoomCells));
             bool canSplitX = w >= MinRoom * 2, canSplitZ = h >= MinRoom * 2;
             int maxDim = Mathf.Max(w, h);
+            bool must = maxDim > maxRoom && (canSplitX || canSplitZ);
 
             bool stop = !canSplitX && !canSplitZ;
-            if (!stop && depth == 0 && bigHall) stop = true;
-            if (!stop && depth > 0)
+            if (!stop && !must)
             {
-                // Bigger rooms are rarer; small rooms always stop.
-                var R = L.rules;
-                if (maxDim <= 3) stop = rng.NextDouble() < R.stopSmall;
+                if (depth == 0) stop = rng.NextDouble() < R.bigHallChance;
+                else if (maxDim <= 3) stop = rng.NextDouble() < R.stopSmall;
                 else if (maxDim <= 6) stop = rng.NextDouble() < R.stopMedium;
                 else if (maxDim <= 9) stop = rng.NextDouble() < R.stopLarge;
                 else stop = rng.NextDouble() < R.stopHuge;
             }
             if (stop) { MakeRoom(L, r, RoomKind.Office); return; }
 
-            bool splitX = canSplitX && (!canSplitZ || (w > h ? rng.NextDouble() < 0.8 : w < h ? rng.NextDouble() < 0.2 : rng.NextDouble() < 0.5));
+            bool splitX = must
+                ? (w >= h ? canSplitX : !canSplitZ)
+                : canSplitX && (!canSplitZ || (w > h ? rng.NextDouble() < 0.8 : w < h ? rng.NextDouble() < 0.2 : rng.NextDouble() < 0.5));
             int len = splitX ? w : h;
+            int childDepth = must ? 0 : depth + 1;
 
             // Hallway carved along the split line?
-            double hallChance = depth <= 1 ? L.rules.hallChanceShallow : L.rules.hallChanceDeep;
-            int hallW = rng.NextDouble() < 1f - L.rules.hallWideChance ? 1 : 2;
+            double hallChance = depth <= 1 ? R.hallChanceShallow : R.hallChanceDeep;
+            int hallW = rng.NextDouble() < 1f - R.hallWideChance ? 1 : 2;
             if (len >= MinRoom * 2 + hallW && rng.NextDouble() < hallChance)
             {
                 int s = rng.Next(MinRoom, len - MinRoom - hallW + 1);
@@ -154,21 +243,21 @@ namespace Backrooms.Generation
                     b = new RectInt(r.x, r.y + s + hallW, w, h - s - hallW);
                 }
                 MakeHallway(L, rng, hall, splitX, openingCells);
-                Split(L, rng, a, depth + 1, false, openingCells);
-                Split(L, rng, b, depth + 1, false, openingCells);
+                Split(L, rng, a, childDepth, openingCells);
+                Split(L, rng, b, childDepth, openingCells);
                 return;
             }
 
             int cut = rng.Next(MinRoom, len - MinRoom + 1);
             if (splitX)
             {
-                Split(L, rng, new RectInt(r.x, r.y, cut, h), depth + 1, false, openingCells);
-                Split(L, rng, new RectInt(r.x + cut, r.y, w - cut, h), depth + 1, false, openingCells);
+                Split(L, rng, new RectInt(r.x, r.y, cut, h), childDepth, openingCells);
+                Split(L, rng, new RectInt(r.x + cut, r.y, w - cut, h), childDepth, openingCells);
             }
             else
             {
-                Split(L, rng, new RectInt(r.x, r.y, w, cut), depth + 1, false, openingCells);
-                Split(L, rng, new RectInt(r.x, r.y + cut, w, h - cut), depth + 1, false, openingCells);
+                Split(L, rng, new RectInt(r.x, r.y, w, cut), childDepth, openingCells);
+                Split(L, rng, new RectInt(r.x, r.y + cut, w, h - cut), childDepth, openingCells);
             }
         }
 
@@ -177,7 +266,7 @@ namespace Backrooms.Generation
         {
             int length = runsAlongZ ? hall.height : hall.width;
             int width = runsAlongZ ? hall.width : hall.height;
-            if (width == 1 && length >= 6 && rng.NextDouble() < L.rules.crawlChance)
+            if (width == 1 && length >= 6 && rng.NextDouble() < L.RulesAt(hall).crawlChance)
             {
                 int crawlLen = rng.Next(3, Mathf.Min(6, length - 3) + 1);
                 bool atStart = rng.NextDouble() < 0.5;
@@ -205,9 +294,9 @@ namespace Backrooms.Generation
             return false;
         }
 
-        static Room MakeRoom(OfficeLayout L, RectInt r, RoomKind kind)
+        internal static Room MakeRoom(OfficeLayout L, RectInt r, RoomKind kind)
         {
-            var room = new Room { id = L.rooms.Count, rect = r, kind = kind };
+            var room = new Room { id = L.rooms.Count, globalId = L.rooms.Count, rect = r, fullRect = r, kind = kind };
             L.rooms.Add(room);
             for (int x = r.xMin; x < r.xMax; x++)
             for (int z = r.yMin; z < r.yMax; z++)
@@ -215,32 +304,58 @@ namespace Backrooms.Generation
             return room;
         }
 
-        // ---------------- Borders ----------------
+        // ---------------- Edge contracts ----------------
 
         /// <summary>
-        /// Openings on a chunk border, keyed by the border line in world chunk space so both sides agree.
-        /// vertical == true: the line X = lineX * N between chunks (lineX-1, cz) and (lineX, cz).
+        /// Openings on one chunk-length segment of a district edge, keyed by that segment's line in world
+        /// chunk space so both districts agree. vertical == true: the line X = a (in chunks) beside chunk row
+        /// b; else the line Z = b beside chunk column a. k: which segment of this district's edge.
         /// </summary>
-        static void AddBorder(List<(int, int, int, bool)> list, int seed, int a, int b, bool vertical, int n, int side)
+        static void AddBorder(List<(int, int, int, bool)> list, int seed, int a, int b, bool vertical, int n, int side, int k)
         {
             var rng = new System.Random(Hash(seed, a, b, vertical ? 0xB0D1 : 0xB0D2));
             int count = 1 + (rng.NextDouble() < 0.55 ? 1 : 0) + (rng.NextDouble() < 0.25 ? 1 : 0);
             var used = new HashSet<int>();
             for (int i = 0; i < count; i++)
             {
-                int pos = rng.Next(1, n - 1);
-                bool wide = rng.NextDouble() < 0.3 && pos + 1 < n - 1;
+                int pos = rng.Next(1, ChunkN - 1);
+                bool wide = rng.NextDouble() < 0.3 && pos + 1 < ChunkN - 1;
                 bool header = rng.NextDouble() < 0.4;
-                for (int k = 0; k < (wide ? 2 : 1); k++)
+                for (int j = 0; j < (wide ? 2 : 1); j++)
                 {
-                    int p = pos + k;
+                    int p = pos + j;
                     if (!used.Add(p)) continue;
-                    // Cell on this chunk's side of the border.
-                    int x = vertical ? (side == 0 ? 0 : n - 1) : p;
-                    int z = vertical ? p : (side == 2 ? 0 : n - 1);
+                    int along = k * ChunkN + p;
+                    // Cell on this district's side of the edge.
+                    int x = vertical ? (side == 0 ? 0 : n - 1) : along;
+                    int z = vertical ? along : (side == 2 ? 0 : n - 1);
                     list.Add((x, z, side, header));
                 }
             }
+        }
+
+        /// <summary>Doorways of a player-built room keep exactly the shape the blueprint gave them.</summary>
+        static bool TouchesCustom(OfficeLayout L, int ax, int az, int bx, int bz) =>
+            (L.InChunk(ax, az) && L.RoomAt(ax, az).custom) || (L.InChunk(bx, bz) && L.RoomAt(bx, bz).custom);
+
+        /// <summary>Round tops on interior headed doorways, by the biome's chance, decided once per edge.</summary>
+        static void PlaceArches(OfficeLayout L)
+        {
+            int n = L.N;
+            int ox = L.coord.x * n, oz = L.coord.y * n;
+            bool Roll(int wx, int wz, bool vertical, float chance)
+            {
+                if (chance <= 0f) return false;
+                uint h = (uint)(wx * 73856093) ^ (uint)(wz * 19349663) ^ (vertical ? 0x9E3779B9u : 0x7F4A7C15u) ^ (uint)(L.storey * 0x632BE5AB);
+                h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
+                return (h & 0xFFFF) / 65535f < chance;
+            }
+            for (int x = 1; x < n; x++)
+            for (int z = 0; z < n; z++)
+                if (L.vEdges[x, z] == EdgeKind.DoorHeader && !L.archV[x, z] && !TouchesCustom(L, x - 1, z, x, z) && Roll(ox + x, oz + z, true, L.RulesAt(x, z).archedDoors)) L.archV[x, z] = true;
+            for (int x = 0; x < n; x++)
+            for (int z = 1; z < n; z++)
+                if (L.hEdges[x, z] == EdgeKind.DoorHeader && !L.archH[x, z] && !TouchesCustom(L, x, z - 1, x, z) && Roll(ox + x, oz + z, false, L.RulesAt(x, z).archedDoors)) L.archH[x, z] = true;
         }
 
         // ---------------- Connectivity ----------------
@@ -328,13 +443,14 @@ namespace Backrooms.Generation
             foreach (var s in shared)
             {
                 Room ra = L.rooms[s.a], rb = L.rooms[s.b];
-                if (!ra.Walkable || !rb.Walkable) continue;
+                if (!ra.Walkable || !rb.Walkable || ra.noDoors || rb.noDoors) continue;      // stair halls and shafts only get their landmark's doors
                 bool joined = Find(s.a) != Find(s.b);
-                bool loop = !joined && rng.NextDouble() < L.rules.loopChance;
+                var R = L.RulesAt(ra.rect);
+                bool loop = !joined && rng.NextDouble() < R.loopChance;
                 if (!joined && !loop) continue;
                 if (joined) uf[Find(s.a)] = Find(s.b);
 
-                bool openPlan = s.edges.Count >= 3 && rng.NextDouble() < L.rules.openPlanChance &&
+                bool openPlan = s.edges.Count >= 3 && rng.NextDouble() < R.openPlanChance &&
                                 (ra.kind == RoomKind.BigOffice || rb.kind == RoomKind.BigOffice || ra.kind == RoomKind.Hallway || rb.kind == RoomKind.Hallway);
                 if (openPlan)
                 {
@@ -358,7 +474,7 @@ namespace Backrooms.Generation
         /// <summary>Flood-fills walkable cells and adds doors until every walkable room is reachable.</summary>
         static void EnsureConnected(OfficeLayout L, System.Random rng)
         {
-            for (int guard = 0; guard < 64; guard++)
+            for (int guard = 0; guard < 4096; guard++)
             {
                 var reached = Flood(L);
                 int start = -1;
@@ -371,11 +487,11 @@ namespace Backrooms.Generation
                 for (int x = 0; x < L.N; x++)
                 for (int z = 0; z < L.N; z++)
                 {
-                    if (!reached[x, z] || !L.RoomAt(x, z).Walkable) continue;
+                    if (!reached[x, z] || !L.RoomAt(x, z).Walkable || L.RoomAt(x, z).noDoors) continue;
                     for (int side = 0; side < 4; side++)
                     {
                         int nx = x + (side == 0 ? -1 : side == 1 ? 1 : 0), nz = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
-                        if (!L.InChunk(nx, nz) || reached[nx, nz] || !L.RoomAt(nx, nz).Walkable) continue;
+                        if (!L.InChunk(nx, nz) || reached[nx, nz] || !L.RoomAt(nx, nz).Walkable || L.RoomAt(nx, nz).noDoors) continue;
                         if (L.EdgeOf(x, z, side) == EdgeKind.Wall) candidates.Add((x, z, side));
                     }
                 }
@@ -392,7 +508,7 @@ namespace Backrooms.Generation
                     r.kind = RoomKind.Hallway;
                 }
             }
-            Debug.LogWarning($"[Backrooms] Chunk {L.coord} could not be fully connected.");
+            Debug.LogWarning($"[Backrooms] District {L.coord} storey {L.storey} could not be fully connected.");
         }
 
         static bool[,] Flood(OfficeLayout L)
@@ -417,56 +533,162 @@ namespace Backrooms.Generation
 
         // ---------------- Dressing ----------------
 
-        static void AssignColors(OfficeLayout L)
+        /// <summary>
+        /// Light colours (rendering layers for unshadowed lights). A light zone is a set of rooms joined by
+        /// open-plan edges. Two zones conflict when a light in one (ceiling fixture, lamp, or the doorway
+        /// light on its side of an opening) reaches a cell of the other: they must not share a layer, or
+        /// the light would show through the wall. Zones are coloured with DSATUR over 28 layers. Zones within
+        /// light reach of the district edge use only the district's colour set (7 layers, 4 sets by district
+        /// x/z parity), so neighbouring districts, diagonals included, never share a layer where their light
+        /// could meet; zones deeper inside may use any of the 28.
+        /// </summary>
+        internal static void AssignColors(OfficeLayout L)
         {
-            // Rooms joined by open-plan edges (no wall between them) form one light zone, so their bounce
-            // light blends across the floor instead of stopping at an invisible seam.
-            var zone = new int[L.rooms.Count];
-            for (int i = 0; i < zone.Length; i++) zone[i] = i;
-            int Find(int i) { while (zone[i] != i) i = zone[i] = zone[zone[i]]; return i; }
+            int n = L.N, R = L.rooms.Count;
+            const float C = OfficeBiome.CellSize;
+            var parent = new int[R];
+            for (int i = 0; i < R; i++) parent[i] = i;
+            int Find(int i) { while (parent[i] != i) i = parent[i] = parent[parent[i]]; return i; }
             var shared = SharedBoundaries(L);
             foreach (var s in shared)
-            {
-                bool open = false;
-                foreach (var e in s.edges) if (L.EdgeOf(e.x, e.z, e.side) == EdgeKind.Open) { open = true; break; }
-                if (open) zone[Find(s.a)] = Find(s.b);
-            }
+                foreach (var e in s.edges)
+                    if (L.EdgeOf(e.x, e.z, e.side) == EdgeKind.Open) { parent[Find(s.a)] = Find(s.b); break; }
 
-            // Greedy colouring of zones with 7 colours so neighbouring zones rarely share a bounce layer.
-            var neighbours = new Dictionary<int, HashSet<int>>();
-            foreach (var s in shared)
+            // Compact zone indices in room order (deterministic).
+            var zoneIndex = new Dictionary<int, int>();
+            var zi = new int[R];
+            for (int i = 0; i < R; i++)
             {
-                int a = Find(s.a), b = Find(s.b);
-                if (a == b) continue;
-                if (!neighbours.TryGetValue(a, out var na)) neighbours[a] = na = new HashSet<int>();
-                if (!neighbours.TryGetValue(b, out var nb)) neighbours[b] = nb = new HashSet<int>();
-                na.Add(b); nb.Add(a);
+                int root = Find(i);
+                if (!zoneIndex.TryGetValue(root, out int z)) zoneIndex[root] = z = zoneIndex.Count;
+                zi[i] = z;
             }
-            int offset = Hash(L.coord.x, L.coord.y, 7, 0xC010) & 0x7FFFFFFF;
-            var zoneColor = new Dictionary<int, int>();
-            foreach (var r in L.rooms)
+            int Z = zoneIndex.Count;
+            var w = new float[Z, Z];
+            var ownReach = new float[Z];                 // farthest any light of the zone reaches, metres
+
+            // Every zone a light visibly reaches (brightest point of each cell's floor and walls).
+            void Reach(in LightLayers.Spec spec, int src, Vector2 front)
             {
-                int z = Find(r.id);
-                if (zoneColor.TryGetValue(z, out int known)) { r.color = known; continue; }
-                for (int k = 0; k < 7; k++)
+                ownReach[src] = Mathf.Max(ownReach[src], spec.range);
+                int r = Mathf.CeilToInt(spec.range / C) + 1;
+                int cx = Mathf.FloorToInt(spec.position.x / C), cz = Mathf.FloorToInt(spec.position.z / C);
+                for (int x = Mathf.Max(0, cx - r); x <= Mathf.Min(n - 1, cx + r); x++)
+                for (int z = Mathf.Max(0, cz - r); z <= Mathf.Min(n - 1, cz + r); z++)
                 {
-                    int c = (offset + z + k) % 7;
-                    bool clash = false;
-                    if (neighbours.TryGetValue(z, out var nbs))
-                        foreach (var nb in nbs) if (zoneColor.TryGetValue(nb, out int nc) && nc == c) clash = true;
-                    if (!clash || k == 6) { zoneColor[z] = c; r.color = c; break; }
+                    int other = zi[L.roomOf[x, z]];
+                    if (other == src) continue;
+                    if (front != Vector2.zero && ((x + 0.5f) * C - spec.position.x) * front.x + ((z + 0.5f) * C - spec.position.z) * front.y <= 0f) continue;
+                    float e = LightLayers.MaxOnCell(spec, x * C, z * C, C, L.CeilingAt(x, z));
+                    if (e < LightLayers.VisibleIrradiance) continue;
+                    w[src, other] += e; w[other, src] += e;
                 }
             }
+            foreach (var f in L.fixtures)
+            {
+                if (!f.on) continue;
+                var centre = new Vector2((f.cell.x + 0.5f) * C, (f.cell.y + 0.5f) * C);
+                Reach(LightLayers.FixtureSpec(f, centre), zi[f.roomColor], Vector2.zero);
+                Reach(LightLayers.BounceSpec(f, centre), zi[f.roomColor], Vector2.zero);
+            }
+            foreach (var p in L.props)
+                if (p.kind == PropKind.FloorLamp && p.lit) Reach(LightLayers.LampSpec(p.position), zi[p.roomColor], Vector2.zero);
+            // Doorway lights: every opening between two zones lights a little way into each side.
+            float Top(EdgeKind e, int ax, int az, int bx, int bz) =>
+                e == EdgeKind.Open ? Mathf.Min(L.CeilingAt(ax, az), L.CeilingAt(bx, bz)) : OfficeBiome.DoorHeaderHeight;
+            for (int x = 0; x < n; x++)
+            for (int z = 0; z < n; z++)
+            {
+                if (x + 1 < n && OfficeLayout.IsPassable(L.vEdges[x + 1, z]) && zi[L.roomOf[x, z]] != zi[L.roomOf[x + 1, z]])
+                {
+                    var at = new Vector2((x + 1) * C, (z + 0.5f) * C);
+                    float top = Top(L.vEdges[x + 1, z], x, z, x + 1, z);
+                    Reach(LightLayers.DoorwaySpec(at, Vector2.left, top), zi[L.roomOf[x, z]], Vector2.left);
+                    Reach(LightLayers.DoorwaySpec(at, Vector2.right, top), zi[L.roomOf[x + 1, z]], Vector2.right);
+                }
+                if (z + 1 < n && OfficeLayout.IsPassable(L.hEdges[x, z + 1]) && zi[L.roomOf[x, z]] != zi[L.roomOf[x, z + 1]])
+                {
+                    var at = new Vector2((x + 0.5f) * C, (z + 1) * C);
+                    float top = Top(L.hEdges[x, z + 1], x, z, x, z + 1);
+                    Reach(LightLayers.DoorwaySpec(at, Vector2.down, top), zi[L.roomOf[x, z]], Vector2.down);
+                    Reach(LightLayers.DoorwaySpec(at, Vector2.up, top), zi[L.roomOf[x, z + 1]], Vector2.up);
+                }
+            }
+
+            // Which layers may each zone use? Zones near the district edge (within any light's reach of a
+            // neighbouring district) take one of the 7 colours of the district's parity set, so neighbouring
+            // districts never share a layer there. Zones deeper inside are out of reach of every other
+            // district, and their own lights stay inside, so they may use all 28 layers.
+            const int K = LightLayers.Colors, KAll = LightLayers.LayerCount;
+            const int EdgeBand = 12;                     // cells: farther than any light reaches (13 m, 14.75 cells for an atrium well from 5 cells in)
+            int set = (L.coord.x & 1) + 2 * (L.coord.y & 1);
+            var edgeDist = new int[Z];
+            for (int i = 0; i < Z; i++) edgeDist[i] = int.MaxValue;
+            for (int x = 0; x < n; x++)
+            for (int z = 0; z < n; z++)
+            {
+                int zz = zi[L.roomOf[x, z]];
+                edgeDist[zz] = Mathf.Min(edgeDist[zz], Mathf.Min(Mathf.Min(x, z), Mathf.Min(n - 1 - x, n - 1 - z)));
+            }
+            var allowed = new uint[Z];
+            for (int i = 0; i < Z; i++)
+            {
+                bool inner = edgeDist[i] >= EdgeBand && edgeDist[i] * C >= ownReach[i] + C;
+                allowed[i] = inner ? (KAll >= 32 ? 0xFFFFFFFFu : (1u << KAll) - 1u) : (((1u << K) - 1u) << (set * K));
+            }
+
+            // DSATUR: colour the most constrained zone first.
+            var col = new int[Z];
+            for (int i = 0; i < Z; i++) col[i] = -1;
+            var degree = new int[Z];
+            for (int a = 0; a < Z; a++) for (int b = 0; b < Z; b++) if (w[a, b] > 0) degree[a]++;
+            int offset = (Hash(L.coord.x, L.coord.y, 7, 0xC010) & 0x7FFFFFFF) % KAll;
+            for (int step = 0; step < Z; step++)
+            {
+                int pick = -1, bestSat = int.MinValue, bestDeg = -1;
+                for (int a = 0; a < Z; a++)
+                {
+                    if (col[a] >= 0) continue;
+                    uint used = 0;
+                    for (int b = 0; b < Z; b++) if (w[a, b] > 0 && col[b] >= 0) used |= 1u << col[b];
+                    int sat = 0; for (int k = 0; k < KAll; k++) if ((used & allowed[a] & (1u << k)) != 0) sat++;
+                    // Fewer free colours = more constrained (zones near the edge have only 7).
+                    int free = 0; for (int k = 0; k < KAll; k++) if ((allowed[a] & ~used & (1u << k)) != 0) free++;
+                    int score = sat * 64 - free;
+                    if (score > bestSat || (score == bestSat && degree[a] > bestDeg)) { pick = a; bestSat = score; bestDeg = degree[a]; }
+                }
+                int best = -1; float bestCost = float.MaxValue;
+                for (int k = 0; k < KAll; k++)
+                {
+                    int c = (offset + k) % KAll;
+                    if ((allowed[pick] & (1u << c)) == 0) continue;
+                    float cost = 0f;
+                    for (int b = 0; b < Z; b++) if (col[b] == c) cost += w[pick, b];
+                    if (cost < bestCost) { bestCost = cost; best = c; if (cost == 0) break; }
+                }
+                col[pick] = best;
+            }
+
+            var roomColor = new int[R];
+            for (int i = 0; i < R; i++) roomColor[i] = col[zi[i]];
+            foreach (var r in L.rooms) r.color = roomColor[r.id];
+            // Stamp the colours into everything placed with a room id.
+            for (int i = 0; i < L.fixtures.Count; i++) { var f = L.fixtures[i]; f.roomColor = roomColor[f.roomColor]; L.fixtures[i] = f; }
+            for (int i = 0; i < L.pillars.Count; i++) { var p = L.pillars[i]; p.roomColor = roomColor[p.roomColor]; L.pillars[i] = p; }
+            for (int i = 0; i < L.halfWalls.Count; i++) { var h = L.halfWalls[i]; h.roomColor = roomColor[h.roomColor]; L.halfWalls[i] = h; }
+            for (int i = 0; i < L.plates.Count; i++) { var p = L.plates[i]; p.roomColor = roomColor[p.roomColor]; L.plates[i] = p; }
+            for (int i = 0; i < L.props.Count; i++) { var p = L.props[i]; p.roomColor = roomColor[p.roomColor]; L.props[i] = p; }
         }
 
-        static void PlaceFixtures(OfficeLayout L, System.Random rng)
+        internal static void PlaceFixtures(OfficeLayout L, System.Random rng)
         {
             foreach (var r in L.rooms)
             {
-                if (r.kind == RoomKind.Crawl) continue;
+                if (r.kind == RoomKind.Crawl || r.noFloor || r.role != AnnexRole.None || r.custom) continue;      // custom rooms place their own lights      // a well's light belongs to the storey below; stair halls and shafts light themselves
+                var R = L.RulesAt(r.rect);
                 // Troffers every 2 cells (2.4 m); tall rooms use brighter fittings every 3 cells (3.6 m).
                 int step = r.Tall ? 3 : 2;
-                bool strips = r.Tall && rng.NextDouble() < L.rules.stripLights;
+                bool strips = r.Tall && r.landmark == null && rng.NextDouble() < R.stripLights;
                 int ox = ((r.rect.width - 1) % step + 1) / 2, oz = ((r.rect.height - 1) % step + 1) / 2;
                 if (!r.Tall && r.rect.width == 2) ox = rng.Next(2);
                 if (!r.Tall && r.rect.height == 2) oz = rng.Next(2);
@@ -476,12 +698,12 @@ namespace Backrooms.Generation
                     if ((x - r.rect.xMin - ox) % step != 0 || (z - r.rect.yMin - oz) % step != 0) continue;
                     if (x - r.rect.xMin < ox || z - r.rect.yMin < oz) continue;
                     bool on = r.lights == LightMode.AllOn ? rng.NextDouble() > 0.04
-                            : r.lights == LightMode.Mixed ? rng.NextDouble() < L.rules.mixedOnFraction
+                            : r.lights == LightMode.Mixed ? rng.NextDouble() < R.mixedOnFraction
                             : rng.NextDouble() < 0.04;
                     L.fixtures.Add(new Fixture { cell = new Vector2Int(x, z), on = on, roomColor = r.color,
                         dome = r.Tall && !strips, strip = strips,
                         height = strips ? Mathf.Min(r.ceiling - 0.5f, 4.6f) : r.ceiling,
-                        faulty = on && rng.NextDouble() < L.rules.faultyChance });
+                        faulty = on && rng.NextDouble() < R.faultyChance });
                 }
             }
         }
@@ -490,25 +712,28 @@ namespace Backrooms.Generation
         {
             foreach (var r in L.rooms)
             {
+                if (r.landmark != null) continue;                         // landmarks dress themselves
                 var rc = r.rect;
+                var R = L.RulesAt(rc);
                 if (r.kind == RoomKind.BigOffice)
                 {
-                    int spacing = Mathf.Max(2, Mathf.RoundToInt(L.rules.pillarSpacing + (float)(rng.NextDouble() - 0.5)));
+                    int spacing = Mathf.Max(2, Mathf.RoundToInt(R.pillarSpacing + (float)(rng.NextDouble() - 0.5)));
                     float size = rng.NextDouble() < 0.5 ? 0.45f : 0.6f;
                     int sx = rc.xMin + Mathf.Max(2, (rc.width % spacing) / 2 + 1), sz = rc.yMin + Mathf.Max(2, (rc.height % spacing) / 2 + 1);
                     bool sparse = rng.NextDouble() < 0.35;
-                    bool racks = rng.NextDouble() < L.rules.rackChance;
+                    bool racks = rng.NextDouble() < R.rackChance;
                     // Racked halls skip the free-standing column grid so the rack rows stay unbroken.
-                    if (racks || rng.NextDouble() >= L.rules.pillarChance) sx = int.MaxValue;   // no pillar grid
+                    if (racks || rng.NextDouble() >= R.pillarChance) sx = int.MaxValue;   // no pillar grid
                     for (int x = sx; x <= rc.xMax - 2; x += spacing)
                     for (int z = sz; z <= rc.yMax - 2; z += spacing)
                     {
                         if (sparse && rng.NextDouble() < 0.5) continue;
                         L.pillars.Add(new Pillar { vertex = new Vector2Int(x, z), size = size, roomColor = r.color });
                     }
-                    int runs = rng.Next(0, Mathf.RoundToInt(L.rules.halfWalls) + 1);
+                    int runs = rng.Next(0, Mathf.RoundToInt(R.halfWalls) + 1);
                     for (int i = 0; i < runs; i++) TryHalfWall(L, rng, r);
                     if (racks) PlaceRacks(L, rng, r);
+                    if (r.Tall && rng.NextDouble() < 0.75) PlacePallets(L, rng, r);
                 }
                 else if ((r.kind == RoomKind.Office) && rc.width >= 4 && rc.height >= 4)
                 {
@@ -523,6 +748,36 @@ namespace Backrooms.Generation
         /// Warehouse storage: rows of racks along X, one cell deep, with two-cell aisles between rows and a
         /// cross aisle every few racks, kept one cell clear of the walls and away from pillars. Aisles keep
         /// the room fully walkable.
+
+        /// <summary>
+        /// Loaded wooden pallets standing against the walls of a tall hall (the ring of cells around the
+        /// racks), long side along the wall. Kept clear of doors, pillars and each other.
+        /// </summary>
+        static void PlacePallets(OfficeLayout L, System.Random rng, Room r)
+        {
+            var rc = r.rect;
+            float C = OfficeBiome.CellSize;
+            int want = rng.Next(1, 5);
+            var used = new List<Vector2>();
+            for (int attempt = 0; attempt < 24 && used.Count < want; attempt++)
+            {
+                int x = rng.Next(rc.xMin, rc.xMax), z = rng.Next(rc.yMin, rc.yMax), side = rng.Next(4);
+                if (L.EdgeOf(x, z, side) != EdgeKind.Wall || CellHasDoor(L, x, z) || NearPillarOrHalfWall(L, x, z)) continue;
+                var centre = new Vector2((x + 0.5f) * C, (z + 0.5f) * C);
+                bool clear = true;
+                foreach (var u in used) if ((u - centre).sqrMagnitude < 2.6f * 2.6f) { clear = false; break; }
+                foreach (var p in L.props) if (p.kind != PropKind.WallClock && (p.position - centre).sqrMagnitude < 2.0f * 2.0f) { clear = false; break; }
+                if (!clear) continue;
+                // Backed against the wall, long side (1.2 m) along it.
+                var inward = side == 0 ? Vector2.right : side == 1 ? Vector2.left : side == 2 ? Vector2.up : Vector2.down;
+                var wall = centre - inward * C * 0.5f;
+                float gap = OfficeBiome.WallThickness * 0.5f + 0.5f + 0.03f + (float)rng.NextDouble() * 0.08f;
+                var pos = wall + inward * gap;
+                float yaw = (side >= 2 ? 0f : 90f) + (float)(rng.NextDouble() - 0.5) * 6f;
+                L.props.Add(new Prop { kind = PropKind.Pallet, position = pos, yaw = yaw, size = new Vector3(1.2f, 1.6f, 1.0f), variant = rng.Next(1 << 16), roomColor = r.color });
+                used.Add(centre);
+            }
+        }
         /// </summary>
         static void PlaceRacks(OfficeLayout L, System.Random rng, Room r)
         {
@@ -575,12 +830,13 @@ namespace Backrooms.Generation
             var occupied = new HashSet<Vector2Int>();
             foreach (var r in L.rooms)
             {
+                if (r.landmark != null || r.noFloor) continue;
                 var rc = r.rect;
                 TryClock(L, rng, r);
                 bool hasRacks = false;
                 foreach (var pr in L.props)
                     if (pr.kind == PropKind.StorageRack && rc.Contains(new Vector2Int(Mathf.FloorToInt(pr.position.x / C), Mathf.FloorToInt(pr.position.y / C)))) { hasRacks = true; break; }
-                if (r.kind == RoomKind.BigOffice && !hasRacks && rng.NextDouble() < L.rules.scatteredSeating * (r.Tall ? 1.5f : 1f))
+                if (r.kind == RoomKind.BigOffice && !hasRacks && rng.NextDouble() < L.RulesAt(rc).scatteredSeating * (r.Tall ? 1.5f : 1f))
                 {
                     // Abandoned seating left scattered across a big hall, at odd angles.
                     int count = rng.Next(2, 6);
@@ -633,6 +889,63 @@ namespace Backrooms.Generation
                     int cx = Mathf.Clamp(Mathf.FloorToInt(lx / C), 0, L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(lz / C), 0, L.N - 1);
                     if (!CellHasDoor(L, cx, cz) && !occupied.Contains(new Vector2Int(cx, cz)))
                         L.props.Add(new Prop { kind = PropKind.FloorLamp, position = new Vector2(lx, lz), variant = rng.Next(2), lit = rng.NextDouble() < 0.6, roomColor = r.color });
+                }
+            }
+        }
+
+        /// <summary>
+        /// A few loose cardboard boxes against walls in offices and big rooms: light things to pick up and
+        /// move. Kept clear of doors, pillars and other props.
+        /// </summary>
+        static void PlaceBoxes(OfficeLayout L, System.Random rng)
+        {
+            float C = OfficeBiome.CellSize;
+            foreach (var r in L.rooms)
+            {
+                if (r.landmark != null || r.noFloor) continue;
+                double chance = r.kind == RoomKind.Office ? 0.22 : r.kind == RoomKind.BigOffice ? 0.35 : r.kind == RoomKind.Hallway ? 0.04 : 0.0;
+                if (rng.NextDouble() >= chance) continue;
+                var rc = r.rect;
+                for (int attempt = 0; attempt < 10; attempt++)
+                {
+                    int x = rng.Next(rc.xMin, rc.xMax), z = rng.Next(rc.yMin, rc.yMax), side = rng.Next(4);
+                    if (L.EdgeOf(x, z, side) != EdgeKind.Wall || CellHasDoor(L, x, z) || NearPillarOrHalfWall(L, x, z)) continue;
+                    var centre = new Vector2((x + 0.5f) * C, (z + 0.5f) * C);
+                    bool clear = true;
+                    foreach (var p in L.props)
+                        if (p.kind != PropKind.WallClock && (p.position - centre).sqrMagnitude < 1.9f * 1.9f) { clear = false; break; }
+                    if (!clear) continue;
+                    // Inward normal of that wall and the direction along it.
+                    var inward = side == 0 ? Vector2.right : side == 1 ? Vector2.left : side == 2 ? Vector2.up : Vector2.down;
+                    var along = new Vector2(inward.y, -inward.x);
+                    var wall = centre - inward * C * 0.5f;
+                    int count = rng.Next(1, 4);
+                    float s = (float)(rng.NextDouble() - 0.5) * 0.5f;
+                    for (int i = 0; i < count; i++)
+                    {
+                        var size = new Vector3(0.32f + (float)rng.NextDouble() * 0.3f, 0.24f + (float)rng.NextDouble() * 0.3f, 0.3f + (float)rng.NextDouble() * 0.22f);
+                        float gap = OfficeBiome.WallThickness * 0.5f + size.z * 0.5f + 0.02f + (float)rng.NextDouble() * 0.2f;
+                        var pos = wall + inward * gap + along * s;
+                        // Stay inside the room, off door cells, clear of side walls.
+                        int bx = Mathf.FloorToInt(pos.x / C), bz = Mathf.FloorToInt(pos.y / C);
+                        if (!rc.Contains(new Vector2Int(bx, bz)) || CellHasDoor(L, bx, bz)) break;
+                        float fx = pos.x / C - bx, fz = pos.y / C - bz, m = (size.x * 0.75f + 0.1f) / C;
+                        if ((fx < m && L.EdgeOf(bx, bz, 0) != EdgeKind.Open) || (fx > 1f - m && L.EdgeOf(bx, bz, 1) != EdgeKind.Open)
+                            || (fz < m && L.EdgeOf(bx, bz, 2) != EdgeKind.Open) || (fz > 1f - m && L.EdgeOf(bx, bz, 3) != EdgeKind.Open))
+                        {
+                            // Only the wall it backs onto may be close.
+                            bool ok = true;
+                            if (fx < m && side != 0 && L.EdgeOf(bx, bz, 0) != EdgeKind.Open) ok = false;
+                            if (fx > 1f - m && side != 1 && L.EdgeOf(bx, bz, 1) != EdgeKind.Open) ok = false;
+                            if (fz < m && side != 2 && L.EdgeOf(bx, bz, 2) != EdgeKind.Open) ok = false;
+                            if (fz > 1f - m && side != 3 && L.EdgeOf(bx, bz, 3) != EdgeKind.Open) ok = false;
+                            if (!ok) break;
+                        }
+                        float yaw = Mathf.Atan2(inward.x, inward.y) * Mathf.Rad2Deg + (float)(rng.NextDouble() - 0.5) * 30f;
+                        L.props.Add(new Prop { kind = PropKind.Box, position = pos, yaw = yaw, size = size, variant = rng.Next(1 << 16), roomColor = r.color });
+                        s += size.x * 0.5f + 0.06f + (float)rng.NextDouble() * 0.15f + 0.2f;
+                    }
+                    break;
                 }
             }
         }
@@ -716,11 +1029,17 @@ namespace Backrooms.Generation
             for (int z = 0; z < L.N; z++)
             {
                 var room = L.RoomAt(x, z);
-                if (room.kind == RoomKind.Crawl) continue;
+                if (room.kind == RoomKind.Crawl || room.noFloor || room.role != AnnexRole.None) continue;
                 for (int side = 0; side < 4; side++)
                 {
                     var e = L.EdgeOf(x, z, side);
-                    if (e == EdgeKind.Wall && rng.NextDouble() < L.rules.outletChance)
+                    if (e != EdgeKind.Wall)
+                    {
+                        // No outlets or switches beside an elevator or stair door (the call button goes there).
+                        int ax = x + (side == 0 ? -1 : side == 1 ? 1 : 0), az = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
+                        if (L.InChunk(ax, az) && L.RoomAt(ax, az).role != AnnexRole.None) continue;
+                    }
+                    if (e == EdgeKind.Wall && rng.NextDouble() < L.RulesAt(x, z).outletChance)
                         L.plates.Add(new WallPlate { cell = new Vector2Int(x, z), side = side, t = 0.2f + (float)rng.NextDouble() * 0.6f, height = 0.3f, roomColor = room.color });
                     else if ((e == EdgeKind.Door || e == EdgeKind.DoorHeader) && rng.NextDouble() < 0.35)
                     {

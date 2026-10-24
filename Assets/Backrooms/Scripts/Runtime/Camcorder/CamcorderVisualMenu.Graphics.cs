@@ -39,8 +39,10 @@ namespace Backrooms.Camcorder
             Toggle("Anti-aliasing (SMAA)", "Smooths jagged edges.",
                 () => O().antiAliasing, v => { O().antiAliasing = v; O().Save(); });
 
-            Section("SHADOWS", "Shadows ease in over half a second as lights come into range.");
-            Slider("Shadow-casting lights", "How many of the nearest lights cast shadows. Shadowed lights also spill through doorways (unshadowed ones stay inside their own room, so light never passes through walls). Each one redraws nearby geometry, so this is the biggest performance setting.",
+            Section("SHADOWS", "Lights hand over smoothly between real (shadowed) and grid light as you move.");
+            Toggle("Light grid", "On: the nearest fixtures are real lights with live shadows and every other fixture lights a 3D light grid (light through doorways, bounce on ceilings). Off: the older system, a large pool of unshadowed lights kept inside their own rooms.",
+                () => O().lightGrid, v => { O().lightGrid = v; O().Save(); });
+            Slider("Shadow-casting lights", "How many of the nearest lights are real lights with shadows (light grid: capped to what the shadow atlas holds, about 38). Each one redraws nearby geometry, so this is the biggest performance setting.",
                 0f, 48f, "0", "", () => O().shadowLights, v => { O().shadowLights = Mathf.RoundToInt(v); O().Save(); }, true);
             Slider("Shadow distance", "Lights farther than this give up their shadow (and their doorway spill).",
                 8f, 30f, "0.0", " m", () => O().shadowDistance, v => { O().shadowDistance = v; O().Save(); });
@@ -66,7 +68,8 @@ namespace Backrooms.Camcorder
               .Append(p.MainMs.ToString("0.0")).Append(" ms   GPU ").Append(p.GpuMs.ToString("0.0")).Append(" ms\n");
             sb.Append("Set-pass calls ").Append(p.SetPassCalls).Append("   shadow casters ").Append(p.ShadowCasters)
               .Append("   triangles ").Append(p.Triangles / 1000).Append("k\n");
-            if (lm) sb.Append("Lights on ").Append(lm.EnabledLights).Append(" (of 256 allowed)   with shadows ").Append(lm.ShadowedLights).Append('\n');
+            if (lm) sb.Append("Lights on ").Append(lm.EnabledLights).Append(" (of 256 allowed)   with shadows ").Append(lm.ShadowedLights).Append("   mode ").Append(lm.mode).Append('\n');
+            if (lm && lm.grid && lm.grid.Ready) sb.Append("Light grid: ").Append(lm.grid.DirtyTexelsLastFrame).Append(" texels recomputed last frame, ").Append(lm.grid.LastGpuSubmitMs.ToString("0.00")).Append(" ms to submit\n");
             if (ws) sb.Append("Chunks loaded ").Append(ws.LoadedChunks).Append("   chunk build ").Append(ws.AverageBuildMs.ToString("0.0")).Append(" ms (worker thread)\n");
             sb.Append("VSync ").Append(QualitySettings.vSyncCount > 0 ? "on" : "off").Append("   target ").Append(Application.targetFrameRate > 0 ? Application.targetFrameRate + " fps" : "unlimited").Append('\n');
             _gfxReadout.text = sb.ToString();

@@ -25,6 +25,8 @@ namespace Backrooms
         public bool requireWindowFocus = true;
         [Tooltip("How far up/down the player can look, in degrees.")]
         [Range(45f, 89f)] public float pitchLimit = 82f;
+        [Tooltip("How far down the player can look, in degrees (less than looking up, so you see your feet and not your chest).")]
+        [Range(30f, 89f)] public float pitchLimitDown = 62f;
 
         [Header("Movement (metres per second)")]
         [Tooltip("Slow, careful walking pace.")]
@@ -101,6 +103,30 @@ namespace Backrooms
         /// <summary>Set by in-game menus to suspend look, movement and cursor capture.</summary>
         public static bool InputBlocked;
 
+        // Set by other systems each frame (e.g. PropGrabber while holding something).
+        /// <summary>Multiplier on mouse look (the grabber takes most of the mouse while holding).</summary>
+        [System.NonSerialized] public float lookScale = 1f;
+        /// <summary>Multiplier on walking speed (heavy things slow you down).</summary>
+        [System.NonSerialized] public float moveScale = 1f;
+        /// <summary>No running (e.g. while dragging something).</summary>
+        [System.NonSerialized] public bool noRun;
+        /// <summary>How far the body bends down (m), e.g. to reach something on the floor.</summary>
+        [System.NonSerialized] public float stoop;
+        /// <summary>True when the game window has the mouse and keys this frame.</summary>
+        public bool HasFocus { get; private set; }
+        /// <summary>Movement carried over from the thing the player stands on this frame (an elevator cab); applied once.</summary>
+        [System.NonSerialized] public Vector3 platformMotion;
+
+        /// <summary>Turns the view by the given degrees (yaw right, pitch down), as mouse look would.</summary>
+        public void AddLook(float yaw, float pitch)
+        {
+            _yaw += yaw;
+            _pitch = Mathf.Clamp(_pitch + pitch, -pitchLimit, pitchLimitDown);
+            transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
+            if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
+        }
+        public float Pitch => _pitch;
+
         CharacterController _controller;
         float _yaw, _pitch, _verticalVelocity;
         int _unblockFrame = -10;
@@ -139,7 +165,9 @@ namespace Backrooms
 
             // Ignore input while the window is in the background (raw mouse deltas still arrive).
             bool hasFocus = !blocked && Cursor.lockState == CursorLockMode.Locked && (Application.isFocused || !requireWindowFocus);
-            if (hasFocus) UpdateLook(mouse.delta.ReadValue() * FovMultiplier);   // aim slows down when zoomed in
+            HasFocus = hasFocus;
+            if (hasFocus) UpdateLook(mouse.delta.ReadValue() * FovMultiplier * lookScale);   // aim slows down when zoomed in
+            if (hasFocus && keyboard.vKey.wasPressedThisFrame) SetNoclip(!noclip);             // V: fly through everything (quick testing)
             UpdateZoom(keyboard, hasFocus);
             UpdateStance(keyboard, hasFocus);
             UpdateMove(keyboard, hasFocus);
@@ -152,10 +180,31 @@ namespace Backrooms
             _controller.enabled = false;
             transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
             _controller.enabled = !noclip;
-            _yaw = yaw; _pitch = pitch; _verticalVelocity = 0f;
+            _yaw = yaw; _pitch = Mathf.Clamp(pitch, -pitchLimit, pitchLimitDown); _verticalVelocity = 0f;
             PlanarVelocity = Vector3.zero;
             if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
+
+        /// <summary>
+        /// Moves the player without stopping them (through a crawl hole): new position, turned by yawDelta degrees, with the
+        /// current speed, stance and pitch kept and turned along.
+        /// </summary>
+        public void Warp(Vector3 position, float yawDelta)
+        {
+            _controller.enabled = false;
+            _yaw += yawDelta;
+            transform.SetPositionAndRotation(position, Quaternion.Euler(0f, _yaw, 0f));
+            _controller.enabled = !noclip;
+            PlanarVelocity = Quaternion.Euler(0f, yawDelta, 0f) * PlanarVelocity;
+        }
+
+        /// <summary>Like <see cref="Teleport"/>, but holds the player still (no falling) until floor collision exists below, for places whose chunks are still loading.</summary>
+        public void TeleportSafe(Vector3 position, float yaw, float pitch = 0f)
+        {
+            Teleport(position, yaw, pitch);
+            _holdForGround = 8f;
+        }
+        float _holdForGround;
 
         /// <summary>Degrees turned this frame (x = yaw, y = pitch), for the handheld look motion.</summary>
         public Vector2 LookDelta => _lookFrame == Time.frameCount ? _lookDelta : Vector2.zero;
@@ -167,10 +216,10 @@ namespace Backrooms
             float py = _pitch;
             _yaw += delta.x * mouseSensitivity;
             _pitch += (invertY ? delta.y : -delta.y) * mouseSensitivity;
-            float dp = Mathf.Clamp(_pitch, -pitchLimit, pitchLimit) - py;
+            float dp = Mathf.Clamp(_pitch, -pitchLimit, pitchLimitDown) - py;
             _lookDelta = new Vector2(delta.x * mouseSensitivity, dp);
             _lookFrame = Time.frameCount;
-            _pitch = Mathf.Clamp(_pitch, -pitchLimit, pitchLimit);
+            _pitch = Mathf.Clamp(_pitch, -pitchLimit, pitchLimitDown);
             transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
             if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
@@ -208,9 +257,17 @@ namespace Backrooms
                 return;
             }
 
+            if (_holdForGround > 0f)
+            {
+                _holdForGround -= Time.deltaTime;
+                if (Physics.Raycast(transform.position + Vector3.up * 0.6f, Vector3.down, 1.2f, ~0, QueryTriggerInteraction.Ignore)) _holdForGround = 0f;
+                else { _verticalVelocity = 0f; PlanarVelocity = Vector3.zero; return; }
+            }
+
             // Running only makes sense standing and moving mostly forward.
-            IsRunning = hasFocus && CurrentStance == Stance.Stand && keyboard.leftShiftKey.isPressed && input.y > 0.1f;
+            IsRunning = !noRun && hasFocus && CurrentStance == Stance.Stand && keyboard.leftShiftKey.isPressed && input.y > 0.1f;
             float targetSpeed = CurrentStance == Stance.Crawl ? crawlSpeed : CurrentStance == Stance.Crouch ? crouchSpeed : IsRunning ? runSpeed : walkSpeed;
+            targetSpeed *= moveScale;
             Vector3 target = (transform.forward * input.y + transform.right * input.x) * targetSpeed;
 
             float rate = input.sqrMagnitude > 0.001f ? acceleration : deceleration;
@@ -219,12 +276,17 @@ namespace Backrooms
             if (!_controller.isGrounded) rate *= 0.3f;                    // little control in the air
             PlanarVelocity = Vector3.MoveTowards(PlanarVelocity, target, rate * Mathf.Max(targetSpeed, 1f) * Time.deltaTime);
 
+            if (platformMotion != Vector3.zero) { _controller.Move(platformMotion); platformMotion = Vector3.zero; }
             UpdateJump(keyboard, hasFocus);
             if (_controller.isGrounded && _verticalVelocity < 0f) _verticalVelocity = -2f;
             _verticalVelocity += gravity * Time.deltaTime;
 
             Vector3 motion = PlanarVelocity + Vector3.up * _verticalVelocity;
+            bool wasGrounded = _controller.isGrounded;
             CollisionFlags flags = _controller.Move(motion * Time.deltaTime);
+            // Walking down stairs: the controller does not step down by itself, so it would drop onto each tread and
+            // dip and thud like a landing. If the ground was under us and a short way below is more, stay on it.
+            if (wasGrounded && !_controller.isGrounded && _verticalVelocity <= 0f && SnapToGround(0.32f)) _verticalVelocity = -2f;
 
             // Bleed off velocity into walls so the player doesn't "stick" to them.
             if ((flags & CollisionFlags.Sides) != 0)
@@ -247,8 +309,22 @@ namespace Backrooms
             _wasGrounded = grounded;
         }
 
+        bool SnapToGround(float maxDrop)
+        {
+            float r = _controller.radius * 0.9f;
+            var origin = transform.position + Vector3.up * (r + _controller.skinWidth + 0.05f);
+            if (!Physics.SphereCast(origin, r, Vector3.down, out var hit, maxDrop + 0.05f + _controller.skinWidth, ~0, QueryTriggerInteraction.Ignore)) return false;
+            if (hit.collider.transform.IsChildOf(transform) || hit.normal.y < 0.5f) return false;
+            float drop = hit.distance - 0.05f;
+            if (drop <= 0.001f) return false;
+            _controller.Move(Vector3.down * drop);
+            return _controller.isGrounded;
+        }
+
         // ---------------- Stances ----------------
 
+        /// <summary>Eye height for the current stance (before stooping, jumps and landing dips).</summary>
+        public float BaseEye => EyeTarget;
         float EyeTarget => CurrentStance == Stance.Crawl ? crawlEye : CurrentStance == Stance.Crouch ? crouchEye : standEye;
         float HeightFor(Stance st) => st == Stance.Crawl ? crawlHeight : st == Stance.Crouch ? crouchHeight : standHeight;
 
@@ -296,6 +372,7 @@ namespace Backrooms
             float charge = _chargeT >= 0f ? Mathf.Clamp01((Time.time - _chargeT) / Mathf.Max(0.05f, chargeTime)) : 0f;
             // Knees bend while a jump charges (and briefly before a tap hop).
             float target = EyeTarget - charge * 0.2f - (_launchAt >= 0f ? 0.06f : 0f);
+            target -= Mathf.Clamp(stoop, 0f, Mathf.Max(0f, EyeTarget - 0.6f));     // bending down to reach something low
             // Small fixed substeps keep the spring stable even on a long frame.
             int steps = Mathf.Clamp(Mathf.CeilToInt(dt / (1f / 240f)), 1, 60);
             float h = dt / steps;

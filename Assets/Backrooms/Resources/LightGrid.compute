@@ -1,0 +1,239 @@
+// Backrooms light grid. Fills a 3D clipmap (0.6 m texels, toroidal in x/z) with the light of every fixture
+// that is not currently a real URP light, and a 2D bounce field (1.2 m cells) from all fixtures.
+// Light is blocked by walls and headers using the layout occupancy (see LightGridMath.cs, which mirrors
+// this file on the CPU for tests and debug views). Only dirty boxes are recomputed each frame.
+#pragma kernel Direct
+#pragma kernel BounceSource
+#pragma kernel BounceDiffuse
+
+#include "Assets/Backrooms/Shaders/LightGridCommon.hlsl"
+
+struct GridLight
+{
+    float3 pos;      float range;
+    float3 color;    float cosOuter;     // colour x intensity x the grid's share (0 while it is a real light)
+    float3 dir;      float cosInner;     // spot axis, zero for point lights
+    float3 colorAll; float storey;       // full colour x intensity x power (for bounce)
+};
+
+RWTexture3D<float4> _GridA;          // rgb: irradiance facing the lights, a: luminance-weighted direction y
+RWTexture3D<float4> _GridB;          // x, y: luminance-weighted direction x and z
+StructuredBuffer<uint> _Occ;         // layout occupancy: [storey][z][x], toroidal
+StructuredBuffer<GridLight> _Lights;
+StructuredBuffer<uint2> _Tiles;      // (first index, count) per tile
+StructuredBuffer<uint> _TileLights;
+
+int4 _GridSize;          // texels x, y, z; occupancy size (cells)
+int4 _BoxMin, _BoxSize;  // absolute texel coordinates of the box to fill
+int4 _TileInfo;          // texels per tile, tiles per axis
+float4 _GridMisc;        // x: storey pitch, y: floor albedo (bounce), z: bounce spread, w: unused
+int4 _CellMin;           // absolute cell of the bounce window's corner (x, z)
+
+RWTexture2D<float4> _BounceSrc;
+Texture2D<float4> _BounceSrcIn;
+Texture2D<float4> _BounceIn;
+RWTexture2D<float4> _BounceOut;
+
+static const float3 LUM = float3(0.2126, 0.7152, 0.0722);
+
+// Sizes are powers of two, so wrapping is a mask (correct for negative values too).
+int Wrap(int v, int n) { return v & (n - 1); }
+
+uint Occ(int2 cell, uint storey)
+{
+    if (storey > 1u) return 0u;
+    int n = _GridSize.w;
+    return _Occ[(storey * (uint)n + (uint)Wrap(cell.y, n)) * (uint)n + (uint)Wrap(cell.x, n)];
+}
+
+uint TileIndex(int2 texelXZ)
+{
+    int tx = Wrap((int)floor(texelXZ.x / (float)_TileInfo.x), _TileInfo.y);
+    int tz = Wrap((int)floor(texelXZ.y / (float)_TileInfo.x), _TileInfo.y);
+    return (uint)(tz * _TileInfo.y + tx);
+}
+
+// URP's falloffs (UnityEngine light, linear intensity).
+float DistanceAtten(float d2, float range)
+{
+    float f = d2 / (range * range);
+    float s = saturate(1.0 - f * f);
+    return s * s / max(d2, 0.0001);
+}
+
+float AngleAtten(float cosAngle, float cosOuter, float cosInner)
+{
+    float inv = 1.0 / max(cosInner - cosOuter, 0.001);
+    float a = saturate(cosAngle * inv - cosOuter * inv);
+    return a * a;
+}
+
+uint StoreyAt(float y) { return y >= _GridMisc.x ? 1u : 0u; }
+
+// Line of sight through the layout: cell-edge crossings in 2D, with the ray's height checked against
+// each opening's top. Changing storey is only possible through a well (open-above cells).
+bool Visible(float3 P, float3 Q)
+{
+    float pitch = _GridMisc.x;
+    bool visible = true;
+    if (StoreyAt(P.y) != StoreyAt(Q.y))
+    {
+        float ts = (pitch - P.y) / (Q.y - P.y);
+        float3 X = lerp(P, Q, ts);
+        uint os = Occ((int2)floor(X.xz / LG_CELL), 0u);
+        visible = (os & LG_OPENABOVE) != 0u;      // otherwise the ray goes through a floor slab
+    }
+    float2 a = P.xz / LG_CELL, b = Q.xz / LG_CELL;
+    int2 c = (int2)floor(a), e = (int2)floor(b);
+    float2 d = b - a;
+    int2 stp = int2(d.x > 0 ? 1 : (d.x < 0 ? -1 : 0), d.y > 0 ? 1 : (d.y < 0 ? -1 : 0));
+    float2 tDelta = float2(stp.x != 0 ? abs(1.0 / d.x) : 1e30, stp.y != 0 ? abs(1.0 / d.y) : 1e30);
+    float2 tMax = float2(stp.x > 0 ? (c.x + 1 - a.x) * tDelta.x : (stp.x < 0 ? (a.x - c.x) * tDelta.x : 1e30),
+                         stp.y > 0 ? (c.y + 1 - a.y) * tDelta.y : (stp.y < 0 ? (a.y - c.y) * tDelta.y : 1e30));
+    [loop] for (int i = 0; i < 48 && visible; i++)
+    {
+        if (c.x == e.x && c.y == e.y) break;
+        bool stepX = tMax.x < tMax.y;
+        float t = stepX ? tMax.x : tMax.y;
+        if (t > 1.0) break;
+        float y = lerp(P.y, Q.y, t);
+        uint storey = StoreyAt(y);
+        int2 n = c + (stepX ? int2(stp.x, 0) : int2(0, stp.y));
+        int2 owner = stepX ? int2(max(c.x, n.x), c.y) : int2(c.x, max(c.y, n.y));
+        uint o = Occ(owner, storey);
+        uint kind = stepX ? LG_WestKind(o) : LG_SouthKind(o);
+        float top = (stepX ? LG_WestTop(o) : LG_SouthTop(o)) + storey * pitch;
+        if (!LG_Loaded(o) || kind == LG_EDGE_WALL || y > top + 0.02) { visible = false; break; }
+        c = n;
+        if (stepX) tMax.x += tDelta.x; else tMax.y += tDelta.y;
+    }
+    return visible;
+}
+
+// A texel stands for a 0.6 m box but is tested at its centre only, which lets light peek past wall ends and
+// header edges into texels that are mostly shadowed (stair-stepped streaks along corners). So a texel only
+// counts as lit when points a little way around its centre are lit too (conservative: light edges erode
+// by a few cm instead of leaking).
+bool VisibleSolid(float3 P, float3 Q)
+{
+    if (!Visible(P, Q)) return false;
+    const float k = 0.22;
+    return Visible(P, Q + float3(k, 0, 0)) && Visible(P, Q - float3(k, 0, 0))
+        && Visible(P, Q + float3(0, 0, k)) && Visible(P, Q - float3(0, 0, k))
+        && Visible(P, Q + float3(0, k, 0)) && Visible(P, Q - float3(0, k, 0));
+}
+
+float Attenuation(GridLight L, float3 Q, out float3 toLight)
+{
+    toLight = L.pos - Q;
+    float d2 = dot(toLight, toLight);
+    if (d2 >= L.range * L.range) return 0;
+    // Texels are 0.6 m: closer than that the inverse square would put a hot spot into one texel that
+    // interpolation smears around, so the near field is capped (real lights cover it up close anyway).
+    float att = DistanceAtten(max(d2, 0.36), L.range);
+    toLight *= rsqrt(max(d2, 1e-8));
+    if (dot(L.dir, L.dir) > 0.5) att *= AngleAtten(dot(L.dir, -toLight), L.cosOuter, L.cosInner);
+    return att;
+}
+
+[numthreads(4, 4, 4)]
+void Direct(uint3 id : SV_DispatchThreadID)
+{
+    if (any((int3)id >= _BoxSize.xyz)) return;
+    int3 t = _BoxMin.xyz + (int3)id;
+    if (t.y < 0 || t.y >= _GridSize.y) return;
+    float3 Q = (float3(t) + 0.5) * LG_TEXEL;
+    int3 w = int3(Wrap(t.x, _GridSize.x), t.y, Wrap(t.z, _GridSize.z));
+    float4 A = 0, B = 0;
+    uint st = StoreyAt(Q.y);
+    uint o = Occ((int2)floor(Q.xz / LG_CELL), st);
+    float rel = Q.y - st * _GridMisc.x;
+    if (LG_Loaded(o) && rel <= LG_Ceiling(o))
+    {
+        uint2 range = _Tiles[TileIndex(t.xz)];
+        for (uint i = 0; i < range.y; i++)
+        {
+            GridLight L = _Lights[_TileLights[range.x + i]];
+            if (dot(L.color, L.color) <= 0.0) continue;
+            // A fixture's pool is narrow and very bright near the light (a wall pool is only a texel or two wide at
+            // its top), so a single sample per 0.6 m texel aliases into boxes. The falloff is averaged over eight
+            // points inside the texel instead; line of sight is still tested once (conservative, at the centre).
+            float attSum = 0; float3 dirSum = 0;
+            [unroll] for (int s = 0; s < 8; s++)
+            {
+                float3 off = float3((s & 1) ? 0.15 : -0.15, (s & 2) ? 0.15 : -0.15, (s & 4) ? 0.15 : -0.15);
+                float3 tl;
+                float a = Attenuation(L, Q + off, tl);
+                attSum += a; dirSum += a * tl;
+            }
+            if (attSum <= 8e-6 || !VisibleSolid(L.pos, Q)) continue;
+            float att = attSum * 0.125;
+            float3 e = L.color * att;
+            float lum = dot(L.color, LUM);
+            A.rgb += e;
+            A.w += lum * dirSum.y * 0.125;
+            B.xy += lum * dirSum.xz * 0.125;
+        }
+    }
+    _GridA[w] = A;
+    _GridB[w] = B;
+}
+
+// Floor irradiance per layout cell from every powered fixture (real or not), times the floor albedo.
+[numthreads(8, 8, 1)]
+void BounceSource(uint3 id : SV_DispatchThreadID)
+{
+    int n = _GridSize.w;
+    if ((int)id.x >= n || (int)id.y >= n) return;
+    int2 cell = _CellMin.xy + (int2)id.xy;
+    int2 wi = int2(Wrap(cell.x, n), Wrap(cell.y, n));
+    uint o = Occ(cell, 0u);
+    float3 sum = 0;
+    if (LG_Loaded(o) && (o & LG_NOFLOOR) == 0u)
+    {
+        float3 Q = float3((cell.x + 0.5) * LG_CELL, 0.05, (cell.y + 0.5) * LG_CELL);
+        uint2 range = _Tiles[TileIndex(cell * 2)];
+        for (uint i = 0; i < range.y; i++)
+        {
+            GridLight L = _Lights[_TileLights[range.x + i]];
+            if (dot(L.colorAll, L.colorAll) <= 0.0) continue;
+            float3 toLight;
+            float att = Attenuation(L, Q, toLight);
+            if (att <= 1e-6 || toLight.y <= 0.0 || !Visible(L.pos, Q)) continue;
+            sum += L.colorAll * att * toLight.y;
+        }
+    }
+    _BounceSrc[wi] = float4(sum * _GridMisc.y, 1);
+}
+
+float EdgePass(uint kind) { return kind == LG_EDGE_OPEN ? 1.0 : 0.0; }     // doors and arches pass no bounce (see the note below)
+
+// One blur step: a cell's bounce is its own floor light mixed with the average of itself and its neighbours
+// across open floor only, so light spreads without adding energy. Walls, doors and arches pass nothing: a
+// blurred field cannot know what a doorway lets through, and even a few percent of a lit room's bounce shows
+// up as light "through the wall" in a dark room (the camcorder's auto-exposure lifts it). Light that really
+// enters a dark room through a doorway lands on its floor and is picked up by BounceSource directly.
+[numthreads(8, 8, 1)]
+void BounceDiffuse(uint3 id : SV_DispatchThreadID)
+{
+    int n = _GridSize.w;
+    if ((int)id.x >= n || (int)id.y >= n) return;
+    int2 cell = _CellMin.xy + (int2)id.xy;
+    int2 wi = int2(Wrap(cell.x, n), Wrap(cell.y, n));
+    uint o = Occ(cell, 0u);
+    float3 acc = _BounceIn[wi].rgb;
+    float count = 1.0;
+    if (LG_Loaded(o))
+    {
+        uint oe = Occ(cell + int2(1, 0), 0u), on = Occ(cell + int2(0, 1), 0u);
+        // The edges west and south of a cell are stored in its own word; east and north in the neighbours'.
+        // Open floor passes bounce fully; a doorway only a little (it is a small hole in a wall).
+        float ww = EdgePass(LG_WestKind(o)), we = EdgePass(LG_WestKind(oe)), ws = EdgePass(LG_SouthKind(o)), wn = EdgePass(LG_SouthKind(on));
+        if (id.x > 0 && ww > 0.0) { acc += ww * _BounceIn[int2(Wrap(cell.x - 1, n), wi.y)].rgb; count += ww; }
+        if ((int)id.x < n - 1 && we > 0.0) { acc += we * _BounceIn[int2(Wrap(cell.x + 1, n), wi.y)].rgb; count += we; }
+        if (id.y > 0 && ws > 0.0) { acc += ws * _BounceIn[int2(wi.x, Wrap(cell.y - 1, n))].rgb; count += ws; }
+        if ((int)id.y < n - 1 && wn > 0.0) { acc += wn * _BounceIn[int2(wi.x, Wrap(cell.y + 1, n))].rgb; count += wn; }
+    }
+    float3 own = _BounceSrcIn[wi].rgb;
+    _BounceOut[wi] = float4(lerp(own, acc / count, _GridMisc.z), 1);
+}

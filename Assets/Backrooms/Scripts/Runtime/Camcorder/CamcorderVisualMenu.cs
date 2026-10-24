@@ -95,7 +95,7 @@ namespace Backrooms.Camcorder
             var rule = new VisualElement(); rule.AddToClassList("cc-rule"); _panel.Add(rule);
 
             var tabs = BtnRow(_panel);
-            string[] names = { "CAMERA", "PLAYER", "WORLD", "AUDIO", "SOUND", "DISPLAY" };
+            string[] names = { "CAMERA", "PLAYER", "WORLD", "AUDIO", "SOUND", "DISPLAY", "LIGHT", "PLACES" };
             _tabButtons = new Button[names.Length];
             for (int i = 0; i < names.Length; i++)
             {
@@ -122,18 +122,21 @@ namespace Backrooms.Camcorder
             _list = _views[3] = MakeList(); BuildAudio();
             _list = _views[4] = MakeList(); BuildSound();
             _list = _views[5] = MakeList(); BuildGraphics();
+            _list = _views[6] = MakeList(); BuildLighting();
+            _list = _views[7] = MakeList(); BuildLocations();
 
             // Footer.
             var footer = BtnRow(_panel);
             footer.AddToClassList("cc-footer");
             _resetVisuals = Button(footer, "RESET", () => ApplyPreset(0));
+            _setDefault = Button(footer, "SET AS DEFAULT", () => { if (rig) { rig.Settings.SaveAsDefault(); _setDefault.text = "SAVED"; _setDefault.schedule.Execute(() => _setDefault.text = "SET AS DEFAULT").StartingIn(1200); } });
             Button(footer, "END", () => SetOpen(false));
 
             BuildMinimap();
             ShowTab(0);
         }
 
-        static readonly string[] PageNames = { "CAMERA SET", "PLAYER SET", "WORLD SET", "AUDIO SET", "SOUND LIST", "DISPLAY SET" };
+        static readonly string[] PageNames = { "CAMERA SET", "PLAYER SET", "WORLD SET", "AUDIO SET", "SOUND LIST", "DISPLAY SET", "LIGHTING SET", "LOCATIONS" };
         Label _pageLabel, _stby;
 
         /// <summary>A monospaced system font reads closer to a camcorder's character generator; falls back
@@ -157,7 +160,7 @@ namespace Backrooms.Camcorder
         ScrollView[] _views;
         Button[] _tabButtons;
         VisualElement _presets;
-        Button _resetVisuals;
+        Button _resetVisuals, _setDefault;
 
         ScrollView MakeList()
         {
@@ -253,6 +256,10 @@ namespace Backrooms.Camcorder
                 0.5f, 3f, "0.00", "x", () => S().grainSize, v => S().grainSize = v);
 
             Section("IMAGE PROCESSING", "Camcorder DSP: soft optics, edge enhancement, subsampled colour.");
+            Slider("Recording resolution (lines)", "Simulates the recorder's own picture size, independent of your display: the image is averaged down to this many lines and smoothly scaled back up. 0 turns it off. About 480 is a standard-definition recording.",
+                0f, 720f, "0", " lines", () => S().videoLines, v => S().videoLines = Mathf.RoundToInt(v / 10f) * 10, true);
+            Slider("Colour detail", "How much colour resolution the recording keeps compared with brightness detail (lower = softer, smoother colour, more at the sides than up and down).",
+                0.2f, 1f, "0.00", "", () => S().chromaDetail, v => S().chromaDetail = v);
             Slider("Softness / resolution", "Optical and sensor blur. Consumer video resolves far less detail than a modern screen; raise this for an authentic soft image.",
                 0f, 3f, "0.00", " px", () => S().softness, v => S().softness = v);
             Slider("Edge enhancement", "The camera's artificial sharpening, which draws light and dark halos along edges. High values give the crisp but fake video outline.",
@@ -285,6 +292,10 @@ namespace Backrooms.Camcorder
                 0f, 2f, "0.00", "x", () => S().lookOvershoot, v => S().lookOvershoot = v);
             Slider("Look jitter", "A small irregular wobble while you turn the camera. 0 = off.",
                 0f, 2f, "0.00", "x", () => S().lookJitter, v => S().lookJitter = v);
+            Slider("Handheld roughness", "Fast, irregular hand shake on top of the smooth walking bob, with a small jolt on each step: someone walking with the camera in one hand. 0 = off.",
+                0f, 3f, "0.00", "", () => S().handheldRoughness, v => S().handheldRoughness = v);
+            Slider("Sensor motion blur", "Streaking of the whole frame in the direction you turn, in proportion to how fast, as if the shutter stays open for a fraction of a second. Strong on quick pans.",
+                0f, 3f, "0.00", "x", () => S().sensorBlur, v => S().sensorBlur = v);
             Slider("Motion blur (shutter)", "Smear when turning quickly, from the camera's shutter staying open for part of each frame.",
                 0f, 0.6f, "0.00", "", () => S().motionBlur, v => S().motionBlur = v);
 
@@ -297,6 +308,18 @@ namespace Backrooms.Camcorder
                 0f, 2f, "0.00", "", () => S().osdCurvature, v => S().osdCurvature = v);
             Slider("Scanlines","The faint horizontal line structure of 480-line interlaced video. Filtered so it never shimmers or forms moire.",
                 0f, 0.3f, "0.00", "", () => S().scanlines, v => S().scanlines = v);
+            Slider("Head-switching band", "The flickering blue and magenta band of noise along the bottom edge of the frame that VHS tapes show.",
+                0f, 1f, "0.00", "", () => S().headSwitching, v => S().headSwitching = v);
+            Slider("Compression blotches", "Blotchy blocks of colour and brightness that hold for a few frames, like a low-bitrate recording.",
+                0f, 1f, "0.00", "", () => S().blockiness, v => S().blockiness = v);
+            Slider("Recording frame rate", "How often the recorded picture changes. The game still runs and responds at full speed; only the picture steps, like footage shot at 24 or 30 frames a second. 0 = every frame.",
+                0f, 60f, "0", " fps", () => S().recordFps, v => S().recordFps = v < 12f ? 0f : Mathf.Round(v), true);
+            Slider("Line doubling", "Each recorded line is shown twice instead of blended, giving the faint stair-steps on edges of standard-definition video. Needs a recording resolution.",
+                0f, 1f, "0.00", "", () => S().lineDoubling, v => S().lineDoubling = v);
+            Slider("Colour flicker (per frame)", "Every recorded frame gets its own tiny change in brightness and tint, like film or a tired sensor. 0 = none, about 0.15 is barely noticeable, 1 is plainly visible, 3 is a lot.",
+                0f, 3f, "0.00", "", () => S().colourFlicker, v => S().colourFlicker = v);
+            Slider("Bottom-edge line", "A thin, steady lilac line along the very bottom of the frame, as in the episode footage.",
+                0f, 1f, "0.00", "", () => S().bottomLine, v => S().bottomLine = v);
             Slider("Tape tracking noise", "A soft band of wobble and brightening that drifts slowly up the frame, like a worn tape.",
                 0f, 1f, "0.00", "", () => S().trackingNoise, v => S().trackingNoise = v);
         }

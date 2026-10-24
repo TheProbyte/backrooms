@@ -31,6 +31,7 @@ namespace Backrooms.EditorTools
 
             var assets = CreateBiomeAssets();
             EnsureVideoPass();
+            EnsureFrameHold();
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             ConfigureEnvironment();
@@ -131,6 +132,17 @@ namespace Backrooms.EditorTools
             m.SetColor("_BaseColor", new Color(0.93f, 0.92f, 0.86f));
             m.SetTextureScale("_BaseMap", new Vector2(2f, 4.5f));
             if (nrm) { m.SetTexture("_BumpMap", nrm); m.SetFloat("_BumpScale", 0.5f); m.EnableKeyword("_NORMALMAP"); }
+            // Paper grain: the scanned paper normal as a fine detail layer (0.3 m repeat) on top of the stripe relief,
+            // so the surface has real fibre texture that catches the light at grazing angles.
+            var grain = CC0Tex("WallpaperPaper_Normal.jpg", true, true);
+            if (grain)
+            {
+                m.SetTexture("_DetailNormalMap", grain);
+                m.SetTextureScale("_DetailNormalMap", new Vector2(4f, 9f));
+                m.SetTextureScale("_DetailAlbedoMap", new Vector2(4f, 9f));          // the detail UVs come from this one
+                m.SetFloat("_DetailNormalMapScale", 0.9f);
+                m.EnableKeyword("_DETAIL_MULX2");
+            }
             m.SetFloat("_Smoothness", 0.18f);
             EditorUtility.SetDirty(m);
         }
@@ -164,6 +176,7 @@ namespace Backrooms.EditorTools
                 m.SetTextureScale("_BaseMap", Vector2.one); m.SetTextureOffset("_BaseMap", Vector2.zero);
             }
             ApplyChevronWallpaper(a.wallpaper);
+            OfficeReferenceLook.Apply(a);        // the Reference Match look: tan-yellow wallpaper, supplied carpet, square ceiling tiles, no baseboard
 
             var plate = Lit("M_WallPlate", Color.white, Tex("WallPlate_Atlas"), null, 0.42f);
             a.wallPlate = plate;
@@ -217,8 +230,19 @@ namespace Backrooms.EditorTools
             a.ceilingPlaster.SetTextureScale("_BaseMap", new Vector2(1f / 2.4f, 1f / 2.4f));
             // Scanned CC0 textures are off (owner preferred the original look); set to true to try them again.
             if (UseScannedTextures) ApplyScannedTextures(a);
-            a.cardboard = Lit("M_Cardboard", new Color(0.72f, 0.52f, 0.32f), Tex("Wood_Albedo"), null, 0.08f);
+            // Warehouse dressing: corrugated cardboard (0.5 m per repeat), taped seams, printed labels, blue slotted
+            // rack uprights with orange beams, pale pallet wood.
+            a.cardboard = Lit("M_Cardboard", Color.white, Tex("Cardboard_Albedo"), Tex("Cardboard_Normal"), 0.14f, 0.9f);
+            a.cardboard.SetTextureScale("_BaseMap", new Vector2(2f, 2f)); a.cardboard.SetTextureScale("_BumpMap", new Vector2(2f, 2f));
+            a.boxTape = Lit("M_BoxTape", new Color(0.66f, 0.52f, 0.33f), null, null, 0.72f);
+            a.boxPrint = Lit("M_BoxPrint", Color.white, Tex("BoxPrint_Atlas"), null, 0.18f);
+            a.boxPrint.SetFloat("_AlphaClip", 1f); a.boxPrint.SetFloat("_Cutoff", 0.5f); a.boxPrint.EnableKeyword("_ALPHATEST_ON"); a.boxPrint.renderQueue = 2450;
+            a.rackUpright = Lit("M_RackUpright", Color.white, Tex("RackUpright_Albedo"), Tex("RackUpright_Normal"), 0.42f, 1f); a.rackUpright.SetFloat("_Metallic", 0.35f);
+            a.rackBeam = Lit("M_RackBeam", new Color(0.78f, 0.32f, 0.07f), null, null, 0.45f); a.rackBeam.SetFloat("_Metallic", 0.3f);
+            a.pallet = Lit("M_Pallet", new Color(0.66f, 0.56f, 0.4f), Tex("Wood_Albedo"), null, 0.18f);
+            foreach (var m in new[] { a.cardboard, a.boxTape, a.boxPrint, a.rackUpright, a.rackBeam, a.pallet }) EditorUtility.SetDirty(m);
             CreatePropPrefabs(a);
+            UseProjectLitShader();
             EditorUtility.SetDirty(a);
             AssetDatabase.SaveAssets();
             return a;
@@ -301,11 +325,34 @@ namespace Backrooms.EditorTools
             a.wallClockPrefab = Make("WallClock", "WallClock", a.chairFabric, clockFace, false);
         }
 
+        const string ProjectLit = "Backrooms/Lit";
+
+        /// <summary>
+        /// Every world material uses Backrooms/Lit (URP Lit plus the light grid). Same properties as URP Lit,
+        /// so switching keeps all settings.
+        /// </summary>
+        static void UseProjectLitShader()
+        {
+            var lit = Shader.Find(ProjectLit);
+            if (!lit) { Debug.LogError("[Backrooms] Backrooms/Lit shader missing; materials stay on URP Lit."); return; }
+            foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { MatFolder }))
+            {
+                var m = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
+                if (m && m.name != "M_CamcorderVideo") { m.SetShaderPassEnabled("MotionVectors", false); EditorUtility.SetDirty(m); }   // static world: no motion-vector pass (a rebuild re-enables it otherwise)
+                if (!m || m.shader == null || m.shader.name != "Universal Render Pipeline/Lit") continue;
+                bool motion = m.GetShaderPassEnabled("MotionVectors");
+                m.shader = lit;
+                m.renderQueue = -1;                                  // from the shader, as before
+                m.SetShaderPassEnabled("MotionVectors", motion);     // URP's material editor turns it off for static props
+                EditorUtility.SetDirty(m);
+            }
+        }
+
         static Material Lit(string name, Color color, Texture2D albedo, Texture2D normal, float smoothness, float normalScale = 1f)
         {
             string path = $"{MatFolder}/{name}.mat";
             var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (!mat) { mat = new Material(Shader.Find("Universal Render Pipeline/Lit")); AssetDatabase.CreateAsset(mat, path); }
+            if (!mat) { mat = new Material(Shader.Find(ProjectLit) ?? Shader.Find("Universal Render Pipeline/Lit")); AssetDatabase.CreateAsset(mat, path); }
             mat.SetColor("_BaseColor", color);
             mat.SetTexture("_BaseMap", albedo);
             mat.SetFloat("_Smoothness", smoothness);
@@ -402,6 +449,31 @@ namespace Backrooms.EditorTools
             AssetDatabase.SaveAssets();
         }
 
+        /// <summary>Adds the camcorder frame hold (recording frame rate) to the PC renderer, after the video pass.
+        /// It does nothing until a camcorder preset sets a recording frame rate.</summary>
+        public static void EnsureFrameHold()
+        {
+            var data = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(RendererPath);
+            if (!data) { Debug.LogError("[Backrooms] PC_Renderer not found."); return; }
+            foreach (var f in data.rendererFeatures)
+                if (f is Backrooms.Camcorder.CamcorderFrameHold) return;
+            var feature = ScriptableObject.CreateInstance<Backrooms.Camcorder.CamcorderFrameHold>();
+            feature.name = "CamcorderFrameHold";
+            AssetDatabase.AddObjectToAsset(feature, data);
+            data.rendererFeatures.Add(feature);
+            var so = new SerializedObject(data);
+            var map = so.FindProperty("m_RendererFeatureMap");
+            if (map != null && AssetDatabase.TryGetGUIDAndLocalFileIdentifier(feature, out string _, out long localId))
+            {
+                map.arraySize++;
+                map.GetArrayElementAtIndex(map.arraySize - 1).longValue = localId;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+            data.SetDirty();
+            EditorUtility.SetDirty(data);
+            AssetDatabase.SaveAssets();
+        }
+
         // ---------------- Scene ----------------
 
         static void ConfigureEnvironment()
@@ -433,20 +505,35 @@ namespace Backrooms.EditorTools
             }
         }
 
+        /// <summary>
+        /// The camcorder post-processing volume. An existing profile is kept as it is (it holds the owner's
+        /// tuned look); only missing effects are added. A new profile starts from neutral defaults.
+        /// </summary>
         static Volume BuildVolume()
         {
             string path = SettingsFolder + "/Infinite_PostProfile.asset";
-            if (AssetDatabase.LoadAssetAtPath<VolumeProfile>(path)) AssetDatabase.DeleteAsset(path);
-            var profile = ScriptableObject.CreateInstance<VolumeProfile>();
-            AssetDatabase.CreateAsset(profile, path);
-            void Add<T>() where T : VolumeComponent { var c = profile.Add<T>(true); c.name = typeof(T).Name; AssetDatabase.AddObjectToAsset(c, profile); }
+            var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(path);
+            bool fresh = !profile;
+            if (fresh)
+            {
+                profile = ScriptableObject.CreateInstance<VolumeProfile>();
+                AssetDatabase.CreateAsset(profile, path);
+            }
+            void Add<T>() where T : VolumeComponent
+            {
+                if (profile.Has<T>()) return;
+                var c = profile.Add<T>(true); c.name = typeof(T).Name; AssetDatabase.AddObjectToAsset(c, profile);
+            }
             Add<Tonemapping>(); Add<ColorAdjustments>(); Add<WhiteBalance>(); Add<LiftGammaGain>(); Add<Bloom>(); Add<FilmGrain>();
             Add<Vignette>(); Add<ChromaticAberration>(); Add<LensDistortion>(); Add<DepthOfField>(); Add<MotionBlur>();
-            // Neutral defaults; CamcorderRig drives every value from the user's settings at runtime.
-            profile.TryGet(out Tonemapping tone); tone.mode.Override(TonemappingMode.Neutral);
-            profile.TryGet(out ColorAdjustments ca); ca.postExposure.Override(0f); ca.contrast.Override(18f);
-            profile.TryGet(out Bloom bloom); bloom.intensity.Override(0.32f); bloom.highQualityFiltering.Override(true);
-            profile.TryGet(out DepthOfField dof); dof.mode.Override(DepthOfFieldMode.Bokeh); dof.focusDistance.Override(4f); dof.aperture.Override(4f);
+            if (fresh)
+            {
+                // Neutral defaults; CamcorderRig drives every value from the user's settings at runtime.
+                profile.TryGet(out Tonemapping tone); tone.mode.Override(TonemappingMode.Neutral);
+                profile.TryGet(out ColorAdjustments ca); ca.postExposure.Override(0f); ca.contrast.Override(18f);
+                profile.TryGet(out Bloom bloom); bloom.intensity.Override(0.32f); bloom.highQualityFiltering.Override(true);
+                profile.TryGet(out DepthOfField dof); dof.mode.Override(DepthOfFieldMode.Bokeh); dof.focusDistance.Override(4f); dof.aperture.Override(4f);
+            }
             EditorUtility.SetDirty(profile);
             AssetDatabase.SaveAssets();
 

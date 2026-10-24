@@ -49,12 +49,7 @@ namespace Backrooms.DebugTools
             if (!_layouts.TryGetValue(chunk, out var l))
             {
                 // Use the layout actually built (biome rules), falling back to the live settings.
-                l = _ws.LayoutAt(chunk);
-                if (l == null)
-                {
-                    var s = _ws.Settings.Evaluate(_ws.Seed, chunk);
-                    l = OfficeLayoutGenerator.Generate(_ws.Seed, chunk, N, s.rules, s.Dominant);
-                }
+                l = _ws.LayoutAt(chunk) ?? _ws.World.Chunk(chunk);
                 _layouts[chunk] = l;
                 var b = new HashSet<Vector2Int>();
                 foreach (var p in l.props)

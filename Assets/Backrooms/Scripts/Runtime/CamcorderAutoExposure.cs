@@ -30,6 +30,8 @@ namespace Backrooms
         public float exposureBias = 0f;
         [Tooltip("Automatic iris on/off. Off holds the nominal exposure plus bias.")]
         public bool autoExposure = true;
+        /// <summary>Jump straight to the target instead of easing (locked exposure for repeatable stills).</summary>
+        [System.NonSerialized] public bool snap;
         [Tooltip("Multiplier on both adaptation speeds.")]
         [Range(0.1f, 3f)] public float speedScale = 1f;
         [Tooltip("Subtle brightness beating from the camera shutter against fluorescent mains flicker.")]
@@ -89,7 +91,7 @@ namespace Backrooms
                 ? Mathf.Clamp(Mathf.Log(targetLuminance / Mathf.Max(MeasuredLuminance, 1e-4f), 2f) * compensation, minEV, maxEV)
                 : 0f;
             float speed = (target < CurrentEV ? darkenSpeed : brightenSpeed) * speedScale;
-            CurrentEV = Mathf.MoveTowards(CurrentEV, target, speed * Time.deltaTime);
+            CurrentEV = snap ? target : Mathf.MoveTowards(CurrentEV, target, speed * Time.deltaTime);
 
             // Shutter beating against mains-driven tubes: a slow, slightly irregular brightness pulse.
             float beat = flicker > 0f

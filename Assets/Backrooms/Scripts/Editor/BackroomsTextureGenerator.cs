@@ -1,5 +1,6 @@
 using System.IO;
 using UnityEditor;
+using Backrooms.Generation;
 using UnityEngine;
 
 namespace Backrooms.EditorTools
@@ -31,6 +32,98 @@ namespace Backrooms.EditorTools
             AssetDatabase.Refresh();
         }
 
+
+        public const string RefCarpetSource = Folder + "/Source/RefCarpet_Source.png";
+        public const float RefCarpetMeters = 3f;        // one repeat of the composite (the broad mottling)
+        public const float RefCarpetPileMeters = 0.5f;  // one repeat of the carpet photo inside it
+        public const float RefCeilingMeters = 2.4f;     // 4 x 4 square tiles of 0.6 m
+
+        /// <summary>
+        /// Textures for the Reference Match scene (the walls use the game's own wallpaper, tinted by the material):
+        /// a carpet made from the supplied carpet photo (repeating every 0.5 m) under a broad 3 m mottling, with a
+        /// normal map from the photo's pile; and a suspended ceiling of square 0.6 m fissured tiles with a dark grid.
+        /// The textures are near neutral in colour; the materials tint them.
+        /// </summary>
+        public static void GenerateReferenceMatch()
+        {
+            Directory.CreateDirectory(Folder);
+
+            // ---- Carpet ----
+            const int P = 256;                                                     // pixels per photo repeat (2 mm per pixel)
+            int reps = Mathf.RoundToInt(RefCarpetMeters / RefCarpetPileMeters);
+            int S = P * reps;
+            var src = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            bool haveSrc = File.Exists(RefCarpetSource) && src.LoadImage(File.ReadAllBytes(RefCarpetSource));
+            var pile = new Color[P * P];
+            if (haveSrc)
+            {
+                // Box-filter the photo down to P x P (it tiles seamlessly), then normalise it around its mean colour.
+                int k = Mathf.Max(1, src.width / P);
+                var sp = src.GetPixels();
+                Color mean = Color.clear;
+                for (int y = 0; y < P; y++)
+                for (int x = 0; x < P; x++)
+                {
+                    Color s = Color.clear;
+                    for (int j = 0; j < k; j++) for (int i = 0; i < k; i++) s += sp[Mathf.Min(y * k + j, src.height - 1) * src.width + Mathf.Min(x * k + i, src.width - 1)];
+                    pile[y * P + x] = s / (k * k);
+                    mean += pile[y * P + x];
+                }
+                mean /= P * P;
+                for (int i = 0; i < pile.Length; i++)
+                    pile[i] = new Color(pile[i].r / mean.r, pile[i].g / mean.g, pile[i].b / mean.b, 1f);
+            }
+            else
+            {
+                Debug.LogWarning("[Backrooms] " + RefCarpetSource + " not found; the Reference Match carpet uses procedural pile.");
+                for (int y = 0; y < P; y++) for (int x = 0; x < P; x++) { float g = 0.85f + 0.3f * VNoise(x / 3f, y / 3f, P / 3 + 1, P / 3 + 1, 931); pile[y * P + x] = new Color(g, g, g, 1f); }
+            }
+            Object.DestroyImmediate(src);
+
+            var carpet = new Color[S * S];
+            var height = new float[S * S];
+            for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float u = x / (float)S, v = y / (float)S;
+                float mottle = Fbm(u, v, 3, 4, 907) - 0.5f;                       // long soft mottling (the part that reads at a distance)
+                float lane = VNoise(u * 40, v * 3, 40, 3, 919) - 0.5f;             // faint pile direction streaks along the room
+                Color p = pile[(y % P) * P + (x % P)];
+                p = Color.white + (p - Color.white) * 0.85f;                          // keep the photo's grain, slightly calmer
+                float g = 0.72f * (1f + mottle * 0.30f + lane * 0.03f);
+                carpet[y * S + x] = new Color(p.r * g, p.g * g, p.b * g, 1f);
+                height[y * S + x] = (p.r + p.g + p.b) / 3f;
+            }
+            Save("RefCarpet_Albedo", S, S, carpet, true);
+            Save("RefCarpet_Normal", S, S, NormalFromHeight(height, S, S, 2.5f), false, true);
+
+            // ---- Ceiling: 4 x 4 tiles of 0.6 m; dark recessed grid, fissured mineral-fibre surface ----
+            const int C = 1024, T = C / 4;
+            var ceil = new Color[C * C];
+            var ch = new float[C * C];
+            for (int y = 0; y < C; y++)
+            for (int x = 0; x < C; x++)
+            {
+                float u = x / (float)C, v = y / (float)C;
+                int tx = x / T, ty = y / T;
+                float lx = x % T, ly = y % T;
+                float d = Mathf.Min(Mathf.Min(lx, T - 1 - lx), Mathf.Min(ly, T - 1 - ly));   // px to the tile edge
+                float tone = (Hash(tx, ty, 941) - 0.5f) * 0.05f;                                  // tile-to-tile variation
+                float fiss = Edge(0.64f, 0.74f, VNoise(u * 150, v * 150, 150, 150, 947)) * Edge(0.45f, 0.6f, VNoise(u * 40, v * 40, 40, 40, 953));
+                float streak = VNoise(u * 4, v * 160, 4, 160, 959) - 0.5f;
+                float speck = VNoise(u * 400, v * 400, 400, 400, 967) - 0.5f;
+                float grid = Edge(1.5f, 4.5f, d);                                     // 0 on the grid line
+                float bevel = Edge(4f, 14f, d);                                       // soft shadow where the tile meets the grid
+                float g = (0.86f + tone + streak * 0.03f + speck * 0.05f - fiss * 0.07f) * (0.93f + 0.07f * bevel);
+                g = Mathf.Lerp(0.66f, g, grid);
+                ceil[y * C + x] = new Color(g, g, g, 1f);
+                ch[y * C + x] = grid * 0.6f + bevel * 0.4f - fiss * 0.08f;
+            }
+            Save("RefCeiling_Albedo", C, C, ceil, true);
+            Save("RefCeiling_Normal", C, C, NormalFromHeight(ch, C, C, 2f), false, true);
+            AssetDatabase.Refresh();
+        }
+
         /// <summary>Textures for the infinite-world dressing: wall plates, upholstery and wood.</summary>
         public static void GenerateProps()
         {
@@ -39,6 +132,9 @@ namespace Backrooms.EditorTools
             Fabric();
             Wood();
             Plaster();
+            Cardboard();
+            BoxPrint();
+            RackUpright();
             AssetDatabase.Refresh();
         }
 
@@ -306,6 +402,141 @@ namespace Backrooms.EditorTools
             Save("CeilingTile_Normal", S, S, NormalFromHeight(height, S, S, 2.2f), false, true);
         }
 
+
+        // ---------- Warehouse dressing: corrugated cardboard, box print atlas, perforated steel upright ----------
+
+        /// <summary>Only the warehouse textures (Cardboard, BoxPrint atlas, RackUpright).</summary>
+        public static void GenerateWarehouse()
+        {
+            Directory.CreateDirectory(Folder);
+            Cardboard();
+            BoxPrint();
+            RackUpright();
+            AssetDatabase.Refresh();
+        }
+
+        /// <summary>Kraft cardboard, 0.5 m per repeat: vertical corrugation flutes, paper fibres, mottling, a few stains.</summary>
+        static void Cardboard()
+        {
+            const int S = 512;
+            var albedo = new Color[S * S];
+            var height = new float[S * S];
+            for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float u = x / (float)S, v = y / (float)S;
+                float flute = 0.5f + 0.5f * Mathf.Sin(x * Mathf.PI * 2f / 8f);                    // 8 px per flute, tiles (512 / 8)
+                float fibre = VNoise(u * 220, v * 40, 220, 40, 301) * 0.6f + VNoise(u * 90, v * 90, 90, 90, 307) * 0.4f;
+                float mottle = Fbm(u, v, 4, 5, 311);
+                float stain = Mathf.SmoothStep(0.64f, 0.8f, Fbm(u, v, 3, 4, 317));
+                float g = 1f + (flute - 0.5f) * 0.07f + (fibre - 0.5f) * 0.12f + (mottle - 0.5f) * 0.16f - stain * 0.16f;
+                var c = new Color(0.64f, 0.49f, 0.31f) * g;
+                c.a = 1f;
+                albedo[y * S + x] = c;
+                height[y * S + x] = flute * 0.45f + fibre * 0.4f + mottle * 0.15f;
+            }
+            Save("Cardboard_Albedo", S, S, albedo, true);
+            Save("Cardboard_Normal", S, S, NormalFromHeight(height, S, S, 1.4f), false, true);
+        }
+
+        /// <summary>
+        /// Prints for boxes (cut out where there is no ink): shipping label, address label, "this side up" arrows,
+        /// a red FRAGILE stamp, a maker mark and the dark gap between top flaps. Layout: BoxPrintAtlas.
+        /// </summary>
+        static void BoxPrint()
+        {
+            const int W = 1024, H = 512;
+            var px = new Color[W * H];                                   // all transparent
+            void Fill(Rect r, Color c)
+            {
+                int x0 = Mathf.RoundToInt(r.xMin * W), x1 = Mathf.RoundToInt(r.xMax * W), y0 = Mathf.RoundToInt(r.yMin * H), y1 = Mathf.RoundToInt(r.yMax * H);
+                for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) px[y * W + x] = c;
+            }
+            Rect Sub(Rect r, float fx, float fy, float fw, float fh) => new Rect(r.xMin + r.width * fx, r.yMin + r.height * fy, r.width * fw, r.height * fh);
+            var paper = new Color(0.9f, 0.89f, 0.84f, 1f); var ink = new Color(0.07f, 0.06f, 0.05f, 1f);
+            var rng = new System.Random(77);
+
+            // Shipping label: border, logo bar, text lines, barcode, a code square.
+            var L = BoxPrintAtlas.ShippingLabel;
+            Fill(L, new Color(0.45f, 0.43f, 0.4f, 1f));
+            Fill(Sub(L, 0.015f, 0.025f, 0.97f, 0.95f), paper);
+            Fill(Sub(L, 0.05f, 0.76f, 0.9f, 0.16f), ink);
+            for (int i = 0; i < 4; i++) Fill(Sub(L, 0.05f, 0.58f - i * 0.085f, (0.45f + (float)rng.NextDouble() * 0.5f) * 0.9f, 0.035f), new Color(0.25f, 0.24f, 0.22f, 1f));
+            float bx = 0.05f;
+            while (bx < 0.62f)
+            {
+                float bw = 0.008f + (float)rng.NextDouble() * 0.024f;
+                Fill(Sub(L, bx, 0.06f, bw, 0.22f), ink);
+                bx += bw + 0.008f + (float)rng.NextDouble() * 0.02f;
+            }
+            for (int i = 0; i < 6; i++) for (int j = 0; j < 4; j++) if (rng.NextDouble() < 0.5) Fill(Sub(L, 0.7f + i * 0.045f, 0.06f + j * 0.055f, 0.04f, 0.05f), ink);
+
+            // Address label: border and text lines.
+            var A = BoxPrintAtlas.AddressLabel;
+            Fill(A, new Color(0.5f, 0.47f, 0.42f, 1f));
+            Fill(Sub(A, 0.02f, 0.03f, 0.96f, 0.94f), paper);
+            for (int i = 0; i < 6; i++) Fill(Sub(A, 0.08f, 0.82f - i * 0.12f, (0.3f + (float)rng.NextDouble() * 0.6f) * 0.85f, 0.05f), new Color(0.25f, 0.24f, 0.22f, 1f));
+
+            // This side up: two arrows (stem + head) in ink.
+            var T = BoxPrintAtlas.ThisSideUp;
+            foreach (float cx in new[] { 0.28f, 0.72f })
+            {
+                Fill(Sub(T, cx - 0.07f, 0.12f, 0.14f, 0.5f), ink);                      // stem
+                for (int k = 0; k < 14; k++)                                              // head (stacked shrinking bars)
+                    Fill(Sub(T, cx - 0.22f * (1f - k / 14f), 0.62f + k * 0.0185f, 0.44f * (1f - k / 14f), 0.0185f), ink);
+            }
+            Fill(Sub(T, 0.1f, 0.02f, 0.8f, 0.05f), ink);
+
+            // Fragile stamp: red frame, bars standing in for lettering.
+            var F = BoxPrintAtlas.Fragile; var red = new Color(0.72f, 0.1f, 0.08f, 1f);
+            Fill(F, red);
+            Fill(Sub(F, 0.05f, 0.1f, 0.9f, 0.8f), new Color(0, 0, 0, 0));
+            for (int i = 0; i < 7; i++) Fill(Sub(F, 0.14f + i * 0.11f, 0.3f, 0.06f, 0.4f), red);
+
+            // Maker mark: a ring with a bar underneath.
+            var M = BoxPrintAtlas.Logo;
+            int mx0 = Mathf.RoundToInt(M.xMin * W), my0 = Mathf.RoundToInt(M.yMin * H), mw = Mathf.RoundToInt(M.width * W), mh = Mathf.RoundToInt(M.height * H);
+            for (int y = 0; y < mh; y++) for (int x = 0; x < mw; x++)
+            {
+                float dx = (x - mw * 0.5f) / (mw * 0.5f), dy = (y - mh * 0.62f) / (mw * 0.5f);
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                if ((d < 0.88f && d > 0.62f) || (y > mh * 0.08f && y < mh * 0.2f && x > mw * 0.1f && x < mw * 0.9f)) px[(my0 + y) * W + mx0 + x] = new Color(0.12f, 0.1f, 0.08f, 1f);
+            }
+
+            Fill(BoxPrintAtlas.SeamLine, new Color(0.2f, 0.14f, 0.08f, 1f));
+
+            Save("BoxPrint_Atlas", W, H, px, true);
+            var imp = (TextureImporter)AssetImporter.GetAtPath(Folder + "/BoxPrint_Atlas.png");
+            imp.alphaIsTransparency = true; imp.wrapMode = TextureWrapMode.Clamp; imp.SaveAndReimport();
+        }
+
+        /// <summary>
+        /// Perforated steel upright face: blue paint, a column of slots. One repeat: u across the face, v over 0.5 m
+        /// (ten slots), so the rack geometry maps it with explicit UVs.
+        /// </summary>
+        static void RackUpright()
+        {
+            const int Wd = 128, Ht = 512;
+            var albedo = new Color[Wd * Ht];
+            var height = new float[Wd * Ht];
+            for (int y = 0; y < Ht; y++)
+            for (int x = 0; x < Wd; x++)
+            {
+                float u = x / (float)Wd, v = y / (float)Ht;
+                float cell = (v * 10f) % 1f;
+                bool slot = u > 0.26f && u < 0.74f && cell > 0.22f && cell < 0.72f;
+                float wear = Fbm(u, v, 4, 5, 331);
+                float chip = Mathf.SmoothStep(0.7f, 0.85f, Fbm(u, v * 4f, 6, 4, 337));
+                var paint = Color.Lerp(new Color(0.10f, 0.24f, 0.47f), new Color(0.07f, 0.17f, 0.34f), wear);
+                paint = Color.Lerp(paint, new Color(0.30f, 0.30f, 0.29f), chip * 0.5f);       // paint chipped down to steel
+                var c = slot ? new Color(0.015f, 0.015f, 0.015f) : paint;
+                c.a = 1f;
+                albedo[y * Wd + x] = c;
+                height[y * Wd + x] = slot ? 0f : 1f;
+            }
+            Save("RackUpright_Albedo", Wd, Ht, albedo, true);
+            Save("RackUpright_Normal", Wd, Ht, NormalFromHeight(height, Wd, Ht, 3.5f), false, true);
+        }
         // ---------- Helpers ----------
         static float Hash(int x, int y, int seed)
         {
@@ -317,6 +548,9 @@ namespace Backrooms.EditorTools
                 return (h & 0xFFFFFF) / 16777215f;
             }
         }
+
+        /// <summary>0 below a, 1 above b, smooth in between (GLSL smoothstep; Mathf.SmoothStep interpolates between its first two arguments instead).</summary>
+        static float Edge(float a, float b, float x) { float t = Mathf.Clamp01((x - a) / (b - a)); return t * t * (3f - 2f * t); }
 
         static int Mod(int a, int m) { int r = a % m; return r < 0 ? r + m : r; }
 

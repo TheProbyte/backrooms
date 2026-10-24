@@ -12,6 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7b48faafd48bbc040b62fe2c9ea1cf00, type: 3}
   m_Name: OfficeBiome_Assets
   m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.OfficeBiomeAssets
+  noBaseboard: 1
+  tunnel: {fileID: 2100000, guid: f7d11b9b57c398346ac0c5861920becc, type: 2}
   carpet: {fileID: 2100000, guid: 397ef6f0d53c9e1439e9b62248d6573c, type: 2}
   wallpaper: {fileID: 2100000, guid: 68048d61b07f2f84eb4fd8744f50dccb, type: 2}
   ceilingTile: {fileID: 2100000, guid: ba895fbedca018e4bbee1b1376af7702, type: 2}
@@ -39,6 +41,11 @@ MonoBehaviour:
   cardboard: {fileID: 2100000, guid: f383a0172407a014691401b9f0ff6f4a, type: 2}
   stripOn: {fileID: 2100000, guid: 234677e2f63ce4a42bfccbbc8a6fa2f8, type: 2}
   stripOff: {fileID: 2100000, guid: caacc391dda137f4bb92d9aa7530452c, type: 2}
+  rackUpright: {fileID: 2100000, guid: 26d6663253936ce478d2401632210497, type: 2}
+  rackBeam: {fileID: 2100000, guid: 6f895c3ef1e0b934fb9fb0c65ca3b850, type: 2}
+  boxTape: {fileID: 2100000, guid: 47875b0203b92f44eab6824c31cb489c, type: 2}
+  boxPrint: {fileID: 2100000, guid: 5ab377aed2adfe84eb9753504e894244, type: 2}
+  pallet: {fileID: 2100000, guid: 7a83bb3d4d0712649b83b20f37ce2ebf, type: 2}
   sofaPrefabs:
   - {fileID: 7018118578112881847, guid: e02cbaa0ac87c0742ac00c72ad407800, type: 3}
   - {fileID: 843757320359358737, guid: 659610b934574f8478aa773e3a054d05, type: 3}
