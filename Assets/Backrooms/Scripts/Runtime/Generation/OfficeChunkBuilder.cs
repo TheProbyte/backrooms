@@ -186,10 +186,10 @@ namespace Backrooms.Generation
                 r.sharedMaterial = mat;
                 r.renderingLayerMask = mask;
                 if (mat == _a.lensOn || (_a.domeOn && mat == _a.domeOn) || (_a.stripOn && mat == _a.stripOn) || mat == _a.lampShadeOn) litLensRenderers.Add(r);
-                bool architecture = mat == _a.wallpaper || mat == _a.paintedWall || mat == _a.baseboard || mat == _a.halfWallCap;
+                bool architecture = mat == _a.wallpaper || mat == _a.paintedWall || mat == _a.referenceCream || mat == _a.referenceOlive || mat == _a.baseboard || mat == _a.halfWallCap;
                 bool caster = !architecture && mat != _a.lensOn && mat != _a.lensOff && mat != _a.ceilingGrid && mat != _a.carpet && mat != _a.ceilingTile && mat != _a.lampShadeOn
                               && mat != _a.domeOn && mat != _a.domeOff && mat != _a.ceilingPlaster && mat != _a.stripOn && mat != _a.stripOff
-                              && mat != _a.cardboard && mat != _a.boxTape && mat != _a.boxPrint && mat != _a.rackUpright && mat != _a.rackBeam && mat != _a.pallet;   // warehouse dressing: proxies cast the shadows
+                              && mat != _a.referenceCarpet && mat != _a.cardboard && mat != _a.boxTape && mat != _a.boxPrint && mat != _a.rackUpright && mat != _a.rackBeam && mat != _a.pallet;   // warehouse dressing: proxies cast the shadows
                 r.shadowCastingMode = mask == ProxyMask || mask == WallProxyMask ? ShadowCastingMode.ShadowsOnly : caster ? ShadowCastingMode.On : ShadowCastingMode.Off;
                 if (mask == WallProxyMask)
                 {
@@ -306,7 +306,7 @@ namespace Backrooms.Generation
 
         // ---------------- Floor / ceiling / grid ----------------
 
-        Material WallMat(Room r) => r.painted && _a.paintedWall ? _a.paintedWall : _a.wallpaper;
+        Material WallMat(Room r) => _a.WallMaterial(r);
 
         /// <summary>One floor and one ceiling quad per room (world-space UVs keep textures continuous).</summary>
         void BuildFloorAndCeiling()
@@ -321,11 +321,11 @@ namespace Backrooms.Generation
                 float x0 = x * C, z0 = z * C, x1 = x0 + C, z1 = z0 + C, h = r.ceiling;
                 if (!_L.Has(x, z, CellFlags.NoFloor))
                 {
-                    WMask(_a.carpet, m).Quad(new Vector3(x0, 0, z0), new Vector3(x0, 0, z1), new Vector3(x1, 0, z1), new Vector3(x1, 0, z0), Vector3.up, MeshWriter.FloorUV);
+                    WMask(_a.FloorMaterial(r), m).Quad(new Vector3(x0, 0, z0), new Vector3(x0, 0, z1), new Vector3(x1, 0, z1), new Vector3(x1, 0, z0), Vector3.up, MeshWriter.FloorUV);
                     // Beside a void (a well, a stair hall, an elevator shaft) the wall faces below sit half a wall thickness
                     // out from the cell edge: cover that strip so no slit shows from above.
                     float e = T * 0.5f;
-                    var fm = WMask(_a.carpet, m);
+                    var fm = WMask(_a.FloorMaterial(r), m);
                     if (x > 0 && _L.Has(x - 1, z, CellFlags.NoFloor)) fm.Quad(new Vector3(x0 - e, 0, z0), new Vector3(x0 - e, 0, z1), new Vector3(x0, 0, z1), new Vector3(x0, 0, z0), Vector3.up, MeshWriter.FloorUV);
                     if (x < _L.N - 1 && _L.Has(x + 1, z, CellFlags.NoFloor)) fm.Quad(new Vector3(x1, 0, z0), new Vector3(x1, 0, z1), new Vector3(x1 + e, 0, z1), new Vector3(x1 + e, 0, z0), Vector3.up, MeshWriter.FloorUV);
                     if (z > 0 && _L.Has(x, z - 1, CellFlags.NoFloor)) fm.Quad(new Vector3(x0, 0, z0 - e), new Vector3(x0, 0, z0), new Vector3(x1, 0, z0), new Vector3(x1, 0, z0 - e), Vector3.up, MeshWriter.FloorUV);

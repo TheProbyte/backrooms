@@ -15,6 +15,18 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-24 14:16  ChatGPT  Custom room destinations and per-area existing finishes
+- F5 > PLACES > MY ROOMS now finds the nearest generated custom placement (all designs or one enabled design), picks
+  a cell clear of authored furniture/pillars/half walls, and uses TeleportSafe while chunks load. Reports no-match cases.
+- Area wall/floor finish enums survive JSON, stamping, rotations and chunk slicing. Default preserves painted/wallpaper
+  and carpet behavior; explicit choices reuse existing wallpaper/plaster, Reference Match cream/olive/carpet, wood and laminate.
+  Reference material links are stored on OfficeBiome_Assets; Backrooms > Refresh Existing Room Finishes restores them.
+- Why: saved designs must be easy to visit and areas need distinct finishes without creating or editing any material.
+- Checked: Unity compiled; all 16 CustomRoomTests passed, including clear/blocked arrivals, finish round trips across four
+  rotations/slicing, legacy material defaults and worker-thread mesh building. Play-mode checks follow after builder UI work.
+- Open: search radius remains the existing ~10 districts. Arrival checks authored objects, not subsequently moved furniture.
+  Wood/laminate reuse prop materials as requested; they are not new purpose-built floor textures. No lighting changes made.
+
 ## 2026-10-24 14:10  ChatGPT  Wall-placed props and explicit chairs in build mode
 - Added racks, wall clocks, armchairs and office chairs to the builder palette. Racks/clocks snap to a solid wall on the
   clicked side (rejecting doorways and too-short runs); dragging reattaches them; clock mounting height is editable.

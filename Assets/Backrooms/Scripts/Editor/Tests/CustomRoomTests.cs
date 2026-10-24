@@ -209,6 +209,46 @@ namespace Backrooms.Tests
                 if (Directory.Exists(dir)) Directory.Delete(dir, true);
             }
         }
+
+        [Test]
+        public void CustomArrivalAvoidsFurnitureAndRejectsBlockedRooms()
+        {
+            var bp = Sample();
+            var plan = CustomRoomHarness.BuildLayout(bp, 0, 0, out var placement);
+            Assert.IsTrue(CustomRoomStamp.TryArrival(plan, placement.rect, out var first));
+            plan.props.Add(new Prop { kind = PropKind.Box, position = first, size = Vector3.one });
+            Assert.IsTrue(CustomRoomStamp.TryArrival(plan, placement.rect, out var next));
+            Assert.Greater(Vector2.Distance(first, next), 0.6f);
+            plan.props.Add(new Prop { kind = PropKind.StorageRack, position = placement.rect.center * OfficeBiome.CellSize, size = new Vector3(100f, 3f, 100f) });
+            Assert.IsFalse(CustomRoomStamp.TryArrival(plan, placement.rect, out _), "do not teleport inside furniture when every cell is blocked");
+        }
+
+        [Test]
+        public void AreaFinishesSurviveJsonRotationsAndChunkSlices([Values(0, 1, 2, 3)] int rot)
+        {
+            var bp = Sample();
+            bp.variants[0].rooms[1].wallFinish = WallFinish.ReferenceOlive;
+            bp.variants[0].rooms[1].floorFinish = FloorFinish.DarkWood;
+            bp = RoomBlueprint.FromJson(bp.ToJson());
+            var plan = CustomRoomHarness.BuildLayout(bp, 0, rot, out _);
+            var area = plan.rooms.First(r => r.custom && r.ceiling > 3f);
+            Assert.AreEqual(WallFinish.ReferenceOlive, area.wallFinish);
+            Assert.AreEqual(FloorFinish.DarkWood, area.floorFinish);
+            var slice = WorldGenerator.Slice(plan, new Vector3Int(0, 0, 0));
+            Assert.IsTrue(slice.rooms.Any(r => r.custom && r.wallFinish == WallFinish.ReferenceOlive && r.floorFinish == FloorFinish.DarkWood));
+            var assets = UnityEditor.AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
+            Assert.AreSame(assets.wood, assets.FloorMaterial(area));
+            if (assets.referenceOlive) Assert.AreSame(assets.referenceOlive, assets.WallMaterial(area));
+            var legacy = new Room { painted = false };
+            Assert.AreSame(assets.wallpaper, assets.WallMaterial(legacy));
+            legacy.painted = true;
+            Assert.AreSame(assets.paintedWall, assets.WallMaterial(legacy));
+            Assert.AreSame(assets.carpet, assets.FloorMaterial(legacy));
+            System.Exception error = null;
+            var worker = new System.Threading.Thread(() => { try { new OfficeChunkBuilder(assets).BuildData(plan); } catch (System.Exception e) { error = e; } });
+            worker.Start(); worker.Join();
+            Assert.IsNull(error, error?.ToString());
+        }
     
         [Test]
         public void CrawlHolesComeInFarApartPairsOnRealWalls()

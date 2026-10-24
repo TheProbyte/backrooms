@@ -55,6 +55,8 @@ namespace Backrooms.CustomRooms
         [Tooltip("Ceiling height in metres (2.7 is the normal office; taller ceilings get plaster and round lights).")]
         public float ceiling = OfficeBiome.CeilingHeight;
         [Tooltip("Painted plaster walls instead of wallpaper.")] public bool painted;
+        public WallFinish wallFinish;
+        public FloorFinish floorFinish;
         public LightMode lights = LightMode.AllOn;
 
         public RoomSettings Clone() => (RoomSettings)MemberwiseClone();

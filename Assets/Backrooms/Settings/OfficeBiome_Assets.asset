@@ -46,6 +46,9 @@ MonoBehaviour:
   boxTape: {fileID: 2100000, guid: 47875b0203b92f44eab6824c31cb489c, type: 2}
   boxPrint: {fileID: 2100000, guid: 5ab377aed2adfe84eb9753504e894244, type: 2}
   pallet: {fileID: 2100000, guid: 7a83bb3d4d0712649b83b20f37ce2ebf, type: 2}
+  referenceCream: {fileID: 2100000, guid: be21841f48c44c14bb1ff1bc6be67e06, type: 2}
+  referenceOlive: {fileID: 2100000, guid: 8432cec2f8f956d4b8e42423d3ec9410, type: 2}
+  referenceCarpet: {fileID: 2100000, guid: 7e5fd626efe7a934bbb03313352267c3, type: 2}
   sofaPrefabs:
   - {fileID: 7018118578112881847, guid: e02cbaa0ac87c0742ac00c72ad407800, type: 3}
   - {fileID: 843757320359358737, guid: 659610b934574f8478aa773e3a054d05, type: 3}

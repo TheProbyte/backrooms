@@ -120,6 +120,8 @@ namespace Backrooms.Generation
             public RectInt rect;
             public RoomKind kind;
             public float ceiling;
+            public WallFinish wallFinish;
+            public FloorFinish floorFinish;
             public bool painted, openAbove, noFloor, noDoors;
             public AnnexRole role;
             public LightMode lights;

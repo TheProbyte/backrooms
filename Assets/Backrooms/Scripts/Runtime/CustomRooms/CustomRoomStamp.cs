@@ -118,6 +118,7 @@ namespace Backrooms.CustomRooms
                     rect = new RectInt(p.rect.x + x0, p.rect.y + z0, x1 - x0 + 1, z1 - z0 + 1),
                     kind = kind, ceiling = Mathf.Max(OfficeBiome.CeilingHeight, rs.ceiling), painted = rs.painted || rs.ceiling > OfficeBiome.CeilingHeight + 0.01f,
                     lights = rs.lights, noDoors = true,     // doors come from the blueprint, never at random
+                    wallFinish = rs.wallFinish, floorFinish = rs.floorFinish,
                 });
             }
         }
@@ -197,6 +198,41 @@ namespace Backrooms.CustomRooms
         }
 
         // ---------------- Dressing ----------------
+
+        /// <summary>Cell-centre arrival inside a placed room, clear of its props, pillars and half walls.</summary>
+        public static bool TryArrival(OfficeLayout plan, RectInt rect, out Vector2 position)
+        {
+            position = default;
+            float best = float.MaxValue;
+            for (int z = rect.yMin; z < rect.yMax; z++)
+            for (int x = rect.xMin; x < rect.xMax; x++)
+            {
+                if (!plan.InChunk(x, z) || !plan.RoomAt(x, z).custom || !plan.RoomAt(x, z).Walkable || plan.Has(x, z, CellFlags.NoFloor)) continue;
+                var p = new Vector2((x + 0.5f) * C, (z + 0.5f) * C);
+                float distance = (p / C - rect.center).sqrMagnitude;
+                if (distance >= best) continue;
+                bool blocked = false;
+                foreach (var prop in plan.props)
+                {
+                    if (prop.kind == PropKind.WallClock) continue;
+                    var d = Quaternion.Euler(0f, -prop.yaw, 0f) * new Vector3(p.x - prop.position.x, 0f, p.y - prop.position.y);
+                    // Conference tables include chairs in the generated footprint.
+                    float extra = prop.kind == PropKind.ConferenceTable ? 1.1f : 0.35f;
+                    if (Mathf.Abs(d.x) < prop.size.x * 0.5f + extra && Mathf.Abs(d.z) < prop.size.z * 0.5f + extra) { blocked = true; break; }
+                }
+                if (blocked) continue;
+                foreach (var pillar in plan.pillars)
+                    if (Mathf.Abs(p.x - pillar.vertex.x * C) < pillar.size * 0.5f + 0.35f && Mathf.Abs(p.y - pillar.vertex.y * C) < pillar.size * 0.5f + 0.35f) { blocked = true; break; }
+                if (blocked) continue;
+                foreach (var wall in plan.halfWalls)
+                {
+                    float across = wall.alongX ? p.y : p.x, along = wall.alongX ? p.x : p.y;
+                    if (Mathf.Abs(across - wall.line * C) < 0.45f && along > wall.start * C - 0.35f && along < (wall.start + wall.length) * C + 0.35f) { blocked = true; break; }
+                }
+                if (!blocked) { best = distance; position = p; }
+            }
+            return best < float.MaxValue;
+        }
 
         public static void Decorate(OfficeLayout L, in LandmarkPlacement p, List<Room> rooms)
         {

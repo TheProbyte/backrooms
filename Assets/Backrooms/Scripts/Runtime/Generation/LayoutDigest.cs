@@ -19,6 +19,7 @@ namespace Backrooms.Generation
             {
                 h.Add(r.id); h.Add(r.rect.x); h.Add(r.rect.y); h.Add(r.rect.width); h.Add(r.rect.height);
                 h.Add((int)r.kind); h.Add((int)r.lights); h.Add(r.color); h.Add(r.ceiling); h.Add(r.painted ? 1 : 0);
+                h.Add((int)r.wallFinish); h.Add((int)r.floorFinish);
             }
             foreach (var f in L.fixtures)
             {

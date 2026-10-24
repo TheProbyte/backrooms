@@ -16,6 +16,7 @@ namespace Backrooms.EditorTools
         [MenuItem("Backrooms/Build Build-Mode Scene")]
         public static void Build()
         {
+            ConfigureExistingFinishes();
             EditorSceneManager.SaveOpenScenes();
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -47,6 +48,19 @@ namespace Backrooms.EditorTools
         }
 
         /// <summary>The procedural world first (it is what starts), then the reference room and build mode.</summary>
+        [MenuItem("Backrooms/Refresh Existing Room Finishes")]
+        public static void ConfigureExistingFinishes()
+        {
+            var assets = AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
+            if (!assets) return;
+            const string folder = "Assets/Backrooms/Materials/ReferenceMatch/";
+            assets.referenceCream = AssetDatabase.LoadAssetAtPath<Material>(folder + "M_Ref_Wall.mat");
+            assets.referenceOlive = AssetDatabase.LoadAssetAtPath<Material>(folder + "M_Ref_WallOlive.mat");
+            assets.referenceCarpet = AssetDatabase.LoadAssetAtPath<Material>(folder + "M_Ref_Carpet.mat");
+            EditorUtility.SetDirty(assets);
+            AssetDatabase.SaveAssetIfDirty(assets);
+        }
+
         public static void EnsureBuildSettings()
         {
             var wanted = new[]

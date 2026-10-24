@@ -6,6 +6,8 @@ namespace Backrooms.Generation
     public enum RoomKind { Office, BigOffice, Hallway, Crawl, Lounge, Conference }
     public enum LightMode { AllOn, Mixed, Dark }
     public enum EdgeKind : byte { Open, Wall, Door, DoorHeader }
+    public enum WallFinish { Default, Wallpaper, PaintedPlaster, ReferenceCream, ReferenceOlive }
+    public enum FloorFinish { Default, ReferenceCarpet, DarkWood, Laminate }
 
     /// <summary>Per-cell flags for multi-storey volumes.</summary>
     [System.Flags]
@@ -29,6 +31,8 @@ namespace Backrooms.Generation
         public int color;             // light-layer colour (0..27), see LightLayers
         public float ceiling = OfficeBiome.CeilingHeight;   // tall rooms have plaster ceilings and dome lights
         public bool painted;          // painted plaster walls instead of wallpaper
+        public WallFinish wallFinish; // Default preserves the legacy painted flag
+        public FloorFinish floorFinish;
         public string landmark;       // name of the landmark this room belongs to, if any
         public bool openAbove;        // continues into the storey above (no ceiling here; walls stop at the storey top)
         public bool noFloor;          // upper part of a volume from the storey below (no floor, no fixtures)
@@ -41,7 +45,7 @@ namespace Backrooms.Generation
         public Room CloneFor(int newId, RectInt newRect) => new Room
         {
             id = newId, globalId = globalId, rect = newRect, fullRect = fullRect, kind = kind, lights = lights, color = color,
-            ceiling = ceiling, painted = painted, landmark = landmark, openAbove = openAbove, noFloor = noFloor, noDoors = noDoors, role = role, custom = custom,
+            ceiling = ceiling, painted = painted, wallFinish = wallFinish, floorFinish = floorFinish, landmark = landmark, openAbove = openAbove, noFloor = noFloor, noDoors = noDoors, role = role, custom = custom,
         };
     }
 
