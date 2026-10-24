@@ -46,6 +46,8 @@ namespace Backrooms.Generation
         /// <summary>Most ceiling tubes that are real lights at once in grid mode (the F5 setting is clamped to this).</summary>
         public const int MaxRealTubes = 32;
 
+        [Range(0f, 1f)] public float emitterSize = 1f;
+
         class Share
         {
             public LightSource src;
@@ -59,6 +61,11 @@ namespace Backrooms.Generation
         readonly Dictionary<Vector3, Share> _shares = new Dictionary<Vector3, Share>();
         readonly List<LightGridMath.GridLight> _gridLights = new List<LightGridMath.GridLight>(512);
         readonly List<Vector3> _dropShares = new List<Vector3>();
+        static readonly System.Comparison<LightGridMath.GridLight> GridOrder = (a, b) =>
+        {
+            int x = a.pos.x.CompareTo(b.pos.x); if (x != 0) return x;
+            int z = a.pos.z.CompareTo(b.pos.z); return z != 0 ? z : a.pos.y.CompareTo(b.pos.y);
+        };
         int _gridFrame;
         LightingMode _activeMode = (LightingMode)(-1);
 
@@ -199,6 +206,9 @@ namespace Backrooms.Generation
             // Grid lights (with change tracking) and real lights.
             _gridLights.Clear();
             int enabled = 0, shadowed = 0;
+            int shadowMaps = 0;
+            foreach (var active in _shares.Values)
+                if (active.slot != null && active.slot.shadowK > 0.001f) shadowMaps += active.src.isLamp ? 6 : 1;
             foreach (var c in _candidates)
             {
                 var sh = _shares[c.position];
@@ -217,6 +227,7 @@ namespace Backrooms.Generation
                     pos = pos, range = range, dir = dir,
                     cosOuter = Mathf.Cos(outer * 0.5f * Mathf.Deg2Rad), cosInner = Mathf.Cos(inner * 0.5f * Mathf.Deg2Rad),
                     color = lin * gridShare, colorAll = lin * power, storey = c.chunk.y,
+                    halfSize = c.isLamp ? Vector2.zero : (c.strip ? new Vector2(0.59f, 0.055f) : c.dome ? new Vector2(0.16f, 0.16f) : new Vector2(0.285f, 0.285f)) * emitterSize,
                 });
 
                 // Real light for the real share.
@@ -238,21 +249,32 @@ namespace Backrooms.Generation
                     if (slot.spill) slot.spill.enabled = false;
                 }
                 var L = sh.slot.main;
-                float k = sh.w * Mathf.Clamp01(PowerLevel(c, now));
+                float k = sh.w * power;
                 L.enabled = k > 0.002f;
                 L.intensity = intensity * k;
                 L.range = range;
                 L.color = col;
                 if (!c.isLamp) { L.spotAngle = outer; L.innerSpotAngle = inner; }
-                var sm = L.enabled && sh.shadowed ? LightShadows.Soft : LightShadows.None;
+                // Keep outgoing shadow maps until their strength reaches zero; only then give that
+                // atlas capacity to an incoming map. Fast movement cannot oversubscribe the atlas.
+                int maps = c.isLamp ? 6 : 1;
+                float distanceFade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(shadowDistance * 0.65f, shadowDistance, Vector3.Distance(pos, eye)));
+                float wantedShadow = L.enabled && sh.shadowed && sh.target > 0f ? distanceFade : 0f;
+                bool hadShadow = sh.slot.shadowK > 0.001f;
+                if (!hadShadow && shadowMaps + maps > atlasMaps) wantedShadow = 0f;
+                sh.slot.shadowK = Mathf.MoveTowards(sh.slot.shadowK, wantedShadow, dt / Mathf.Max(0.01f, shadowFade));
+                bool hasShadow = sh.slot.shadowK > 0.001f;
+                if (hasShadow != hadShadow) shadowMaps += hasShadow ? maps : -maps;
+                var sm = L.enabled && hasShadow ? LightShadows.Soft : LightShadows.None;
                 if (L.shadows != sm) L.shadows = sm;
-                L.shadowStrength = shadowStrength;
+                L.shadowStrength = shadowStrength * Mathf.SmoothStep(0f, 1f, sh.slot.shadowK);
                 L.shadowBias = c.dome || c.strip ? 0.08f : 0.03f;
                 L.shadowNormalBias = 0.15f;
                 if (L.enabled) { enabled++; if (sm != LightShadows.None) shadowed++; }
             }
             EnabledLights = enabled; ShadowedLights = shadowed;
             ActiveLights = enabled;
+            _gridLights.Sort(GridOrder); // distance rank changes must not invalidate unchanged full-power bounce
             if (grid) grid.Tick(eye, _gridLights);
         }
     }

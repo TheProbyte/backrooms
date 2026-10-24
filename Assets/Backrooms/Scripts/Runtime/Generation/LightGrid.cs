@@ -14,7 +14,7 @@ namespace Backrooms.Generation
     /// Only dirty boxes are recomputed: newly exposed slabs, the reach of fixtures whose share or power
     /// changed (see <see cref="MarkDirty"/>), and chunks that loaded or unloaded.
     /// </summary>
-    public class LightGrid : MonoBehaviour
+    public partial class LightGrid : MonoBehaviour
     {
         public const int GX = 128, GY = 24, GZ = 128, OccN = GX / 2, TileTexels = 8, Tiles = GX / TileTexels;
         const float T = LightGridMath.Texel, C = LightGridMath.Cell;
@@ -93,6 +93,7 @@ namespace Backrooms.Generation
             _a = Make3D("LightGridA"); _b = Make3D("LightGridB");
             _bounceSrc = Make2D("LightGridBounceSrc"); _bounce0 = Make2D("LightGridBounce0"); _bounce1 = Make2D("LightGridBounce1");
             _occ = new ComputeBuffer(OccN * OccN * 2, 4);
+            InitSurfaces();
             _lights = new ComputeBuffer(_lightArr.Length, LightGridMath.GridLight.Stride);
             _tiles = new ComputeBuffer(Tiles * Tiles, 8);
             _tileLights = new ComputeBuffer(8192, 4);
@@ -113,6 +114,7 @@ namespace Backrooms.Generation
             _occ?.Release(); _lights?.Release(); _tiles?.Release(); _tileLights?.Release();
             _occ = _lights = _tiles = _tileLights = null;
             _encoded.Clear();
+            ReleaseSurfaces();
         }
 
         static RenderTexture Make3D(string name)
@@ -128,7 +130,7 @@ namespace Backrooms.Generation
 
         static RenderTexture Make2D(string name)
         {
-            var r = new RenderTexture(OccN, OccN, 0, RenderTextureFormat.ARGBHalf)
+            var r = new RenderTexture(OccN, OccN * 2, 0, RenderTextureFormat.ARGBHalf)
             { enableRandomWrite = true, name = name, wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Bilinear };
             r.Create();
             return r;
@@ -151,7 +153,7 @@ namespace Backrooms.Generation
                 if (i >= _lightCount || !_inputsValid) { upload = bins = bounce = true; continue; }
                 var old = _lightArr[i];
                 bool geometry = !l.pos.Equals(old.pos) || l.range != old.range;
-                bool illumination = geometry || !l.dir.Equals(old.dir) || l.cosOuter != old.cosOuter || l.cosInner != old.cosInner || l.storey != old.storey;
+                bool illumination = geometry || !l.dir.Equals(old.dir) || l.cosOuter != old.cosOuter || l.cosInner != old.cosInner || l.storey != old.storey || !l.halfSize.Equals(old.halfSize);
                 bins |= geometry;
                 bounce |= illumination || !l.colorAll.Equals(old.colorAll);
                 upload |= illumination || !l.color.Equals(old.color) || !l.colorAll.Equals(old.colorAll);
@@ -281,7 +283,8 @@ namespace Backrooms.Generation
             {
                 compute.SetBuffer(_kBounceSrc, IdOcc, _occ); compute.SetTexture(_kBounceSrc, IdBounceSrc, _bounceSrc);
                 compute.SetBuffer(_kBounceSrc, IdLights, _lights); compute.SetBuffer(_kBounceSrc, IdTiles, _tiles); compute.SetBuffer(_kBounceSrc, IdTileLights, _tileLights);
-                compute.Dispatch(_kBounceSrc, OccN / 8, OccN / 8, 1);
+                BindBounceSurfaces();
+                compute.Dispatch(_kBounceSrc, OccN / 8, OccN / 8, 2);
                 BounceDispatchesLastFrame++;
                 compute.SetBuffer(_kBounceDiff, IdOcc, _occ); compute.SetTexture(_kBounceDiff, IdBounceSrcIn, _bounceSrc);
                 RenderTexture src = _bounceSrc, dst = _bounce0;
@@ -290,7 +293,8 @@ namespace Backrooms.Generation
                 {
                     dst = (i & 1) == 0 ? _bounce0 : _bounce1;
                     compute.SetTexture(_kBounceDiff, IdBounceIn, src); compute.SetTexture(_kBounceDiff, IdBounceOut, dst);
-                    compute.Dispatch(_kBounceDiff, OccN / 8, OccN / 8, 1);
+                    BindBounceDiffusion(i);
+                    compute.Dispatch(_kBounceDiff, OccN / 8, OccN / 8, 2);
                     BounceDispatchesLastFrame++;
                     src = dst;
                 }
@@ -303,6 +307,7 @@ namespace Backrooms.Generation
             // no walls at all and every wall-aware test (real lights, sample clamps, bounce clamps) silently passes.
             Shader.SetGlobalTexture(GA, _a); Shader.SetGlobalTexture(GB, _b); Shader.SetGlobalBuffer(GOcc, _occ);
             Shader.SetGlobalTexture(GBounce, _bounceCur ? _bounceCur : _bounce0);
+            BindBounceOutputs();
             Shader.SetGlobalVector(GSize, new Vector4(GX, GY, GZ, OccN));
             Shader.SetGlobalVector(GParams, new Vector4(1f, directGain, bounceGain > 0f && _lightCount > 0 ? bounceGain : 0f, _pitch));
             Shader.SetGlobalVector(GWindow, new Vector4(_texMin.x * T, _texMin.y * T, (_texMin.x + GX) * T, (_texMin.y + GZ) * T));
@@ -331,6 +336,8 @@ namespace Backrooms.Generation
         {
             _occDirty = false;
             System.Array.Clear(_occData, 0, _occData.Length);
+            System.Array.Clear(_surfaceData, 0, _surfaceData.Length);
+            _roomSurfaces.Clear();
             if (!streamer) { UploadOccupancy(); return; }
             int N = OfficeBiome.ChunkCells;
             var cellMin = new Vector2Int(_texMin.x / 2, _texMin.y / 2);
@@ -339,10 +346,10 @@ namespace Backrooms.Generation
             for (int cx = FloorDiv(cellMin.x, N); cx <= FloorDiv(cellMin.x + OccN - 1, N); cx++)
             {
                 var key = new Vector3Int(cx, s, cz);
+                var L = streamer.LayoutAt(key);
+                if (L == null) continue;
                 if (!_encoded.TryGetValue(key, out var enc))
                 {
-                    var L = streamer.LayoutAt(key);
-                    if (L == null) continue;
                     enc = new uint[N * N];
                     int ccx = cx, ccz = cz, ss = s;
                     OfficeLayout Nb(int dx, int dz) => streamer.LayoutAt(new Vector3Int(ccx + dx, ss, ccz + dz));
@@ -354,13 +361,15 @@ namespace Backrooms.Generation
                 {
                     int gx = cx * N + x, gz = cz * N + z;
                     if (gx < cellMin.x || gz < cellMin.y || gx >= cellMin.x + OccN || gz >= cellMin.y + OccN) continue;
-                    _occData[s * OccN * OccN + Wrap(gz, OccN) * OccN + Wrap(gx, OccN)] = enc[z * N + x];
+                    int index = s * OccN * OccN + Wrap(gz, OccN) * OccN + Wrap(gx, OccN);
+                    _occData[index] = enc[z * N + x];
+                    _surfaceData[index] = SurfacesFor(L.RoomAt(x, z));
                 }
             }
             UploadOccupancy();
         }
 
-        void UploadOccupancy() => _occ.SetData(_occData);
+        void UploadOccupancy() { _occ.SetData(_occData); _surfaces.SetData(_surfaceData); }
 
         /// <summary>Occupancy of a cell as currently uploaded (0 = outside the window or not loaded).</summary>
         public uint OccupancyAt(int cellX, int cellZ, int storey)

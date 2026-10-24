@@ -16,7 +16,7 @@ namespace Backrooms.Generation
         public const uint Open = 0, Wall = 1, Door = 2, Header = 3;
         public const uint Loaded = 1u << 24, NoFloor = 1u << 25, OpenAbove = 1u << 26;
 
-        /// <summary>One light as the compute shader reads it (64 bytes).</summary>
+        /// <summary>One light as the compute shader reads it (80 bytes).</summary>
         [Serializable]
         public struct GridLight
         {
@@ -24,7 +24,8 @@ namespace Backrooms.Generation
             public Vector3 color; public float cosOuter;      // colour x intensity x the grid's share
             public Vector3 dir; public float cosInner;        // spot axis, zero for point lights
             public Vector3 colorAll; public float storey;     // full colour x intensity x power (bounce)
-            public const int Stride = 64;
+            public Vector2 halfSize; public Vector2 padding; // finite horizontal emitter; zero = point
+            public const int Stride = 80;
         }
 
         static uint Kind(EdgeKind e) => e == EdgeKind.Wall ? Wall : e == EdgeKind.Door ? Door : e == EdgeKind.DoorHeader ? Header : Open;

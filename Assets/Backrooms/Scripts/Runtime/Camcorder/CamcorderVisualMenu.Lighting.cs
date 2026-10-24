@@ -46,6 +46,8 @@ namespace Backrooms.Camcorder
                 0f, 1f, "0.00", "", () => O().roomFill, v => { O().roomFill = v; O().Save(); });
             Slider("Fixture spread", "How broadly a ceiling light throws its light. Low: a lamp-like cone that pools on nearby walls. High: a diffuse panel that washes the whole room.",
                 0f, 1f, "0.00", "", () => O().fixtureSpread, v => { O().fixtureSpread = v; O().Save(); });
+            Slider("Panel size", "0 treats a fitting as a point. 1 spreads the same light over the visible panel or tubes, softening near-wall hotspots. Furniture still uses a central soft shadow map.",
+                0f, 1f, "0.00", "", () => O().panelSize, v => { O().panelSize = v; O().Save(); });
             var row = BtnRow(_list);
             Button(row, "EVEN & PALE", () => { O().ApplyEvenLighting(); O().Save(); RefreshAll(); });
             Button(row, "RESET LIGHTING", () => { O().ResetLighting(); O().Save(); RefreshAll(); });

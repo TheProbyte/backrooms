@@ -41,6 +41,8 @@ namespace Backrooms.Generation
             Shader.SetGlobalTexture(GA, s_tex3D);
             Shader.SetGlobalTexture(GB, s_tex3D);
             Shader.SetGlobalTexture(GBounce, s_tex2D);
+            Shader.SetGlobalTexture("_LGridWallBounce", s_tex2D);
+            Shader.SetGlobalTexture("_LGridBounceDirection", s_tex2D);
             Shader.SetGlobalVector(GSize, new Vector4(LightGrid.GX, LightGrid.GY, LightGrid.GZ, LightGrid.OccN));
             Shader.SetGlobalVector(GParams, Vector4.zero);
         }

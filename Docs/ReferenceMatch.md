@@ -45,7 +45,10 @@ cone) and from keeping the panel rows clear of the walls.
 **Why bounce stand-ins and not baked GI:** the game's rooms are generated at runtime and streamed, so lightmaps cannot
 be baked for them. A result tuned here with baked GI would not carry over to the game. The bounce stand-ins approximate
 light reflected off the carpet and walls in a way that also works for procedural rooms: the front-room ones are tinted
-like the wallpaper, the back-room ones are whiter. Real-time GI (APV or SSGI) is the long-term option.
+like the wallpaper, the back-room ones are whiter. The procedural world now extends its runtime compute light grid
+with material-aware, per-storey floor/wall bounce and a directional wall moment; see RuntimeLighting.md. APV stores
+baked indirect lighting and does not bake newly generated rooms at runtime. SSGI alone cannot provide offscreen transport.
+Standard URP Area lights are baked-only; runtime panels use a finite-emitter shader approximation instead.
 
 ## Materials (`Assets/Backrooms/Materials/ReferenceMatch`)
 

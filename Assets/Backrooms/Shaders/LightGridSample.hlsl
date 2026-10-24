@@ -15,6 +15,8 @@ TEXTURE3D(_LGridB);
 SAMPLER(sampler_LGridA);
 TEXTURE2D(_LGridBounce);
 SAMPLER(sampler_LGridBounce);
+TEXTURE2D(_LGridWallBounce);
+TEXTURE2D(_LGridBounceDirection);
 StructuredBuffer<uint> _LGridOcc;      // [storey][z][x], toroidal
 
 // The grid's own light list, so surfaces can also evaluate its lights per pixel (no 0.6 m texels).
@@ -24,6 +26,7 @@ struct LGridLight
     float3 color;    float cosOuter;     // colour x intensity x the grid's share (0 while it is a real URP light)
     float3 dir;      float cosInner;
     float3 colorAll; float storey;
+    float2 halfSize; float2 padding;
 };
 StructuredBuffer<LGridLight> _LGridLights;
 StructuredBuffer<uint2> _LGridTiles;     // (first index, count) per 4.8 m tile, toroidal
@@ -78,32 +81,43 @@ float LGrid_AngleAtten(float cosAngle, float cosOuter, float cosInner)
     return a * a;
 }
 
-// Direct light of the grid's lights evaluated exactly at the pixel: URP's falloffs, Lambert with the grid's wrap,
-// and the same wall line-of-sight test the real lights use. What the texels would have approximated.
-half3 LGrid_DirectPerPixel(float3 P, half3 N)
+// Shared tile lookup for the grid and real-light material-response paths.
+uint2 LGrid_TileRange(float3 P)
 {
     float tileM = LG_TEXEL * _LGridFar.y;
     int tiles = (int)_LGridFar.z;
     int tx = ((int)floor(P.x / tileM)) & (tiles - 1), tz = ((int)floor(P.z / tileM)) & (tiles - 1);
-    uint2 range = _LGridTiles[tz * tiles + tx];
-    float wrap = _LGridShape.x;
-    half3 sum = 0;
-    [loop] for (uint i = 0; i < range.y; i++)
+    return _LGridTiles[tz * tiles + tx];
+}
+
+bool LGrid_FindFixture(float3 position, float3 receiver, out LGridLight fixture)
+{
+    fixture = (LGridLight)0;
+    if (_LGridParams.x < 0.5 || any(receiver.xz < _LGridWindow.xy) || any(receiver.xz > _LGridWindow.zw)) return false;
+    uint2 tile = LGrid_TileRange(receiver);
+    [loop] for (uint i = 0; i < tile.y; i++)
     {
-        LGridLight L = _LGridLights[_LGridTileLights[range.x + i]];
-        float3 toL = L.pos - P;
-        float d2 = dot(toL, toL);
-        if (d2 >= L.range * L.range || dot(L.color, L.color) <= 0.0) continue;
-        float3 l = toL * rsqrt(max(d2, 1e-6));
-        float att = LGrid_DistAtten(max(d2, 0.04), L.range);
-        if (dot(L.dir, L.dir) > 0.5) att *= LGrid_AngleAtten(dot(L.dir, -l), L.cosOuter, L.cosInner);
-        float lam = saturate((dot(N, l) + wrap) / (1.0 + wrap));
-        float k = att * lam;
-        if (k <= 1e-5) continue;
-        if (LGrid_LightVisible(P, N, L.pos) < 0.5) continue;
-        sum += (half3)(L.color * k);
+        LGridLight f = _LGridLights[_LGridTileLights[tile.x + i]];
+        float3 d = f.pos - position;
+        if (dot(d, d) < 0.0001) { fixture = f; return true; }
     }
-    return sum;
+    return false;
+}
+
+// One hardware-filtered tap normally; two vertical taps only at a toroidal layer seam.
+float4 LGrid_SampleBounceAtlas(TEXTURE2D_PARAM(tex, samp), float2 metresXZ, uint storey)
+{
+    float n = _LGridSize.w;
+    float2 uv = frac(metresXZ / (LG_CELL * n));
+    if (uv.y < 0.5 / n || uv.y > 1 - 0.5 / n)
+    {
+        float row = uv.y * n - 0.5;
+        int y0 = ((int)floor(row)) & ((int)n - 1), y1 = (y0 + 1) & ((int)n - 1);
+        float4 a = SAMPLE_TEXTURE2D_LOD(tex, samp, float2(uv.x, (y0 + storey * n + 0.5) / (n * 2)), 0);
+        float4 b = SAMPLE_TEXTURE2D_LOD(tex, samp, float2(uv.x, (y1 + storey * n + 0.5) / (n * 2)), 0);
+        return lerp(a, b, frac(row));
+    }
+    return SAMPLE_TEXTURE2D_LOD(tex, samp, float2(uv.x, (uv.y + storey) * 0.5), 0);
 }
 
 half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
@@ -116,14 +130,10 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
     float edge = saturate(min(inside.x, inside.y) / 4.0);
     if (edge <= 0.0) return 0;
 
-    // Direct light: exactly at the pixel from the grid's light list (crisp pools at any distance), or from the texture.
-    half3 direct;
-    if (_LGridFar.x > 0.5)
-    {
-        float notCeil = saturate(1.0 + 1.25 * normalWS.y);
-        direct = LGrid_DirectPerPixel(positionWS, normalWS) * (half)(notCeil * _LGridParams.y);
-    }
-    else
+    // Per-pixel direct fixtures use the same PBR path as real lights in the forward pass.
+    // Only the deliberately coarse texture fallback contributes diffuse irradiance here.
+    half3 direct = 0;
+    if (_LGridFar.x < 0.5)
     {
         float3 uvw = float3(p.x / (LG_TEXEL * _LGridSize.x), p.y / (LG_TEXEL * _LGridSize.y), p.z / (LG_TEXEL * _LGridSize.z));
         // Plain trilinear ramps linearly between texel centres, which shows as boxy light pools at 0.6 m texels.
@@ -153,30 +163,37 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
     // Bounce: light that hit the floor nearby, mostly lighting ceilings and upper walls.
     half3 bounce = 0;
     int2 bcell = (int2)floor(p.xz / LG_CELL);
-    uint bocc = LGrid_Occ(bcell, 0u);
-    // Ground storey, or the upper part of a well (its ceiling is lit from the well's floor).
-    if (p.y < pitch || (bocc & LG_OPENABOVE) != 0u)
+    uint bounceStorey = p.y >= pitch ? 1u : 0u;
+    uint bocc = LGrid_Occ(bcell, bounceStorey);
+    // A floorless upper well receives the lower floor's bounce, ordinary upper rooms use their own layer.
+    if (bounceStorey == 1u && (bocc & LG_NOFLOOR) != 0u && (LGrid_Occ(bcell, 0u) & LG_OPENABOVE) != 0u)
+    { bounceStorey = 0u; bocc = LGrid_Occ(bcell, 0u); }
+    if (LG_Loaded(bocc))
     {
         // Bounce is stored per 1.2 m cell: keep the sample at the cell centre on sides that are walls.
         float2 q = p.xz;
         int2 cell = bcell;
-        uint o = bocc, oe = LGrid_Occ(cell + int2(1, 0), 0u), on = LGrid_Occ(cell + int2(0, 1), 0u);
+        uint o = bocc, oe = LGrid_Occ(cell + int2(1, 0), bounceStorey), on = LGrid_Occ(cell + int2(0, 1), bounceStorey);
         // Bounce is stored per 1.2 m cell and blends smoothly with its neighbours: keep the sample at the cell centre on every side that is not open floor (walls, doors and arches alike), so a lit room never bleeds into a dark one.
         float2 mid = (cell + 0.5) * LG_CELL;
         if (LG_WestKind(o) != LG_EDGE_OPEN) q.x = max(q.x, mid.x);
         if (LG_WestKind(oe) != LG_EDGE_OPEN) q.x = min(q.x, mid.x);
         if (LG_SouthKind(o) != LG_EDGE_OPEN) q.y = max(q.y, mid.y);
         if (LG_SouthKind(on) != LG_EDGE_OPEN) q.y = min(q.y, mid.y);
-        float2 buv = (q - 0.5 * LG_CELL) / (LG_CELL * _LGridSize.w) + 0.5 / _LGridSize.w;
-        float3 B = SAMPLE_TEXTURE2D_LOD(_LGridBounce, sampler_LGridBounce, buv, 0).rgb;
+        float3 B = LGrid_SampleBounceAtlas(TEXTURE2D_ARGS(_LGridBounce, sampler_LGridBounce), q, bounceStorey).rgb;
+        float3 wallB = LGrid_SampleBounceAtlas(TEXTURE2D_ARGS(_LGridWallBounce, sampler_LGridBounce), q, bounceStorey).rgb;
+        float4 moment = LGrid_SampleBounceAtlas(TEXTURE2D_ARGS(_LGridBounceDirection, sampler_LGridBounce), q, bounceStorey);
         // Light from the floor reaches the ceiling and upper walls; floors get very little, and tall
         // ceilings less than low ones (as the old upward bounce lights did).
         float ceilingH = max(LG_Ceiling(o), 2.0);
-        float h = saturate(p.y / ceilingH);
+        float h = saturate((p.y - bounceStorey * pitch) / ceilingH);
         float wallTerm = lerp(lerp(0.12, 0.42, _LGridFillAmt), lerp(0.55, 0.72, _LGridFillAmt), h);
         float facing = normalWS.y < 0.0 ? lerp(wallTerm, 1.0, -normalWS.y) : lerp(wallTerm, 0.04, normalWS.y);
         float height = 3.0 / max(3.0, ceilingH);
-        bounce = (half3)(B * _LGridParams.z * facing * height);
+        float momentLength = length(moment.xyz);
+        float directional = momentLength > 1e-5 ? saturate(dot(normalWS, moment.xyz / momentLength)) : 0.5;
+        float wallFacing = lerp(0.5, directional, saturate(momentLength / max(moment.w, 1e-5)));
+        bounce = (half3)((B * facing * height + wallB * wallFacing) * _LGridParams.z);
     }
     half3 lit = direct + bounce;
     // Contrast: weakly lit spots fall away faster than bright ones (reference level about a lit wall).

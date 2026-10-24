@@ -16,6 +16,25 @@ Keep entries short and factual. Do not rewrite old entries.
 ---
 
 
+## 2026-10-24 15:43  ChatGPT  Runtime finite fixtures, consistent PBR, two-storey surface-aware bounce
+- Extended the runtime grid/shaders with finite panel/tube emitters at constant output and a saved F5 Panel size control.
+  Real and per-pixel grid shares use the same URP BRDF/contrast/diffuse wrap instead of grid direct being bakedGI.
+  Shadow strength now fades independently with distance/hysteresis and an explicit 64-map admission budget.
+- Added separate floor/wall/direction bounce atlases for both storeys, with wall-aware filtering across atlas seams.
+  Existing floor/wall/ceiling finishes supply cached linear reflectance on the main thread; wall patches retain direction.
+  Grid records use stable position order so distance sorting does not invalidate unchanged full-power bounce.
+- Why: implement lighting recommendations 1–5 and choose the compute grid as the procedural runtime GI path (8).
+  Added Docs/RuntimeLighting.md and corrected ReferenceMatch.md's APV claim; no baked-only Area light workaround.
+- Checked: Unity full EditMode suite 41/41 passed, including a GPU kernel/readback test for upper-floor bounce, floor-slab
+  isolation, coloured/darker floors and west-wall direction. Compute/Lit compiled; all 11 seed-1234 fixed-pose tour views
+  captured in Play Mode with no runtime errors. A Frame Debugger capture confirmed SRP shadow batches (Temp/.../batching.tsv).
+- Open: four-sample finite lighting has measurable GPU cost; first tour snapshots ranged roughly 18–33 ms GPU in editor,
+  not comparable to the earlier single-pose benchmark. Reduced repeated architectural visibility and atlas taps after
+  that tour; final warmed profiling remains. Shadows use central soft maps, dome shape and indirect transport are
+  approximations. A shader warning about a potentially uninitialized atlas sample needs checking. Furniture indirect
+  occlusion, indoor reflections, batching detail and final profiling remain for subsequent commits. No push/PR.
+
+
 ## 2026-10-24 15:24  ChatGPT  Remove redundant lighting work and phase streamed chunk uploads
 - LightGrid skips unused Direct compute in per-pixel mode; stable lights reuse uploads, bins and bounce. Full refresh
   is retained on texture-mode switches, power/shape/window/occupancy changes. Added CPU submission/dispatch counters.

@@ -24,4 +24,13 @@ float LG_SouthTop(uint o) { return (((o >> 10) & 63u) | (((o >> 28) & 1u) << 6))
 float LG_Ceiling(uint o) { return ((o >> 16) & 255u) * 0.1; }
 bool LG_Loaded(uint o) { return (o & LG_LOADED) != 0u; }
 
+// Energy-normalised 2x2 Gauss quadrature over the visible fitting (horizontal X/Z).
+// At distance its angular size is negligible, so one central sample avoids redundant work.
+float3 LG_EmitterPoint(float3 centre, float2 halfSize, int sampleIndex, bool quad)
+{
+    float2 q = quad ? float2((sampleIndex & 1) ? 0.57735027 : -0.57735027,
+                            (sampleIndex & 2) ? 0.57735027 : -0.57735027) : 0;
+    return centre + float3(q.x * halfSize.x, 0, q.y * halfSize.y);
+}
+
 #endif
