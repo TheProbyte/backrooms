@@ -163,5 +163,27 @@ namespace Backrooms.Tests
                 if (Directory.Exists(dir)) Directory.Delete(dir, true);
             }
         }
+    
+        [Test]
+        public void CrawlHolesComeInFarApartPairsOnRealWalls()
+        {
+            var gen = new WorldGenerator(1234, WorldGenSettings.Defaults());
+            int found = 0;
+            for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+            {
+                var plan = gen.District(new Vector3Int(dx, 0, dz));
+                Assert.AreEqual(0, plan.portals.Count % 2, "holes come in pairs");
+                foreach (var p in plan.portals)
+                {
+                    found++;
+                    Assert.AreEqual(EdgeKind.Wall, plan.EdgeOf(p.cell.x, p.cell.y, p.side), "a hole is cut into a solid wall");
+                    float apart = Vector3.Distance(p.position, p.partnerPosition);
+                    Assert.That(apart, Is.InRange(CrawlPortals.MinApart - 0.5f, CrawlPortals.MaxApart + 2f), "ends within streaming range but not close");
+                    Assert.IsTrue(plan.portals.Exists(q => q.position == p.partnerPosition && q.partnerPosition == p.position), "partner exists");
+                }
+            }
+            Assert.Greater(found, 0, "no crawl holes near the origin");
+        }
     }
 }

@@ -67,3 +67,9 @@ Tests: `Scripts/Editor/Tests/CustomRoomTests.cs`.
 - Loot spots are stored with an item name, chance and note, and spawn as loose cardboard boxes until the game has loot.
 - Rooms only on the ground storey. Up to 24 x 24 cells.
 - Custom rooms are not yet in the F5 PLACES tab, so find one in the world with a high chance and a small landmark spacing, or use Test.
+
+## Crawl holes (non-Euclidean)
+
+Low square holes at the foot of some walls, in pairs. Crouch-crawl (Left Ctrl) into one and you come out of the other,
+turned to face out of it, 12-30 m away in a room that is a long walk off. From the far side of the wall the hole is just a
+shallow boxed duct. Looking into a hole shows the other end. How many: `WorldGenSettings.crawlPortals` (pairs per district).

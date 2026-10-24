@@ -67,6 +67,21 @@ namespace Backrooms.Generation
     public struct WallPlate { public Vector2Int cell; public int side; public float t; public float height; public bool isSwitch; public int roomColor; }
 
     public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock, StorageRack, Box, Pallet }
+
+    /// <summary>
+    /// A crawl hole: a low square opening at the foot of a wall. The wall has a short boxed duct behind it on the other side,
+    /// yet crawling in brings you out of a paired hole somewhere else (see CrawlPortals). Frames are in world space so a
+    /// chunk slice knows where its partner is without looking it up.
+    /// </summary>
+    public struct CrawlPortal
+    {
+        public Vector2Int cell;        // layout-local cell the hole is entered from
+        public int side;               // which side of that cell the wall is on (0 -X, 1 +X, 2 -Z, 3 +Z)
+        public Vector3 position;       // world: centre of the opening, on the wall face
+        public Vector3 normal;         // world: out of the wall, into the cell
+        public Vector3 partnerPosition, partnerNormal;
+        public ulong id;
+    }
     public struct Prop
     {
         public PropKind kind;
@@ -110,6 +125,7 @@ namespace Backrooms.Generation
         public readonly List<HalfWall> halfWalls = new List<HalfWall>();
         public readonly List<WallPlate> plates = new List<WallPlate>();
         public readonly List<Prop> props = new List<Prop>();
+        public readonly List<CrawlPortal> portals = new List<CrawlPortal>();
         /// <summary>Biome rules of this chunk (blended across biome transitions). District plans use <see cref="RulesAt"/>.</summary>
         public BiomeRules rules = BiomeRules.Offices();
         public string biomeName = "Offices";

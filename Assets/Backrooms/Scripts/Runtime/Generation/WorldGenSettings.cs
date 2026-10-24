@@ -41,6 +41,10 @@ namespace Backrooms.Generation
         [Header("Storeys")]
         [Tooltip("Height between storeys, metres (above the tallest ceiling).")] public float storeyPitch = 9f;
 
+        [Header("Crawl holes")]
+        [Tooltip("Pairs of crawl holes per district (fractions are a chance of one more). Crawl into one, come out of the other.")]
+        public float crawlPortals = 1.5f;
+
         /// <summary>Bump when generation code changes how a seed plays out.
         /// 2: fixture spacing, strips, open plan. 3: arches. 4: zones, landmarks, districts, storeys.</summary>
         public const int Version = 7;

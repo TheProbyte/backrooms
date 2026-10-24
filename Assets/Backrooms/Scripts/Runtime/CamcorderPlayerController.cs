@@ -185,6 +185,19 @@ namespace Backrooms
             if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
 
+        /// <summary>
+        /// Moves the player without stopping them (through a crawl hole): new position, turned by yawDelta degrees, with the
+        /// current speed, stance and pitch kept and turned along.
+        /// </summary>
+        public void Warp(Vector3 position, float yawDelta)
+        {
+            _controller.enabled = false;
+            _yaw += yawDelta;
+            transform.SetPositionAndRotation(position, Quaternion.Euler(0f, _yaw, 0f));
+            _controller.enabled = !noclip;
+            PlanarVelocity = Quaternion.Euler(0f, yawDelta, 0f) * PlanarVelocity;
+        }
+
         /// <summary>Like <see cref="Teleport"/>, but holds the player still (no falling) until floor collision exists below, for places whose chunks are still loading.</summary>
         public void TeleportSafe(Vector3 position, float yaw, float pitch = 0f)
         {

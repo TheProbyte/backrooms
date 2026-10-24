@@ -144,6 +144,8 @@ namespace Backrooms.Generation
                 if (landmarkRooms[i] != null) Landmarks.Decorate(L, placements[i], landmarkRooms[i]);
             // Loose cardboard boxes (movable). Their own dice, so the rest of the plan is unchanged.
             PlaceBoxes(L, new System.Random(Hash(seed, district.x, district.y, 0x0B0C5 + storey)));
+            // Crawl holes: their own dice too.
+            CrawlPortals.Place(L, set, new System.Random(Hash(seed, district.x, district.y, 0x9047A1 + storey)));
             AssignColors(L);
             return L;
         }

@@ -135,6 +135,7 @@ namespace Backrooms.Camcorder
             // Sensor motion blur: the camera's turn rate (pan, tilt, handheld shake) times a shutter time gives a smear
             // vector in screen units, so a fast pan streaks the whole frame the way footage from a camcorder does.
             Vector2 blur = Vector2.zero;
+            if (Interaction.CrawlPortalSystem.LastWarpFrame >= Time.frameCount - 1) _havePrev = false;   // a trip through a crawl hole is not a whip pan
             if (Time.deltaTime > 1e-4f)
             {
                 var rot = transform.rotation;

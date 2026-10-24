@@ -137,6 +137,8 @@ namespace Backrooms.Generation
             }
             foreach (var l in plan.landmarks)
                 if (l.rect.Overlaps(chunkRect)) S.landmarks.Add(l);
+            foreach (var p in plan.portals)
+                if (Mine(p.cell.x, p.cell.y)) { var g = p; g.cell -= new Vector2Int(ox, oz); S.portals.Add(g); }
             return S;
         }
 

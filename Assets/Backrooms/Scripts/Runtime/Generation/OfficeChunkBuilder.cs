@@ -128,6 +128,7 @@ namespace Backrooms.Generation
             foreach (var f in layout.fixtures) if (f.dome) _fixtureCells.Add(f.cell);
 
             _cellMask = LightLayers.CellMasks(_L, Neighbour);
+            IndexHoles();
             BuildFloorAndCeiling();
             BuildCeilingGrid();
             BuildWalls();
@@ -137,6 +138,7 @@ namespace Backrooms.Generation
             BuildHalfWalls();
             BuildShadowProxies();
             BuildDoorways();
+            BuildPortals();
             BuildFixtures(lights);
             BuildPlates();
             BuildProps(lights);
@@ -242,6 +244,8 @@ namespace Backrooms.Generation
             foreach (var s in _movables)
                 if (!moved || !moved.IsMoved(s.id))
                     MovableProp.Spawn(s, root.transform, s.position, Quaternion.Euler(0f, s.yaw, 0f));
+
+            InstantiatePortals(root.transform);
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
             AddFloorColliders(root);
@@ -411,6 +415,7 @@ namespace Backrooms.Generation
                 uint cm = CellMask(cx, cz);
                 if (e == EdgeKind.Wall)
                 {
+                    if (HoleAt(vertical, line, along, out int entry)) { HoleFaces(room, cm, vertical, along, l, f, a0, a1, n, myCeil, s == entry); continue; }
                     WallFace(room, cm, A(f, a0), A(f, a1), 0f, myCeil, n);
                     if (!room.noFloor) Baseboard(cm, A(f, a0), A(f, a1), n);
                     continue;
@@ -561,7 +566,7 @@ namespace Backrooms.Generation
                 int start = -1;
                 for (int z = 0; z <= N; z++)
                 {
-                    bool solid = z < N && _L.vEdges[x, z] == EdgeKind.Wall;
+                    bool solid = z < N && _L.vEdges[x, z] == EdgeKind.Wall && !HoleAt(true, x, z, out _);
                     if (solid && start < 0) start = z;
                     if (!solid && start >= 0)
                     {
@@ -579,7 +584,7 @@ namespace Backrooms.Generation
                 int start = -1;
                 for (int x = 0; x <= N; x++)
                 {
-                    bool solid = x < N && _L.hEdges[x, z] == EdgeKind.Wall;
+                    bool solid = x < N && _L.hEdges[x, z] == EdgeKind.Wall && !HoleAt(false, z, x, out _);
                     if (solid && start < 0) start = x;
                     if (!solid && start >= 0)
                     {
