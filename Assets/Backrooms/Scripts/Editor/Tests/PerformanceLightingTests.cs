@@ -8,6 +8,83 @@ namespace Backrooms.Tests
     public class PerformanceLightingTests
     {
         [Test]
+        public void EmitterRejectionKeepsEveryContributingGpuQuadratureSample()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("Compute shaders unavailable");
+            var probe = UnityEditor.AssetDatabase.LoadAssetAtPath<ComputeShader>("Assets/Backrooms/Scripts/Editor/Tests/FixtureLookupProbe.compute");
+            var positions = new List<Vector3>();
+            for (int x = -16; x <= 16; x++) for (int z = -16; z <= 16; z++)
+                foreach (float y in new[] { 0f, 2.55f, 2.65f, 4f }) positions.Add(new Vector3(x * 0.4f, y, z * 0.4f));
+            using (var lights = new ComputeBuffer(1, LightGridMath.GridLight.Stride))
+            using (var queries = new ComputeBuffer(positions.Count, 12))
+            using (var results = new ComputeBuffer(positions.Count, 16))
+            {
+                queries.SetData(positions); int kernel = probe.FindKernel("ConeProbe");
+                probe.SetBuffer(kernel, "_LGridLights", lights); probe.SetBuffer(kernel, "_QueryPositions", queries);
+                probe.SetBuffer(kernel, "_Results", results); probe.SetInt("_QueryCount", positions.Count);
+                foreach (var size in new[] { Vector2.zero, new Vector2(0.285f, 0.285f), new Vector2(0.59f, 0.055f) })
+                foreach (float cosine in new[] { 0.0087265f, 0.7f })
+                {
+                    lights.SetData(new[] { new LightGridMath.GridLight { pos = new Vector3(0, 2.6f, 0), range = 9f, dir = Vector3.down, halfSize = size, cosOuter = cosine, cosInner = 0.95f } });
+                    probe.Dispatch(kernel, (positions.Count + 63) / 64, 1, 1);
+                    var values = new Vector4[positions.Count]; results.GetData(values); int rejected = 0;
+                    foreach (var value in values)
+                        if (value.x == 0) { rejected++; Assert.LessOrEqual(value.y, 1e-8f, "culled a contributing finite-emitter sample"); }
+                    Assert.Greater(rejected, 0, "test must exercise rejected receivers");
+                }
+            }
+        }
+
+        [Test]
+        public void GpuFixtureLookupHandlesCollisionsNegativeCoordinatesAndRebuilds()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("Compute shaders unavailable");
+            var probe = UnityEditor.AssetDatabase.LoadAssetAtPath<ComputeShader>("Assets/Backrooms/Scripts/Editor/Tests/FixtureLookupProbe.compute");
+            Assert.IsNotNull(probe);
+            var lights = new List<LightGridMath.GridLight>();
+            for (int i = 0; i < 768; i++)
+                lights.Add(new LightGridMath.GridLight {
+                    // Pairs deliberately share a hash cell; include exact cell boundaries and far negative positions.
+                    pos = new Vector3((i / 32 - 12) * 1.2f, i % 2 == 0 ? 2.58f : 2.62f, (i / 2 % 16 - 8) * 1.2f),
+                    colorAll = new Vector3(i + 1, 0, 0)
+                });
+            var queries = new Vector3[lights.Count + 1];
+            for (int i = 0; i < lights.Count; i++) queries[i] = lights[i].pos;
+            queries[lights.Count] = new Vector3(-10000.25f, 4, 10000.5f);
+            var buffers = new List<ComputeBuffer>();
+            ComputeBuffer Buffer(int count, int stride) { var b = new ComputeBuffer(count, stride); buffers.Add(b); return b; }
+            try
+            {
+                var data = Buffer(lights.Count, LightGridMath.GridLight.Stride);
+                var table = LightGridMath.BuildFixtureLookup(lights, null);
+                var lookup = Buffer(table.Length, 4);
+                var query = Buffer(queries.Length, 12); query.SetData(queries);
+                var result = Buffer(queries.Length, 16);
+                int kernel = probe.FindKernel("Probe");
+                probe.SetBuffer(kernel, "_LGridLights", data); probe.SetBuffer(kernel, "_LGridFixtureLookup", lookup);
+                probe.SetBuffer(kernel, "_QueryPositions", query); probe.SetBuffer(kernel, "_Results", result);
+                probe.SetInt("_QueryCount", queries.Length); probe.SetInt("_LGridFixtureMask", table.Length - 1);
+                probe.SetVector("_LGridParams", Vector4.one); probe.SetVector("_LGridWindow", new Vector4(-100, -100, 100, 100));
+                void Check(int foundCount)
+                {
+                    data.SetData(lights); lookup.SetData(table);
+                    probe.SetInt("_LGridFixtureMask", table.Length - 1);
+                    probe.Dispatch(kernel, (queries.Length + 63) / 64, 1, 1);
+                    var values = new Vector4[queries.Length]; result.GetData(values);
+                    for (int i = 0; i < foundCount; i++)
+                    { Assert.AreEqual(1f, values[i].w, "lost fixture " + i); Assert.AreEqual(i + 1, values[i].x, "wrong collision/reordered fixture"); }
+                    for (int i = foundCount; i < queries.Length; i++)
+                        Assert.AreEqual(0f, values[i].w, "removed/non-fixtures must not alias to a live light");
+                }
+                Check(768);
+                lights.Reverse(); table = LightGridMath.BuildFixtureLookup(lights, table); Check(768);
+                lights.RemoveRange(0, 384); table = LightGridMath.BuildFixtureLookup(lights, table);
+                Check(384);
+            }
+            finally { foreach (var buffer in buffers) buffer.Release(); }
+        }
+
+        [Test]
         public void ChunkOwnershipReleasesOnlyRegisteredMeshes()
         {
             var root = new GameObject("Owned mesh test");

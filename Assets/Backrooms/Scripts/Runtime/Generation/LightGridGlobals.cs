@@ -9,7 +9,7 @@ namespace Backrooms.Generation
     /// </summary>
     public static class LightGridGlobals
     {
-        static ComputeBuffer s_occ, s_lights, s_tiles, s_tileLights;
+        static ComputeBuffer s_occ, s_lights, s_tiles, s_tileLights, s_fixtureLookup;
         static ComputeBuffer s_occBoxes, s_occTiles, s_occIndices;
         static Texture3D s_tex3D;
         static Texture2D s_tex2D;
@@ -34,6 +34,7 @@ namespace Backrooms.Generation
             s_releasing = true;
             void Release(ref ComputeBuffer buffer) { buffer?.Release(); buffer = null; }
             Release(ref s_occ); Release(ref s_lights); Release(ref s_tiles); Release(ref s_tileLights);
+            Release(ref s_fixtureLookup);
             Release(ref s_occBoxes); Release(ref s_occTiles); Release(ref s_occIndices);
             void ReleaseTexture(Texture texture)
             {
@@ -64,6 +65,9 @@ namespace Backrooms.Generation
             Shader.SetGlobalBuffer(Shader.PropertyToID("_LGridLights"), s_lights);
             Shader.SetGlobalBuffer(Shader.PropertyToID("_LGridTiles"), s_tiles);
             Shader.SetGlobalBuffer(Shader.PropertyToID("_LGridTileLights"), s_tileLights);
+            if (s_fixtureLookup == null || !s_fixtureLookup.IsValid()) { s_fixtureLookup = new ComputeBuffer(4, 4); s_fixtureLookup.SetData(new uint[4]); }
+            Shader.SetGlobalBuffer("_LGridFixtureLookup", s_fixtureLookup);
+            Shader.SetGlobalInt("_LGridFixtureMask", 3);
             Shader.SetGlobalVector(Shader.PropertyToID("_LGridFar"), Vector4.zero);
             if (s_occBoxes == null || !s_occBoxes.IsValid()) { s_occBoxes = new ComputeBuffer(1, 48); }
             if (s_occTiles == null || !s_occTiles.IsValid()) { s_occTiles = new ComputeBuffer(LightGrid.Tiles * LightGrid.Tiles, 8); s_occTiles.SetData(new uint[LightGrid.Tiles * LightGrid.Tiles * 2]); }

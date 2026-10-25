@@ -9,6 +9,32 @@ namespace Backrooms.Tests
     {
         const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
         [Test]
+        public void WorldResetCancelsOldCaptureAndAllowsANewProbe()
+        {
+            var root = new GameObject("Reflection reset test");
+            var reflections = root.AddComponent<RuntimeIndoorReflections>();
+            try
+            {
+                var world = new WorldGenerator(1234, WorldGenSettings.Defaults());
+                typeof(RuntimeIndoorReflections).GetMethod("FollowWorld", Private).Invoke(reflections, new object[] { world });
+                var make = typeof(RuntimeIndoorReflections).GetMethod("MakeSlot", Private);
+                var old = make.Invoke(reflections, new object[] { 0 });
+                var probe = (ReflectionProbe)old.GetType().GetField("probe").GetValue(old);
+                typeof(RuntimeIndoorReflections).GetField("_capturing", Private).SetValue(reflections, old);
+                Assert.IsTrue(reflections.Capturing);
+                typeof(RuntimeIndoorReflections).GetMethod("FollowWorld", Private).Invoke(reflections, new object[] { new WorldGenerator(5678, WorldGenSettings.Defaults()) });
+                Assert.IsFalse(reflections.Capturing, "a stale time-sliced capture must not block the next world");
+                Assert.IsTrue(probe == null, "old world's probe must be released");
+                Assert.IsNotNull(make.Invoke(reflections, new object[] { 0 }));
+            }
+            finally
+            {
+                typeof(RuntimeIndoorReflections).GetMethod("OnDestroy", Private).Invoke(reflections, null);
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
         public void ProbeBoundsStopAtInternalWallsEvenInsideOneRoomId()
         {
             var root = new GameObject("Reflection bounds test");

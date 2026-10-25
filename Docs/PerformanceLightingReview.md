@@ -211,3 +211,11 @@ Unity could still render. Bindings now survive that event; teardown happens at a
 release/rebind. The final isolated cycle had none of those draw warnings. Leak detection was restored to Enabled.
 The final builder check opened an unsaved room preview: generated geometry rendered with all seven fallback buffers
 valid, the grid disabled, and the runtime reflection quality flag restored. No room blueprint was saved.
+
+
+## 2026-10-25 FPS regression follow-up
+
+The user's approximately 30 FPS report was reproduced. FpsRecovery.md documents the nested fixture lookup and
+shadow/visibility ordering fixes, verified approximately 32 to 55 FPS same-view editor comparison, a larger-office
+check, unchanged quality options and measurement limits. Use those newer timings for this branch; the original audit
+and initial delivery numbers above remain historical observations.

@@ -32,6 +32,8 @@ struct LGridLight
 StructuredBuffer<LGridLight> _LGridLights;
 StructuredBuffer<uint2> _LGridTiles;     // (first index, count) per 4.8 m tile, toroidal
 StructuredBuffer<uint> _LGridTileLights;
+StructuredBuffer<uint> _LGridFixtureLookup;
+uint _LGridFixtureMask;
 float4 _LGridFar;                        // x: per-pixel evaluation on (0/1), y: texels per tile, z: tiles per axis
 
 float4 _LGridSize;      // texels x, y, z, occupancy cells
@@ -68,6 +70,22 @@ float3 LGrid_Clamp(float3 p, float pitch)
 
 half LGrid_LightVisible(float3 P, float3 N, float3 L);
 
+// Conservative range/cone test for the complete horizontal emitter rectangle, including its finite samples.
+bool LGrid_FixtureMayReach(LGridLight f, float3 receiver)
+{
+    float3 delta = f.pos - receiver;
+    float distanceSquared = dot(delta, delta);
+    if (distanceSquared >= f.range * f.range) return false;
+    if (f.dir.y < -0.9999 && dot(f.dir.xz, f.dir.xz) < 1e-8)
+    {
+        float sizeWeight = 1.0 - smoothstep(36.0, 64.0, distanceSquared);
+        float2 nearest = max(abs(delta.xz) - f.halfSize * sizeWeight, 0);
+        float bestCosine = delta.y * rsqrt(max(delta.y * delta.y + dot(nearest, nearest), 1e-6));
+        if (bestCosine <= f.cosOuter) return false;
+    }
+    return true;
+}
+
 float LGrid_DistAtten(float d2, float range)
 {
     float f = d2 / (range * range);
@@ -95,12 +113,17 @@ bool LGrid_FindFixture(float3 position, float3 receiver, out LGridLight fixture)
 {
     fixture = (LGridLight)0;
     if (_LGridParams.x < 0.5 || any(receiver.xz < _LGridWindow.xy) || any(receiver.xz > _LGridWindow.zw)) return false;
-    uint2 tile = LGrid_TileRange(receiver);
-    [loop] for (uint i = 0; i < tile.y; i++)
+    int3 cell = (int3)floor(position * 4.0);
+    uint slot = ((uint)cell.x * 73856093u ^ (uint)cell.y * 83492791u ^ (uint)cell.z * 19349663u) & _LGridFixtureMask;
+    // Expected constant-time lookup instead of a second complete tile scan for every real light and pixel.
+    [loop] for (uint probe = 0; probe <= _LGridFixtureMask; probe++)
     {
-        LGridLight f = _LGridLights[_LGridTileLights[tile.x + i]];
+        uint entry = _LGridFixtureLookup[slot];
+        if (entry == 0) return false;
+        LGridLight f = _LGridLights[entry - 1];
         float3 d = f.pos - position;
         if (dot(d, d) < 0.0001) { fixture = f; return true; }
+        slot = (slot + 1) & _LGridFixtureMask;
     }
     return false;
 }

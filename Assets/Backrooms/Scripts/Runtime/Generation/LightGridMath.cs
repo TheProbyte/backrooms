@@ -28,6 +28,33 @@ namespace Backrooms.Generation
             public const int Stride = 80;
         }
 
+        // Matches LGrid_FindFixture. Quarter-metre cells use exact binary scaling on CPU and GPU.
+        public static uint FixtureHash(Vector3 position)
+        {
+            unchecked
+            {
+                return (uint)Mathf.FloorToInt(position.x * 4f) * 73856093u ^
+                       (uint)Mathf.FloorToInt(position.y * 4f) * 83492791u ^
+                       (uint)Mathf.FloorToInt(position.z * 4f) * 19349663u;
+            }
+        }
+
+        /// <summary>Half-full open-addressed fixture index; zero is empty, stored indices are one-based.</summary>
+        public static uint[] BuildFixtureLookup(List<GridLight> lights, uint[] table)
+        {
+            int size = Mathf.NextPowerOfTwo(Mathf.Max(4, lights.Count * 2));
+            if (table == null || table.Length != size) table = new uint[size];
+            else Array.Clear(table, 0, table.Length);
+            uint mask = (uint)(size - 1);
+            for (int i = 0; i < lights.Count; i++)
+            {
+                uint slot = FixtureHash(lights[i].pos) & mask;
+                while (table[slot] != 0) slot = (slot + 1) & mask;
+                table[slot] = (uint)i + 1;
+            }
+            return table;
+        }
+
         static uint Kind(EdgeKind e) => e == EdgeKind.Wall ? Wall : e == EdgeKind.Door ? Door : e == EdgeKind.DoorHeader ? Header : Open;
         static uint Tenths(float metres) => (uint)Mathf.Clamp(Mathf.RoundToInt(metres * 10f), 0, 255);
 

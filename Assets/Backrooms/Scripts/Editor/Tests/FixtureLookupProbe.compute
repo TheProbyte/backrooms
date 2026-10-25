@@ -1,0 +1,39 @@
+#pragma kernel Probe
+#pragma kernel ConeProbe
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Assets/Backrooms/Shaders/LightGridSample.hlsl"
+
+StructuredBuffer<float3> _QueryPositions;
+RWStructuredBuffer<float4> _Results;
+int _QueryCount;
+
+[numthreads(64, 1, 1)]
+void Probe(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= (uint)_QueryCount) return;
+    LGridLight fixture;
+    bool found = LGrid_FindFixture(_QueryPositions[id.x], float3(0, 0, 0), fixture);
+    _Results[id.x] = float4(fixture.colorAll, found ? 1 : 0);
+}
+
+[numthreads(64, 1, 1)]
+void ConeProbe(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= (uint)_QueryCount) return;
+    LGridLight fixture = _LGridLights[0];
+    float3 receiver = _QueryPositions[id.x];
+    float d2 = dot(fixture.pos - receiver, fixture.pos - receiver);
+    float weight = 1.0 - smoothstep(36.0, 64.0, d2);
+    bool quad = dot(fixture.halfSize, fixture.halfSize) > 0 && weight > 0;
+    float contribution = 0;
+    for (int s = 0; s < (quad ? 4 : 1); s++)
+    {
+        float3 toLight = LG_EmitterPoint(fixture.pos, fixture.halfSize * weight, s, quad) - receiver;
+        float sampleD2 = dot(toLight, toLight);
+        float attenuation = LGrid_DistAtten(max(sampleD2, 0.01), fixture.range);
+        if (dot(fixture.dir, fixture.dir) > 0.5)
+            attenuation *= LGrid_AngleAtten(dot(fixture.dir, -toLight * rsqrt(max(sampleD2, 1e-6))), fixture.cosOuter, fixture.cosInner);
+        if (d2 < fixture.range * fixture.range) contribution = max(contribution, attenuation);
+    }
+    _Results[id.x] = float4(LGrid_FixtureMayReach(fixture, receiver) ? 1 : 0, contribution, 0, 1);
+}

@@ -188,14 +188,16 @@ float4 BackroomsRealLightPosition(uint lightIndex)
 
 // Identical quadrature, attenuation, diffuse/specular BRDF and visibility in both tiers.
 // A central URP soft shadow map adds nearby furniture detail; it is not a true area shadow.
-half3 BackroomsFixturePBR(LGridLight f, half3 energy, half shadow, InputData data,
+half3 BackroomsFixturePBR(LGridLight f, half3 energy, half shadow, bool localContact, bool knownVisible, InputData data,
                          BRDFData brdf, BRDFData coat, SurfaceData surface, bool noSpecular)
 {
     float3 delta = f.pos - data.positionWS;
     float distanceSquared = dot(delta, delta);
-    if (distanceSquared >= f.range * f.range || dot(energy, energy) < 1e-10 || shadow <= 0) return 0;
+    if (dot(energy, energy) < 1e-10 || shadow <= 0) return 0;
+    if (!knownVisible && !LGrid_FixtureMayReach(f, data.positionWS)) return 0;
     float sizeWeight = 1.0 - smoothstep(36.0, 64.0, distanceSquared);
-    if (LGrid_LightVisible(data.positionWS, data.normalWS, f.pos) < 0.5) return 0;
+    if (!knownVisible && LGrid_LightVisible(data.positionWS, data.normalWS, f.pos) < 0.5) return 0;
+    if (localContact) shadow *= LocalLightVisibility(data.positionWS, data.normalWS, f.pos);
     bool quad = dot(f.halfSize, f.halfSize) > 0 && sizeWeight > 0;
     int samples = quad ? 4 : 1;
     half3 sum = 0;
@@ -239,7 +241,7 @@ half3 BackroomsDistantPBR(InputData data, BRDFData brdf, BRDFData coat, SurfaceD
     {
         LGridLight f = _LGridLights[_LGridTileLights[tile.x + i]];
         if (dot(f.color, f.color) < 1e-10) continue;
-        sum += BackroomsFixturePBR(f, f.color, ao * LocalLightVisibility(data.positionWS, data.normalWS, f.pos), data, brdf, coat, surface, noSpecular);
+        sum += BackroomsFixturePBR(f, f.color, ao, true, false, data, brdf, coat, surface, noSpecular);
     }
     return sum * edge;
 }
@@ -303,16 +305,24 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
     #endif
 
     LIGHT_LOOP_BEGIN(pixelLightCount)
+        float4 source = BackroomsRealLightPosition(lightIndex);
+        LGridLight fixture = (LGridLight)0;
+        bool isFixture = source.w > 0.5 && LGrid_FindFixture(source.xyz, inputData.positionWS, fixture);
+        half3 energy = isFixture ? max(fixture.colorAll - fixture.color, 0) : 0;
+        // Layout-blocked fixtures cannot contribute. Reject before URP samples their soft shadow maps.
+        if (isFixture)
+        {
+            if (dot(energy, energy) < 1e-10 || !LGrid_FixtureMayReach(fixture, inputData.positionWS)) continue;
+            if (LGrid_LightVisible(inputData.positionWS, inputData.normalWS, fixture.pos) < 0.5) continue;
+        }
         Light light = GetAdditionalLight(lightIndex, inputData, shadowMask, aoFactor);
 #ifdef _LIGHT_LAYERS
         if (IsMatchingLightLayer(light.layerMask, meshRenderingLayers))
 #endif
         {
-            float4 source = BackroomsRealLightPosition(lightIndex);
-            LGridLight fixture;
-            if (source.w > 0.5 && LGrid_FindFixture(source.xyz, inputData.positionWS, fixture))
+            if (isFixture)
             {
-                lightingData.additionalLightsColor += BackroomsFixturePBR(fixture, max(fixture.colorAll - fixture.color, 0), light.shadowAttenuation * aoFactor.directAmbientOcclusion,
+                lightingData.additionalLightsColor += BackroomsFixturePBR(fixture, energy, light.shadowAttenuation * aoFactor.directAmbientOcclusion, false, true,
                     inputData, brdfData, brdfDataClearCoat, surfaceData, specularHighlightsOff);
             }
             else

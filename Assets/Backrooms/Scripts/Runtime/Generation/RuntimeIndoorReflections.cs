@@ -104,7 +104,7 @@ namespace Backrooms.Generation
             }
             var eye = streamer.player.position + Vector3.up * 1.5f;
             var cell = new Vector3Int(Mathf.FloorToInt(eye.x / OfficeBiome.CellSize), eye.y >= streamer.Settings.storeyPitch ? 1 : 0, Mathf.FloorToInt(eye.z / OfficeBiome.CellSize));
-            if (_world != streamer.World) { _world = streamer.World; _lastCell.x = int.MinValue; foreach (var slot in _slots) if (slot != null) slot.key = null; }
+            FollowWorld(streamer.World);
             if (cell != _lastCell)
             {
                 _lastCell = cell; _currentKey = null;
@@ -132,7 +132,8 @@ namespace Backrooms.Generation
             foreach (var slot in _slots)
             {
                 if (slot == null || !slot.probe) continue;
-                slot.probe.enabled = enabledInMenu && slot.key != null && slot.bounds.SqrDistance(eye) < 24f * 24f;
+                // Disabling an in-flight time-sliced probe prevents completion and strands the capture queue.
+                slot.probe.enabled = enabledInMenu && slot.key != null && (slot == _capturing || slot.bounds.SqrDistance(eye) < 24f * 24f);
                 float target = slot.ready && slot.probe.enabled ? 1 : 0;
                 slot.probe.intensity = Mathf.MoveTowards(slot.probe.intensity, target, Time.unscaledDeltaTime * 2);
                 if (slot.probe.enabled) ActiveProbes++;
@@ -142,6 +143,13 @@ namespace Backrooms.Generation
             current.captureId = current.probe.RenderProbe();
             current.nextCapture = Time.unscaledTime + 4f; current.revision = revision;
             if (current.captureId >= 0) _capturing = current;
+        }
+
+        void FollowWorld(WorldGenerator world)
+        {
+            if (_world == world) return;
+            // A previous world's capture cannot finish after its probe is disabled by key invalidation.
+            ReleaseProbes(); _world = world; _lastCell.x = int.MinValue; _currentKey = null;
         }
 
         bool Cell(Vector3Int c, out OfficeLayout layout, out int x, out int z)

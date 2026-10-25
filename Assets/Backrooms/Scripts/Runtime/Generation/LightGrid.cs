@@ -55,7 +55,8 @@ namespace Backrooms.Generation
         ComputeBuffer _occ;                  // layout occupancy: OccN x OccN cells x 2 storeys, toroidal
         RenderTexture _bounceCur;            // the bounce field the shader samples (the last diffuse step's output)
         readonly uint[] _occData = new uint[OccN * OccN * 2];
-        ComputeBuffer _lights, _tiles, _tileLights;
+        ComputeBuffer _lights, _tiles, _tileLights, _fixtureLookup;
+        uint[] _fixtureLookupData = new uint[4];
         LightGridMath.GridLight[] _lightArr = new LightGridMath.GridLight[256];
         int _lightCount;
         readonly uint[] _tileArr = new uint[Tiles * Tiles * 2];
@@ -98,6 +99,7 @@ namespace Backrooms.Generation
             _lights = new ComputeBuffer(_lightArr.Length, LightGridMath.GridLight.Stride);
             _tiles = new ComputeBuffer(Tiles * Tiles, 8);
             _tileLights = new ComputeBuffer(8192, 4);
+            _fixtureLookup = new ComputeBuffer(4, 4); _fixtureLookup.SetData(new uint[4]);
             if (streamer) { streamer.ChunkLoaded += OnChunkChanged; streamer.ChunkUnloaded += OnChunkUnloaded; }
             Shader.SetGlobalTexture(GA, _a); Shader.SetGlobalTexture(GB, _b); Shader.SetGlobalBuffer(GOcc, _occ);
             Shader.SetGlobalTexture(GBounce, _bounce0);
@@ -112,8 +114,8 @@ namespace Backrooms.Generation
             if (streamer) { streamer.ChunkLoaded -= OnChunkChanged; streamer.ChunkUnloaded -= OnChunkUnloaded; }
             void Rel(RenderTexture r) { if (r) { r.Release(); if (Application.isPlaying) Destroy(r); else DestroyImmediate(r); } }
             Rel(_a); Rel(_b); Rel(_bounceSrc); Rel(_bounce0); Rel(_bounce1);
-            _occ?.Release(); _lights?.Release(); _tiles?.Release(); _tileLights?.Release();
-            _occ = _lights = _tiles = _tileLights = null;
+            _occ?.Release(); _lights?.Release(); _tiles?.Release(); _tileLights?.Release(); _fixtureLookup?.Release();
+            _occ = _lights = _tiles = _tileLights = _fixtureLookup = null;
             _encoded.Clear();
             ReleaseSurfaces(); ReleaseOccluders();
         }
@@ -146,6 +148,7 @@ namespace Backrooms.Generation
         void SetLights(List<LightGridMath.GridLight> lights)
         {
             bool upload = !_inputsValid || lights.Count != _lightCount;
+            bool lookup = upload;
             bool bins = upload || _binnedMin != _texMin;
             bool bounce = bins;
             for (int i = 0; i < lights.Count; i++)
@@ -154,6 +157,7 @@ namespace Backrooms.Generation
                 if (i >= _lightCount || !_inputsValid) { upload = bins = bounce = true; continue; }
                 var old = _lightArr[i];
                 bool geometry = !l.pos.Equals(old.pos) || l.range != old.range;
+                lookup |= !l.pos.Equals(old.pos);
                 bool illumination = geometry || !l.dir.Equals(old.dir) || l.cosOuter != old.cosOuter || l.cosInner != old.cosInner || l.storey != old.storey || !l.halfSize.Equals(old.halfSize);
                 bins |= geometry;
                 bounce |= illumination || !l.colorAll.Equals(old.colorAll);
@@ -170,6 +174,15 @@ namespace Backrooms.Generation
             }
             _lightCount = lights.Count;
             for (int i = 0; i < lights.Count; i++) _lightArr[i] = lights[i];
+            if (lookup)
+            {
+                _fixtureLookupData = LightGridMath.BuildFixtureLookup(lights, _fixtureLookupData);
+                if (_fixtureLookup.count != _fixtureLookupData.Length)
+                {
+                    _fixtureLookup.Release(); _fixtureLookup = new ComputeBuffer(_fixtureLookupData.Length, 4);
+                }
+                _fixtureLookup.SetData(_fixtureLookupData); BufferUploadsLastFrame++;
+            }
             if (upload && _lightCount > 0) { _lights.SetData(_lightArr, 0, 0, _lightCount); BufferUploadsLastFrame++; }
             _inputsValid = true;
             if (!bins) return;
@@ -318,6 +331,8 @@ namespace Backrooms.Generation
             Shader.SetGlobalVector(GShape, new Vector4(wrap, normalOffset, smoothing, contrast));
             Shader.SetGlobalFloat(GFill, roomFill);
             Shader.SetGlobalBuffer(GLights, _lights); Shader.SetGlobalBuffer(GTiles, _tiles); Shader.SetGlobalBuffer(GTileLights, _tileLights);
+            Shader.SetGlobalBuffer("_LGridFixtureLookup", _fixtureLookup);
+            Shader.SetGlobalInt("_LGridFixtureMask", _fixtureLookup.count - 1);
             Shader.SetGlobalVector(GFar, new Vector4(perPixelDirect ? 1f : 0f, TileTexels, Tiles, 0f));
             LastGpuSubmitMs = (float)sw.Elapsed.TotalMilliseconds;
         }

@@ -15,6 +15,26 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-25 05:32  ChatGPT  Recover FPS without lowering lighting quality
+- Replaced the per-pixel/per-real-light fixture-list scan with a cached half-full position lookup (735 lights: 8 KB,
+  mean 1.22 probes, max 6). Rebuilds on position/count/order changes, owns/releases its buffer and binds editor fallback.
+  Added conservative finite-emitter range/cone rejection before rays; layout-blocked real fixtures skip soft shadow-map
+  samples. Deferred distant furniture rays until a light survives those checks. Same BRDF, quadrature and quality budgets.
+- Native validation exposed a separate reflection queue deadlock: world replacement disabled an unfinished probe, and
+  distant moves could do the same. Replacement now cancels old captures; moving keeps the current capture enabled until
+  completion. Added lifecycle regression. Details/costs/caveats: Docs/FpsRecovery.md and RuntimeLighting.md.
+- Checked Unity 6000.4.5f1: full EditMode suite 48/48 passes (a2e67eac87144c9790745de632ed342d), including actual GPU lookup
+  collisions/reordering/removal/misses and finite-sample rejection checks. No Lit messages or final runtime warnings.
+  Native capture-before-reset and capture-before-40m-move recovered (8 captures, 1 active probe, none pending). Inspected
+  before/after corridor and office images. Final stop retains 8 valid fallback buffers; original seed 0/settings restored.
+- Same-view 1080p editor sample, seed 1234, saved high options retained: CPU median/p95 31.05/37.51 -> 18.11/24.40 ms;
+  GPU 24.03/34.20 -> 11.85/23.39 ms (roughly 32 -> 55 FPS). Final 180 samples with reflections active/contact 0.65/panel 1;
+  settings before/after identical. Same 735 fixtures, 38 shadowed; loaded chunks 61 before / 60 after, queues empty.
+  Larger office: CPU 20.25 ms, GPU 13.92 ms median (~49 FPS); one reflection refresh. Raw data/screens: Temp/FpsRecovery.
+- Open: editor measurements are not a locked-60-FPS or standalone benchmark. Still manually check a player build, long
+  streaming/portal routes and lower-end GPUs. Earlier unresolved native allocation diagnostic remains open (see previous entries).
+  Unrelated material/ProjectSettings edits preserved. Local branch chatgpt/lighting-performance; no push/PR.
+
 ## 2026-10-24 19:46  ChatGPT  Close fallback resource lifetime and finish lighting delivery
 - LightGridGlobals now releases seven fallback buffers/two textures before reload, lifetime reset and quit; guards late
   OnDisable allocation and rebinds safely in gridless/editor scenes. ExitingPlayMode retains bindings until rendering
