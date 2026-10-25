@@ -113,5 +113,29 @@ namespace Backrooms.Tests
                 Object.DestroyImmediate(furniture); Object.DestroyImmediate(root);
             }
         }
+        [Test]
+        public void FallbackBuffersReleaseBeforeReloadAndRebindForEditor()
+        {
+            var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+            var fields = typeof(LightGridGlobals).GetFields(flags);
+            var owned = new List<ComputeBuffer>();
+            LightGridGlobals.ResetAndBindFallbacks();
+            foreach (var field in fields)
+                if (field.FieldType == typeof(ComputeBuffer))
+                {
+                    var buffer = (ComputeBuffer)field.GetValue(null); Assert.IsTrue(buffer.IsValid()); owned.Add(buffer);
+                }
+            Assert.Greater(owned.Count, 0);
+            try
+            {
+                LightGridGlobals.ReleaseFallbacks();
+                foreach (var buffer in owned) Assert.IsFalse(buffer.IsValid(), "native storage must be released before domain unload");
+                LightGridGlobals.BindFallbacks(); // a late component OnDisable must not recreate buffers during teardown
+                foreach (var field in fields) if (field.FieldType == typeof(ComputeBuffer)) Assert.IsNull(field.GetValue(null));
+            }
+            finally { LightGridGlobals.ResetAndBindFallbacks(); }
+            foreach (var field in fields) if (field.FieldType == typeof(ComputeBuffer)) Assert.IsTrue(((ComputeBuffer)field.GetValue(null)).IsValid());
+            Assert.AreEqual(0, Shader.GetGlobalVector("_LGridParams").x);
+        }
     }
 }

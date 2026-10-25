@@ -4,9 +4,8 @@ using UnityEditor;
 namespace Backrooms.EditorTools
 {
     /// <summary>
-    /// Binds the light grid's stand-in globals in the editor so Backrooms/Lit draws in edit mode. Never while
-    /// playing: after a domain reload the delayed call could land on a running game and replace the live grid's
-    /// buffers with empty ones (the shader then sees no walls). The running grid also re-binds every frame.
+    /// Owns fallback resources across editor transitions. A live grid always retains its real bindings;
+    /// scenes without a running grid can rebind stand-ins after a reload, including build mode.
     /// </summary>
     [InitializeOnLoad]
     static class LightGridEditorInit
@@ -15,11 +14,20 @@ namespace Backrooms.EditorTools
         {
             EditorApplication.delayCall += () =>
             {
-                if (!EditorApplication.isPlayingOrWillChangePlaymode) LightGridGlobals.BindFallbacks();
+                if (EditorApplication.isPlayingOrWillChangePlaymode && !EditorApplication.isPlaying) return;
+                var grid = UnityEngine.Object.FindAnyObjectByType<LightGrid>();
+                if (!grid || !grid.Ready) LightGridGlobals.ResetAndBindFallbacks();
             };
+            AssemblyReloadEvents.beforeAssemblyReload += LightGridGlobals.ReleaseFallbacks;
+            EditorApplication.quitting += LightGridGlobals.ReleaseFallbacks;
             EditorApplication.playModeStateChanged += s =>
             {
-                if (s == PlayModeStateChange.EnteredEditMode) LightGridGlobals.BindFallbacks();
+                // ExitingPlayMode can still render frames: keep valid bindings until assembly teardown.
+                if (s == PlayModeStateChange.EnteredEditMode)
+                {
+                    LightGridGlobals.ReleaseFallbacks();
+                    LightGridGlobals.ResetAndBindFallbacks();
+                }
             };
         }
     }

@@ -15,6 +15,24 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-24 19:46  ChatGPT  Close fallback resource lifetime and finish lighting delivery
+- LightGridGlobals now releases seven fallback buffers/two textures before reload, lifetime reset and quit; guards late
+  OnDisable allocation and rebinds safely in gridless/editor scenes. ExitingPlayMode retains bindings until rendering
+  stops (an earlier release caused two unbound-SRV warnings). Added release/rebind regression. PauseMenu recaches its
+  visual menu after reload; new occluder stable sorting uses Unity 6 EntityId. Updated runtime/review documentation.
+- Why: finish ownership recommendation and avoid native storage escaping managed reload without breaking builder draws.
+- Checked in Unity 6000.4.5f1: final full EditMode suite 45/45 passes (job f78460c92c7d429a90dacb6f627ffa25). Final isolated
+  world -> BuildMode new unsaved preview -> stop: zero console warnings with stack-trace leak detection enabled; all
+  seven fallback buffers valid, grid disabled in builder, preview geometry rendered. No blueprint saved. Original seed 0,
+  async compilation false, leak detection Enabled and reflection quality false restored; original scene not dirty.
+  Earlier 11-view tour, portal render/warp, upper-storey bounce, mesh stress, shadow fades and timing data are in the
+  previous entry and Temp/LightingPerformance. Review documents the complete 15-item delivery map and measured costs.
+- Open: an earlier reload dumped native leak reports with unresolved managed symbols; exact cause is not conclusively
+  isolated despite the clean final cycle. Check repeated reloads in a fresh editor session. No standalone benchmark:
+  manually test long travel/teleports, repeated portals, reflections between rooms, furniture near the 160-box cap and
+  low-end GPU/shader startup. Area lighting/GI/reflections remain approximations and do add cost. Unrelated dirty assets
+  retained. Local commits only on chatgpt/lighting-performance; no push or PR.
+
 
 ## 2026-10-24 16:08  ChatGPT  Furniture contact, bounded indoor reflections and full lighting validation
 - Added LightingOccluder/LightGrid.Occlusion: tiled oriented furniture boxes (up to 160 within 14 m), local indirect/direct

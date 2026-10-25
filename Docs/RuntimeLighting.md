@@ -51,6 +51,10 @@ is serialized so surviving objects retain their mesh list through a Unity script
 ## Validation and costs
 
 PerformanceLightingTests covers stable caching, mode switches, ownership, phased publication and deterministic eviction.
+Fallback globals explicitly release their seven buffers and two empty textures at assembly reload, lifetime reset and
+quit, then rebind in editor/gridless scenes. ExitingPlayMode retains bindings until rendering stops. A teardown guard
+blocks late OnDisable allocation.
+An EditMode regression verifies invalidation, guarded shutdown and valid rebinding; the final full suite has 45 tests.
 RuntimeBounceTests dispatches the real GPU source kernel and reads it back: upper-storey illumination, closed-floor
 isolation, changed floor reflectance/colour and the direction of west-wall bounce. Shader compilation and fixed-pose
 LightingTour views are also checked. Baseline, efficiency and lighting captures are local under Temp/LightingPerformance.

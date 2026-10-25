@@ -51,8 +51,8 @@ namespace Backrooms.CustomRooms
             Instance = go.AddComponent<PauseMenu>();
         }
 
-        void OnEnable() { SceneManager.sceneLoaded += OnSceneLoaded; }
-        void Start() { _visualMenu = FindFirstObjectByType<CamcorderVisualMenu>(); }
+        void OnEnable() { SceneManager.sceneLoaded += OnSceneLoaded; _visualMenu = FindAnyObjectByType<CamcorderVisualMenu>(); }
+        void Start() { _visualMenu = FindAnyObjectByType<CamcorderVisualMenu>(); }
         void OnDisable() { SceneManager.sceneLoaded -= OnSceneLoaded; }
 
         void OnSceneLoaded(Scene s, LoadSceneMode m)
@@ -62,7 +62,7 @@ namespace Backrooms.CustomRooms
             Time.timeScale = 1f;
             CamcorderPlayerController.InputBlocked = false;
             _status = "";
-            _visualMenu = FindFirstObjectByType<CamcorderVisualMenu>();
+            _visualMenu = FindAnyObjectByType<CamcorderVisualMenu>();
             if (s.name == SceneIds.Build) CustomRoomTest.End();      // back from a test: the room stays open in the editor
             CustomRoomTest.OnLoad();
         }

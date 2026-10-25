@@ -110,7 +110,7 @@ for this review. The feature work is on `chatgpt/build-mode-tools`; see WORKLOG.
 First profile/verify unused direct-grid work, unchanged bounce work and preview mesh ownership; these target unnecessary
 cost while preserving the image. Then prototype finite panel emission and upper-storey/material-aware bounce against fixed
 reference views. Evaluate shadow transitions and specular continuity while moving. Keep true darkness, faulty fixtures,
-portal views and saved camcorder exposure among the regression cases. None of these proposals has been implemented.
+portal views and saved camcorder exposure among the regression cases. This was the original audit order; delivery follows below.
 
 
 ## Implementation follow-up — chatgpt/lighting-performance
@@ -163,7 +163,7 @@ own profile. Raw local files: `Temp/LightingPerformance/final_panel*.json`. Fina
 | 14 | Indoor reflections | Two cached room-bounded probes; no sky/portal capture; temporary shared material variants. |
 | 15 | Runtime GI choice | Extended compute grid; APV/baked Area limitations documented. |
 
-Final validation: full 44-test EditMode suite passes, including GPU checks for bounded diffusion/ceiling energy and
+Final validation: full 45-test EditMode suite passes, including GPU checks for bounded diffusion/ceiling energy and
 isotropic direction moments; Lit and compute shaders have no messages. All 11 seed-1234 tour
 poses were captured after implementation. An incremental F5 atrium search jumped 486 m onto an upper floor, drained to
 65 chunks/zero queued work and kept the player above its floor. Readback of the live upper-floor bounce field was
@@ -200,5 +200,14 @@ to 1 afterward without saving experimental preferences.
 
 A live warmed portal view rendered its destination into an active render texture and crossing advanced LastWarpFrame
 at the paired opening; no portal shader errors. The initial cyan image was shader warm-up, resolved after compilation.
-A native Persistent-allocation warning appeared during editor cycles; fallback global resource teardown is being checked
-before final delivery. This warning is not being classified as an FPS result or hidden by lowering leak detection.
+A native Persistent-allocation warning appeared during earlier editor cycles. The seven fallback compute buffers and
+two empty textures now have explicit teardown at assembly reload, lifetime reset and quit. A release guard
+prevents late component shutdown from recreating them. The added regression checks release/rebind behavior; the full
+suite passes. The final isolated world-to-builder/stop cycle produced no console warnings with stack-trace leak detection
+enabled. An earlier reload did dump native leak reports with unresolved managed symbols; the original cause is not
+conclusively isolated. Recheck reloads in a fresh editor session before calling that diagnostic fully resolved.
+An initial shutdown test also caught unbound-buffer draw warnings: releasing on ExitingPlayMode was too early because
+Unity could still render. Bindings now survive that event; teardown happens at assembly reload and immediate edit-mode
+release/rebind. The final isolated cycle had none of those draw warnings. Leak detection was restored to Enabled.
+The final builder check opened an unsaved room preview: generated geometry rendered with all seven fallback buffers
+valid, the grid disabled, and the runtime reflection quality flag restored. No room blueprint was saved.

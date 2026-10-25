@@ -13,7 +13,7 @@ namespace Backrooms.Generation
         readonly OccluderRecord[] _occluderData = new OccluderRecord[MaxOccluders];
         readonly List<(BoxCollider box, float distance)> _nearBoxes = new List<(BoxCollider, float)>(512);
         static readonly System.Comparison<(BoxCollider box, float distance)> BoxDistance = (a, b) => a.distance.CompareTo(b.distance);
-        static readonly System.Comparison<(BoxCollider box, float distance)> BoxId = (a, b) => a.box.GetInstanceID().CompareTo(b.box.GetInstanceID());
+        static readonly System.Comparison<(BoxCollider box, float distance)> BoxId = (a, b) => a.box.GetEntityId().CompareTo(b.box.GetEntityId());
         readonly List<uint>[] _occBins = new List<uint>[Tiles * Tiles];
         readonly List<uint> _occIndices = new List<uint>(2048);
         readonly uint[] _occTiles = new uint[Tiles * Tiles * 2];
