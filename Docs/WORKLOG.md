@@ -15,6 +15,43 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-25 16:11  ChatGPT  Wall-contained portals, bounded views and cached light transport
+- Crawl portals now cross/render at the entrance wall face; removed the 2.3 m protruding duct. Reverse faces are complete
+  ordinary walls. A wall-contained seal collider ignores only an aligned crawling capsule with a loaded counterpart;
+  leaving/disabling restores collision. Position/yaw/velocity mapping and an arrival latch prevent immediate re-entry.
+  World version 9 records the geometry change; existing placement spacing and 12-30 m links are retained.
+- Views prepare after movement/shake and use URP's ordinary camera loop (two-view budget, no recursion). Destination
+  geometry clips in a portal-only shader variant, preserving perspective depth for Forward+ and keeping discards out
+  of normal world/builder shading. Actual camera completion reveals a new view; near-plane crossings stay visible.
+  Cropped off-centre render targets cover only the opening, with projected-size density/quantization/hysteresis.
+- Added PortalLighting.compute and explicit live-grid bindings: six directional samples for at most eight nearby mouths
+  in a 6x8 half-float GPU cache. Replaced expensive per-pixel destination-light scans from the intermediate draft.
+  Soft diffuse spill has a 3 m extent; a 0.6 m reciprocal threshold blend joins illumination. Local walls/props restrict
+  it; real/grid share changes do not dim it. Fallbacks clear portal globals and bind an empty irradiance texture.
+  Docs/Portals.md describes implementation, costs, approximations and checks; BuildMode.md describes the new geometry.
+- Checked in Unity 6000.4.5f1 / DX12: final EditMode suite 53/53 passes (aa98d3504f4043dba7ca4f69c41abfca). New tests cover
+  all orientation/negative-coordinate frame mappings, contained seals/collision cleanup, crop UV/depth identity, actual
+  GPU full-output/power-off/out-of-window samples, fallback clip-state reset, and initial crossing/jitter/immediate-retreat
+  regression. The arrival guard permits intentional reversal before its 8 cm clearance. Final shader messages empty.
+  Native Play Mode: both crossing directions passed; view remained live 0.02 m from the plane; reverse capsule stopped
+  at depth -0.48 m with collisions enabled. Inspected portal/threshold/reverse-wall and an unsaved BuildMode preview.
+  Final builder: no portal RTs left, clip keyword off, spill count 0, no console errors/warnings. No room saved.
+- Warmed same-pose 1080p seed-1234 editor samples (180 frames, saved quality retained): full-camera draft CPU median/p95
+  32.64/41.42 ms, GPU 29.33/39.07; final cropped 896x896 view CPU 22.63/30.17, GPU 21.15/28.73 (~31 -> 44 FPS).
+  Separate Play Mode runs; not standalone or a general locked-60 claim. Captures/raw results are outside the repo in
+  C:/Users/kadej/Documents/Codex/2026-10-19/i-wan/outputs/portal-continuity (before-crop, after-crop, final JSON/PNGs).
+- Cyan was reproduced as the editor's loading shader during cold compilation; the warmed builder and portals render
+  normally. EditorSettings.asyncShaderCompilation remains true/unmodified; temporary ShaderUtil flag returned to false.
+  A preview command-buffer workaround produced scope warnings and was removed. Cold shader edits can still show cyan
+  or stall until compilation completes. No ProjectSettings/material edits were included. Unity serialized additional
+  material/TimeManager changes while validating; these remain unstaged with the earlier dirty assets.
+- Open: manually test angled crawls/turning/backing out, long streaming routes and multiple visible pairs in a player
+  build. Two live views/eight lit mouths are budgets, not unlimited recursive portals. Light transport is a coarse
+  diffuse approximation; distant links outside existing streaming/light-grid range, recursive specular/GI and prop
+  traversal need more work. Lighting/material boundaries are reduced, not a claim of physically exact transport.
+  Branch chatgpt/portal-continuity, local commit only; no push or PR.
+
+
 ## 2026-10-25 05:32  ChatGPT  Recover FPS without lowering lighting quality
 - Replaced the per-pixel/per-real-light fixture-list scan with a cached half-full position lookup (735 lights: 8 KB,
   mean 1.22 probes, max 6). Rebuilds on position/count/order changes, owns/releases its buffer and binds editor fallback.

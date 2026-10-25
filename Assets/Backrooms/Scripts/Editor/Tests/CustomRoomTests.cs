@@ -334,6 +334,146 @@ namespace Backrooms.Tests
             }
             Assert.Greater(found, 0, "no crawl holes near the origin");
         }
+
+        [Test]
+        public void PortalFramesStayOnEntranceWallAndMapsRoundTrip()
+        {
+            var root = new GameObject("Portal mapping test"); root.SetActive(false);
+            var a = root.AddComponent<Backrooms.Interaction.CrawlPortalView>();
+            var b = root.AddComponent<Backrooms.Interaction.CrawlPortalView>();
+            try
+            {
+                for (int side = 0; side < 4; side++)
+                for (int other = 0; other < 4; other++)
+                {
+                    var district = new Vector2Int(-2, 1); var cell = new Vector2Int(3, 4);
+                    CrawlPortals.Frame(district, cell, side, 0, out a.position, out a.normal);
+                    CrawlPortals.Frame(district, new Vector2Int(14, 17), other, 0, out b.position, out b.normal);
+                    var centre = new Vector3((district.x * WorldGenSettings.DistrictCells + cell.x + 0.5f) * OfficeBiome.CellSize,
+                        CrawlPortals.HoleHalf, (district.y * WorldGenSettings.DistrictCells + cell.y + 0.5f) * OfficeBiome.CellSize);
+                    Assert.Less(Vector3.Distance(a.position, centre - a.normal * (OfficeBiome.CellSize - OfficeBiome.WallThickness) * 0.5f), 0.0001f);
+                    a.partnerPosition = b.position; a.partnerNormal = b.normal;
+                    b.partnerPosition = a.position; b.partnerNormal = a.normal;
+                    var point = a.position + a.normal * 0.35f + Vector3.up * 0.13f;
+                    Assert.Less(Vector3.Distance(point, b.ToPartner.MultiplyPoint3x4(a.ToPartner.MultiplyPoint3x4(point))), 0.0001f);
+                    Assert.Less(Vector3.Distance(a.ToPartner.MultiplyVector(-a.normal), b.normal), 0.0001f);
+                }
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
+        [Test]
+        public void CroppedPortalProjectionPreservesFullScreenPerspective()
+        {
+            var perspective = Matrix4x4.Perspective(75, 16f / 9, 0.05f, 45);
+            foreach (var rect in new[] { new Rect(0, 0, 1, 1), new Rect(0.1f, 0.3f, 0.45f, 0.6f), new Rect(0.8f, 0, 0.2f, 0.15f) })
+            {
+                var crop = Backrooms.Interaction.CrawlPortalSystem.CropProjection(perspective, rect);
+                for (int x = -4; x <= 4; x++) for (int y = -4; y <= 4; y++)
+                {
+                    var point = new Vector4(x * 0.2f, y * 0.2f, -2, 1);
+                    var full = perspective * point; var clipped = crop * point;
+                    var originalUV = new Vector2(full.x / full.w, full.y / full.w) * 0.5f + Vector2.one * 0.5f;
+                    var cropUV = new Vector2(clipped.x / clipped.w, clipped.y / clipped.w) * 0.5f + Vector2.one * 0.5f;
+                    var reconstructed = Vector2.Scale(cropUV, rect.size) + rect.position;
+                    Assert.Less(Vector2.Distance(originalUV, reconstructed), 0.00001f);
+                    Assert.AreEqual(full.z / full.w, clipped.z / clipped.w, 0.00001f, "crop must preserve perspective depth for clustered lighting");
+                }
+            }
+        }
+
+        [Test]
+        public void PortalSealIsWallContainedAndCollisionIgnoresAreOwned()
+        {
+            var root = new GameObject("Portal seal test");
+            var person = new GameObject("Test capsule");
+            var capsule = person.AddComponent<CharacterController>();
+            capsule.radius = 0.3f; capsule.height = 0.62f; capsule.center = Vector3.up * 0.31f;
+            var v = Backrooms.Interaction.CrawlPortalView.Create(root.transform,
+                new CrawlPortal { position = new Vector3(0, 0.4f, 0), normal = Vector3.back });
+            try
+            {
+                person.transform.position = Vector3.back * 0.2f;
+                Physics.SyncTransforms();
+                Assert.IsTrue(v.Fits(capsule));
+                Assert.AreEqual(OfficeBiome.WallThickness, v.backstop.size.z, 0.0001f);
+                Assert.AreEqual(0, v.backstop.center.z - v.backstop.size.z * 0.5f, 0.0001f);
+                Assert.AreEqual(OfficeBiome.WallThickness, v.backstop.center.z + v.backstop.size.z * 0.5f, 0.0001f);
+                Assert.IsTrue(v.backstop.Raycast(new Ray(new Vector3(0, 0.4f, 1), Vector3.back), out _, 2));
+                Assert.IsFalse(Physics.GetIgnoreCollision(capsule, v.backstop));
+                v.SetPassage(capsule, true);
+                Assert.IsTrue(Physics.GetIgnoreCollision(capsule, v.backstop));
+                v.enabled = false;
+                // Ordinary runtime MonoBehaviours do not receive lifecycle callbacks in EditMode.
+                typeof(Backrooms.Interaction.CrawlPortalView).GetMethod("OnDisable", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(v, null);
+                Assert.IsFalse(Physics.GetIgnoreCollision(capsule, v.backstop));
+                capsule.height = 1.75f;
+                Assert.IsFalse(v.Fits(capsule));
+                capsule.height = 0.62f; person.transform.position += Vector3.right * 0.2f;
+                Assert.IsFalse(v.Fits(capsule));
+            }
+            finally
+            {
+                typeof(Backrooms.Interaction.CrawlPortalView).GetMethod("OnDestroy", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(v, null);
+                Object.DestroyImmediate(root); Object.DestroyImmediate(person);
+                var system = Object.FindAnyObjectByType<Backrooms.Interaction.CrawlPortalSystem>();
+                if (system) Object.DestroyImmediate(system.gameObject);
+            }
+        }
+
+        [Test]
+        public void PortalArrivalRejectsJitterButAllowsImmediateRetreat()
+        {
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var root = new GameObject("Portal retreat test"); root.SetActive(false);
+            var source = Backrooms.Interaction.CrawlPortalView.Create(root.transform, new CrawlPortal {
+                position = new Vector3(0, 0.4f, 0), normal = Vector3.forward,
+                partnerPosition = new Vector3(10, 0.4f, 0), partnerNormal = Vector3.back });
+            var destination = Backrooms.Interaction.CrawlPortalView.Create(root.transform, new CrawlPortal {
+                position = source.partnerPosition, normal = source.partnerNormal,
+                partnerPosition = source.position, partnerNormal = source.normal });
+            var viewType = typeof(Backrooms.Interaction.CrawlPortalView);
+            viewType.GetMethod("OnEnable", flags).Invoke(source, null); viewType.GetMethod("OnEnable", flags).Invoke(destination, null);
+            var system = Object.FindAnyObjectByType<Backrooms.Interaction.CrawlPortalSystem>();
+            var systemType = typeof(Backrooms.Interaction.CrawlPortalSystem);
+            var person = new GameObject("Test player"); person.transform.SetParent(root.transform);
+            var player = person.AddComponent<CamcorderPlayerController>();
+            var capsule = person.GetComponent<CharacterController>(); capsule.radius = 0.3f;
+            capsule.height = 0.62f; capsule.center = Vector3.up * 0.31f;
+            typeof(CamcorderPlayerController).GetMethod("Awake", flags).Invoke(player, null);
+            var eye = new GameObject("Test eye").AddComponent<Camera>(); eye.transform.SetParent(person.transform);
+            eye.transform.localPosition = Vector3.up * 0.42f;
+            systemType.GetField("_player", flags).SetValue(system, player);
+            systemType.GetField("_capsule", flags).SetValue(system, capsule);
+            systemType.GetField("_main", flags).SetValue(system, eye);
+            var previous = (System.Collections.IDictionary)systemType.GetField("_lastLocal", flags).GetValue(system);
+            var velocity = typeof(CamcorderPlayerController).GetProperty("PlanarVelocity");
+            var warp = systemType.GetMethod("TryWarp", flags);
+            try
+            {
+                person.transform.position = new Vector3(0, 0.03f, -0.01f);
+                previous[source] = new Vector3(0, 0.05f, 0.03f);
+                velocity.SetValue(player, Vector3.back * 0.1f);
+                warp.Invoke(system, new object[] { eye });
+                Assert.AreEqual(10, person.transform.position.x, 0.0001f, "initial crossing maps to the partner");
+                // Simulate a small backwards handheld displacement without intentional locomotion.
+                person.transform.position = new Vector3(10, 0.03f, 0.01f);
+                velocity.SetValue(player, Vector3.zero);
+                warp.Invoke(system, new object[] { eye });
+                Assert.AreEqual(10, person.transform.position.x, 0.0001f, "arrival jitter must not bounce the player back");
+                // Reversing before clearing the 8 cm arrival region must still traverse, even after that jitter.
+                velocity.SetValue(player, Vector3.forward * 0.1f);
+                warp.Invoke(system, new object[] { eye });
+                Assert.AreEqual(0, person.transform.position.x, 0.0001f, "intentional immediate retreat must not enter the physical room behind the wall");
+            }
+            finally
+            {
+                foreach (var view in new[] { source, destination })
+                { viewType.GetMethod("OnDisable", flags).Invoke(view, null); viewType.GetMethod("OnDestroy", flags).Invoke(view, null); }
+                systemType.GetMethod("OnDisable", flags).Invoke(system, null); systemType.GetMethod("OnDestroy", flags).Invoke(system, null);
+                Object.DestroyImmediate(system.gameObject); Object.DestroyImmediate(root);
+            }
+        }
     
         [Test]
         public void ChunksWithCrawlTunnelsBuildOnAWorkerThread()

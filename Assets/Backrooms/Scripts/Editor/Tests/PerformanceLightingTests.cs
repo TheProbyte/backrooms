@@ -8,6 +8,56 @@ namespace Backrooms.Tests
     public class PerformanceLightingTests
     {
         [Test]
+        public void PortalCacheSamplesFullPowerAndClearsOutOfWindowDestinations()
+        {
+            if (!SystemInfo.supportsComputeShaders) Assert.Ignore("Compute shaders unavailable");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var root = new GameObject("Portal cache test");
+            var grid = root.AddComponent<LightGrid>(); grid.compute = Resources.Load<ComputeShader>("LightGrid");
+            var output = new RenderTexture(6, 8, 0, RenderTextureFormat.ARGBFloat) { enableRandomWrite = true };
+            var readback = new Texture2D(6, 8, TextureFormat.RGBAFloat, false, true);
+            var previous = RenderTexture.active;
+            try
+            {
+                typeof(LightGrid).GetMethod("OnEnable", flags).Invoke(grid, null);
+                output.Create();
+                var shader = Object.Instantiate(Resources.Load<ComputeShader>("PortalLighting"));
+                try
+                {
+                    var positions = new Vector4[8]; var partners = new Vector4[8]; var normals = new Vector4[8];
+                    positions[0] = positions[1] = new Vector4(0, 0, 0, 0.8f);
+                    partners[0] = new Vector4(2, 0.4f, 2, 0); partners[1] = new Vector4(1000, 0.4f, 1000, 0);
+                    normals[0] = normals[1] = Vector3.forward;
+                    shader.SetVectorArray("_PortalSpillPosition", positions); shader.SetVectorArray("_PortalSpillPartner", partners);
+                    shader.SetVectorArray("_PortalSpillPartnerNormal", normals); shader.SetInt("_PortalSpillCount", 2);
+                    shader.SetTexture(0, "_PortalLightOutput", output);
+                    var fixture = new LightGridMath.GridLight { pos = new Vector3(2, 2.6f, 2.12f), range = 8,
+                        dir = Vector3.down, colorAll = new Vector3(3, 2, 1), color = new Vector3(3, 2, 1), cosOuter = 0.1f, cosInner = 0.5f };
+                    var lights = new List<LightGridMath.GridLight> { fixture };
+                    Color Sample()
+                    {
+                        grid.Tick(Vector3.zero, lights); Assert.IsTrue(grid.BindPortalLighting(shader, 0)); shader.Dispatch(0, 1, 2, 1);
+                        RenderTexture.active = output; readback.ReadPixels(new Rect(0, 0, 6, 8), 0, 0); readback.Apply();
+                        Assert.AreEqual(Color.black.r, readback.GetPixel(2, 1).r, 1e-6f, "outside window must not wrap into unrelated lighting");
+                        return readback.GetPixel(2, 0);
+                    }
+                    var full = Sample(); Assert.Greater(full.r, 0.1f); Assert.Greater(full.r, full.g);
+                    fixture.color = Vector3.zero; lights[0] = fixture;
+                    var realOnly = Sample(); Assert.AreEqual(full.r, realOnly.r, 0.0001f, "real/grid handover must not dim the cache");
+                    fixture.colorAll = Vector3.zero; lights[0] = fixture;
+                    Assert.AreEqual(0, Sample().r, 1e-6f, "power off must clear the previous cached irradiance");
+                }
+                finally { Object.DestroyImmediate(shader); }
+            }
+            finally
+            {
+                RenderTexture.active = previous; output.Release(); Object.DestroyImmediate(output); Object.DestroyImmediate(readback);
+                if (grid.Ready) typeof(LightGrid).GetMethod("OnDisable", flags).Invoke(grid, null);
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
         public void EmitterRejectionKeepsEveryContributingGpuQuadratureSample()
         {
             if (!SystemInfo.supportsComputeShaders) Assert.Ignore("Compute shaders unavailable");
@@ -196,7 +246,14 @@ namespace Backrooms.Tests
             var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
             var fields = typeof(LightGridGlobals).GetFields(flags);
             var owned = new List<ComputeBuffer>();
+            Shader.EnableKeyword("BACKROOMS_PORTAL_CLIP");
+            Shader.SetGlobalVector("_PortalClipPlane", Vector4.one);
+            Shader.SetGlobalInt("_PortalSpillCount", 8);
             LightGridGlobals.ResetAndBindFallbacks();
+            Assert.IsFalse(Shader.IsKeywordEnabled("BACKROOMS_PORTAL_CLIP"), "builder/editor draws must never inherit a portal clip");
+            Assert.AreEqual(Vector4.zero, Shader.GetGlobalVector("_PortalClipPlane"));
+            Assert.AreEqual(0, Shader.GetGlobalInt("_PortalSpillCount"));
+            Assert.IsNotNull(Shader.GetGlobalTexture("_PortalIrradiance"));
             foreach (var field in fields)
                 if (field.FieldType == typeof(ComputeBuffer))
                 {

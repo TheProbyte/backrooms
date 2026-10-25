@@ -120,6 +120,7 @@ Shader "Backrooms/Lit"
             // Shader Stages
             #pragma vertex LitPassVertex
             #pragma fragment LitPassFragment
+            #pragma multi_compile_fragment _ BACKROOMS_PORTAL_CLIP
 
             // -------------------------------------
             // Material Keywords

@@ -281,4 +281,59 @@ half LGrid_LightVisible(float3 P, float3 N, float3 L)
     return 1;
 }
 
+// Bounded, single-hop diffuse transport through wall apertures. No extra real lights, shadow maps,
+// CPU readback or recursive contribution: the source samples only the ordinary destination lighting.
+int _PortalSpillCount;
+float4 _PortalSpillPosition[8], _PortalSpillNormal[8], _PortalSpillPartner[8], _PortalSpillPartnerNormal[8];
+
+TEXTURE2D(_PortalIrradiance);
+half3 PortalCachedIncident(int end, half3 N)
+{
+    half3 w = N * N;
+    return LOAD_TEXTURE2D(_PortalIrradiance, int2(N.x >= 0 ? 0 : 1, end)).rgb * w.x +
+           LOAD_TEXTURE2D(_PortalIrradiance, int2(N.y >= 0 ? 2 : 3, end)).rgb * w.y +
+           LOAD_TEXTURE2D(_PortalIrradiance, int2(N.z >= 0 ? 4 : 5, end)).rgb * w.z;
+}
+
+half3 BackroomsPortalSpill(float3 P, half3 N, out half localWeight)
+{
+    localWeight = 1;
+    if (_LGridParams.x < 0.5 || _PortalSpillCount == 0) return 0;
+    half3 result = 0;
+    [loop] for (int i = 0; i < _PortalSpillCount; i++)
+    {
+        float3 origin = _PortalSpillPosition[i].xyz, normal = _PortalSpillNormal[i].xyz;
+        float3 delta = P - origin;
+        float d2 = dot(delta, delta), depth = dot(delta, normal);
+        if (d2 >= 9.0 || depth < -0.005) continue;
+        float3 target = _PortalSpillPartner[i].xyz + _PortalSpillPartnerNormal[i].xyz * 0.12;
+        if (any(target.xz < _LGridWindow.xy + 1) || any(target.xz > _LGridWindow.zw - 1)) continue;
+        float3 direction = delta * rsqrt(max(d2, 0.01));
+        float area = _PortalSpillPosition[i].w * _PortalSpillPosition[i].w;
+        // A finite aperture's softened form factor; compact support has zero slope at its outer edge.
+        float weight = area / (area + 3.141593 * d2) * saturate(dot(N, -direction)) * saturate(dot(normal, direction));
+        weight *= 1 - smoothstep(4.0, 9.0, d2);
+        if (LGrid_LightVisible(P, N, origin + normal * 0.12) < 0.5) continue;
+        weight *= LocalLightVisibility(P, N, origin + normal * 0.12);
+        float3 targetNormal = _PortalSpillPartnerNormal[i].xyz;
+        half3 incident = weight > 0.0001 ? PortalCachedIncident(i, targetNormal) : 0;
+        float3 right = cross(float3(0, 1, 0), normal);
+        float lateral = dot(delta, right);
+        float halfSize = _PortalSpillPosition[i].w * 0.5;
+        // Reciprocal half-weight at the shared plane joins both rooms' illumination continuously.
+        // This narrow bridge is limited to the aperture/reveals; the wider spill remains additive.
+        half seam = 0.5 * (1 - smoothstep(0, 0.6, max(depth, 0))) *
+            (1 - smoothstep(halfSize, halfSize + 0.15, max(abs(lateral), abs(delta.y))));
+        if (seam > 0.001)
+        {
+            float3 remoteRight = cross(float3(0, 1, 0), -targetNormal);
+            half3 remoteN = remoteRight * dot(N, right) + half3(0, N.y, 0) - targetNormal * dot(N, normal);
+            result += PortalCachedIncident(i, remoteN) * seam;
+            localWeight *= 1 - seam;
+        }
+        result += incident * weight * (1 - seam * 2);
+    }
+    return result;
+}
+
 #endif

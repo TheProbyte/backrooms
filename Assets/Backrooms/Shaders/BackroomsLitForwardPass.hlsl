@@ -5,6 +5,7 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 #include "Assets/Backrooms/Shaders/LightGridSample.hlsl"   // Backrooms: light grid
+float4 _PortalClipPlane; // zero outside an explicit portal-camera render
 
 #if defined(LOD_FADE_CROSSFADE)
     #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/LODCrossFade.hlsl"
@@ -269,6 +270,9 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
     AmbientOcclusionFactor aoFactor = CreateAmbientOcclusionFactor(inputData, surfaceData);
     uint meshRenderingLayers = GetMeshRenderingLayer();
     Light mainLight = GetMainLight(inputData, shadowMask, aoFactor);
+    half portalLocalWeight;
+    half3 portalLight = BackroomsPortalSpill(inputData.positionWS, inputData.normalWS, portalLocalWeight);
+    inputData.bakedGI = inputData.bakedGI * portalLocalWeight + portalLight;
     MixRealtimeAndBakedGI(mainLight, inputData.normalWS, inputData.bakedGI);
     LightingData lightingData = CreateLightingData(inputData, surfaceData);
     lightingData.additionalLightsColor += BackroomsDistantPBR(inputData, brdfData, brdfDataClearCoat, surfaceData, specularHighlightsOff, aoFactor.directAmbientOcclusion);
@@ -340,6 +344,9 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
     lightingData.vertexLightingColor += inputData.vertexLighting * brdfData.diffuse;
     #endif
 
+    lightingData.mainLightColor *= portalLocalWeight;
+    lightingData.additionalLightsColor *= portalLocalWeight;
+    lightingData.vertexLightingColor *= portalLocalWeight;
 #if REAL_IS_HALF
     return min(CalculateFinalColor(lightingData, surfaceData.alpha), HALF_MAX);
 #else
@@ -424,6 +431,9 @@ void LitPassFragment(
 {
     UNITY_SETUP_INSTANCE_ID(input);
     UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+    #if defined(BACKROOMS_PORTAL_CLIP)
+        clip(dot(float4(input.positionWS, 1), _PortalClipPlane));
+    #endif
 
 #if defined(_PARALLAXMAP)
 #if defined(REQUIRES_TANGENT_SPACE_VIEW_DIR_INTERPOLATOR)

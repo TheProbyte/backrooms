@@ -7,10 +7,13 @@ Shader "Backrooms/PortalView"
     {
         _PortalTex ("Portal", 2D) = "black" {}
         _Fade ("Fade", Float) = 1
+        _PortalRect ("Screen rectangle", Vector) = (0, 0, 1, 1)
     }
     SubShader
     {
         Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "Geometry" }
+        // Keep the window visible right up to the eye crossing the plane, including oblique approaches.
+        ZClip Off
         Pass
         {
             Name "Forward"
@@ -22,6 +25,7 @@ Shader "Backrooms/PortalView"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             TEXTURE2D(_PortalTex); SAMPLER(sampler_PortalTex);
             float _Fade;
+            float4 _PortalRect;
             struct Attributes { float4 positionOS : POSITION; };
             struct Varyings { float4 positionCS : SV_POSITION; float4 screenPos : TEXCOORD0; };
             Varyings vert(Attributes i)
@@ -34,6 +38,7 @@ Shader "Backrooms/PortalView"
             half4 frag(Varyings i) : SV_Target
             {
                 float2 uv = i.screenPos.xy / i.screenPos.w;
+                uv = (uv - _PortalRect.xy) / _PortalRect.zw;
                 return half4(SAMPLE_TEXTURE2D(_PortalTex, sampler_PortalTex, uv).rgb * _Fade, 1);
             }
             ENDHLSL

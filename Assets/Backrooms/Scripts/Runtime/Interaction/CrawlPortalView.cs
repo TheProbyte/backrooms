@@ -12,12 +12,15 @@ namespace Backrooms.Interaction
     public class CrawlPortalView : MonoBehaviour
     {
         public static readonly List<CrawlPortalView> All = new List<CrawlPortalView>();
+        public static int Revision { get; private set; }
         public const int Layer = 30;                       // portal cameras never see portal quads (no recursion)
 
         public Vector3 position, normal, partnerPosition, partnerNormal;
         public ulong id;
         [System.NonSerialized] public MeshRenderer quad;
         [System.NonSerialized] public Material material;
+        [System.NonSerialized] public BoxCollider backstop;
+        CharacterController _ignored;
 
         static Mesh _quadMesh;
         static Shader _shader;
@@ -27,7 +30,7 @@ namespace Backrooms.Interaction
             var go = new GameObject("CrawlPortal_" + p.id.ToString("X"));
             go.transform.SetParent(parent, true);
             go.layer = Layer;
-            go.transform.SetPositionAndRotation(p.position + p.normal * 0.02f, Quaternion.LookRotation(-p.normal, Vector3.up));   // at the crossing plane, facing back along the tunnel
+            go.transform.SetPositionAndRotation(p.position, Quaternion.LookRotation(-p.normal, Vector3.up));
             var v = go.AddComponent<CrawlPortalView>();
             v.position = p.position; v.normal = p.normal; v.partnerPosition = p.partnerPosition; v.partnerNormal = p.partnerNormal; v.id = p.id;
             if (!_quadMesh) _quadMesh = MakeQuad(CrawlPortals.HoleSize);
@@ -41,6 +44,13 @@ namespace Backrooms.Interaction
             v.material = new Material(_shader ? _shader : Shader.Find("Universal Render Pipeline/Unlit")) { name = "PortalView" };
             v.material.SetFloat("_Fade", 0f);
             v.quad.sharedMaterial = v.material;
+            // The complete wall thickness is solid to everything except a correctly aligned crawling player.
+            // Keep this off the portal-render layer (which other systems intentionally exclude).
+            var seal = new GameObject("PortalBackstop");
+            seal.transform.SetParent(go.transform, false);
+            v.backstop = seal.AddComponent<BoxCollider>();
+            v.backstop.center = Vector3.forward * (OfficeBiome.WallThickness * 0.5f);
+            v.backstop.size = new Vector3(CrawlPortals.HoleSize, CrawlPortals.HoleSize, OfficeBiome.WallThickness);
             return v;
         }
 
@@ -56,9 +66,39 @@ namespace Backrooms.Interaction
             return m;
         }
 
-        void OnEnable() { All.Add(this); CrawlPortalSystem.Ensure(); }
-        void OnDisable() { All.Remove(this); }
-        void OnDestroy() { if (material) Destroy(material); }
+        void OnEnable() { All.Add(this); Revision++; CrawlPortalSystem.Ensure(); }
+        void OnDisable() { SetPassage(null, false); All.Remove(this); Revision++; }
+        void OnDestroy()
+        {
+            if (material) { if (Application.isPlaying) Destroy(material); else DestroyImmediate(material); }
+            if (All.Count == 0 && _quadMesh)
+            {
+                if (Application.isPlaying) Destroy(_quadMesh); else DestroyImmediate(_quadMesh);
+                _quadMesh = null;
+            }
+        }
+
+        public void SetPassage(CharacterController controller, bool open)
+        {
+            if (_ignored && (_ignored != controller || !open))
+            {
+                if (backstop) Physics.IgnoreCollision(_ignored, backstop, false);
+                _ignored = null;
+            }
+            if (open && controller && backstop)
+            {
+                Physics.IgnoreCollision(controller, backstop, true);
+                _ignored = controller;
+            }
+        }
+
+        public bool Fits(CharacterController controller)
+        {
+            if (!controller || controller.height > CrawlPortals.HoleSize - 0.02f) return false;
+            var c = Local(controller.transform.TransformPoint(controller.center));
+            return Mathf.Abs(c.x) + controller.radius < CrawlPortals.HoleHalf + 0.01f &&
+                   Mathf.Abs(c.y) + controller.height * 0.5f < CrawlPortals.HoleHalf + 0.04f;
+        }
 
         /// <summary>Maps a point or direction near this end to the matching place at the other end (turned half round, so going in comes out).</summary>
         public Matrix4x4 ToPartner

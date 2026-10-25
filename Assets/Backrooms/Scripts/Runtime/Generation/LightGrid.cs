@@ -85,6 +85,28 @@ namespace Backrooms.Generation
 
         public static bool Supported => SystemInfo.supportsComputeShaders;
 
+        /// <summary>Bind the live field for a bounded portal irradiance sampling dispatch. Main thread only.</summary>
+        public bool BindPortalLighting(ComputeShader shader, int kernel)
+        {
+            if (!Ready || !isActiveAndEnabled || _texMin.x == int.MinValue) return false;
+            shader.SetTexture(kernel, "_LGridA", _a); shader.SetTexture(kernel, "_LGridB", _b);
+            shader.SetTexture(kernel, "_LGridBounce", _bounceCur ? _bounceCur : _bounce0);
+            shader.SetTexture(kernel, "_LGridWallBounce", _wallCur ? _wallCur : _wall0);
+            shader.SetTexture(kernel, "_LGridBounceDirection", _directionCur ? _directionCur : _direction0);
+            shader.SetBuffer(kernel, "_LGridOcc", _occ); shader.SetBuffer(kernel, "_LGridLights", _lights);
+            shader.SetBuffer(kernel, "_LGridTiles", _tiles); shader.SetBuffer(kernel, "_LGridTileLights", _tileLights);
+            shader.SetBuffer(kernel, "_LocalOccBoxes", _occluders); shader.SetBuffer(kernel, "_LocalOccTiles", _occluderTiles);
+            shader.SetBuffer(kernel, "_LocalOccIndices", _occluderIndices);
+            shader.SetVector("_LocalOccInfo", new Vector4(T * TileTexels, Tiles, OccluderCount, contactOcclusion));
+            shader.SetVector("_LGridSize", new Vector4(GX, GY, GZ, OccN));
+            shader.SetVector("_LGridParams", new Vector4(1, directGain, _lightCount > 0 ? bounceGain : 0, _pitch));
+            shader.SetVector("_LGridWindow", new Vector4(_texMin.x * T, _texMin.y * T, (_texMin.x + GX) * T, (_texMin.y + GZ) * T));
+            shader.SetVector("_LGridShape", new Vector4(wrap, normalOffset, smoothing, contrast));
+            shader.SetVector("_LGridFar", new Vector4(perPixelDirect ? 1 : 0, TileTexels, Tiles, 0));
+            shader.SetFloat("_LGridFillAmt", roomFill);
+            return true;
+        }
+
         void OnEnable()
         {
             for (int i = 0; i < _tileBins.Length; i++) _tileBins[i] = new List<int>(32);
