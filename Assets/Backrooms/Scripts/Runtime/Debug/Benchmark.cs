@@ -41,6 +41,7 @@ namespace Backrooms.DebugTools
             _report.AppendLine($"Backrooms benchmark  {System.DateTime.Now:yyyy-MM-dd HH:mm}  {SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsDeviceType})  {SystemInfo.processorType}");
             _report.AppendLine($"{Screen.width}x{Screen.height}  editor={Application.isEditor}  vsync={QualitySettings.vSyncCount}  target={Application.targetFrameRate}");
             var gc = Camcorder.GraphicsController.Instance;
+            ApplyOverrides(gc);
             if (gc) _report.AppendLine("settings " + JsonUtility.ToJson(gc.Options));
             world.SetSeed(1234);
             yield return null;
@@ -52,6 +53,48 @@ namespace Backrooms.DebugTools
             File.WriteAllText(_output, _report.ToString());
             Debug.Log("[Backrooms] Benchmark written to " + _output + "\n" + _report);
             Application.Quit();
+        }
+
+        /// <summary>
+        /// <c>-benchmark-set "a=1,b=false"</c>: graphics options for this run only (field names of GraphicsOptions; nothing is
+        /// saved), plus <c>depthPriming=Disabled|Auto|Forced</c> for the player's renderer. For A/B runs of one build.
+        /// </summary>
+        void ApplyOverrides(Camcorder.GraphicsController gc)
+        {
+            var args = System.Environment.GetCommandLineArgs();
+            int i = System.Array.IndexOf(args, "-benchmark-set");
+            if (i < 0 || i + 1 >= args.Length) return;
+            var json = new StringBuilder("{");
+            foreach (var pair in args[i + 1].Split(','))
+            {
+                var kv = pair.Split('=');
+                if (kv.Length != 2) continue;
+                string key = kv[0].Trim(), value = kv[1].Trim();
+                if (key == "depthPriming")
+                {
+                    var urp = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline as UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset;
+                    var f = typeof(UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset).GetField("m_RendererDataList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (urp && f?.GetValue(urp) is UnityEngine.Rendering.Universal.ScriptableRendererData[] list && list.Length > 0 && list[0] is UnityEngine.Rendering.Universal.UniversalRendererData data
+                        && System.Enum.TryParse(value, out UnityEngine.Rendering.Universal.DepthPrimingMode mode))
+                        data.depthPrimingMode = mode;
+                    continue;
+                }
+                if (key.StartsWith("feature."))   // feature.<renderer feature name>=false: switch a PC renderer feature for cost A/B
+                {
+                    var urp = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline as UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset;
+                    var f = typeof(UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset).GetField("m_RendererDataList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (urp && f?.GetValue(urp) is UnityEngine.Rendering.Universal.ScriptableRendererData[] list && list.Length > 0 && list[0])
+                        foreach (var feature in list[0].rendererFeatures)
+                            if (feature && feature.name == key.Substring(8)) feature.SetActive(value == "true");
+                    continue;
+                }
+                if (json.Length > 1) json.Append(',');
+                bool literal = value == "true" || value == "false" || float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _);
+                json.Append('"').Append(key).Append("\":").Append(literal ? value : "\"" + value + "\"");
+            }
+            json.Append('}');
+            if (gc && json.Length > 2) JsonUtility.FromJsonOverwrite(json.ToString(), gc.Options);
+            _report.AppendLine("overrides " + args[i + 1]);
         }
 
         IEnumerator Spot(string name, WorldStreamer world, CamcorderPlayerController player, Vector3 at, float yaw, float pitch, int frames, Vector2 walk)

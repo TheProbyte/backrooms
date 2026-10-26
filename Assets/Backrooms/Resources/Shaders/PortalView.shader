@@ -1,7 +1,9 @@
 // The window at the far end of a crawl duct: the partner hole's picture (rendered by CrawlPortalSystem) sampled at this
 // pixel's screen position, so the duct seems to open onto somewhere else. Unlit: the picture is already lit, and the
 // player's camera grades it together with everything else. Like the duct, it only draws where its hole's stencil mask
-// marks the screen, unless the player is inside the duct (_StencilComp = Always).
+// marks the screen, unless the player is inside the duct (_StencilComp = Always). Before a view has a picture (or when
+// it cannot be rendered this frame) the window shows the light measured just outside the partner hole, so it reads as a
+// dim view of that room rather than a dark hole.
 Shader "Backrooms/PortalView"
 {
     Properties
@@ -31,6 +33,8 @@ Shader "Backrooms/PortalView"
             float _Fade;
             float4 _PortalRect;
             half4 _Fallback;
+            TEXTURE2D(_DuctMouthLight);   // see CrawlPortalSystem / CrawlDuct: rows 2i+1 = light at this view's partner mouth
+            float _DuctMouth;             // < 0: no sample, use _Fallback
             struct Attributes { float4 positionOS : POSITION; };
             struct Varyings { float4 positionCS : SV_POSITION; float4 screenPos : TEXCOORD0; };
             Varyings vert(Attributes i)
@@ -44,7 +48,16 @@ Shader "Backrooms/PortalView"
             {
                 float2 uv = i.screenPos.xy / i.screenPos.w;
                 uv = (uv - _PortalRect.xy) / _PortalRect.zw;
-                return half4(lerp(_Fallback.rgb, SAMPLE_TEXTURE2D(_PortalTex, sampler_PortalTex, uv).rgb, _Fade), 1);
+                half3 fallback = _Fallback.rgb;
+                [branch] if (_Fade < 1 && _DuctMouth >= 0)
+                {
+                    // Average light over the six directions, on a typical wall/carpet albedo.
+                    int row = (int)_DuctMouth * 2 + 1;
+                    half3 sum = 0;
+                    [unroll] for (int k = 0; k < 6; k++) sum += LOAD_TEXTURE2D(_DuctMouthLight, int2(k, row)).rgb;
+                    fallback = max(fallback, sum * (0.45 / 6));
+                }
+                return half4(lerp(fallback, SAMPLE_TEXTURE2D(_PortalTex, sampler_PortalTex, uv).rgb, _Fade), 1);
             }
             ENDHLSL
         }

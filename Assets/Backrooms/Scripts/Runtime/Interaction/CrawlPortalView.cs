@@ -51,7 +51,9 @@ namespace Backrooms.Interaction
         /// <param name="wall">Material whose texture lines the duct (null: plain).</param>
         /// <param name="floor">Material whose texture is the duct's floor.</param>
         /// <param name="back">Material of the wall face behind the hole (the patch over the opening seen from the other room).</param>
-        public static CrawlPortalView Create(Transform parent, CrawlPortal p, Material wall = null, Material floor = null, Material back = null, uint backMask = 1)
+        /// <param name="backMask">Light (rendering layer) mask of the room behind, for the patch.</param>
+        /// <param name="mask">Light mask of the room the hole opens into: the duct's entrance is lit by that room's real lights.</param>
+        public static CrawlPortalView Create(Transform parent, CrawlPortal p, Material wall = null, Material floor = null, Material back = null, uint backMask = 1, uint mask = 0xFFFFFFFFu)
         {
             var go = new GameObject("CrawlHole_" + p.id.ToString("X"));
             go.transform.SetParent(parent, true);
@@ -89,6 +91,7 @@ namespace Backrooms.Interaction
                 var d = Child(go.transform, "Duct", Vector3.zero, 0);
                 d.AddComponent<MeshFilter>().sharedMesh = _ductMesh;
                 v.duct = Renderer(d);
+                v.duct.renderingLayerMask = mask;
                 v._ductSet = DuctMaterials(wall, floor);
             }
 
@@ -126,6 +129,7 @@ namespace Backrooms.Interaction
             };
             v.SetDuctCollision(false);
             v.ApplyMode();
+            v.SetDuctLight(-1);
             return v;
         }
 
@@ -161,6 +165,7 @@ namespace Backrooms.Interaction
                     var tex = src && src.HasProperty("_BaseMap") ? src.GetTexture("_BaseMap") : null;
                     if (tex) { m.SetTexture("_BaseMap", tex); m.SetTextureScale("_BaseMap", src.GetTextureScale("_BaseMap")); m.SetTextureOffset("_BaseMap", src.GetTextureOffset("_BaseMap")); }
                     if (src && src.HasProperty("_BaseColor")) m.SetColor("_BaseColor", src.GetColor("_BaseColor"));
+                    if (src && src.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", src.GetFloat("_Smoothness"));   // the entrance is shaded like the room
                     m.SetFloat("_DuctLength", CrawlPortals.DuctLength);
                     // Through the hole: drawn after opaque geometry, only on stencil-marked pixels, not in depth prepasses
                     // (it overlaps the room behind). Inside: ordinary opaque geometry.
@@ -280,6 +285,30 @@ namespace Backrooms.Interaction
             if (on == _collision) return;
             _collision = on;
             foreach (var c in ductColliders) if (c) c.enabled = on;
+        }
+
+        static MaterialPropertyBlock _block;
+        static readonly int IdDuctMouth = Shader.PropertyToID("_DuctMouth"), IdDuctExitRot = Shader.PropertyToID("_DuctExitRot");
+        int _ductLight = int.MinValue;
+
+        /// <summary>
+        /// Which pair of rows of the duct mouth light texture (<see cref="CrawlPortalSystem"/>) lights this duct, or -1 for the
+        /// shader's default light. Also passes the turn from this hole to its partner, so the far end's walls look up the
+        /// light at the partner in the matching directions.
+        /// </summary>
+        public void SetDuctLight(int index)
+        {
+            if (index == _ductLight) return;
+            _ductLight = index;
+            // The window's fallback (shown before its view has a picture) is that measured light too, not a flat dark colour.
+            if (material) material.SetFloat(IdDuctMouth, index);
+            if (!duct) return;
+            _block ??= new MaterialPropertyBlock();
+            _block.Clear();
+            float yaw = YawDelta * Mathf.Deg2Rad;
+            _block.SetFloat(IdDuctMouth, index);
+            _block.SetVector(IdDuctExitRot, new Vector4(Mathf.Cos(yaw), Mathf.Sin(yaw), 0, 0));
+            duct.SetPropertyBlock(_block);
         }
 
         /// <summary>Switches the duct between "seen through the hole" and "the player is in it".</summary>

@@ -109,8 +109,9 @@ namespace Backrooms.Camcorder
         float _origScale = -1f;
         float _baseTube, _baseLamp, _baseTubeRange, _baseLampRange;
         bool _haveBase;
-        ScriptableRendererFeature _ssao;
-        bool _origSsao;
+        // SSAO on every renderer: the player's and the crawl holes' views (so the view through a hole has the same AO
+        // as the room has once you are through it).
+        readonly System.Collections.Generic.List<(ScriptableRendererFeature f, bool orig)> _ssao = new System.Collections.Generic.List<(ScriptableRendererFeature, bool)>();
 
         public static GraphicsController Ensure()
         {
@@ -131,9 +132,11 @@ namespace Backrooms.Camcorder
             {
                 _origScale = urp.renderScale;
                 var f = typeof(UniversalRenderPipelineAsset).GetField("m_RendererDataList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (f?.GetValue(urp) is ScriptableRendererData[] list && list.Length > 0 && list[0])
-                    foreach (var feat in list[0].rendererFeatures)
-                        if (feat && feat.GetType().Name.Contains("AmbientOcclusion")) { _ssao = feat; _origSsao = feat.isActive; }
+                if (f?.GetValue(urp) is ScriptableRendererData[] list)
+                    foreach (var data in list)
+                        if (data)
+                            foreach (var feat in data.rendererFeatures)
+                                if (feat && feat.GetType().Name.Contains("AmbientOcclusion")) _ssao.Add((feat, feat.isActive));
             }
         }
 
@@ -142,7 +145,7 @@ namespace Backrooms.Camcorder
             // Settings changed at runtime must not end up saved in the project's assets.
             var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             if (urp && _origScale > 0f) urp.renderScale = _origScale;
-            if (_ssao) _ssao.SetActive(_origSsao);
+            foreach (var s in _ssao) if (s.f) s.f.SetActive(s.orig);
             if (Instance == this) Instance = null;
         }
 
@@ -157,7 +160,7 @@ namespace Backrooms.Camcorder
             var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             float scale = Mathf.Clamp(o.renderScale, 0.5f, 1.5f);
             if (urp && Mathf.Abs(urp.renderScale - scale) > 0.001f) urp.renderScale = scale;
-            if (_ssao && _ssao.isActive != o.ambientOcclusion) _ssao.SetActive(o.ambientOcclusion);
+            foreach (var s in _ssao) if (s.f && s.f.isActive != o.ambientOcclusion) s.f.SetActive(o.ambientOcclusion);
 
             if (!_cam) _cam = Camera.main;
             if (_cam)

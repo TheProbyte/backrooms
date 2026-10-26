@@ -9,7 +9,13 @@
   1234, visits a long corridor, a crawl hole and a short walk that streams new chunks, waits for each to load, records
   600-900 frames each, writes median / 95th percentile / worst and quits. Default results file:
   `%USERPROFILE%\AppData\LocalLow\DefaultCompany\My project\benchmark.txt`.
-- Close games and other GPU-heavy programs first: anything else using the GPU slows the frame directly.
+- `-benchmark-set "a=1,b=false"` overrides graphics options for that run only (GraphicsOptions field names; nothing is
+  saved), plus `depthPriming=Disabled|Auto|Forced` and `feature.<renderer feature>=false` for cost A/B in one build.
+- The player remembers its last window size: pass `-screen-fullscreen 1 -screen-width 5120 -screen-height 1440` (or the
+  size you want) so runs are comparable.
+- Close games and other GPU-heavy programs first: anything else using the GPU slows the frame directly. That includes the
+  editor in Play Mode (it halved the build's frame rate); an idle editor is fine. Back-to-back runs on a hot GPU are
+  ~1.5 ms slower at 5120x1440 than the first run on a cool one.
 
 ## Editor vs build
 
@@ -31,3 +37,35 @@ numbers; in the editor, keep the Scene tab hidden behind the Game tab while play
 
 Defaults (graphics options version 2): 16 shadow lights, 18-20 m shadow distance, exact light radius 4.5 m, SSAO on.
 Editor result at the benchmark pose: old saved settings 48 fps, new defaults 66 fps (81 with SSAO off).
+
+## Shader variants and build time
+
+Backrooms/Lit is a copy of URP Lit with the light-grid lighting in its forward pass, so every variant is expensive to
+compile. URP Lit declares about 10^11 keyword combinations; the first player build was cancelled after 1 h 41 min. The
+forward pass now declares only what the game turns on (recorded in Play Mode with the editor's variant tracking:
+24 variants in a full benchmark run) and `BackroomsLitVariantStripper` drops the rest at build time (lightmaps, which only
+the unreachable OfficeRoom_Prototype uses; mixed reflection-probe keyword states; soft shadows without shadows). The
+24 recorded variants preprocessed to identical code after the first cut; main-light shadows were removed afterwards (their
+term is multiplied by the main light's colour, which is zero: there is no directional light). A build now compiles 107 Backrooms/Lit
+variants (64 forward fragment): first build 11 min (128 then), rebuilds 1-4 min with the shader cache. The build log prints
+"[Backrooms] Backrooms/Lit variants: ..." with the counts.
+
+## Build results (2026-10-25, RTX 4070, AO on, saved settings)
+
+| Spot | 1920x1080 median / p95 | 5120x1440 median / p95 |
+| --- | --- | --- |
+| Corridor | 109 / 54 fps | 42 / 34 fps |
+| Crawl hole | 93 / 48 fps | 43 / 34 fps |
+| Walk (streaming) | 120 / 56 fps | 57 / 36 fps |
+
+At 1080p the build is CPU-bound (~9 ms) with spikes (p95 ~18 ms). At 5120x1440 (3.5x the pixels) it is GPU-bound.
+Cost by removal at 5120x1440 (median ms, corridor / crawl hole / walk; noise about +-1 ms): with depth priming
+19.8 / 20.0 / 16.5; SMAA, camcorder pass, shadow lights 16 -> 8, far light from the texture, contact occlusion and indoor
+reflections each change it by 1.5 ms or less; square-panel emitters off 18.1 / 16.4 / 16.4; SSAO off saves about 3.5 ms.
+The rest is the base lighting per pixel, so 60 fps at that resolution needs fewer pixels (render scale / upscaling) or
+cheaper lighting, both visible changes.
+
+Depth priming (PC_Renderer, Forced or Auto) saves 3.5 ms at 5120x1440 with a pixel-identical image (checked: 0 of 2.07 M
+pixels differ), but with it the player segfaults on quit, every time (Unity 6000.4.5f1, URP 17.4, D3D12; nothing in the
+player log, no crash dump). It is off until that is understood.
+

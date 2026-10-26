@@ -34,6 +34,9 @@ namespace Backrooms.Interaction
         readonly List<(CrawlPortalView v, float d)> _visible = new List<(CrawlPortalView, float)>(16);
         readonly List<CrawlPortalView> _wanted = new List<CrawlPortalView>(MaxViews);
         readonly List<CrawlPortalView> _stale = new List<CrawlPortalView>();
+        readonly Dictionary<CrawlPortalView, float> _lastSeen = new Dictionary<CrawlPortalView, float>();
+        /// <summary>Seconds a live view keeps rendering after its opening drops out of line of sight.</summary>
+        const float KeepAlive = 0.5f;
         readonly Plane[] _planes = new Plane[6];
         CamcorderPlayerController _player;
         Camera _main;
@@ -45,6 +48,17 @@ namespace Backrooms.Interaction
 
         static bool _haveLookahead;
         static Vector3 _lookahead;
+
+        // Duct lighting: the light arriving at both mouths of the nearest ducts, sampled from the live light grid each
+        // frame (PortalLighting.compute: six axis directions per mouth), so a duct is lit like the rooms at its two ends.
+        public const int MaxLitDucts = 4;
+        ComputeShader _mouthLight;
+        RenderTexture _mouthTex;
+        LightGrid _grid;
+        readonly Vector4[] _mouthPos = new Vector4[MaxLitDucts * 2], _mouthNormal = new Vector4[MaxLitDucts * 2], _mouthUnused = new Vector4[MaxLitDucts * 2];
+        readonly List<CrawlPortalView> _lit = new List<CrawlPortalView>(MaxLitDucts);
+        readonly List<CrawlPortalView> _litPrev = new List<CrawlPortalView>(MaxLitDucts);
+        static readonly int IdMouthTex = Shader.PropertyToID("_DuctMouthLight");
 
         /// <summary>Frame number of the last trip through a hole (the camcorder resets its motion smear on it).</summary>
         public static int LastWarpFrame { get; private set; } = -10;
@@ -75,6 +89,10 @@ namespace Backrooms.Interaction
             foreach (var s in _slots) { if (s.cam) Destroy(s.cam.gameObject); if (s.rt) { s.rt.Release(); Destroy(s.rt); } }
             _slots.Clear();
             _haveLookahead = false;
+            foreach (var v in _litPrev) if (v) v.SetDuctLight(-1);
+            _litPrev.Clear();
+            if (_mouthTex) { _mouthTex.Release(); Destroy(_mouthTex); _mouthTex = null; }
+            if (_mouthLight) { Destroy(_mouthLight); _mouthLight = null; }
         }
         void OnDestroy() { if (_instance == this) _instance = null; }
 
@@ -142,6 +160,75 @@ namespace Backrooms.Interaction
             if (_main != main || !_player) { _main = main; _player = main.GetComponentInParent<CamcorderPlayerController>(); }
             TryWarp(main);
             UpdateViews(main);
+            UpdateDuctLight(main.transform.position);
+        }
+
+        // ---------------- Light inside the ducts ----------------
+
+        /// <summary>
+        /// Samples the light arriving at both mouths of the nearest ducts (the one you are in first, then those with a live
+        /// view, then the nearest in front of you). A duct lit this way matches the room's shading right at its opening, and
+        /// its far end matches the room the window shows, so there is no line where the duct starts and nothing changes
+        /// when you come out of the partner hole. Ducts without a sample keep the shader's plain default light.
+        /// </summary>
+        void UpdateDuctLight(Vector3 eye)
+        {
+            _lit.Clear();
+            foreach (var v in CrawlPortalView.All) if (v && v.Inside && _lit.Count < MaxLitDucts) _lit.Add(v);
+            foreach (var s in _slots) if (s.view && !_lit.Contains(s.view) && _lit.Count < MaxLitDucts) _lit.Add(s.view);
+            if (_lit.Count < MaxLitDucts)
+            {
+                _visible.Clear();
+                foreach (var v in CrawlPortalView.All)
+                {
+                    if (!v || _lit.Contains(v)) continue;
+                    float d = Vector3.Distance(eye, v.position);
+                    if (d < ViewDistance && v.Local(eye).z > 0f) _visible.Add((v, d));
+                }
+                _visible.Sort(ByDistance);
+                for (int i = 0; i < _visible.Count && _lit.Count < MaxLitDucts; i++) _lit.Add(_visible[i].v);
+            }
+
+            bool sampled = _lit.Count > 0 && Sample();
+            foreach (var v in _litPrev) if (v && !(sampled && _lit.Contains(v))) v.SetDuctLight(-1);
+            if (sampled) for (int i = 0; i < _lit.Count; i++) _lit[i].SetDuctLight(i);
+            _litPrev.Clear(); _litPrev.AddRange(_lit);
+        }
+
+        bool Sample()
+        {
+            if (!_grid || !_grid.isActiveAndEnabled) _grid = FindAnyObjectByType<LightGrid>();
+            if (!_grid || !SystemInfo.supportsComputeShaders) return false;
+            if (!_mouthLight)
+            {
+                var src = Resources.Load<ComputeShader>("PortalLighting");
+                if (!src) return false;
+                _mouthLight = Instantiate(src);   // its own parameter block, separate from any other user of the kernel
+            }
+            if (!_mouthTex)
+            {
+                _mouthTex = new RenderTexture(6, MaxLitDucts * 2, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Linear)
+                    { enableRandomWrite = true, filterMode = FilterMode.Point, name = "DuctMouthLight" };
+                _mouthTex.Create();
+            }
+            if (!_grid.BindPortalLighting(_mouthLight, 0)) return false;
+            for (int i = 0; i < _lit.Count; i++)
+            {
+                var v = _lit[i];
+                // Row 2i: this hole's mouth, lit by its own room. Row 2i+1: the partner's mouth, lit by the room the window shows.
+                _mouthPos[2 * i] = v.position; _mouthNormal[2 * i] = v.normal;
+                _mouthPos[2 * i + 1] = v.partnerPosition; _mouthNormal[2 * i + 1] = v.partnerNormal;
+                _mouthUnused[2 * i] = _mouthUnused[2 * i + 1] = new Vector4(0, 0, 0, CrawlPortals.HoleSize);
+            }
+            // The kernel samples just outside each "partner" opening (12 cm out, floor and ceiling samples at the lip).
+            _mouthLight.SetVectorArray("_PortalSpillPartner", _mouthPos);
+            _mouthLight.SetVectorArray("_PortalSpillPartnerNormal", _mouthNormal);
+            _mouthLight.SetVectorArray("_PortalSpillPosition", _mouthUnused);
+            _mouthLight.SetInt("_PortalSpillCount", _lit.Count * 2);
+            _mouthLight.SetTexture(0, "_PortalLightOutput", _mouthTex);
+            _mouthLight.Dispatch(0, 1, _lit.Count * 2, 1);
+            Shader.SetGlobalTexture(IdMouthTex, _mouthTex);
+            return true;
         }
 
         // ---------------- Going in, along and out ----------------
@@ -158,7 +245,8 @@ namespace Backrooms.Interaction
             CrawlPortalView through = null;
             _stale.Clear();
             foreach (var entry in _lastLocal) if (!entry.Key || !CrawlPortalView.All.Contains(entry.Key)) _stale.Add(entry.Key);
-            foreach (var v in _stale) _lastLocal.Remove(v);
+            foreach (var entry in _lastSeen) if (!entry.Key || !CrawlPortalView.All.Contains(entry.Key)) _stale.Add(entry.Key);
+            foreach (var v in _stale) { _lastLocal.Remove(v); _lastSeen.Remove(v); }
             foreach (var v in CrawlPortalView.All)
             {
                 if (!v) continue;
@@ -205,6 +293,7 @@ namespace Backrooms.Interaction
             GeometryUtility.CalculateFrustumPlanes(main, _planes);
             var visible = _visible; visible.Clear();
             float L = CrawlPortals.DuctLength;
+            float now = Time.unscaledTime;
             foreach (var v in CrawlPortalView.All)
             {
                 if (!v || !v.quad) continue;
@@ -213,9 +302,15 @@ namespace Backrooms.Interaction
                 // The window is only ever seen along the duct: from in front of the opening, or from inside.
                 bool front = v.Inside || local.z > 0f;
                 bool nearWindow = Mathf.Abs(local.z + L) < 1f && Vector3.Dot(main.transform.forward, -v.normal) > 0.05f;
-                bool seen = front && d < ViewDistance && PartnerLoaded(v) &&
-                            (nearWindow || GeometryUtility.TestPlanesAABB(_planes, v.quad.bounds)) && (v.Inside || HoleVisible(eye, v));
-                if (seen) visible.Add((v, v.Inside ? -1f : d));
+                bool live = HasSlot(v);
+                bool onScreen = front && d < ViewDistance && PartnerLoaded(v) && (nearWindow || GeometryUtility.TestPlanesAABB(_planes, v.quad.bounds));
+                // Line of sight only decides whether a view is worth starting. A live view keeps rendering for a moment after
+                // losing it (a raycast that grazes an edge must not swap the picture for the fallback for a frame).
+                if (onScreen && (v.Inside || HoleVisible(eye, v))) _lastSeen[v] = now;
+                bool seen = onScreen && (v.Inside || (_lastSeen.TryGetValue(v, out float t) && now - t < (live ? KeepAlive : 0.001f)));
+                // Ranking: the one you are in first, then nearest; a view that already has a slot keeps it unless another is
+                // clearly nearer, so two similar windows do not trade slots (and pictures) from frame to frame.
+                if (seen) visible.Add((v, v.Inside ? -1f : live ? d - 1f : d));
                 else v.material.SetFloat("_Fade", 0f);
             }
             visible.Sort(ByDistance);
@@ -241,7 +336,17 @@ namespace Backrooms.Interaction
             foreach (var s in _slots) if (s.view == null && s.cam) s.cam.enabled = false;
         }
 
-        /// <summary>Is the opening in line of sight (some part of it)? Saves rendering views of holes behind walls or furniture.</summary>
+        bool HasSlot(CrawlPortalView v)
+        {
+            foreach (var s in _slots) if (s.view == v) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Is the opening in line of sight (some part of it)? Saves rendering views of holes behind walls. Only fixed scenery
+        /// counts: props (rigidbodies, including one you carry) and the player's own capsule do not hide a hole, since a
+        /// window glimpsed past them would otherwise show the fallback instead of its picture.
+        /// </summary>
         static bool HoleVisible(Vector3 eye, CrawlPortalView v)
         {
             var right = Vector3.Cross(Vector3.up, v.normal);
@@ -251,7 +356,22 @@ namespace Backrooms.Interaction
             for (int i = 0; i < 5; i++)
             {
                 var p = i == 0 ? c : c + right * ((i & 1) == 0 ? -h : h) + Vector3.up * (i < 3 ? h : -h);
-                if (!Physics.Linecast(eye, p, ~(1 << CrawlPortalView.Layer), QueryTriggerInteraction.Ignore)) return true;
+                if (!SceneryBetween(eye, p)) return true;
+            }
+            return false;
+        }
+
+        static readonly RaycastHit[] _hits = new RaycastHit[16];
+        static bool SceneryBetween(Vector3 a, Vector3 b)
+        {
+            var d = b - a;
+            float length = d.magnitude;
+            if (length < 1e-4f) return false;
+            int n = Physics.RaycastNonAlloc(a, d / length, _hits, length, ~(1 << CrawlPortalView.Layer), QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var col = _hits[i].collider;
+                if (col && !col.attachedRigidbody && !(col is CharacterController)) return true;
             }
             return false;
         }

@@ -141,20 +141,23 @@ Shader "Backrooms/Lit"
 
             // -------------------------------------
             // Universal Pipeline keywords
-            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
-            #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
-            #pragma multi_compile _ EVALUATE_SH_MIXED EVALUATE_SH_VERTEX
+            // Backrooms: only the keywords the game ever turns on (recorded in Play Mode, Docs/Performance.md).
+            // URP Lit declares ~10^11 combinations here and every one compiles the light-grid code, so player
+            // builds took hours. Removed: main-light shadows (there is no directional light, so the main light is
+            // black and its shadow term multiplies zero), per-vertex lights, SH evaluation modes, soft-shadow
+            // quality levels (PC uses _SHADOWS_SOFT), screen-space irradiance, decals, light cookies and LOD
+            // cross-fade (none used). Forward+ and light layers are
+            // always on in this project (every renderer that draws this shader is Forward+; the URP asset has
+            // light layers on), so they are defines rather than keywords. Lightmap keywords stay for the
+            // editor-only OfficeRoom_Prototype scene; BackroomsLitVariantStripper removes them from builds.
+            #define _CLUSTER_LIGHT_LOOP 1
+            #define _LIGHT_LAYERS 1
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fragment _ _REFLECTION_PROBE_BLENDING
             #pragma multi_compile_fragment _ _REFLECTION_PROBE_BOX_PROJECTION
             #pragma multi_compile_fragment _ _REFLECTION_PROBE_ATLAS
-            #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
+            #pragma multi_compile_fragment _ _SHADOWS_SOFT
             #pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
-            #pragma multi_compile_fragment _ _SCREEN_SPACE_IRRADIANCE
-            #pragma multi_compile_fragment _ _DBUFFER_MRT1 _DBUFFER_MRT2 _DBUFFER_MRT3
-            #pragma multi_compile_fragment _ _LIGHT_COOKIES
-            #pragma multi_compile _ _LIGHT_LAYERS
-            #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #include_with_pragmas "Packages/com.unity.render-pipelines.core/ShaderLibrary/FoveatedRenderingKeywords.hlsl"
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RenderingLayers.hlsl"
 
@@ -169,7 +172,6 @@ Shader "Backrooms/Lit"
             #pragma multi_compile_fragment _ REFLECTION_PROBE_ROTATION
             #pragma multi_compile _ DYNAMICLIGHTMAP_ON
             #pragma multi_compile _ USE_LEGACY_LIGHTMAPS
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
             #pragma multi_compile_fragment _ DEBUG_DISPLAY
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Fog.hlsl"
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ProbeVolumeVariants.hlsl"
@@ -223,7 +225,7 @@ Shader "Backrooms/Lit"
 
             // -------------------------------------
             // Unity defined keywords
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
+            // Backrooms: LOD_FADE_CROSSFADE removed (no LOD groups in the project)
 
             // This is used during shadow map generation to differentiate between directional and punctual light shadows, as they use different formulas to apply Normal Bias
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
@@ -305,7 +307,7 @@ Shader "Backrooms/Lit"
             #pragma multi_compile_fragment _ REFLECTION_PROBE_ROTATION
             #pragma multi_compile _ DYNAMICLIGHTMAP_ON
             #pragma multi_compile _ USE_LEGACY_LIGHTMAPS
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
+            // Backrooms: LOD_FADE_CROSSFADE removed (no LOD groups in the project)
             #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
             #pragma multi_compile_fragment _ _SCREEN_SPACE_IRRADIANCE
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ProbeVolumeVariants.hlsl"
@@ -352,7 +354,7 @@ Shader "Backrooms/Lit"
 
             // -------------------------------------
             // Unity defined keywords
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
+            // Backrooms: LOD_FADE_CROSSFADE removed (no LOD groups in the project)
 
             //--------------------------------------
             // GPU Instancing
@@ -387,6 +389,7 @@ Shader "Backrooms/Lit"
             // Shader Stages
             #pragma vertex DepthNormalsVertex
             #pragma fragment DepthNormalsFragment
+            #pragma multi_compile _ BACKROOMS_PORTAL_CLIP   // Backrooms: crawl-hole views have SSAO too
 
             // -------------------------------------
             // Material Keywords
@@ -398,7 +401,7 @@ Shader "Backrooms/Lit"
 
             // -------------------------------------
             // Unity defined keywords
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
+            // Backrooms: LOD_FADE_CROSSFADE removed (no LOD groups in the project)
 
             // -------------------------------------
             // Universal Pipeline keywords
@@ -412,7 +415,7 @@ Shader "Backrooms/Lit"
             // -------------------------------------
             // Includes
             #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
-            #include "Packages/com.unity.render-pipelines.universal/Shaders/LitDepthNormalsPass.hlsl"
+            #include "Assets/Backrooms/Shaders/BackroomsLitDepthNormalsPass.hlsl"   // Backrooms: portal clip
             ENDHLSL
         }
 
@@ -500,7 +503,7 @@ Shader "Backrooms/Lit"
 
             HLSLPROGRAM
             #pragma shader_feature_local _ALPHATEST_ON
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
+            // Backrooms: LOD_FADE_CROSSFADE removed (no LOD groups in the project)
             #pragma shader_feature_local_vertex _ADD_PRECOMPUTED_VELOCITY
 
             #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
@@ -525,7 +528,7 @@ Shader "Backrooms/Lit"
 
             HLSLPROGRAM
             #pragma shader_feature_local _ALPHATEST_ON
-            #pragma multi_compile _ LOD_FADE_CROSSFADE
+            // Backrooms: LOD_FADE_CROSSFADE removed (no LOD groups in the project)
             #pragma shader_feature_local_vertex _ADD_PRECOMPUTED_VELOCITY
             #define APPLICATION_SPACE_WARP_MOTION 1
 

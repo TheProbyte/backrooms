@@ -15,6 +15,38 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-25 22:10  Claude Code  Backrooms/Lit builds in minutes, duct lit like its rooms, AO in portal views, no black windows
+- Shader variants: Backrooms/Lit's forward pass declares only keywords the game turns on (recorded in Play Mode: 24
+  variants in a benchmark run); Forward+ and light layers are defines; main-light shadows, per-vertex lights, SH modes,
+  soft-shadow levels, screen-space irradiance, decals, cookies and LOD cross-fade removed. New
+  BackroomsLitVariantStripper (build only) drops lightmap variants (only the unreachable OfficeRoom_Prototype uses them),
+  mixed reflection-probe states and soft-without-shadows. Look: the 24 recorded variants preprocessed to identical code
+  (76/76 stages) after the first cut; the later main-light-shadow removal only drops a term multiplied by the main light
+  colour, which is zero (no directional light exists). Build: 107 Backrooms/Lit variants (64 forward fp); first build 11 min, rebuilds 1-4 min
+  (previous attempt: cancelled after 1 h 41 min).
+- Benchmark (build, AO on, saved settings, RTX 4070): 1920x1080 median corridor 109 / crawl hole 93 / walk 120 fps (p95
+  54 / 48 / 56); 5120x1440 (this machine's native) 42 / 43 / 57 (p95 34 / 34 / 36). 60+ median at 1080p everywhere;
+  not at 5120x1440, where the cost is spread over the base per-pixel lighting (breakdown in Docs/Performance.md).
+  Depth priming saves 3.5 ms there with an identical image but makes the player segfault on quit every time, so it is off.
+  Benchmark gained -benchmark-set (per-run option/feature overrides for A/B in one build).
+- Duct entrance line: the duct entrance is shaded with Backrooms/Lit's lighting at the matching point of the opening (real
+  lights + shadows, grid, contact occlusion, SSAO read there), with the entry room's rendering-layer mask (real lights
+  skip bit 0, so the duct got none before). Far end: light sampled each frame at the partner mouth (PortalLighting.compute,
+  up to 4 ducts) instead of a constant. Ambient/far-end terms fade to zero at the lip. Lip at seed 1234 hole: room 27/46,
+  duct 54/53 before, 27/42 after (shadowed/lit half).
+- AO pop on coming out: Portal_Renderer now has the PC renderer's SSAO (PortalRendererSetup copies it; GraphicsController
+  switches every renderer's SSAO). Backrooms/Lit DepthNormals uses a Backrooms copy honouring the portal clip (CrawlDuct
+  depth passes too). Recorded crawl: warp-frame difference 1.32 (noise 1.29); same crawl with portal SSAO off: 3.13.
+- Black windows: line of sight to a hole ignores props and the player capsule; a live view keeps rendering 0.5 s after
+  losing it and keeps its slot unless another window is 1 m nearer; a window without a picture shows the light measured at
+  its partner mouth instead of near-black. No dark window frames in recorded sweeps/crawl (could not reproduce the pop
+  directly; these were the paths that produce it).
+- Checked: EditMode 53/53. Play Mode recordings in Builds/lookcheck (not in the repo).
+- Open: editor crashed (D3D12 fence timeout) when Backrooms/Lit was recompiled synchronously while paused in Play Mode;
+  edit shaders outside Play Mode. Depth priming quit crash. 60 fps at 5120x1440 needs a decision (render scale/upscaling,
+  panel emitters). Unity serialized Assets/Settings (DefaultVolumeProfile, PC_RPAsset, URP global settings) and
+  ProjectSettings changes during the session; left uncommitted.
+
 ## 2026-10-25 17:45  Claude Code  Real crawl ducts behind holes, no black windows, lights ready before you arrive, 60 fps pass
 - Crawl holes now lead into a 2.2 m duct behind the wall (CrawlPortalView, CrawlDuct/CrawlMask shaders). The duct overlaps
   the room behind but is drawn only through its own hole (stencil bit 64, after opaques) or while the player is inside;

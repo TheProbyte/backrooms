@@ -14,8 +14,8 @@ namespace Backrooms.Generation
         /// <summary>Hole edges: (vertical, line, along) -> (portal index, side that is entered from: 0 = cell at line-1, 1 = cell at line).</summary>
         readonly Dictionary<(bool, int, int), (int portal, int entry)> _holes = new Dictionary<(bool, int, int), (int, int)>();
         readonly List<CrawlPortal> _portalViews = new List<CrawlPortal>();
-        /// <summary>Per hole: duct lining, duct floor, the wall material behind it (and its light mask).</summary>
-        readonly List<(Material lining, Material floor, Material back, uint backMask)> _portalLooks = new List<(Material, Material, Material, uint)>();
+        /// <summary>Per hole: duct lining, duct floor, the wall material behind it (and its light mask), and the entry room's light mask.</summary>
+        readonly List<(Material lining, Material floor, Material back, uint backMask, uint mask)> _portalLooks = new List<(Material, Material, Material, uint, uint)>();
 
         void IndexHoles()
         {
@@ -35,7 +35,7 @@ namespace Backrooms.Generation
                 var behind = p.cell + (p.side == 0 ? new Vector2Int(-1, 0) : p.side == 1 ? new Vector2Int(1, 0) : p.side == 2 ? new Vector2Int(0, -1) : new Vector2Int(0, 1));
                 var entryRoom = _L.RoomAt(p.cell.x, p.cell.y);
                 var backRoom = _L.InChunk(behind.x, behind.y) ? _L.RoomAt(behind.x, behind.y) : entryRoom;
-                _portalLooks.Add((_a.tunnel ? _a.tunnel : WallMat(entryRoom), _a.FloorMaterial(entryRoom), WallMat(backRoom), CellMask(behind.x, behind.y)));
+                _portalLooks.Add((_a.tunnel ? _a.tunnel : WallMat(entryRoom), _a.FloorMaterial(entryRoom), WallMat(backRoom), CellMask(behind.x, behind.y), CellMask(x, z)));
             }
         }
 
@@ -96,7 +96,7 @@ namespace Backrooms.Generation
             for (int i = 0; i < _portalViews.Count; i++)
             {
                 var look = _portalLooks[i];
-                Interaction.CrawlPortalView.Create(root, _portalViews[i], look.lining, look.floor, look.back, look.backMask);
+                Interaction.CrawlPortalView.Create(root, _portalViews[i], look.lining, look.floor, look.back, look.backMask, look.mask);
             }
         }
     }
