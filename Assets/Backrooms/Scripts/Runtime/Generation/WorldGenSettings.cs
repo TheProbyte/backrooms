@@ -44,10 +44,13 @@ namespace Backrooms.Generation
         [Header("Crawl holes")]
         [Tooltip("Pairs of crawl holes per district (fractions are a chance of one more). Crawl into one, come out of the other.")]
         public float crawlPortals = 1.5f;
+        [Tooltip("Far crawl holes: one link per square of this many districts (0 = none). The two ends are far apart (about " +
+                 "(spacing - 3) x 81 m), so each leads somewhere well outside the load radius; see FarLinks.")]
+        public int farLinkSpacing = 6;
 
         /// <summary>Bump when generation code changes how a seed plays out.
         /// 2: fixture spacing, strips, open plan. 3: arches. 4: zones, landmarks, districts, storeys.</summary>
-        public const int Version = 9;
+        public const int Version = 10;   // 10: far crawl-hole links
 
         /// <summary>District size in chunks and cells.</summary>
         public const int DistrictChunks = 4, DistrictCells = DistrictChunks * OfficeBiome.ChunkCells;

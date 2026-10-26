@@ -65,6 +65,56 @@ namespace Backrooms.Generation
         class Chunk { public List<Doorway> doors; public GameObject go; public List<LightSource> lights; public List<Renderer> lenses, faulty; public int generation; public OfficeLayout layout; }
 
         readonly Dictionary<Vector3Int, Chunk> _chunks = new Dictionary<Vector3Int, Chunk>();
+
+        // ---------------- Sites: small areas kept loaded away from the player ----------------
+        // A crawl hole can lead far beyond the load radius (another zone of the world). Only a small patch around its
+        // partner is loaded: the chunks within a few metres of it, built like any other chunk but after the player's own
+        // rings. Nothing between here and there is loaded.
+        readonly Dictionary<object, (Vector3 point, float radius)> _sites = new Dictionary<object, (Vector3, float)>();
+        bool _sitesChanged;
+
+        /// <summary>Keeps the chunks within radius of a point loaded (ground storey and the storeys above) until cleared.</summary>
+        public void SetSite(object owner, Vector3 point, float radius)
+        {
+            if (_sites.TryGetValue(owner, out var old) && (old.point - point).sqrMagnitude < 0.01f && Mathf.Abs(old.radius - radius) < 0.01f) return;
+            _sites[owner] = (point, radius);
+            _sitesChanged = true;
+        }
+
+        public void ClearSite(object owner) { if (_sites.Remove(owner)) _sitesChanged = true; }
+        public int SiteCount => _sites.Count;
+
+        bool InSite(Vector2Int column)
+        {
+            if (_sites.Count == 0) return false;
+            float S = OfficeBiome.ChunkSize;
+            foreach (var site in _sites.Values)
+            {
+                float dx = Mathf.Max(column.x * S - site.point.x, 0f, site.point.x - (column.x + 1) * S);
+                float dz = Mathf.Max(column.y * S - site.point.z, 0f, site.point.z - (column.y + 1) * S);
+                if (dx * dx + dz * dz <= site.radius * site.radius) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Should this chunk column be loaded (near the player or in a site)?</summary>
+        bool Wanted(Vector2Int column, int radius) => InRadius(column, _center, radius) || InSite(column);
+
+        /// <summary>Is every chunk of the site around this point loaded?</summary>
+        public bool SiteReady(Vector3 point, float radius)
+        {
+            float S = OfficeBiome.ChunkSize;
+            int x0 = Mathf.FloorToInt((point.x - radius) / S), x1 = Mathf.FloorToInt((point.x + radius) / S);
+            int z0 = Mathf.FloorToInt((point.z - radius) / S), z1 = Mathf.FloorToInt((point.z + radius) / S);
+            for (int x = x0; x <= x1; x++)
+            for (int z = z0; z <= z1; z++)
+            {
+                float dx = Mathf.Max(x * S - point.x, 0f, point.x - (x + 1) * S), dz = Mathf.Max(z * S - point.z, 0f, point.z - (z + 1) * S);
+                if (dx * dx + dz * dz > radius * radius) continue;
+                if (!_chunks.ContainsKey(Key(new Vector2Int(x, z), 0))) return false;
+            }
+            return true;
+        }
         readonly List<Vector3Int> _queue = new List<Vector3Int>();
         readonly Dictionary<Vector3Int, Task<OfficeChunkBuilder>> _pending = new Dictionary<Vector3Int, Task<OfficeChunkBuilder>>();
         readonly Dictionary<Vector3Int, int> _pendingGen = new Dictionary<Vector3Int, int>();
@@ -139,6 +189,21 @@ namespace Backrooms.Generation
                 int top = _world.TopStoreyAt(c);
                 for (int s = 0; s <= top; s++) yield return (Key(c, s), r);
             }
+            // Sites, after everything around the player.
+            float S = OfficeBiome.ChunkSize;
+            foreach (var site in _sites.Values)
+            {
+                int x0 = Mathf.FloorToInt((site.point.x - site.radius) / S), x1 = Mathf.FloorToInt((site.point.x + site.radius) / S);
+                int z0 = Mathf.FloorToInt((site.point.z - site.radius) / S), z1 = Mathf.FloorToInt((site.point.z + site.radius) / S);
+                for (int x = x0; x <= x1; x++)
+                for (int z = z0; z <= z1; z++)
+                {
+                    var c = new Vector2Int(x, z);
+                    if (InRadius(c, _center, loadRadius) || !InSite(c)) continue;
+                    int top = _world.TopStoreyAt(c);
+                    for (int s = 0; s <= top; s++) yield return (Key(c, s), loadRadius + 1);
+                }
+            }
         }
 
         void Requeue()
@@ -177,7 +242,7 @@ namespace Backrooms.Generation
         {
             if (!player) return;
             var c = ChunkOf(player.position);
-            if (c != _center) Refresh(false);
+            if (c != _center || _sitesChanged) { _sitesChanged = false; Refresh(false); }
 
             // Layout and vertex data are prepared on worker threads (a few at a time, nearest first).
             while (_pending.Count < 4 && _queue.Count > 0)
@@ -185,7 +250,7 @@ namespace Backrooms.Generation
                 var coord = _queue[0];
                 _queue.RemoveAt(0);
                 bool current = _chunks.TryGetValue(coord, out var existing) && existing.generation == _generation;
-                if (current || _pending.ContainsKey(coord) || !InRadius(Column(coord), _center, loadRadius)) continue;
+                if (current || _pending.ContainsKey(coord) || !Wanted(Column(coord), loadRadius)) continue;
                 var a = assets; var w = _world;
                 _pendingGen[coord] = _generation;
                 _pending[coord] = Task.Run(() => Prepare(w, coord, a));
@@ -204,7 +269,7 @@ namespace Backrooms.Generation
                 if (kv.Value.IsFaulted) { Debug.LogException(kv.Value.Exception); continue; }
                 int gen = _pendingGen.TryGetValue(kv.Key, out int g) ? g : -1;
                 if (gen != _generation) { _queue.Insert(0, kv.Key); continue; }       // settings changed meanwhile
-                if (!InRadius(Column(kv.Key), _center, unloadRadius)) continue;
+                if (!Wanted(Column(kv.Key), unloadRadius)) continue;
                 if (_chunks.TryGetValue(kv.Key, out var old) && old.generation == _generation) continue;
                 _uploadKey = kv.Key; _uploadBuilder = kv.Value.Result; _uploadGeneration = _generation; _uploadMs = 0f;
                 _upload = _uploadBuilder.InstantiateSteps(transform);
@@ -216,8 +281,8 @@ namespace Backrooms.Generation
 
         void AdvanceUpload(float frameStart)
         {
-            if (_uploadGeneration != _generation || !InRadius(Column(_uploadKey), _center, unloadRadius))
-            { var key = _uploadKey; CancelUpload(); if (InRadius(Column(key), _center, loadRadius)) _queue.Add(key); return; }
+            if (_uploadGeneration != _generation || !Wanted(Column(_uploadKey), unloadRadius))
+            { var key = _uploadKey; CancelUpload(); if (Wanted(Column(key), loadRadius)) _queue.Add(key); return; }
             float start = Time.realtimeSinceStartup;
             try
             {
@@ -281,7 +346,7 @@ namespace Backrooms.Generation
             // Unload far chunks, and upper storeys no longer near a volume.
             var drop = new List<Vector3Int>();
             foreach (var kv in _chunks)
-                if (!InRadius(Column(kv.Key), _center, unloadRadius) || (kv.Key.y > 0 && kv.Key.y > _world.TopStoreyAt(Column(kv.Key)))) drop.Add(kv.Key);
+                if (!Wanted(Column(kv.Key), unloadRadius) || (kv.Key.y > 0 && kv.Key.y > _world.TopStoreyAt(Column(kv.Key)))) drop.Add(kv.Key);
             foreach (var k in drop) UnloadChunk(k);
 
             // Queue missing chunks nearest first; only initial coverage is built synchronously.

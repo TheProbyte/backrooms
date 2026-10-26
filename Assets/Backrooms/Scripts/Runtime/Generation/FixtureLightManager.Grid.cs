@@ -122,6 +122,64 @@ namespace Backrooms.Generation
             col = src.strip ? stripColor : tubeColor;
         }
 
+        // ---------------- Far crawl-hole sites ----------------
+        // A crawl hole whose partner is far away (beyond the main grid's window) gets a second light grid centred on the
+        // partner (see CrawlPortalSystem.TryGetRemoteSite): the portal view of that site is lit by it, and when the player
+        // comes out there the two grids swap roles, so the light is already complete on arrival.
+        [Tooltip("The grid around a far crawl hole's partner (created on demand, switched off when no far hole is near).")]
+        public LightGrid siteGrid;
+        [Tooltip("Fixtures within this distance of a far site feed the site grid.")]
+        public float siteGridDistance = 30f;
+        [Tooltip("Seconds without a far site before the site grid is switched off (its GPU memory released).")]
+        public float siteGridLinger = 20f;
+        bool _haveSite;
+        Vector3 _site;
+        float _siteLastUsed = -999f;
+        readonly HashSet<Vector3Int> _gathered = new HashSet<Vector3Int>();
+
+        void EnsureSiteGrid()
+        {
+            if (siteGrid) { if (!siteGrid.enabled) siteGrid.enabled = true; return; }
+            var go = new GameObject("LightGrid (far site)");
+            go.SetActive(false);
+            go.transform.SetParent(transform, false);
+            siteGrid = go.AddComponent<LightGrid>();
+            siteGrid.compute = Instantiate(Resources.Load<ComputeShader>("LightGrid"));   // its own parameter block
+            siteGrid.streamer = grid ? grid.streamer : FindAnyObjectByType<WorldStreamer>();
+            siteGrid.bindGlobals = false;
+            go.SetActive(true);
+        }
+
+        static void CopyGridSettings(LightGrid from, LightGrid to)
+        {
+            to.directGain = from.directGain; to.bounceGain = from.bounceGain; to.floorAlbedo = from.floorAlbedo;
+            to.bounceSpread = from.bounceSpread; to.bounceSteps = from.bounceSteps; to.wrap = from.wrap; to.smoothing = from.smoothing;
+            to.contrast = from.contrast; to.roomFill = from.roomFill; to.perPixelDirect = from.perPixelDirect;
+            to.exactDistance = from.exactDistance; to.normalOffset = from.normalOffset; to.contactOcclusion = from.contactOcclusion;
+            to.texelBudget = from.texelBudget;
+        }
+
+        void MarkGridDirty(Vector3 p, float radius)
+        {
+            if (grid) grid.MarkDirty(p, radius);
+            if (siteGrid && siteGrid.enabled) siteGrid.MarkDirty(p, radius);
+        }
+
+        /// <summary>
+        /// After a trip to a far site: if the site grid already covers where the player now is, it becomes the main grid
+        /// (already filled, so nothing relights) and the old main grid stays behind as the site grid for the way back.
+        /// </summary>
+        public bool SwapGridsIfSiteCovers(Vector3 player, Vector3 left)
+        {
+            if (!grid || !siteGrid || !siteGrid.enabled || !siteGrid.Ready || !siteGrid.Covers(player, 6f)) return false;
+            (grid, siteGrid) = (siteGrid, grid);
+            grid.bindGlobals = true; grid.siteCentre = null;
+            siteGrid.bindGlobals = false; siteGrid.siteCentre = left;
+            grid.BindGlobals();
+            _site = left; _haveSite = true; _siteLastUsed = Time.time;
+            return true;
+        }
+
         int _fixtureParams;
         bool _haveFixtureParams;
         bool _haveAhead;
@@ -137,27 +195,42 @@ namespace Backrooms.Generation
             return _haveAhead ? Mathf.Min(d, Vector3.Distance(p, _ahead)) : d;
         }
 
+        void Gather(Vector3 centre, float distance)
+        {
+            var cc = WorldStreamer.ChunkOf(centre);
+            int r = Mathf.CeilToInt(distance / OfficeBiome.ChunkSize);
+            float r2 = distance * distance;
+            for (int dx = -r; dx <= r; dx++)
+            for (int dz = -r; dz <= r; dz++)
+            for (int s = _minStorey; s <= _maxStorey; s++)
+            {
+                var key = new Vector3Int(cc.x + dx, s, cc.y + dz);
+                if (!_gathered.Add(key) || !_chunks.TryGetValue(key, out var cp)) continue;
+                foreach (var l in cp.lights)
+                    if ((l.position - centre).sqrMagnitude < r2) _candidates.Add(l);
+            }
+        }
+
         void LateUpdateGrid(Vector3 eye, float now)
         {
             _gridFrame++;
             // Strength, reach and tall-room boost change every fixture's grid light: recompute the whole grid.
             int fp = System.HashCode.Combine(tubeIntensity, tubeRange, domeHeightBoost, lampIntensity, lampRange, spread);
-            if (_haveFixtureParams && fp != _fixtureParams && grid) grid.MarkAllDirty();
+            if (_haveFixtureParams && fp != _fixtureParams && grid) { grid.MarkAllDirty(); if (siteGrid && siteGrid.enabled) siteGrid.MarkAllDirty(); }
             _fixtureParams = fp; _haveFixtureParams = true;
             float dt = Time.deltaTime;
-            _haveAhead = Interaction.CrawlPortalSystem.TryGetLookahead(out _ahead) && (_ahead - eye).sqrMagnitude < gridDistance * gridDistance;
+            // A far crawl-hole site: its own grid, and its fixtures join the candidates (so its real lights can be chosen too).
+            _haveSite = Interaction.CrawlPortalSystem.TryGetRemoteSite(out _site) && grid && !grid.Covers(_site, 12f);
+            if (_haveSite) { EnsureSiteGrid(); _siteLastUsed = Time.time; }
+            else if (siteGrid && siteGrid.enabled && Time.time - _siteLastUsed > siteGridLinger) siteGrid.enabled = false;
+            _haveAhead = Interaction.CrawlPortalSystem.TryGetLookahead(out _ahead) &&
+                         ((_ahead - eye).sqrMagnitude < gridDistance * gridDistance || (_haveSite && (_ahead - _site).sqrMagnitude < siteGridDistance * siteGridDistance));
 
-            // Every registered light near the viewer, nearest first.
+            // Every registered light near the viewer (and near a far site), nearest first. Each chunk once.
             _candidates.Clear();
-            var center = WorldStreamer.ChunkOf(eye);
-            int r = Mathf.CeilToInt(gridDistance / OfficeBiome.ChunkSize);
-            float r2 = gridDistance * gridDistance;
-            for (int dx = -r; dx <= r; dx++)
-            for (int dz = -r; dz <= r; dz++)
-            for (int s = _minStorey; s <= _maxStorey; s++)
-                if (_chunks.TryGetValue(new Vector3Int(center.x + dx, s, center.y + dz), out var cp))
-                    foreach (var l in cp.lights)
-                        if ((l.position - eye).sqrMagnitude < r2) _candidates.Add(l);
+            _gathered.Clear();
+            Gather(eye, gridDistance);
+            if (_haveSite) Gather(_site, siteGridDistance);
             if (_byPoolDistance == null) _byPoolDistance = (a, b) => PoolDistance(a.position).CompareTo(PoolDistance(b.position));
             _candidates.Sort(_byPoolDistance);
 
@@ -211,7 +284,7 @@ namespace Backrooms.Generation
             {
                 if (kv.Value.frame == _gridFrame) continue;
                 var sh = kv.Value;
-                if (sh.lastGrid > 0f && grid) { Describe(sh.src, out var p, out _, out _, out var range, out _, out _, out _); grid.MarkDirty(p, range + 0.6f); }
+                if (sh.lastGrid > 0f && grid) { Describe(sh.src, out var p, out _, out _, out var range, out _, out _, out _); MarkGridDirty(p, range + 0.6f); }
                 if (sh.slot != null) { Release(sh.slot); sh.slot = null; }
                 _dropShares.Add(kv.Key);
             }
@@ -237,7 +310,7 @@ namespace Backrooms.Generation
                 float step = grid && grid.CoarseUpdates && changing ? 0.08f : 0.003f;
                 if (Mathf.Abs(gridShare - sh.lastGrid) > step)
                 {
-                    grid.MarkDirty(pos, range + 0.6f);
+                    MarkGridDirty(pos, range + 0.6f);
                     sh.lastGrid = gridShare;
                 }
                 var lin = (Vector3)(Vector4)col.linear * intensity;
@@ -295,6 +368,12 @@ namespace Backrooms.Generation
             ActiveLights = enabled;
             _gridLights.Sort(GridOrder); // distance rank changes must not invalidate unchanged full-power bounce
             if (grid) grid.Tick(eye, _gridLights);
+            if (_haveSite && siteGrid && siteGrid.enabled && grid)
+            {
+                CopyGridSettings(grid, siteGrid);
+                siteGrid.siteCentre = _site;
+                siteGrid.Tick(_site, _gridLights);
+            }
         }
     }
 }

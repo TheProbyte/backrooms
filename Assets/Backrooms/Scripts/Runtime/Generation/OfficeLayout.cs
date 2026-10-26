@@ -85,6 +85,10 @@ namespace Backrooms.Generation
         public Vector3 normal;         // world: out of the wall, into the cell
         public Vector3 partnerPosition, partnerNormal;
         public ulong id;
+        /// <summary>A far link (see FarLinks): the partner is this hole's counterpart in <see cref="partnerDistrict"/>, found
+        /// when a chunk is cut from the plan (partnerPosition/Normal are only valid in chunk layouts).</summary>
+        public bool far;
+        public Vector2Int partnerDistrict;
     }
     public struct Prop
     {

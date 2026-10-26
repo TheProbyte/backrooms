@@ -60,6 +60,24 @@ namespace Backrooms.Interaction
         readonly List<CrawlPortalView> _litPrev = new List<CrawlPortalView>(MaxLitDucts);
         static readonly int IdMouthTex = Shader.PropertyToID("_DuctMouthLight");
 
+        // ---------------- Far partners ----------------
+        // A hole's partner can be anywhere in the world (a far link, see FarLinks). While the player is near a hole, the
+        // streamer keeps a small site loaded around its partner (SiteRadius, nothing in between), and the light manager
+        // lights that site with its own grid. The view through the window, the duct's far-end light and the trip all use it.
+        // The site is what the window can show: the fog is black by 34 m, so a circle reaching about 30 m out in front of the
+        // partner (centred SiteAhead in front of it). About 9-12 chunks, against ~49 around the player.
+        public const float SiteDistance = 26f, SiteRelease = 34f, SiteRadius = 20f, SiteAhead = 10f;
+        WorldStreamer _streamer;
+        FixtureLightManager _lights;
+        readonly HashSet<CrawlPortalView> _siteOwners = new HashSet<CrawlPortalView>();
+        readonly List<CrawlPortalView> _siteDrop = new List<CrawlPortalView>();
+        static bool _haveRemote;
+        static Vector3 _remote;
+        bool _siteBound;
+
+        /// <summary>The partner site of the nearest hole whose partner lies outside the main light grid (a far link).</summary>
+        public static bool TryGetRemoteSite(out Vector3 point) { point = _remote; return _haveRemote && _instance; }
+
         /// <summary>Frame number of the last trip through a hole (the camcorder resets its motion smear on it).</summary>
         public static int LastWarpFrame { get; private set; } = -10;
 
@@ -106,6 +124,58 @@ namespace Backrooms.Interaction
                 _capsule = _player ? _player.GetComponent<CharacterController>() : null;
             }
             UpdatePassages();
+            UpdateSites(main.transform.position);
+        }
+
+        LightGrid MainGrid
+        {
+            get
+            {
+                if (!_lights) _lights = FindAnyObjectByType<FixtureLightManager>();
+                return _lights ? _lights.grid : null;
+            }
+        }
+
+        /// <summary>A far link: the partner is beyond the ordinary pair distance (see FarLinks).</summary>
+        public static bool IsFar(CrawlPortalView v) =>
+            (v.position - v.partnerPosition).sqrMagnitude > (CrawlPortals.MaxApart + 6f) * (CrawlPortals.MaxApart + 6f);
+
+        /// <summary>Is the hole a far link whose partner is outside the main light grid (lit by the site grid)?</summary>
+        bool IsRemote(CrawlPortalView v)
+        {
+            var g = MainGrid;
+            return IsFar(v) && g && g.Ready && !g.Covers(v.partnerPosition, 6f);
+        }
+
+        /// <summary>The site grid, if it covers this hole's partner.</summary>
+        LightGrid SiteGridFor(CrawlPortalView v)
+        {
+            var s = _lights ? _lights.siteGrid : null;
+            return s && s.enabled && s.Ready && s.Covers(v.partnerPosition, 6f) ? s : null;
+        }
+
+        /// <summary>
+        /// Keeps a small area loaded around the partner of every far hole the player is near (with hysteresis): only that
+        /// area, nothing in between. Ordinary pairs (12-30 m) are left to the normal load radius.
+        /// </summary>
+        void UpdateSites(Vector3 eye)
+        {
+            if (!_streamer) _streamer = FindAnyObjectByType<WorldStreamer>();
+            if (!_streamer) return;
+            _siteDrop.Clear();
+            foreach (var v in _siteOwners)
+                if (!v || !CrawlPortalView.All.Contains(v) || (!v.Inside && (v.position - eye).sqrMagnitude > SiteRelease * SiteRelease)) _siteDrop.Add(v);
+            foreach (var v in _siteDrop) { _siteOwners.Remove(v); _streamer.ClearSite(v); }
+            float best = float.MaxValue; _haveRemote = false;
+            foreach (var v in CrawlPortalView.All)
+            {
+                if (!v || !IsFar(v)) continue;
+                float d = Vector3.Distance(eye, v.position);
+                bool want = v.Inside || _siteOwners.Contains(v) || (d < SiteDistance && v.Local(eye).z > -0.5f);
+                if (!want) continue;
+                _siteOwners.Add(v); _streamer.SetSite(v, v.partnerPosition + v.partnerNormal * SiteAhead, SiteRadius);   // no-op when unchanged
+                if (IsRemote(v) && (v.Inside ? -1f : d) < best) { best = v.Inside ? -1f : d; _remote = v.partnerPosition; _haveRemote = true; }
+            }
         }
 
         /// <summary>Seal and duct colliders: open to the player only at or in the hole.</summary>
@@ -132,7 +202,8 @@ namespace Backrooms.Interaction
                 foreach (var end in CrawlPortalView.All) if (end) _ends[end.position] = end;
                 _endRevision = CrawlPortalView.Revision;
             }
-            return _ends.TryGetValue(v.partnerPosition, out var other) && other;
+            if (!_ends.TryGetValue(v.partnerPosition, out var other) || !other) return false;
+            return !IsRemote(v) || SiteGridFor(v);     // a far partner is shown once its site is lit
         }
 
         void OnEndCamera(ScriptableRenderContext context, Camera camera)
@@ -141,13 +212,19 @@ namespace Backrooms.Interaction
             Shader.DisableKeyword("BACKROOMS_PORTAL_CLIP");
             foreach (var slot in _slots)
                 if (slot.cam == camera && slot.view) slot.view.material.SetFloat("_Fade", 1f);
+            if (_siteBound) { _siteBound = false; var g = MainGrid; if (g) g.BindGlobals(); }
         }
 
         void OnBeginCamera(ScriptableRenderContext context, Camera camera)
         {
             foreach (var slot in _slots)
                 if (slot.cam == camera && slot.view)
-                { Shader.SetGlobalVector("_PortalClipPlane", slot.clipPlane); Shader.EnableKeyword("BACKROOMS_PORTAL_CLIP"); return; }
+                {
+                    Shader.SetGlobalVector("_PortalClipPlane", slot.clipPlane); Shader.EnableKeyword("BACKROOMS_PORTAL_CLIP");
+                    // A far partner's room is lit by the site grid: bind it for this camera only (OnEndCamera restores).
+                    if (IsRemote(slot.view)) { var site = SiteGridFor(slot.view); if (site) { site.BindGlobals(); _siteBound = true; } }
+                    return;
+                }
             Shader.SetGlobalVector("_PortalClipPlane", Vector4.zero);
             Shader.DisableKeyword("BACKROOMS_PORTAL_CLIP");
         }
@@ -197,8 +274,8 @@ namespace Backrooms.Interaction
 
         bool Sample()
         {
-            if (!_grid || !_grid.isActiveAndEnabled) _grid = FindAnyObjectByType<LightGrid>();
-            if (!_grid || !SystemInfo.supportsComputeShaders) return false;
+            _grid = MainGrid;
+            if (!_grid || !_grid.isActiveAndEnabled || !SystemInfo.supportsComputeShaders) return false;
             if (!_mouthLight)
             {
                 var src = Resources.Load<ComputeShader>("PortalLighting");
@@ -225,8 +302,18 @@ namespace Backrooms.Interaction
             _mouthLight.SetVectorArray("_PortalSpillPartnerNormal", _mouthNormal);
             _mouthLight.SetVectorArray("_PortalSpillPosition", _mouthUnused);
             _mouthLight.SetInt("_PortalSpillCount", _lit.Count * 2);
+            _mouthLight.SetInt("_PortalEndOffset", 0);
             _mouthLight.SetTexture(0, "_PortalLightOutput", _mouthTex);
             _mouthLight.Dispatch(0, 1, _lit.Count * 2, 1);
+            // Far partners: their row again, from the site grid that covers them.
+            for (int i = 0; i < _lit.Count; i++)
+            {
+                if (!IsRemote(_lit[i])) continue;
+                var site = SiteGridFor(_lit[i]);
+                if (!site || !site.BindPortalLighting(_mouthLight, 0)) continue;
+                _mouthLight.SetInt("_PortalEndOffset", 2 * i + 1);
+                _mouthLight.Dispatch(0, 1, 1, 1);
+            }
             Shader.SetGlobalTexture(IdMouthTex, _mouthTex);
             return true;
         }
@@ -268,6 +355,7 @@ namespace Backrooms.Interaction
                 { _lookahead = v.partnerPosition + v.partnerNormal * 1.2f; _haveLookahead = true; }
             }
             if (!through) return;
+            var left = player.transform.position;
             player.Warp(through.ToPartner.MultiplyPoint3x4(player.transform.position), through.YawDelta);
             through.SetInside(false);
             _lastLocal.Clear();
@@ -277,6 +365,11 @@ namespace Backrooms.Interaction
                 if (v && (v.position - through.partnerPosition).sqrMagnitude < 0.001f) { v.SetInside(true); _lastLocal[v] = v.Local(landed); break; }
             LastWarpFrame = Time.frameCount;
             UpdatePassages();
+            // Out at a far site: its grid (already filled) becomes the main one this frame, and the area just left stays
+            // loaded as the site behind the hole we came out of (requested before the streamer's next update).
+            if (!_lights) _lights = FindAnyObjectByType<FixtureLightManager>();
+            if (_lights) _lights.SwapGridsIfSiteCovers(main.transform.position, left);
+            UpdateSites(main.transform.position);
             _lookahead = through.partnerPosition + through.partnerNormal * 1.2f; _haveLookahead = true;
         }
 
@@ -460,6 +553,7 @@ namespace Backrooms.Interaction
             var p = main.transform;
             cam.transform.SetPositionAndRotation(m.MultiplyPoint3x4(p.position), m.rotation * p.rotation);
             cam.fieldOfView = main.fieldOfView; cam.nearClipPlane = main.nearClipPlane; cam.farClipPlane = main.farClipPlane;
+            cam.backgroundColor = main.backgroundColor;   // nothing loaded there reads as distance (the fog colour), as in the main view
             cam.aspect = main.aspect;
             cam.cullingMask = main.cullingMask & ~(1 << CrawlPortalView.Layer);
             cam.targetTexture = s.rt;

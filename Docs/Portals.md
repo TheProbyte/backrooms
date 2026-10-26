@@ -83,5 +83,38 @@ noise median 1.29); the same crawl with the portal SSAO switched off, 3.13 (AO a
 Entrance lip at that hole (shadowed half / lit half, 0-255, room floor just outside vs duct floor just inside): before
 27 / 46 vs 54 / 53 (flat default light); after 27 / 46 vs 27 / 42, with the room's shadow edge running on into the duct.
 
-Limits: two live windows; windows seen through windows are not drawn; the duct's light is a simple two-ended falloff, not
-sampled from the rooms; partners must be within streaming range (12-30 m).
+## Far links
+
+A hole can lead anywhere in the world, far outside the load radius (for example into a far zone such as a future
+Poolrooms). Only what the window can show is loaded at the far end; nothing in between.
+
+- **Which holes.** `FarLinks.PartnerOf`: the lattice links district (1, 1) of every `farLinkSpacing` x `farLinkSpacing`
+  square (world settings, default 6) to its (spacing - 2, spacing - 2) district, about 210-250 m away; `FarLinks.Add`
+  links two districts by hand (register before the world generates them). Each district places its own far hole from its
+  own layout (`CrawlPortals.PlaceFar`, its own random stream, after the ordinary pairs, which are unchanged). When a chunk
+  is cut from its plan, `WorldGenerator.ResolveFarLinks` finds the partner in the other district's plan (only that plan
+  is generated, not its chunks); if the other end could not be placed, the hole is dropped and the wall stays whole.
+  `CrawlPortal.far` / `partnerDistrict` carry this; at runtime a far link is simply a partner more than 36 m away.
+- **The far site.** While the player is within 26 m of a far hole (released at 34 m, or kept while inside it),
+  `CrawlPortalSystem.UpdateSites` asks `WorldStreamer.SetSite` for a circle of 20 m centred 10 m in front of the partner:
+  what the window can show (the fog is black by 34 m). That is about 9-12 chunks, built through the normal worker
+  pipeline after the player's own rings, and never unloaded while requested. Seed 1234 test: 61 chunks loaded with the
+  site, against ~51 without.
+- **Its light.** `FixtureLightManager` keeps a second `LightGrid` (`siteGrid`, its own compute shader copy, created on
+  demand, switched off 20 s after the last far site) centred on the partner, fed with the fixtures around it; its real
+  light pool also counts the far site (lookahead). The portal camera that shows a far site binds the site grid's globals
+  for its render only (`LightGrid.BindGlobals`, main grid restored at the camera's end). The duct's far-end light is
+  sampled from the site grid. Until the site is loaded and covered by the site grid, the window shows its fallback.
+- **The trip.** On crossing, the site grid (already filled) becomes the main grid that same frame and the old main grid
+  becomes the site grid of the place just left (`SwapGridsIfSiteCovers`); the sites are re-requested before the streamer's
+  next update, so the area behind the hole stays loaded for the way back. The player's own rings then stream in around
+  the new position (40 chunks over about 2 s in the test; the area in view was already there).
+- **Checked** (seed 1234, hole (111.0, 0.4, 75.7) -> (252.6, 0.4, 271.3), 214 m): the window shows the far room; a
+  recorded crawl through has a frame difference of 1.22 at the trip (camcorder noise 1.18); afterwards the old area is
+  still loaded and lit by the swapped grid. EditMode test `FarLinksJoinDistantDistricts`.
+- **Costs.** Near a far hole: the site's chunks and a second grid (two 128 x 24 x 128 half-float textures plus small
+  buffers, about 8 MB, and its incremental compute). Nothing at all elsewhere.
+
+Limits: two live windows; windows seen through windows are not drawn; the duct's middle is a simple falloff between the
+two ends; a far link's far end is the ordinary generator's world at that place (a Poolrooms zone needs its own zone /
+generator there, then a FarLinks rule or `FarLinks.Add` pointing into it).

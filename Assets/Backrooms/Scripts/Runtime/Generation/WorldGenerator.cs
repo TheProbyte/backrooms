@@ -49,14 +49,43 @@ namespace Backrooms.Generation
 
         /// <summary>Chunk (x, storey, z): a slice of its district's plan.</summary>
         public OfficeLayout Chunk(Vector3Int c) =>
-            _chunks.GetOrAdd(c, k => new Lazy<OfficeLayout>(() => Slice(District(DistrictKey(k)), k))).Value;
+            _chunks.GetOrAdd(c, k => new Lazy<OfficeLayout>(() =>
+            {
+                var d = DistrictKey(k);
+                var S = Slice(District(d), k);
+                ResolveFarLinks(S, new Vector2Int(d.x, d.z), o => District(new Vector3Int(o.x, d.y, o.y)));
+                return S;
+            })).Value;
 
         /// <summary>Builds a ground-storey chunk without touching any cache (tests compare this with cached results).</summary>
         public OfficeLayout Build(Vector2Int chunk)
         {
             var c = new Vector3Int(chunk.x, 0, chunk.y);
             var d = DistrictKey(c);
-            return Slice(DistrictGenerator.Generate(Settings, Seed, new Vector2Int(d.x, d.z), d.y), c);
+            var S = Slice(DistrictGenerator.Generate(Settings, Seed, new Vector2Int(d.x, d.z), d.y), c);
+            ResolveFarLinks(S, new Vector2Int(d.x, d.z), o => DistrictGenerator.Generate(Settings, Seed, o, d.y));
+            return S;
+        }
+
+        /// <summary>
+        /// Far crawl holes in a chunk (see FarLinks): the partner is the far hole of the linked district that links back
+        /// here. Only that district's plan is generated (no chunks, nothing in between). A hole whose other end could not
+        /// be placed is removed, so its wall stays whole.
+        /// </summary>
+        static void ResolveFarLinks(OfficeLayout chunk, Vector2Int district, Func<Vector2Int, OfficeLayout> plan)
+        {
+            for (int i = chunk.portals.Count - 1; i >= 0; i--)
+            {
+                var p = chunk.portals[i];
+                if (!p.far) continue;
+                var other = plan(p.partnerDistrict);
+                bool found = false;
+                if (other != null)
+                    foreach (var q in other.portals)
+                        if (q.far && q.partnerDistrict == district) { p.partnerPosition = q.position; p.partnerNormal = q.normal; found = true; break; }
+                if (found) chunk.portals[i] = p;
+                else chunk.portals.RemoveAt(i);
+            }
         }
 
         /// <summary>Stable prop id: district, storey and index in the district plan (unique per world).</summary>

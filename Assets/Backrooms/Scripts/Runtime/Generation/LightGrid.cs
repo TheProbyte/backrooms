@@ -50,6 +50,12 @@ namespace Backrooms.Generation
         [Tooltip("Sample point offset off the surface, metres (half a texel keeps samples on the room's side).")]
         public float normalOffset = 0.3f;
 
+        [Header("Site")]
+        [Tooltip("Where the window is centred. Unset: on the player (the main grid). Set: on a far crawl-hole site (the site grid).")]
+        public Vector3? siteCentre;
+        [Tooltip("Bind this grid's resources as the shader globals every frame (the main grid). The site grid is bound only for the portal views that show its site (BindGlobals).")]
+        public bool bindGlobals = true;
+
         public bool Ready { get; private set; }
         public int DirtyTexelsLastFrame { get; private set; }
         public float LastGpuSubmitMs { get; private set; }
@@ -136,8 +142,11 @@ namespace Backrooms.Generation
             _tileLights = new ComputeBuffer(8192, 4);
             _fixtureLookup = new ComputeBuffer(4, 4); _fixtureLookup.SetData(new uint[4]);
             if (streamer) { streamer.ChunkLoaded += OnChunkChanged; streamer.ChunkUnloaded += OnChunkUnloaded; }
-            Shader.SetGlobalTexture(GA, _a); Shader.SetGlobalTexture(GB, _b); Shader.SetGlobalBuffer(GOcc, _occ);
-            Shader.SetGlobalTexture(GBounce, _bounce0);
+            if (bindGlobals)
+            {
+                Shader.SetGlobalTexture(GA, _a); Shader.SetGlobalTexture(GB, _b); Shader.SetGlobalBuffer(GOcc, _occ);
+                Shader.SetGlobalTexture(GBounce, _bounce0);
+            }
             _full = true; _occDirty = true; _inputsValid = false; _bounceDirty = true;
             Ready = true;
         }
@@ -145,7 +154,7 @@ namespace Backrooms.Generation
         void OnDisable()
         {
             Ready = false;
-            LightGridGlobals.BindFallbacks();          // never leave the shader pointing at released resources
+            if (bindGlobals) LightGridGlobals.BindFallbacks();          // never leave the shader pointing at released resources
             if (streamer) { streamer.ChunkLoaded -= OnChunkChanged; streamer.ChunkUnloaded -= OnChunkUnloaded; }
             void Rel(RenderTexture r) { if (r) { r.Release(); if (Application.isPlaying) Destroy(r); else DestroyImmediate(r); } }
             Rel(_a); Rel(_b); Rel(_bounceSrc); Rel(_bounce0); Rel(_bounce1);
@@ -286,7 +295,7 @@ namespace Backrooms.Generation
             _appliedSplit = Split;
 
             // Follow locomotion rather than handheld camera shake, which can straddle a cell boundary at rest.
-            var anchor = streamer && streamer.player ? streamer.player.position : viewer;
+            var anchor = siteCentre ?? (streamer && streamer.player ? streamer.player.position : viewer);
             var newMin = new Vector2Int(FloorDiv(Mathf.FloorToInt(anchor.x / C), 1) * 2 - GX / 2, FloorDiv(Mathf.FloorToInt(anchor.z / C), 1) * 2 - GZ / 2);
             if (newMin != _texMin)
             {
@@ -379,6 +388,17 @@ namespace Backrooms.Generation
             // Bind the real resources every frame. Something else (the editor's stand-in binder after a domain reload,
             // another system calling BindFallbacks) can point these globals at empty stand-ins; the shader then sees
             // no walls at all and every wall-aware test (real lights, sample clamps, bounce clamps) silently passes.
+            if (bindGlobals) BindGlobals();
+            LastGpuSubmitMs = (float)sw.Elapsed.TotalMilliseconds;
+        }
+
+        /// <summary>
+        /// Points the shader globals (light-grid textures, buffers, window, occluders) at this grid. The main grid does it
+        /// every frame; the site grid only around the portal cameras that show its site (then the main grid again).
+        /// </summary>
+        public void BindGlobals()
+        {
+            if (!Ready) return;
             Shader.SetGlobalTexture(GA, _a); Shader.SetGlobalTexture(GB, _b); Shader.SetGlobalBuffer(GOcc, _occ);
             Shader.SetGlobalTexture(GBounce, _bounceCur ? _bounceCur : _bounce0);
             BindBounceOutputs();
@@ -391,8 +411,16 @@ namespace Backrooms.Generation
             Shader.SetGlobalBuffer("_LGridFixtureLookup", _fixtureLookup);
             Shader.SetGlobalInt("_LGridFixtureMask", _fixtureLookup.count - 1);
             Shader.SetGlobalVector(GFar, new Vector4(perPixelDirect ? 1f : 0f, TileTexels, Tiles, Split));
-            LastGpuSubmitMs = (float)sw.Elapsed.TotalMilliseconds;
+            BindOccluderGlobals();
         }
+
+        /// <summary>Is a world point inside this grid's window (with a margin, metres)?</summary>
+        public bool Covers(Vector3 p, float margin = 0f) =>
+            _texMin.x != int.MinValue && p.x >= _texMin.x * T + margin && p.z >= _texMin.y * T + margin &&
+            p.x <= (_texMin.x + GX) * T - margin && p.z <= (_texMin.y + GZ) * T - margin;
+
+        /// <summary>The window has been filled since it last moved or the world last changed under it.</summary>
+        public bool Settled => Ready && _texMin.x != int.MinValue && !_full && _pending.Count == 0 && !_occDirty;
 
         (Vector3Int min, Vector3Int max) Clip(Vector3Int min, Vector3Int max) =>
             (Vector3Int.Max(min, new Vector3Int(_texMin.x, 0, _texMin.y)), Vector3Int.Min(max, new Vector3Int(_texMin.x + GX, GY, _texMin.y + GZ)));

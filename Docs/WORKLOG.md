@@ -15,6 +15,27 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-25 23:05  Claude Code  Far crawl-hole links: a hole can lead ~200+ m away, loading only what its window shows
+- FarLinks (lattice: district (1,1) of every 6x6-district square <-> its (4,4) district, ~210-250 m; FarLinks.Add for
+  hand-placed links such as a future Poolrooms entrance). CrawlPortals.PlaceFar places each end from its own layout
+  after the ordinary pairs (pairs unchanged); WorldGenerator.ResolveFarLinks finds the partner when a chunk is cut
+  (only the other district's plan is generated); unresolved holes are dropped. WorldGenSettings.farLinkSpacing (6),
+  Version 10.
+- WorldStreamer sites (SetSite/ClearSite/SiteReady): small circles kept loaded away from the player, built after the
+  player's rings. CrawlPortalSystem requests one per far hole within 26 m (released at 34 m): 20 m around a point 10 m in
+  front of the partner, about 9-12 chunks (the fog is black by 34 m, so that is all the window can show).
+- Light: FixtureLightManager.siteGrid, a second LightGrid (optional siteCentre, bindGlobals off, BindGlobals on demand,
+  own compute copy) fed with the fixtures near the far site; portal cameras showing a far site bind it for their render
+  only; the duct's far-end light samples it (PortalLighting.compute row offset). On the trip the grids swap roles in the
+  same frame and the area left behind stays loaded for the way back. Portal cameras clear to the main camera's colour.
+- Checked: EditMode 54/54 (new FarLinksJoinDistantDistricts; the pair test now skips far holes). Play Mode, seed 1234:
+  hole (111.0,0.4,75.7) -> (252.6,0.4,271.3); site loaded and lit, window live; recorded crawl: frame difference at the
+  trip 1.22 vs camcorder noise 1.18; 40 chunks streamed in over ~2 s after arrival; the way back loaded and lit.
+- Open: ~10 frames of 31-37 ms (editor) when entering the duct opening (portal shadow maps + real-light handover at the
+  far end; a near hole showed a similar hitch). The editor crashed once on leaving Play Mode inside the Steam Audio
+  plugin (phonon, audio thread) - unrelated to this change, but a candidate for the player's quit crash with depth
+  priming. A Poolrooms zone itself (generator, lighting) does not exist yet; FarLinks only routes to the ordinary world.
+
 ## 2026-10-25 22:10  Claude Code  Backrooms/Lit builds in minutes, duct lit like its rooms, AO in portal views, no black windows
 - Shader variants: Backrooms/Lit's forward pass declares only keywords the game turns on (recorded in Play Mode: 24
   variants in a benchmark run); Forward+ and light layers are defines; main-light shadows, per-vertex lights, SH modes,

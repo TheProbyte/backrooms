@@ -44,11 +44,36 @@ namespace Backrooms.Generation
             if (L.storey != 0 || set == null) return;
             float want = Mathf.Max(0f, set.crawlPortals);
             int pairs = Mathf.FloorToInt(want) + (rng.NextDouble() < want - Mathf.Floor(want) ? 1 : 0);
-            if (pairs <= 0) return;
+            bool far = FarLinks.PartnerOf(set, L.coord, out var farDistrict);
+            if (pairs <= 0 && !far) return;
 
             var candidates = Candidates(L);
-            if (candidates.Count < 2) return;
             var used = new HashSet<Vector2Int>();
+            PlacePairs(L, candidates, used, pairs, rng);
+            if (far) PlaceFar(L, candidates, used, farDistrict);
+        }
+
+        /// <summary>
+        /// The district's end of a far link (see FarLinks): one hole on a free candidate wall, chosen from its own random
+        /// stream (so the ordinary pairs are unchanged). Its partner is the other district's far hole, found when a chunk is
+        /// cut from the plan; a link whose other end could not be placed is dropped there.
+        /// </summary>
+        static void PlaceFar(OfficeLayout L, List<(Vector2Int cell, int side)> candidates, HashSet<Vector2Int> used, Vector2Int partnerDistrict)
+        {
+            var rng = new System.Random(unchecked(L.coord.x * 73856093 ^ L.coord.y * 19349663 ^ 0x5FA2));
+            var free = new List<(Vector2Int cell, int side)>();
+            foreach (var c in candidates) if (!used.Contains(c.cell) && !used.Contains(c.cell + Step(c.side))) free.Add(c);
+            if (free.Count == 0) return;
+            var a = free[rng.Next(free.Count)];
+            Frame(L.coord, a.cell, a.side, L.BaseY, out var pa, out var na);
+            L.portals.Add(new CrawlPortal { cell = a.cell, side = a.side, position = pa, normal = na, partnerPosition = pa, partnerNormal = na,
+                                            far = true, partnerDistrict = partnerDistrict, id = WorldGenerator.PropId(L.coord, L.storey, 0xFF00) });
+            used.Add(a.cell); used.Add(a.cell + Step(a.side));
+        }
+
+        static void PlacePairs(OfficeLayout L, List<(Vector2Int cell, int side)> candidates, HashSet<Vector2Int> used, int pairs, System.Random rng)
+        {
+            if (pairs <= 0 || candidates.Count < 2) return;
             for (int p = 0; p < pairs; p++)
             {
                 bool done = false;

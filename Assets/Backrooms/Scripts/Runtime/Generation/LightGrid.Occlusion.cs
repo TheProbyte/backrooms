@@ -96,10 +96,15 @@ namespace Backrooms.Generation
             }
             _occludersValid = true;
             var info = new Vector4(T * TileTexels, Tiles, count, contactOcclusion);
-            Shader.SetGlobalBuffer("_LocalOccBoxes", _occluders); Shader.SetGlobalBuffer("_LocalOccTiles", _occluderTiles); Shader.SetGlobalBuffer("_LocalOccIndices", _occluderIndices);
-            Shader.SetGlobalVector("_LocalOccInfo", info);
+            if (bindGlobals) BindOccluderGlobals();
             compute.SetBuffer(_kBounceSrc, "_LocalOccBoxes", _occluders); compute.SetBuffer(_kBounceSrc, "_LocalOccTiles", _occluderTiles); compute.SetBuffer(_kBounceSrc, "_LocalOccIndices", _occluderIndices);
             compute.SetVector("_LocalOccInfo", info);
+        }
+        void BindOccluderGlobals()
+        {
+            if (_occluders == null) return;
+            Shader.SetGlobalBuffer("_LocalOccBoxes", _occluders); Shader.SetGlobalBuffer("_LocalOccTiles", _occluderTiles); Shader.SetGlobalBuffer("_LocalOccIndices", _occluderIndices);
+            Shader.SetGlobalVector("_LocalOccInfo", new Vector4(T * TileTexels, Tiles, OccluderCount, contactOcclusion));
         }
     }
 }

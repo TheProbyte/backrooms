@@ -322,8 +322,9 @@ namespace Backrooms.Tests
             for (int dz = -1; dz <= 1; dz++)
             {
                 var plan = gen.District(new Vector3Int(dx, 0, dz));
-                Assert.AreEqual(0, plan.portals.Count % 2, "holes come in pairs");
-                foreach (var p in plan.portals)
+                var local = plan.portals.FindAll(p => !p.far);           // far links are checked in FarLinksJoinDistantDistricts
+                Assert.AreEqual(0, local.Count % 2, "holes come in pairs");
+                foreach (var p in local)
                 {
                     found++;
                     Assert.AreEqual(EdgeKind.Wall, plan.EdgeOf(p.cell.x, p.cell.y, p.side), "a hole is cut into a solid wall");
@@ -333,6 +334,33 @@ namespace Backrooms.Tests
                 }
             }
             Assert.Greater(found, 0, "no crawl holes near the origin");
+        }
+
+        [Test]
+        public void FarLinksJoinDistantDistricts()
+        {
+            var set = WorldGenSettings.Defaults();
+            var gen = new WorldGenerator(1234, set);
+            Assert.IsTrue(FarLinks.PartnerOf(set, new Vector2Int(1, 1), out var b), "the lattice links district (1, 1)");
+            Assert.IsTrue(FarLinks.PartnerOf(set, b, out var back) && back == new Vector2Int(1, 1), "links are symmetric");
+            CrawlPortal FarHole(Vector2Int district)
+            {
+                for (int x = 0; x < WorldGenSettings.DistrictChunks; x++)
+                for (int z = 0; z < WorldGenSettings.DistrictChunks; z++)
+                    foreach (var p in gen.Chunk(new Vector2Int(district.x * WorldGenSettings.DistrictChunks + x, district.y * WorldGenSettings.DistrictChunks + z)).portals)
+                        if (p.far) return p;
+                Assert.Fail("no far hole in district " + district);
+                return default;
+            }
+            var a = FarHole(new Vector2Int(1, 1));
+            var far = FarHole(b);
+            Assert.AreEqual(a.position, far.partnerPosition, "each end leads to the other");
+            Assert.AreEqual(far.position, a.partnerPosition);
+            Assert.AreEqual(a.normal, far.partnerNormal);
+            Assert.Greater(Vector3.Distance(a.position, a.partnerPosition), 4 * OfficeBiome.ChunkSize * 2f, "well outside the load radius");
+            // The uncached build path resolves the same partner.
+            var chunk = WorldStreamer.ChunkOf(a.position);
+            Assert.IsTrue(gen.Build(chunk).portals.Exists(p => p.far && p.partnerPosition == a.partnerPosition));
         }
 
         [Test]
