@@ -145,8 +145,68 @@ namespace Backrooms.Camcorder
 
         public static readonly string[] PresetNames = { "Default", "Hi8 '98", "MiniDV '04", "Low light gain", "Clean", "VHS '96", "Found footage", "Reference Match" };
 
+        // Saved presets. The built-in values below are only the starting point: SET AS DEFAULT stores the current settings
+        // as the preset in use. In the editor that goes into the project (Resources/CamcorderPresets.json, so it ships with
+        // the game); in a built game, into that player's PlayerPrefs (which then win over the project's).
+        [Serializable] class PresetEntry { public string name; public CamcorderSettings settings; }
+        [Serializable] class PresetFile { public System.Collections.Generic.List<PresetEntry> presets = new System.Collections.Generic.List<PresetEntry>(); }
+        const string PresetResource = "CamcorderPresets", PresetFilePath = "Assets/Backrooms/Resources/CamcorderPresets.json";
+        const string CurrentPresetKey = "Backrooms.CamcorderSettings.Preset", PlayerPresetKey = "Backrooms.CamcorderPreset.";
+        static PresetFile s_presetFile;
+
+        /// <summary>The preset last chosen (what SET AS DEFAULT saves into).</summary>
+        public static int CurrentPreset
+        {
+            get => Mathf.Clamp(PlayerPrefs.GetInt(CurrentPresetKey, 0), 0, PresetNames.Length - 1);
+            set { PlayerPrefs.SetInt(CurrentPresetKey, Mathf.Clamp(value, 0, PresetNames.Length - 1)); PlayerPrefs.Save(); }
+        }
+
+        static PresetFile Presets()
+        {
+            if (s_presetFile != null) return s_presetFile;
+            s_presetFile = new PresetFile();
+            var ta = Resources.Load<TextAsset>(PresetResource);
+            if (ta)
+            {
+                try { s_presetFile = JsonUtility.FromJson<PresetFile>(ta.text) ?? new PresetFile(); }
+                catch (Exception e) { Debug.LogWarning("[Backrooms] Could not read the camcorder presets: " + e.Message); }
+            }
+            return s_presetFile;
+        }
+
+        /// <summary>The saved values of a preset (the player's, then the project's), or null if it only has the built-in ones.</summary>
+        static CamcorderSettings Saved(int index)
+        {
+            string name = PresetNames[index];
+#if !UNITY_EDITOR
+            string json = PlayerPrefs.GetString(PlayerPresetKey + name, "");
+            if (!string.IsNullOrEmpty(json)) { try { return JsonUtility.FromJson<CamcorderSettings>(json); } catch (Exception) { } }
+#endif
+            foreach (var e in Presets().presets) if (e.name == name && e.settings != null) return e.settings.Clone();
+            return null;
+        }
+
+        /// <summary>Stores settings as a preset's values (see above for where).</summary>
+        public static void SavePreset(int index, CamcorderSettings settings)
+        {
+            index = Mathf.Clamp(index, 0, PresetNames.Length - 1);
+            string name = PresetNames[index];
+#if UNITY_EDITOR
+            var file = Presets();
+            file.presets.RemoveAll(e => e.name == name);
+            file.presets.Add(new PresetEntry { name = name, settings = settings.Clone() });
+            System.IO.File.WriteAllText(PresetFilePath, JsonUtility.ToJson(file, true));
+            UnityEditor.AssetDatabase.ImportAsset(PresetFilePath);
+#else
+            PlayerPrefs.SetString(PlayerPresetKey + name, JsonUtility.ToJson(settings));
+            PlayerPrefs.Save();
+#endif
+        }
+
         public static CamcorderSettings Preset(int index)
         {
+            var saved = Saved(index);
+            if (saved != null) return saved;
             var s = new CamcorderSettings();
             if (index == 0) return UserDefault();
             switch (index)

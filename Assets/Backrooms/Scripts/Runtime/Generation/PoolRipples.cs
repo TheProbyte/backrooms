@@ -80,6 +80,9 @@ namespace Backrooms.Generation
             _wasIn = inWater;
 
             _acc = Mathf.Min(_acc + Time.deltaTime, 4f / 60f);
+            // A move of the window must reach the simulation this frame (the drawing uses the new origin now), or the
+            // waves would jump by the shift and seem to start somewhere else.
+            if (shift != Vector2Int.zero && _acc < 1f / 60f) _acc = 1f / 60f;
             bool first = true;
             while (_acc >= 1f / 60f)
             {

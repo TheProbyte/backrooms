@@ -43,7 +43,7 @@ namespace Backrooms.Interaction
         {
             { "Skin", new Color(0.78f, 0.52f, 0.40f) }, { "WatchStrap", new Color(0.30f, 0.32f, 0.27f) },
             { "WatchCase", new Color(0.75f, 0.74f, 0.70f) }, { "WatchFace", new Color(0.02f, 0.02f, 0.025f) },
-            { "Ring", new Color(0.12f, 0.12f, 0.12f) }, { "Shirt", new Color(0.10f, 0.10f, 0.11f) },
+            { "Ring", new Color(0.12f, 0.12f, 0.12f) }, { "Nail", new Color(0.86f, 0.66f, 0.6f) }, { "Shirt", new Color(0.10f, 0.10f, 0.11f) },
             { "Pants", new Color(0.025f, 0.025f, 0.03f) }, { "Shoes", new Color(0.03f, 0.03f, 0.035f) }, { "Sole", new Color(0.06f, 0.06f, 0.06f) },
         };
         readonly Dictionary<string, Material> _mats = new Dictionary<string, Material>();
@@ -111,13 +111,17 @@ namespace Backrooms.Interaction
                         m.SetColor("_BaseColor", c);
                         bool metal = key == "WatchCase" || key == "Ring";
                         m.SetFloat("_Metallic", metal ? 0.8f : 0f);
-                        m.SetFloat("_Smoothness", key == "WatchFace" ? 0.8f : metal ? 0.6f : key == "Skin" ? 0.4f : 0.15f);
+                        m.SetFloat("_Smoothness", key == "WatchFace" ? 0.8f : metal ? 0.6f : key == "Skin" ? 0.4f : key == "Nail" ? 0.55f : 0.15f);
+                        ItemModels.AddDetail(m, key);
                         _mats[key] = m;
                     }
                     mats[i] = m;
                 }
                 r.sharedMaterials = mats;
                 r.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
+                // Skinned (Tools/Blender/make_player_rig.py): bounds follow the pose, or a reaching arm or a squat
+                // would be culled while on screen (its imported bounds fit only the rest pose).
+                if (r is SkinnedMeshRenderer sk) { sk.updateWhenOffscreen = true; sk.quality = SkinQuality.Bone4; }
                 r.lightProbeUsage = LightProbeUsage.Off;
                 r.reflectionProbeUsage = ReflectionProbeUsage.Off;
             }
@@ -168,13 +172,23 @@ namespace Backrooms.Interaction
             // Finger joints bend toward the palm. (Checked numerically: rotating about back x fingers moves
             // the fingertips to the palm side.)
             Vector3 bendW = Vector3.Cross(backW, fingersW).normalized;
+            // The thumb folds across the palm (toward the index finger's base and the palm side), not about the
+            // fingers' axis: about that it would swing back toward the wrist in a fist.
+            Vector3 thumbBendW = bendW;
+            if (thumb1 && thumb2)
+            {
+                Vector3 thumbDir = (thumb2.position - thumb1.position).normalized;
+                Vector3 across = (-sideW * 0.75f - backW * 0.55f + fingersW * 0.25f).normalized;
+                Vector3 ax = Vector3.Cross(thumbDir, across);
+                if (ax.sqrMagnitude > 1e-6f) thumbBendW = ax.normalized;
+            }
             foreach (var name in new[] { "Index", "Middle", "Ring", "Pinky", "Thumb" })
                 for (int i = 1; i <= 3; i++)
                 {
                     var t = Find(_arm, name + i);
                     if (!t) continue;
                     float w = name == "Thumb" ? (i == 1 ? 0.2f : 0.5f) : i == 1 ? 1f : i == 2 ? 1.25f : 0.8f;
-                    _fingerJoints.Add((t, t.localRotation, t.InverseTransformDirection(bendW), w, name));
+                    _fingerJoints.Add((t, t.localRotation, t.InverseTransformDirection(name == "Thumb" ? thumbBendW : bendW), w, name));
                 }
         }
 

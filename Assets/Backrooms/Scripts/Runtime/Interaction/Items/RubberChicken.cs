@@ -4,8 +4,9 @@ using UnityEngine;
 namespace Backrooms.Interaction
 {
     /// <summary>
-    /// A rubber chicken. Hold the left mouse button to squeeze it: it squawks and its body squashes (the model's
-    /// "Squeeze" shape); let go and it wheezes as the air goes back in. Throw it (Q) and it squeaks when it lands hard.
+    /// A rubber chicken. Hold the left mouse button to squeeze it: its body squashes (the model's "Squeeze" shape) as it
+    /// draws air in with a wheeze; let go and it lets the air out in a squawk, longer and louder the longer it was
+    /// squeezed. Throw it (hold Q) and it squeaks when it lands hard.
     /// Model: Resources/Items/RubberChicken.fbx (origin at the body, head forward).
     /// </summary>
     public class RubberChicken : WorldItem
@@ -45,31 +46,41 @@ namespace Backrooms.Interaction
             Body.angularDamping = 1.2f;
         }
 
+        float _squeezedAt, _squawkEnd = -1f;
+
         public override void HoldUpdate(in HoldInput i)
         {
-            if (i.pressed) Squeeze(1f);
+            if (i.pressed) Squeeze();
             if (i.released || (!i.use && _squeezing)) Release();
-            _squeeze = Mathf.MoveTowards(_squeeze, _squeezing ? 1f : 0f, i.dt * (_squeezing ? 14f : 6f));
+            _squeeze = Mathf.MoveTowards(_squeeze, _squeezing ? 1f : 0f, i.dt * (_squeezing ? 5f : 14f));
             Shape();
         }
 
-        void Squeeze(float loudness)
+        /// <summary>Squeezing: it draws air in with a wheeze while the body squashes.</summary>
+        void Squeeze()
         {
             _squeezing = true;
+            _squeezedAt = Time.time; _squawkEnd = -1f;
             _variant = Random.Range(0, 3);
-            _voice.pitch = Random.Range(0.94f, 1.08f);
-            _voice.clip = SoundBank.ChickenSqueeze(_variant);
-            _voice.volume = 0.9f * loudness;
+            _voice.pitch = Random.Range(0.95f, 1.06f);
+            _voice.clip = SoundBank.ChickenRelease(_variant);
+            _voice.volume = 0.55f;
             _voice.Play();
         }
 
+        /// <summary>Letting go: the air comes out in a squawk, as long and loud as the squeeze filled it.</summary>
         void Release()
         {
             if (!_squeezing) return;
             _squeezing = false;
             _voice.Stop();
-            _fx.pitch = Random.Range(0.95f, 1.06f);
-            _fx.PlayOneShot(SoundBank.ChickenRelease(_variant), 0.6f);
+            float air = Mathf.Clamp01((Time.time - _squeezedAt) / 0.45f) * 0.75f + 0.25f;
+            _voice.clip = SoundBank.ChickenSqueeze(_variant);
+            _voice.pitch = Random.Range(0.94f, 1.08f) * Mathf.Lerp(1.12f, 0.96f, air);
+            _voice.volume = 0.95f * air;
+            _voice.time = 0f;
+            _voice.Play();
+            _squawkEnd = Time.time + 0.12f + 0.68f * air;          // a short squeeze, a short squeak (faded out in Update)
         }
 
         void Shape()
@@ -79,6 +90,11 @@ namespace Backrooms.Interaction
 
         void Update()
         {
+            if (_squawkEnd > 0f && Time.time > _squawkEnd)
+            {
+                _voice.volume = Mathf.MoveTowards(_voice.volume, 0f, Time.deltaTime * 14f);
+                if (_voice.volume <= 0f) { _voice.Stop(); _squawkEnd = -1f; }
+            }
             if (Held) return;
             // Lying about: let go of any squeeze.
             if (_squeezing) Release();

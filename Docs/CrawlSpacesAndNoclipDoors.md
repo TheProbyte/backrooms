@@ -24,7 +24,11 @@ ceiling needs neither.
 - Its room covers a footprint of 2-3 x 2-3 cells, starting at the vent's cell and running away from the wall, inside
   the same chunk.
 - Every room under the footprint must be ordinary.
-- The room's floor is 0.4 m above the highest ceiling under it, and the room is 2.3 m high inside.
+- The room's floor is 0.4 m above the highest ceiling under it, and the room is 2.3 m high inside. "Under it" includes
+  the up to 3 cells behind the hole, which the room's own duct runs over: a taller ceiling there would put its collider
+  across the duct and catch a crawling player.
+- The duct is 1.9 m long, so it ends inside those cells with room to spare before their far wall (with 2.2 m, a wall
+  right there could stop the crawling player before the eye reached the crossing point).
 - Its vent is in its back wall, straight above the hole.
 - Footprints and ducts never overlap.
 - There are as many vents as the old pairs had holes: 2 x `crawlPortals` (3) per district.

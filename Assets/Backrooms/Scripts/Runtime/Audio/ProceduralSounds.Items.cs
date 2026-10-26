@@ -117,6 +117,25 @@ namespace Backrooms.Audio
             return Clip(into ? "PlugIn" : "PlugOut", d, 1);
         }
 
+        /// <summary>A plug yanked out by its cord: a hard pop, the cord snapping taut, prongs scraping.</summary>
+        public static AudioClip CordYank()
+        {
+            int n = (int)(Rate * 0.32f);
+            var d = new float[n];
+            var rng = new System.Random(5151);
+            var pop = Biquad.LowPass(300f); var snap = Biquad.BandPass(1800f, 1.2f); var scrape = Biquad.BandPass(3600f, 2f);
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate, x = White(rng);
+                d[i] = pop.Run(x) * Mathf.Exp(-t * 35f) * 5f
+                     + snap.Run(x) * Mathf.Exp(-t * 60f) * 2.2f
+                     + (t < 0.05f ? scrape.Run(x) * 0.8f : 0f)
+                     + Mathf.Sin(t * 2f * Mathf.PI * 95f) * Mathf.Exp(-t * 18f) * 0.5f;
+            }
+            Normalize(d, 0.8f);
+            return Clip("CordYank", d, 1);
+        }
+
         /// <summary>A cord whipping back into a coil: a swish and a slap.</summary>
         public static AudioClip CordWhip()
         {

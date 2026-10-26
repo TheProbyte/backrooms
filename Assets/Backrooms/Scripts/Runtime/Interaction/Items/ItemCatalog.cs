@@ -128,6 +128,7 @@ namespace Backrooms.Interaction
             var root = new GameObject(prefab.name);
             root.transform.SetPositionAndRotation(p, r);
             var go = UnityEngine.Object.Instantiate(prefab, root.transform, false);
+            MaterialMaps.Apply(go);
             go.transform.localRotation = prefab.transform.localRotation;
             foreach (var c in go.GetComponentsInChildren<Collider>()) c.enabled = false;
             if (box != Vector3.zero) { var bc = root.AddComponent<BoxCollider>(); bc.size = box; bc.center = Vector3.up * box.y * 0.5f; }

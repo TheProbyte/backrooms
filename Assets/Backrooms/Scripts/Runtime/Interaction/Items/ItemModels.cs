@@ -25,6 +25,7 @@ namespace Backrooms.Interaction
             float metal = 0f, smooth = 0.35f;
             string s = slot.ToLowerInvariant();
             if (s.Contains("metal") || s.Contains("prong")) { metal = 0.9f; smooth = 0.65f; }
+            else if (s.Contains("plate")) smooth = 0.55f;                         // wall plates: smooth moulded plastic
             else if (s.Contains("plug") || s.Contains("cord") || s.Contains("socket") || s.Contains("switch")) smooth = 0.55f;
             else if (s.Contains("chicken")) smooth = 0.6f;                         // rubber
             else if (s.Contains("chalk") || s.Contains("core") || s.Contains("bag") || s.Contains("fabric")) smooth = 0.08f;
@@ -34,8 +35,39 @@ namespace Backrooms.Interaction
             m.SetColor("_BaseColor", c);
             if (m.HasProperty("_Color")) m.SetColor("_Color", c);
             m.SetFloat("_Metallic", metal); m.SetFloat("_Smoothness", smooth);
+            AddDetail(m, slot);
             s_mats[slot] = m;
             return m;
+        }
+
+        static readonly System.Collections.Generic.Dictionary<string, Texture2D> s_detail = new System.Collections.Generic.Dictionary<string, Texture2D>();
+
+        /// <summary>
+        /// A fine surface normal map for an item material, by what the slot is made of (moulded plastic, brushed or painted
+        /// metal, rubber, fabric, chalk, crepe tape, cardboard, skin). The item models' UVs are 1 unit per 0.25 m, the
+        /// maps' repeat, so the grain is the same size on every item. Uses the shader's existing _NORMALMAP variant.
+        /// </summary>
+        public static void AddDetail(Material m, string slot)
+        {
+            if (!m || !m.HasProperty("_BumpMap")) return;
+            string s = slot.ToLowerInvariant();
+            string kind; float strength;
+            if (s.Contains("bulb") || s.Contains("globe") || s.Contains("eye") || s.Contains("watchface")) return;
+            else if (s.Contains("chalk")) { kind = "Chalk"; strength = 0.8f; }
+            else if (s.Contains("plate")) { kind = "Plastic"; strength = 0.12f; }
+            else if (s.Contains("core") || s.Contains("cardboard")) { kind = "Cardboard"; strength = 0.6f; }
+            else if (s.Contains("tape")) { kind = "Tape"; strength = 0.6f; }
+            else if (s.Contains("chicken")) { kind = "Rubber"; strength = 0.6f; }
+            else if (s.Contains("bag") || s.Contains("fabric") || s.Contains("shirt") || s.Contains("pants") || s.Contains("strap")) { kind = "Fabric"; strength = 0.6f; }
+            else if (s.Contains("skin")) { kind = "Skin"; strength = 0.35f; }
+            else if (s.Contains("canmetal") || s.Contains("plugmetal") || s.Contains("lanternmetal") || s.Contains("watchcase") || s.Contains("screw") || s.Contains("ring")) { kind = "MetalBrushed"; strength = 0.5f; }
+            else if (s.Contains("lampbody") || s.Contains("shelf") || s.Contains("shade")) { kind = "PaintedMetal"; strength = 0.55f; }
+            else { kind = "Plastic"; strength = 0.45f; }
+            if (!s_detail.TryGetValue(kind, out var tex)) { tex = Resources.Load<Texture2D>("Textures/Generated/Detail_" + kind + "_Normal"); s_detail[kind] = tex; }
+            if (!tex) return;
+            m.SetTexture("_BumpMap", tex);
+            m.SetFloat("_BumpScale", strength);
+            m.EnableKeyword("_NORMALMAP");
         }
 
         static Color Fallback(string slot)

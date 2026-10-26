@@ -7,7 +7,8 @@ namespace Backrooms.Interaction
     /// <summary>
     /// A flexible electrical cord between two items (a lamp and its plug; an extension cord's plug and its box): a chain of
     /// particles every ~12 cm with gravity, length constraints and collisions with the world (verlet), drawn as a round
-    /// tube. It has a fixed length:
+    /// tube. A particle only ever moves by sweeping from its last free position, so the cord cannot pass through floors or
+    /// walls; a span that cuts through a corner pushes its particles back out. It has a fixed length:
     ///  - pulled taut with a plugged end, the plug pops out of its socket;
     ///  - pulled taut by a held end, the other end is dragged along (it is a physics object lying in the world).
     /// Sleeps (no simulation) once it has settled and its ends stay still.
@@ -20,7 +21,7 @@ namespace Backrooms.Interaction
         public float radius = 0.003f;
         public System.Action<Cord> onTaut;     // pulled past its length with neither end able to give (owner decides)
 
-        Vector3[] _p, _prev;
+        Vector3[] _p, _prev, _valid;
         int _n;
         float _seg, _sleepT;
         bool _asleep;
@@ -45,7 +46,7 @@ namespace Backrooms.Interaction
             go.AddComponent<MeshFilter>();
             var r = go.AddComponent<MeshRenderer>();
             r.sharedMaterial = material;
-            r.shadowCastingMode = ShadowCastingMode.On;
+            r.shadowCastingMode = ShadowCastingMode.Off;      // a few millimetres thick: too thin for the fixtures' shadow maps
             ItemModels.Prepare(r);
             c.Lay();
             Generation.PoolLitSwitch.Attach(go);
@@ -57,13 +58,21 @@ namespace Backrooms.Interaction
         {
             _n = Mathf.Max(4, Mathf.CeilToInt(length / 0.12f) + 1);
             _seg = length / (_n - 1);
-            _p = new Vector3[_n]; _prev = new Vector3[_n];
+            _p = new Vector3[_n]; _prev = new Vector3[_n]; _valid = new Vector3[_n];
             Vector3 a = A, b = B;
             float slack = Mathf.Max(0f, length - Vector3.Distance(a, b));
             for (int i = 0; i < _n; i++)
             {
                 float t = i / (float)(_n - 1);
-                _p[i] = _prev[i] = Vector3.Lerp(a, b, t) + Vector3.down * (Mathf.Sin(t * Mathf.PI) * slack * 0.35f);
+                _p[i] = _prev[i] = Vector3.Lerp(a, b, t);
+                _valid[i] = _p[i];
+            }
+            // The slack hangs down, but only as far as there is room.
+            for (int i = 1; i < _n - 1; i++)
+            {
+                float t = i / (float)(_n - 1);
+                _p[i] = _prev[i] = Sweep(_valid[i], _valid[i] + Vector3.down * (Mathf.Sin(t * Mathf.PI) * slack * 0.35f), out _);
+                _valid[i] = _p[i];
             }
             Wake();
         }
@@ -100,7 +109,10 @@ namespace Backrooms.Interaction
             var plugA = endA as Plug; var plugB = endB as Plug;
             if ((plugA && plugA.Plugged && !aHeld && (bHeld || d > length * 1.15f)) || (plugB && plugB.Plugged && !bHeld && (aHeld || d > length * 1.15f)))
             {
-                (plugA && plugA.Plugged ? plugA : plugB).Unplug(true);
+                var plug = plugA && plugA.Plugged ? plugA : plugB;
+                var other = plug == plugA ? endB : endA;
+                plug.Unplug(true);
+                if (other.Held) Yank(plug, other);
                 return;
             }
             WorldItem free = aHeld && !bHeld ? endB : bHeld && !aHeld ? endA : null;
@@ -117,11 +129,110 @@ namespace Backrooms.Interaction
             else if (!free && d > length * 1.02f) onTaut?.Invoke(this);
         }
 
+        /// <summary>Walked off with the far end in hand: the plug tears out with a snap, flies after the cord, and the hand
+        /// (and the camcorder with it) is jerked back.</summary>
+        static void Yank(Plug plug, WorldItem held)
+        {
+            Vector3 toward = held.transform.position - plug.transform.position;
+            plug.Body.linearVelocity = toward.normalized * 3.2f + Vector3.up * 1.4f;
+            AudioSource.PlayClipAtPoint(Audio.SoundBank.CordYank, held.transform.position, 1f);
+            var shake = FindAnyObjectByType<HandheldCameraShake>();
+            var cam = Camera.main;
+            if (shake && cam)
+            {
+                float side = Vector3.Dot(-toward.normalized, cam.transform.right) >= 0f ? 1f : -1f;
+                shake.Jolt(new Vector3(28f, 18f * side, -14f * side));
+            }
+        }
+
         bool Ignored(Collider c)
         {
             if (c.isTrigger || c.GetComponent<CharacterController>()) return true;
             var t = c.transform;
             return (endA && t.IsChildOf(endA.transform)) || (endB && t.IsChildOf(endB.transform));
+        }
+
+        const float Skin = 0.0015f;
+
+        /// <summary>Moves a particle from a free position toward a wanted one, stopping just short of anything solid.</summary>
+        Vector3 Sweep(Vector3 from, Vector3 to, out RaycastHit hitInfo)
+        {
+            hitInfo = default;
+            Vector3 delta = to - from;
+            float dist = delta.magnitude;
+            if (dist < 1e-6f) return to;
+            Vector3 dir = delta / dist;
+            int hits = Physics.SphereCastNonAlloc(from, radius, dir, _hits, dist + Skin, ~0, QueryTriggerInteraction.Ignore);
+            float best = float.MaxValue; int bi = -1;
+            for (int h = 0; h < hits; h++)
+            {
+                if (Ignored(_hits[h].collider)) continue;
+                if (_hits[h].distance <= 0f && _hits[h].point == Vector3.zero)
+                {
+                    // Already touching at the start: only motion away from that surface is allowed.
+                    if (Physics.ComputePenetration(_ball(from), from, Quaternion.identity, _hits[h].collider, _hits[h].collider.transform.position, _hits[h].collider.transform.rotation, out var sepDir, out _)
+                        && Vector3.Dot(sepDir, dir) < 0f) { best = 0f; bi = h; }
+                    continue;
+                }
+                if (_hits[h].distance < best) { best = _hits[h].distance; bi = h; }
+            }
+            if (bi < 0) return to;
+            hitInfo = _hits[bi];
+            return from + dir * Mathf.Max(0f, best - Skin);
+        }
+
+        SphereCollider _probe;
+        /// <summary>A disabled sphere the size of the cord, for overlap tests.</summary>
+        SphereCollider _ball(Vector3 at)
+        {
+            if (!_probe)
+            {
+                var go = new GameObject("CordProbe") { hideFlags = HideFlags.HideAndDontSave };
+                go.transform.SetParent(transform, false);
+                _probe = go.AddComponent<SphereCollider>();
+                _probe.enabled = false;
+            }
+            _probe.radius = radius;
+            return _probe;
+        }
+
+        /// <summary>Every particle that moved: swept from its last free position (sliding on whatever stopped it).</summary>
+        void Collide()
+        {
+            for (int i = 1; i < _n - 1; i++)
+            {
+                if ((_p[i] - _valid[i]).sqrMagnitude < 1e-12f) continue;
+                Vector3 want = _p[i];
+                Vector3 got = Sweep(_valid[i], want, out var hit);
+                if (got != want && hit.collider)
+                {
+                    // Slide along the surface with what is left of the move.
+                    Vector3 rest = Vector3.ProjectOnPlane(want - got, hit.normal);
+                    got = Sweep(got, got + rest, out _);
+                    _prev[i] = Vector3.Lerp(_prev[i], got, 0.6f);            // friction
+                }
+                _p[i] = got; _valid[i] = got;
+            }
+        }
+
+        /// <summary>A span between two particles that cuts through something (around a corner): push its free ends back out.</summary>
+        void Spans()
+        {
+            for (int i = 0; i < _n - 1; i++)
+            {
+                Vector3 a = _p[i], d = _p[i + 1] - a;
+                float len = d.magnitude;
+                if (len < 1e-4f) continue;
+                int hits = Physics.RaycastNonAlloc(a, d / len, _hits, len, ~0, QueryTriggerInteraction.Ignore);
+                for (int h = 0; h < hits; h++)
+                {
+                    if (Ignored(_hits[h].collider) || _hits[h].distance <= 0f) continue;
+                    Vector3 push = _hits[h].normal * (radius * 2f + 0.004f);
+                    if (i > 0) { var p = Sweep(_valid[i], _valid[i] + push, out _); _p[i] = _valid[i] = p; }
+                    if (i + 1 < _n - 1) { var p = Sweep(_valid[i + 1], _valid[i + 1] + push, out _); _p[i + 1] = _valid[i + 1] = p; }
+                    break;
+                }
+            }
         }
 
         float Step(Vector3 a, Vector3 b, float dt)
@@ -137,8 +248,10 @@ namespace Backrooms.Interaction
                 _p[i] += v + g;
             }
             _p[0] = a; _p[_n - 1] = b;
+            _valid[0] = a; _valid[_n - 1] = b;
             for (int it = 0; it < 12; it++)
             {
+                if (it % 4 == 0) Collide();
                 for (int i = 0; i < _n - 1; i++)
                 {
                     Vector3 d = _p[i + 1] - _p[i];
@@ -153,28 +266,9 @@ namespace Backrooms.Interaction
                     else { _p[i] += d * (diff * 0.5f); _p[i + 1] -= d * (diff * 0.5f); }
                 }
             }
-            // Collisions: sweep each particle from where it was to where it went.
-            for (int i = 1; i < _n - 1; i++)
-            {
-                Vector3 from = before[i], delta = _p[i] - from;
-                float dist = delta.magnitude;
-                if (dist < 1e-5f) continue;
-                int hits = Physics.SphereCastNonAlloc(from, radius, delta / dist, _hits, dist, ~0, QueryTriggerInteraction.Ignore);
-                float best = float.MaxValue; int bi = -1;
-                for (int h = 0; h < hits; h++)
-                {
-                    if (Ignored(_hits[h].collider)) continue;
-                    if (_hits[h].distance == 0f && _hits[h].point == Vector3.zero) continue;   // started inside: let the constraints free it
-                    if (_hits[h].distance < best) { best = _hits[h].distance; bi = h; }
-                }
-                if (bi >= 0)
-                {
-                    var hit = _hits[bi];
-                    _p[i] = from + delta / dist * Mathf.Max(0f, hit.distance - 0.0005f);
-                    _prev[i] = Vector3.Lerp(_prev[i], _p[i], 0.7f);              // friction against the surface
-                }
-                moved = Mathf.Max(moved, (_p[i] - before[i]).magnitude);
-            }
+            Collide();
+            Spans();
+            for (int i = 1; i < _n - 1; i++) moved = Mathf.Max(moved, (_p[i] - before[i]).magnitude);
             return moved / Mathf.Max(dt, 1e-4f) * 0.016f;
         }
 

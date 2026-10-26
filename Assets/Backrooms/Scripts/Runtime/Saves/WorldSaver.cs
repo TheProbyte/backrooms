@@ -162,7 +162,9 @@ namespace Backrooms.Saves
                 if (spawned[i] is CordBox box && data[i].amount > 0.5f) box.Deploy(null, data[i].plugPosition);
             for (int i = 0; i < data.Count && i < spawned.Count; i++)
             {
-                if (!(spawned[i] is PowerUser user) || !user.Plug || !data[i].hasPlug) continue;
+                if (!(spawned[i] is PowerUser user) || !data[i].hasPlug) continue;
+                user.Unbundle();                       // a lamp's cord was out
+                if (!user.Plug) continue;
                 var plug = user.Plug;
                 var rb = plug.Body;
                 rb.position = data[i].plugPosition; rb.rotation = data[i].plugRotation;

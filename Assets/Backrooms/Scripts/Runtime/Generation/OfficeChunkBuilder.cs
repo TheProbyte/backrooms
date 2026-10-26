@@ -105,6 +105,7 @@ namespace Backrooms.Generation
 
         MeshWriter WMask(Material m, uint mask)
         {
+            m = MaterialMaps.For(m);                  // its copy with a normal map, if it has one
             if (!_writers.TryGetValue((m, mask), out var w))
             {
                 w = new MeshWriter { worldOffset = _origin };
@@ -208,7 +209,8 @@ namespace Backrooms.Generation
                 bool architecture = mat == _a.wallpaper || mat == _a.paintedWall || mat == _a.referenceCream || mat == _a.referenceOlive || mat == _a.baseboard || mat == _a.halfWallCap;
                 bool caster = !architecture && mat != _a.lensOn && mat != _a.lensOff && mat != _a.ceilingGrid && mat != _a.carpet && mat != _a.ceilingTile && mat != _a.lampShadeOn
                               && mat != _a.domeOn && mat != _a.domeOff && mat != _a.ceilingPlaster && mat != _a.stripOn && mat != _a.stripOff
-                              && mat != _a.referenceCarpet && mat != _a.cardboard && mat != _a.boxTape && mat != _a.boxPrint && mat != _a.rackUpright && mat != _a.rackBeam && mat != _a.pallet;   // warehouse dressing: proxies cast the shadows
+                              && mat != _a.referenceCarpet && mat != _a.cardboard && mat != _a.boxTape && mat != _a.boxPrint && mat != _a.rackUpright && mat != _a.rackBeam && mat != _a.pallet
+                              && !WallPlateModels.IsPlate(mat);   // warehouse dressing: proxies cast the shadows
                 r.shadowCastingMode = mask == ProxyMask || mask == WallProxyMask ? ShadowCastingMode.ShadowsOnly : caster ? ShadowCastingMode.On : ShadowCastingMode.Off;
                 if (Pool) r.shadowCastingMode = ShadowCastingMode.Off;      // the Poolrooms' sun is traced in the shader, not shadow-mapped
                 if (mask == WallProxyMask)
@@ -243,6 +245,7 @@ namespace Backrooms.Generation
             {
                 if (!pi.prefab) continue;
                 var go = Object.Instantiate(pi.prefab, root.transform, false);
+                MaterialMaps.Apply(go);
                 go.transform.localPosition = pi.position;
                 go.transform.localRotation = pi.rotation * pi.prefab.transform.localRotation;   // keep the model's own axis fix
                 go.transform.localScale = pi.scale;
@@ -997,6 +1000,15 @@ namespace Backrooms.Generation
                 float hw = 0.035f, hh = 0.0575f;
                 Vector3 f = pos + n * depth;
                 if (!p.isSwitch) outlets.Add((_origin + f, n));
+                // The modelled plate (WallPlateModels), or the flat atlas plate if the models are not loaded.
+                var parts = p.isSwitch ? WallPlateModels.Switch : WallPlateModels.Outlet;
+                if (parts != null)
+                {
+                    var rot = Quaternion.LookRotation(n, Vector3.up);
+                    foreach (var part in parts)
+                        W(part.material, p.roomColor).AddMesh(part.vertices, part.normals, part.tangents, part.uv, part.triangles, pos, rot);
+                    continue;
+                }
                 // Atlas: left half outlet, right half switch.
                 float u0 = p.isSwitch ? 0.5f : 0f, u1 = u0 + 0.5f;
                 var w = W(_a.wallPlate, p.roomColor);

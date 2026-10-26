@@ -110,11 +110,13 @@ namespace Backrooms.Camcorder
             // Presets row (visual tab only).
             _presets = BtnRow(_panel);
             _presets.AddToClassList("cc-presets");
+            _presetButtons = new Button[CamcorderSettings.PresetNames.Length];
             for (int i = 0; i < CamcorderSettings.PresetNames.Length; i++)
             {
                 int idx = i;
-                Button(_presets, CamcorderSettings.PresetNames[i], () => ApplyPreset(idx));
+                _presetButtons[i] = Button(_presets, CamcorderSettings.PresetNames[i], () => ApplyPreset(idx));
             }
+            MarkPreset();
 
             _views = new ScrollView[names.Length];
             _list = _views[0] = MakeList(); BuildControls();
@@ -130,7 +132,16 @@ namespace Backrooms.Camcorder
             var footer = BtnRow(_panel);
             footer.AddToClassList("cc-footer");
             _resetVisuals = Button(footer, "RESET", () => ApplyPreset(0));
-            _setDefault = Button(footer, "SET AS DEFAULT", () => { if (rig) { rig.Settings.SaveAsDefault(); _setDefault.text = "SAVED"; _setDefault.schedule.Execute(() => _setDefault.text = "SET AS DEFAULT").StartingIn(1200); } });
+            // Saves the current settings as the preset in use (the highlighted one), into the project in the editor.
+            _setDefault = Button(footer, "SET AS DEFAULT", () =>
+            {
+                if (!rig) return;
+                int p = CamcorderSettings.CurrentPreset;
+                CamcorderSettings.SavePreset(p, rig.Settings);
+                rig.Settings.Save();
+                _setDefault.text = "SAVED AS " + CamcorderSettings.PresetNames[p].ToUpperInvariant();
+                _setDefault.schedule.Execute(() => _setDefault.text = "SET AS DEFAULT").StartingIn(1600);
+            });
             Button(footer, "END", () => SetOpen(false));
 
             BuildMinimap();
@@ -332,7 +343,19 @@ namespace Backrooms.Camcorder
             var p = CamcorderSettings.Preset(i);
             p.CopyAudioFrom(rig.Settings);
             rig.SetSettings(p);
+            CamcorderSettings.CurrentPreset = i;
+            MarkPreset();
             RefreshAll();
+        }
+
+        Button[] _presetButtons;
+
+        /// <summary>Highlights the preset in use (what SET AS DEFAULT saves into).</summary>
+        void MarkPreset()
+        {
+            if (_presetButtons == null) return;
+            int cur = CamcorderSettings.CurrentPreset;
+            for (int k = 0; k < _presetButtons.Length; k++) _presetButtons[k].EnableInClassList("cc-selected", k == cur);
         }
 
         bool _refreshing;

@@ -51,6 +51,7 @@ namespace Backrooms.Interaction
                 if (p.prefab)
                 {
                     go = Object.Instantiate(p.prefab, root.transform, false);
+                    MaterialMaps.Apply(go);
                     go.transform.localPosition = p.position;
                     go.transform.localRotation = Quaternion.Euler(0f, p.yaw, 0f) * p.prefab.transform.localRotation;   // keep the model's own axis fix
                     go.transform.localScale = p.scale;

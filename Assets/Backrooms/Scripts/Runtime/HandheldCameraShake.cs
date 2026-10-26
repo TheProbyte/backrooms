@@ -146,9 +146,17 @@ namespace Backrooms
             rot += new Vector3(3.2f, 1.2f, -2.0f) * _dip;
             rot += (Noise3(t * 9f + 333f) * 0.35f + Noise3(t * 3.1f + 71f) * 0.5f) * _effort;
 
+            // Jolts (a cord yanked out of the hand): a damped spring, felt even with the shake turned off.
+            _joltVel += (-_jolt * 260f - _joltVel * 22f) * dt;
+            _jolt += _joltVel * dt;
             transform.localPosition = pos * shakeIntensity;
-            transform.localRotation = Quaternion.Euler(rot * shakeIntensity);
+            transform.localRotation = Quaternion.Euler(rot * shakeIntensity + _jolt);
         }
+
+        Vector3 _jolt, _joltVel;
+
+        /// <summary>A sudden knock to the camera (degrees per second of pitch, yaw, roll), which springs back.</summary>
+        public void Jolt(Vector3 kick) { _joltVel += kick; }
 
         /// <summary>
         /// Secondary motion from turning, added on top of the (instant) mouse look, so there is no input

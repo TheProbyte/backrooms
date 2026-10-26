@@ -48,7 +48,11 @@ namespace Backrooms.Interaction
         protected virtual void Awake()
         {
             Body = GetComponent<Rigidbody>();
+            Body.sleepThreshold = 0.02f;                     // settle and stop (no resting jitter)
             _colliders = GetComponentsInChildren<Collider>();
+            // Small things get a steady contact shadow instead of a flickering shadow-map one.
+            foreach (var r in GetComponentsInChildren<Renderer>()) if (!(r is ParticleSystemRenderer)) r.shadowCastingMode = ShadowCastingMode.Off;
+            if (!GetComponent<ContactShadow>()) gameObject.AddComponent<ContactShadow>();
         }
 
         /// <summary>Held in place by something other than the hand (a plug in a socket): stays kinematic.</summary>
@@ -71,7 +75,7 @@ namespace Backrooms.Interaction
             Body.isKinematic = held;
             Body.interpolation = held ? RigidbodyInterpolation.None : RigidbodyInterpolation.Interpolate;
             foreach (var c in _colliders) if (c) c.enabled = !held;
-            foreach (var r in GetComponentsInChildren<Renderer>()) r.shadowCastingMode = held ? ShadowCastingMode.Off : ShadowCastingMode.On;
+
             if (held && lootId != 0) { Saves.LootRegistry.Take(lootId); lootId = 0; transform.SetParent(null, true); }   // taken from its room: a free item from now on
             if (held) OnPickedUp(); else OnDropped();
         }

@@ -28,7 +28,35 @@ namespace Backrooms.Interaction
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(-0.5f, -0.2f, 0.85f), new Vector3(0.6f, 0.8f, 0f));
         public override float GripCurl => 0.8f;
         public override string Status => metres <= 0.01f ? "tape: empty" : $"tape {metres:0.0} m";
-        public override float Amount { get => Mathf.Clamp01(metres / RollMetres); set => metres = Mathf.Clamp01(value) * RollMetres; }
+        public override float Amount { get => Mathf.Clamp01(metres / RollMetres); set { metres = Mathf.Clamp01(value) * RollMetres; Shape(); } }
+
+        // The model's wound tape ("Wound", origin at the roll's centre, roll axis local X) shrinks toward the core as tape
+        // is used. It can only shrink so far (its inner edge would show in the core's hole), then the roll becomes the
+        // empty model: the bare cardboard core with a torn stub of tape left on it.
+        const float EmptyRadius = 0.0475f, FullRadius = 0.0525f;
+        Transform _wound, _full;
+        GameObject _empty;
+
+        void Shape()
+        {
+            if (!_wound) _wound = FindDeep(transform, "Wound");
+            if (!_full) _full = transform.Find("Model");
+            bool empty = metres <= 0.01f;
+            if (_empty) { _empty.SetActive(empty); if (_full) _full.gameObject.SetActive(!empty); }
+            else if (_wound) _wound.gameObject.SetActive(!empty);
+            if (!_wound) return;
+            float f = Mathf.Clamp01(metres / RollMetres);
+            // Tape on a roll is wound area: the radius goes with the square root of what is left.
+            float r = Mathf.Sqrt(EmptyRadius * EmptyRadius + f * (FullRadius * FullRadius - EmptyRadius * EmptyRadius));
+            float k = r / FullRadius;
+            _wound.localScale = new Vector3(1f, k, k);
+        }
+
+        static Transform FindDeep(Transform t, string name)
+        {
+            foreach (var c in t.GetComponentsInChildren<Transform>(true)) if (c.name == name) return c;
+            return null;
+        }
         public override float UseBlend => _pulling ? 1f : 0f;
 
         public static TapeRoll Create(Vector3 position, Quaternion rotation)
@@ -42,10 +70,17 @@ namespace Backrooms.Interaction
 
         protected override void Awake()
         {
+            // The used-up roll, ready under the full one (made before the item's setup so it gets the same treatment).
+            if (!transform.Find("ModelEmpty") && Resources.Load<GameObject>("Items/TapeRollEmpty"))
+            {
+                _empty = ItemModels.Attach(transform, "TapeRollEmpty", Vector3.one * 0.05f, "TapeCore");
+                _empty.name = "ModelEmpty";
+            }
             base.Awake();
             _pull = ItemModels.Source(gameObject, 10f);
             _pull.clip = SoundBank.TapePull; _pull.loop = true; _pull.volume = 0f;
             _fx = ItemModels.Source(gameObject, 10f);
+            Shape();
         }
 
         static bool Stickable(in RaycastHit h) =>
@@ -98,6 +133,7 @@ namespace Backrooms.Interaction
                     {
                         Marks.Instance.AddTape(_start, _end, _normal);
                         metres = Mathf.Max(0f, metres - _len);
+                        Shape();
                         _fx.PlayOneShot(SoundBank.TapeTear, 0.6f);
                     }
                     Stop();

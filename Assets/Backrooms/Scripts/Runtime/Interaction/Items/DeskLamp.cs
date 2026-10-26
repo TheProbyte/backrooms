@@ -7,7 +7,10 @@ namespace Backrooms.Interaction
     /// A small desk lamp with its own cord (<see cref="CordLength"/>) and plug: the first light you can carry.
     ///  - Holding it, click a wall outlet (or an extension cord's box) within the cord's reach: its plug goes in.
     ///  - Click anywhere else: the switch on its base.
-    ///  - Q sets it down upright where you look. Walk off with it further than its cord and the plug pops out.
+    ///  - Q sets it down upright where you look. Walk off with it further than its cord and the plug tears out (a snap
+    ///    and a jerk of the hand).
+    ///  - Its cord stays wound up behind its base until you need it: clicking an outlet with the lamp lets it out, and so
+    ///    does picking the bundle up (you then hold the plug). Right mouse with the lamp in hand winds it back up.
     /// It lights (a warm, shadowed spot out of its shade) when switched on and its plug is in a socket with power.
     /// Model: Resources/Items/DeskLamp.fbx.
     /// </summary>
@@ -31,7 +34,14 @@ namespace Backrooms.Interaction
         AudioSource _fx;
         float _level;
 
-        public override Plug Plug => _plug;
+        public override Plug Plug => _bundled ? null : _plug;
+        bool _bundled = true;
+        GameObject _bundle;
+        // The bundle model's lead ends at (0.0032, 0.0027, 0.0439) from its origin (as imported: Blender's X is mirrored),
+        // heading off toward +Z and a little -X: turned and placed so it runs on from the end of the cord stub modelled on
+        // the base (end about (-0.0063, 0.003, -0.119), heading back and a little -X), overlapping it by 3 mm.
+        static readonly Vector3 BundleAt = new Vector3(-0.0242f, 0f, -0.1563f);
+        static readonly Quaternion BundleTurn = Quaternion.Euler(0f, 20.8f, 0f);
         public bool Lit => switchOn && PluggedLive;
         public override bool PlaceOnDrop => true;
         public override Vector3 HoldOffset => new Vector3(0.2f, -0.42f, 0.42f);
@@ -44,7 +54,7 @@ namespace Backrooms.Interaction
         {
             get
             {
-                if (!_plug || !_plug.Plugged) return "lamp: click an outlet to plug in";
+                if (_bundled || !_plug || !_plug.Plugged) return "lamp: click an outlet to plug in (right mouse: wind the cord)";
                 if (!PluggedLive) return "lamp: no power";
                 return switchOn ? "lamp: on (click: switch)" : "lamp: off (click: switch)";
             }
@@ -84,6 +94,16 @@ namespace Backrooms.Interaction
             _light.shadows = LightShadows.Soft; _light.shadowNearPlane = 0.06f; _light.shadowStrength = 0.9f;
             _light.renderingLayerMask = -1;
             _light.enabled = false;
+
+            // The wound-up cord behind the base; clicking it lets the cord out into your hand.
+            _bundle = new GameObject("CordBundle");
+            _bundle.transform.SetParent(transform, false);
+            _bundle.transform.localPosition = BundleAt;
+            _bundle.transform.localRotation = BundleTurn;
+            ItemModels.Attach(_bundle.transform, "CordBundle", new Vector3(0.08f, 0.028f, 0.08f), "CordBlack");
+            var bc = _bundle.AddComponent<BoxCollider>();
+            bc.size = new Vector3(0.09f, 0.035f, 0.09f); bc.center = new Vector3(0f, 0.0175f, 0f);
+            _bundle.AddComponent<CordBundleHandle>().lamp = this;
         }
 
         void Start()
@@ -92,6 +112,41 @@ namespace Backrooms.Interaction
             var back = transform.TransformPoint(CordExit + new Vector3(0f, 0.02f, -0.4f));
             _plug = Plug.Create("lampplug", this, back, transform.rotation * Quaternion.Euler(0f, 180f, 0f), CordColor);
             _cord = Cord.Create("LampCord", _plug, Plug.CordPoint, this, CordExit, CordLength, 0.0028f, ItemModels.Mat("CordBlack", CordColor));
+            ShowBundle();
+        }
+
+        void ShowBundle()
+        {
+            if (_bundle) _bundle.SetActive(_bundled);
+            if (_plug) _plug.gameObject.SetActive(!_bundled);
+            if (_cord) _cord.gameObject.SetActive(!_bundled);
+        }
+
+        /// <summary>Lets the cord out: the plug appears where the bundle was.</summary>
+        public override void Unbundle()
+        {
+            if (!_bundled) return;
+            _bundled = false;
+            if (_plug)
+            {
+                var at = transform.TransformPoint(BundleAt + Vector3.up * 0.03f);
+                _plug.Body.position = at; _plug.transform.position = at;
+                _plug.Body.linearVelocity = Vector3.zero;
+            }
+            ShowBundle();
+            if (_cord) _cord.Lay();
+            _fx.PlayOneShot(SoundBank.CordWhip, 0.25f);
+        }
+
+        /// <summary>Winds the cord back up behind the base (not while it is plugged in).</summary>
+        public void Bundle()
+        {
+            if (_bundled || (_plug && _plug.Plugged)) return;
+            var hand = FindAnyObjectByType<PropGrabber>();
+            if (hand && _plug && hand.HeldItem == _plug) hand.LetGo(_plug);
+            _bundled = true;
+            ShowBundle();
+            _fx.PlayOneShot(SoundBank.CordWhip, 0.3f);
         }
 
         public override void WakeCord() { if (_cord) _cord.Wake(); }
@@ -104,13 +159,14 @@ namespace Backrooms.Interaction
 
         public override void HoldUpdate(in HoldInput i)
         {
+            if (i.secondary) { Bundle(); return; }
             if (!i.pressed) return;
             if (i.hit && i.hitInfo.distance <= reach && _plug && !_plug.Plugged)
             {
                 var s = Sockets.Nearest(i.hitInfo.point, 0.1f);
                 if (s != null && _plug.CanUse(s))
                 {
-                    if (Vector3.Distance(s.Position, transform.TransformPoint(CordExit)) < CordLength * 0.92f) { _plug.PlugInto(s); return; }
+                    if (Vector3.Distance(s.Position, transform.TransformPoint(CordExit)) < CordLength * 0.92f) { Unbundle(); _plug.PlugInto(s); return; }
                 }
             }
             Toggle();

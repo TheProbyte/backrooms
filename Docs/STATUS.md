@@ -6,6 +6,13 @@ Last updated 2026-10-26 (world version 13).
 
 ## Newest (2026-10-26)
 
+- **Polish pass** (see WORKLOG): forgiving item pick-up (no crosshair needed; focus brackets), hold Q to throw, held
+  items move with the hand, cords no longer clip through the world, the lamp's cord starts bundled and yanks out with a
+  sound and jolt, chicken wheezes in and squawks on release, contact shadows under items, normal maps on all world
+  and item materials (and Poolrooms tile glaze and grout), opaque 3D-looking tape and a roll that empties, modelled
+  wall outlets and light switches, a rigged realistic arm and body, camcorder presets with SET AS DEFAULT per preset,
+  vents always crawlable, smoother pool ripples, and noclip doors no longer show the far side early.
+
 - **Main menu and world saves**: the world scene opens on a camcorder-style main menu; three save slots, each world
   keeping its seed, the player, moved and spawned furniture, items (and what is plugged into what), spray paint, chalk
   and tape marks, things taken from special rooms, and the way back through a noclip door. Docs/MainMenuAndSaves.md.

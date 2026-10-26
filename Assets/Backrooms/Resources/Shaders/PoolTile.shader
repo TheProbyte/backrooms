@@ -84,7 +84,12 @@ Shader "Backrooms/PoolTile"
                 float2 tilt = sign(f) * e * e * _Bevel * (1.0 - far) + (h - 0.5) * 0.03;
                 float3 N0 = normalize(i.normalWS);
                 float3 T = normalize(i.tangentWS.xyz), B = cross(N0, T) * i.tangentWS.w;
-                float3 N = normalize(N0 + (T * tilt.x + B * tilt.y) * tileMask);
+                // Glaze: a gentle wave across each tile (a little different on each); grout: sandy grit, set back from the tiles.
+                float2 wave = float2(sin(f.x * 6.2832 + h.y * 6.0), sin(f.y * 6.2832 + h.x * 6.0)) * 0.012 * (1.0 - far);
+                float2 gp = i.uv * 260.0;
+                float2 grit = (PoolHash22(floor(gp)) - 0.5) * 0.35 * (1.0 - far);
+                tilt += wave * tileMask;
+                float3 N = normalize(N0 + (T * tilt.x + B * tilt.y) * tileMask + (T * grit.x + B * grit.y) * (1.0 - tileMask));
                 float3 V = GetWorldSpaceNormalizeViewDir(i.positionWS);
 
                 // Below the waterline of a basin: wet glaze and caustics.

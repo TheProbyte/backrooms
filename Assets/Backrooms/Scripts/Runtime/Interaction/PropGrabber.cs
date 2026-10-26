@@ -104,6 +104,7 @@ namespace Backrooms.Interaction
             botShove = false;
             Vector2 md = botHold.HasValue ? botMouse : focus && mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
 
+            AimedItem = !HeldItem && Current == State.Idle && focus && LookItem(itemRange, out var aimed) ? aimed : null;
             if (HeldItem) UpdateHeldItem(focus, mouse);
             else switch (Current)
             {

@@ -150,6 +150,8 @@ namespace Backrooms.Interaction
     {
         public abstract Plug Plug { get; }
         public abstract void WakeCord();
+        /// <summary>Lets the cord out if it is wound up (a lamp's): its plug and cord exist after this.</summary>
+        public virtual void Unbundle() { }
         /// <summary>Its plug is in a socket that has power.</summary>
         public bool PluggedLive => Plug && Plug.Socket != null && Plug.Socket.Powered;
     }

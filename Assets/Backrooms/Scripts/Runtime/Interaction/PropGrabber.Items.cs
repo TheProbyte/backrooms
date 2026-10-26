@@ -12,6 +12,10 @@ namespace Backrooms.Interaction
     public partial class PropGrabber
     {
         public WorldItem HeldItem { get; private set; }
+        Quaternion _swayRot;
+        Vector3 _swayPos;
+        bool _swayInit;
+        float _bobPhase;
         [Header("Items")]
         [Tooltip("Reach for picking up items (m).")] public float itemRange = 2.1f;
 
@@ -19,19 +23,88 @@ namespace Backrooms.Interaction
         Vector3 _itemFromPos;
         Quaternion _itemFromRot;
 
+        [Tooltip("Picking up forgives this much aim (degrees off the centre of the view).")] public float pickAssistAngle = 14f;
+        readonly Collider[] _near = new Collider[48];
+        /// <summary>What a click would pick up right now (for the focus marks), or null.</summary>
+        public WorldItem AimedItem { get; private set; }
+
+        /// <summary>
+        /// The item a click picks up: the one the centre of the view is on, or else the item nearest the aim within
+        /// <see cref="pickAssistAngle"/> and reach that can be seen from the eye (so small things like chalk are easy).
+        /// </summary>
         bool LookItem(float range, out WorldItem item)
         {
             item = null;
             var cam = _cam ? _cam.transform : transform;
             int n = Physics.RaycastNonAlloc(cam.position, cam.forward, _hits, range, ~0, QueryTriggerInteraction.Ignore);
             float best = float.MaxValue;
+            Collider first = null;
             for (int i = 0; i < n; i++)
             {
                 if (_hits[i].collider.transform.IsChildOf(transform) || _hits[i].distance >= best) continue;
                 best = _hits[i].distance;
-                item = _hits[i].collider.GetComponentInParent<WorldItem>();
+                first = _hits[i].collider;
+                item = first.GetComponentInParent<WorldItem>();
+            }
+            if (item && !item.Held) return true;
+            item = null;
+            // Looking straight at furniture: that is what the click is for.
+            if (first && first.GetComponentInParent<MovableProp>()) return false;
+
+            // Near the aim: everything within reach, scored by how far off the aim it is (and a little by distance).
+            Vector3 eye = cam.position, fwd = cam.forward;
+            int m = Physics.OverlapSphereNonAlloc(eye + fwd * (range * 0.5f), range * 0.5f + 0.3f, _near, ~0, QueryTriggerInteraction.Ignore);
+            float bestScore = float.MaxValue;
+            for (int i = 0; i < m; i++)
+            {
+                var it = _near[i].GetComponentInParent<WorldItem>();
+                if (!it || it.Held || (it == item)) continue;
+                Vector3 c = _near[i].bounds.center, to = c - eye;
+                float dist = to.magnitude;
+                if (dist > range + 0.2f || dist < 0.05f) continue;
+                float angle = Vector3.Angle(fwd, to);
+                float off = Vector3.Cross(fwd, to).magnitude;                     // metres from the line of sight
+                if (angle > pickAssistAngle && off > 0.12f) continue;
+                if (angle > pickAssistAngle * 2f) continue;
+                float score = angle + dist * 3f;
+                if (score >= bestScore || !InSight(eye, c, it)) continue;
+                bestScore = score; item = it;
             }
             return item;
+        }
+
+        /// <summary>Nothing solid between the eye and a point of the item.</summary>
+        bool InSight(Vector3 eye, Vector3 point, WorldItem it)
+        {
+            Vector3 d = point - eye;
+            int n = Physics.RaycastNonAlloc(eye, d.normalized, _hits, d.magnitude, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var t = _hits[i].collider.transform;
+                if (t.IsChildOf(transform) || t.IsChildOf(it.transform)) continue;
+                if (_hits[i].distance < d.magnitude - 0.05f) return false;
+            }
+            return true;
+        }
+
+        /// <summary>Camcorder-style focus marks around what a click would pick up.</summary>
+        void OnGUI()
+        {
+            if (Event.current.type != EventType.Repaint || !AimedItem || HeldItem || Current != State.Idle || !_cam) return;
+            var b = new Bounds(AimedItem.transform.position, Vector3.zero);
+            foreach (var r in AimedItem.GetComponentsInChildren<Renderer>()) b.Encapsulate(r.bounds);
+            Vector3 sp = _cam.WorldToScreenPoint(b.center);
+            if (sp.z <= 0f) return;
+            float size = Mathf.Clamp(b.extents.magnitude / Mathf.Max(0.2f, sp.z) * Screen.height * 0.9f, 22f, 160f);
+            float x = sp.x, y = Screen.height - sp.y, h = size * 0.5f, len = Mathf.Max(6f, size * 0.22f), t = Mathf.Max(1.5f, Screen.height / 540f);
+            var old = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, 0.75f);
+            void Bar(float bx, float by, float bw, float bh) => GUI.DrawTexture(new Rect(bx, by, bw, bh), Texture2D.whiteTexture);
+            Bar(x - h, y - h, len, t); Bar(x - h, y - h, t, len);
+            Bar(x + h - len, y - h, len, t); Bar(x + h - t, y - h, t, len);
+            Bar(x - h, y + h - t, len, t); Bar(x - h, y + h - len, t, len);
+            Bar(x + h - len, y + h - t, len, t); Bar(x + h - t, y + h - len, t, len);
+            GUI.color = old;
         }
 
         /// <summary>The empty hand clicks something that has its own use (a plug in a socket).</summary>
@@ -66,6 +139,7 @@ namespace Backrooms.Interaction
             HeldItem = item;
             _itemFromPos = item.transform.position; _itemFromRot = item.transform.rotation;
             _itemT = 0f;
+            _swayInit = false; _qDown = -1f; ThrowCharge = 0f;
             item.SetHeld(true);
         }
 
@@ -134,11 +208,45 @@ namespace Backrooms.Interaction
         }
 
         bool _wasUse;
+        float _qDown = -1f;
+        /// <summary>0..1 while Q is held to throw (wind-up), 0 otherwise.</summary>
+        public float ThrowCharge { get; private set; }
+        [Header("Throwing")]
+        [Tooltip("Hold Q longer than this to throw instead of dropping (s).")] public float throwHold = 0.2f;
+        [Tooltip("Seconds of holding Q for the hardest throw.")] public float throwFullCharge = 0.9f;
+        [Tooltip("Throw speed (m/s) from a short to a full wind-up.")] public Vector2 throwSpeed = new Vector2(3.5f, 13f);
+
+        /// <summary>Throws the held item along the view, harder the longer Q was held.</summary>
+        void Throw(float charge)
+        {
+            var item = HeldItem;
+            if (!item) return;
+            HeldItem = null;
+            item.SetHeld(false);
+            var cam = _cam ? _cam.transform : transform;
+            float speed = Mathf.Lerp(throwSpeed.x, throwSpeed.y, charge);
+            item.Body.linearVelocity = _player.PlanarVelocity + (cam.forward + Vector3.up * 0.12f).normalized * speed;
+            item.Body.angularVelocity = Random.insideUnitSphere * (4f + 8f * charge);
+            AudioSource.PlayClipAtPoint(Audio.SoundBank.CordWhip, item.transform.position, 0.15f + 0.25f * charge);
+        }
 
         void UpdateHeldItem(bool focus, Mouse mouse)
         {
             var kb = Keyboard.current;
-            if (focus && kb != null && kb.qKey.wasPressedThisFrame) { Drop(); _wasUse = false; return; }
+            // Q: a tap drops (or sets down), held it winds up a throw that goes on release.
+            if (focus && kb != null && kb.qKey.wasPressedThisFrame) _qDown = Time.time;
+            if (_qDown >= 0f)
+            {
+                float held = Time.time - _qDown;
+                ThrowCharge = held > throwHold ? Mathf.Clamp01((held - throwHold) / Mathf.Max(0.05f, throwFullCharge)) : 0f;
+                if (kb == null || !kb.qKey.isPressed)
+                {
+                    float charge = ThrowCharge;
+                    _qDown = -1f; ThrowCharge = 0f; _wasUse = false;
+                    if (held <= throwHold) Drop(); else Throw(Mathf.Max(0.05f, charge));
+                    return;
+                }
+            }
             bool use = focus && mouse != null && mouse.leftButton.isPressed && _itemT >= 1f;
             if (botHold.HasValue) use = botHold.Value;
             var cam = _cam ? _cam.transform : transform;
@@ -192,11 +300,24 @@ namespace Backrooms.Interaction
             if (!HeldItem) return;
             var item = HeldItem;
             Transform pivot = _player.cameraPitchPivot ? _player.cameraPitchPivot : (_cam ? _cam.transform : transform);
-            Quaternion view = pivot.rotation;
-            Vector3 offset = Mirror(Vector3.Lerp(item.HoldOffset, item.UseOffset, item.UseBlend));
-            Vector3 pos = pivot.position + view * offset;
+            // The item is in the hand, not glued to the lens: it trails the view's turns and the body's moves a little and
+            // bobs with the steps, and the hand (which grips it) goes with it.
+            float dt = Time.deltaTime;
+            if (!_swayInit) { _swayRot = pivot.rotation; _swayPos = pivot.position; _swayInit = true; }
+            _swayRot = Quaternion.Slerp(_swayRot, pivot.rotation, 1f - Mathf.Exp(-dt / 0.075f));
+            if (Quaternion.Angle(_swayRot, pivot.rotation) > 25f) _swayRot = Quaternion.RotateTowards(pivot.rotation, _swayRot, 25f);
+            _swayPos = Vector3.Lerp(_swayPos, pivot.position, 1f - Mathf.Exp(-dt / 0.045f));
+            _swayPos = pivot.position + Vector3.ClampMagnitude(_swayPos - pivot.position, 0.06f);
+            float speed = _player.PlanarVelocity.magnitude;
+            _bobPhase += dt * speed * 5.2f;
+            Vector3 bob = new Vector3(Mathf.Sin(_bobPhase) * 0.006f, Mathf.Abs(Mathf.Cos(_bobPhase)) * 0.01f - 0.005f, 0f) * Mathf.Clamp01(speed / 1.5f);
+            Quaternion view = _swayRot;
+            Vector3 offset = Mirror(Vector3.Lerp(item.HoldOffset, item.UseOffset, item.UseBlend)) + bob;
+            // Winding up a throw: back and up over the shoulder.
+            offset += new Vector3(0.04f * Side, 0.1f, -0.16f) * ThrowCharge;
+            Vector3 pos = _swayPos + view * offset;
             // Upright in the view, turned a little in toward the middle, tipped forward while in use.
-            Quaternion rot = view * Quaternion.Euler(-8f * item.UseBlend, -10f * Side, 4f * Side);
+            Quaternion rot = view * Quaternion.Euler(-8f * item.UseBlend - 25f * ThrowCharge, -10f * Side, 4f * Side);
             float w = item.UsePose(out var usePos, out var useRot);
             if (w > 0f) { pos = Vector3.Lerp(pos, usePos, w); rot = Quaternion.Slerp(rot, useRot, w); }
             if (_itemT < 1f)

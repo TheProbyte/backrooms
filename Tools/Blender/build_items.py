@@ -6,6 +6,7 @@ Hand-held items, built procedurally in Blender (run headless):
 Units are metres. Each item's origin is at its bottom centre, and the "front" (a spray can's nozzle) faces -Y in
 Blender, which is +Z forward in Unity with the export axes used here (same as build_props.py). Material slots are
 named for the colours Unity gives them (Interaction/ItemMaterials).
+Every item gets one UV map at 1 UV unit = 0.25 m of surface (the same density as build_items2.py).
 """
 import bpy
 import bmesh
@@ -65,6 +66,35 @@ def lathe(name, profile, material, segments=48, cap_bottom=True, cap_top=True):
     return o
 
 
+TEXEL = 0.25      # metres of surface per UV unit, the same on every item (for tiling detail maps)
+
+
+def uv_area(pts):
+    return 0.5 * abs(sum(pts[i - 1][0] * pts[i][1] - pts[i][0] * pts[i - 1][1] for i in range(len(pts))))
+
+
+def uv_world(ob, angle=66.0, margin=0.004):
+    """One UV map: smart UV project (islands keep their relative scale), then scaled so 1 UV unit = TEXEL metres."""
+    me = ob.data
+    while me.uv_layers:
+        me.uv_layers.remove(me.uv_layers[0])
+    me.uv_layers.new(name="UVMap")
+    bpy.ops.object.select_all(action="DESELECT")
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(angle), island_margin=margin, area_weight=0.0,
+                             correct_aspect=True, scale_to_bounds=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    uv = me.uv_layers[0].data
+    a3 = sum(p.area for p in me.polygons)
+    a2 = sum(uv_area([uv[i].uv for i in p.loop_indices]) for p in me.polygons)
+    k = math.sqrt(a3 / a2) / TEXEL
+    for d in uv:
+        d.uv = d.uv * k
+
+
 def spray_can():
     red = mat("CanRed", (0.62, 0.03, 0.025), 0.28)
     metal = mat("CanMetal", (0.78, 0.78, 0.80), 0.25, 1.0)
@@ -109,6 +139,7 @@ def spray_can():
     bpy.ops.mesh.remove_doubles(threshold=0.00005)
     bpy.ops.mesh.quads_convert_to_tris()
     bpy.ops.object.mode_set(mode="OBJECT")
+    uv_world(can)
     return can
 
 

@@ -22,7 +22,7 @@ namespace Backrooms.Generation
         public const float HoleSize = 0.8f, HoleHalf = HoleSize * 0.5f;           // square opening (the crawling player is 0.62 m tall, 0.6 m wide)
         public const float MinApart = 12f, MaxApart = 30f;
         /// <summary>Crawl duct length from the wall face to the window at its far end (inside the two free cells behind the wall).</summary>
-        public const float DuctLength = 2.2f;
+        public const float DuctLength = 1.9f;       // inside the two cells behind the wall, with room to spare before their far wall (a crawling body must reach the window)
         public const int MinWalkCells = 26;           // shortest walk between the two ends, in cells (about 31 m), unless unreachable
 
         const float C = OfficeBiome.CellSize, T = OfficeBiome.WallThickness;
@@ -100,6 +100,18 @@ namespace Backrooms.Generation
                             || L.Has(p.x, p.y, CellFlags.OpenAbove) || L.Has(p.x, p.y, CellFlags.NoFloor) || r.ceiling > MaxCeilingUnder) { ok = false; break; }
                         maxCeil = Mathf.Max(maxCeil, r.ceiling);
                         x0 = Mathf.Min(x0, p.x); z0 = Mathf.Min(z0, p.y); x1 = Mathf.Max(x1, p.x); z1 = Mathf.Max(z1, p.y);
+                    }
+                    if (!ok) continue;
+                    // The room's own vent duct runs back from its back wall over the cells behind the hole (as far as the
+                    // duct and its end stop reach): their ceilings must be under it too, or their ceiling colliders would
+                    // cut across the duct and catch the crawling player.
+                    for (int back = 1; back <= 3 && ok; back++)
+                    {
+                        var d = c.cell + Step(c.side) * back;
+                        if (!L.InChunk(d.x, d.y)) continue;
+                        var r = L.RoomAt(d.x, d.y);
+                        if (r.openAbove || L.Has(d.x, d.y, CellFlags.OpenAbove) || r.ceiling > MaxCeilingUnder) { ok = false; break; }
+                        maxCeil = Mathf.Max(maxCeil, r.ceiling);
                     }
                     if (!ok) continue;
                     Frame(L.coord, c.cell, c.side, L.BaseY, out var pos, out var n);

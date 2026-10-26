@@ -5,7 +5,9 @@ More hand-held items and room props, built procedurally in Blender (run headless
 
 Same conventions as build_items.py: units are metres, real-world scale; origin at the bottom centre unless a model says
 otherwise; the item's "front" faces -Y in Blender (+Z forward in Unity with the export axes below). Material slots are
-named for the colours Unity rebuilds them with. Every model is one joined, triangulated mesh object.
+named for the colours Unity rebuilds them with. Every model is one joined, triangulated mesh object, except TapeRoll: a
+root empty "TapeRoll" (bottom centre) with the meshes "Core" and "Wound" as children, both with their origin at the roll
+centre, so the game can shrink or hide the tape. Every mesh has one UV map at 1 UV unit = TEXEL (0.25 m) of surface.
 
 Unity coordinates of a Blender point (x, y, z) are (x, z, -y).
 """
@@ -14,7 +16,7 @@ import bmesh
 import math
 import os
 import sys
-from mathutils import Vector, Matrix, noise
+from mathutils import Vector, Matrix, noise, geometry
 
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = ARGS[0] if ARGS and not ARGS[0].startswith("--") else os.getcwd()
@@ -211,6 +213,55 @@ def join(parts, name):
     return ob
 
 
+TEXEL = 0.25      # metres of surface per UV unit, the same on every item (for tiling detail maps)
+
+
+def uv_area(pts):
+    return 0.5 * abs(sum(pts[i - 1][0] * pts[i][1] - pts[i][0] * pts[i - 1][1] for i in range(len(pts))))
+
+
+def uv_world(ob, angle=66.0, margin=0.004):
+    """One UV map: smart UV project (islands keep their relative scale), then scaled so 1 UV unit = TEXEL metres."""
+    me = ob.data
+    while me.uv_layers:
+        me.uv_layers.remove(me.uv_layers[0])
+    me.uv_layers.new(name="UVMap")
+    bpy.ops.object.select_all(action="DESELECT")
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(angle), island_margin=margin, area_weight=0.0,
+                             correct_aspect=True, scale_to_bounds=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    uv = me.uv_layers[0].data
+    a3 = sum(p.area for p in me.polygons)
+    a2 = sum(uv_area([uv[i].uv for i in p.loop_indices]) for p in me.polygons)
+    k = math.sqrt(a3 / a2) / TEXEL
+    for d in uv:
+        d.uv = d.uv * k
+
+
+def uv_density_stats(ob):
+    """Area-weighted 5/50/95 % of (UV length per metre) * TEXEL; 1.0 is on target."""
+    me = ob.data
+    uv = me.uv_layers[0].data
+    rows = []
+    for p in me.polygons:
+        if p.area < 1e-12:
+            continue
+        rows.append((math.sqrt(uv_area([uv[i].uv for i in p.loop_indices]) / p.area) * TEXEL, p.area))
+    rows.sort()
+    tot = sum(a for _, a in rows)
+    out, acc, qs = [], 0.0, [0.05, 0.5, 0.95]
+    for r, a in rows:
+        acc += a
+        while qs and acc >= qs[0] * tot:
+            out.append(round(r, 3))
+            qs.pop(0)
+    return out
+
+
 def finish(parts, name, sharp_deg=None, merge=0.00003, weighted=True):
     """Join, merge doubles, triangulate, smooth shade (with optional sharp edges by angle), weighted normals."""
     ob = join(parts, name)
@@ -227,6 +278,7 @@ def finish(parts, name, sharp_deg=None, merge=0.00003, weighted=True):
                 e.smooth = False
     bm.to_mesh(ob.data)
     bm.free()
+    uv_world(ob)
     if weighted:
         bpy.ops.object.select_all(action="DESELECT")
         ob.select_set(True)
@@ -248,24 +300,35 @@ def M4(rot3=None, loc=(0, 0, 0)):
     return m
 
 
+def as_list(obj):
+    return list(obj) if isinstance(obj, (list, tuple)) else [obj]
+
+
+def meshes(obj):
+    return [o for o in as_list(obj) if o.type == "MESH"]
+
+
 def export(obj, path):
+    """obj: one mesh object, or a list (a root empty first, then its children)."""
+    objs = as_list(obj)
     bpy.ops.object.select_all(action="DESELECT")
-    obj.select_set(True)
-    bpy.context.view_layer.objects.active = obj
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
     bpy.ops.export_scene.fbx(filepath=path, use_selection=True, apply_unit_scale=True, apply_scale_options="FBX_SCALE_UNITS",
-                             axis_forward="-Z", axis_up="Y", bake_space_transform=False, object_types={"MESH"},
+                             axis_forward="-Z", axis_up="Y", bake_space_transform=False, object_types={"MESH", "EMPTY"},
                              use_mesh_modifiers=True, mesh_smooth_type="FACE", add_leaf_bones=False)
 
 
-def preview(obj, path, view=(0.75, -1.0, 0.6), res=640, margin=1.12):
-    """Workbench render with the camera framed so the object fills the image."""
+def preview(obj, path, view=(0.75, -1.0, 0.6), res=640, margin=1.12, color_type="MATERIAL"):
+    """Workbench render with the camera framed so the object(s) fill the image."""
     scene = bpy.context.scene
     try:
         scene.render.engine = "BLENDER_WORKBENCH"
     except TypeError:
         pass
     scene.display.shading.light = "STUDIO"
-    scene.display.shading.color_type = "MATERIAL"
+    scene.display.shading.color_type = color_type
     scene.display.shading.show_cavity = True
     scene.display.shading.cavity_type = "BOTH"
     if scene.world is None:
@@ -276,7 +339,8 @@ def preview(obj, path, view=(0.75, -1.0, 0.6), res=640, margin=1.12):
     if cam is None:
         cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
         bpy.context.collection.objects.link(cam)
-    verts = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    bpy.context.view_layer.update()
+    verts = [o.matrix_world @ v.co for o in meshes(obj) for v in o.data.vertices]
     lo = Vector([min(v[i] for v in verts) for i in range(3)])
     hi = Vector([max(v[i] for v in verts) for i in range(3)])
     c = (lo + hi) / 2
@@ -351,21 +415,33 @@ def chalk():
     return ob
 
 
+TAPE_W, TAPE_RI, TAPE_RC, TAPE_RO = 0.048, 0.038, 0.042, 0.0525
+CORE_PROUD = 0.0003       # the core stands 0.3 mm proud of the tape on each side (no z-fight if the Wound is scaled down)
+
+
+def tape_core(name, core, Ri, Rc, h, seg=64):
+    """Cardboard core about the X axis, centred on the origin."""
+    xf = M4(Matrix.Rotation(math.pi / 2, 3, "Y"))                  # lathe Z axis -> X axis
+    hc = h + CORE_PROUD
+    return [lathe(name + "Top", [(Rc, hc), (Ri, hc)], core, seg, False, False, xf=xf),
+            lathe(name + "Bot", [(Ri, -hc), (Rc, -hc)], core, seg, False, False, xf=xf),
+            lathe(name + "In", [(Ri, hc), (Ri, -hc)], core, seg, False, False, xf=xf),
+            lathe(name + "Out", [(Rc, -hc), (Rc, hc)], core, seg, False, False, xf=xf)]
+
+
 def tape_roll():
+    """Root empty "TapeRoll" at the bottom centre; children "Core" and "Wound" with their origins at the roll centre."""
     blue = mat("TapeBlue", (0.12, 0.38, 0.78), 0.85)
     core = mat("TapeCore", (0.50, 0.36, 0.22), 0.9)
     edge = mat("TapeEdge", (0.085, 0.29, 0.62), 0.8)
-    W, Ri, Rc, Ro = 0.048, 0.038, 0.042, 0.0525
+    W, Ri, Rc, Ro = TAPE_W, TAPE_RI, TAPE_RC, TAPE_RO
     h = W / 2
-    xf = M4(Matrix.Rotation(math.pi / 2, 3, "Y"), (0, 0, Ro))      # lathe Z axis -> X axis, centre at height Ro
+    xf = M4(Matrix.Rotation(math.pi / 2, 3, "Y"))                  # lathe Z axis -> X axis, centred on the origin
     seg = 64
-    parts = [
+    wound = [
         lathe("Outer", [(Ro - 0.0007, -h), (Ro, -h + 0.0007), (Ro, h - 0.0007), (Ro - 0.0007, h)], blue, seg, False, False, xf=xf),
         lathe("SideTop", [(Ro - 0.0007, h), (Rc, h)], edge, seg, False, False, xf=xf),
         lathe("SideBot", [(Rc, -h), (Ro - 0.0007, -h)], edge, seg, False, False, xf=xf),
-        lathe("CoreTop", [(Rc, h), (Ri, h)], core, seg, False, False, xf=xf),
-        lathe("CoreBot", [(Ri, -h), (Rc, -h)], core, seg, False, False, xf=xf),
-        lathe("CoreIn", [(Ri, h), (Ri, -h)], core, seg, False, False, xf=xf),
     ]
     # Free tail: still stuck to the roll above the lift point, then peeling off and lying on the floor in front.
     def on_roll(deg, lift=0.0003):
@@ -381,7 +457,7 @@ def tape_roll():
     secs = []
     for p, t in zip(path, T):
         nrm = Vector((0, t.z, -t.y))
-        o, i_ = p + nrm * th, p - nrm * th
+        o, i_ = p + nrm * th - Vector((0, 0, Ro)), p - nrm * th - Vector((0, 0, Ro))     # relative to the roll centre
         secs.append([bm.verts.new((-hw, o.y, o.z)), bm.verts.new((hw, o.y, o.z)),
                      bm.verts.new((hw, i_.y, i_.z)), bm.verts.new((-hw, i_.y, i_.z))])
     for a, b in zip(secs[:-1], secs[1:]):
@@ -392,10 +468,88 @@ def tape_roll():
     bm.faces.new(list(reversed(secs[0]))).material_index = 1
     bm.faces.new(secs[-1]).material_index = 1
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    parts.append(new_obj("Tail", bm, [blue, edge]))
-    ob = finish(parts, "TapeRoll", sharp_deg=55)
-    REPORT["TapeRoll"] = {"roll centre (Unity)": U((0, 0, Ro)), "roll axis (Unity)": (1, 0, 0),
-                          "tail end (Unity)": U(path[-1])}
+    wound.append(new_obj("Tail", bm, [blue, edge]))
+    w_ob = finish(wound, "Wound", sharp_deg=55)
+    c_ob = finish(tape_core("Core", core, Ri, Rc, h, seg), "Core", sharp_deg=55)
+    root = bpy.data.objects.new("TapeRoll", None)
+    root.empty_display_size = 0.03
+    bpy.context.collection.objects.link(root)
+    for o in (c_ob, w_ob):
+        o.parent = root
+        o.location = (0, 0, Ro)
+    REPORT["TapeRoll"] = {"hierarchy": "TapeRoll (empty, bottom centre) > Core, Wound (origins at the roll centre)",
+                          "roll centre (Unity)": U((0, 0, Ro)), "roll axis (Unity)": (1, 0, 0),
+                          "tail end (Unity)": U(path[-1]),
+                          "core radii inner/outer": (Ri, Rc), "core width": round(W + 2 * CORE_PROUD, 4),
+                          "wound radii inner/outer": (Rc, Ro), "wound width": W}
+    return [root, c_ob, w_ob]
+
+
+def tape_roll_empty():
+    """The used-up roll: the core lying on its side with a short torn stub of tape still stuck on. Origin bottom centre."""
+    blue = mat("TapeBlue", (0.12, 0.38, 0.78), 0.85)
+    core = mat("TapeCore", (0.50, 0.36, 0.22), 0.9)
+    edge = mat("TapeEdge", (0.085, 0.29, 0.62), 0.8)
+    W, Ri, Rc = TAPE_W, TAPE_RI, TAPE_RC
+    h = W / 2
+    parts = tape_core("Core", core, Ri, Rc, h, 64)
+    for o in parts:
+        o.data.transform(Matrix.Translation((0, 0, Rc)))
+    # stub: angle p measured from the bottom of the core toward the front (-Y) and over the top
+    hw, th = W / 2 - 0.0006, 0.00022
+    nx, nl = 10, 14
+    p0, p_lift, p_end = 158.0, 110.0, 90.0           # glued start (cut square), lifts off, torn end
+
+    def jag(i):
+        u = i / nx
+        return 0.6 * abs(math.sin(u * 9.3 + 0.4)) + 0.4 * abs(math.sin(u * 23.1 + 1.7))
+
+    bm = bmesh.new()
+    top, bot = [], []
+    for i in range(nx + 1):
+        x = -hw + 2 * hw * i / nx
+        pe = p_end + 7.0 * jag(i) + (2.5 if i in (0, nx) else 0.0)     # ragged torn edge
+        rt, rb = [], []
+        for j in range(nl + 1):
+            pdeg = p0 + (pe - p0) * j / nl
+            lift = 0.0
+            if pdeg < p_lift:
+                f = (p_lift - pdeg) / (p_lift - p_end)
+                lift = 0.0030 * f ** 1.5
+            p = math.radians(pdeg)
+            r = Rc + th + 0.00003 + lift
+            c = Vector((x, -r * math.sin(p), Rc - r * math.cos(p)))
+            n = Vector((0, -math.sin(p), -math.cos(p)))
+            rt.append(bm.verts.new(c + n * th))
+            rb.append(bm.verts.new(c - n * th))
+        top.append(rt)
+        bot.append(rb)
+
+    def quad(vs, mi, want):
+        f = bm.faces.new(vs)
+        f.normal_update()
+        if f.normal.dot(want) < 0:
+            f.normal_flip()
+        f.material_index = mi
+
+    for i in range(nx):
+        for j in range(nl):
+            c = (top[i][j].co + top[i + 1][j + 1].co) / 2
+            out = Vector((0, c.y, c.z - Rc)).normalized()
+            quad((top[i][j], top[i + 1][j], top[i + 1][j + 1], top[i][j + 1]), 0, out)
+            quad((bot[i][j], bot[i + 1][j], bot[i + 1][j + 1], bot[i][j + 1]), 0, -out)
+    for j in range(nl):                                 # long edges
+        quad((top[0][j], top[0][j + 1], bot[0][j + 1], bot[0][j]), 1, Vector((-1, 0, 0)))
+        quad((top[nx][j], top[nx][j + 1], bot[nx][j + 1], bot[nx][j]), 1, Vector((1, 0, 0)))
+    for i in range(nx):                                 # square start and torn end
+        a = top[i][0].co
+        quad((top[i][0], top[i + 1][0], bot[i + 1][0], bot[i][0]), 1, Vector((0, a.z - Rc, -a.y)).normalized() * -1)
+        e = top[i][nl].co
+        quad((top[i][nl], top[i + 1][nl], bot[i + 1][nl], bot[i][nl]), 1, Vector((0, e.z - Rc, -e.y)).normalized())
+    parts.append(new_obj("Stub", bm, [blue, edge]))
+    ob = finish(parts, "TapeRollEmpty", sharp_deg=55)
+    REPORT["TapeRollEmpty"] = {"roll centre (Unity)": U((0, 0, Rc)), "roll axis (Unity)": (1, 0, 0),
+                               "core radii inner/outer": (Ri, Rc), "core width": round(W + 2 * CORE_PROUD, 4)}
     return ob
 
 
@@ -956,37 +1110,441 @@ def sleeping_bag():
     return ob
 
 
+def smooth01(t):
+    t = max(0.0, min(1.0, t))
+    return t * t * (3 - 2 * t)
+
+
+def bridge_pts(prev, ctrl, nxt, n=4):
+    """Catmull-Rom samples strictly between prev[-1] and nxt[0], through ctrl, matching the tangents of both ends."""
+    pts = [tuple(prev[-2]), tuple(prev[-1])] + [tuple(c) for c in ctrl] + [tuple(nxt[0]), tuple(nxt[1])]
+    out = catmull(pts, n)
+    return [Vector(p) for p in out[n + 1:(len(ctrl) + 2) * n]]
+
+
+def cord_bundle():
+    """Lamp cord wound into a flat hank of four loops (two layers), cinched in the middle by three turns, with the plug
+    tucked under the turns on top. The lamp end of the cord leaves the front (-Y) on the floor."""
+    cordm = mat("CordBlack", (0.03, 0.03, 0.03), 0.55)
+    body = mat("PlugBody", (0.035, 0.035, 0.035), 0.5)
+    metal = mat("PlugMetal", (0.80, 0.68, 0.42), 0.3, 1.0)
+    cr, g = 0.0028, 0.0002
+    dz = 2 * cr + g                       # one layer of loops on another
+    lift = 2 * cr + g                     # the wrap passes under the middle of the bundle and lifts it
+    # (a: half length, b_end: half width out toward the ends, b_mid: half width where the wrap cinches, layer)
+    P = [(0.0405, 0.0190, 3 * cr + g, 0), (0.0345, 0.0128, cr + g / 2, 0),
+         (0.0405, 0.0190, 3 * cr + g, 1), (0.0345, 0.0128, cr + g / 2, 1)]
+
+    def params(T):
+        k = min(int(math.floor(T)), 3)
+        f = T - k
+        w = 0.05
+        if f < w and k > 0:
+            s, A, B = 0.5 + 0.5 * f / w, P[k - 1], P[k]
+        elif f > 1 - w and k < 3:
+            s, A, B = 0.5 * (f - (1 - w)) / w, P[k], P[k + 1]
+        else:
+            return P[k]
+        s = smooth01(s)
+        return tuple(a + (b - a) * s for a, b in zip(A, B))
+
+    def loop_pt(T):
+        th = 2 * math.pi * T
+        T = (th + 0.22 * math.sin(2 * th)) / (2 * math.pi)       # spend the samples on the loop ends, not under the wrap
+        a, be, bmid, layer = params(T)
+        t = math.pi / 2 + 2 * math.pi * T
+        x = a * math.cos(t)
+        u = min(1.0, abs(x) / a)
+        b = bmid + (be - bmid) * smooth01(u / 0.62)
+        y = -b * math.sin(t)
+        z = cr + layer * dz + lift * math.exp(-(x / 0.020) ** 4)
+        return Vector((x, y, z))
+
+    T0, T1, per = 0.055, 3.95, 21
+    n = int(round((T1 - T0) * per))
+    loops = [loop_pt(T0 + (T1 - T0) * i / n) for i in range(n + 1)]
+
+    # the plug, lying flat on top of the bundle with its prongs toward +X, held under the turns
+    zp = (2 * cr + dz + lift) + g + 0.00475                    # on the upper strands
+    plug_parts = []
+    pb = rbox("PBody", (0.024, 0.020, 0.0095), (-0.012, 0, 0), body, bevel=0.0026, segs=2)
+    for v in pb.data.vertices:
+        k = max(0.0, (-v.co.x - 0.006) / 0.018)
+        v.co.y *= 1 - 0.10 * k
+        v.co.z *= 1 - 0.12 * k
+    plug_parts.append(pb)
+    plug_parts.append(lathe("PRelief", [(0.0041, 0.0), (0.0040, 0.0030), (0.0036, 0.0060), (0.0033, 0.0078)], body, 12, False, True,
+                            xf=M4(Matrix.Rotation(-math.pi / 2, 3, "Y"), (-0.0235, 0, 0))))
+    for sy, wz in ((-1, 0.0063), (1, 0.0079)):                 # hot blade, wider (polarised) neutral blade
+        bl = rbox("PBlade", (0.0169, 0.0013, wz), (0.0169 / 2 - 0.001, sy * 0.00635, 0), metal)
+        for v in bl.data.vertices:
+            if v.co.x > 0.012:
+                v.co.z *= 0.85
+        plug_parts.append(bl)
+    plug_rot = Matrix.Rotation(math.radians(5), 3, "Z") @ Matrix.Rotation(math.radians(-3), 3, "Y")
+    plug_loc = Vector((0.0125, 0.0008, zp))
+    for o in plug_parts:
+        o.data.transform(M4(plug_rot, plug_loc))
+    relief_end = plug_rot @ Vector((-0.0313, 0, 0)) + plug_loc
+    relief_dir = plug_rot @ Vector((1, 0, 0))
+
+    # the wrap: three turns about the X axis around the bundle (and over the plug)
+    ztop = zp + 0.00475 + g + cr
+    zbot = cr
+    zc, rzt, rzb = (ztop + zbot) / 2, (ztop - zbot) / 2, (ztop - zbot) / 2
+    ry = 4 * cr + 2 * g + cr + 0.0004
+    turns, wper = 3, 12
+    wrap = []
+    for i in range(turns * wper + 1):
+        th = 2 * math.pi * i / wper
+        s, c = math.sin(th), math.cos(th)
+        nt, nb = 5.0, 6.0
+        e = 2 / (nt if c >= 0 else nb)
+        y = ry * math.copysign(abs(s) ** e, s)
+        z = zc + (rzt if c >= 0 else rzb) * math.copysign(abs(c) ** e, c)
+        x = 0.0085 - 0.017 * i / (turns * wper)
+        wrap.append(Vector((x, y, z)))
+
+    # lamp-side lead, out of the front on the floor
+    lead_end = Vector((-0.0035, -0.070, cr))
+    lead = [lead_end, Vector((-0.0052, -0.056, cr)), Vector((-0.0080, -0.043, cr + 0.0001))]
+    lead_to_loops = bridge_pts(lead, [(-0.0112, -0.031, cr + 0.0009)], loops, 3)
+    loops_to_wrap = bridge_pts(loops, [(0.0098, -0.0035, ztop - 0.0035)], wrap, 3)
+    tail_in = [relief_end - relief_dir * 0.0035, relief_end + relief_dir * 0.0015]
+    wrap_to_plug = bridge_pts(wrap, [(-0.0118, 0.0105, ztop - 0.0030), (-0.0215, 0.0080, zp + 0.0010),
+                                     (-0.0262, 0.0010, zp)], tail_in, 3)
+    path = lead + lead_to_loops + loops + loops_to_wrap + wrap + wrap_to_plug + tail_in
+    parts = [tube("Cord", path, cr, cordm, sides=6)] + plug_parts
+    ob = finish(parts, "CordBundle", sharp_deg=60)
+    vs = ob.data.vertices
+    lo = Vector([min(v.co[i] for v in vs) for i in range(3)])
+    hi = Vector([max(v.co[i] for v in vs) for i in range(3)])
+    off = Vector(((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, lo.z))
+    ob.data.transform(Matrix.Translation(-off))
+    REPORT["CordBundle"] = {"lamp-side cord end point": U(lead_end - off), "lamp-side cord end dir (outward)": U((lead[0] - lead[1]).normalized()),
+                            "cord radius": cr, "plug centre": U(plug_loc + plug_rot @ Vector((-0.012, 0, 0)) - off),
+                            "prong dir": U(plug_rot @ Vector((1, 0, 0)))}
+    return ob
+
+
+# ------------------------------------------------------------------------------------------- wall plates (outlet/switch)
+PLATE_W, PLATE_H, PLATE_RC = 0.070, 0.115, 0.0032
+PLATE_PROFILE = [(0.0, 0.0), (0.0, 0.0010), (0.00035, 0.0021), (0.0011, 0.0032), (0.0022, 0.0041), (0.0036, 0.0047), (0.0052, 0.0050)]
+PLATE_FRONT = -PLATE_PROFILE[-1][1]
+
+
+def rr_loop(w, h, r, cx=0.0, cz=0.0, nc=6):
+    """Rounded rectangle in the XZ plane as (x, z) pairs, counter-clockwise seen from the front (-Y)."""
+    r = min(r, w / 2 - 1e-5, h / 2 - 1e-5)
+    pts = []
+    for x, z, a0 in ((w / 2 - r, -h / 2 + r, -90), (w / 2 - r, h / 2 - r, 0), (-w / 2 + r, h / 2 - r, 90), (-w / 2 + r, -h / 2 + r, 180)):
+        for k in range(nc + 1):
+            a = math.radians(a0 + 90 * k / nc)
+            pts.append((cx + x + r * math.cos(a), cz + z + r * math.sin(a)))
+    return pts
+
+
+def dcircle_loop(R, flat, cx, cz, na=9, nf=3):
+    """Circle of radius R with flat top and bottom at +-flat (a duplex receptacle face), ccw seen from the front."""
+    al = math.asin(flat / R)
+    xf = R * math.cos(al)
+    pts = []
+    for k in range(na):
+        a = -al + 2 * al * k / na
+        pts.append((cx + R * math.cos(a), cz + R * math.sin(a)))
+    for k in range(nf):
+        pts.append((cx + xf - 2 * xf * k / nf, cz + flat))
+    for k in range(na):
+        a = math.pi - al + 2 * al * k / na
+        pts.append((cx + R * math.cos(a), cz + R * math.sin(a)))
+    for k in range(nf):
+        pts.append((cx - xf + 2 * xf * k / nf, cz - flat))
+    return pts
+
+
+def rect_loop(w, h, cx, cz):
+    return [(cx + w / 2, cz - h / 2), (cx + w / 2, cz + h / 2), (cx - w / 2, cz + h / 2), (cx - w / 2, cz - h / 2)]
+
+
+def ground_loop(R, chord, cx, cz, n=10):
+    """Round ground hole with a flat chord at +chord above its centre (a 'U'), ccw seen from the front."""
+    a0 = math.pi - math.asin(chord / R)
+    a1 = 2 * math.pi + math.asin(chord / R)
+    return [(cx + R * math.cos(a0 + (a1 - a0) * k / n), cz + R * math.sin(a0 + (a1 - a0) * k / n)) for k in range(n + 1)]
+
+
+def _face(bm, vs, mi, want):
+    try:
+        f = bm.faces.new(vs)
+    except ValueError:
+        return None
+    f.normal_update()
+    if f.normal.dot(want) < 0:
+        f.normal_flip()
+    f.material_index = mi
+    return f
+
+
+def _ring(bm, loop, y):
+    return [bm.verts.new((x, y, z)) for x, z in loop]
+
+
+def _centre(vs):
+    return sum((v.co for v in vs), Vector()) / len(vs)
+
+
+def _bridge(bm, A, B, mi, want_fn):
+    for i in range(len(A)):
+        j = (i + 1) % len(A)
+        vs = (A[i], A[j], B[j], B[i])
+        _face(bm, vs, mi, want_fn(_centre(vs)))
+
+
+def _fill(bm, outer, holes, mi, want):
+    loops = [outer] + list(holes)
+    flat = [v for L in loops for v in L]
+    tris = geometry.tessellate_polygon([[(v.co.x, v.co.z, 0.0) for v in L] for L in loops])
+    for t in tris:
+        _face(bm, [flat[i] for i in t], mi, want)
+
+
+def _hole(bm, loop, y, depth, mi):
+    """A recess into a front-facing surface at y: walls back to y + depth and a bottom."""
+    A = _ring(bm, loop, y)
+    B = _ring(bm, loop, y + depth)
+    c = _centre(A)
+    _bridge(bm, A, B, mi, lambda p: Vector((c.x - p.x, 0, c.z - p.z)))
+    _fill(bm, B, [], mi, Vector((0, -1, 0)))
+    return A
+
+
+def plate_shell(bm, openings, mi, wall_to):
+    """Cover plate: back at y = 0, bevelled edge, flat front at PLATE_FRONT with the given openings (2D loops), whose
+    walls run back to y = wall_to. Returns the back rings of the openings."""
+    rings = []
+    for inset, d in PLATE_PROFILE:
+        rings.append(_ring(bm, rr_loop(PLATE_W - 2 * inset, PLATE_H - 2 * inset, max(PLATE_RC - 0.6 * inset, 0.0012)), -d))
+    for A, B in zip(rings[:-1], rings[1:]):
+        _bridge(bm, A, B, mi, lambda c: c - Vector((0, 0.05, 0)))
+    _fill(bm, rings[0], [], mi, Vector((0, 1, 0)))                       # back (against the wall)
+    fronts, backs = [], []
+    for loop in openings:
+        F = _ring(bm, loop, PLATE_FRONT)
+        Bk = _ring(bm, loop, wall_to)
+        c = _centre(F)
+        _bridge(bm, F, Bk, mi, lambda p, c=c: Vector((c.x - p.x, 0, c.z - p.z)))
+        fronts.append(F)
+        backs.append(Bk)
+    _fill(bm, rings[-1], fronts, mi, Vector((0, -1, 0)))
+    return backs
+
+
+def plate_screw(bm, cx, cz, yb, mi, ang, R=0.0034, hd=0.0010, hr=0.00045, w=0.0009, hb=0.00028, na=8, nc=4):
+    """Oval-head slotted screw on a front-facing surface at y = yb; ang: slot direction in the XZ plane (radians from +X)."""
+    ca, sa = math.cos(ang), math.sin(ang)
+
+    def V(u, v, hgt):
+        return bm.verts.new((cx + u * ca - v * sa, yb - hgt, cz + u * sa + v * ca))
+
+    def W3(u, v):
+        return Vector((u * ca - v * sa, 0, u * sa + v * ca))
+
+    def dome(u, v):
+        return hr + hd * math.sqrt(max(0.0, 1 - (u * u + v * v) / (R * R)))
+
+    a0 = math.asin((w / 2) / R)
+    uc = R * math.cos(a0)
+    front = Vector((0, -1, 0))
+    halves = {}
+    for s in (1, -1):
+        chord = [(-uc + 2 * uc * k / nc, s * w / 2) for k in range(nc + 1)]
+        arc = [(R * math.cos(a0 + (math.pi - 2 * a0) * k / na), s * R * math.sin(a0 + (math.pi - 2 * a0) * k / na)) for k in range(1, na)]
+        loop = chord + arc
+        C = (0.0, s * (w / 2 + R) / 2)
+        rings = []
+        for f in (0.5, 1.0):
+            ring = []
+            for u, v in loop:
+                pu, pv = C[0] + (u - C[0]) * f, C[1] + (v - C[1]) * f
+                ring.append(V(pu, pv, dome(pu, pv)))
+            rings.append(ring)
+        cv = V(C[0], C[1], dome(*C))
+        m = len(loop)
+        for i in range(m):
+            _face(bm, (cv, rings[0][i], rings[0][(i + 1) % m]), mi, front)
+        _bridge(bm, rings[0], rings[1], mi, lambda p: front)
+        bot = [V(u, v, hb) for u, v in chord]
+        for k in range(nc):
+            _face(bm, (rings[1][k], rings[1][k + 1], bot[k + 1], bot[k]), mi, W3(0, -s))
+        top = [rings[1][nc]] + rings[1][nc + 1:] + [rings[1][0]]
+        uvs = [loop[nc]] + loop[nc + 1:] + [loop[0]]
+        base = [V(u, v, -0.0002) for u, v in uvs]
+        for k in range(len(top) - 1):
+            mu, mv = (uvs[k][0] + uvs[k + 1][0]) / 2, (uvs[k][1] + uvs[k + 1][1]) / 2
+            _face(bm, (top[k], top[k + 1], base[k + 1], base[k]), mi, W3(mu, mv))
+        halves[s] = (bot, base)
+    (b1, base1), (b2, base2) = halves[1], halves[-1]
+    for k in range(nc):
+        _face(bm, (b1[k], b1[k + 1], b2[k + 1], b2[k]), mi, front)
+    _face(bm, (b1[nc], b2[nc], base2[0], base1[0]), mi, W3(1, 0))
+    _face(bm, (b1[0], b2[0], base2[-1], base1[-1]), mi, W3(-1, 0))
+
+
+def wall_outlet():
+    plastic = mat("PlatePlastic", (0.80, 0.76, 0.66), 0.32)
+    slot = mat("OutletSlot", (0.02, 0.02, 0.02), 0.8)
+    screw = mat("Screw", (0.72, 0.70, 0.66), 0.35, 1.0)
+    bm = bmesh.new()
+    zc = 0.01905                                    # receptacle faces 1.5" apart
+    Ro, Fo = 0.0177, 0.0149                         # plate opening
+    Rf, Ff = 0.0173, 0.0145                         # receptacle face
+    y_gap, y_edge, y_top = -0.0016, -0.0054, -0.0059
+    backs = plate_shell(bm, [dcircle_loop(Ro, Fo, 0, sz * zc) for sz in (1, -1)], 0, y_gap)
+    for sz, Bk in zip((1, -1), backs):
+        cz = sz * zc
+        L0 = _ring(bm, dcircle_loop(Rf, Ff, 0, cz), y_gap)
+        _bridge(bm, Bk, L0, 1, lambda p: Vector((0, -1, 0)))                  # dark gap around the face
+        L1 = _ring(bm, dcircle_loop(Rf, Ff, 0, cz), y_edge)
+        L2 = _ring(bm, dcircle_loop(Rf - 0.0005, Ff - 0.0005, 0, cz), y_top)
+        _bridge(bm, L0, L1, 0, lambda p, cz=cz: Vector((p.x, 0, p.z - cz)))
+        _bridge(bm, L1, L2, 0, lambda p, cz=cz: Vector((p.x, 0, p.z - cz)) * 300 + Vector((0, -1, 0)))
+        holes = [
+            _hole(bm, rect_loop(0.0021, 0.0086, -0.00635, cz + 0.0036), y_top, 0.0028, 1),   # neutral (taller), left
+            _hole(bm, rect_loop(0.0021, 0.0070, 0.00635, cz + 0.0036), y_top, 0.0028, 1),    # hot, right
+            _hole(bm, ground_loop(0.0026, 0.0012, 0, cz - 0.0074), y_top, 0.0028, 1),
+        ]
+        _fill(bm, L2, holes, 0, Vector((0, -1, 0)))
+    plate_screw(bm, 0, 0, PLATE_FRONT, 2, math.radians(84))
+    ob = new_obj("WallOutlet", bm, [plastic, slot, screw])
+    ob = finish([ob], "WallOutlet", sharp_deg=40, merge=0.00001)
+    REPORT["WallOutlet"] = {"origin": "centre of the plate's back face (wall surface)", "facing": U((0, -1, 0)),
+                            "plate size (Unity x, y)": (PLATE_W, PLATE_H), "plate front at Unity z": U((0, PLATE_FRONT, 0))[2],
+                            "receptacle face centres": [U((0, y_top, zc)), U((0, y_top, -zc))],
+                            "slot centres (upper face; neutral left, hot right)": [U((-0.00635, y_top, zc + 0.0036)), U((0.00635, y_top, zc + 0.0036))],
+                            "ground hole (upper face)": U((0, y_top, zc - 0.0074))}
+    return ob
+
+
+def light_switch():
+    plastic = mat("PlatePlastic", (0.80, 0.76, 0.66), 0.32)
+    toggle = mat("SwitchToggle", (0.80, 0.76, 0.66), 0.28)
+    screw = mat("Screw", (0.72, 0.70, 0.66), 0.35, 1.0)
+    bm = bmesh.new()
+    y_floor = -0.0022
+    backs = plate_shell(bm, [rr_loop(0.0105, 0.0240, 0.0012, nc=3)], 0, y_floor)
+    _fill(bm, backs[0], [], 1, Vector((0, -1, 0)))                 # the switch's own face down in the opening
+    # the toggle's rounded base (a drum about X) filling the middle of the opening
+    piv = Vector((0, 0.0018, 0.0))
+    rb, hb_x, nb = 0.0060, 0.0044, 10
+    arc = [(-rb * math.cos(math.radians(-52 + 104 * k / nb)), rb * math.sin(math.radians(-52 + 104 * k / nb))) for k in range(nb + 1)]
+    sides = []
+    for sx in (-1, 1):
+        sides.append([bm.verts.new((sx * hb_x, piv.y + y, piv.z + z)) for y, z in arc])
+    for k in range(nb):
+        vs = (sides[0][k], sides[0][k + 1], sides[1][k + 1], sides[1][k])
+        c = _centre(vs)
+        _face(bm, vs, 1, Vector((0, c.y - piv.y, c.z - piv.z)))
+    for sx, ring in zip((-1, 1), sides):
+        _face(bm, ring, 1, Vector((sx, 0, 0)))
+    # toggle lever, pointing up (on): rounded-rectangle section, tapering, with a rounded tip
+    tilt = math.radians(33)
+    d = Vector((0, -math.cos(tilt), math.sin(tilt)))
+    e1 = Vector((1, 0, 0))
+    e2 = d.cross(e1).normalized()
+    L = 0.0225
+
+    def section(s, hx, hy, r, nc=3):
+        c = piv + d * s
+        return [c + e1 * px + e2 * py for px, py in rr_loop(2 * hx, 2 * hy, r, nc=nc)]
+
+    rings = []
+    for s in (0.0045, 0.0080, 0.0120, 0.0160, 0.0192):
+        f = (s - 0.0045) / (0.0192 - 0.0045)
+        rings.append((s, 0.0037 - 0.0008 * f, 0.0026 - 0.0006 * f))
+    s_end, hx_e, hy_e = rings[-1]
+    rt = L - s_end
+    for k in (1, 2, 3):
+        a = math.pi / 2 * k / 4
+        rings.append((s_end + rt * math.sin(a), hx_e * math.cos(a) ** 0.6, hy_e * math.cos(a) ** 0.6))
+    vrings = []
+    for s, hx, hy in rings:
+        vrings.append([bm.verts.new(p) for p in section(s, hx, hy, min(hx, hy) * 0.55)])
+    for A, B in zip(vrings[:-1], vrings[1:]):
+        _bridge(bm, A, B, 1, lambda p: p - (piv + d * d.dot(p - piv)))
+    tip = bm.verts.new(piv + d * L)
+    last = vrings[-1]
+    for i in range(len(last)):
+        _face(bm, (last[i], last[(i + 1) % len(last)], tip), 1, d)
+    for sz, ang in ((1, 87), (-1, 94)):
+        plate_screw(bm, 0, sz * 0.03016, PLATE_FRONT, 2, math.radians(ang))
+    ob = new_obj("LightSwitch", bm, [plastic, toggle, screw])
+    ob = finish([ob], "LightSwitch", sharp_deg=40, merge=0.00001)
+    REPORT["LightSwitch"] = {"origin": "centre of the plate's back face (wall surface)", "facing": U((0, -1, 0)),
+                             "toggle tip (on, up)": U(piv + d * L), "toggle dir": U(d), "screws": [U((0, PLATE_FRONT, 0.03016)), U((0, PLATE_FRONT, -0.03016))]}
+    return ob
+
+
 MODELS = [
     ("Chalk", chalk, (0.9, -0.55, -0.3)),
     ("TapeRoll", tape_roll, (0.85, -1.0, 0.55)),
+    ("TapeRollEmpty", tape_roll_empty, (0.85, -1.0, 0.55)),
     ("DeskLamp", desk_lamp, (-0.55, -1.0, 0.12)),
     ("Plug", plug, (0.85, -1.0, 0.55)),
     ("CordSocket", cord_socket, (0.7, -1.0, 0.9)),
     ("CordCoil", cord_coil, (0.35, -0.7, 1.0)),
+    ("CordBundle", cord_bundle, (0.6, -1.0, 0.75)),
     ("RubberChicken", rubber_chicken, (0.85, -0.55, 0.75)),
     ("UtilityShelf", utility_shelf, (0.75, -1.0, 0.45)),
     ("Lantern", lantern, (0.7, -1.0, 0.45)),
     ("SleepingBag", sleeping_bag, (0.9, -1.0, 0.9)),
+    ("WallOutlet", wall_outlet, (0.45, -1.0, 0.3)),
+    ("LightSwitch", light_switch, (0.45, -1.0, 0.3)),
 ]
+UV_PREVIEW = {"TapeRoll", "DeskLamp", "RubberChicken", "CordBundle", "WallOutlet"}
+
+
+def uv_checker_preview(res, path, view):
+    """The same framing with every material slot showing a UV checker (1 checker tile = TEXEL metres)."""
+    img = bpy.data.images.get("UVCheck") or bpy.data.images.new("UVCheck", 1024, 1024)
+    img.generated_type = "COLOR_GRID"
+    m = bpy.data.materials.get("UVCheckMat") or bpy.data.materials.new("UVCheckMat")
+    m.use_nodes = True
+    nt = m.node_tree
+    tex = next((n for n in nt.nodes if n.type == "TEX_IMAGE"), None) or nt.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    nt.nodes.active = tex
+    saved = []
+    for o in meshes(res):
+        saved.append((o, [s.material for s in o.material_slots]))
+        for s in o.material_slots:
+            s.material = m
+    preview(res, path, view, color_type="TEXTURE")
+    for o, mats in saved:
+        for s, mm in zip(o.material_slots, mats):
+            s.material = mm
+
 
 for name, fn, view in MODELS:
     if ONLY and name not in ONLY:
         continue
     reset()
-    ob = fn()
-    tris = len(ob.data.polygons)
-    vs = ob.data.vertices
-    lo = [min(v.co[i] for v in vs) for i in range(3)]
-    hi = [max(v.co[i] for v in vs) for i in range(3)]
+    res = fn()
+    bpy.context.view_layer.update()
+    ms = meshes(res)
+    tris = sum(len(o.data.polygons) for o in ms)
+    vs = [o.matrix_world @ v.co for o in ms for v in o.data.vertices]
+    lo = [min(v[i] for v in vs) for i in range(3)]
+    hi = [max(v[i] for v in vs) for i in range(3)]
     size_u = (hi[0] - lo[0], hi[2] - lo[2], hi[1] - lo[1])
     min_u = (lo[0], lo[2], -hi[1])
     max_u = (hi[0], hi[2], -lo[1])
     path = os.path.join(OUT, name + ".fbx")
-    export(ob, path)
+    export(res, path)
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        preview(ob, os.path.join(PREVIEW, name + ".png"), view)
+        preview(res, os.path.join(PREVIEW, name + ".png"), view)
         if name == "RubberChicken":
+            ob = ms[0]
             sq = [k.co.copy() for k in ob.data.shape_keys.key_blocks["Squeeze"].data]
             tmp = bpy.data.objects.new("SqueezePreview", ob.data.copy())
             bpy.context.collection.objects.link(tmp)
@@ -997,16 +1555,27 @@ for name, fn, view in MODELS:
             preview(tmp, os.path.join(PREVIEW, name + "_Squeeze.png"), view)
             ob.hide_render = False
             bpy.data.objects.remove(tmp, do_unlink=True)
-    mats = [m.name for m in ob.data.materials]
+        if name in UV_PREVIEW:
+            uv_checker_preview(res, os.path.join(PREVIEW, name + "_UV.png"), view)
     print("EXPORTED", name, "tris", tris, "size_unity", tuple(round(s, 4) for s in size_u),
-          "min_unity", tuple(round(s, 4) for s in min_u), "max_unity", tuple(round(s, 4) for s in max_u), "mats", mats)
+          "min_unity", tuple(round(s, 4) for s in min_u), "max_unity", tuple(round(s, 4) for s in max_u))
+    for o in as_list(res):
+        if o.type == "MESH":
+            print("   MESH", o.name, "parent", o.parent.name if o.parent else None, "origin (Unity, in root)", U(o.matrix_world.translation),
+                  "tris", len(o.data.polygons), "mats", [m.name for m in o.data.materials],
+                  "uv maps", [u.name for u in o.data.uv_layers], "uv density 5/50/95%", uv_density_stats(o))
+        else:
+            print("   EMPTY", o.name, "at", U(o.matrix_world.translation))
     if name in REPORT:
         for k, v in REPORT[name].items():
             print("   REPORT", name, k, "=", v)
-    if name == "RubberChicken":
+    if name in ("RubberChicken", "TapeRoll"):
         reset()
         bpy.ops.import_scene.fbx(filepath=path)
         for o in bpy.context.scene.objects:
             if o.type == "MESH":
                 sk = o.data.shape_keys
-                print("   REIMPORT", o.name, "shape keys:", [k.name for k in sk.key_blocks] if sk else None)
+                print("   REIMPORT", o.name, "parent", o.parent.name if o.parent else None, "shape keys:",
+                      [k.name for k in sk.key_blocks] if sk else None, "uv", [u.name for u in o.data.uv_layers])
+            else:
+                print("   REIMPORT", o.type, o.name)

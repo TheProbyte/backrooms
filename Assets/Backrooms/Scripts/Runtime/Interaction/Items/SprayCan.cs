@@ -98,6 +98,7 @@ namespace Backrooms.Interaction
                 default: c = new Color(0.62f, 0.03f, 0.025f); smooth = 0.75f; break;
             }
             m.SetColor("_BaseColor", c); m.SetFloat("_Metallic", metal); m.SetFloat("_Smoothness", smooth);
+            ItemModels.AddDetail(m, key);
             s_mats[key] = m;
             return m;
         }

@@ -35,6 +35,25 @@ namespace Backrooms.Generation
             }
         }
 
+        /// <summary>Appends a model's triangles (one submesh's worth), placed at a position and rotation.</summary>
+        public void AddMesh(Vector3[] v, Vector3[] n, Vector4[] t, Vector2[] uv, int[] tris, Vector3 position, Quaternion rotation)
+        {
+            // Only the vertices the triangles use, renumbered.
+            var map = new Dictionary<int, int>(tris.Length);
+            foreach (int i in tris)
+            {
+                if (map.TryGetValue(i, out int j)) { _i.Add(j); continue; }
+                j = _v.Count;
+                map[i] = j;
+                _v.Add(position + rotation * v[i]);
+                _n.Add(rotation * n[i]);
+                var td = rotation * new Vector3(t[i].x, t[i].y, t[i].z);
+                _t.Add(new Vector4(td.x, td.y, td.z, t[i].w));
+                _uv.Add(uv[i]);
+                _i.Add(j);
+            }
+        }
+
         public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal, UVProjector uv)
         {
             Quad(a, b, c, d, normal, uv(a + worldOffset, normal), uv(b + worldOffset, normal), uv(c + worldOffset, normal), uv(d + worldOffset, normal));

@@ -15,6 +15,39 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 13:45  Claude Code  Polish pass: pick-up, throw, cords, tape, maps, plates, rigged arm and body, vents
+- Camcorder presets: `Resources/CamcorderPresets.json` holds saved preset values (editor: written into the project;
+  build: PlayerPrefs). SET AS DEFAULT saves the current preset's values; the current preset is highlighted. Clean was
+  saved from the owner's settings.
+- Vents: the special room's floor also clears the ceilings of the up to 3 cells behind the hole (their colliders
+  crossed the duct), and the duct is 1.9 m (was 2.2) so a far wall cannot stop the player before the crossing.
+  `Debug/VentProbe.cs` crawls every loaded vent in and out with bot input: 3/3 both ways (was 2/3).
+- Items: aim assist for pick-up (`PropGrabber.Items.LookItem`, focus brackets), hold Q to throw (3.5-13 m/s), held
+  item lags and bobs with the hand, contact shadows instead of shadow maps (`Items/ContactShadow.cs`), chicken draws
+  air while squeezed and squawks on release.
+- Cords (`Power/Cord.cs`): swept particle collisions and span checks; lamp cord bundled behind the base until needed
+  (`CordBundle.fbx`, `CordBundleHandle`, right mouse winds it); a yank sound and camera jolt when a held lamp pulls its
+  plug out.
+- Tape: opaque with a cut edge, crepe and a soft edge shadow (Marks.shader; strips laid 3 mm wider); its blue is now
+  made linear in the shader (vertex colours were washing it out); the roll's wound tape shrinks and an empty roll is
+  `TapeRollEmpty.fbx`.
+- Normal maps: `Generation/MaterialMaps.cs` gives 14 world materials generated normal maps through in-memory copies
+  (the M_*.mat files are untouched); every item material gets a detail normal map by what it is made of
+  (`Resources/Textures/Generated`); PoolTile.shader got glaze waves and grout grit.
+- Wall outlets and switches: modelled (`WallOutlet.fbx`, `LightSwitch.fbx`), copied into the chunk meshes
+  (`Generation/WallPlateModels.cs`, `MeshWriter.AddMesh`), no shadows, at most two extra draws per room.
+- Arm and body: skinned, realistic (`Tools/Blender/make_player_rig.py`), same bone names; the thumb now folds across
+  the palm; skinned bounds follow the pose.
+- All item FBXs have UVs now (`build_items*.py`). Water: ripples no longer jump when the window shifts on a frame with
+  no simulation step. Noclip doors: the jump happens before the near plane can reach the far side.
+- Checked: EditMode tests 66/66 (crawl-space tests updated for the duct rule and 1.9 m duct). Played in World 3 (now
+  erased; World 1 untouched): VentProbe 3/3; screenshots of outlets, switches, tape on wallpaper, full to empty tape
+  rolls, the lamp's cord bundle, the arm holding the chicken and the body; a full-charge throw left the hand at 13 m/s.
+- Open: tape on Poolrooms tiles, the noclip timing, ripples, cord clipping, the yank and the chicken sounds were not
+  watched in play (code paths only). The fist pose's thumb was fixed by reasoning, not seen. The arm looks odd from
+  outside at the elbow (never seen in first person). "Deleting invalid font reference" still appears after leaving Play
+  Mode (the F5 menu's runtime font).
+
 ## 2026-10-26 21:00  Claude Code  Five items, power, crawl spaces to special rooms, noclip doors into the Poolrooms
 - Game name: "Still Recording" (working title) in README/STATUS.
 - Items (L menu), models by a subagent in Tools/Blender/build_items2.py (Resources/Items/*.fbx):

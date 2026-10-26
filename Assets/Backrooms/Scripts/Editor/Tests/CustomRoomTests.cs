@@ -343,7 +343,16 @@ namespace Backrooms.Tests
                         maxCeil = Mathf.Max(maxCeil, r.ceiling);
                         Assert.IsTrue(taken.Add(c), "special rooms never overlap");
                     }
-                    Assert.AreEqual(maxCeil + CrawlPortals.PlenumGap, p.roomFloor, 1e-4f, "the floor sits just above the highest ceiling under it");
+                    // The room's duct runs back over the cells behind the hole: their ceilings stay under it too.
+                    for (int back = 1; back <= 3; back++)
+                    {
+                        var d = p.cell + (behind - p.cell) * back;
+                        if (!plan.InChunk(d.x, d.y)) continue;
+                        var r = plan.RoomAt(d.x, d.y);
+                        Assert.IsFalse(r.openAbove, "nothing open up into the duct");
+                        maxCeil = Mathf.Max(maxCeil, r.ceiling);
+                    }
+                    Assert.AreEqual(maxCeil + CrawlPortals.PlenumGap, p.roomFloor, 1e-4f, "the floor sits just above the highest ceiling under it and under its duct");
                     Assert.Less(p.roomFloor + CrawlPortals.RoomHeight, set.storeyPitch - 0.5f, "and its top under the storey above");
                     var flat = new Vector2(p.partnerPosition.x - p.position.x, p.partnerPosition.z - p.position.z);
                     Assert.Less(flat.magnitude, 0.05f, "the room's vent is right above the hole");
@@ -524,9 +533,9 @@ namespace Backrooms.Tests
                 Assert.AreEqual((float)UnityEngine.Rendering.CompareFunction.Always, source.duct.sharedMaterials[0].GetFloat("_StencilComp"));
                 Assert.AreEqual(0, person.transform.position.x, 0.0001f, "no trip before the far end");
                 // The trip happens just before the eye reaches the window (the near plane would cut it off): at 8 cm.
-                eyeAt(-1.0f); eyeAt(-2.0f); eyeAt(-2.1f);
+                eyeAt(-1.0f); eyeAt(-1.7f); eyeAt(-1.8f);
                 Assert.AreEqual(0, person.transform.position.x, 0.0001f);
-                eyeAt(-2.15f);
+                eyeAt(-1.85f);
                 Assert.AreEqual(10, person.transform.position.x, 0.0001f, "crossing the window comes out of the partner");
                 Assert.AreEqual(0.05f, person.transform.position.z, 0.0001f, "exactly as far into the partner's opening as the eye was from the window");
                 Assert.IsFalse(source.Inside); Assert.IsTrue(source.patch.enabled);
@@ -541,7 +550,7 @@ namespace Backrooms.Tests
                 // Turning round and crawling back in goes into the partner's own duct, which leads back.
                 eyeAt(0.0f);
                 Assert.IsTrue(destination.Inside);
-                eyeAt(1.0f); eyeAt(2.0f); eyeAt(2.15f);
+                eyeAt(1.0f); eyeAt(1.75f); eyeAt(1.85f);
                 Assert.AreEqual(0, person.transform.position.x, 0.0001f, "the partner's duct leads back to the first hole");
                 Assert.AreEqual(-0.05f, person.transform.position.z, 0.0001f);
                 Assert.IsTrue(source.Inside);

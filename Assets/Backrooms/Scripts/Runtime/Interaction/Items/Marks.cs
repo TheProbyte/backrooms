@@ -25,6 +25,8 @@ namespace Backrooms.Interaction
         }
 
         public const float ChalkWidth = 0.011f, TapeWidth = 0.048f;
+        /// <summary>A tape strip is laid this much wider each side than the tape: the shader draws its edge shadow there.</summary>
+        public const float TapeMargin = 0.003f, TapeStripWidth = TapeWidth + 2f * TapeMargin;
         public const float KindChalk = 0f, KindTape = 1f;
         public static readonly Color32 ChalkColor = new Color32(236, 236, 228, 235);
         public static readonly Color32 TapeColor = new Color32(52, 104, 204, 255);
@@ -149,7 +151,7 @@ namespace Backrooms.Interaction
 
         public void AddTape(Vector3 a, Vector3 b, Vector3 normal)
         {
-            Strip(Current(), a, b, normal, TapeWidth, KindTape, TapeColor);
+            Strip(Current(), a, b, normal, TapeStripWidth, KindTape, TapeColor);
             Count++;
         }
 
@@ -158,7 +160,7 @@ namespace Backrooms.Interaction
         {
             if (_preview == null) _preview = NewBatch("MarkPreview", transform);
             _preview.Clear();
-            Strip(_preview, a, b, normal, TapeWidth, KindTape, TapeColor);
+            Strip(_preview, a, b, normal, TapeStripWidth, KindTape, TapeColor);
             _preview.go.SetActive(true);
         }
 

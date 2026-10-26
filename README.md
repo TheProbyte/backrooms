@@ -27,8 +27,8 @@ milestone-1 room is still in `OfficeRoom_Prototype.unity`.)
 | L | Developer menu: spawn any item or piece of furniture |
 | Esc | Pause menu (resume, save and quit to menu, quit) / close a panel |
 | Left click | Pick up an item; hold to grab furniture; with an item in hand: use it |
-| Q | Drop the item in your hand (a lamp or a cord's box is set down upright) |
-| Right click | With an extension cord in hand: coil it up. Otherwise: shove |
+| Q | Tap: drop the item in your hand (a lamp or a cord's box is set down upright). Hold and release: throw it (harder the longer you hold) |
+| Right click | With an extension cord in hand: coil it up. With the desk lamp: wind its cord up. Otherwise: shove |
 
 ## Items, power, crawl spaces, noclip doors
 

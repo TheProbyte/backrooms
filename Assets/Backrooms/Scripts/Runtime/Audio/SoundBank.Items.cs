@@ -14,6 +14,8 @@ namespace Backrooms.Audio
         public static AudioClip PlugIn => s_plugIn ? s_plugIn : (s_plugIn = ProceduralSounds.Plug(true));
         public static AudioClip PlugOut => s_plugOut ? s_plugOut : (s_plugOut = ProceduralSounds.Plug(false));
         public static AudioClip CordWhip => s_whip ? s_whip : (s_whip = ProceduralSounds.CordWhip());
+        static AudioClip s_yank;
+        public static AudioClip CordYank => s_yank ? s_yank : (s_yank = ProceduralSounds.CordYank());
         public static AudioClip NoclipCrackle => s_crackle ? s_crackle : (s_crackle = ProceduralSounds.NoclipCrackle());
 
         public static AudioClip ChickenSqueeze(int i)

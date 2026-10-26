@@ -76,10 +76,10 @@ namespace Backrooms.Interaction
                     Vector3 o = door.centre + n * (T * 0.5f);
                     Vector3 P(float x, float y) => o + r * x + up * y;
                     // Left and right uprights, from just above the floor to a little past the top strip.
-                    Marks.Strip(batch, P(-half + J() * 0.006f, 0.015f + J() * 0.004f), P(-half + J() * 0.012f, top + 0.03f + J() * 0.012f), n, Marks.TapeWidth, Marks.KindTape, Marks.TapeColor);
-                    Marks.Strip(batch, P(half + J() * 0.006f, 0.015f + J() * 0.004f), P(half + J() * 0.012f, top + 0.03f + J() * 0.012f), n, Marks.TapeWidth, Marks.KindTape, Marks.TapeColor);
+                    Marks.Strip(batch, P(-half + J() * 0.006f, 0.015f + J() * 0.004f), P(-half + J() * 0.012f, top + 0.03f + J() * 0.012f), n, Marks.TapeStripWidth, Marks.KindTape, Marks.TapeColor);
+                    Marks.Strip(batch, P(half + J() * 0.006f, 0.015f + J() * 0.004f), P(half + J() * 0.012f, top + 0.03f + J() * 0.012f), n, Marks.TapeStripWidth, Marks.KindTape, Marks.TapeColor);
                     // Across the top, overhanging both uprights.
-                    Marks.Strip(batch, P(-half - 0.05f - J() * 0.015f, top + J() * 0.008f), P(half + 0.05f + J() * 0.015f, top + J() * 0.012f), n, Marks.TapeWidth, Marks.KindTape, Marks.TapeColor);
+                    Marks.Strip(batch, P(-half - 0.05f - J() * 0.015f, top + J() * 0.008f), P(half + 0.05f + J() * 0.015f, top + J() * 0.012f), n, Marks.TapeStripWidth, Marks.KindTape, Marks.TapeColor);
                 }
                 Marks.Upload(batch);
             }

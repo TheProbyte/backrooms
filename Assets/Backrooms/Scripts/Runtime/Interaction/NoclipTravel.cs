@@ -96,8 +96,13 @@ namespace Backrooms.Interaction
                 {
                     approach = Mathf.Clamp01(1f - Mathf.Abs(s) / glitchDistance);
                     approach *= approach;
-                    if (_watch == near && Mathf.Sign(s) != Mathf.Sign(_prevDist) && Mathf.Abs(_prevDist) < 0.6f)
-                        StartCoroutine(Go(near, _prevDist > 0f ? 1f : -1f));
+                    // Go before the camera can see into the wall: as soon as its near plane would reach the wall's face
+                    // (the frame is held from then on, so nothing behind the wall is ever seen).
+                    float face = OfficeBiome.WallThickness * 0.5f + cam.nearClipPlane + 0.08f;
+                    bool closing = _watch == near && Mathf.Abs(s) < Mathf.Abs(_prevDist) - 1e-5f;
+                    bool crossed = _watch == near && Mathf.Sign(s) != Mathf.Sign(_prevDist) && Mathf.Abs(_prevDist) < 0.6f;
+                    if ((closing && Mathf.Abs(s) < face) || crossed)
+                        StartCoroutine(Go(near, crossed ? (_prevDist > 0f ? 1f : -1f) : Mathf.Sign(s)));
                 }
                 _watch = near; _prevDist = s;
             }

@@ -146,6 +146,8 @@ namespace Backrooms.Generation
             // fog and ripples.
             PoolMaterials.Ensure();
             SpecialRoomMaterials.Ensure(assets);          // the rooms behind crawl spaces
+            WallPlateModels.Ensure();                     // outlet and switch models, copied into the chunk meshes
+            MaterialMaps.Ensure(assets);                  // normal maps for the materials that had none
             if (!GetComponent<PoolWorld>()) gameObject.AddComponent<PoolWorld>().streamer = this;
             // Developer menu: items and furniture (L).
             if (!GetComponent<Interaction.ItemsMenu>()) gameObject.AddComponent<Interaction.ItemsMenu>().streamer = this;
