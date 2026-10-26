@@ -127,6 +127,10 @@ namespace Backrooms.Generation
             Settings = WorldGenSettings.Load();
             _world = new WorldGenerator(Seed, Settings);
             if (!GetComponent<RuntimeIndoorReflections>()) gameObject.AddComponent<RuntimeIndoorReflections>();
+            // The Poolrooms: materials before any chunk data is prepared (worker threads only read them), and the map,
+            // fog and ripples.
+            PoolMaterials.Ensure();
+            if (!GetComponent<PoolWorld>()) gameObject.AddComponent<PoolWorld>().streamer = this;
             // Movable props: the list of moved ones, and the player's free hand.
             if (!GetComponentInChildren<Interaction.MovablePropManager>())
             {

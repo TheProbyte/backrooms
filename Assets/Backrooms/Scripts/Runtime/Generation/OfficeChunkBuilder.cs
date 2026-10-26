@@ -122,13 +122,16 @@ namespace Backrooms.Generation
         {
             _neighbours = neighbours;
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear(); _movables.Clear(); doorways.Clear();
+            _capsules.Clear(); poolMap = null;
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             // Square panels sit inside a ceiling tile and need no gap in the grid; only round domes sit on a cross tee.
             foreach (var f in layout.fixtures) if (f.dome) _fixtureCells.Add(f.cell);
 
             _cellMask = LightLayers.CellMasks(_L, Neighbour);
+            if (Pool) { for (int x = 0; x < _L.N; x++) for (int z = 0; z < _L.N; z++) _cellMask[x, z] = 1u; }   // no fixture lights here
             IndexHoles();
+            if (Pool) { BuildPoolData(); return; }
             BuildFloorAndCeiling();
             BuildCeilingGrid();
             BuildWalls();
@@ -202,6 +205,7 @@ namespace Backrooms.Generation
                               && mat != _a.domeOn && mat != _a.domeOff && mat != _a.ceilingPlaster && mat != _a.stripOn && mat != _a.stripOff
                               && mat != _a.referenceCarpet && mat != _a.cardboard && mat != _a.boxTape && mat != _a.boxPrint && mat != _a.rackUpright && mat != _a.rackBeam && mat != _a.pallet;   // warehouse dressing: proxies cast the shadows
                 r.shadowCastingMode = mask == ProxyMask || mask == WallProxyMask ? ShadowCastingMode.ShadowsOnly : caster ? ShadowCastingMode.On : ShadowCastingMode.Off;
+                if (Pool) r.shadowCastingMode = ShadowCastingMode.Off;      // the Poolrooms' sun is traced in the shader, not shadow-mapped
                 if (mask == WallProxyMask)
                 {
                     if (WallProxies.Count > 4000) WallProxies.RemoveWhere(x => !x);   // unloaded chunks
@@ -263,9 +267,16 @@ namespace Backrooms.Generation
             }
 
             InstantiatePortals(root.transform);
+            if (poolMap != null) root.AddComponent<PoolChunk>().Set(_L.coord, _L.storey, poolMap);
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
-            AddFloorColliders(root);
+            if (!Pool) AddFloorColliders(root);
+            foreach (var (c, r, h) in _capsules)
+            {
+                var cap = root.AddComponent<CapsuleCollider>();
+                cap.center = c; cap.radius = r; cap.height = h; cap.direction = 1;
+                yield return root;
+            }
             foreach (var e in _elevators) { ElevatorSystem.Spawn(root.transform, e); yield return root; }
             foreach (var (c, s) in _boxes)
             {
@@ -326,7 +337,8 @@ namespace Backrooms.Generation
 
         // ---------------- Floor / ceiling / grid ----------------
 
-        Material WallMat(Room r) => _a.WallMaterial(r);
+        Material WallMat(Room r) => Pool ? TileMat : _a.WallMaterial(r);
+        Material FloorMat(Room r) => Pool ? TileMat : _a.FloorMaterial(r);
 
         /// <summary>One floor and one ceiling quad per room (world-space UVs keep textures continuous).</summary>
         void BuildFloorAndCeiling()
@@ -433,6 +445,7 @@ namespace Backrooms.Generation
                 float myCeil = _L.WallTop(room);
 
                 uint cm = CellMask(cx, cz);
+                if (Pool && _L.Basin(cx, cz)) BasinEdge(e, vertical, line, along, s, n, f);
                 if (e == EdgeKind.Wall)
                 {
                     if (HoleAt(vertical, line, along, out int entry)) { HoleFaces(room, cm, vertical, along, l, f, a0, a1, n, myCeil, s == entry); continue; }
@@ -455,7 +468,7 @@ namespace Backrooms.Generation
                 // This side's half of the underside.
                 Vector3 u0 = A(l, a0) + Vector3.up * top, u1 = A(l, a1) + Vector3.up * top;
                 Vector3 v0 = A(f, a0) + Vector3.up * top, v1 = A(f, a1) + Vector3.up * top;
-                WMask(WallMat(room), cm).Quad(u0, v0, v1, u1, Vector3.down, MeshWriter.WallUV);
+                WMask(WallMat(room), cm).Quad(u0, v0, v1, u1, Vector3.down, Pool ? MeshWriter.MetreUV : MeshWriter.WallUV);
                 if (!v.otherKnown && room.Tall)
                 {
                     // Neighbour unknown and may have no header: close the space between its ceiling and our header.
@@ -501,7 +514,7 @@ namespace Backrooms.Generation
             }
             if (!v.otherKnown) v.otherCeil = OfficeBiome.CeilingHeight;
             bool header = v.kind == EdgeKind.DoorHeader || (!v.otherKnown && v.myCeil > OfficeBiome.CeilingHeight + 0.01f);
-            v.top = header ? OfficeBiome.DoorHeaderHeight : Mathf.Min(v.myCeil, v.otherCeil);
+            v.top = header ? Mathf.Min(L.headerHeight, v.myCeil) : Mathf.Min(v.myCeil, v.otherCeil);
             v.arched = v.kind == EdgeKind.DoorHeader && v.otherKnown && IsArchedEdge(L, vertical, line, along);
             if (v.arched) v.top = ArchApex;
             return v;
@@ -564,12 +577,12 @@ namespace Backrooms.Generation
 
         void WallFace(Room room, uint mask, Vector3 a, Vector3 b, float y0, float y1, Vector3 n)
         {
-            WMask(WallMat(room), mask).Quad(a + Vector3.up * y0, b + Vector3.up * y0, b + Vector3.up * y1, a + Vector3.up * y1, n, MeshWriter.WallUV);
+            WMask(WallMat(room), mask).Quad(a + Vector3.up * y0, b + Vector3.up * y0, b + Vector3.up * y1, a + Vector3.up * y1, n, Pool ? MeshWriter.MetreUV : MeshWriter.WallUV);
         }
 
         void Baseboard(uint mask, Vector3 a, Vector3 b, Vector3 n)
         {
-            if (_a.noBaseboard) return;
+            if (NoBaseboard) return;
             var w = WMask(_a.baseboard, mask);
             Vector3 fa = a + n * BD, fb = b + n * BD;
             w.Quad(fa, fb, fb + Vector3.up * BB, fa + Vector3.up * BB, n, MeshWriter.MetreUV);
@@ -641,7 +654,7 @@ namespace Backrooms.Generation
 
                 float HP = unknown ? OfficeBiome.MaxCeilingHeight : Mathf.Max(Mathf.Max(c00, c10), Mathf.Max(c01, c11));
                 bool wall = false, header = false;
-                float blockBottom = OfficeBiome.DoorHeaderHeight;
+                float blockBottom = _L.headerHeight;
                 void Check(EdgeKind? e) { if (e == EdgeKind.Wall) wall = true; else if (e == EdgeKind.DoorHeader) header = true; }
                 // Open-plan span between rooms of different heights: a soffit down to the lower ceiling.
                 void Soffit(EdgeKind? e, float ca, float cb)
@@ -652,7 +665,7 @@ namespace Backrooms.Generation
                     header = true;
                 }
                 Check(up); Check(down); Check(right); Check(left);
-                if (header) blockBottom = OfficeBiome.DoorHeaderHeight;
+                if (header) blockBottom = _L.headerHeight;
                 Soffit(up, c01, c11);       // vertical edge above the vertex: cells (x-1, z) | (x, z)
                 Soffit(down, c00, c10);     // below: (x-1, z-1) | (x, z-1)
                 Soffit(right, c10, c11);    // horizontal edge to the right: (x, z-1) | (x, z)
@@ -680,27 +693,28 @@ namespace Backrooms.Generation
                     float FH = _L.WallTop(room);
                     if (wall)
                     {
-                        w.Box(new Vector3(x * C, FH * 0.5f, z * C), new Vector3(T, FH, T), bit, MeshWriter.WallUV);
-                        if (!_a.noBaseboard) WMask(_a.baseboard, pm).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit, MeshWriter.MetreUV);
+                        float FB = Pool && _L.Basin(cx, cz) ? -PoolBiome.BasinDepth : 0f;   // carried down into a basin
+                        w.Box(new Vector3(x * C, (FH + FB) * 0.5f, z * C), new Vector3(T, FH - FB, T), bit, Pool ? MeshWriter.MetreUV : MeshWriter.WallUV);
+                        if (!NoBaseboard) WMask(_a.baseboard, pm).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit, MeshWriter.MetreUV);
                     }
                     else
                     {
                         // Between headed openings: the block above the header line, no post to the floor.
                         float hy = blockBottom;
-                        if (FH > hy + 0.001f) w.Box(new Vector3(x * C, (hy + FH) * 0.5f, z * C), new Vector3(T, FH - hy, T), bit, MeshWriter.WallUV);
+                        if (FH > hy + 0.001f) w.Box(new Vector3(x * C, (hy + FH) * 0.5f, z * C), new Vector3(T, FH - hy, T), bit, Pool ? MeshWriter.MetreUV : MeshWriter.WallUV);
                     }
                 }
                 // Undersides / tops, owned by the cell at (x, z) when present.
                 if (x < N && z < N)
                 {
                     var room = _L.RoomAt(x, z);
-                    if (wall && !_a.noBaseboard) WMask(_a.baseboard, CellMask(x, z)).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), 8, MeshWriter.MetreUV);
+                    if (wall && !NoBaseboard) WMask(_a.baseboard, CellMask(x, z)).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), 8, MeshWriter.MetreUV);
                     else
                     {
                         float hy = blockBottom;
                         float top = Mathf.Max(Mathf.Max(c00, c10), Mathf.Max(c01, c11));
                         if (top > hy + 0.001f)
-                            WMask(WallMat(room), CellMask(x, z)).Box(new Vector3(x * C, (hy + top) * 0.5f, z * C), new Vector3(T, top - hy, T), 4, MeshWriter.WallUV);
+                            WMask(WallMat(room), CellMask(x, z)).Box(new Vector3(x * C, (hy + top) * 0.5f, z * C), new Vector3(T, top - hy, T), 4, Pool ? MeshWriter.MetreUV : MeshWriter.WallUV);
                     }
                 }
             }
@@ -778,7 +792,7 @@ namespace Backrooms.Generation
                 float h = room.ceiling;
                 var c = new Vector3(p.vertex.x * C, h * 0.5f, p.vertex.y * C);
                 W(WallMat(room), p.roomColor).Box(c, new Vector3(p.size, h, p.size), 1 | 2 | 16 | 32, MeshWriter.WallUV);
-                if (!_a.noBaseboard) W(_a.baseboard, p.roomColor).Box(new Vector3(c.x, BB * 0.5f, c.z), new Vector3(p.size + BD * 2f, BB, p.size + BD * 2f), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
+                if (!NoBaseboard) W(_a.baseboard, p.roomColor).Box(new Vector3(c.x, BB * 0.5f, c.z), new Vector3(p.size + BD * 2f, BB, p.size + BD * 2f), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
                 _boxes.Add((c, new Vector3(p.size, h, p.size)));
             }
         }
@@ -798,7 +812,7 @@ namespace Backrooms.Generation
                 Vector3 capS = s + new Vector3(0.02f, 0f, 0.02f); capS.y = cap;
                 W(_a.halfWallCap, hw.roomColor).Box(new Vector3(c.x, hh + cap * 0.5f, c.z), capS, 63, MeshWriter.MetreUV);
                 Vector3 bbS = s + new Vector3(BD * 2f, 0f, BD * 2f); bbS.y = BB;
-                if (!_a.noBaseboard) W(_a.baseboard, hw.roomColor).Box(new Vector3(c.x, BB * 0.5f, c.z), bbS, 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
+                if (!NoBaseboard) W(_a.baseboard, hw.roomColor).Box(new Vector3(c.x, BB * 0.5f, c.z), bbS, 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
                 _boxes.Add((new Vector3(c.x, (hh + cap) * 0.5f, c.z), new Vector3(s.x, hh + cap, s.z)));
             }
         }

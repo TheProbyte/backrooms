@@ -58,6 +58,11 @@ namespace Backrooms.Generation
         [Tooltip("Outlets per wall face.")] public float outletChance = 0.09f;
         [Tooltip("Chance a tall room is lit by hanging cool-white fluorescent strips instead of round domes.")] public float stripLights = 0f;
 
+        [Header("Poolrooms (pool-style zones only)")]
+        [Tooltip("Chance a room has openings in its roof (the sun comes in through them).")] public float skylights = 0f;
+        [Tooltip("Share of rooms that are flooded basins (the rest are dry tiled decks).")] public float flooded = 0f;
+        [Tooltip("Chance a flooded room has a raised walkway along one wall.")] public float ledges = 0f;
+
         public BiomeRules Clone() => (BiomeRules)MemberwiseClone();
 
         static readonly System.Reflection.FieldInfo[] Fields = typeof(BiomeRules).GetFields();
@@ -90,6 +95,20 @@ namespace Backrooms.Generation
             tallChanceBig = 0.1f, tallChanceSmall = 0f, paintedChance = 0.15f, archedDoors = 0.12f,
             lightsAllOn = 0.4f, lightsMixed = 0.4f, mixedOnFraction = 0.45f, faultyChance = 0.05f,
             pillarChance = 0.3f, halfWalls = 0f, scatteredSeating = 0f, outletChance = 0.12f,
+        };
+
+        /// <summary>The Poolrooms: big tall tiled rooms, mostly flooded, round columns, wide openings, sun through the roof.</summary>
+        public static BiomeRules Poolrooms() => new BiomeRules
+        {
+            name = "Poolrooms", mapColor = new Color(0.45f, 0.8f, 0.76f),
+            bigHallChance = 0.45f, stopSmall = 0.95f, stopMedium = 0.85f, stopLarge = 0.55f, stopHuge = 0.3f, maxRoomCells = 16f,
+            hallChanceShallow = 0.35f, hallChanceDeep = 0.12f, hallWideChance = 0.75f, crawlChance = 0f,
+            openPlanChance = 0.4f, loopChance = 0.7f, loungeChance = 0f, conferenceChance = 0f,
+            tallChanceBig = 1f, tallChanceSmall = 1f, tallMin = 3.6f, tallMax = 5.4f, paintedChance = 1f, archedDoors = 0f,
+            lightsAllOn = 0f, lightsMixed = 0f, mixedOnFraction = 0f, faultyChance = 0f,
+            pillarChance = 0.6f, pillarSpacing = 3f, halfWalls = 0f, scatteredSeating = 0f, rackChance = 0f,
+            outletChance = 0f, stripLights = 0f,
+            skylights = 0.7f, flooded = 0.8f, ledges = 0.35f,
         };
 
         /// <summary>Huge, tall, open floors with rows of storage racks and sparse high-bay lights.</summary>

@@ -41,17 +41,24 @@ namespace Backrooms.Generation
             }
             int sseed = StoreySeed(seed, storey);
             var rng = new System.Random(Hash(sseed, district.x, district.y, 0xD157));
+            var zoneHit = set.ZoneAt(seed, district);
+            L.style = set.zones[Mathf.Clamp(zoneHit.zone, 0, set.zones.Count - 1)].style;
+            bool pool = L.style == ZoneStyle.Pool;
+            if (pool) { L.headerHeight = PoolBiome.HeaderHeight; L.pool = new PoolCell[n, n]; }
 
             // 1. Edge contracts first: they constrain where crawl spaces may go. Each chunk-length segment
             //    of a district edge is keyed like the old chunk borders, so both districts agree.
             var openings = new List<(int x, int z, int side, bool header)>();
             int c0x = district.x * DC, c0z = district.y * DC;
+            // Edges with a sealed zone (the Poolrooms) stay solid walls on both sides.
+            bool openW = !set.SealedBetween(seed, district, district + Vector2Int.left), openE = !set.SealedBetween(seed, district, district + Vector2Int.right);
+            bool openS = !set.SealedBetween(seed, district, district + Vector2Int.down), openN = !set.SealedBetween(seed, district, district + Vector2Int.up);
             for (int k = 0; k < DC; k++)
             {
-                AddBorder(openings, sseed, c0x, c0z + k, true, n, 0, k);          // west  (line X = 0)
-                AddBorder(openings, sseed, c0x + DC, c0z + k, true, n, 1, k);     // east  (line X = n)
-                AddBorder(openings, sseed, c0x + k, c0z, false, n, 2, k);         // south (line Z = 0)
-                AddBorder(openings, sseed, c0x + k, c0z + DC, false, n, 3, k);    // north (line Z = n)
+                if (openW) AddBorder(openings, sseed, c0x, c0z + k, true, n, 0, k);          // west  (line X = 0)
+                if (openE) AddBorder(openings, sseed, c0x + DC, c0z + k, true, n, 1, k);     // east  (line X = n)
+                if (openS) AddBorder(openings, sseed, c0x + k, c0z, false, n, 2, k);         // south (line Z = 0)
+                if (openN) AddBorder(openings, sseed, c0x + k, c0z + DC, false, n, 3, k);    // north (line Z = n)
             }
             var openingCells = new HashSet<Vector2Int>();
             foreach (var o in openings) openingCells.Add(new Vector2Int(o.x, o.z));
@@ -84,7 +91,8 @@ namespace Backrooms.Generation
 
             // Ceiling heights and wall finish. Big halls often rise to tall plaster ceilings; a few large
             // ordinary rooms and lounges do too. Heights step in 0.3 m so trims line up.
-            foreach (var r in L.rooms)
+            if (pool) PoolPlan.Ceilings(L, rng);
+            else foreach (var r in L.rooms)
             {
                 if (r.landmark != null) continue;
                 var R = L.RulesAt(r.rect);
@@ -128,6 +136,14 @@ namespace Backrooms.Generation
             // 6. Lighting and dressing. Placements record the room id in their colour field; light colours
             // are assigned afterwards, once every light's position is known, and stamped in.
             foreach (var r in L.rooms) r.color = r.id;
+            if (pool)
+            {
+                // The Poolrooms: no lights, furniture or outlets; water, columns and the roof openings instead.
+                PoolPlan.Dress(L, rng);
+                CrawlPortals.Place(L, set, new System.Random(Hash(seed, district.x, district.y, 0x9047A1 + storey)));
+                AssignColors(L);
+                return L;
+            }
             foreach (var r in L.rooms)
             {
                 if (r.landmark != null) continue;

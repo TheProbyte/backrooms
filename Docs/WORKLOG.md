@@ -15,6 +15,25 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 10:40  Claude Code  The Poolrooms: a second zone (one biome), reached through a far crawl hole
+- New zone + biome (Resources/WorldGen Zones/Poolrooms, Biomes/Poolrooms; ZoneRules/BiomeRules.Poolrooms). Zones gained
+  style (Office/Pool), sealedEdges, pinned placement (square of districts around pinCentre, wins over Voronoi) and an
+  entrance (far link entranceFrom -> entranceTo, read by FarLinks). Poolrooms: districts within 5 of (24, 0), ~1.1 km
+  east, sealed, entrance from the spawn district. WorldGenSettings.Version 11. Docs/Poolrooms.md has the details.
+- Plan: PoolPlan (ceilings, basins/decks/walkways, round columns, roof openings); no lights/props/outlets/landmarks;
+  only the far hole, always from a dry deck. Builder: OfficeChunkBuilder.Pool.cs (two floor levels, stairs, water,
+  light wells + sky, columns, per-cell map with baked bounce). Shaders: Resources/Shaders/PoolTile, PoolWater, PoolSky,
+  Shaders/PoolCommon.hlsl. Sun is traced through the cell map in the shader (PoolSun is the C# copy), no shadow maps.
+  Runtime: PoolWorld (map texture, light globals, zone fog per camera), PoolRipples (+ PoolRipples.compute) wave sim
+  around the player, water footsteps (ProceduralSounds.WaterStep). F5 > PLACES > POOLROOMS ENTRANCE / POOLROOMS.
+- Checked: EditMode 59/59 (PoolroomsTests: pinned/sealed zone, entrance both ways for 3 seeds, walkable plan with stairs,
+  sun test; WorldLayerTests now finds its test zone by name). Played: crawled from the spawn district's hole into the
+  Poolrooms (window shows them, arrival on a deck), wading ripples, screenshot tours (Debug/PoolTour). Editor 1080p: a
+  Poolrooms hall ~3 ms median vs a Level 0 corridor 17.7 ms.
+- Open: camera under water when crawling in a basin (surface is one-sided); the Poolrooms hole's duct mouth is dark
+  (Backrooms light grid); building hum still plays there. PoolTour captures can come out flipped if the Game view is
+  resized while it runs.
+
 ## 2026-10-26 06:50  Claude Code  Vent ducts, no outlets in holes, no AO through duct walls, portal hitches removed
 - Duct lined with generated galvanized sheet metal (Resources/Textures/DuctMetal.png; CrawlDuct _ObjectUV mapping in
   1.1 m sections, metallic 0.25); room finish only as a fallback.

@@ -35,7 +35,7 @@ namespace Backrooms.Generation
                 var behind = p.cell + (p.side == 0 ? new Vector2Int(-1, 0) : p.side == 1 ? new Vector2Int(1, 0) : p.side == 2 ? new Vector2Int(0, -1) : new Vector2Int(0, 1));
                 var entryRoom = _L.RoomAt(p.cell.x, p.cell.y);
                 var backRoom = _L.InChunk(behind.x, behind.y) ? _L.RoomAt(behind.x, behind.y) : entryRoom;
-                _portalLooks.Add((_a.tunnel ? _a.tunnel : WallMat(entryRoom), _a.FloorMaterial(entryRoom), WallMat(backRoom), CellMask(behind.x, behind.y), CellMask(x, z)));
+                _portalLooks.Add((_a.tunnel && !Pool ? _a.tunnel : WallMat(entryRoom), FloorMat(entryRoom), WallMat(backRoom), CellMask(behind.x, behind.y), CellMask(x, z)));
             }
         }
 

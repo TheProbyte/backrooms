@@ -44,10 +44,22 @@ namespace Backrooms.Generation
             if (L.storey != 0 || set == null) return;
             float want = Mathf.Max(0f, set.crawlPortals);
             int pairs = Mathf.FloorToInt(want) + (rng.NextDouble() < want - Mathf.Floor(want) ? 1 : 0);
+            if (L.pool != null) pairs = 0;            // the Poolrooms have only their way in and out
             bool far = FarLinks.PartnerOf(set, L.coord, out var farDistrict);
             if (pairs <= 0 && !far) return;
 
             var candidates = Candidates(L);
+            if (far && L.pool != null && candidates.Count == 0)
+            {
+                // A hole opens from a dry deck. If every room with a usable wall is flooded, drain one.
+                var any = Candidates(L, true);
+                if (any.Count > 0)
+                {
+                    var pick = any[new System.Random(unchecked(L.coord.x * 92821 ^ L.coord.y * 68917)).Next(any.Count)];
+                    PoolPlan.MakeDeck(L, L.RoomAt(pick.cell.x, pick.cell.y));
+                    candidates = Candidates(L);
+                }
+            }
             var used = new HashSet<Vector2Int>();
             PlacePairs(L, candidates, used, pairs, rng);
             if (far) PlaceFar(L, candidates, used, farDistrict);
@@ -136,7 +148,7 @@ namespace Backrooms.Generation
         /// Walls that can take a hole: a solid wall between two ordinary walkable rooms (so the far side exists and can
         /// be walked around), not on a chunk border, with nothing in the way on either side.
         /// </summary>
-        static List<(Vector2Int cell, int side)> Candidates(OfficeLayout L)
+        static List<(Vector2Int cell, int side)> Candidates(OfficeLayout L, bool anyFloor = false)
         {
             var list = new List<(Vector2Int, int)>();
             int n = L.N, cc = OfficeBiome.ChunkCells;
@@ -161,6 +173,7 @@ namespace Backrooms.Generation
             for (int z = 1; z < n - 1; z++)
             {
                 if (!Ordinary(x, z) || busy.Contains(new Vector2Int(x, z))) continue;
+                if (!anyFloor && L.Basin(x, z)) continue;                 // Poolrooms: holes open from a dry deck
                 for (int side = 0; side < 4; side++)
                 {
                     if (L.EdgeOf(x, z, side) != EdgeKind.Wall) continue;

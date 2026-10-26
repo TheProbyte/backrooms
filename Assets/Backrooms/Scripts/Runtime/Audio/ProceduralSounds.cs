@@ -295,6 +295,46 @@ namespace Backrooms.Audio
 
         // ---------------- Footsteps ----------------
 
+        /// <summary>
+        /// One step through shin-deep water (variant 0-5): the leg pushing through (a band of noise sweeping down), the
+        /// slap as the foot breaks the surface, and a few droplets falling back.
+        /// </summary>
+        public static AudioClip WaterStep(int variant)
+        {
+            int n = (int)(Rate * 0.6f);
+            var d = new float[n];
+            var rng = new System.Random(1700 + variant * 31);
+            var lp = Biquad.LowPass(900f);
+            var slapBp = Biquad.BandPass(1400f + variant * 120f, 0.9f);
+            float pushLen = 0.28f + (variant % 3) * 0.04f;
+            var drops = new (float at, float hz, float len)[4];
+            for (int k = 0; k < drops.Length; k++)
+                drops[k] = (0.12f + (float)rng.NextDouble() * 0.38f, 1300f + (float)rng.NextDouble() * 1900f, 0.012f + (float)rng.NextDouble() * 0.02f);
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
+                // Push: noise, swelling then falling, darker as it ends.
+                float pt = t / pushLen;
+                float pe = pt < 1f ? Mathf.Sin(pt * Mathf.PI) * (1f - pt * 0.5f) : 0f;
+                float push = lp.Run(White(rng)) * pe * 0.9f;
+                // Slap: a short bright burst at the start.
+                float se = Mathf.Exp(-t * 55f) * Mathf.Min(1f, t * 900f);
+                float slap = slapBp.Run(White(rng)) * se * 0.8f;
+                // Droplets: little rising blips.
+                float drip = 0f;
+                foreach (var (at, hz, len) in drops)
+                {
+                    float dt = t - at;
+                    if (dt < 0f || dt > len * 4f) continue;
+                    drip += Mathf.Sin(TwoPi * hz * (1f + dt * 18f) * dt) * Mathf.Exp(-dt / len) * 0.25f;
+                }
+                d[i] = push + slap + drip;
+            }
+            for (int i = 0; i < 400; i++) d[n - 1 - i] *= i / 400f;
+            Normalize(d, 0.6f);
+            return Clip("WaterStep_" + variant, d, 1);
+        }
+
         /// <summary>One carpet step (variant 0-7): heel thud through the floor plus a fabric scuff.</summary>
         public static AudioClip CarpetStep(int variant)
         {

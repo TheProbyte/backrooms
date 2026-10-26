@@ -4,6 +4,9 @@ using UnityEngine;
 
 namespace Backrooms.Generation
 {
+    /// <summary>How a zone's districts are built: office architecture, or the tiled, flooded Poolrooms.</summary>
+    public enum ZoneStyle { Office, Pool }
+
     /// <summary>One biome inside a zone: its rules and the top of its band on the zone's density field.</summary>
     [Serializable]
     public class BiomeBand
@@ -51,6 +54,25 @@ namespace Backrooms.Generation
         [Tooltip("Lowest storey that exists in this zone.")] public int minStorey = 0;
         [Tooltip("Highest storey that exists in this zone.")] public int maxStorey = 1;
 
+        [Header("Architecture")]
+        [Tooltip("How its districts are built (Office: the Backrooms; Pool: tiled, flooded rooms lit by the sun).")]
+        public ZoneStyle style = ZoneStyle.Office;
+        [Tooltip("No openings to other zones: its edges are solid walls, so it is only reached through far crawl holes.")]
+        public bool sealedEdges;
+
+        [Header("Placement")]
+        [Tooltip("Placed by hand as a square of districts around pinCentre (weight is then ignored), instead of as Voronoi regions.")]
+        public bool pinned;
+        [Tooltip("Centre district of a pinned zone.")] public Vector2Int pinCentre;
+        [Tooltip("Districts each way from the centre (radius 5 = 11 x 11 districts, about 630 m across).")] public int pinRadius = 5;
+        [Tooltip("A far crawl hole from a district of another zone (entranceFrom) into a district of this one (entranceTo). See FarLinks.")]
+        public bool entrance;
+        public Vector2Int entranceFrom, entranceTo;
+
+        /// <summary>Is this district inside the pinned square?</summary>
+        public bool PinnedContains(Vector2Int district) =>
+            pinned && Mathf.Abs(district.x - pinCentre.x) <= pinRadius && Mathf.Abs(district.y - pinCentre.y) <= pinRadius;
+
         public ZoneRules Clone()
         {
             var c = (ZoneRules)MemberwiseClone();
@@ -67,6 +89,22 @@ namespace Backrooms.Generation
         }
 
         public bool Allows(string other) => neighbours.Count == 0 || neighbours.Contains(other) || other == name;
+
+        /// <summary>
+        /// The Poolrooms: endless tiled halls flooded with still water, lit by the sun through openings in the roof. A pinned
+        /// zone far from spawn with sealed edges, entered through a far crawl hole from the spawn district.
+        /// </summary>
+        public static ZoneRules Poolrooms() => new ZoneRules
+        {
+            name = "Poolrooms", mapColor = new Color(0.45f, 0.8f, 0.76f), weight = 0f,
+            biomes = new List<BiomeBand> { new BiomeBand { rules = BiomeRules.Poolrooms(), upTo = 1f } },
+            edgeBiome = "Poolrooms",
+            overrideFog = true, fogColor = new Color(0.66f, 0.77f, 0.75f), fogDensity = 0.008f, ambience = "pool", power = 0f,
+            minStorey = 0, maxStorey = 0,
+            style = ZoneStyle.Pool, sealedEdges = true,
+            pinned = true, pinCentre = new Vector2Int(24, 0), pinRadius = 5,
+            entrance = true, entranceFrom = new Vector2Int(0, 0), entranceTo = new Vector2Int(24, 0),
+        };
 
         /// <summary>The ground level: endless offices, with hallways and warehouse floors on its density field.</summary>
         public static ZoneRules Level0() => new ZoneRules

@@ -44,6 +44,17 @@ namespace Backrooms.Generation
         [Header("Vertical profile")]
         public int minStorey = 0, maxStorey = 1;
 
+        [Header("Architecture")]
+        [Tooltip("Office: the Backrooms. Pool: tiled, flooded rooms lit by the sun.")] public ZoneStyle style = ZoneStyle.Office;
+        [Tooltip("Solid walls on every edge with another zone: reached only through far crawl holes.")] public bool sealedEdges;
+
+        [Header("Placement")]
+        [Tooltip("A square of districts around Pin Centre, instead of Voronoi regions (weight is ignored).")] public bool pinned;
+        public Vector2Int pinCentre;
+        [Tooltip("Districts each way from the centre.")] public int pinRadius = 5;
+        [Tooltip("A far crawl hole from district Entrance From (another zone) to district Entrance To (this zone).")] public bool entrance;
+        public Vector2Int entranceFrom, entranceTo;
+
         public ZoneRules ToRules()
         {
             var z = new ZoneRules
@@ -53,6 +64,8 @@ namespace Backrooms.Generation
                 transitionZone = transitionZone ? transitionZone.zoneName : "",
                 overrideFog = overrideFog, fogColor = fogColor, fogDensity = fogDensity, ambience = ambience, power = power,
                 minStorey = minStorey, maxStorey = maxStorey,
+                style = style, sealedEdges = sealedEdges, pinned = pinned, pinCentre = pinCentre, pinRadius = pinRadius,
+                entrance = entrance, entranceFrom = entranceFrom, entranceTo = entranceTo,
             };
             foreach (var e in biomes)
                 if (e.biome) z.biomes.Add(new BiomeBand { rules = e.biome.ToRules(), upTo = e.upTo });

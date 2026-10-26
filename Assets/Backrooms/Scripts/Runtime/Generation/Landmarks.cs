@@ -35,6 +35,7 @@ namespace Backrooms.Generation
 
             // Which landmarks may go here (zone and biome at the district centre)?
             var hit = set.ZoneAt(seed, district);
+            if (set.zones[Mathf.Clamp(hit.zone, 0, set.zones.Count - 1)].style != ZoneStyle.Office) return false;   // set pieces are office architecture
             string zone = set.zones[Mathf.Clamp(hit.zone, 0, set.zones.Count - 1)].name;
             var centreChunk = new Vector2Int(district.x * WorldGenSettings.DistrictChunks + 2, district.y * WorldGenSettings.DistrictChunks + 2);
             string biome = set.Evaluate(seed, centreChunk).Dominant;

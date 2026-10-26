@@ -1,0 +1,65 @@
+// Ripples on the Poolrooms' water around the player: the classic two-step wave equation on a 256 x 256 grid
+// (8 cm texels) that follows the player. Walls reflect the waves; dry decks and anything outside the water absorb them.
+#pragma kernel Step
+
+Texture2D<float2> _Prev;            // r: height now, g: height a step before
+RWTexture2D<float2> _Next;
+Texture2D<float4> _PoolMap;
+float4 _PoolMapParams;
+int2 _Shift;                        // the window moved by this many texels since the last step
+int _Size;
+float _Damping;
+float2 _OriginWS;                   // world xz of texel (0, 0)'s corner
+float _Texel;
+float4 _Drops[8];                   // xy world xz, z radius (m), w height added (m)
+int _DropCount;
+
+uint MapFlags(int2 cell)
+{
+    int n = (int)_PoolMapParams.x;
+    uint2 s = (uint2)(cell + n * 4096) % (uint)n;      // cells are well within +-4096 maps of the origin
+    return (uint)(_PoolMap.Load(int3(s, 0)).r * 255.0 + 0.5);
+}
+
+bool IsWater(uint flags) { return (flags & 64u) != 0 && (flags & 16u) != 0; }
+
+float2 Read(int2 q)
+{
+    if (any(q < 0) || any(q >= _Size)) return 0;
+    return _Prev[q];
+}
+
+[numthreads(8, 8, 1)]
+void Step(uint3 id : SV_DispatchThreadID)
+{
+    int2 p = (int2)id.xy;
+    if (any(p >= _Size)) return;
+    int2 q = p + _Shift;
+    float2 world = _OriginWS + (p + 0.5) * _Texel;
+    int2 cell = (int2)floor(world / 1.2);
+    uint me = MapFlags(cell);
+    if (!IsWater(me)) { _Next[p] = 0; return; }
+    float2 c = Read(q);
+    float sum = 0;
+    const int2 dirs[4] = { int2(1, 0), int2(-1, 0), int2(0, 1), int2(0, -1) };
+    [unroll] for (int k = 0; k < 4; k++)
+    {
+        int2 o = dirs[k];
+        int2 nc = (int2)floor((world + o * _Texel) / 1.2);
+        bool blocked = false;
+        if (nc.x != cell.x || nc.y != cell.y)
+        {
+            uint other = MapFlags(nc);
+            uint edge = o.x == 1 ? (other & 3u) : o.x == -1 ? (me & 3u) : o.y == 1 ? ((other >> 2) & 3u) : ((me >> 2) & 3u);
+            blocked = edge == 1u || !IsWater(other);
+        }
+        sum += blocked ? c.x : Read(q + o).x;
+    }
+    float h = (sum * 0.5 - c.y) * _Damping;
+    for (int i = 0; i < _DropCount; i++)
+    {
+        float2 d = world - _Drops[i].xy;
+        h += _Drops[i].w * exp(-dot(d, d) / (_Drops[i].z * _Drops[i].z));
+    }
+    _Next[p] = float2(h, c.x);
+}

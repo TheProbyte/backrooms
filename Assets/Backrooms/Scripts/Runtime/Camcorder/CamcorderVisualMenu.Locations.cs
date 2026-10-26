@@ -128,6 +128,11 @@ namespace Backrooms.Camcorder
                 return (new Vector3(p.x, 0.05f, p.y), new Vector3(q.x, 1.4f, q.y), "an elevator lobby");
             }));
 
+            Section("ZONES", "Places reached through far crawl holes. The entrance puts you in front of the hole that leads there; crawl in (C) to go through.");
+            var rz = BtnRow(_list);
+            Button(rz, "POOLROOMS ENTRANCE", () => GoZoneHole("Poolrooms", false));
+            Button(rz, "POOLROOMS", () => GoZoneHole("Poolrooms", true));
+
             Section("OTHER", "");
             var r3 = BtnRow(_list);
             Button(r3, "COLONNADE HALL", () => GoLandmark("colonnade", LandmarkKind.ColonnadeHall, 0, l =>
@@ -138,6 +143,26 @@ namespace Backrooms.Camcorder
                 return (pos, look, "a colonnade hall");
             }));
             Button(r3, "SPAWN", () => Go(new Vector3(7.2f, 0.05f, 7.2f), new Vector3(7.2f, 0f, 14f), "the spawn hall"));
+        }
+
+        /// <summary>In front of either end of a zone's entrance hole (see ZoneRules.entrance), facing it or the room.</summary>
+        void GoZoneHole(string zoneName, bool inside)
+        {
+            var ws = FindAnyObjectByType<WorldStreamer>();
+            if (ws == null || player == null) return;
+            int zi = ws.World.Settings.ZoneIndex(zoneName);
+            if (zi < 0 || !ws.World.Settings.zones[zi].entrance) { if (_locReadout != null) _locReadout.text = zoneName + " has no entrance in this world's settings."; return; }
+            var z = ws.World.Settings.zones[zi];
+            var district = inside ? z.entranceTo : z.entranceFrom;
+            foreach (var p in ws.World.District(new Vector3Int(district.x, 0, district.y)).portals)
+            {
+                if (!p.far) continue;
+                var floor = new Vector3(p.position.x, 0.05f, p.position.z);
+                if (inside) Go(floor + p.normal * 1.0f, floor + p.normal * 6f, "the " + zoneName);
+                else Go(floor + p.normal * 1.0f, floor, "the way into the " + zoneName + " (the low hole in the wall)");
+                return;
+            }
+            if (_locReadout != null) _locReadout.text = "The entrance to the " + zoneName + " could not be placed in this world.";
         }
 
         void GoCustomRoom(string blueprint)

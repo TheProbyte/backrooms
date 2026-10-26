@@ -114,11 +114,16 @@ namespace Backrooms.Generation
             float C = OfficeBiome.CellSize;
             var S = new OfficeLayout(N, new Vector2Int(chunk.x, chunk.z), plan.storey)
             {
-                storeyPitch = plan.storeyPitch, zoneName = plan.zoneName,
+                storeyPitch = plan.storeyPitch, zoneName = plan.zoneName, style = plan.style, headerHeight = plan.headerHeight,
                 rules = plan.chunkRules != null ? plan.chunkRules[cx, cz] : plan.rules,
                 biomeName = plan.chunkBiomes != null ? plan.chunkBiomes[cx, cz] : plan.biomeName,
             };
             var chunkRect = new RectInt(ox, oz, N, N);
+            if (plan.pool != null)
+            {
+                S.pool = new PoolCell[N, N];
+                for (int x = 0; x < N; x++) for (int z = 0; z < N; z++) S.pool[x, z] = plan.pool[ox + x, oz + z];
+            }
             var map = new Dictionary<int, int>();
             for (int x = 0; x < N; x++)
             for (int z = 0; z < N; z++)

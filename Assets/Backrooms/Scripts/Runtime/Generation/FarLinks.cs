@@ -13,9 +13,11 @@ namespace Backrooms.Generation
     /// <list type="bullet">
     /// <item>The lattice: every square of <see cref="WorldGenSettings.farLinkSpacing"/> districts links its (1, 1) district
     /// to its (spacing - 2, spacing - 2) district.</item>
-    /// <item><see cref="Add"/>: links placed by hand, for example the entrance to a far zone (a future Poolrooms). Register
-    /// them before the world is generated.</item>
+    /// <item>Zone entrances (<see cref="ZoneRules.entrance"/>): the way into a pinned zone such as the Poolrooms, part of
+    /// the world settings.</item>
+    /// <item><see cref="Add"/>: links placed by hand from code. Register them before the world is generated.</item>
     /// </list>
+    /// Lattice links never touch a pinned zone or a district that already has a link.
     /// Pure and thread-safe after setup (generation runs on worker threads).
     /// </summary>
     public static class FarLinks
@@ -35,16 +37,35 @@ namespace Backrooms.Generation
         public static bool PartnerOf(WorldGenSettings set, Vector2Int district, out Vector2Int partner)
         {
             if (s_explicit.TryGetValue(district, out partner)) return true;
+            if (ZoneEntrance(set, district, out partner)) return true;
             int n = set != null ? set.farLinkSpacing : 0;
             if (n < 4) { partner = default; return false; }
             var square = new Vector2Int(FloorDiv(district.x, n), FloorDiv(district.y, n));
             var local = district - square * n;
             Vector2Int a = new Vector2Int(1, 1), b = new Vector2Int(n - 2, n - 2);
-            if (local == a) { partner = square * n + b; return !s_explicit.ContainsKey(partner); }
-            if (local == b) { partner = square * n + a; return !s_explicit.ContainsKey(partner); }
+            if (local == a) partner = square * n + b;
+            else if (local == b) partner = square * n + a;
+            else { partner = default; return false; }
+            return !Reserved(set, district) && !Reserved(set, partner);
+        }
+
+        /// <summary>A zone's hand-placed entrance (see <see cref="ZoneRules.entrance"/>).</summary>
+        static bool ZoneEntrance(WorldGenSettings set, Vector2Int district, out Vector2Int partner)
+        {
             partner = default;
+            if (set?.zones == null) return false;
+            foreach (var z in set.zones)
+            {
+                if (!z.entrance || z.entranceFrom == z.entranceTo) continue;
+                if (district == z.entranceFrom) { partner = z.entranceTo; return true; }
+                if (district == z.entranceTo) { partner = z.entranceFrom; return true; }
+            }
             return false;
         }
+
+        /// <summary>Districts the lattice leaves alone: hand-linked ones, zone entrances, and pinned zones.</summary>
+        static bool Reserved(WorldGenSettings set, Vector2Int d) =>
+            s_explicit.ContainsKey(d) || ZoneEntrance(set, d, out _) || set.PinnedZoneAt(d) >= 0;
 
         static int FloorDiv(int a, int b) => a >= 0 ? a / b : -((-a + b - 1) / b);
     }

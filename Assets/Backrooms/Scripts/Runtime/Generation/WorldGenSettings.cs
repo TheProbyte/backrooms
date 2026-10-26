@@ -26,7 +26,7 @@ namespace Backrooms.Generation
         [Header("Zones (Voronoi regions)")]
         [Tooltip("Typical distance between zone centres, metres.")] public float zoneSize = 1200f;
         [Tooltip("Width of the transition band along zone edges, metres.")] public float zoneEdge = 60f;
-        public List<ZoneRules> zones = new List<ZoneRules> { ZoneRules.Level0() };
+        public List<ZoneRules> zones = new List<ZoneRules> { ZoneRules.Level0(), ZoneRules.Poolrooms() };
 
         [Header("Biome density field")]
         [Tooltip("Size of biome regions, in chunks (14.4 m each) per noise cell.")] public float biomeScale = 7f;
@@ -50,7 +50,7 @@ namespace Backrooms.Generation
 
         /// <summary>Bump when generation code changes how a seed plays out.
         /// 2: fixture spacing, strips, open plan. 3: arches. 4: zones, landmarks, districts, storeys.</summary>
-        public const int Version = 10;   // 10: far crawl-hole links
+        public const int Version = 11;   // 10: far crawl-hole links. 11: pinned, sealed zones (the Poolrooms)
 
         /// <summary>District size in chunks and cells.</summary>
         public const int DistrictChunks = 4, DistrictCells = DistrictChunks * OfficeBiome.ChunkCells;
@@ -88,9 +88,32 @@ namespace Backrooms.Generation
             public bool edge;            // inside the transition band
         }
 
+        /// <summary>The pinned zone this district lies in (see <see cref="ZoneRules.pinned"/>), or -1. Independent of the seed.</summary>
+        public int PinnedZoneAt(Vector2Int district)
+        {
+            for (int i = 0; i < zones.Count; i++) if (zones[i].PinnedContains(district)) return i;
+            return -1;
+        }
+
+        /// <summary>Is the shared edge of two neighbouring districts a solid wall because one side is a sealed zone?</summary>
+        public bool SealedBetween(int seed, Vector2Int a, Vector2Int b)
+        {
+            int za = ZoneAt(seed, a).zone, zb = ZoneAt(seed, b).zone;
+            if (za == zb) return false;
+            return zones[Mathf.Clamp(za, 0, zones.Count - 1)].sealedEdges || zones[Mathf.Clamp(zb, 0, zones.Count - 1)].sealedEdges;
+        }
+
         /// <summary>Zone of a district (evaluated at its centre). Pure function of seed and settings.</summary>
         public ZoneHit ZoneAt(int seed, Vector2Int district)
         {
+            // Pinned zones are placed by hand and win over the Voronoi field.
+            int pin = PinnedZoneAt(district);
+            if (pin >= 0)
+            {
+                var z = zones[pin];
+                int inside = z.pinRadius - Mathf.Max(Mathf.Abs(district.x - z.pinCentre.x), Mathf.Abs(district.y - z.pinCentre.y));
+                return new ZoneHit { zone = pin, neighbour = -1, edgeDistance = (inside + 0.5f) * DistrictCells * OfficeBiome.CellSize, edge = false };
+            }
             float D = DistrictCells * OfficeBiome.CellSize;
             var p = new Vector2((district.x + 0.5f) * D, (district.y + 0.5f) * D);
             float cell = Mathf.Max(100f, zoneSize);
@@ -134,16 +157,17 @@ namespace Backrooms.Generation
 
         static float Jitter(int seed, int x, int z, int axis) => 0.15f + 0.7f * Hash(seed ^ 0x2F0E5, x * 2 + axis, z);
 
-        /// <summary>The zone a Voronoi site picks. Sites around the origin always pick the first zone (spawn).</summary>
+        /// <summary>The zone a Voronoi site picks. Sites around the origin always pick the first zone (spawn). Pinned zones never do.</summary>
         int SiteZone(int seed, int x, int z)
         {
             if (zones.Count <= 1 || (x >= -2 && x <= 1 && z >= -2 && z <= 1)) return 0;
             float total = 0f;
-            foreach (var zr in zones) total += Mathf.Max(0f, zr.weight);
+            foreach (var zr in zones) total += zr.pinned ? 0f : Mathf.Max(0f, zr.weight);
             if (total <= 0f) return 0;
             float r = Hash(seed ^ 0x5173, x, z) * total;
             for (int i = 0; i < zones.Count; i++)
             {
+                if (zones[i].pinned) continue;
                 r -= Mathf.Max(0f, zones[i].weight);
                 if (r < 0f) return i;
             }
@@ -287,7 +311,7 @@ namespace Backrooms.Generation
                 if (!string.IsNullOrEmpty(json))
                 {
                     var s = JsonUtility.FromJson<WorldGenSettings>(json);
-                    if (s != null && s.zones != null && s.zones.Count > 0) return s;
+                    if (s != null && s.zones != null && s.zones.Count > 0) { s.AddMissingPinnedZones(); return s; }
                 }
                 string legacy = PlayerPrefs.GetString(LegacyPrefsKey, "");
                 if (!string.IsNullOrEmpty(legacy)) return FromLegacy(JsonUtility.FromJson<LegacyV1>(legacy));
@@ -297,6 +321,13 @@ namespace Backrooms.Generation
         }
 
         public void Save() { PlayerPrefs.SetString(PrefsKey, JsonUtility.ToJson(this)); PlayerPrefs.Save(); }
+
+        /// <summary>Settings saved before a pinned zone existed (F5 edits) get it from the shipped defaults, so its entrance still leads somewhere.</summary>
+        void AddMissingPinnedZones()
+        {
+            foreach (var z in Defaults().zones)
+                if (z.pinned && ZoneIndex(z.name) < 0) zones.Add(z);
+        }
 
         /// <summary>Settings as saved before zones existed (version 3): one implicit zone with three biomes.</summary>
         [Serializable]

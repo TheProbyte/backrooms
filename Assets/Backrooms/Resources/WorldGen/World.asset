@@ -16,6 +16,7 @@ MonoBehaviour:
   zoneEdge: 60
   zones:
   - {fileID: 11400000, guid: eae0d87320f94b34286494c3a9a2e9b0, type: 2}
+  - {fileID: 11400000, guid: 22297ef0b54fe984193f73052d248238, type: 2}
   biomeScale: 7
   octaves: 3
   warp: 0.7

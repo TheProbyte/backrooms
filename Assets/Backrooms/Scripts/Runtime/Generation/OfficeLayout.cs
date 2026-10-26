@@ -64,6 +64,17 @@ namespace Backrooms.Generation
 
     public struct Pillar { public Vector2Int vertex; public float size; public int roomColor; }
 
+    /// <summary>Shape of a roof opening over one cell (Poolrooms). Neighbouring Full cells join into one big opening.</summary>
+    public enum SkylightShape : byte { None, Full, SlotX, SlotZ, Square, Round }
+
+    /// <summary>Per-cell data of pool-style layouts (see PoolPlan).</summary>
+    public struct PoolCell
+    {
+        /// <summary>Flooded: the floor is <see cref="PoolBiome.BasinDepth"/> below the deck, under still water.</summary>
+        public bool basin;
+        public SkylightShape skylight;
+    }
+
     /// <summary>A half-height partition along cell edges. Horizontal runs along X at line z. Railings are slimmer.</summary>
     public struct HalfWall { public bool alongX; public int line; public int start; public int length; public int roomColor; public bool railing; }
 
@@ -138,6 +149,13 @@ namespace Backrooms.Generation
         public BiomeRules rules = BiomeRules.Offices();
         public string biomeName = "Offices";
         public string zoneName = "Level 0";
+        /// <summary>How the builder turns this layout into geometry (see <see cref="ZoneStyle"/>).</summary>
+        public ZoneStyle style;
+        /// <summary>Top of a headed doorway (2.1 m in offices, taller in the Poolrooms).</summary>
+        public float headerHeight = OfficeBiome.DoorHeaderHeight;
+        /// <summary>Pool-style layouts only: flooded cells and roof openings, [x, z].</summary>
+        public PoolCell[,] pool;
+        public bool Basin(int x, int z) => pool != null && pool[x, z].basin;
         /// <summary>District plans: rules per chunk of the district, [cx, cz].</summary>
         public BiomeRules[,] chunkRules;
         public string[,] chunkBiomes;

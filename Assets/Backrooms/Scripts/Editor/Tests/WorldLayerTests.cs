@@ -64,8 +64,9 @@ namespace Backrooms.Tests
             var set = TwoZones();
             var buffer = ZoneRules.Level0(); buffer.name = "Buffer"; buffer.weight = 0f;
             set.zones.Add(buffer);
-            set.zones[1].neighbours = new List<string> { "Buffer" };      // the test zone may only touch the buffer
-            set.zones[1].transitionZone = "Buffer";
+            var test = set.zones[set.ZoneIndex("Test zone")];
+            test.neighbours = new List<string> { "Buffer" };      // the test zone may only touch the buffer
+            test.transitionZone = "Buffer";
             set.zoneEdge = 120f;
             int buffers = 0, direct = 0;
             for (int x = -30; x <= 30; x++)

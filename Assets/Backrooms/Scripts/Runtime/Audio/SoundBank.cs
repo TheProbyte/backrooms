@@ -40,6 +40,16 @@ namespace Backrooms.Audio
         public static int StepCount { get { LoadRecorded(); return s_recordedSteps != null ? s_recordedSteps.Length : 8; } }
         public static AudioClip Strike(int variant) { if (s_strike == null) { s_strike = new AudioClip[3]; for (int i = 0; i < 3; i++) s_strike[i] = ProceduralSounds.StrikeOn(i); } return s_strike[Mathf.Abs(variant) % 3]; }
         public static AudioClip Tick(int variant) { if (s_tick == null) { s_tick = new AudioClip[4]; for (int i = 0; i < 4; i++) s_tick[i] = ProceduralSounds.Tick(i); } return s_tick[variant & 3]; }
+        static AudioClip[] s_waterSteps;
+        public const int WaterStepCount = 6;
+
+        /// <summary>A step through water (the Poolrooms' basins).</summary>
+        public static AudioClip WaterStep(int variant)
+        {
+            if (s_waterSteps == null) { s_waterSteps = new AudioClip[WaterStepCount]; for (int i = 0; i < WaterStepCount; i++) s_waterSteps[i] = ProceduralSounds.WaterStep(i); }
+            return s_waterSteps[((variant % WaterStepCount) + WaterStepCount) % WaterStepCount];
+        }
+
         public static AudioClip Step(int variant)
         {
             LoadRecorded();
