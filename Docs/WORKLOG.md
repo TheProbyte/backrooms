@@ -40,6 +40,11 @@ Keep entries short and factual. Do not rewrite old entries.
 - Open: Unity crashed once (D3D12 fence timeout) on entering Play right after the shader edits, with shaders compiling;
   not reproduced on restart (that start stalled ~90 s compiling Backrooms/Lit variants, then ran). Assets/_Recovery is
   Unity's crash backup, not committed. Re-run the A/B with the GPU free and in a player build.
+- 18:30 follow-up (GPU free): editor A/B at the corridor pose: old saved settings 48 fps (GPU 18.6 ms), shadows trimmed
+  but exact light everywhere 53 (17.3), new defaults 66 (13.8), new defaults without SSAO 81 (12.2). The near/far split
+  saves ~3.5 ms GPU. Added DebugTools.Benchmark (-benchmark [file]) and Docs/Performance.md. A player build was started but
+  the editor was closed after 1 h 41 min still compiling Backrooms/Lit variants (build cancelled): the shader has a very
+  large variant count; first builds are slow until that is stripped.
 
 ## 2026-10-25 16:11  ChatGPT  Wall-contained portals, bounded views and cached light transport
 - Crawl portals now cross/render at the entrance wall face; removed the 2.3 m protruding duct. Reverse faces are complete
