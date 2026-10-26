@@ -129,6 +129,8 @@ namespace Backrooms.Generation
             _cs.SetFloat("_Texel", texel);
             _cs.SetVectorArray("_Drops", _drops);
             _cs.SetInt("_DropCount", drops);
+            var w = PoolWorld.Instance;
+            _cs.SetInt("_Storey", w && _player ? w.StoreyOf(_player.position.y) : 0);
             _cs.Dispatch(_kernel, Size / 8, Size / 8, 1);
             (_a, _b) = (_b, _a);
         }

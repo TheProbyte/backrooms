@@ -17,6 +17,8 @@ namespace Backrooms.Generation
 
         /// <summary>Map size in cells: 12 chunks each way, more than the loaded square (9 chunks at most).</summary>
         public const int MapCells = 144;
+        /// <summary>Storeys in the map, stacked as rows of the texture (the Poolrooms have two).</summary>
+        public const int MapStoreys = 2;
         const int MapChunks = MapCells / OfficeBiome.ChunkCells;
 
         public WorldStreamer streamer;
@@ -36,7 +38,11 @@ namespace Backrooms.Generation
 
         Texture2D _map;
         Color32[] _px;
-        readonly PoolChunk[] _owner = new PoolChunk[MapChunks * MapChunks];
+        readonly PoolChunk[] _owner = new PoolChunk[MapChunks * MapChunks * MapStoreys];
+        float Pitch => streamer && streamer.Settings != null ? streamer.Settings.storeyPitch : 9f;
+
+        /// <summary>Storey of a height (a basin floor sits up to 0.6 m under its storey's line).</summary>
+        public int StoreyOf(float y) => Mathf.Clamp(Mathf.FloorToInt((y + 0.6f) / Pitch), 0, MapStoreys - 1);
         bool _dirty;
 
         void Awake()
@@ -44,14 +50,14 @@ namespace Backrooms.Generation
             Instance = this;
             if (!streamer) streamer = GetComponent<WorldStreamer>();
             PoolMaterials.Ensure();
-            _map = new Texture2D(MapCells, MapCells, TextureFormat.RGBA32, false, true)
+            _map = new Texture2D(MapCells, MapCells * MapStoreys, TextureFormat.RGBA32, false, true)
             {
                 name = "PoolMap", filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat, hideFlags = HideFlags.DontSave,
             };
-            _px = new Color32[MapCells * MapCells];
+            _px = new Color32[MapCells * MapCells * MapStoreys];
             _map.SetPixels32(_px); _map.Apply(false);
             Shader.SetGlobalTexture("_PoolMap", _map);
-            Shader.SetGlobalVector("_PoolMapParams", new Vector4(MapCells, 0f, 0f, 0f));
+            Shader.SetGlobalVector("_PoolMapParams", new Vector4(MapCells, Pitch, MapStoreys, 0f));
             Shader.SetGlobalVector("_PoolRippleRect", Vector4.zero);
             Shader.SetGlobalFloat("_PoolScreenTextures", 0f);
             if (!GetComponent<PoolRipples>()) gameObject.AddComponent<PoolRipples>();
@@ -83,10 +89,10 @@ namespace Backrooms.Generation
 
         public void Write(PoolChunk c)
         {
-            if (c.storey != 0 || c.cells == null) return;
+            if (c.storey < 0 || c.storey >= MapStoreys || c.cells == null) return;
             int N = OfficeBiome.ChunkCells;
-            _owner[Mod(c.chunk.y, MapChunks) * MapChunks + Mod(c.chunk.x, MapChunks)] = c;
-            int bx = Mod(c.chunk.x, MapChunks) * N, bz = Mod(c.chunk.y, MapChunks) * N;
+            _owner[(c.storey * MapChunks + Mod(c.chunk.y, MapChunks)) * MapChunks + Mod(c.chunk.x, MapChunks)] = c;
+            int bx = Mod(c.chunk.x, MapChunks) * N, bz = Mod(c.chunk.y, MapChunks) * N + c.storey * MapCells;
             for (int z = 0; z < N; z++)
             for (int x = 0; x < N; x++)
                 _px[(bz + z) * MapCells + bx + x] = c.cells[z * N + x];
@@ -96,11 +102,11 @@ namespace Backrooms.Generation
         /// <summary>An unloaded chunk leaves its cells empty (no stale walls under a later chunk), unless another took them.</summary>
         public void Clear(PoolChunk c)
         {
-            if (c.storey != 0) return;
-            int slot = Mod(c.chunk.y, MapChunks) * MapChunks + Mod(c.chunk.x, MapChunks);
+            if (c.storey < 0 || c.storey >= MapStoreys) return;
+            int slot = (c.storey * MapChunks + Mod(c.chunk.y, MapChunks)) * MapChunks + Mod(c.chunk.x, MapChunks);
             if (_owner[slot] != c) return;
             _owner[slot] = null;
-            int N = OfficeBiome.ChunkCells, bx = Mod(c.chunk.x, MapChunks) * N, bz = Mod(c.chunk.y, MapChunks) * N;
+            int N = OfficeBiome.ChunkCells, bx = Mod(c.chunk.x, MapChunks) * N, bz = Mod(c.chunk.y, MapChunks) * N + c.storey * MapCells;
             for (int z = 0; z < N; z++)
             for (int x = 0; x < N; x++)
                 _px[(bz + z) * MapCells + bx + x] = default;
@@ -109,6 +115,7 @@ namespace Backrooms.Generation
 
         void LateUpdate()
         {
+            Shader.SetGlobalVector("_PoolMapParams", new Vector4(MapCells, Pitch, MapStoreys, 0f));
             if (!_dirty) return;
             _dirty = false;
             _map.SetPixels32(_px);
@@ -117,7 +124,12 @@ namespace Backrooms.Generation
 
         // ---------------- Queries ----------------
 
-        OfficeLayout LayoutAt(Vector3 p) => streamer ? streamer.LayoutAt(WorldStreamer.ChunkOf(p)) : null;
+        OfficeLayout LayoutAt(Vector3 p)
+        {
+            if (!streamer) return null;
+            var c = WorldStreamer.ChunkOf(p);
+            return streamer.LayoutAt(new Vector3Int(c.x, StoreyOf(p.y), c.y)) ?? streamer.LayoutAt(c);
+        }
 
         /// <summary>Is this point in a loaded Poolrooms chunk?</summary>
         public bool IsPool(Vector3 p)
@@ -149,7 +161,9 @@ namespace Backrooms.Generation
         {
             Shader.SetGlobalFloat("_PoolScreenTextures", cam.cameraType == CameraType.Game && cam == Camera.main ? 1f : 0f);
             var L = LayoutAt(cam.transform.position);
-            if (L == null || L.style != ZoneStyle.Pool || streamer == null) return;
+            bool pool = L != null && L.style == ZoneStyle.Pool;
+            Shader.SetGlobalFloat("_PoolLitBlend", pool ? 1f : 0f);
+            if (!pool || streamer == null) return;
             int zi = streamer.Settings.ZoneIndex(L.zoneName);
             if (zi < 0) return;
             var zone = streamer.Settings.zones[zi];

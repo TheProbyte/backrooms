@@ -15,6 +15,26 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 16:30  Claude Code  Poolrooms arches, curves, spiral stairs to a second floor; sound; right hand; spray can; items menu
+- Poolrooms: arched spans and arcades, rounded inside corners, free-standing curved walls, spiral stair towers to a
+  full second storey (ZoneRules.fullStoreys, two-storey shader map). World version 12. Docs/Poolrooms.md.
+- Sound: no building hum/ventilation/room tone in the Poolrooms (BuildingAudio.PoolBlend), a water bed instead, and a
+  long bright tiled reverb. Uses the existing listener reverb, not Steam Audio.
+- Right hand: PlayerArmRight.fbx (make_player.py mirrors the arm unless --left), shoulder/rest/elbow on the right, the
+  camcorder (left hand) dips the other way. PropGrabber.rightHanded switches back.
+- Items: WorldItem + PropGrabber.Items (click to pick up, hold LMB to use, Q to drop). Red spray can modelled in
+  Blender (Tools/Blender/build_items.py), paint with drips (SprayPaint), lifespan 45 s. Developer menu on L
+  (ItemsMenu, rendered thumbnails of every item and furniture piece; spawns in front of you). PauseMenu leaves Esc to it.
+- PoolLitSwitch/Backrooms/PoolLit light the arm, items and furniture inside the Poolrooms. Adding that light to
+  Backrooms/Lit instead crashed the editor twice (D3D12 device removed / fence timeout right after its variants started
+  recompiling on entering Play Mode); that change was reverted. Unity was restarted twice ("Yes" to keep scene backups,
+  which went to Assets/_Recovery, not committed).
+- Checked: EditMode 61/61 (PoolroomsTests: towers and second floor connected, arches). Played: menu thumbnails, spawn,
+  pick up, spray in Level 0 and the Poolrooms (red, runs), walking the stair bridge onto the second floor, tours of
+  arches/curves. Editor 1080p in the Poolrooms with both floors loaded: 4.0 ms median.
+- Open: paint is not saved between sessions and does not go on movable props; the grip has no finger on the nozzle;
+  the old left-arm path is kept but not retested.
+
 ## 2026-10-26 10:40  Claude Code  The Poolrooms: a second zone (one biome), reached through a far crawl hole
 - New zone + biome (Resources/WorldGen Zones/Poolrooms, Biomes/Poolrooms; ZoneRules/BiomeRules.Poolrooms). Zones gained
   style (Office/Pool), sealedEdges, pinned placement (square of districts around pinCentre, wins over Voronoi) and an

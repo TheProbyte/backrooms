@@ -39,13 +39,14 @@ namespace Backrooms.Generation
         public bool noDoors;          // no random doors (stair halls and elevator shafts get their doors from their landmark)
         public AnnexRole role;        // stair hall, shaft ... (see AtriumAnnex)
         public bool custom;           // part of a player-built room: its own lights, doors and dressing (see CustomRooms)
+        public bool spiral;           // Poolrooms: the tower of a spiral stair (storey 0: the stair; storey 1: its well and landing)
         public bool Walkable => kind != RoomKind.Crawl;
         public bool Tall => ceiling > OfficeBiome.CeilingHeight + 0.01f;
 
         public Room CloneFor(int newId, RectInt newRect) => new Room
         {
             id = newId, globalId = globalId, rect = newRect, fullRect = fullRect, kind = kind, lights = lights, color = color,
-            ceiling = ceiling, painted = painted, wallFinish = wallFinish, floorFinish = floorFinish, landmark = landmark, openAbove = openAbove, noFloor = noFloor, noDoors = noDoors, role = role, custom = custom,
+            ceiling = ceiling, painted = painted, wallFinish = wallFinish, floorFinish = floorFinish, landmark = landmark, openAbove = openAbove, noFloor = noFloor, noDoors = noDoors, role = role, custom = custom, spiral = spiral,
         };
     }
 
@@ -66,6 +67,17 @@ namespace Backrooms.Generation
 
     /// <summary>Shape of a roof opening over one cell (Poolrooms). Neighbouring Full cells join into one big opening.</summary>
     public enum SkylightShape : byte { None, Full, SlotX, SlotZ, Square, Round }
+
+    /// <summary>
+    /// A free-standing curved wall in a Poolrooms hall: an arc of a circle, from one angle to another (degrees, 0 = +X,
+    /// counter-clockwise seen from above), floor to ceiling, with rounded ends.
+    /// </summary>
+    public struct PoolArc
+    {
+        public Vector2 centre;        // layout-local metres (x, z)
+        public float radius, from, to;
+        public float top;             // height of the wall above the deck
+    }
 
     /// <summary>Per-cell data of pool-style layouts (see PoolPlan).</summary>
     public struct PoolCell
@@ -156,6 +168,22 @@ namespace Backrooms.Generation
         /// <summary>Pool-style layouts only: flooded cells and roof openings, [x, z].</summary>
         public PoolCell[,] pool;
         public bool Basin(int x, int z) => pool != null && pool[x, z].basin;
+        /// <summary>Poolrooms: wide round-arched openings. Per edge (same layout as vEdges / hEdges): 0 = none, else
+        /// (index in the run + 1) | (run length in cells &lt;&lt; 8). The run is a row of open edges between two rooms.</summary>
+        public ushort[,] spanV, spanH;
+        public readonly List<PoolArc> arcs = new List<PoolArc>();
+
+        /// <summary>The arched span an edge belongs to, if any (vertical: line X = line at z = along; else line Z = line at x = along).</summary>
+        public bool ArchSpan(bool vertical, int line, int along, out int index, out int length)
+        {
+            index = length = 0;
+            var a = vertical ? spanV : spanH;
+            if (a == null) return false;
+            ushort v = vertical ? a[line, along] : a[along, line];
+            if (v == 0) return false;
+            index = (v & 0xFF) - 1; length = v >> 8;
+            return true;
+        }
         /// <summary>District plans: rules per chunk of the district, [cx, cz].</summary>
         public BiomeRules[,] chunkRules;
         public string[,] chunkBiomes;

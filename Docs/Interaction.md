@@ -2,7 +2,7 @@
 
 ## Controls
 - **Hold left mouse** on furniture or a box within about 2.4 m. If it is a little too far you step in; if it
-  is low you bend down. The left hand takes the nearest grab edge to where you look, a few centimetres
+  is low you bend down. The right hand takes the nearest grab edge to where you look, a few centimetres
   different each time.
 - While holding:
   - **Mouse left/right** swings your end sideways. Past the arm's limit you turn with it.
@@ -10,8 +10,11 @@
   - **WASD** walks and drags it with you, slower the heavier it is (and very slowly away from something stuck).
   - **Right mouse** shoves it and lets go. **Release left mouse** to let go.
 - **Right mouse** without holding: a quick push. Walking into light props nudges them.
-- The right hand holds the camcorder: it dips and trembles a little while the left hand works, more for
-  heavy things.
+- The left hand holds the camcorder: it dips and trembles a little while the right hand works, more for
+  heavy things. (`PropGrabber.rightHanded` off brings back the old left-handed setup and left arm model.)
+- **Items** (the spray can): **click** one within about 2 m to pick it up in the right hand; **hold left mouse** to
+  use it; **Q** drops it (with a little toss). While the hand holds an item it does nothing else.
+- **L**: the developer menu "Items and furniture" (see below). **L** or **Esc** closes it.
 
 ## Pieces (`Scripts/Runtime/Interaction`)
 | File | What it does |
@@ -20,7 +23,12 @@
 | `MovableProp.cs` | The prop: frozen (kinematic) until disturbed, simulates until it settles, then freezes and saves its pose. Wakes frozen props it touches or hits. Shadows come from proxy boxes. |
 | `MovablePropManager.cs` | The list of moved props (the "edits" on top of the generated world). A moved prop no longer belongs to its chunk; it is stored when the chunk it stands in unloads and rebuilt when that chunk loads. Records last for the session and reset with a new seed. |
 | `PropGrabber.cs` | The hand: grab, reach, stoop, hold (a strength-limited spring at the grip point), controls, shove. Exposes the hand pose for the body. |
-| `FirstPersonBody.cs` | Placeholder body: two-bone IK for the left arm onto the grip, finger curl, legs that swing while walking, torso that bends with the stoop. |
+| `FirstPersonBody.cs` | Placeholder body: two-bone IK for the right arm (`Resources/Player/PlayerArmRight.fbx`) onto the grip, finger curl, legs that swing while walking, torso that bends with the stoop. |
+| `PropGrabber.Items.cs` | Holding items: pick up, carry low on the right of the view (raised while in use), use, drop. Places the item after the camera has moved, and the hand on its grip. |
+| `Items/WorldItem.cs` | Base of a held item: light physics lying in the world (frozen while the ground under it is unloaded), its hold pose and grip, `Hold(use, aimAt, dt)` every frame while held. |
+| `Items/SprayCan.cs` | Red spray paint (model: `Tools/Blender/build_items.py`, `Resources/Items/SprayCan.fbx`). Hold to spray where you look: ~300 traced droplets a second in a 4.5 degree cone, reaching 1.8 m; mist particles; hiss; the ball rattles when picked up. `SprayCan.Lifespan` = 45 s of spraying, sputters for the last 10 %, then only hisses. |
+| `Items/SprayPaint.cs` | The paint: soft speckled dots in batched meshes (Backrooms/SprayPaint multiplies the colour onto the surface, so it is lit like the wall; red channel kept at 1 so coats never go black). Wet paint per 2.5 cm cell: past about 2.4 coats on a wall it runs; more paint on the spot lengthens the run (up to 0.55 m); runs stop where the wall ends. Paint goes on the building, not on movable props or items, and lasts the session. |
+| `Items/ItemCatalog.cs`, `Items/ItemsMenu.cs` | The developer menu (L): a grid with a rendered picture of every item and furniture piece (each sofa model and fabric, armchairs, office chair, table, three boxes, floor lamp, wall clock). Click to spawn in front of you (the clock on the wall you look at); shift-click keeps the menu open. Spawned furniture joins the moved-props list, so it stays put through chunk unloads. |
 
 Movable kinds: sofa, armchair, office chair (casters, low friction), conference table, cardboard box
 (new in world version 5: a few against walls in offices). Floor lamps, clocks and racks stay fixed.

@@ -131,6 +131,8 @@ namespace Backrooms.Generation
             // fog and ripples.
             PoolMaterials.Ensure();
             if (!GetComponent<PoolWorld>()) gameObject.AddComponent<PoolWorld>().streamer = this;
+            // Developer menu: items and furniture (L).
+            if (!GetComponent<Interaction.ItemsMenu>()) gameObject.AddComponent<Interaction.ItemsMenu>().streamer = this;
             // Movable props: the list of moved ones, and the player's free hand.
             if (!GetComponentInChildren<Interaction.MovablePropManager>())
             {

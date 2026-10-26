@@ -53,6 +53,8 @@ namespace Backrooms.Generation
         [Header("Vertical profile")]
         [Tooltip("Lowest storey that exists in this zone.")] public int minStorey = 0;
         [Tooltip("Highest storey that exists in this zone.")] public int maxStorey = 1;
+        [Tooltip("Storeys above the ground that exist all over the zone (streamed everywhere, not only near tall rooms).")]
+        public int fullStoreys = 0;
 
         [Header("Architecture")]
         [Tooltip("How its districts are built (Office: the Backrooms; Pool: tiled, flooded rooms lit by the sun).")]
@@ -100,7 +102,7 @@ namespace Backrooms.Generation
             biomes = new List<BiomeBand> { new BiomeBand { rules = BiomeRules.Poolrooms(), upTo = 1f } },
             edgeBiome = "Poolrooms",
             overrideFog = true, fogColor = new Color(0.66f, 0.77f, 0.75f), fogDensity = 0.008f, ambience = "pool", power = 0f,
-            minStorey = 0, maxStorey = 0,
+            minStorey = 0, maxStorey = 1, fullStoreys = 1,
             style = ZoneStyle.Pool, sealedEdges = true,
             pinned = true, pinCentre = new Vector2Int(24, 0), pinRadius = 5,
             entrance = true, entranceFrom = new Vector2Int(0, 0), entranceTo = new Vector2Int(24, 0),

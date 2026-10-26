@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Backrooms.Audio
@@ -239,6 +240,90 @@ namespace Backrooms.Audio
             var data = Seamless(raw, n, fade, 2);
             Normalize(data, 0.5f);
             return Clip("RoomTone", data, 2);
+        }
+
+        /// <summary>
+        /// The Poolrooms: still water lapping at tiled edges far off, a soft wash of moving water, and now and then a
+        /// drip somewhere. Decorrelated L/R, 31 s seamless loop. The reverb on the listener does the rest.
+        /// </summary>
+        public static AudioClip PoolAmbience()
+        {
+            float L = 31f;
+            int n = (int)(Rate * L), fade = Rate * 2;
+            var raw = new float[(n + fade) * 2];
+            var rng = new System.Random(4242);
+            var washL = Biquad.BandPass(380f, 0.6f); var washR = Biquad.BandPass(420f, 0.6f);
+            var lapL = Biquad.BandPass(900f, 1.2f); var lapR = Biquad.BandPass(820f, 1.2f);
+            var lowL = Biquad.LowPass(140f); var lowR = Biquad.LowPass(140f);
+            // Drips: (time, pitch, pan), spaced 1.5 - 5 s apart.
+            var drips = new List<(float t, float hz, float pan)>();
+            for (float t = 0.8f; t < L + 2f; t += 1.5f + (float)rng.NextDouble() * 3.5f)
+                drips.Add((t, 900f + (float)rng.NextDouble() * 1600f, (float)rng.NextDouble()));
+            for (int i = 0; i < n + fade; i++)
+            {
+                float t = i / (float)Rate;
+                // Lapping: slow irregular swells of band-passed noise.
+                float swellL = Mathf.Pow(Mathf.Max(0f, Mathf.Sin(TwoPi * 0.31f * t) * 0.6f + Mathf.Sin(TwoPi * 0.137f * t + 1.3f) * 0.5f), 2f);
+                float swellR = Mathf.Pow(Mathf.Max(0f, Mathf.Sin(TwoPi * 0.27f * t + 2.1f) * 0.6f + Mathf.Sin(TwoPi * 0.151f * t + 0.4f) * 0.5f), 2f);
+                float l = washL.Run(White(rng)) * 0.5f + lapL.Run(White(rng)) * swellL * 0.9f + lowL.Run(White(rng)) * 0.8f;
+                float r = washR.Run(White(rng)) * 0.5f + lapR.Run(White(rng)) * swellR * 0.9f + lowR.Run(White(rng)) * 0.8f;
+                foreach (var (dt0, hz, pan) in drips)
+                {
+                    float dt = t - dt0;
+                    if (dt < 0f || dt > 0.12f) continue;
+                    // A drop: a short sine that rises in pitch as the bubble closes.
+                    float s = Mathf.Sin(TwoPi * hz * (1f + dt * 6f) * dt) * Mathf.Exp(-dt * 45f) * 1.6f;
+                    l += s * (1f - pan); r += s * pan;
+                }
+                raw[i * 2] = l; raw[i * 2 + 1] = r;
+            }
+            var data = Seamless(raw, n, fade, 2);
+            Normalize(data, 0.5f);
+            return Clip("PoolAmbience", data, 2);
+        }
+
+        /// <summary>Aerosol hiss (loop): broadband noise, brightest around 5 kHz, with a slight flutter.</summary>
+        public static AudioClip SprayHiss()
+        {
+            float L = 2f;
+            int n = (int)(Rate * L), fade = Rate / 4;
+            var raw = new float[n + fade];
+            var rng = new System.Random(515);
+            var bp = Biquad.BandPass(5200f, 0.55f);
+            var hp = Biquad.HighPass(1500f);
+            for (int i = 0; i < n + fade; i++)
+            {
+                float t = i / (float)Rate;
+                float flutter = 1f + 0.08f * Mathf.Sin(TwoPi * 23f * t) + 0.05f * Mathf.Sin(TwoPi * 37f * t + 1f);
+                raw[i] = (bp.Run(White(rng)) * 0.9f + hp.Run(White(rng)) * 0.25f) * flutter;
+            }
+            var data = Seamless(raw, n, fade, 1);
+            Normalize(data, 0.5f);
+            return Clip("SprayHiss", data, 1);
+        }
+
+        /// <summary>The mixing ball rattling in a spray can (variant 0-3): a few quick metallic clicks.</summary>
+        public static AudioClip CanRattle(int variant)
+        {
+            int n = (int)(Rate * 0.5f);
+            var d = new float[n];
+            var rng = new System.Random(808 + variant * 7);
+            int hits = 4 + variant % 3;
+            for (int h = 0; h < hits; h++)
+            {
+                float at = 0.02f + h * (0.07f + (float)rng.NextDouble() * 0.03f);
+                float hz = 2600f + (float)rng.NextDouble() * 1400f;
+                float amp = 0.5f + (float)rng.NextDouble() * 0.5f;
+                int s0 = (int)(at * Rate);
+                for (int i = s0; i < n; i++)
+                {
+                    float dt = (i - s0) / (float)Rate;
+                    if (dt > 0.05f) break;
+                    d[i] += (Mathf.Sin(TwoPi * hz * dt) * 0.7f + Mathf.Sin(TwoPi * hz * 2.7f * dt) * 0.3f + White(rng) * 0.3f) * Mathf.Exp(-dt * 140f) * amp;
+                }
+            }
+            Normalize(d, 0.6f);
+            return Clip("CanRattle_" + variant, d, 1);
         }
 
         /// <summary>The aggregate hum of many distant fixtures: soft, low-passed, with slow beating.</summary>

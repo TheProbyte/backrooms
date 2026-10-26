@@ -101,7 +101,11 @@ namespace Backrooms.Audio
         readonly List<float> _rank = new List<float>();
         readonly HashSet<Vector3> _wanted = new HashSet<Vector3>();
 
-        AudioSource _bed, _vent, _tone, _preview;
+        AudioSource _bed, _vent, _tone, _preview, _water;
+        /// <summary>0..1: how far the listener is into the Poolrooms (the Backrooms' beds fade out, water and a long
+        /// tiled reverb fade in).</summary>
+        public float PoolBlend { get; private set; }
+        [Tooltip("Level of the Poolrooms' water ambience.")] public float waterLevel = 0.05f;
         AudioLowPassFilter _ventLpf;
         AudioReverbFilter _reverb;
         Vector2Int _fieldCell = new Vector2Int(int.MinValue, 0);
@@ -142,6 +146,7 @@ namespace Backrooms.Audio
             _vent = Bed("VentilationBed", SoundBank.Ventilation, 9);
             _ventLpf = _vent.gameObject.AddComponent<AudioLowPassFilter>(); _ventLpf.cutoffFrequency = 4000f;
             _tone = Bed("RoomToneBed", SoundBank.RoomTone, 13);
+            _water = Bed("PoolWaterBed", SoundBank.PoolAmbience, 17);
             var pgo = new GameObject("SoundPreview"); pgo.transform.SetParent(transform, false);
             _preview = pgo.AddComponent<AudioSource>(); _preview.playOnAwake = false; _preview.dopplerLevel = 0f;
 
@@ -212,6 +217,8 @@ namespace Backrooms.Audio
             UpdateHumVoices(ear, now, dt);
             UpdateBuzz(ear, now, dt);
             UpdateEvents(ear, now);
+            bool inPool = PoolWorld.Instance && PoolWorld.Instance.IsPool(ear);
+            PoolBlend = Mathf.MoveTowards(PoolBlend, inPool ? 1f : 0f, dt / 1.2f);
             UpdateBeds(dt);
             if (now >= _nextReverb) { _nextReverb = now + 0.1f; UpdateReverb(); }
             UpdatePreview(now);
@@ -597,6 +604,11 @@ namespace Backrooms.Audio
             _ventLpf.cutoffFrequency = Mathf.Lerp(_ventLpf.cutoffFrequency, Mathf.Lerp(1800f, 6000f, Mathf.Max(size * 0.6f, hard)), bedK);
 
             _tone.volume = SoundBank.BaseLevel(SoundIds.RoomTone) * SoundCatalog.Volume(SoundIds.RoomTone) * amb;
+
+            // The Poolrooms have no lights or air handling: none of the building's beds, only water.
+            float office = 1f - PoolBlend;
+            _bed.volume *= office; _vent.volume *= office; _tone.volume *= office;
+            _water.volume = waterLevel * amb * PoolBlend;
         }
 
         void UpdateReverb()
@@ -616,6 +628,21 @@ namespace Backrooms.Audio
             float hfRatioT = Mathf.Lerp(0.45f, 0.8f, hard);
             float refDelayT = Mathf.Clamp(size / 340f * 0.6f, 0.003f, 0.05f);
             float delayT = Mathf.Clamp(size / 340f, 0.008f, 0.07f);
+            if (PoolBlend > 0f)
+            {
+                // Tile, water and bare concrete reflect almost everything: long, bright, wet tails, and the halls are
+                // joined by wide openings, so the space rings well past what is in view.
+                float p = PoolBlend;
+                float poolDecay = Mathf.Clamp(1.9f + 0.05f * Mathf.Sqrt(vol), 2.4f, 5.5f);
+                decay = Mathf.Lerp(decay, poolDecay, p);
+                roomT = Mathf.Lerp(roomT, amt <= 0.001f ? -10000f : -450f + 2000f * Mathf.Log10(amt), p);
+                roomHFT = Mathf.Lerp(roomHFT, -250f, p);
+                reflT = Mathf.Lerp(reflT, -250f, p);
+                revT = Mathf.Lerp(revT, 350f, p);
+                hfRatioT = Mathf.Lerp(hfRatioT, 0.95f, p);
+                refDelayT = Mathf.Lerp(refDelayT, 0.035f, p);
+                delayT = Mathf.Lerp(delayT, 0.06f, p);
+            }
             const float k = 0.15f;              // 10 Hz updates, ~0.65 s time constant
             _rvDecay += (decay - _rvDecay) * k; _rvRoom += (roomT - _rvRoom) * k; _rvRoomHF += (roomHFT - _rvRoomHF) * k;
             _rvRefl += (reflT - _rvRefl) * k; _rvRev += (revT - _rvRev) * k; _rvHFRatio += (hfRatioT - _rvHFRatio) * k;
@@ -624,7 +651,7 @@ namespace Backrooms.Audio
             _reverb.reflectionsLevel = _rvRefl; _reverb.reverbLevel = _rvRev; _reverb.decayHFRatio = _rvHFRatio;
             _reverb.reflectionsDelay = _rvRefDelay; _reverb.reverbDelay = _rvDelay;
             ReverbDecay = _rvDecay;
-            SpaceLabel = (hard > 0.5f ? "plaster" : "drop ceiling") + ", " + area.ToString("0") + " m² visible, ceiling " + h.ToString("0.0") + " m";
+            SpaceLabel = (PoolBlend > 0.5f ? "tiles and water" : hard > 0.5f ? "plaster" : "drop ceiling") + ", " + area.ToString("0") + " m² visible, ceiling " + h.ToString("0.0") + " m";
         }
 
         // ---------------- Preview (F5 > Sound) ----------------

@@ -50,7 +50,7 @@ namespace Backrooms.Generation
 
         /// <summary>Bump when generation code changes how a seed plays out.
         /// 2: fixture spacing, strips, open plan. 3: arches. 4: zones, landmarks, districts, storeys.</summary>
-        public const int Version = 11;   // 10: far crawl-hole links. 11: pinned, sealed zones (the Poolrooms)
+        public const int Version = 12;   // 10: far crawl-hole links. 11: pinned, sealed zones (the Poolrooms). 12: Poolrooms arches, curves, spiral stairs, second floor
 
         /// <summary>District size in chunks and cells.</summary>
         public const int DistrictChunks = 4, DistrictCells = DistrictChunks * OfficeBiome.ChunkCells;
@@ -322,11 +322,18 @@ namespace Backrooms.Generation
 
         public void Save() { PlayerPrefs.SetString(PrefsKey, JsonUtility.ToJson(this)); PlayerPrefs.Save(); }
 
-        /// <summary>Settings saved before a pinned zone existed (F5 edits) get it from the shipped defaults, so its entrance still leads somewhere.</summary>
+        /// <summary>
+        /// Pinned zones (the Poolrooms) always come from the shipped defaults: settings saved from F5 before a zone existed,
+        /// or before it changed, get the current one, so its entrance and storeys are what the code expects.
+        /// </summary>
         void AddMissingPinnedZones()
         {
             foreach (var z in Defaults().zones)
-                if (z.pinned && ZoneIndex(z.name) < 0) zones.Add(z);
+            {
+                if (!z.pinned) continue;
+                int i = ZoneIndex(z.name);
+                if (i < 0) zones.Add(z); else zones[i] = z;
+            }
         }
 
         /// <summary>Settings as saved before zones existed (version 3): one implicit zone with three biomes.</summary>

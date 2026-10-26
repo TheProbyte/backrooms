@@ -43,6 +43,7 @@ namespace Backrooms.Generation
 
         [Header("Vertical profile")]
         public int minStorey = 0, maxStorey = 1;
+        [Tooltip("Storeys above the ground that exist everywhere in the zone (streamed in every column).")] public int fullStoreys = 0;
 
         [Header("Architecture")]
         [Tooltip("Office: the Backrooms. Pool: tiled, flooded rooms lit by the sun.")] public ZoneStyle style = ZoneStyle.Office;
@@ -63,7 +64,7 @@ namespace Backrooms.Generation
                 edgeBiome = edgeBiome ? edgeBiome.rules.name : "",
                 transitionZone = transitionZone ? transitionZone.zoneName : "",
                 overrideFog = overrideFog, fogColor = fogColor, fogDensity = fogDensity, ambience = ambience, power = power,
-                minStorey = minStorey, maxStorey = maxStorey,
+                minStorey = minStorey, maxStorey = maxStorey, fullStoreys = fullStoreys,
                 style = style, sealedEdges = sealedEdges, pinned = pinned, pinCentre = pinCentre, pinRadius = pinRadius,
                 entrance = entrance, entranceFrom = entranceFrom, entranceTo = entranceTo,
             };

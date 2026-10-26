@@ -4,8 +4,8 @@ using UnityEngine.InputSystem;
 namespace Backrooms.Interaction
 {
     /// <summary>
-    /// The player's free (left) hand: grab, drag, tip and shove movable props. The right hand keeps the
-    /// camcorder, so it is always one-handed.
+    /// The player's free (right) hand: grab, drag, tip and shove movable props, hold items (see
+    /// PropGrabber.Items.cs). The left hand keeps the camcorder, so it is always one-handed.
     ///
     /// Hold left mouse on a prop within reach (step in automatically if it is a little too far). The hand
     /// takes the nearest grab edge to where you look (with a little variation, never the identical spot).
@@ -19,12 +19,18 @@ namespace Backrooms.Interaction
     /// Right mouse without holding gives a quick push. Walking into light props nudges them.
     /// </summary>
     [RequireComponent(typeof(CamcorderPlayerController))]
+    [DefaultExecutionOrder(90)]                 // after the player controller: the held item follows this frame's view
     public partial class PropGrabber : MonoBehaviour
     {
         [Header("Reach")]
         public float lookRange = 2.4f;
         [Tooltip("Arm reach from the shoulder (m).")] public float reach = 0.78f;
-        [Tooltip("Shoulder (left) relative to the eye, in the body's frame.")] public Vector3 shoulderOffset = new Vector3(-0.2f, -0.28f, -0.08f);
+        [Tooltip("Shoulder relative to the eye, in the body's frame (x is mirrored to the working side).")] public Vector3 shoulderOffset = new Vector3(0.2f, -0.28f, -0.08f);
+        [Tooltip("The free hand is the right one (the camcorder is in the left). Off: the old left-handed setup.")]
+        public bool rightHanded = true;
+        /// <summary>+1 when the free hand is the right one, -1 for the left.</summary>
+        public float Side => rightHanded ? 1f : -1f;
+        Vector3 ShoulderLocal => new Vector3(Mathf.Abs(shoulderOffset.x) * Side, shoulderOffset.y, shoulderOffset.z);
 
         [Header("Strength")]
         [Tooltip("Most the hand can pull or push sideways (N).")] public float maxPush = 650f;
@@ -50,10 +56,10 @@ namespace Backrooms.Interaction
         public float HandCurl { get; private set; }
         /// <summary>0..1: how hard the arm is working.</summary>
         public float Strain { get; private set; }
-        public Vector3 Shoulder => Eye + transform.rotation * shoulderOffset;
+        public Vector3 Shoulder => Eye + transform.rotation * ShoulderLocal;
         /// <summary>Where the shoulder would be standing upright: what the held position is measured from, so bending
         /// down to follow a low hand never moves the hand itself.</summary>
-        public Vector3 StandShoulder => transform.position + Vector3.up * _player.BaseEye + transform.rotation * shoulderOffset;
+        public Vector3 StandShoulder => transform.position + Vector3.up * _player.BaseEye + transform.rotation * ShoulderLocal;
         Vector3 Eye => _player.cameraPitchPivot ? _player.cameraPitchPivot.position : transform.position + Vector3.up * 1.58f;
 
         // Automated tests (bypass the mouse).
@@ -86,7 +92,7 @@ namespace Backrooms.Interaction
             _shake = FindAnyObjectByType<HandheldCameraShake>();
         }
 
-        void OnDisable() => Release();
+        void OnDisable() { Release(); if (HeldItem) Drop(); }
 
         void Update()
         {
@@ -98,11 +104,12 @@ namespace Backrooms.Interaction
             botShove = false;
             Vector2 md = botHold.HasValue ? botMouse : focus && mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
 
-            switch (Current)
+            if (HeldItem) UpdateHeldItem(focus, mouse);
+            else switch (Current)
             {
                 case State.Idle:
                     if (_poke != PokePhase.None) break;
-                    if (pressed) { if (!TryStartPoke()) TryStart(); }
+                    if (pressed) { if (!TryPickUp() && !TryStartPoke()) TryStart(); }
                     else if (shovePressed) Push();
                     break;
                 case State.Reaching:
@@ -121,7 +128,7 @@ namespace Backrooms.Interaction
             UpdateHandPose();
 
             // Camcorder hand: dips while the other hand works, trembles with effort.
-            if (_shake)
+            if (_shake && !HeldItem)
             {
                 float m = Held ? Held.Mass : 0f;
                 _shake.dip = Current == State.Holding ? Mathf.Lerp(0.2f, 1f, Mathf.Clamp01((m - 4f) / 40f)) : Current == State.Reaching ? 0.15f : Poking ? 0.08f : 0f;
@@ -266,7 +273,8 @@ namespace Backrooms.Interaction
             // Measured from the upright shoulder: anywhere from the floor (the body stoops) to a little above
             // the shoulder, and within an arm.s length around the body.
             float floor = transform.position.y + 0.03f - StandShoulder.y;
-            o.x = Mathf.Clamp(o.x, -0.62f, 0.42f);
+            // Further out on the hand's own side than across the body.
+            o.x = Side > 0f ? Mathf.Clamp(o.x, -0.42f, 0.62f) : Mathf.Clamp(o.x, -0.62f, 0.42f);
             o.y = Mathf.Clamp(o.y, floor, 0.5f);
             o.z = Mathf.Clamp(o.z, 0.15f, 0.8f);
             float flat = Mathf.Sqrt(o.x * o.x + o.z * o.z);
@@ -350,8 +358,9 @@ namespace Backrooms.Interaction
 
         void UpdateHandPose()
         {
-            bool active = (Current != State.Idle && _target) || Poking;
+            bool active = (Current != State.Idle && _target) || Poking || HeldItem;
             HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? 3.2f : 2.5f));
+            if (HeldItem) { HandCurl = Mathf.MoveTowards(HandCurl, HeldItem.GripCurl, Time.deltaTime * 4f); return; }   // pose set in LateUpdate
             if (Poking) PokePose = true; else if (HandBlend <= 0.01f) PokePose = false;
             if (!_target) { HandCurl = Mathf.MoveTowards(HandCurl, 0.25f, Time.deltaTime * 2f); return; }
             Vector3 grip = _target.transform.TransformPoint(_gripLocal);

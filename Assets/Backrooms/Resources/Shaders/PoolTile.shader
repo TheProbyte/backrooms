@@ -88,8 +88,9 @@ Shader "Backrooms/PoolTile"
                 float3 V = GetWorldSpaceNormalizeViewDir(i.positionWS);
 
                 // Below the waterline of a basin: wet glaze and caustics.
-                PoolCell here = PoolLoad(PoolCellOf(i.positionWS + N0 * 0.05));
-                float depth = POOL_WATER - (i.positionWS.y - _PoolMapParams.y);
+                int storey = PoolStorey(i.positionWS.y);
+                PoolCell here = PoolLoad(PoolCellOf(i.positionWS + N0 * 0.05), storey);
+                float depth = POOL_WATER - (i.positionWS.y - PoolBase(storey));
                 float under = here.basin ? saturate(depth / 0.02) : 0.0;
                 albedo *= 1.0 - _WetDarken * under;
 

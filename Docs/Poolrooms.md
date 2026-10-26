@@ -70,9 +70,45 @@ layer Default only (no fixture lights here).
 Editor, 1920 x 1080: a Poolrooms hall ~3 ms median (no shadowed lights; the light-grid and fixture systems are idle), a
 Level 0 corridor 17.7 ms in the same session.
 
+## Arches, curves and the second floor (world version 12)
+
+- **Arches** (`DistrictGenerator.PoolArches`, `OfficeChunkBuilder.PoolShapes.cs`): every open span between two rooms
+  is an arch, and about half of the single doorways in long shared walls are widened to two or three cells and arched.
+  Runs longer than four cells become arcades (three-cell arches on one-cell piers). The curve is a half circle where
+  the room is tall enough, else a flatter half ellipse from 1.8 m; its crown is 0.45 m under the lower ceiling.
+  Stored per edge in `OfficeLayout.spanV / spanH` (index in the run, run length).
+- **Rounded corners**: quarter-round tiled fillets (0.9 m radius) in the inside corners of rooms, away from stairs,
+  holes and columns.
+- **Curved walls**: in about half the big halls a free-standing arc of wall (2.4-3.3 m radius, 140-215 degrees), full
+  height or 2.1 m, well clear of the room's walls (`OfficeLayout.arcs`; built by the chunk its centre is in).
+- **Spiral stairs** (`PoolPlan.SpiralSite`, `MarkSpiral`, `BuildSpiral`): in about two districts of three, a 5 x 5 cell
+  tower inside one chunk. Ground floor: a dry room open to the floor above, a tiled column, 50 wedge steps of 0.18 m
+  (16 a turn) with a railing on the open side, ending in a railed bridge at the upper floor's level. Upper floor: the
+  well (no floor, no random doors, four square openings in its ceiling) with one door at the bridge (`LandingDoor`,
+  made before the rooms are joined so the well is connected through it).
+- **The second floor** is a whole Poolrooms storey 9 m up (its own rooms, basins and openings). `ZoneRules.fullStoreys`
+  (1 here) makes the streamer load it in every column of the zone, not only near tall rooms. The shaders' map holds both
+  storeys (rows 0-143 and 144-287; `PoolStorey` picks by height), as do the ripples, water and audio queries.
+- Light wells of the ground floor end under the second floor's basins: the sky up there is the Poolrooms' logic.
+
+## Sound
+
+`BuildingAudio.PoolBlend` (0..1 over 1.2 s as the listener enters) fades out the building hum, ventilation and room tone
+and fades in a water bed (`ProceduralSounds.PoolAmbience`: distant lapping, a wash of water, occasional drips). The
+listener's reverb takes a tiled-hall profile: 2.4-5.5 s decay depending on the visible volume, bright (HF ratio 0.95),
+strong early reflections and tail.
+
+## Things in the Poolrooms
+
+The arm, body, items and furniture normally use Backrooms/Lit, which has no light there. `PoolLitSwitch` (on the arm,
+body, items and every movable prop) swaps their materials for Backrooms/PoolLit copies (same colours and textures, the
+Poolrooms' sun and bounce) while they are in the Poolrooms. Backrooms/Lit itself is untouched: adding the Poolrooms'
+light to it made the editor recompile all its variants and crash the D3D12 device twice (see WORKLOG).
+
 ## Known gaps / ideas
 
 - Crawling inside a basin puts the camera under the water surface, which is single-sided (nothing drawn from below).
 - The duct of the Poolrooms' hole is shaded by the Backrooms' light grid, so its mouth is dark.
-- The building hum ambience still plays; a water ambience would suit it.
-- More biomes: curved walls and walkways (reference image 5), the spiral stair (image 2) as a landmark.
+- More biomes: winding walkways beside water channels (reference image 5).
+- The sun is not traced through the curved walls (they cast no sun shadow) or between the two floors (the stair towers
+  are lit by the bounce only).

@@ -141,8 +141,9 @@ namespace Backrooms
             // Working with the other hand: the camcorder sinks and tilts a little, and trembles under effort.
             _effort = Mathf.MoveTowards(_effort, Mathf.Clamp01(effort), dt * 2.5f);
             _dip = Mathf.Lerp(_dip, Mathf.Clamp01(dip), 1f - Mathf.Exp(-dt / 0.35f));
-            pos += new Vector3(-0.012f, -0.035f, 0f) * _dip;
-            rot += new Vector3(3.2f, -1.2f, 2.0f) * _dip;
+            // The camcorder is in the left hand: it sags and turns toward the right, where the other hand is busy.
+            pos += new Vector3(0.012f, -0.035f, 0f) * _dip;
+            rot += new Vector3(3.2f, 1.2f, -2.0f) * _dip;
             rot += (Noise3(t * 9f + 333f) * 0.35f + Noise3(t * 3.1f + 71f) * 0.5f) * _effort;
 
             transform.localPosition = pos * shakeIntensity;

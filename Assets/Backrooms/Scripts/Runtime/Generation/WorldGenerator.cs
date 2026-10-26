@@ -124,6 +124,19 @@ namespace Backrooms.Generation
                 S.pool = new PoolCell[N, N];
                 for (int x = 0; x < N; x++) for (int z = 0; z < N; z++) S.pool[x, z] = plan.pool[ox + x, oz + z];
             }
+            if (plan.spanV != null)
+            {
+                S.spanV = new ushort[N + 1, N]; S.spanH = new ushort[N, N + 1];
+                for (int x = 0; x <= N; x++) for (int z = 0; z < N; z++) S.spanV[x, z] = plan.spanV[ox + x, oz + z];
+                for (int x = 0; x < N; x++) for (int z = 0; z <= N; z++) S.spanH[x, z] = plan.spanH[ox + x, oz + z];
+            }
+            foreach (var arc in plan.arcs)
+            {
+                int ax = Mathf.FloorToInt(arc.centre.x / C), az = Mathf.FloorToInt(arc.centre.y / C);
+                if (ax < ox || az < oz || ax >= ox + N || az >= oz + N) continue;      // built by the chunk its centre is in
+                var g = arc; g.centre -= new Vector2(ox * C, oz * C);
+                S.arcs.Add(g);
+            }
             var map = new Dictionary<int, int>();
             for (int x = 0; x < N; x++)
             for (int z = 0; z < N; z++)
@@ -211,7 +224,9 @@ namespace Backrooms.Generation
         /// </summary>
         public int TopStoreyAt(Vector2Int chunk)
         {
-            int top = 0;
+            // Zones whose upper storeys run everywhere (the Poolrooms' second floor) stream them in every column.
+            var zone = Settings.zones[Mathf.Clamp(Settings.ZoneAt(Seed, DistrictOf(chunk)).zone, 0, Settings.zones.Count - 1)];
+            int top = Mathf.Max(0, zone.fullStoreys);
             var d0 = DistrictOf(chunk);
             var cells = new RectInt(chunk.x * N - N, chunk.y * N - N, 3 * N, 3 * N);      // the chunk plus a one-chunk ring
             for (int dx = -1; dx <= 1; dx++)

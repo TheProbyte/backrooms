@@ -117,6 +117,7 @@ namespace Backrooms.Interaction
             mp._ownedMeshes = builtMeshes;
             mp._lastGoodPos = position; mp._lastGoodRot = rotation;
             RuntimeIndoorReflections.Instance?.Prepare(root);
+            PoolLitSwitch.Attach(root);                           // lit by the Poolrooms' light while it is in them
             return mp;
         }
 

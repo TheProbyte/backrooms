@@ -72,6 +72,9 @@ namespace Backrooms.Generation
             for (int i = 0; i < placements.Count; i++)
                 if (storey < placements[i].storeys) { reserved.Add((placements[i].rect, i)); L.landmarks.Add(placements[i]); }
             if (district == Vector2Int.zero && storey == 0) reserved.Add((new RectInt(0, 0, ChunkN, ChunkN), -1));
+            // Poolrooms: a spiral stair tower, the same square on every storey.
+            RectInt? spiral = pool ? PoolPlan.SpiralSite(seed, district) : null;
+            if (spiral.HasValue) reserved.Add((spiral.Value, -1));
 
             // 3. Partition around the reserved areas, then into rooms and hallways.
             var landmarkRooms = new List<Room>[placements.Count];
@@ -91,7 +94,7 @@ namespace Backrooms.Generation
 
             // Ceiling heights and wall finish. Big halls often rise to tall plaster ceilings; a few large
             // ordinary rooms and lounges do too. Heights step in 0.3 m so trims line up.
-            if (pool) PoolPlan.Ceilings(L, rng);
+            if (pool) { PoolPlan.Ceilings(L, rng); if (spiral.HasValue) PoolPlan.MarkSpiral(L, spiral.Value); }
             else foreach (var r in L.rooms)
             {
                 if (r.landmark != null) continue;
@@ -119,6 +122,8 @@ namespace Backrooms.Generation
             for (int z = 0; z <= n; z++)
                 L.hEdges[x, z] = (z == 0 || z == n || L.roomOf[x, z - 1] != L.roomOf[x, z]) ? EdgeKind.Wall : EdgeKind.Open;
             foreach (var o in openings) L.SetEdge(o.x, o.z, o.side, o.header ? EdgeKind.DoorHeader : EdgeKind.Door);
+            // The way off a spiral stair's top: its only door, made before the rooms are joined up.
+            if (spiral.HasValue && storey > 0) PoolPlan.LandingDoor(L, spiral.Value);
 
             // Crawl spaces open only onto the hallway they were cut from.
             foreach (var r in L.rooms)
@@ -132,6 +137,7 @@ namespace Backrooms.Generation
             EnsureConnected(L, rng);
             EncloseTallRooms(L);
             PlaceArches(L);
+            if (pool) PoolArches(L, new System.Random(Hash(sseed, district.x, district.y, 0xA4C7)));
 
             // 6. Lighting and dressing. Placements record the room id in their colour field; light colours
             // are assigned afterwards, once every light's position is known, and stamped in.
@@ -447,6 +453,62 @@ namespace Backrooms.Generation
             for (int x = 1; x < L.N; x++) for (int z = 0; z < L.N; z++) Add(x, z, 0, L.roomOf[x - 1, z], L.roomOf[x, z]);
             for (int x = 0; x < L.N; x++) for (int z = 1; z < L.N; z++) Add(x, z, 2, L.roomOf[x, z - 1], L.roomOf[x, z]);
             return new List<Shared>(map.Values);
+        }
+
+        /// <summary>
+        /// Poolrooms: wide round arches. Every open-plan run between two rooms becomes one arch, and some single doorways
+        /// in long shared walls are widened into two- or three-cell arched openings. Marks <see cref="OfficeLayout.spanV"/>
+        /// / spanH (the builder curves the opening's top).
+        /// </summary>
+        static void PoolArches(OfficeLayout L, System.Random rng)
+        {
+            int n = L.N;
+            L.spanV = new ushort[n + 1, n]; L.spanH = new ushort[n, n + 1];
+            foreach (var s in SharedBoundaries(L))
+            {
+                Room ra = L.rooms[s.a], rb = L.rooms[s.b];
+                if (!ra.Walkable || !rb.Walkable || ra.spiral || rb.spiral || ra.noFloor || rb.noFloor) continue;
+                var e = s.edges;            // in order along their line
+                bool anyOpen = e.Exists(q => L.EdgeOf(q.x, q.z, q.side) == EdgeKind.Open);
+                if (!anyOpen && e.Count >= 4 && rng.NextDouble() < 0.5)
+                {
+                    int door = e.FindIndex(q => OfficeLayout.IsPassable(L.EdgeOf(q.x, q.z, q.side)));
+                    if (door >= 0)
+                    {
+                        int w = Mathf.Min(e.Count - 2, rng.NextDouble() < 0.5 ? 2 : 3);
+                        int start = Mathf.Clamp(door - w / 2, 1, e.Count - 1 - w);
+                        for (int i = 0; i < e.Count; i++)
+                            if (i >= start && i < start + w) L.SetEdge(e[i].x, e[i].z, e[i].side, EdgeKind.Open);
+                            else if (OfficeLayout.IsPassable(L.EdgeOf(e[i].x, e[i].z, e[i].side))) L.SetEdge(e[i].x, e[i].z, e[i].side, EdgeKind.Wall);
+                    }
+                }
+                // Long open runs become arcades: three-cell arches on one-cell piers.
+                for (int i = 0; i < e.Count;)
+                {
+                    if (L.EdgeOf(e[i].x, e[i].z, e[i].side) != EdgeKind.Open) { i++; continue; }
+                    int j = i;
+                    while (j < e.Count && L.EdgeOf(e[j].x, e[j].z, e[j].side) == EdgeKind.Open) j++;
+                    if (j - i > 4)
+                        for (int k = i + 3; k < j - 1; k += 4) L.SetEdge(e[k].x, e[k].z, e[k].side, EdgeKind.Wall);
+                    i = j;
+                }
+                // Each run of open edges is one arch.
+                for (int i = 0; i < e.Count;)
+                {
+                    if (L.EdgeOf(e[i].x, e[i].z, e[i].side) != EdgeKind.Open) { i++; continue; }
+                    int j = i;
+                    while (j < e.Count && L.EdgeOf(e[j].x, e[j].z, e[j].side) == EdgeKind.Open) j++;
+                    int len = j - i;
+                    if (len >= 2 && len < 255)
+                        for (int k = i; k < j; k++)
+                        {
+                            var q = e[k];
+                            ushort v = (ushort)((k - i + 1) | (len << 8));
+                            if (q.side == 0) L.spanV[q.x, q.z] = v; else L.spanH[q.x, q.z] = v;
+                        }
+                    i = j;
+                }
+            }
         }
 
         static void ConnectRooms(OfficeLayout L, System.Random rng)

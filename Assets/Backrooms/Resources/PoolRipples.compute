@@ -13,11 +13,13 @@ float2 _OriginWS;                   // world xz of texel (0, 0)'s corner
 float _Texel;
 float4 _Drops[8];                   // xy world xz, z radius (m), w height added (m)
 int _DropCount;
+int _Storey;                        // which storey's map rows (the player's)
 
 uint MapFlags(int2 cell)
 {
     int n = (int)_PoolMapParams.x;
     uint2 s = (uint2)(cell + n * 4096) % (uint)n;      // cells are well within +-4096 maps of the origin
+    s.y += (uint)_Storey * (uint)n;
     return (uint)(_PoolMap.Load(int3(s, 0)).r * 255.0 + 0.5);
 }
 

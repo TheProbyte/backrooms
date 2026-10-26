@@ -437,7 +437,7 @@ namespace Backrooms.Generation
                 int cz = vertical ? along : (s == 0 ? line - 1 : line);
                 if (!_L.InChunk(cx, cz)) continue;
                 var room = _L.RoomAt(cx, cz);
-                if (room.noFloor && e != EdgeKind.Wall) continue;     // a well's open sides are railings, built separately; walls around a stair or shaft void are real
+                if (room.noFloor && e != EdgeKind.Wall && !room.spiral) continue;     // a well's open sides are railings, built separately; walls around a stair or shaft void are real (a spiral stair's well has a doorway)
                 float sign = s == 0 ? -1f : 1f;               // face normal points into the viewing cell
                 float f = l + sign * T * 0.5f;
                 Vector3 n = vertical ? new Vector3(sign, 0, 0) : new Vector3(0, 0, sign);
@@ -456,6 +456,11 @@ namespace Backrooms.Generation
 
                 // Passable edge: where does the opening stop? (Both chunks of a border compute the same.)
                 var v = ViewOpening(_L, Neighbour, vertical, line, along, s);
+                if (Pool && _L.ArchSpan(vertical, line, along, out int spanIndex, out int spanLength))
+                {
+                    BigArchFaces(vertical, line, along, spanIndex, spanLength, f, n, myCeil, v.otherKnown ? v.otherCeil : myCeil);
+                    continue;
+                }
                 if (v.arched)
                 {
                     ArchFaces(room, cm, vertical, l, f, a0, a1, n, myCeil);

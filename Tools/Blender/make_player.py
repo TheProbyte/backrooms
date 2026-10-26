@@ -1,10 +1,13 @@
-# Simple first-person player: left arm with a jointed hand (watch, ring) and a body (torso, legs, shoes).
+# Simple first-person player: an arm with a jointed hand (watch, ring) and a body (torso, legs, shoes).
+# The arm is the right one (the left hand holds the camcorder); "--left" after the output dir builds the old left arm.
 # Every segment is its own object with its origin at its joint, parented in a chain, so Unity can bend the
 # joints by rotating transforms. Segments point along -Y (forward) for the arm and -Z (down) for legs.
 import bpy, bmesh, math, sys
 from mathutils import Vector, Matrix
 
 out_dir = sys.argv[sys.argv.index("--") + 1]
+LEFT = "--left" in sys.argv
+S = 1.0 if LEFT else -1.0          # x of everything off the arm's centre line (a right hand is the left one mirrored)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
@@ -89,8 +92,8 @@ def empty(name, parent=None, at=(0, 0, 0)):
     e.empty_display_size = 0.02
     return link(e, parent, at)
 
-# ---------------- Left arm ----------------
-arm = empty("LeftArm")                                              # shoulder joint
+# ---------------- Arm ----------------
+arm = empty("LeftArm" if LEFT else "RightArm")                     # shoulder joint
 upper = link(capsule("UpperArm", 0.046, 0.04, 0.28, SKIN), arm)
 sleeve = link(capsule("Sleeve", 0.058, 0.055, 0.14, SHIRT), upper, (0, 0.012, 0))
 fore = link(capsule("Forearm", 0.036, 0.028, 0.245, SKIN, flat=0.82), upper, (0, -0.28, 0))
@@ -102,7 +105,7 @@ face = link(cylinder("WatchFace", 0.0185, 0.002, (0, 0, 0.0058), FACE, axis="Z",
 
 hand = empty("Hand", fore, (0, -0.245, 0))                          # wrist joint
 palm = link(rbox("Palm", (0.084, 0.096, 0.028), (0, -0.05, 0), SKIN, 0.011), hand)
-# Fingers: (name, x, y, radius, [segment lengths]). Left hand, palm down, fingers -Y: the thumb is on -X.
+# Fingers: (name, x, y, radius, [segment lengths]). Left hand, palm down, fingers -Y: the thumb is on -X (x * S below).
 fingers = [
     ("Index", -0.029, -0.098, 0.0088, [0.043, 0.025, 0.021]),
     ("Middle", -0.0095, -0.101, 0.0092, [0.047, 0.028, 0.022]),
@@ -111,7 +114,7 @@ fingers = [
 ]
 for name, x, y, r, lens in fingers:
     parent = palm
-    at = (x, y, 0.002)
+    at = (x * S, y, 0.002)
     for i, L in enumerate(lens):
         rr = r * (1.0 - 0.07 * i)
         seg = link(capsule(f"{name}{i + 1}", rr, rr * 0.93, L, SKIN, seg=12, rings=6, flat=0.9), parent, at)
@@ -120,8 +123,8 @@ for name, x, y, r, lens in fingers:
         parent = seg
         at = (0, -L, 0)
 # Thumb: from the heel of the palm, out to the side and forward, rolled toward the palm.
-t_root = empty("ThumbBase", palm, (-0.033, -0.022, -0.006))
-t_root.rotation_euler = (math.radians(-38), math.radians(-35), math.radians(-24))
+t_root = empty("ThumbBase", palm, (-0.033 * S, -0.022, -0.006))
+t_root.rotation_euler = (math.radians(-38), math.radians(-35) * S, math.radians(-24) * S)     # mirrored across x
 parent, at = t_root, (0, 0, 0)
 for i, (L, r) in enumerate([(0.042, 0.0125), (0.032, 0.0105), (0.026, 0.0097)]):
     seg = link(capsule(f"Thumb{i + 1}", r, r * 0.93, L, SKIN, seg=12, rings=6, flat=0.88), parent, at)
@@ -152,7 +155,7 @@ def export(root, path):
                              use_mesh_modifiers=True, mesh_smooth_type="FACE", add_leaf_bones=False)
 
 bpy.context.view_layer.update()
-export(arm, out_dir + "/PlayerArm.fbx")
+export(arm, out_dir + ("/PlayerArm.fbx" if LEFT else "/PlayerArmRight.fbx"))
 export(body, out_dir + "/PlayerBody.fbx")
 bpy.ops.wm.save_as_mainfile(filepath=out_dir + "/PlayerModel.blend")
 print("EXPORTED")

@@ -63,6 +63,10 @@ namespace Backrooms.Generation
             BuildWalls();
             BuildPosts();
             BuildPoolPillars();
+            BuildPoolFillets();
+            BuildPoolArcs();
+            foreach (var r in _L.rooms)
+                if (r.spiral && !r.noFloor && r.rect.width == r.fullRect.width && r.rect.height == r.fullRect.height) BuildSpiral(r);
             BuildDoorways();
             BuildPortals();
             BuildCeilingColliders();
@@ -79,6 +83,7 @@ namespace Backrooms.Generation
             for (int x = 0; x < N; x++)
             for (int z = 0; z < N; z++)
             {
+                if (_L.Has(x, z, CellFlags.NoFloor)) continue;            // a stair well from the storey below
                 bool basin = _L.Basin(x, z);
                 float y = PoolBiome.FloorY(basin), x0 = x * C, z0 = z * C, x1 = x0 + C, z1 = z0 + C;
                 tile.Quad(new Vector3(x0, y, z0), new Vector3(x0, y, z1), new Vector3(x1, y, z1), new Vector3(x1, y, z0), Vector3.up, MeshWriter.MetreUV);
@@ -93,12 +98,16 @@ namespace Backrooms.Generation
             for (int z = 0; z < N; z++)
             {
                 int start = 0;
+                int Kind(int x) => _L.Has(x, z, CellFlags.NoFloor) ? 2 : _L.Basin(x, z) ? 1 : 0;
                 for (int x = 1; x <= N; x++)
                 {
-                    if (x < N && _L.Basin(x, z) == _L.Basin(start, z)) continue;
-                    bool basin = _L.Basin(start, z);
-                    float top = PoolBiome.FloorY(basin), depth = basin ? 0.3f : BD_POOL + 0.3f;
-                    _boxes.Add((new Vector3((start + x) * 0.5f * C, top - depth * 0.5f, (z + 0.5f) * C), new Vector3((x - start) * C, depth, C)));
+                    if (x < N && Kind(x) == Kind(start)) continue;
+                    if (Kind(start) != 2)
+                    {
+                        bool basin = _L.Basin(start, z);
+                        float top = PoolBiome.FloorY(basin), depth = basin ? 0.3f : BD_POOL + 0.3f;
+                        _boxes.Add((new Vector3((start + x) * 0.5f * C, top - depth * 0.5f, (z + 0.5f) * C), new Vector3((x - start) * C, depth, C)));
+                    }
                     start = x;
                 }
             }
@@ -166,6 +175,7 @@ namespace Backrooms.Generation
             for (int z = 0; z < N; z++)
             {
                 var r = _L.RoomAt(x, z);
+                if (_L.Has(x, z, CellFlags.OpenAbove)) continue;           // a stair tower: the storey above closes it
                 float h = r.ceiling, x0 = x * C, z0 = z * C;
                 var shape = _L.pool[x, z].skylight;
                 Vector3 P(float u, float v, float y) => new Vector3(x0 + u, y, z0 + v);

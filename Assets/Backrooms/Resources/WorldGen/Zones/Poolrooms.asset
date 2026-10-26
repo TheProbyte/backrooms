@@ -27,7 +27,8 @@ MonoBehaviour:
   ambience: pool
   power: 0
   minStorey: 0
-  maxStorey: 0
+  maxStorey: 1
+  fullStoreys: 1
   style: 1
   sealedEdges: 1
   pinned: 1

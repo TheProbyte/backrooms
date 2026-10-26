@@ -18,6 +18,11 @@ namespace Backrooms.Generation
         /// <summary>Light well above a roof opening, from the ceiling to the sky.</summary>
         public const float ShaftHeight = 1.2f;
         public const float PillarRadius = 0.4f;
+        /// <summary>Ceiling of a spiral stair's well on the storey above.</summary>
+        public const float SpiralUpperCeiling = 4.5f;
+        /// <summary>Spiral stair towers are this many cells square.</summary>
+        public const int SpiralCells = 5;
+        public const float SpiralColumn = 0.35f, SpiralOuter = 2.3f, SpiralRise = 0.18f, SpiralStepDegrees = 22.5f;
         /// <summary>Stairs out of a basin: three risers within the cell next to the doorway.</summary>
         public const int Steps = 3;
         public const float StepRun = 0.3f;

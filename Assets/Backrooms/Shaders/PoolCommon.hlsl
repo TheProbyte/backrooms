@@ -7,7 +7,7 @@
 #define BACKROOMS_POOL_COMMON
 
 TEXTURE2D(_PoolMap);                 // RGBA32 linear, toroidal by world cell: r flags, g ceiling/10, b opening, a bounce
-float4 _PoolMapParams;               // x map size in cells, y storey floor height
+float4 _PoolMapParams;               // x map size in cells, y height between storeys, z storeys in the map (stacked rows)
 TEXTURE2D(_PoolRipple); SAMPLER(sampler_PoolRipple);
 float4 _PoolRippleRect;              // xy world xz of the window corner, z window size (m), w slope gain (0 = none)
 float4 _PoolSunColor;                // rgb: sun (already times intensity)
@@ -15,7 +15,10 @@ float4 _PoolAmbient;                 // rgb: light everywhere (sky through the o
 float4 _PoolBounce;                  // rgb: bounce at full baked strength
 float4 _PoolSkyZenith, _PoolSkyHorizon;
 float _PoolScreenTextures;           // 1: this camera has the opaque and depth textures (the main view)
+float _PoolLitBlend;                 // 1: this camera looks at the Poolrooms (Backrooms/Lit adds their light)
+#ifndef BACKROOMS_HAS_PORTAL_CLIP_PLANE
 float4 _PortalClipPlane;             // zero outside a portal-camera render
+#endif
 
 #define POOL_C 1.2
 #define POOL_TILE 0.15
@@ -35,10 +38,15 @@ struct PoolCell
     float ceiling, fill;
 };
 
-PoolCell PoolLoad(int2 cell)
+// Storey a point belongs to (its floor is up to 0.6 m below a storey line: the basins).
+int PoolStorey(float y) { return clamp((int)floor((y + 0.6) / max(_PoolMapParams.y, 1.0)), 0, max((int)_PoolMapParams.z - 1, 0)); }
+float PoolBase(int storey) { return storey * _PoolMapParams.y; }
+
+PoolCell PoolLoad(int2 cell, int storey)
 {
     uint n = (uint)_PoolMapParams.x;
     uint2 s = (uint2)(cell + (int)n * 4096) % n;      // cells are well within 4096 maps of the origin
+    s.y += (uint)storey * n;
     uint4 v = (uint4)(LOAD_TEXTURE2D(_PoolMap, s) * 255.0 + 0.5);
     PoolCell c;
     c.valid = (v.r & 64u) != 0;
@@ -66,13 +74,13 @@ float PoolHoleSD(uint shape, uint joined, float2 uv)
     return min(min(uv.x - r.x, r.z - uv.x), min(uv.y - r.y, r.w - uv.y));
 }
 
-bool PoolPillarHit(int2 c, float3 p, float t0, float t1)
+bool PoolPillarHit(int2 c, int storey, float3 p, float t0, float t1)
 {
     const float3 L = POOL_SUN;
     [unroll] for (int k = 0; k < 4; k++)
     {
         int2 v = c + int2(k & 1, k >> 1);
-        if (!PoolLoad(v).pillar) continue;
+        if (!PoolLoad(v, storey).pillar) continue;
         float2 d = p.xz - v * POOL_C;
         float a = dot(L.xz, L.xz), b = dot(d, L.xz), cc = dot(d, d) - POOL_PILLAR_R * POOL_PILLAR_R;
         float disc = b * b - a * cc;
@@ -88,9 +96,10 @@ bool PoolPillarHit(int2 c, float3 p, float t0, float t1)
 float PoolSunVisibility(float3 pw)
 {
     const float3 L = POOL_SUN;        // x and z are positive: the ray only steps +x / +z
-    float3 p = pw; p.y -= _PoolMapParams.y;
+    int storey = PoolStorey(pw.y);
+    float3 p = pw; p.y -= PoolBase(storey);
     int2 c = PoolCellOf(p);
-    PoolCell cell = PoolLoad(c);
+    PoolCell cell = PoolLoad(c, storey);
     float t = 0;
     [loop] for (int i = 0; i < 20; i++)
     {
@@ -99,7 +108,7 @@ float PoolSunVisibility(float3 pw)
         float tx = ((c.x + 1) * POOL_C - p.x) / L.x;
         float tz = ((c.y + 1) * POOL_C - p.z) / L.z;
         float tExit = min(tx, tz);
-        if (cell.pillarNear && PoolPillarHit(c, p, t, min(tExit, tCeil))) return 0;
+        if (cell.pillarNear && PoolPillarHit(c, storey, p, t, min(tExit, tCeil))) return 0;
         if (tCeil <= tExit)
         {
             float3 q = p + L * tCeil;
@@ -107,14 +116,14 @@ float PoolSunVisibility(float3 pw)
             float t2 = tCeil + POOL_SHAFT / L.y;
             float3 q2 = p + L * t2;
             int2 c2 = (int2)floor(q2.xz / POOL_C);
-            PoolCell cell2 = PoolLoad(c2);
+            PoolCell cell2 = PoolLoad(c2, storey);
             float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSD(cell2.sky, cell2.joined, q2.xz - c2 * POOL_C) : -1.0;
             // The sun is half a degree wide: the edge of each opening blurs with distance.
             return saturate(d1 / (0.006 + 0.009 * tCeil) + 0.5) * saturate(d2 / (0.006 + 0.009 * t2) + 0.5);
         }
         float y = p.y + L.y * tExit;
         int2 nc = c + (tx <= tz ? int2(1, 0) : int2(0, 1));
-        PoolCell n = PoolLoad(nc);
+        PoolCell n = PoolLoad(nc, storey);
         uint edge = tx <= tz ? n.west : n.south;
         if (edge == 1u || (edge == 2u && y > POOL_HEADER)) return 0;
         if (!n.valid || y >= n.ceiling) return 0;
@@ -130,7 +139,8 @@ float PoolFill(float3 p)
     int2 b = (int2)floor(g);
     float2 f = g - b;
     int2 o = PoolCellOf(p) - b;   // which of the four is the point's own cell (0/1 each way)
-    PoolCell c00 = PoolLoad(b), c10 = PoolLoad(b + int2(1, 0)), c01 = PoolLoad(b + int2(0, 1)), c11 = PoolLoad(b + int2(1, 1));
+    int s = PoolStorey(p.y);
+    PoolCell c00 = PoolLoad(b, s), c10 = PoolLoad(b + int2(1, 0), s), c01 = PoolLoad(b + int2(0, 1), s), c11 = PoolLoad(b + int2(1, 1), s);
     bool h0 = c10.west != 1u, h1 = c11.west != 1u;      // between the columns, rows 0 / 1
     bool v0 = c01.south != 1u, v1 = c11.south != 1u;    // between the rows, columns 0 / 1
     bool k00, k10, k01, k11;

@@ -62,6 +62,15 @@ namespace Backrooms.Audio
         public static AudioClip Buzz => s_buzz ? s_buzz : (s_buzz = ProceduralSounds.FaultyBuzz());
         public static AudioClip Ventilation => s_vent ? s_vent : (s_vent = ProceduralSounds.Ventilation());
         public static AudioClip RoomTone => s_tone ? s_tone : (s_tone = ProceduralSounds.RoomTone());
+        static AudioClip s_pool, s_hiss;
+        static AudioClip[] s_rattle;
+        public static AudioClip PoolAmbience => s_pool ? s_pool : (s_pool = ProceduralSounds.PoolAmbience());
+        public static AudioClip SprayHiss => s_hiss ? s_hiss : (s_hiss = ProceduralSounds.SprayHiss());
+        public static AudioClip CanRattle(int i)
+        {
+            if (s_rattle == null) { s_rattle = new AudioClip[4]; for (int k = 0; k < 4; k++) s_rattle[k] = ProceduralSounds.CanRattle(k); }
+            return s_rattle[((i % 4) + 4) % 4];
+        }
         public static AudioClip BuildingHum => s_building ? s_building : (s_building = ProceduralSounds.BuildingHum());
 
         /// <summary>Volume of each sound before its catalog multiplier, distance and the camcorder chain.</summary>

@@ -31,6 +31,41 @@ namespace Backrooms.Generation
             }
         }
 
+        // ---------------- Spiral stairs ----------------
+
+        /// <summary>
+        /// Where a district's spiral stair tower stands (district-local cells), or none: in about two districts of three,
+        /// inside one chunk with a cell to spare on every side (so one chunk builds the whole stair). Independent of the
+        /// storey, so both floors reserve the same square.
+        /// </summary>
+        public static RectInt? SpiralSite(int seed, Vector2Int district)
+        {
+            var rng = new System.Random(DistrictGenerator.Hash(seed, district.x, district.y, 0x5B1A));
+            if (rng.NextDouble() > 0.65) return null;
+            int n = OfficeBiome.ChunkCells, s = PoolBiome.SpiralCells, dc = WorldGenSettings.DistrictChunks;
+            int cx = rng.Next(dc), cz = rng.Next(dc);
+            int x = cx * n + 1 + rng.Next(n - s - 2), z = cz * n + 1 + rng.Next(n - s - 2);
+            return new RectInt(x, z, s, s);
+        }
+
+        /// <summary>The tower's room: on the ground a dry hall open to the storey above; above, the well (no floor, no
+        /// random doors) with its stair landing.</summary>
+        public static void MarkSpiral(OfficeLayout L, RectInt site)
+        {
+            var r = L.rooms.Find(q => q.rect.Equals(site));
+            if (r == null) return;
+            r.spiral = true;
+            CellFlags flag;
+            if (L.storey == 0) { r.openAbove = true; r.ceiling = L.storeyPitch + PoolBiome.SpiralUpperCeiling; flag = CellFlags.OpenAbove; }
+            else { r.noFloor = true; r.noDoors = true; r.ceiling = PoolBiome.SpiralUpperCeiling; flag = CellFlags.NoFloor; }
+            for (int x = site.xMin; x < site.xMax; x++) for (int z = site.yMin; z < site.yMax; z++) L.flags[x, z] |= flag;
+        }
+
+        /// <summary>The top of the stair arrives at the middle of the tower's +X side: the well's one door is there.</summary>
+        public static void LandingDoor(OfficeLayout L, RectInt site) => L.SetEdge(site.xMax - 1, LandingRow(site), 1, EdgeKind.Door);
+
+        public static int LandingRow(RectInt site) => site.yMin + site.height / 2;
+
         /// <summary>Basins and decks, walkways, columns and roof openings.</summary>
         public static void Dress(OfficeLayout L, System.Random rng)
         {
@@ -82,11 +117,51 @@ namespace Backrooms.Generation
                 }
             }
 
+            // Curved walls standing free in the big halls (their own dice).
+            Arcs(L, new System.Random(rng.Next()), pillarCells);
+
             // Roof openings, one pattern per room.
             foreach (var r in L.rooms)
             {
-                if (!r.Walkable || rng.NextDouble() >= L.RulesAt(r.rect).skylights) continue;
+                if (!r.Walkable || r.spiral || rng.NextDouble() >= L.RulesAt(r.rect).skylights) continue;
                 Skylights(L, r, rng, pillarCells);
+            }
+
+            // Spiral stair towers: a dry floor round the stair; light comes down the well from four openings at its top.
+            foreach (var r in L.rooms)
+            {
+                if (!r.spiral) continue;
+                Fill(L, r.rect, c => c.basin = false);
+                if (L.storey > 0)
+                {
+                    int cx = r.rect.xMin + r.rect.width / 2, cz = r.rect.yMin + r.rect.height / 2;
+                    foreach (var (dx, dz) in new[] { (-1, -1), (1, -1), (-1, 1), (1, 1) })
+                    { var c = L.pool[cx + dx, cz + dz]; c.skylight = SkylightShape.Square; L.pool[cx + dx, cz + dz] = c; }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Curved walls in big halls (reference: tiled walls that bend round, some full height, some low enough to look
+        /// over). Centred well inside the room so no doorway is ever closed off; columns too close are taken out.
+        /// </summary>
+        static void Arcs(OfficeLayout L, System.Random rng, HashSet<Vector2Int> pillarCells)
+        {
+            float C = OfficeBiome.CellSize;
+            foreach (var r in L.rooms)
+            {
+                var rc = r.rect;
+                if (!r.Walkable || r.spiral || r.kind != RoomKind.BigOffice || Mathf.Min(rc.width, rc.height) < 9) continue;
+                if (rng.NextDouble() > 0.45) continue;
+                int vx = rng.Next(rc.xMin + 4, rc.xMax - 3), vz = rng.Next(rc.yMin + 4, rc.yMax - 3);
+                float radius = C * (2 + rng.Next(3) * 0.25f);
+                float from = rng.Next(8) * 45f, sweep = 140f + rng.Next(4) * 25f;
+                bool full = rng.NextDouble() < 0.6;
+                var centre = new Vector2(vx * C, vz * C);
+                L.arcs.Add(new PoolArc { centre = centre, radius = radius, from = from, to = from + sweep, top = full ? r.ceiling : 2.1f });
+                L.pillars.RemoveAll(p => Vector2.Distance(new Vector2(p.vertex.x * C, p.vertex.y * C), centre) < radius + 1.3f);
+                // Openings over a curved wall would leave it standing in the sun's path through the roof: keep them off it.
+                for (int x = vx - 4; x <= vx + 3; x++) for (int z = vz - 4; z <= vz + 3; z++) pillarCells.Add(new Vector2Int(x, z));
             }
         }
 

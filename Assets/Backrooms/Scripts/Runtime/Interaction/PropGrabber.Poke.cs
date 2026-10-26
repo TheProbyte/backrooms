@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Backrooms.Interaction
 {
     /// <summary>
-    /// The free hand also presses buttons (elevator call buttons): click one within reach and the left arm
+    /// The free hand also presses buttons (elevator call buttons): click one within reach and the free arm
     /// reaches out with the index finger extended, taps it, and goes back. If it is a little far you step in.
     /// </summary>
     public partial class PropGrabber

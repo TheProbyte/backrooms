@@ -127,6 +127,98 @@ namespace Backrooms.Tests
             }
         }
 
+        static int Flood(OfficeLayout L, Vector2Int from, out bool[,] seen)
+        {
+            seen = new bool[L.N, L.N];
+            var q = new Queue<Vector2Int>();
+            q.Enqueue(from); seen[from.x, from.y] = true;
+            int count = 1;
+            while (q.Count > 0)
+            {
+                var c = q.Dequeue();
+                for (int side = 0; side < 4; side++)
+                {
+                    var nb = c + (side == 0 ? Vector2Int.left : side == 1 ? Vector2Int.right : side == 2 ? Vector2Int.down : Vector2Int.up);
+                    if (!L.InChunk(nb.x, nb.y) || seen[nb.x, nb.y] || !OfficeLayout.IsPassable(L.EdgeOf(c.x, c.y, side))) continue;
+                    seen[nb.x, nb.y] = true; count++; q.Enqueue(nb);
+                }
+            }
+            return count;
+        }
+
+        [Test]
+        public void SpiralStairsLeadToASecondFloor()
+        {
+            var s = Set();
+            var z = Pool(s);
+            var gen = new WorldGenerator(1234, s);
+            Assert.AreEqual(1, gen.TopStoreyAt(new Vector2Int(z.pinCentre.x * WorldGenSettings.DistrictChunks, 0)), "the second floor streams everywhere in the Poolrooms");
+            Assert.AreEqual(0, gen.TopStoreyAt(Vector2Int.zero), "not at spawn");
+            int towers = 0;
+            for (int dx = -2; dx <= 2; dx++)
+            for (int dz = -2; dz <= 2; dz++)
+            {
+                var d = z.pinCentre + new Vector2Int(dx, dz);
+                var ground = gen.District(new Vector3Int(d.x, 0, d.y));
+                var upper = gen.District(new Vector3Int(d.x, 1, d.y));
+                Assert.AreEqual(ZoneStyle.Pool, upper.style);
+                var site = PoolPlan.SpiralSite(1234, d);
+                var tower = ground.rooms.Find(r => r.spiral);
+                var well = upper.rooms.Find(r => r.spiral);
+                Assert.AreEqual(site.HasValue, tower != null, "a tower where the site says");
+                // The upper floor: every cell can be walked to from every other (the well through its one door).
+                var start = new Vector2Int(0, 0);
+                Assert.AreEqual(upper.N * upper.N, Flood(upper, start, out _), $"upper floor of {d} connected");
+                if (tower == null) continue;
+                towers++;
+                Assert.IsTrue(tower.openAbove && !tower.noFloor && !ground.Basin(tower.rect.xMin, tower.rect.yMin), "the stair stands on a dry floor, open to the floor above");
+                Assert.IsTrue(well != null && well.noFloor && well.rect.Equals(tower.rect), "the well above is the same square");
+                Assert.IsTrue(OfficeLayout.IsPassable(upper.EdgeOf(tower.rect.xMax - 1, PoolPlan.LandingRow(tower.rect), 1)), "the top of the stair has a door out");
+                int doors = 0;
+                for (int x = tower.rect.xMin; x < tower.rect.xMax; x++)
+                for (int y = tower.rect.yMin; y < tower.rect.yMax; y++)
+                    for (int side = 0; side < 4; side++)
+                    {
+                        var nb = new Vector2Int(x, y) + (side == 0 ? Vector2Int.left : side == 1 ? Vector2Int.right : side == 2 ? Vector2Int.down : Vector2Int.up);
+                        if (!tower.rect.Contains(nb) && OfficeLayout.IsPassable(ground.EdgeOf(x, y, side))) doors++;
+                    }
+                Assert.Greater(doors, 0, "the tower can be walked into on the ground floor");
+            }
+            Assert.Greater(towers, 3, "spiral stairs in most districts");
+        }
+
+        [Test]
+        public void ArchesSpanOpenRunsOfTwoToFourCells()
+        {
+            var s = Set();
+            var gen = new WorldGenerator(1234, s);
+            int spans = 0;
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                var c = Pool(s).pinCentre;
+                var L = gen.District(new Vector3Int(c.x + dx, 0, c.y));
+                Assert.IsNotNull(L.spanV);
+                for (int x = 0; x <= L.N; x++)
+                for (int z = 0; z < L.N; z++)
+                {
+                    if (!L.ArchSpan(true, x, z, out int i, out int len)) continue;
+                    spans++;
+                    Assert.AreEqual(EdgeKind.Open, L.vEdges[x, z], "an arch is an opening");
+                    Assert.That(len, Is.InRange(2, 4), "arches are two to four cells wide (longer runs are arcades)");
+                    Assert.That(i, Is.InRange(0, len - 1));
+                }
+                foreach (var arc in L.arcs)
+                {
+                    var cell = new Vector2Int(Mathf.FloorToInt(arc.centre.x / OfficeBiome.CellSize), Mathf.FloorToInt(arc.centre.y / OfficeBiome.CellSize));
+                    var room = L.RoomAt(cell.x, cell.y);
+                    float margin = Mathf.Min(arc.centre.x - room.rect.xMin * OfficeBiome.CellSize, room.rect.xMax * OfficeBiome.CellSize - arc.centre.x,
+                                             arc.centre.y - room.rect.yMin * OfficeBiome.CellSize, room.rect.yMax * OfficeBiome.CellSize - arc.centre.y);
+                    Assert.Greater(margin - arc.radius, 1.0f, "a curved wall stands clear of the room's walls and doorways");
+                }
+            }
+            Assert.Greater(spans, 10, "the Poolrooms have arches");
+        }
+
         /// <summary>A hand-made grid for the sun test: one room, 4 m ceiling, one full roof opening.</summary>
         class Grid : IPoolCells
         {

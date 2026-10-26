@@ -101,11 +101,12 @@ Shader "Backrooms/PoolWater"
             // What the water mirrors where the screen has nothing: the ceiling above, or the sky through an opening.
             float3 Mirror(float3 P, float3 R)
             {
-                PoolCell here = PoolLoad(PoolCellOf(P));
-                float h = here.ceiling + _PoolMapParams.y;
+                int storey = PoolStorey(P.y);
+                PoolCell here = PoolLoad(PoolCellOf(P), storey);
+                float h = here.ceiling + PoolBase(storey);
                 float3 Q = P + R * ((h - P.y) / max(R.y, 0.02));
                 int2 qc = PoolCellOf(Q);
-                PoolCell q = PoolLoad(qc);
+                PoolCell q = PoolLoad(qc, storey);
                 float open = (q.valid && abs(q.ceiling - here.ceiling) < 0.05) ? saturate(PoolHoleSD(q.sky, q.joined, Q.xz - qc * POOL_C) / 0.02 + 0.5) : 0;
                 float3 ceiling = float3(0.8, 0.82, 0.78) * PoolAmbientAt(Q - float3(0, 0.05, 0), float3(0, -1, 0));
                 return lerp(ceiling, PoolSkyColor(R), open);
@@ -132,7 +133,7 @@ Shader "Backrooms/PoolWater"
                 float eye = LinearEyeDepth(i.positionCS.z, _ZBufferParams);
                 float3 below, refl;
                 float thick;
-                PoolCell here = PoolLoad(PoolCellOf(P));
+                PoolCell here = PoolLoad(PoolCellOf(P), PoolStorey(P.y));
                 float3 ambient = PoolAmbientAt(P, float3(0, 1, 0));
                 float3 R = reflect(-V, N);
                 if (R.y < 0.02) R = normalize(float3(R.x, 0.02, R.z));

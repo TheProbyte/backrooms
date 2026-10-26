@@ -5,15 +5,16 @@ using UnityEngine.Rendering;
 namespace Backrooms.Interaction
 {
     /// <summary>
-    /// Simple first-person body (placeholder art from Tools/Blender/make_player.py): the left arm reaches
+    /// Simple first-person body (placeholder art from Tools/Blender/make_player.py): the right arm reaches
     /// for whatever <see cref="PropGrabber"/> holds (two-bone IK, palm on the grip, fingers curled), and a
     /// torso and legs you see when looking down (legs swing while walking, torso bends with the stoop).
-    /// The right hand is the camcorder, so it is never seen.
+    /// The left hand is the camcorder, so it is never seen. (PropGrabber.rightHanded off: the old left arm.)
     ///
     /// The models are rigid segments with their origins at the joints; bone axes are measured from the
     /// model at start, so the code does not depend on how the FBX axes were converted.
     /// </summary>
     [RequireComponent(typeof(CamcorderPlayerController))]
+    [DefaultExecutionOrder(100)]                // after PropGrabber has placed the hand for this frame
     public class FirstPersonBody : MonoBehaviour
     {
         [Tooltip("Body pushed back from the eye so looking down shows chest and feet, not the inside of the torso.")]
@@ -55,7 +56,9 @@ namespace Backrooms.Interaction
 
         void Start()
         {
-            var armPrefab = Resources.Load<GameObject>("Player/PlayerArm");
+            float side = _grab ? _grab.Side : 1f;
+            var armPrefab = Resources.Load<GameObject>(side > 0f ? "Player/PlayerArmRight" : "Player/PlayerArm");
+            if (!armPrefab) armPrefab = Resources.Load<GameObject>("Player/PlayerArm");
             var bodyPrefab = Resources.Load<GameObject>("Player/PlayerBody");
             if (armPrefab)
             {
@@ -65,6 +68,7 @@ namespace Backrooms.Interaction
                 _upper = Find(_arm, "UpperArm"); _fore = Find(_arm, "Forearm"); _hand = Find(_arm, "Hand");
                 MeasureArm();
                 _armRenderers = _arm.GetComponentsInChildren<Renderer>();
+                Generation.PoolLitSwitch.Attach(_arm.gameObject);
             }
             if (bodyPrefab && showBody)
             {
@@ -74,6 +78,7 @@ namespace Backrooms.Interaction
                 _hips = Find(_body, "Hips"); _torso = Find(_body, "Torso");
                 _thighL = Find(_body, "ThighL"); _thighR = Find(_body, "ThighR"); _shinL = Find(_body, "ShinL"); _shinR = Find(_body, "ShinR");
                 MeasureBody();
+                Generation.PoolLitSwitch.Attach(_body.gameObject);
             }
         }
 
@@ -189,9 +194,10 @@ namespace Backrooms.Interaction
 
             Vector3 shoulder = _grab.Shoulder;
             Quaternion yaw = transform.rotation;
+            float side = _grab.Side;
             // Resting: hanging by the side, out of view. Reaching: palm on the grip.
-            Vector3 restWrist = shoulder + yaw * new Vector3(-0.06f, -0.52f, 0.12f);
-            Quaternion restHand = yaw * Quaternion.LookRotation(Vector3.down * 0.9f + Vector3.forward * 0.3f, Vector3.left);
+            Vector3 restWrist = shoulder + yaw * new Vector3(0.06f * side, -0.52f, 0.12f);
+            Quaternion restHand = yaw * Quaternion.LookRotation(Vector3.down * 0.9f + Vector3.forward * 0.3f, Vector3.right * side);
             bool poke = _grab.PokePose;
             Quaternion gripHand = poke ? _grab.PokeRotation : _grab.HandRotation;
             Vector3 gripWrist = poke ? _grab.PokeTip - gripHand * _wristToTip
@@ -200,11 +206,11 @@ namespace Backrooms.Interaction
             Vector3 wrist = Vector3.Lerp(restWrist, gripWrist, s);
             Quaternion handRot = Quaternion.Slerp(restHand, gripHand, s);
 
-            // Two-bone IK. The elbow points down and out to the left (a natural left arm).
+            // Two-bone IK. The elbow points down and out to the arm's own side.
             Vector3 toW = wrist - shoulder;
             float d = Mathf.Clamp(toW.magnitude, 0.05f, (_upperLen + _foreLen) * 0.999f);
             Vector3 dir = toW.normalized;
-            Vector3 pole = yaw * new Vector3(-0.8f, -1f, -0.25f);
+            Vector3 pole = yaw * new Vector3(0.8f * side, -1f, -0.25f);
             Vector3 poleDir = Vector3.ProjectOnPlane(pole, dir).normalized;
             float a = _upperLen, b = _foreLen;
             float cosA = Mathf.Clamp((a * a + d * d - b * b) / (2f * a * d), -1f, 1f);
