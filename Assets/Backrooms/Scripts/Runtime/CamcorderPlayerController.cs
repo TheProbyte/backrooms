@@ -354,6 +354,14 @@ namespace Backrooms
             _controller.center = new Vector3(0f, _controller.height * 0.5f, 0f);
         }
 
+        /// <summary>Sets the stance directly, with the matching capsule (scripts and the benchmark; no room check).</summary>
+        public void SetStance(Stance stance)
+        {
+            CurrentStance = stance;
+            _controller.height = HeightFor(stance);
+            _controller.center = new Vector3(0f, _controller.height * 0.5f, 0f);
+        }
+
         bool RoomToStand(float height)
         {
             float r = _controller.radius * 0.95f;

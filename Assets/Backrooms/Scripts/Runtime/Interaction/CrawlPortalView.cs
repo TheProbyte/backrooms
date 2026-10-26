@@ -45,7 +45,30 @@ namespace Backrooms.Interaction
 
         static Mesh _quadMesh, _ductMesh;
         static Shader _viewShader, _ductShader, _maskShader;
+        static Texture2D _ductMetal;
         static Material _maskMaterial;
+
+        /// <summary>
+        /// Every material a hole can draw with, in each of its states (for the pipeline warm-up, see CrawlPortalSystem):
+        /// the duct through the hole and inside, the window through the hole and inside (copies), the stencil mask.
+        /// The window copies are owned by the caller.
+        /// </summary>
+        public List<Material> WarmupMaterials()
+        {
+            var list = new List<Material>();
+            if (_ductSet != null) list.AddRange(_ductSet);
+            if (_maskMaterial) list.Add(_maskMaterial);
+            if (material)
+                for (int k = 0; k < 2; k++)
+                {
+                    bool inside = k == 1;
+                    var m = new Material(material) { name = "PortalView warm-up", hideFlags = HideFlags.DontSave };
+                    m.SetFloat("_StencilComp", inside ? (float)CompareFunction.Always : (float)CompareFunction.Equal);
+                    m.renderQueue = inside ? (int)RenderQueue.Geometry : (int)RenderQueue.Transparent - 390;
+                    list.Add(m);
+                }
+            return list;
+        }
         static readonly Dictionary<(Material, Material), Material[]> _ductMaterials = new Dictionary<(Material, Material), Material[]>();
 
         /// <param name="wall">Material whose texture lines the duct (null: plain).</param>
@@ -159,13 +182,26 @@ namespace Backrooms.Interaction
         {
             if (!_ductMaterials.TryGetValue((wall, floor), out var set))
             {
+                if (!_ductMetal) _ductMetal = Resources.Load<Texture2D>("Textures/DuctMetal");
                 Material Make(Material src, string name, bool inside)
                 {
                     var m = new Material(_ductShader) { name = name + (inside ? " (inside)" : " (through hole)"), hideFlags = HideFlags.DontSave };
-                    var tex = src && src.HasProperty("_BaseMap") ? src.GetTexture("_BaseMap") : null;
-                    if (tex) { m.SetTexture("_BaseMap", tex); m.SetTextureScale("_BaseMap", src.GetTextureScale("_BaseMap")); m.SetTextureOffset("_BaseMap", src.GetTextureOffset("_BaseMap")); }
-                    if (src && src.HasProperty("_BaseColor")) m.SetColor("_BaseColor", src.GetColor("_BaseColor"));
-                    if (src && src.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", src.GetFloat("_Smoothness"));   // the entrance is shaded like the room
+                    if (_ductMetal)
+                    {
+                        // A ventilation duct: galvanized sheet metal on all four sides, in 1.1 m sections.
+                        m.SetTexture("_BaseMap", _ductMetal);
+                        m.SetColor("_BaseColor", new Color(0.92f, 0.9f, 0.86f, 1f));
+                        m.SetFloat("_Smoothness", 0.42f); m.SetFloat("_Metallic", 0.25f);
+                        m.SetFloat("_ObjectUV", 1f);
+                    }
+                    else
+                    {
+                        // No duct texture: the room's own finish.
+                        var tex = src && src.HasProperty("_BaseMap") ? src.GetTexture("_BaseMap") : null;
+                        if (tex) { m.SetTexture("_BaseMap", tex); m.SetTextureScale("_BaseMap", src.GetTextureScale("_BaseMap")); m.SetTextureOffset("_BaseMap", src.GetTextureOffset("_BaseMap")); }
+                        if (src && src.HasProperty("_BaseColor")) m.SetColor("_BaseColor", src.GetColor("_BaseColor"));
+                        if (src && src.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", src.GetFloat("_Smoothness"));
+                    }
                     m.SetFloat("_DuctLength", CrawlPortals.DuctLength);
                     // Through the hole: drawn after opaque geometry, only on stencil-marked pixels, not in depth prepasses
                     // (it overlaps the room behind). Inside: ordinary opaque geometry.

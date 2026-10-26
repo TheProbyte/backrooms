@@ -35,6 +35,24 @@ so physically it overlaps the room behind. That room never sees or touches it:
     the directions each surface faces after the trip (`_DuctExitRot`). This sample has no real-light shadow maps.
   - The faint `_Ambient` and the far-end term fade to zero at the entrance lip (the room can be very dark there).
 
+## Look, outlets, hitches
+
+- **Vent duct.** The duct is lined with galvanized sheet metal (`Resources/Textures/DuctMetal.png`, generated: zinc
+  spangle, rolling streaks, a cross-break crease, joint flanges with screws, dust in the corners) on all four sides, in
+  1.1 m sections (joints at the entrance, the middle and the window; CrawlDuct `_ObjectUV`, metallic 0.25). If the texture
+  is missing the duct falls back to the room's finish.
+- **Outlets.** Wall plates are placed before the holes; `CrawlPortals.ClearPlates` drops any low plate on either face of
+  a holed wall (light switches sit above the hole and stay). The pair test checks it.
+- **AO on entry.** The duct reads SSAO at the opening's screen position only for its floor seen from outside (where that
+  position shows the room floor at the lip). Its walls and ceiling no longer pick up the AO of whatever is behind the
+  hole while you crawl in (`BACKROOMS_AO_HOOK` in BackroomsLitForwardPass, defined only by CrawlDuct).
+- **Hitches.** First use of a material state builds a GPU pipeline (first run of a build: 309 ms just before the hole and
+  48 ms on entering, in the benchmark; 53 ms entering in the editor). The first frames that have a hole draw every portal
+  material state once, invisibly, and render one portal view with shadows (`CrawlPortalSystem.Warmup`); entering in the
+  editor afterwards: 22 ms (normal). Portal render targets grow in size steps (1/8 ... 1 of the screen per axis) instead
+  of 32 px: crawling to the window reallocated the target and its camera buffers 44 times (30-43 ms frames), now 10.
+  Benchmark spots "crawl through" and "crawl through (far)" report the slowest frames and where they happened.
+
 ## Crossing
 
 `CrawlPortalSystem` (late execution order, after movement and handheld shake) tracks each hole's eye position in its frame

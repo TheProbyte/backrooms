@@ -75,6 +75,61 @@ namespace Backrooms.Interaction
         static Vector3 _remote;
         bool _siteBound;
 
+        // ---------------- Pipeline warm-up ----------------
+        // The first time a GPU draws a material in a new state (the duct seen through a hole and from inside, the window,
+        // a portal camera with its clip, SSAO and shadows) it builds the pipeline for it: tens to hundreds of ms on a
+        // first run, shown as a hitch right at the hole. Like a game's loading screen preloading its shaders, the first
+        // frames that have a hole draw all of them once, invisibly (a zero-area triangle in front of the camera, and one
+        // portal view rendered whether visible or not), so every later first sight is free.
+        public const int WarmupFrames = 3;
+        int _warmup = -1;                 // frames left; -1 = not started
+        GameObject _warmRoot;
+        readonly List<Material> _warmCopies = new List<Material>();
+        CrawlPortalView _warmView;
+
+        void Warmup(Camera main)
+        {
+            if (_warmup == 0) return;
+            if (_warmup < 0)
+            {
+                CrawlPortalView any = null;
+                foreach (var v in CrawlPortalView.All) if (v && v.duct && v.material) { any = v; break; }
+                if (!any) return;
+                _warmView = any;
+                _warmRoot = new GameObject("PortalWarmup") { hideFlags = HideFlags.DontSave };
+                _warmRoot.transform.SetParent(main.transform, false);
+                _warmRoot.transform.localPosition = Vector3.forward * 0.5f;
+                var mesh = new Mesh { name = "Degenerate", hideFlags = HideFlags.DontSave };
+                mesh.vertices = new Vector3[3]; mesh.normals = new[] { Vector3.back, Vector3.back, Vector3.back };
+                mesh.uv = new Vector2[3]; mesh.triangles = new[] { 0, 1, 2 };
+                mesh.bounds = new Bounds(Vector3.zero, Vector3.one);   // inside the view, so it is not culled
+                var materials = any.WarmupMaterials();
+                foreach (var m in materials)
+                {
+                    if (m && m.name == "PortalView warm-up") _warmCopies.Add(m);
+                    var go = new GameObject(m ? m.name : "warm") { hideFlags = HideFlags.DontSave };
+                    go.transform.SetParent(_warmRoot.transform, false);
+                    go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                    var r = go.AddComponent<MeshRenderer>();
+                    r.sharedMaterial = m;
+                    r.shadowCastingMode = ShadowCastingMode.Off; r.receiveShadows = false;
+                    r.lightProbeUsage = LightProbeUsage.Off; r.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                }
+                _warmup = WarmupFrames;
+                return;   // drawn from this frame on
+            }
+            if (--_warmup > 0) return;
+            if (_warmRoot)
+            {
+                var mf = _warmRoot.GetComponentInChildren<MeshFilter>();
+                if (mf && mf.sharedMesh) Destroy(mf.sharedMesh);
+                Destroy(_warmRoot);
+            }
+            foreach (var m in _warmCopies) if (m) Destroy(m);
+            _warmCopies.Clear();
+            _warmView = null;
+        }
+
         /// <summary>The partner site of the nearest hole whose partner lies outside the main light grid (a far link).</summary>
         public static bool TryGetRemoteSite(out Vector3 point) { point = _remote; return _haveRemote && _instance; }
 
@@ -235,6 +290,7 @@ namespace Backrooms.Interaction
             _haveLookahead = false;
             if (!main || CrawlPortalView.All.Count == 0) { ReleaseViews(); return; }
             if (_main != main || !_player) { _main = main; _player = main.GetComponentInParent<CamcorderPlayerController>(); }
+            Warmup(main);
             TryWarp(main);
             UpdateViews(main);
             UpdateDuctLight(main.transform.position);
@@ -411,6 +467,8 @@ namespace Backrooms.Interaction
             // Keep slots that still show a wanted view (no reallocation flicker), hand the rest out again.
             var want = _wanted; want.Clear();
             for (int i = 0; i < visible.Count && i < MaxViews; i++) want.Add(visible[i].v);
+            bool warming = _warmup > 0 && _warmView && PartnerLoaded(_warmView);
+            if (warming && want.Count == 0) want.Add(_warmView);     // render one view during the warm-up, seen or not
             foreach (var s in _slots) if (s.view && !want.Contains(s.view)) { s.view.material.SetFloat("_Fade", 0f); s.view = null; }
             for (int i = 0; i < want.Count; i++)
             {
@@ -423,7 +481,7 @@ namespace Backrooms.Interaction
                     if (slot == null) slot = NewSlot();
                     slot.view = v;
                 }
-                Render(slot, main, i == 0 && (v.Inside || Vector3.Distance(eye, v.position) < 2.5f));
+                Render(slot, main, (i == 0 && (v.Inside || Vector3.Distance(eye, v.position) < 2.5f)) || warming);
             }
             foreach (var v in visible) if (!want.Contains(v.v)) v.v.material.SetFloat("_Fade", 0f);
             foreach (var s in _slots) if (s.view == null && s.cam) s.cam.enabled = false;
@@ -512,6 +570,19 @@ namespace Backrooms.Interaction
             return crop * projection;
         }
 
+        static readonly float[] SizeSteps = { 0.125f, 0.1875f, 0.25f, 0.375f, 0.5f, 0.75f, 1f };
+
+        /// <summary>Smallest size step (a fraction of the screen, multiple of 32 px, at least 64) that holds the needed pixels.</summary>
+        static int Step(float need, int full)
+        {
+            foreach (var f in SizeSteps)
+            {
+                int v = Mathf.Min(full, Mathf.Max(64, Mathf.CeilToInt(full * f / 32f) * 32));
+                if (v >= need) return v;
+            }
+            return Mathf.Max(64, full);
+        }
+
         static Rect Viewport(Camera main, CrawlPortalView view)
         {
             var right = Vector3.Cross(Vector3.up, view.normal) * CrawlPortals.HoleHalf;
@@ -540,9 +611,12 @@ namespace Backrooms.Interaction
             else if (s.scale == 0.25f && coverage < 0.14f) scale = 0.25f;
             s.scale = scale;
             var viewport = Viewport(main, s.view);
-            int w = Mathf.Max(64, Mathf.Min(main.pixelWidth, Mathf.CeilToInt(main.pixelWidth * viewport.width * scale / 32) * 32));
-            int h = Mathf.Max(64, Mathf.Min(main.pixelHeight, Mathf.CeilToInt(main.pixelHeight * viewport.height * scale / 32) * 32));
-            if (!s.rt || s.rt.width < w || s.rt.height < h || s.rt.width * 0.7f > w || s.rt.height * 0.7f > h)
+            // Size steps, not exact sizes: a new target (and new camera buffers for SSAO, depth...) costs a hitch, and a
+            // window you crawl towards grows every frame. Keep the current target while it is big enough and not more than
+            // two steps too big.
+            float needW = main.pixelWidth * viewport.width * scale, needH = main.pixelHeight * viewport.height * scale;
+            int w = Step(needW, main.pixelWidth), h = Step(needH, main.pixelHeight);
+            if (!s.rt || s.rt.width < needW || s.rt.height < needH || s.rt.width > Step(w + 1, main.pixelWidth) || s.rt.height > Step(h + 1, main.pixelHeight))
             {
                 if (s.rt) { s.rt.Release(); Destroy(s.rt); }
                 s.rt = new RenderTexture(w, h, 24, RenderTextureFormat.DefaultHDR) { name = "CrawlPortalView" };

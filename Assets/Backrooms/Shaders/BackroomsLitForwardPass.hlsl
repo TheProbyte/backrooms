@@ -271,6 +271,9 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
     BRDFData brdfDataClearCoat = CreateClearCoatBRDFData(surfaceData, brdfData);
     half4 shadowMask = CalculateShadowMask(inputData);
     AmbientOcclusionFactor aoFactor = CreateAmbientOcclusionFactor(inputData, surfaceData);
+#if defined(BACKROOMS_AO_HOOK)
+    BACKROOMS_AO_HOOK(aoFactor);   // Backrooms: CrawlDuct decides where screen-space AO applies (not defined for Backrooms/Lit)
+#endif
     uint meshRenderingLayers = GetMeshRenderingLayer();
     Light mainLight = GetMainLight(inputData, shadowMask, aoFactor);
     half portalLocalWeight;

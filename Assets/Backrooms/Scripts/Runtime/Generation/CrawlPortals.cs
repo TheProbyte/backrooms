@@ -51,6 +51,27 @@ namespace Backrooms.Generation
             var used = new HashSet<Vector2Int>();
             PlacePairs(L, candidates, used, pairs, rng);
             if (far) PlaceFar(L, candidates, used, farDistrict);
+            ClearPlates(L);
+        }
+
+        /// <summary>
+        /// Outlets are placed before the holes: drop any low plate on either face of a wall that now has a hole (it would
+        /// float in the opening). Light switches sit above the hole and stay. Nothing else of the plan changes.
+        /// </summary>
+        static void ClearPlates(OfficeLayout L)
+        {
+            if (L.portals.Count == 0 || L.plates.Count == 0) return;
+            L.plates.RemoveAll(plate =>
+            {
+                if (plate.height > HoleSize + 0.15f) return false;
+                foreach (var p in L.portals)
+                {
+                    var behind = p.cell + Step(p.side);
+                    int back = p.side ^ 1;   // 0 <-> 1, 2 <-> 3
+                    if ((plate.cell == p.cell && plate.side == p.side) || (plate.cell == behind && plate.side == back)) return true;
+                }
+                return false;
+            });
         }
 
         /// <summary>

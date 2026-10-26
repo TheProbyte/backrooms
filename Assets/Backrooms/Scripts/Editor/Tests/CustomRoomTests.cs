@@ -322,6 +322,12 @@ namespace Backrooms.Tests
             for (int dz = -1; dz <= 1; dz++)
             {
                 var plan = gen.District(new Vector3Int(dx, 0, dz));
+                foreach (var p in plan.portals)
+                {
+                    var behind = p.cell + (p.side == 0 ? Vector2Int.left : p.side == 1 ? Vector2Int.right : p.side == 2 ? Vector2Int.down : Vector2Int.up);
+                    Assert.IsFalse(plan.plates.Exists(w => w.height < CrawlPortals.HoleSize &&
+                        ((w.cell == p.cell && w.side == p.side) || (w.cell == behind && w.side == (p.side ^ 1)))), "no outlet floating in a hole");
+                }
                 var local = plan.portals.FindAll(p => !p.far);           // far links are checked in FarLinksJoinDistantDistricts
                 Assert.AreEqual(0, local.Count % 2, "holes come in pairs");
                 foreach (var p in local)

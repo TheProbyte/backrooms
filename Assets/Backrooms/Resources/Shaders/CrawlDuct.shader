@@ -15,6 +15,8 @@ Shader "Backrooms/CrawlDuct"
         _BaseMap ("Albedo", 2D) = "white" {}
         _BaseColor ("Colour", Color) = (1, 1, 1, 1)
         _Smoothness ("Smoothness", Range(0, 1)) = 0.2
+        _Metallic ("Metallic", Range(0, 1)) = 0
+        [Toggle] _ObjectUV ("Sheet-metal mapping (1.1 m sections along the duct, one face across)", Float) = 0
         _EntryLight ("Default light at the entrance (unused while lit)", Color) = (0.5, 0.47, 0.4, 1)
         _ExitLight ("Default light at the far end", Color) = (0.5, 0.47, 0.4, 1)
         _Ambient ("Ambient", Float) = 0.02
@@ -46,9 +48,20 @@ Shader "Backrooms/CrawlDuct"
             #pragma multi_compile_fragment _ BACKROOMS_PORTAL_CLIP
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Fog.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            // Screen-space AO is read at the opening's screen position (see DuctFragment). It is only right where that
+            // position shows the room's floor in front of the lip: the floor, seen from outside. Elsewhere (the duct's walls
+            // and ceiling, whose opening points show whatever is through the hole; or from inside) the duct has none.
+            static bool g_DuctUseAO;
+            void DuctAO(inout AmbientOcclusionFactor ao)
+            {
+                if (!g_DuctUseAO) { ao.directAmbientOcclusion = 1; ao.indirectAmbientOcclusion = 1; }
+            }
+            #define BACKROOMS_AO_HOOK(ao) DuctAO(ao)
             #include "Assets/Backrooms/Shaders/BackroomsLitForwardPass.hlsl"
 
             half4 _EntryLight, _ExitLight;
+            float _ObjectUV;
             half _Ambient, _Falloff, _DuctLength;
             // Rows 2i / 2i+1: light arriving at this duct's mouth / at its partner's mouth, six axis directions (+x -x +y -y +z -z).
             TEXTURE2D(_DuctMouthLight);
@@ -60,7 +73,7 @@ Shader "Backrooms/CrawlDuct"
             {
                 float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; float3 positionOS : TEXCOORD1;
                 float3 positionWS : TEXCOORD2; float3 normalWS : TEXCOORD3; float3 mouthWS : TEXCOORD4; half fogFactor : TEXCOORD5;
-                float4 mouthScreen : TEXCOORD6;
+                float4 mouthScreen : TEXCOORD6; float3 normalOS : TEXCOORD7;
             };
             DuctVaryings DuctVertex(DuctAttributes i)
             {
@@ -69,6 +82,7 @@ Shader "Backrooms/CrawlDuct"
                 o.positionCS = TransformWorldToHClip(o.positionWS);
                 o.uv = i.uv; o.positionOS = i.positionOS.xyz;
                 o.normalWS = TransformObjectToWorldNormal(i.normalOS);
+                o.normalOS = i.normalOS;
                 // The same point of the opening, just outside in the room (object +z runs into the wall).
                 o.mouthWS = TransformObjectToWorld(float3(i.positionOS.xy, -0.02));
                 o.mouthScreen = ComputeScreenPos(TransformWorldToHClip(o.mouthWS));
@@ -91,11 +105,19 @@ Shader "Backrooms/CrawlDuct"
                 #endif
                 float z = i.positionOS.z;                         // metres into the duct from the entrance
                 half3 N = normalize(i.normalWS);
-                half3 albedo = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, i.uv * _BaseMap_ST.xy + _BaseMap_ST.zw).rgb * _BaseColor.rgb;
+                float2 uv = i.uv;
+                if (_ObjectUV > 0.5)
+                {
+                    // Sheet metal: u runs along the duct in 1.1 m sections (joints at the entrance, the middle and the
+                    // window), v across each 0.8 m face; the end cap shows one face.
+                    float3 p = i.positionOS, a = abs(i.normalOS);
+                    uv = a.z > 0.5 ? float2(p.x, p.y) / 0.8 + 0.5 : float2(p.z / 1.1, (a.x > 0.5 ? p.y : p.x) / 0.8 + 0.5);
+                }
+                half3 albedo = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, uv * _BaseMap_ST.xy + _BaseMap_ST.zw).rgb * _BaseColor.rgb;
 
                 // Entrance: the room's own shading at the opening, as Backrooms/Lit computes it there.
                 SurfaceData surface = (SurfaceData)0;
-                surface.albedo = albedo; surface.smoothness = _Smoothness; surface.occlusion = 1; surface.alpha = 1;
+                surface.albedo = albedo; surface.smoothness = _Smoothness; surface.metallic = _Metallic; surface.occlusion = 1; surface.alpha = 1;
                 surface.normalTS = half3(0, 0, 1);
                 InputData data = (InputData)0;
                 data.positionWS = i.mouthWS;
@@ -107,6 +129,8 @@ Shader "Backrooms/CrawlDuct"
                 float2 mouthUV = i.mouthScreen.xy / max(i.mouthScreen.w, 1e-5);
                 bool onScreen = i.mouthScreen.w > 0 && all(mouthUV >= 0) && all(mouthUV <= 1);
                 data.normalizedScreenSpaceUV = onScreen ? mouthUV : GetNormalizedScreenSpaceUV(i.positionCS);
+                float3 eyeOS = TransformWorldToObject(GetCameraPositionWS());     // object +z runs into the wall
+                g_DuctUseAO = onScreen && N.y > 0.5 && eyeOS.z < -0.05;
                 data.shadowMask = half4(1, 1, 1, 1);
                 data.bakedGI = SampleSH(N) + BackroomsLightGrid(i.mouthWS, N);
                 half3 entry = BackroomsFragmentPBR(data, surface).rgb;
@@ -116,7 +140,7 @@ Shader "Backrooms/CrawlDuct"
                 [branch] if (_DuctMouth >= 0)
                 {
                     half3 Np = half3(N.x * _DuctExitRot.x + N.z * _DuctExitRot.y, N.y, -N.x * _DuctExitRot.y + N.z * _DuctExitRot.x);
-                    exitLight = MouthLight((int)_DuctMouth * 2 + 1, Np) * 0.96;   // dielectric diffuse share, as the BRDF
+                    exitLight = MouthLight((int)_DuctMouth * 2 + 1, Np) * (0.96 * (1 - _Metallic));   // diffuse share, as the BRDF
                 }
                 else exitLight = _ExitLight.rgb * lerp(0.8, 1.15, saturate(i.normalWS.y * 0.5 + 0.5));
 

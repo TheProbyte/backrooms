@@ -15,6 +15,25 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 06:50  Claude Code  Vent ducts, no outlets in holes, no AO through duct walls, portal hitches removed
+- Duct lined with generated galvanized sheet metal (Resources/Textures/DuctMetal.png; CrawlDuct _ObjectUV mapping in
+  1.1 m sections, metallic 0.25); room finish only as a fallback.
+- CrawlPortals.ClearPlates: low wall plates on either face of a holed wall are dropped (they floated in the opening).
+  Pair test asserts it.
+- "AO through walls" on entering was the duct reading SSAO at the opening's screen position, which for its walls and
+  ceiling showed the room behind the hole until the duct was in the depth prepass. Now only the duct floor seen from
+  outside uses it (BACKROOMS_AO_HOOK in BackroomsLitForwardPass; undefined for Backrooms/Lit). Recorded entry: frame
+  differences through the opening 0.55-0.86 (noise 0.95).
+- Hitches: (1) first-use GPU pipeline builds (first run of a build: 309 ms before the hole, 48 ms entering; editor 53 ms
+  entering): CrawlPortalSystem.Warmup draws every portal material state once with a zero-area triangle and renders one
+  portal view with shadows in the first frames that have a hole; editor entry afterwards 22 ms. (2) the portal target was
+  reallocated 44 times while crawling to the window (30-43 ms frames): sizes now in steps of the screen, 10 reallocations.
+  Benchmark gained "crawl through" / "crawl through (far)" spots (slowest frames with where they happened) and
+  CamcorderPlayerController.SetStance. Build, 1080p, two runs: crawl through worst 26.8 / 25.9 ms (2-5 frames over
+  25 ms; before 11), far crawl worst 25.0 / 23.2 ms (0 over 25 ms).
+- Checked: EditMode 54/54. The build runs used shaders already in the driver cache, so the warm-up's first-run effect is
+  shown by the editor numbers, not the build. Vent covers (load while unscrewing) were not needed for this.
+
 ## 2026-10-25 23:05  Claude Code  Far crawl-hole links: a hole can lead ~200+ m away, loading only what its window shows
 - FarLinks (lattice: district (1,1) of every 6x6-district square <-> its (4,4) district, ~210-250 m; FarLinks.Add for
   hand-placed links such as a future Poolrooms entrance). CrawlPortals.PlaceFar places each end from its own layout
