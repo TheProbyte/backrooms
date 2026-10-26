@@ -242,7 +242,10 @@ half3 BackroomsDistantPBR(InputData data, BRDFData brdf, BRDFData coat, SurfaceD
     {
         LGridLight f = _LGridLights[_LGridTileLights[tile.x + i]];
         if (dot(f.color, f.color) < 1e-10) continue;
-        sum += BackroomsFixturePBR(f, f.color, ao, true, false, data, brdf, coat, surface, noSpecular);
+        // Farther fixtures come from the grid texture (see LGrid_NearWeight): skip them before any visibility work.
+        half nearWeight = LGrid_NearWeight(distance(f.pos, data.positionWS));
+        if (nearWeight <= 0) continue;
+        sum += BackroomsFixturePBR(f, f.color * nearWeight, ao, true, false, data, brdf, coat, surface, noSpecular);
     }
     return sum * edge;
 }

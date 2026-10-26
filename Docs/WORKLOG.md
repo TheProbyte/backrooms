@@ -15,6 +15,32 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-25 17:45  Claude Code  Real crawl ducts behind holes, no black windows, lights ready before you arrive, 60 fps pass
+- Crawl holes now lead into a 2.2 m duct behind the wall (CrawlPortalView, CrawlDuct/CrawlMask shaders). The duct overlaps
+  the room behind but is drawn only through its own hole (stencil bit 64, after opaques) or while the player is inside;
+  its colliders exist only at/in the hole; the back of the wall gets a patch of that room's wall (hidden while inside).
+  The portal window moved to the duct's far end. Both hand-overs happen near-clip + 3 cm early (the near plane cut off the
+  window: two flat brown frames). The old spill light is off (_PortalSpillCount 0): the window now sits in the room behind.
+- Light pop on arrival: real shadowed lights only existed around the player, so the far side was grid-lit and real lights
+  faded in after the trip. CrawlPortalSystem.TryGetLookahead gives the light pool a second centre at the partner hole.
+- Black windows: a window with no picture shows a dim fallback, never black; inside view always gets slot 0; portal
+  cameras only render shadow maps for the window you are at (each camera re-rendered the whole shadow atlas).
+- Performance (editor, 1080p, seed 1234 corridor pose, interleaved A/B, PerfAB.cs): saved settings 50 fps (GPU 17.4 ms);
+  shadow lights 48 -> 12: 59; SSAO off: 65; both: 74. SSAO cost is its extra DepthNormals scene pass (half-res AO barely
+  helps). Per-pixel distant light ~4.8 ms, panel emitters ~2 ms, contact occlusion ~0.4, reflections/SMAA/camcorder pass
+  < 0.5 each. New: per-light near/far split (LightGrid.exactDistance, F5 LIGHT "Exact light radius" 4.5 m): each fixture
+  exact per pixel within 4.5 m of a surface, its weak far part from the 0.6 m texture (matching weights in LightGrid.compute
+  and LightGridSample.hlsl). Image vs exact-everywhere: mean abs diff 0.07/255, p99 0.7. Its speed gain is NOT measured yet
+  (another game was using the GPU at 97% during the run; re-measure). Direct-texture work is now queued under a texel
+  budget per frame (a full refresh spreads over ~4 frames) and handover redraws are coarse in split mode.
+- Graphics options v2 migration: shadowLights capped to 16, shadowDistance to 20 (were 48/30 in saved prefs); presets
+  updated. Tooltip explains ~16 looks the same (walls already stop light exactly).
+- Checked: EditMode 53/53. Play Mode: 600-frame recording of a full crawl (FrameRecorder.cs) has no frame-to-frame jump
+  above camcorder noise at either hand-over; from the room behind, the wall is solid and nothing of the duct shows.
+- Open: Unity crashed once (D3D12 fence timeout) on entering Play right after the shader edits, with shaders compiling;
+  not reproduced on restart (that start stalled ~90 s compiling Backrooms/Lit variants, then ran). Assets/_Recovery is
+  Unity's crash backup, not committed. Re-run the A/B with the GPU free and in a player build.
+
 ## 2026-10-25 16:11  ChatGPT  Wall-contained portals, bounded views and cached light transport
 - Crawl portals now cross/render at the entrance wall face; removed the 2.3 m protruding duct. Reverse faces are complete
   ordinary walls. A wall-contained seal collider ignores only an aligned crawling capsule with a loaded counterpart;

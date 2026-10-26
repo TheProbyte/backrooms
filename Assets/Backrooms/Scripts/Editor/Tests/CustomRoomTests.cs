@@ -336,7 +336,7 @@ namespace Backrooms.Tests
         }
 
         [Test]
-        public void PortalFramesStayOnEntranceWallAndMapsRoundTrip()
+        public void DuctWindowMapsOntoThePartnerOpening()
         {
             var root = new GameObject("Portal mapping test"); root.SetActive(false);
             var a = root.AddComponent<Backrooms.Interaction.CrawlPortalView>();
@@ -351,12 +351,17 @@ namespace Backrooms.Tests
                     CrawlPortals.Frame(district, new Vector2Int(14, 17), other, 0, out b.position, out b.normal);
                     var centre = new Vector3((district.x * WorldGenSettings.DistrictCells + cell.x + 0.5f) * OfficeBiome.CellSize,
                         CrawlPortals.HoleHalf, (district.y * WorldGenSettings.DistrictCells + cell.y + 0.5f) * OfficeBiome.CellSize);
-                    Assert.Less(Vector3.Distance(a.position, centre - a.normal * (OfficeBiome.CellSize - OfficeBiome.WallThickness) * 0.5f), 0.0001f);
+                    Assert.Less(Vector3.Distance(a.position, centre - a.normal * (OfficeBiome.CellSize - OfficeBiome.WallThickness) * 0.5f), 0.0001f, "opening on the wall face");
+                    Assert.Less(Vector3.Distance(a.ExitPosition, a.position - a.normal * CrawlPortals.DuctLength), 0.0001f, "window at the duct's far end");
                     a.partnerPosition = b.position; a.partnerNormal = b.normal;
-                    b.partnerPosition = a.position; b.partnerNormal = a.normal;
-                    var point = a.position + a.normal * 0.35f + Vector3.up * 0.13f;
-                    Assert.Less(Vector3.Distance(point, b.ToPartner.MultiplyPoint3x4(a.ToPartner.MultiplyPoint3x4(point))), 0.0001f);
-                    Assert.Less(Vector3.Distance(a.ToPartner.MultiplyVector(-a.normal), b.normal), 0.0001f);
+                    var m = a.ToPartner;
+                    Assert.Less(Vector3.Distance(m.MultiplyPoint3x4(a.ExitPosition), b.position), 0.0001f, "the window opens onto the partner's opening");
+                    Assert.Less(Vector3.Distance(m.MultiplyVector(-a.normal), b.normal), 0.0001f, "crawling on comes out of the partner, facing out");
+                    // Just past the window = just outside the partner, at the same height; just before it = still behind the partner's wall.
+                    var past = m.MultiplyPoint3x4(a.ExitPosition - a.normal * 0.1f + Vector3.up * 0.13f);
+                    Assert.AreEqual(0.1f, b.Local(past).z, 0.0001f);
+                    Assert.AreEqual(0.13f, b.Local(past).y, 0.0001f);
+                    Assert.AreEqual(-0.1f, b.Local(m.MultiplyPoint3x4(a.ExitPosition + a.normal * 0.1f)).z, 0.0001f);
                 }
             }
             finally { Object.DestroyImmediate(root); }
@@ -422,16 +427,17 @@ namespace Backrooms.Tests
         }
 
         [Test]
-        public void PortalArrivalRejectsJitterButAllowsImmediateRetreat()
+        public void CrawlingThroughADuctComesOutOfThePartnerAndBack()
         {
             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            var root = new GameObject("Portal retreat test"); root.SetActive(false);
+            var root = new GameObject("Duct traversal test"); root.SetActive(false);
+            var backWall = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             var source = Backrooms.Interaction.CrawlPortalView.Create(root.transform, new CrawlPortal {
                 position = new Vector3(0, 0.4f, 0), normal = Vector3.forward,
-                partnerPosition = new Vector3(10, 0.4f, 0), partnerNormal = Vector3.back });
+                partnerPosition = new Vector3(10, 0.4f, 0), partnerNormal = Vector3.back }, null, null, backWall);
             var destination = Backrooms.Interaction.CrawlPortalView.Create(root.transform, new CrawlPortal {
                 position = source.partnerPosition, normal = source.partnerNormal,
-                partnerPosition = source.position, partnerNormal = source.normal });
+                partnerPosition = source.position, partnerNormal = source.normal }, null, null, backWall);
             var viewType = typeof(Backrooms.Interaction.CrawlPortalView);
             viewType.GetMethod("OnEnable", flags).Invoke(source, null); viewType.GetMethod("OnEnable", flags).Invoke(destination, null);
             var system = Object.FindAnyObjectByType<Backrooms.Interaction.CrawlPortalSystem>();
@@ -442,39 +448,56 @@ namespace Backrooms.Tests
             capsule.height = 0.62f; capsule.center = Vector3.up * 0.31f;
             typeof(CamcorderPlayerController).GetMethod("Awake", flags).Invoke(player, null);
             var eye = new GameObject("Test eye").AddComponent<Camera>(); eye.transform.SetParent(person.transform);
-            eye.transform.localPosition = Vector3.up * 0.42f;
+            eye.transform.localPosition = Vector3.up * 0.42f; eye.nearClipPlane = 0.05f;
             systemType.GetField("_player", flags).SetValue(system, player);
             systemType.GetField("_capsule", flags).SetValue(system, capsule);
             systemType.GetField("_main", flags).SetValue(system, eye);
-            var previous = (System.Collections.IDictionary)systemType.GetField("_lastLocal", flags).GetValue(system);
-            var velocity = typeof(CamcorderPlayerController).GetProperty("PlanarVelocity");
             var warp = systemType.GetMethod("TryWarp", flags);
+            System.Action<float> eyeAt = z => { person.transform.position = new Vector3(person.transform.position.x, 0.03f, z); warp.Invoke(system, new object[] { eye }); };
             try
             {
-                person.transform.position = new Vector3(0, 0.03f, -0.01f);
-                previous[source] = new Vector3(0, 0.05f, 0.03f);
-                velocity.SetValue(player, Vector3.back * 0.1f);
-                warp.Invoke(system, new object[] { eye });
-                Assert.AreEqual(10, person.transform.position.x, 0.0001f, "initial crossing maps to the partner");
-                // Simulate a small backwards handheld displacement without intentional locomotion.
-                person.transform.position = new Vector3(10, 0.03f, 0.01f);
-                velocity.SetValue(player, Vector3.zero);
-                warp.Invoke(system, new object[] { eye });
-                Assert.AreEqual(10, person.transform.position.x, 0.0001f, "arrival jitter must not bounce the player back");
-                // Reversing before clearing the 8 cm arrival region must still traverse, even after that jitter.
-                velocity.SetValue(player, Vector3.forward * 0.1f);
-                warp.Invoke(system, new object[] { eye });
-                Assert.AreEqual(0, person.transform.position.x, 0.0001f, "intentional immediate retreat must not enter the physical room behind the wall");
+                var outside = source.duct.sharedMaterials[0];
+                Assert.AreEqual((float)UnityEngine.Rendering.CompareFunction.Equal, outside.GetFloat("_StencilComp"), "seen from outside, the duct only draws through its hole");
+                Assert.Greater(outside.renderQueue, 2500, "after the opaque rooms, out of the depth prepass");
+                eyeAt(0.4f); eyeAt(0.1f);
+                Assert.IsFalse(source.Inside);
+                eyeAt(-0.1f);
+                Assert.IsTrue(source.Inside, "crossing the opening puts the player in the duct");
+                Assert.IsFalse(source.patch.enabled, "the way back stays open while inside");
+                Assert.AreEqual((float)UnityEngine.Rendering.CompareFunction.Always, source.duct.sharedMaterials[0].GetFloat("_StencilComp"));
+                Assert.AreEqual(0, person.transform.position.x, 0.0001f, "no trip before the far end");
+                // The trip happens just before the eye reaches the window (the near plane would cut it off): at 8 cm.
+                eyeAt(-1.0f); eyeAt(-2.0f); eyeAt(-2.1f);
+                Assert.AreEqual(0, person.transform.position.x, 0.0001f);
+                eyeAt(-2.15f);
+                Assert.AreEqual(10, person.transform.position.x, 0.0001f, "crossing the window comes out of the partner");
+                Assert.AreEqual(0.05f, person.transform.position.z, 0.0001f, "exactly as far into the partner's opening as the eye was from the window");
+                Assert.IsFalse(source.Inside); Assert.IsTrue(source.patch.enabled);
+                Assert.IsTrue(destination.Inside, "landing in the partner's mouth, crawling out of it");
+                eyeAt(-0.1f);
+                Assert.IsTrue(destination.Inside);
+                eyeAt(-0.3f);
+                Assert.IsFalse(destination.Inside, "out in the room");
+                // Handheld jitter in front of the partner's opening never sends the player back.
+                for (int i = 0; i < 6; i++) eyeAt(-0.3f + ((i & 1) == 0 ? 0.03f : -0.03f));
+                Assert.AreEqual(10, person.transform.position.x, 0.0001f);
+                // Turning round and crawling back in goes into the partner's own duct, which leads back.
+                eyeAt(0.0f);
+                Assert.IsTrue(destination.Inside);
+                eyeAt(1.0f); eyeAt(2.0f); eyeAt(2.15f);
+                Assert.AreEqual(0, person.transform.position.x, 0.0001f, "the partner's duct leads back to the first hole");
+                Assert.AreEqual(-0.05f, person.transform.position.z, 0.0001f);
+                Assert.IsTrue(source.Inside);
             }
             finally
             {
                 foreach (var view in new[] { source, destination })
                 { viewType.GetMethod("OnDisable", flags).Invoke(view, null); viewType.GetMethod("OnDestroy", flags).Invoke(view, null); }
                 systemType.GetMethod("OnDisable", flags).Invoke(system, null); systemType.GetMethod("OnDestroy", flags).Invoke(system, null);
-                Object.DestroyImmediate(system.gameObject); Object.DestroyImmediate(root);
+                Object.DestroyImmediate(system.gameObject); Object.DestroyImmediate(root); Object.DestroyImmediate(backWall);
             }
         }
-    
+
         [Test]
         public void ChunksWithCrawlTunnelsBuildOnAWorkerThread()
         {

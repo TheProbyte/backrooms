@@ -194,6 +194,7 @@ namespace Backrooms.Tests
             try
             {
                 var grid = root.AddComponent<LightGrid>(); grid.compute = Resources.Load<ComputeShader>("LightGrid");
+                grid.exactDistance = 0f;   // exact per-pixel light everywhere: the texture is not used
                 root.SetActive(true); typeof(LightGrid).GetMethod("OnEnable", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(grid, null);
                 Assert.IsTrue(grid.Ready);
                 var lights = new List<LightGridMath.GridLight> { new LightGridMath.GridLight { pos = new Vector3(2f, 2.6f, 2f), range = 6f, dir = Vector3.down, color = Vector3.one, colorAll = Vector3.one, cosOuter = 0.1f, cosInner = 0.5f } };
@@ -206,6 +207,14 @@ namespace Backrooms.Tests
                 Assert.Greater(grid.BufferUploadsLastFrame, 0); Assert.AreEqual(0, grid.BounceDispatchesLastFrame, "handover alone does not change full-power bounce");
                 l.colorAll *= 0.5f; lights[0] = l;
                 grid.Tick(Vector3.zero, lights); Assert.Greater(grid.BounceDispatchesLastFrame, 0);
+                grid.exactDistance = 4.5f; grid.Tick(Vector3.zero, lights);
+                Assert.Greater(grid.DirtyTexelsLastFrame, 0, "split mode must refresh the stale texture that holds each light's far part");
+                Assert.LessOrEqual(grid.DirtyTexelsLastFrame, grid.texelBudget, "a full refresh is spread over frames");
+                for (int i = 0; i < 16 && grid.PendingTexels > 0; i++) grid.Tick(Vector3.zero, lights);
+                Assert.AreEqual(0, grid.PendingTexels, "the queued refresh finishes");
+                grid.Tick(Vector3.zero, lights);
+                Assert.AreEqual(0, grid.DirtyTexelsLastFrame, "and then only recompute what changes");
+                grid.exactDistance = 0f; grid.Tick(Vector3.zero, lights);
                 grid.perPixelDirect = false; grid.Tick(Vector3.zero, lights);
                 Assert.Greater(grid.DirtyTexelsLastFrame, 0, "fallback mode must refresh stale texture");
             }

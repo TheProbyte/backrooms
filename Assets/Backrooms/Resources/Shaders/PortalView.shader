@@ -1,6 +1,7 @@
-// The view through a crawl hole: the other end's picture (rendered by CrawlPortalSystem) sampled at this pixel's screen
-// position, so the hole looks like a window onto somewhere else. Unlit: the picture is already lit, and the player's camera
-// grades it together with everything else.
+// The window at the far end of a crawl duct: the partner hole's picture (rendered by CrawlPortalSystem) sampled at this
+// pixel's screen position, so the duct seems to open onto somewhere else. Unlit: the picture is already lit, and the
+// player's camera grades it together with everything else. Like the duct, it only draws where its hole's stencil mask
+// marks the screen, unless the player is inside the duct (_StencilComp = Always).
 Shader "Backrooms/PortalView"
 {
     Properties
@@ -8,6 +9,8 @@ Shader "Backrooms/PortalView"
         _PortalTex ("Portal", 2D) = "black" {}
         _Fade ("Fade", Float) = 1
         _PortalRect ("Screen rectangle", Vector) = (0, 0, 1, 1)
+        _Fallback ("Shown before the first picture", Color) = (0.03, 0.027, 0.02, 1)
+        [Enum(UnityEngine.Rendering.CompareFunction)] _StencilComp ("Stencil comparison", Float) = 3
     }
     SubShader
     {
@@ -19,6 +22,7 @@ Shader "Backrooms/PortalView"
             Name "Forward"
             Tags { "LightMode" = "UniversalForward" }
             Cull Back
+            Stencil { Ref 64 ReadMask 64 Comp [_StencilComp] }
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -26,6 +30,7 @@ Shader "Backrooms/PortalView"
             TEXTURE2D(_PortalTex); SAMPLER(sampler_PortalTex);
             float _Fade;
             float4 _PortalRect;
+            half4 _Fallback;
             struct Attributes { float4 positionOS : POSITION; };
             struct Varyings { float4 positionCS : SV_POSITION; float4 screenPos : TEXCOORD0; };
             Varyings vert(Attributes i)
@@ -39,7 +44,7 @@ Shader "Backrooms/PortalView"
             {
                 float2 uv = i.screenPos.xy / i.screenPos.w;
                 uv = (uv - _PortalRect.xy) / _PortalRect.zw;
-                return half4(SAMPLE_TEXTURE2D(_PortalTex, sampler_PortalTex, uv).rgb * _Fade, 1);
+                return half4(lerp(_Fallback.rgb, SAMPLE_TEXTURE2D(_PortalTex, sampler_PortalTex, uv).rgb, _Fade), 1);
             }
             ENDHLSL
         }

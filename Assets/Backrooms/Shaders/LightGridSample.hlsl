@@ -34,7 +34,17 @@ StructuredBuffer<uint2> _LGridTiles;     // (first index, count) per 4.8 m tile,
 StructuredBuffer<uint> _LGridTileLights;
 StructuredBuffer<uint> _LGridFixtureLookup;
 uint _LGridFixtureMask;
-float4 _LGridFar;                        // x: per-pixel evaluation on (0/1), y: texels per tile, z: tiles per axis
+float4 _LGridFar;                        // x: per-pixel evaluation on (0/1), y: texels per tile, z: tiles per axis, w: near/far split radius (0 = all per pixel)
+
+// Near/far split of grid light (per-pixel mode with w > 0): each fixture is worked out exactly per pixel on surfaces
+// within about w metres of it, and comes from the 0.6 m texture farther away, where its light is weak and smooth. The two
+// weights add up to one across a 2 m band (the compute pass uses the same split), so nothing is counted twice.
+half LGrid_NearWeight(float distanceToLight)
+{
+    if (_LGridFar.w <= 0) return 1;
+    return (half)(1 - smoothstep(_LGridFar.w - 1, _LGridFar.w + 1, distanceToLight));
+}
+bool LGrid_TextureDirect() { return _LGridFar.x < 0.5 || _LGridFar.w > 0; }
 
 float4 _LGridSize;      // texels x, y, z, occupancy cells
 float4 _LGridParams;    // x: on (0/1), y: direct gain, z: bounce gain, w: storey pitch
@@ -156,7 +166,7 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
     // Per-pixel direct fixtures use the same PBR path as real lights in the forward pass.
     // Only the deliberately coarse texture fallback contributes diffuse irradiance here.
     half3 direct = 0;
-    if (_LGridFar.x < 0.5)
+    [branch] if (LGrid_TextureDirect())
     {
         float3 uvw = float3(p.x / (LG_TEXEL * _LGridSize.x), p.y / (LG_TEXEL * _LGridSize.y), p.z / (LG_TEXEL * _LGridSize.z));
         // Plain trilinear ramps linearly between texel centres, which shows as boxy light pools at 0.6 m texels.

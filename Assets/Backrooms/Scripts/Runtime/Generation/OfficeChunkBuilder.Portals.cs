@@ -4,7 +4,8 @@ using UnityEngine;
 namespace Backrooms.Generation
 {
     /// <summary>
-    /// Crawl holes (see <see cref="CrawlPortals"/>): the wall around the hole, its reveals, the ordinary solid reverse wall, its colliders, and a <see cref="Interaction.CrawlPortalView"/> per hole that shows (and leads to) the other end.
+    /// Crawl holes (see <see cref="CrawlPortals"/>): the wall around the hole on both faces and its colliders. The duct, the
+    /// patch over the back of the opening and the window at the far end belong to the hole's <see cref="Interaction.CrawlPortalView"/>.
     /// </summary>
     public partial class OfficeChunkBuilder
     {
@@ -13,10 +14,12 @@ namespace Backrooms.Generation
         /// <summary>Hole edges: (vertical, line, along) -> (portal index, side that is entered from: 0 = cell at line-1, 1 = cell at line).</summary>
         readonly Dictionary<(bool, int, int), (int portal, int entry)> _holes = new Dictionary<(bool, int, int), (int, int)>();
         readonly List<CrawlPortal> _portalViews = new List<CrawlPortal>();
+        /// <summary>Per hole: duct lining, duct floor, the wall material behind it (and its light mask).</summary>
+        readonly List<(Material lining, Material floor, Material back, uint backMask)> _portalLooks = new List<(Material, Material, Material, uint)>();
 
         void IndexHoles()
         {
-            _holes.Clear(); _portalViews.Clear();
+            _holes.Clear(); _portalViews.Clear(); _portalLooks.Clear();
             for (int i = 0; i < _L.portals.Count; i++)
             {
                 var p = _L.portals[i];
@@ -29,6 +32,10 @@ namespace Backrooms.Generation
                     default: _holes[(false, z + 1, x)] = (i, 0); break;
                 }
                 _portalViews.Add(p);
+                var behind = p.cell + (p.side == 0 ? new Vector2Int(-1, 0) : p.side == 1 ? new Vector2Int(1, 0) : p.side == 2 ? new Vector2Int(0, -1) : new Vector2Int(0, 1));
+                var entryRoom = _L.RoomAt(p.cell.x, p.cell.y);
+                var backRoom = _L.InChunk(behind.x, behind.y) ? _L.RoomAt(behind.x, behind.y) : entryRoom;
+                _portalLooks.Add((_a.tunnel ? _a.tunnel : WallMat(entryRoom), _a.FloorMaterial(entryRoom), WallMat(backRoom), CellMask(behind.x, behind.y)));
             }
         }
 
@@ -40,28 +47,20 @@ namespace Backrooms.Generation
             return true;
         }
 
-        /// <summary>One side of a wall with a hole at its foot. The entered side also builds the reveals through the wall.</summary>
+        /// <summary>
+        /// One face of a wall with a hole at its foot: the wall around the opening. Both faces are cut; the duct lines the
+        /// opening through the wall, and from the room behind the opening is covered by the hole's own wall patch (hidden
+        /// while the player is in the duct, so the way back stays open).
+        /// </summary>
         void HoleFaces(Room room, uint cm, bool vertical, int along, float l, float f, float a0, float a1, Vector3 n, float myCeil, bool entered)
         {
             Vector3 A(float pos, float at) => vertical ? new Vector3(pos, 0, at) : new Vector3(at, 0, pos);
-            // The reverse face is an ordinary, continuous wall. Nothing occupies the neighbouring room.
-            if (!entered)
-            {
-                WallFace(room, cm, A(f, a0), A(f, a1), 0f, myCeil, n);
-                Baseboard(cm, A(f, a0), A(f, a1), n);
-                return;
-            }
             float mid = (along + 0.5f) * C, h0 = mid - HS * 0.5f, h1 = mid + HS * 0.5f;
             WallFace(room, cm, A(f, a0), A(f, h0), 0f, myCeil, n);
             WallFace(room, cm, A(f, h1), A(f, a1), 0f, myCeil, n);
             WallFace(room, cm, A(f, h0), A(f, h1), HS, myCeil, n);
-            var w = WMask(WallMat(room), cm);
-            float fo = l - (f - l);                                    // the other face of the wall
-            Vector3 alongDir = vertical ? Vector3.forward : Vector3.right;
-            Vector3 up = Vector3.up * HS;
-            w.Quad(A(f, h0), A(fo, h0), A(fo, h0) + up, A(f, h0) + up, alongDir, MeshWriter.WallUV);        // jambs face into the hole
-            w.Quad(A(f, h1), A(fo, h1), A(fo, h1) + up, A(f, h1) + up, -alongDir, MeshWriter.WallUV);
-            w.Quad(A(f, h0) + up, A(f, h1) + up, A(fo, h1) + up, A(fo, h0) + up, Vector3.down, MeshWriter.WallUV);
+            Baseboard(cm, A(f, a0), A(f, h0), n);
+            Baseboard(cm, A(f, h1), A(f, a1), n);
         }
 
         /// <summary>The wall colliders around each aperture.</summary>
@@ -76,8 +75,7 @@ namespace Backrooms.Generation
                 if (!_L.InChunk(bx, bz)) continue;
                 float l = line * C;
                 float mid = (along + 0.5f) * C, h0 = mid - HS * 0.5f, h1 = mid + HS * 0.5f;
-                // No duct or geometry beyond the wall. A separately owned aperture collider in
-                // CrawlPortalView closes the reverse side and can ignore only the traversing capsule.
+                // The opening itself is closed by CrawlPortalView's seal (open only to an aligned crawling player).
 
                 // Wall colliders around the hole (the edge is left out of the merged wall runs).
                 const float HC = OfficeBiome.MaxCeilingHeight;
@@ -95,8 +93,11 @@ namespace Backrooms.Generation
 
         void InstantiatePortals(Transform root)
         {
-            foreach (var p in _portalViews)
-                Interaction.CrawlPortalView.Create(root, p);
+            for (int i = 0; i < _portalViews.Count; i++)
+            {
+                var look = _portalLooks[i];
+                Interaction.CrawlPortalView.Create(root, _portalViews[i], look.lining, look.floor, look.back, look.backMask);
+            }
         }
     }
 }

@@ -1,33 +1,64 @@
-# Crawl portal continuity
+# Crawl holes (non-Euclidean ducts)
 
-The generated crawl openings are 0.8 m squares. Their entrance and crossing plane sit on the room's wall face. The reverse face is a complete ordinary wall; neither a duct nor its colliders occupy the neighbouring room. World generation version 9 records this change. Existing placement spacing and 12-30 m links are retained.
+Pairs of 0.8 m square holes at the foot of walls (`CrawlPortals.Place`). Each hole leads into a 2.2 m crawl duct behind its
+wall; at the duct's far end a window shows the partner hole's room, and crossing the window brings you out of the partner
+hole, 12-30 m away, facing out of it. Turn round and crawl back in and you are in the partner's own (identical) duct, which
+leads back.
 
-`CrawlPortalView` owns a seal collider contained entirely inside the wall. Only the aligned crawling player's capsule can ignore that seal, and only while the destination endpoint is loaded. Other colliders and approaches from behind remain blocked. Leaving/disabling the endpoint restores collision. Traversal maps position, yaw and velocity at the eye crossing, with an arrival guard that rejects handheld jitter while allowing an intentional immediate retreat.
+## The duct is bigger on the inside
 
-`CrawlPortalSystem` prepares views in a late execution order after movement and handheld motion. Up to two auxiliary cameras render through URP's ordinary camera loop before the player camera. Portal quads are excluded from these views, so there is no recursive camera expansion. The post-processing/camcorder effects apply once, in the player view. Render textures crop to the opening's projected screen rectangle, using quarter/half/full pixel density according to angular coverage. Size quantization and hysteresis reduce reallocation. The cropped perspective retains depth coordinates for Forward+ lighting. A view becomes visible after its camera actually renders.
+The duct runs through the two free cells behind the wall (placement requires them: same room, no props, open between them),
+so physically it overlaps the room behind. That room never sees or touches it:
 
-The destination camera uses an ordinary, off-centre perspective crop of the player's projection. `_PortalClipPlane` clips the destination wall in `Backrooms/Lit`; begin/end camera callbacks clear it for every other camera. Only the portal camera enables the `BACKROOMS_PORTAL_CLIP` shader variant; ordinary world and builder shading has no portal discard. This avoids changing the projection used by Forward+ lighting. New custom shaders used for world geometry must support the same clipping contract. Portal quads disable near-plane depth clipping so they remain visible as the eye reaches the wall.
+- **Drawing.** An invisible mask quad over the opening (`Backrooms/CrawlMask`, queue Transparent-410) writes stencil bit 64
+  where the opening is visible. The duct (`Backrooms/CrawlDuct`) and the far-end window (`Backrooms/PortalView`) draw after
+  the opaque rooms (queue Transparent-400/-390) only on those pixels, so they show through the hole and nowhere else. They
+  are not in the depth prepasses.
+- **Inside.** When the player's eye crosses into the opening, the hole switches to "inside": duct and window become ordinary
+  opaque geometry (stencil Always, opaque queue, depth passes on), and the patch hides.
+- **The back of the wall.** Both wall faces are cut. Seen from the room behind, the opening is covered by `BackPatch`, a piece
+  of that room's own wall material with the same world UVs, so the wall looks solid. It hides while the player is inside, so
+  the way back stays open.
+- **Colliders.** The wall thickness over the opening has a seal that only an aligned crawling player passes (`Fits`).
+  The duct's side, top, floor and dead-end colliders are enabled only while the player is inside or within 3 m in front of
+  the opening. From the room behind you can walk straight through where the duct is.
+- **Lighting.** The duct is lit only by its two openings: light falls off with depth from each end (`_Falloff`), so the
+  middle of the crawl is dim. The room behind's lights never reach it. Defaults live in the shader (`_EntryLight`,
+  `_ExitLight`, `_Ambient`).
 
-## Light transport and cost
+## Crossing
 
-`Resources/PortalLighting.compute` samples the ordinary destination lighting into a 6 x 8 half-float texture: six directional samples for at most eight nearby mouths. `LightGrid.BindPortalLighting` explicitly binds current occupancy, fixtures, bounce and local furniture occlusion. Samples use full fixture output, so real/grid handover does not dim them; power changes update on the next dispatch. No CPU lighting readback is used at runtime.
+`CrawlPortalSystem` (late execution order, after movement and handheld shake) tracks each hole's eye position in its frame
+(z out of the wall, duct from 0 to -2.2). Both hand-overs happen `near clip + 3 cm` before the plane, because closer than
+that the camera's near plane cuts off the mask or the window (that showed as two flat brown frames before the trip). The
+trip maps position, yaw and velocity exactly, so the eye lands just as far inside the partner's opening, which is set to
+"inside" on arrival. No arrival latch is needed: going back requires crawling the whole partner duct.
 
-The material shader reads this cache for soft diffuse spill up to 3 m from the opening. A narrow 0.6 m reciprocal blend joins illumination at the threshold. Local walls and furniture still restrict spill. The cache is intentionally a coarse directional approximation; it does not provide recursive GI, transported specular reflections, or fully physical area shadows. Texture/material changes between rooms can still be visible.
+## Views
 
-The cache replaces nested destination-fixture searches inside every affected material pixel. Camera count, cache samples and render texture ownership remain bounded independently of the number of generated portals. Traversable destination pairs remain limited to the existing streaming/light-grid range; arbitrary distant links need additional streaming interests and independent lighting fields. Props are not transported through portals by this change.
+Up to two windows are rendered per frame (`MaxViews`), nearest first, the one you are inside always first. Each is a camera
+at the partner hole matching the player camera (same projection, cropped to the window's screen rectangle, pixel density by
+angular size), rendered with `Portal_Renderer` (no camcorder pass) and clipped at the partner's wall face by the
+`BACKROOMS_PORTAL_CLIP` variant (Backrooms/Lit, the duct and the mask honour it). Window quads are excluded from portal
+cameras (no recursion; other holes seen through a window show their duct ending in its end cap). Portal cameras only render
+shadow maps for the window you are at or in (each camera re-renders the shadow atlas otherwise). A window that has no
+picture yet shows a dim fallback colour, never black.
 
-Fallback bindings clear portal-only globals in editor/build mode. Portal cameras release their render textures and irradiance cache on disable. Wait for shader compilation to finish before assessing the picture: Unity's temporary loading shader can appear blue while newly edited shader variants compile, and cold synchronous compilation can stall the editor. Warmed frame measurements must exclude those stalls. The editor's persistent async setting was preserved.
+## Lights through the hole
 
-## Validation
+The real (shadowed) light pool is centred on the player. While you are at or in a duct, `CrawlPortalSystem.TryGetLookahead`
+gives a second centre just outside the partner hole, and `FixtureLightManager` chooses real lights by the nearer of the two
+distances. The room you are about to come out into is already lit by real, shadowed lights, so nothing pops when you arrive.
 
-See the newest `WORKLOG.md` entry for test results, live captures, measured frame costs and remaining checks.
+The old diffuse "spill" (PortalLighting.compute, `_PortalSpill*` in LightGridSample.hlsl) is switched off: the window now
+sits inside the room behind, where it would have lit that room's floor. The code is still there; `_PortalSpillCount` is 0.
 
-At seed 1234, eye (37.80, 0.45, 19.93), yaw 180, pitch 0, 1920 x 1080, Direct3D 12, saved high settings retained (48 shadow-light setting, contact/reflections/SSAO enabled), 180-frame warmed editor samples:
+## Checks
 
-| Change | CPU median / p95 | GPU median / p95 | Approx. FPS from CPU median |
-| --- | --- | --- | --- |
-| Cached portal lighting, full-screen portal camera | 32.64 / 41.42 ms | 29.33 / 39.07 ms | 30.6 |
-| Cropped 896 x 896 camera | 24.83 / 33.20 ms | 23.35 / 31.01 ms | 40.3 |
-| Cropped camera and clipping variant only for portal views | 22.63 / 30.17 ms | 21.15 / 28.73 ms | 44.2 |
+`CustomRoomTests`: window-to-partner mapping for every orientation pair, a full traversal (in, along, out, jitter at the
+partner, back in and back through), seal ownership, worker-thread chunk build. In Play Mode (seed 1234, hole at
+37.80, 0.40, 19.28) a 600-frame recording of a crawl through showed no frame-to-frame jump larger than camcorder noise at
+either hand-over, and the room behind the partner wall showed a solid wall with nothing of the duct.
 
-These are editor samples from separate Play Mode runs at the same deterministic pose, not a standalone benchmark or a locked-60-FPS guarantee. They isolate the camera crop and clipping follow-up; no measured speedup is claimed for the earlier irradiance-cache replacement. The previous per-pixel draft was not retained as a benchmark build.
+Limits: two live windows; windows seen through windows are not drawn; the duct's light is a simple two-ended falloff, not
+sampled from the rooms; partners must be within streaming range (12-30 m).

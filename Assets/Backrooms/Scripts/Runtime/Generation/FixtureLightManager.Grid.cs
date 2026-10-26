@@ -68,6 +68,7 @@ namespace Backrooms.Generation
         };
         int _gridFrame;
         LightingMode _activeMode = (LightingMode)(-1);
+        System.Comparison<LightSource> _byPoolDistance;
 
         bool UseGrid => mode == LightingMode.LightGrid && LightGrid.Supported;
 
@@ -123,6 +124,18 @@ namespace Backrooms.Generation
 
         int _fixtureParams;
         bool _haveFixtureParams;
+        bool _haveAhead;
+        Vector3 _ahead;
+
+        /// <summary>
+        /// Distance used to choose real lights: to the player, or to where they are about to come out of a crawl hole
+        /// (whichever is nearer), so the far side of a hole is already lit by real, shadowed lights before they arrive.
+        /// </summary>
+        float PoolDistance(Vector3 p)
+        {
+            float d = Vector3.Distance(p, _eye);
+            return _haveAhead ? Mathf.Min(d, Vector3.Distance(p, _ahead)) : d;
+        }
 
         void LateUpdateGrid(Vector3 eye, float now)
         {
@@ -132,6 +145,7 @@ namespace Backrooms.Generation
             if (_haveFixtureParams && fp != _fixtureParams && grid) grid.MarkAllDirty();
             _fixtureParams = fp; _haveFixtureParams = true;
             float dt = Time.deltaTime;
+            _haveAhead = Interaction.CrawlPortalSystem.TryGetLookahead(out _ahead) && (_ahead - eye).sqrMagnitude < gridDistance * gridDistance;
 
             // Every registered light near the viewer, nearest first.
             _candidates.Clear();
@@ -144,8 +158,8 @@ namespace Backrooms.Generation
                 if (_chunks.TryGetValue(new Vector3Int(center.x + dx, s, center.y + dz), out var cp))
                     foreach (var l in cp.lights)
                         if ((l.position - eye).sqrMagnitude < r2) _candidates.Add(l);
-            if (_byDistance == null) _byDistance = (a, b) => (a.position - _eye).sqrMagnitude.CompareTo((b.position - _eye).sqrMagnitude);
-            _candidates.Sort(_byDistance);
+            if (_byPoolDistance == null) _byPoolDistance = (a, b) => PoolDistance(a.position).CompareTo(PoolDistance(b.position));
+            _candidates.Sort(_byPoolDistance);
 
             // Which fixtures are real lights: the nearest tubes (with hysteresis), faulty tubes, nearest lamps.
             // Every real light casts shadows, so the count stays within the 4096 shadow atlas: 64 spot maps at
@@ -161,8 +175,8 @@ namespace Backrooms.Generation
             {
                 if (c.isLamp || c.faultyId >= 0) continue;
                 counted++;
-                if (counted == nShadow) shadowCutoff = Vector3.Distance(c.position, eye);
-                if (counted == nReal) { cutoff = Vector3.Distance(c.position, eye); break; }
+                if (counted == nShadow) shadowCutoff = PoolDistance(c.position);
+                if (counted == nReal) { cutoff = PoolDistance(c.position); break; }
             }
             if (nShadow <= 0) shadowCutoff = -1f;
             if (nReal <= 0) cutoff = -1f;
@@ -172,7 +186,7 @@ namespace Backrooms.Generation
                 bool created = false;
                 if (!_shares.TryGetValue(c.position, out var sh)) { sh = new Share(); _shares[c.position] = sh; created = true; }
                 sh.src = c; sh.frame = _gridFrame;
-                float d = Vector3.Distance(c.position, eye);
+                float d = PoolDistance(c.position);
                 bool real;
                 if (c.isLamp) real = lamps < realLamps && d <= maxDistance;
                 else if (c.faultyId >= 0) real = faulty < faultyRealLights && d <= maxDistance;
@@ -217,7 +231,11 @@ namespace Backrooms.Generation
                 float rawPower = Mathf.Clamp01(PowerLevel(c, now));
                 float power = c.faultyId >= 0 ? rawPower : Mathf.Round(rawPower * 64f) / 64f;
                 float gridShare = (1f - sh.w) * power;
-                if (Mathf.Abs(gridShare - sh.lastGrid) > 0.003f)
+                // With the per-pixel split the texture only holds each light's weak far part: while a light is handing
+                // over or powering up, redraw it in coarse steps (plus once when it settles), not every frame.
+                bool changing = sh.w != sh.target || (power > 0.001f && power < 0.999f);
+                float step = grid && grid.CoarseUpdates && changing ? 0.08f : 0.003f;
+                if (Mathf.Abs(gridShare - sh.lastGrid) > step)
                 {
                     grid.MarkDirty(pos, range + 0.6f);
                     sh.lastGrid = gridShare;
@@ -259,7 +277,7 @@ namespace Backrooms.Generation
                 // Keep outgoing shadow maps until their strength reaches zero; only then give that
                 // atlas capacity to an incoming map. Fast movement cannot oversubscribe the atlas.
                 int maps = c.isLamp ? 6 : 1;
-                float distanceFade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(shadowDistance * 0.65f, shadowDistance, Vector3.Distance(pos, eye)));
+                float distanceFade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(shadowDistance * 0.65f, shadowDistance, PoolDistance(pos)));
                 float wantedShadow = L.enabled && sh.shadowed && sh.target > 0f ? distanceFade : 0f;
                 bool hadShadow = sh.slot.shadowK > 0.001f;
                 if (!hadShadow && shadowMaps + maps > atlasMaps) wantedShadow = 0f;

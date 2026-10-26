@@ -89,8 +89,8 @@ previews. No match is reported rather than placing an ungenerated room. Moved ru
 
 ## Crawl holes (non-Euclidean)
 
-Low square holes at the foot of some walls, in pairs. Crouch-crawl (Left Ctrl) into one and you come out of the other,
-turned to face out of it, 12-30 m away in a room that is a long walk off. The reverse face remains an ordinary solid wall:
-no duct or collider projects into the room behind it. Looking into a hole shows the other end; crossing happens at the
-entrance wall plane. How many: `WorldGenSettings.crawlPortals` (pairs per district). See [Portals.md](Portals.md) for
-view budgets, diffuse light transport and implementation limits.
+Low square holes at the foot of some walls, in pairs. Crouch-crawl (Left Ctrl) into one and you crawl along a 2.2 m duct
+behind the wall; at its far end a window shows the other hole's room, and crossing it brings you out of the other hole,
+12-30 m away, facing out of it, in a room that is a long walk off. The duct is "bigger on the inside": it overlaps the room
+behind the wall, which never sees it (no box, no colliders there; the back of the wall stays solid). How many:
+`WorldGenSettings.crawlPortals` (pairs per district). See [Portals.md](Portals.md) for how it works and its limits.

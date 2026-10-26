@@ -4,9 +4,9 @@ using UnityEngine;
 namespace Backrooms.Generation
 {
     /// <summary>
-    /// Non-Euclidean crawl holes. A pair of low square holes at the foot of two walls in one district: each reverse wall remains solid
-    /// and unchanged, but crawling into either hole
-    /// brings you out of the other one, in a different room, facing a different way.
+    /// Non-Euclidean crawl holes. A pair of low square holes at the foot of two walls in one district. Each hole leads into a
+    /// short crawl duct behind its wall (it overlaps the room behind, which never sees it: see Interaction.CrawlPortalView);
+    /// crawling to the duct's far end brings you out of the other hole, in a different room, facing a different way.
     ///
     /// The two ends are kept within streaming and light-grid range of each other (about 12 to 30 m apart in a straight
     /// line), and chosen so that walking between them is long (or impossible), which is what makes the shortcut feel wrong.
@@ -16,6 +16,8 @@ namespace Backrooms.Generation
     {
         public const float HoleSize = 0.8f, HoleHalf = HoleSize * 0.5f;           // square opening (the crawling player is 0.62 m tall, 0.6 m wide)
         public const float MinApart = 12f, MaxApart = 30f;
+        /// <summary>Crawl duct length from the wall face to the window at its far end (inside the two free cells behind the wall).</summary>
+        public const float DuctLength = 2.2f;
         public const int MinWalkCells = 26;           // shortest walk between the two ends, in cells (about 31 m), unless unreachable
 
         const float C = OfficeBiome.CellSize, T = OfficeBiome.WallThickness;
@@ -35,7 +37,6 @@ namespace Backrooms.Generation
                 default: position = new Vector3(cx, y, (cell.y + 1) * C - T * 0.5f); normal = Vector3.back; break;
             }
             position += new Vector3(ox, 0f, oz);
-            // Crossing and rendering share the entrance wall face; no physical duct behind it.
         }
 
         public static void Place(OfficeLayout L, WorldGenSettings set, System.Random rng)
@@ -126,7 +127,7 @@ namespace Backrooms.Generation
                     bool doorBeside = false;
                     for (int s = 0; s < 4; s++) { var e = L.EdgeOf(o.x, o.y, s); if (e == EdgeKind.Door || e == EdgeKind.DoorHeader) doorBeside = true; }
                     if (doorBeside) continue;
-                    // Retain the original placement spacing contract; geometry no longer occupies these cells.
+                    // The duct runs through the two cells behind the wall: both free and in one room, so nothing of that room is inside it.
                     var o2 = o + Step(side);
                     if (!Ordinary(o2.x, o2.y) || busy.Contains(o2) || L.roomOf[o.x, o.y] != L.roomOf[o2.x, o2.y]) continue;
                     if (L.EdgeOf(o.x, o.y, side) != EdgeKind.Open) continue;

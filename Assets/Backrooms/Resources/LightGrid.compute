@@ -28,7 +28,7 @@ StructuredBuffer<uint> _TileLights;
 int4 _GridSize;          // texels x, y, z; occupancy size (cells)
 int4 _BoxMin, _BoxSize;  // absolute texel coordinates of the box to fill
 int4 _TileInfo;          // texels per tile, tiles per axis
-float4 _GridMisc;        // x: storey pitch, y: floor albedo (bounce), z: bounce spread, w: unused
+float4 _GridMisc;        // x: storey pitch, y: floor albedo (bounce), z: bounce spread, w: near/far split radius (0 = whole light)
 int4 _CellMin;           // absolute cell of the bounce window's corner (x, z)
 
 struct SurfaceRecord { float4 floor; float4 wall; float4 ceiling; };
@@ -170,6 +170,10 @@ void Direct(uint3 id : SV_DispatchThreadID)
         {
             GridLight L = _Lights[_TileLights[range.x + i]];
             if (dot(L.color, L.color) <= 0.0) continue;
+            // Per-pixel mode with a near/far split: only the far part of each fixture's light is stored here
+            // (the material shader adds the near part exactly; the weights match LGrid_NearWeight).
+            float far = _GridMisc.w > 0 ? smoothstep(_GridMisc.w - 1, _GridMisc.w + 1, distance(L.pos, Q)) : 1;
+            if (far <= 0) continue;
             // A fixture's pool is narrow and very bright near the light (a wall pool is only a texel or two wide at
             // its top), so a single sample per 0.6 m texel aliases into boxes. The falloff is averaged over eight
             // points inside the texel instead; line of sight is still tested once (conservative, at the centre).
@@ -182,7 +186,8 @@ void Direct(uint3 id : SV_DispatchThreadID)
                 attSum += a; dirSum += a * tl;
             }
             if (attSum <= 8e-6 || !VisibleSolid(L.pos, Q)) continue;
-            float att = attSum * 0.125;
+            float att = attSum * 0.125 * far;
+            dirSum *= far;
             float3 e = L.color * att;
             float lum = dot(L.color, LUM);
             A.rgb += e;

@@ -29,6 +29,8 @@ namespace Backrooms.Camcorder
             Section("DISTANCE", "How far-away lights are drawn. Per pixel makes distant light pools as crisp as near ones, with no change as you walk closer.");
             Toggle("Per-pixel distant light", "Every fixture's light is worked out at each pixel (still blocked by walls) instead of being read from a coarse grid. Removes the blocky look of far pools. Costs a little speed.",
                 () => O().perPixelFar, v => { O().perPixelFar = v; O().Save(); });
+            Slider("Exact light radius", "With per-pixel light on: each fixture is worked out exactly on surfaces within this distance of it (its pool, its edges on walls); its weak light farther away is read from the soft light grid. Larger is slower; 0 = exact everywhere (slowest).",
+                0f, 12f, "0.0", " m", () => O().exactLightRadius, v => { O().exactLightRadius = v; O().Save(); });
             Slider("Distant crisp lights", "How many more fixtures, beyond the shadow-casting ones, are real lights. Walls still stop them. 0 uses the soft light grid for everything far away. Costs a little speed.",
                 0f, 120f, "0", "", () => O().farLights, v => { O().farLights = Mathf.RoundToInt(v); O().Save(); }, true);
 

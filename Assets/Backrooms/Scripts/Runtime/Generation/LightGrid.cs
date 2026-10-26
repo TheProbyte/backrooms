@@ -39,8 +39,14 @@ namespace Backrooms.Generation
         [Tooltip("Deepens dim areas of grid light: 0 leaves it as is, 1 makes weakly lit spots clearly darker.")]
         [Range(0f, 1f)] public float contrast = 0f;
         [Range(0f, 1f)] [Tooltip("Evens out walls with bounced light (a stand-in for global illumination): 0 = the old low wall fill, 1 = walls almost as lit as the ceiling above them.")] public float roomFill = 0.6f;
-        [Tooltip("Evaluate the grid's lights per pixel in the shader (exact pools at any distance) instead of reading the 0.6 m texture. Bounce still comes from the grid.")]
+        [Tooltip("Evaluate the grid's lights per pixel in the shader (exact pools) instead of reading the 0.6 m texture. Bounce still comes from the grid.")]
         public bool perPixelDirect = true;
+        [Tooltip("With per-pixel light on: each fixture is exact per pixel on surfaces within this distance of it, and read from the 0.6 m texture farther away (blending over 2 m). 0 = every fixture exact everywhere (expensive).")]
+        public float exactDistance = 4.5f;
+        /// <summary>The 0.6 m direct-light texture is in use (texture mode, or the far part of each fixture in split mode).</summary>
+        bool TextureDirect => !perPixelDirect || exactDistance > 0f;
+        float Split => perPixelDirect ? Mathf.Max(0f, exactDistance) : 0f;
+        float _appliedSplit = -1f;
         [Tooltip("Sample point offset off the surface, metres (half a texel keeps samples on the room's side).")]
         public float normalOffset = 0.3f;
 
@@ -64,10 +70,17 @@ namespace Backrooms.Generation
         readonly List<int>[] _tileBins = new List<int>[Tiles * Tiles];
         Vector2Int _texMin = new Vector2Int(int.MinValue, int.MinValue);
         bool _occDirty = true, _full = true;
-        bool _inputsValid, _bounceDirty = true, _wasPerPixel;
+        bool _inputsValid, _bounceDirty = true, _wasTexture;
         Vector2Int _binnedMin;
         Vector4 _bounceParameters;
         readonly List<(Vector3Int min, Vector3Int max)> _dirty = new List<(Vector3Int, Vector3Int)>();
+        readonly List<(Vector3Int min, Vector3Int max)> _pending = new List<(Vector3Int, Vector3Int)>();
+        [Tooltip("Most direct-light texels recomputed per frame (the rest wait for the next frames).")]
+        public int texelBudget = GX * GY * GZ / 4;
+        /// <summary>Texels still queued for recomputing.</summary>
+        public long PendingTexels { get { long v = 0; foreach (var b in _pending) v += Volume(Clip(b.min, b.max)); return v; } }
+        /// <summary>The texture only holds the weak far part of each light (per-pixel split): small share changes need not be redrawn at once.</summary>
+        public bool CoarseUpdates => perPixelDirect && Split > 0f;
         readonly Dictionary<Vector3Int, uint[]> _encoded = new Dictionary<Vector3Int, uint[]>();
         int _kDirect = -1, _kBounceSrc, _kBounceDiff;
         float _pitch = 9f;
@@ -102,7 +115,7 @@ namespace Backrooms.Generation
             shader.SetVector("_LGridParams", new Vector4(1, directGain, _lightCount > 0 ? bounceGain : 0, _pitch));
             shader.SetVector("_LGridWindow", new Vector4(_texMin.x * T, _texMin.y * T, (_texMin.x + GX) * T, (_texMin.y + GZ) * T));
             shader.SetVector("_LGridShape", new Vector4(wrap, normalOffset, smoothing, contrast));
-            shader.SetVector("_LGridFar", new Vector4(perPixelDirect ? 1 : 0, TileTexels, Tiles, 0));
+            shader.SetVector("_LGridFar", new Vector4(perPixelDirect ? 1 : 0, TileTexels, Tiles, Split));
             shader.SetFloat("_LGridFillAmt", roomFill);
             return true;
         }
@@ -267,8 +280,10 @@ namespace Backrooms.Generation
             _pitch = streamer && streamer.Settings != null ? streamer.Settings.storeyPitch : 9f;
             var sw = System.Diagnostics.Stopwatch.StartNew();
             BufferUploadsLastFrame = BounceDispatchesLastFrame = 0;
-            if (_wasPerPixel && !perPixelDirect) _full = true;
-            _wasPerPixel = perPixelDirect;
+            if (!_wasTexture && TextureDirect) _full = true;      // the texture was not kept up to date
+            _wasTexture = TextureDirect;
+            if (TextureDirect && Split != _appliedSplit) _full = true;   // the texture holds a different share of each light
+            _appliedSplit = Split;
 
             // Follow locomotion rather than handheld camera shake, which can straddle a cell boundary at rest.
             var anchor = streamer && streamer.player ? streamer.player.position : viewer;
@@ -296,24 +311,44 @@ namespace Backrooms.Generation
             var cellMin = new Vector2Int(_texMin.x / 2, _texMin.y / 2);
             compute.SetInts(IdGridSize, GX, GY, GZ, OccN);
             compute.SetInts(IdTileInfo, TileTexels, Tiles, 0, 0);
-            compute.SetVector(IdMisc, new Vector4(_pitch, floorAlbedo, bounceSpread, 0f));
+            compute.SetVector(IdMisc, new Vector4(_pitch, floorAlbedo, bounceSpread, Split));
             compute.SetInts(IdCellMin, cellMin.x, cellMin.y, 0, 0);
 
-            // Direct light in the dirty boxes (clipped to the window; merged into one full pass if large).
+            // Direct light in the dirty boxes, clipped to the window. The work is queued and done within a texel budget
+            // per frame: a full refresh (or a burst of changes while the world streams in) is spread over a few frames
+            // instead of stalling the GPU in one.
             int texels = 0;
-            if (!perPixelDirect)
+            if (TextureDirect)
             {
-            compute.SetTexture(_kDirect, IdA, _a); compute.SetTexture(_kDirect, IdB, _b); compute.SetBuffer(_kDirect, IdOcc, _occ);
-            compute.SetBuffer(_kDirect, IdLights, _lights); compute.SetBuffer(_kDirect, IdTiles, _tiles); compute.SetBuffer(_kDirect, IdTileLights, _tileLights);
-            if (!_full)
-            {
+                compute.SetTexture(_kDirect, IdA, _a); compute.SetTexture(_kDirect, IdB, _b); compute.SetBuffer(_kDirect, IdOcc, _occ);
+                compute.SetBuffer(_kDirect, IdLights, _lights); compute.SetBuffer(_kDirect, IdTiles, _tiles); compute.SetBuffer(_kDirect, IdTileLights, _tileLights);
+                _pending.AddRange(_dirty);
                 long volume = 0;
-                foreach (var (mn, mx) in _dirty) volume += (long)Mathf.Max(0, mx.x - mn.x) * Mathf.Max(0, mx.y - mn.y) * Mathf.Max(0, mx.z - mn.z);
-                if (volume > (long)GX * GY * GZ / 2 || _dirty.Count > 48) _full = true;
+                foreach (var (mn, mx) in _pending) volume += Volume(Clip(mn, mx));
+                if (_full || volume > (long)GX * GY * GZ || _pending.Count > 96)
+                {
+                    _pending.Clear();
+                    for (int z = 0; z < GZ; z += 16)
+                        _pending.Add((new Vector3Int(_texMin.x, 0, _texMin.y + z), new Vector3Int(_texMin.x + GX, GY, _texMin.y + Mathf.Min(GZ, z + 16))));
+                    _full = false;
+                }
+                long budget = Mathf.Max(GX * GY * 4, texelBudget);
+                int done = 0;
+                while (done < _pending.Count && budget > 0)
+                {
+                    var (mn, mx) = Clip(_pending[done].min, _pending[done].max);
+                    long v = Volume((mn, mx));
+                    if (v <= 0) { done++; continue; }
+                    if (v <= budget) { texels += Dispatch(mn, mx); budget -= v; done++; continue; }
+                    // Part of it: whole z-slices up to the budget, the rest stays queued.
+                    int cut = mn.z + Mathf.Max(1, (int)(budget / ((long)(mx.x - mn.x) * (mx.y - mn.y))));
+                    texels += Dispatch(mn, new Vector3Int(mx.x, mx.y, cut));
+                    _pending[done] = (new Vector3Int(mn.x, mn.y, cut), mx);
+                    budget = 0;
+                }
+                _pending.RemoveRange(0, done);
             }
-            if (_full) { texels += Dispatch(new Vector3Int(_texMin.x, 0, _texMin.y), new Vector3Int(_texMin.x + GX, GY, _texMin.y + GZ)); _full = false; }
-            else foreach (var (mn, mx) in _dirty) texels += Dispatch(mn, mx);
-            }
+            else _pending.Clear();
             _dirty.Clear();
             DirtyTexelsLastFrame = texels;
 
@@ -355,9 +390,14 @@ namespace Backrooms.Generation
             Shader.SetGlobalBuffer(GLights, _lights); Shader.SetGlobalBuffer(GTiles, _tiles); Shader.SetGlobalBuffer(GTileLights, _tileLights);
             Shader.SetGlobalBuffer("_LGridFixtureLookup", _fixtureLookup);
             Shader.SetGlobalInt("_LGridFixtureMask", _fixtureLookup.count - 1);
-            Shader.SetGlobalVector(GFar, new Vector4(perPixelDirect ? 1f : 0f, TileTexels, Tiles, 0f));
+            Shader.SetGlobalVector(GFar, new Vector4(perPixelDirect ? 1f : 0f, TileTexels, Tiles, Split));
             LastGpuSubmitMs = (float)sw.Elapsed.TotalMilliseconds;
         }
+
+        (Vector3Int min, Vector3Int max) Clip(Vector3Int min, Vector3Int max) =>
+            (Vector3Int.Max(min, new Vector3Int(_texMin.x, 0, _texMin.y)), Vector3Int.Min(max, new Vector3Int(_texMin.x + GX, GY, _texMin.y + GZ)));
+        static long Volume((Vector3Int min, Vector3Int max) b) =>
+            (long)Mathf.Max(0, b.max.x - b.min.x) * Mathf.Max(0, b.max.y - b.min.y) * Mathf.Max(0, b.max.z - b.min.z);
 
         int Dispatch(Vector3Int min, Vector3Int max)
         {

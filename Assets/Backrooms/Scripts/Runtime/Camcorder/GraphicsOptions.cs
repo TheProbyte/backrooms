@@ -13,8 +13,8 @@ namespace Backrooms.Camcorder
         public bool vSync = false;
         public int frameCap = 0;              // 0 = unlimited (when vsync is off)
         public float renderScale = 1f;
-        public int shadowLights = 24;         // nearest lights that cast shadows
-        public float shadowDistance = 20f;    // shadows fade out smoothly toward this distance
+        public int shadowLights = 16;         // nearest lights that cast shadows (the biggest cost: each redraws the geometry around it)
+        public float shadowDistance = 18f;    // shadows fade out smoothly toward this distance
         public int shadowResolution = 1;      // 0 low, 1 medium, 2 high
         public float lightDistance = 36f;     // fixtures lit out to here (fades into the fog)
         public int bounceLights = 40;         // nearest fixtures with soft bounce fill
@@ -33,6 +33,8 @@ namespace Backrooms.Camcorder
         public float shadowDarkness = 1f;     // real-light shadows
         public int farLights = 0;             // extra real (unshadowed) lights beyond the shadowed ones; 0 when per-pixel distant light is on
         public bool perPixelFar = true;       // distant fixtures are lit exactly per pixel (no visible grid texels)
+        public float exactLightRadius = 4.5f; // ...on surfaces within this distance of each fixture; its weak far light comes from the grid. 0 = everywhere
+        public int version;                   // settings format (see Load)
         public float flicker = 0.35f;         // faulty tubes: how often and how deep they stutter (1 = the original amount)
         public float roomFill = 0.6f;         // bounced light that evens out walls (a stand-in for global illumination)
         public float fixtureSpread = 0.8f;    // how broadly ceiling fixtures throw light (0 = lamp-like cone, 1 = diffuse troffer)
@@ -44,7 +46,7 @@ namespace Backrooms.Camcorder
             var d = new GraphicsOptions();
             lightStrength = d.lightStrength; lightReach = d.lightReach; tallBoost = d.tallBoost; fillLight = d.fillLight;
             softness = d.softness; poolSmoothing = d.poolSmoothing; darkSpots = d.darkSpots; shadowDarkness = d.shadowDarkness;
-            contactOcclusion = d.contactOcclusion; indoorReflections = d.indoorReflections; panelSize = d.panelSize; farLights = d.farLights; flicker = d.flicker; fixtureSpread = d.fixtureSpread; roomFill = d.roomFill;
+            contactOcclusion = d.contactOcclusion; indoorReflections = d.indoorReflections; panelSize = d.panelSize; farLights = d.farLights; flicker = d.flicker; fixtureSpread = d.fixtureSpread; roomFill = d.roomFill; exactLightRadius = d.exactLightRadius;
         }
         /// <summary>Evenly lit and pale, like the found-footage references: little contrast, a lot of fill, soft shadows.</summary>
         public void ApplyEvenLighting()
@@ -54,19 +56,38 @@ namespace Backrooms.Camcorder
         }
 
         const string Key = "Backrooms.Graphics.v1";
+        const int CurrentVersion = 2;
         public static GraphicsOptions Load()
         {
-            try { var j = PlayerPrefs.GetString(Key, ""); if (!string.IsNullOrEmpty(j)) return JsonUtility.FromJson<GraphicsOptions>(j); }
+            try
+            {
+                var j = PlayerPrefs.GetString(Key, "");
+                if (!string.IsNullOrEmpty(j))
+                {
+                    var o = JsonUtility.FromJson<GraphicsOptions>(j);
+                    if (o.version < 2)
+                    {
+                        // Version 2 (60 fps pass): more than ~16 shadowed lights and 20 m of shadows cost a lot of frame time
+                        // for detail you cannot see; per-pixel distant light became exact near, grid texture far.
+                        o.shadowLights = Mathf.Min(o.shadowLights, 16);
+                        o.shadowDistance = Mathf.Min(o.shadowDistance, 20f);
+                        o.exactLightRadius = 4.5f;
+                    }
+                    o.version = CurrentVersion;
+                    return o;
+                }
+            }
             catch (Exception e) { Debug.LogWarning("[Backrooms] Could not load graphics options: " + e.Message); }
-            return new GraphicsOptions();
+            return new GraphicsOptions { version = CurrentVersion };
         }
         public void Save() { PlayerPrefs.SetString(Key, JsonUtility.ToJson(this)); PlayerPrefs.Save(); }
 
         public static readonly string[] PresetNames = { "Low", "Medium", "High", "Ultra" };
         public void ApplyPreset(int i)
         {
-            shadowLights = new[] { 8, 16, 24, 40 }[i];
-            shadowDistance = new[] { 12f, 16f, 20f, 26f }[i];
+            shadowLights = new[] { 8, 12, 16, 24 }[i];
+            shadowDistance = new[] { 12f, 15f, 18f, 24f }[i];
+            exactLightRadius = new[] { 3f, 4f, 4.5f, 6f }[i];
             shadowResolution = new[] { 0, 1, 1, 2 }[i];
             lightDistance = new[] { 26f, 32f, 36f, 40f }[i];
             bounceLights = new[] { 16, 28, 40, 48 }[i];
@@ -175,6 +196,7 @@ namespace Backrooms.Camcorder
                     _lights.grid.contactOcclusion = Mathf.Clamp01(o.contactOcclusion);
                     _lights.grid.roomFill = Mathf.Clamp01(o.roomFill);
                     _lights.grid.perPixelDirect = o.perPixelFar;
+                    _lights.grid.exactDistance = Mathf.Clamp(o.exactLightRadius, 0f, 12f);
                     _lights.grid.wrap = o.softness;
                     _lights.grid.smoothing = o.poolSmoothing;
                     _lights.grid.contrast = o.darkSpots;

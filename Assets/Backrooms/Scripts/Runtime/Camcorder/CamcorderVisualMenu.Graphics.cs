@@ -42,7 +42,7 @@ namespace Backrooms.Camcorder
             Section("SHADOWS", "Lights hand over smoothly between real (shadowed) and grid light as you move.");
             Toggle("Light grid", "On: the nearest fixtures are real lights with live shadows and every other fixture lights a 3D light grid (light through doorways, bounce on ceilings). Off: the older system, a large pool of unshadowed lights kept inside their own rooms.",
                 () => O().lightGrid, v => { O().lightGrid = v; O().Save(); });
-            Slider("Shadow-casting lights", "How many of the nearest lights are real lights with shadows (light grid: capped to what the shadow atlas holds, about 38). Each one redraws nearby geometry, so this is the biggest performance setting.",
+            Slider("Shadow-casting lights", "How many of the nearest lights are real lights with shadows (light grid: capped to what the shadow atlas holds, about 38). Each one redraws nearby geometry, so this is the biggest performance setting. About 16 looks the same as more: walls already stop light exactly, shadows only add furniture detail.",
                 0f, 48f, "0", "", () => O().shadowLights, v => { O().shadowLights = Mathf.RoundToInt(v); O().Save(); }, true);
             Slider("Shadow distance", "Lights farther than this give up their shadow (and their doorway spill).",
                 8f, 30f, "0.0", " m", () => O().shadowDistance, v => { O().shadowDistance = v; O().Save(); });
