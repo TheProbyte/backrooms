@@ -15,6 +15,18 @@
 - **Items** (the spray can): **click** one within about 2 m to pick it up in the right hand; **hold left mouse** to
   use it; **Q** drops it (with a little toss). While the hand holds an item it does nothing else.
 - **L**: the developer menu "Items and furniture" (see below). **L** or **Esc** closes it.
+- **Chalk**: hold the left mouse button on a wall or floor within about 1.15 m and move your view to draw (freehand: an
+  arrow, a number, anything). It wears down (30 m of line in a stick) and is gone when used up.
+- **Blue tape**: press on a wall, doorframe or floor within 1.6 m, drag along it, release to tear the strip off (up to
+  1.6 m a strip, 40 m a roll). A strip stays on one flat surface and stops where it ends.
+- **Desk lamp**: click a wall outlet (or an extension cord's box) with it in hand to plug it in (its cord is 1.8 m);
+  click anywhere else to switch it. Q sets it down upright. It lights (a shadowed warm spot) when on and powered.
+- **Extension cord**: as found it is coiled; click an outlet with it in hand and the plug goes in while you carry the
+  box (three sockets) away on 8 m of physics cord. Right mouse coils it up again. Walking further than a cord reaches
+  pops its plug out. Pick up a plug to pull it out; with a plug in hand, click a socket to push it in. Up to 3 cords
+  in a row.
+- **Rubber chicken**: hold the left mouse button to squeeze it (squawk, squash); release for the wheeze. It squeaks
+  when thrown and it lands hard.
 
 ## Pieces (`Scripts/Runtime/Interaction`)
 | File | What it does |
@@ -28,6 +40,10 @@
 | `Items/WorldItem.cs` | Base of a held item: light physics lying in the world (frozen while the ground under it is unloaded), its hold pose and grip, `Hold(use, aimAt, dt)` every frame while held. |
 | `Items/SprayCan.cs` | Red spray paint (model: `Tools/Blender/build_items.py`, `Resources/Items/SprayCan.fbx`). Hold to spray where you look: ~300 traced droplets a second in a 4.5 degree cone, reaching 1.8 m; mist particles; hiss; the ball rattles when picked up. `SprayCan.Lifespan` = 45 s of spraying, sputters for the last 10 %, then only hisses. |
 | `Items/SprayPaint.cs` | The paint: soft speckled dots in batched meshes (Backrooms/SprayPaint multiplies the colour onto the surface, so it is lit like the wall; red channel kept at 1 so coats never go black). Wet paint per 2.5 cm cell: past about 2.4 coats on a wall it runs; more paint on the spot lengthens the run (up to 0.55 m); runs stop where the wall ends. Paint goes on the building, not on movable props or items, and lasts the session. |
+| `Items/Marks.cs`, `Resources/Shaders/Marks.shader` | Chalk lines and tape strips: flat strips on surfaces, batched (1024 a mesh), saved with the world. The shader lights each mark by the surface under it (luminance of the camera's opaque copy), so marks match their wall in every zone and under any lamp. `Marks.Strip` also builds chunk-owned marks (a noclip door's tape outline, a camp's tally). |
+| `Items/Chalk.cs`, `Items/TapeRoll.cs`, `Items/RubberChicken.cs` | The marking items and the chicken (its squeeze is the model's "Squeeze" blend shape). |
+| `Items/DeskLamp.cs`, `Items/CordBox.cs`, `Items/Plug.cs`, `Power/Cord.cs`, `Power/Sockets.cs` | Power: wall outlets register their two sockets per chunk (`ChunkOutlets`), plugs and boxes, a verlet cord with world collisions and a length limit (taut: a plugged end pops out, a free end is dragged). A lamp's bulb glows with the fixtures' existing lit-lens material (no new shader variant). |
+| `Items/ItemModels.cs`, `Items/ItemFactory.cs` | Item models from Resources/Items and their materials by slot name; making an item from its id (saves, loot). |
 | `Items/ItemCatalog.cs`, `Items/ItemsMenu.cs` | The developer menu (L): a grid with a rendered picture of every item and furniture piece (each sofa model and fabric, armchairs, office chair, table, three boxes, floor lamp, wall clock). Click to spawn in front of you (the clock on the wall you look at); shift-click keeps the menu open. Spawned furniture joins the moved-props list, so it stays put through chunk unloads. |
 
 Movable kinds: sofa, armchair, office chair (casters, low friction), conference table, cardboard box

@@ -4,7 +4,12 @@ using UnityEngine;
 namespace Backrooms.Generation
 {
     /// <summary>
-    /// Non-Euclidean crawl holes. A pair of low square holes at the foot of two walls in one district. Each hole leads into a
+    /// Crawl spaces (since world version 13; see <see cref="PlaceSpaces"/>): a low square hole at the foot of a wall is a
+    /// crawl portal to the vent of a small sealed special room, real geometry built in the space above the drop ceiling
+    /// over the hole by the hole's own chunk (OfficeChunkBuilder.CrawlSpaces.cs). Crawl back through the room's vent to
+    /// come out where you went in.
+    ///
+    /// (Older, kept in the code but no longer placed: pairs of holes leading into each other, and far links.) A pair of low square holes at the foot of two walls in one district. Each hole leads into a
     /// short crawl duct behind its wall (it overlaps the room behind, which never sees it: see Interaction.CrawlPortalView);
     /// crawling to the duct's far end brings you out of the other hole, in a different room, facing a different way.
     ///
@@ -39,9 +44,88 @@ namespace Backrooms.Generation
             position += new Vector3(ox, 0f, oz);
         }
 
+        /// <summary>Highest ceiling a special room may sit above (the room's top stays well under the storey above).</summary>
+        public const float MaxCeilingUnder = 4.0f;
+        /// <summary>The special room's floor sits this far above the highest ceiling under it (tiles, fittings).</summary>
+        public const float PlenumGap = 0.4f;
+        /// <summary>The special room's inner walls stand this far inside its footprint's edges.</summary>
+        public const float RoomInset = 0.06f;
+        /// <summary>Inside height of a special room.</summary>
+        public const float RoomHeight = 2.3f;
+
         public static void Place(OfficeLayout L, WorldGenSettings set, System.Random rng)
         {
-            if (L.storey != 0 || set == null) return;
+            if (L.storey != 0 || set == null || L.pool != null) return;     // the Poolrooms are reached through noclip doors
+            // As many vents as the old pairs of holes had (crawlPortals is still "pairs per district").
+            float want = Mathf.Max(0f, set.crawlPortals) * 2f;
+            int count = Mathf.FloorToInt(want) + (rng.NextDouble() < want - Mathf.Floor(want) ? 1 : 0);
+            if (count <= 0) return;
+            var spaces = Candidates(L);
+            var taken = new HashSet<Vector2Int>();
+            PlaceSpaces(L, spaces, taken, count, rng);
+            ClearPlates(L);
+        }
+
+        /// <summary>
+        /// Crawl spaces: for each, a candidate wall (see <see cref="Candidates"/>) and a footprint of 2-3 x 2-3 cells starting
+        /// at the hole's cell and running away from its wall, all in the hole's chunk, over ordinary rooms (no atrium, well
+        /// or tall volume, ceilings up to <see cref="MaxCeilingUnder"/>). The special room lies above that footprint, its
+        /// floor <see cref="PlenumGap"/> above the highest ceiling under it, its vent in its back wall right above the hole.
+        /// </summary>
+        static void PlaceSpaces(OfficeLayout L, List<(Vector2Int cell, int side)> candidates, HashSet<Vector2Int> used, int count, System.Random rng)
+        {
+            if (candidates.Count == 0) return;
+            int cc = OfficeBiome.ChunkCells;
+            for (int k = 0; k < count; k++)
+            {
+                for (int attempt = 0; attempt < 30; attempt++)
+                {
+                    var c = candidates[rng.Next(candidates.Count)];
+                    var s = -Step(c.side);                                   // away from the hole's wall, into its room
+                    var o = c.cell;
+                    int depth = 2 + rng.Next(2), width = 2 + rng.Next(2), first = -rng.Next(width), template = rng.Next(3), seed = rng.Next();
+                    var behind = c.cell + Step(c.side);
+                    if (used.Contains(c.cell) || used.Contains(behind) || used.Contains(behind + Step(c.side))) continue;
+                    var lat = new Vector2Int(Mathf.Abs(s.y), Mathf.Abs(s.x));
+                    var chunk = new Vector2Int(c.cell.x / cc, c.cell.y / cc);
+                    bool ok = true; float maxCeil = 0f;
+                    int x0 = int.MaxValue, z0 = int.MaxValue, x1 = int.MinValue, z1 = int.MinValue;
+                    for (int i = 0; i < depth && ok; i++)
+                    for (int j = first; j < first + width && ok; j++)
+                    {
+                        var p = o + s * i + lat * j;
+                        if (!L.InChunk(p.x, p.y) || p.x / cc != chunk.x || p.y / cc != chunk.y || used.Contains(p)) { ok = false; break; }
+                        var r = L.RoomAt(p.x, p.y);
+                        if (r.openAbove || r.noFloor || r.landmark != null || r.custom || r.role != AnnexRole.None
+                            || L.Has(p.x, p.y, CellFlags.OpenAbove) || L.Has(p.x, p.y, CellFlags.NoFloor) || r.ceiling > MaxCeilingUnder) { ok = false; break; }
+                        maxCeil = Mathf.Max(maxCeil, r.ceiling);
+                        x0 = Mathf.Min(x0, p.x); z0 = Mathf.Min(z0, p.y); x1 = Mathf.Max(x1, p.x); z1 = Mathf.Max(z1, p.y);
+                    }
+                    if (!ok) continue;
+                    Frame(L.coord, c.cell, c.side, L.BaseY, out var pos, out var n);
+                    var rect = new RectInt(x0, z0, x1 - x0 + 1, z1 - z0 + 1);
+                    float floor = maxCeil + PlenumGap;
+                    // The room's vent: in its back wall (inset RoomInset from the wall line), straight above the hole.
+                    Vector3 vent = pos + n * (RoomInset - OfficeBiome.WallThickness * 0.5f) + Vector3.up * floor;
+                    L.portals.Add(new CrawlPortal
+                    {
+                        cell = c.cell, side = c.side, position = pos, normal = n, partnerPosition = vent, partnerNormal = n,
+                        space = true, room = rect, roomFloor = floor, template = template, seed = seed,
+                        id = WorldGenerator.PropId(L.coord, L.storey, 0xF000 + L.portals.Count),
+                    });
+                    // Keep the hole's duct (the two cells behind it) and the whole room clear of the next crawl space.
+                    used.Add(behind); used.Add(behind + Step(c.side));
+                    foreach (var p in rect.allPositionsWithin) used.Add(p);
+                    var grow = new RectInt(rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4);   // the room's own duct runs out behind its back wall
+                    foreach (var p in grow.allPositionsWithin) used.Add(p);
+                    break;
+                }
+            }
+        }
+
+        /// <summary>The old portal placement (pairs and far links), no longer used.</summary>
+        static void PlacePortals(OfficeLayout L, WorldGenSettings set, System.Random rng)
+        {
             float want = Mathf.Max(0f, set.crawlPortals);
             int pairs = Mathf.FloorToInt(want) + (rng.NextDouble() < want - Mathf.Floor(want) ? 1 : 0);
             if (L.pool != null) pairs = 0;            // the Poolrooms have only their way in and out

@@ -128,7 +128,12 @@ namespace Backrooms.Camcorder
                 return (new Vector3(p.x, 0.05f, p.y), new Vector3(q.x, 1.4f, q.y), "an elevator lobby");
             }));
 
-            Section("ZONES", "Places reached through far crawl holes. The entrance puts you in front of the hole that leads there; crawl in (C) to go through.");
+            Section("TESTING", "Stand next to the nearest crawl space (its vent: crawl in with Ctrl) or the nearest noclip door (the taped outline: walk into the wall). Searches about 10 districts around you; press again for the next nearest.");
+            var rt = BtnRow(_list);
+            Button(rt, "NEAREST VENT", () => GoNearest("vent"));
+            Button(rt, "NEAREST NOCLIP DOOR", () => GoNearest("door"));
+
+            Section("ZONES", "The Poolrooms are reached through noclip doors. The entrance puts you in front of the nearest one leading there; walk through the taped wall.");
             var rz = BtnRow(_list);
             Button(rz, "POOLROOMS ENTRANCE", () => GoZoneHole("Poolrooms", false));
             Button(rz, "POOLROOMS", () => GoZoneHole("Poolrooms", true));
@@ -146,8 +151,70 @@ namespace Backrooms.Camcorder
         }
 
         /// <summary>In front of either end of a zone's entrance hole (see ZoneRules.entrance), facing it or the room.</summary>
+        /// <summary>The nearest crawl space vent or noclip door (Level 0 doors only for "door"), from the district plans around the player.</summary>
+        void GoNearest(string what)
+        {
+            var ws = FindAnyObjectByType<WorldStreamer>();
+            if (ws == null || player == null) return;
+            int request = ++_locSearch;
+            if (_locReadout != null) _locReadout.text = "Searching nearby districts\u2026";
+            StartCoroutine(SearchNearest(request, what, ws));
+        }
+
+        IEnumerator SearchNearest(int request, string what, WorldStreamer ws)
+        {
+            var world = ws.World;
+            var here = player.transform.position;
+            var dh = WorldGenerator.DistrictOf(WorldStreamer.ChunkOf(here));
+            var found = new List<(Vector3 pos, Vector3 normal, float dist)>();
+            int scanned = 0, R = what == "door" ? 12 : 3;
+            for (int dx = -R; dx <= R; dx++)
+            for (int dz = -R; dz <= R; dz++)
+            {
+                if (request != _locSearch || world != ws.World) yield break;
+                var d = new Vector2Int(dh.x + dx, dh.y + dz);
+                if (what == "door" && !NoclipDoors.LinkHere(world.Settings, world.Seed, d, out _)) continue;
+                var plan = world.District(new Vector3Int(d.x, 0, d.y));
+                if (what == "vent")
+                    foreach (var p in plan.portals) { if (p.space) found.Add((p.position, p.normal, Vector3.Distance(p.position, here))); }
+                else
+                    foreach (var nd in plan.noclipDoors) { if (!nd.arrival) found.Add((nd.position, nd.normal, Vector3.Distance(nd.position, here))); }
+                if (++scanned % 6 == 0) yield return null;
+            }
+            world.Trim(WorldStreamer.ChunkOf(player.transform.position), ws.unloadRadius + 2);
+            if (request != _locSearch) yield break;
+            if (found.Count == 0) { if (_locReadout != null) _locReadout.text = what == "vent" ? "No crawl space nearby." : "No noclip door within about 12 districts."; yield break; }
+            found.Sort((a, b) => a.dist.CompareTo(b.dist));
+            _locCycle.TryGetValue(what, out int i);
+            i %= found.Count;
+            _locCycle[what] = i + 1;
+            var f = found[i];
+            var floor = new Vector3(f.pos.x, f.pos.y + 0.05f, f.pos.z);
+            if (what == "vent") Go(floor + f.normal * 1.3f, floor, $"crawl space {i + 1} of {found.Count} (crawl in with Ctrl)");
+            else Go(floor + f.normal * 1.6f, floor, $"noclip door {i + 1} of {found.Count} (walk into the taped wall)");
+        }
+
         void GoZoneHole(string zoneName, bool inside)
         {
+            if (zoneName == "Poolrooms")
+            {
+                if (!inside) { GoNearest("door"); return; }
+                // Inside: in front of a Poolrooms arrival door.
+                var w = FindAnyObjectByType<WorldStreamer>();
+                if (w == null || player == null) return;
+                int zp = w.World.Settings.ZoneIndex(zoneName);
+                if (zp >= 0)
+                {
+                    var c = w.World.Settings.zones[zp].pinCentre;
+                    foreach (var nd in w.World.District(new Vector3Int(c.x, 0, c.y)).noclipDoors)
+                    {
+                        if (!nd.arrival) continue;
+                        var floor = new Vector3(nd.position.x, 0.05f, nd.position.z);
+                        Go(floor + nd.normal * 1.2f, floor + nd.normal * 6f, "the Poolrooms (behind you: its taped door back)");
+                        return;
+                    }
+                }
+            }
             var ws = FindAnyObjectByType<WorldStreamer>();
             if (ws == null || player == null) return;
             int zi = ws.World.Settings.ZoneIndex(zoneName);

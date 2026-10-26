@@ -109,7 +109,7 @@ namespace Backrooms.Interaction
             {
                 case State.Idle:
                     if (_poke != PokePhase.None) break;
-                    if (pressed) { if (!TryPickUp() && !TryStartPoke()) TryStart(); }
+                    if (pressed) { if (!TryHandUse() && !TryPickUp() && !TryStartPoke()) TryStart(); }
                     else if (shovePressed) Push();
                     break;
                 case State.Reaching:

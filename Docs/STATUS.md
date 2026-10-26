@@ -1,8 +1,23 @@
 # Status (where to resume)
-0. Feel test of grabbing (tuning values in Docs/Interaction.md); a better hand model (the thumb sticks out);
-   save moved props to disk; creatures moving things while you are away.
 
-Last updated 2026-10-22. Read `Docs/ProjectBrief.md` for the vision and `Docs/WorldGeneration.md` for how
+The game is called **Still Recording** (working title).
+
+Last updated 2026-10-26 (world version 13).
+
+## Newest (2026-10-26)
+
+- **Main menu and world saves**: the world scene opens on a camcorder-style main menu; three save slots, each world
+  keeping its seed, the player, moved and spawned furniture, items (and what is plugged into what), spray paint, chalk
+  and tape marks, things taken from special rooms, and the way back through a noclip door. Docs/MainMenuAndSaves.md.
+- **Items** (L menu): spray paint, chalk, blue tape, desk lamp, extension cord, rubber chicken. Docs/Interaction.md.
+- **Power**: wall outlets are live in Level 0; lamp cord 1.8 m, extension cords 8 m (up to 3 chained), physics ropes.
+- **Crawl spaces**: every vent is a portal to a finite special room above the ceiling over it (closet, storage, camp)
+  with loot. Docs/CrawlSpacesAndNoclipDoors.md.
+- **Noclip doors**: one per 4 x 4 districts in Level 0, taped outlines; walk through into the Poolrooms with a camcorder
+  glitch; the Poolrooms' taped walls lead back. They replaced the far crawl hole at spawn. F5 > PLACES > TESTING jumps
+  to the nearest vent or door.
+
+Earlier notes (some are now out of date where the list above says otherwise): Read `Docs/ProjectBrief.md` for the vision and `Docs/WorldGeneration.md` for how
 generation and lighting work now.
 
 ## World generation (world version 7)
@@ -60,8 +75,10 @@ V toggles noclip. Teleports hold you in place until the floor has loaded (`Telep
 
 ## Open items (next steps, in order)
 
-0. Feel test of grabbing (Docs/Interaction.md lists the tuning values); a better hand model (the thumb
-   sticks out); save moved props to disk; creatures moving things while you are away.
+0. Owner feel test: chalk, tape, lamp and cord handling, the noclip glitch, the special rooms' look. Special room
+   loot is placeholder (whatever items exist); the settings page of the main menu is empty.
+0b. Feel test of grabbing (Docs/Interaction.md lists the tuning values); a better hand model (the thumb sticks out);
+   creatures moving things while you are away. (Moved props are saved to disk now.)
 1. Owner review of the light grid look (Docs/screenshots/phase4_ab_*: `_layers` = old, `_grid` = new).
    Tunables: LightGrid.bounceGain / floorAlbedo / bounceSpread / wrap, FixtureLightManager.handoverTime.
 2. The arched-niche/balcony room from references/update11/ref3_arches_balcony.png as a landmark kind
@@ -69,5 +86,5 @@ V toggles noclip. Teleports hold you in place until the floor has loaded (`Telep
 3. Steam Audio geometry per chunk via the ChunkLoaded/ChunkUnloaded events.
 4. Something worth finding on the atrium's upper storey. Elevator extras: sound (hum, ding, door), floor
    indicator, a stuck or flickering state. Stairs: a landing light, the camera could smooth the step bob.
-5. A second zone with real content (the zone system is ready; only Level 0 has content).
+5. More zones (the Poolrooms are the second; noclip doors can lead to any pinned zone: see NoclipDoors.TargetZone).
 6. Movement (zoom F, crouch C, crawl Ctrl, jump Space) awaits the owner's feel feedback.

@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Backrooms.Audio
 {
     /// <summary>Shared procedural clips (built once on first use) and each sound's base level.</summary>
-    public static class SoundBank
+    public static partial class SoundBank
     {
         static AudioClip[] s_hum, s_strike, s_tick, s_steps;
         static AudioClip s_buzz, s_vent, s_tone, s_building;

@@ -38,6 +38,7 @@ Shader "Backrooms/CamcorderVideo"
             float4 _CamVideo6;   // xy: motion smear vector in uv units (from the camera's turn rate)
             float4 _CamVideo7;   // x head-switching band, y compression blotches
             float4 _CamVideo8;   // x recording lines (0 = full display resolution), y colour detail (fraction of the luma resolution)
+            float4 _CamVideo9;   // x noclip glitch 0..1, y vertical roll (fraction of the frame), z random per frame
             TEXTURE2D(_CamOSDTex);
 
             // ---------------- Noise ----------------
@@ -144,6 +145,7 @@ Shader "Backrooms/CamcorderVideo"
             }
 
             float Sinc(float x) { x *= PI; return abs(x) < 1e-4 ? 1.0 : sin(x) / x; }
+            float GHash(float3 p) { p = frac(p * float3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return frac((p.x + p.y) * p.z); }
 
             float4 Frag(Varyings input) : SV_Target
             {
@@ -156,9 +158,27 @@ Shader "Backrooms/CamcorderVideo"
                 float t = _CamVideo3.z;
                 uint frame = (uint)_CamVideo4.x;
 
+                // Noclip glitch: the tape loses tracking. The picture rolls (with the black blanking bar at the seam),
+                // bands of lines tear sideways by different amounts, every line jitters, and the tracking band goes wild.
+                float glitch = _CamVideo9.x;
+                float blank = 0;
+                if (glitch > 0.001)
+                {
+                    float roll = _CamVideo9.y;
+                    uv.y = frac(uv.y + roll);
+                    float seam = min(uv.y, 1.0 - uv.y);
+                    blank = roll > 0.001 ? smoothstep(0.035 * glitch + 0.003, 0.0, seam) : 0;
+                    float bands = lerp(9.0, 46.0, frac(_CamVideo9.z * 7.13));
+                    float bandId = floor(uv.y * bands);
+                    float tearOn = step(1.15 - glitch * 0.85, abs(GridNoise(float2(bandId, 9.0), frame, 523u)));
+                    uv.x += GridNoise(float2(bandId, 3.0), frame, 517u) * 0.11 * glitch * tearOn;
+                    uv.x += GridNoise(float2(uv.y * 240.0, t * 60.0), frame, 529u) * 0.005 * glitch;
+                    uv.x = frac(uv.x);
+                }
+
                 // Tape tracking: a soft band of horizontal displacement drifting up the frame,
                 // smooth (low-frequency) jitter so the image wobbles instead of tearing into stripes.
-                float tracking = _CamVideo2.w;
+                float tracking = max(_CamVideo2.w, glitch * 3.0);
                 float bandY = frac(t * 0.071);
                 float bandDist = abs(uv.y - bandY);
                 bandDist = min(bandDist, 1.0 - bandDist);
@@ -347,6 +367,24 @@ Shader "Backrooms/CamcorderVideo"
                         float3 lilac = float3(0.02, -0.05, 0.24);
                         col += (lilac * lerp(0.2, 1.0, right) + float3(0.12, -0.04, 0.02) * spot) * v * bl;
                     }
+                }
+
+                // Noclip glitch, after the image: dropout streaks (short white and black flecks along the lines), colour
+                // falling apart into grey and noise, and the blanking bar where the rolling picture wraps.
+                if (glitch > 0.001)
+                {
+                    // Dropouts: dashes of random length on a few lines, more as it gets worse.
+                    float lineId = floor(uv.y * res.y * 0.5);
+                    float fr = (float)(frame % 4096u);
+                    float seg = floor(uv.x * 4.0 + GHash(float3(lineId, 1.7, fr)) * 4.0);
+                    float rnd = GHash(float3(lineId, seg, fr + 13.0));
+                    float on = step(1.0 - 0.06 * glitch * glitch, rnd);
+                    float white = step(0.35, GHash(float3(seg, lineId, fr + 29.0)));
+                    col = lerp(col, white > 0.5 ? float3(0.92, 0.92, 0.9) : float3(0.02, 0.02, 0.03), on * 0.85);
+                    float gl = dot(col, float3(0.299, 0.587, 0.114));
+                    col = lerp(col, gl.xxx, 0.45 * glitch);
+                    col += GridNoise(uv * float2(res.x * 0.25, res.y * 0.5), frame, 547u) * 0.1 * glitch;
+                    col *= 1.0 - blank;
                 }
 
                 // Viewfinder OSD (drawn by its own camera), bent with a gentle barrel warp so the text

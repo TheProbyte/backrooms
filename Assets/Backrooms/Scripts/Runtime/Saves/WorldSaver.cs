@@ -36,6 +36,9 @@ namespace Backrooms.Saves
             _streamer = GetComponent<WorldStreamer>();
             _data = GameSession.Data;
             _playAtStart = _data != null ? _data.playSeconds : 0;
+            LootRegistry.Import(_data?.takenLoot);
+            NoclipTravel.HasOrigin = _data != null && _data.hasNoclipOrigin;
+            if (_data != null) { NoclipTravel.OriginPosition = _data.noclipOrigin; NoclipTravel.OriginNormal = _data.noclipOriginNormal; }
             _timeAtStart = Time.time;
             _nextAutosave = Time.time + autosaveInterval;
             Camcorder.CamcorderOSD.TapeSeconds = (float)_playAtStart;
@@ -101,6 +104,12 @@ namespace Backrooms.Saves
                 try { using (var r = new BinaryReader(new MemoryStream(paint))) SprayPaint.Instance.Read(r); }
                 catch (Exception e) { Debug.LogWarning($"[Backrooms] Paint of save {_data.slot + 1} could not be read: {e.Message}"); }
             }
+            var marks = SaveSlots.ReadMarks(_data.slot);
+            if (marks != null)
+            {
+                try { using (var r = new BinaryReader(new MemoryStream(marks))) Marks.Instance.Read(r); }
+                catch (Exception e) { Debug.LogWarning($"[Backrooms] Chalk and tape of save {_data.slot + 1} could not be read: {e.Message}"); }
+            }
             StartCoroutine(RestoreThings());
         }
 
@@ -108,11 +117,15 @@ namespace Backrooms.Saves
         {
             yield return null;            // the player's hand is set up
             WorldItem held = null;
+            var spawned = new List<WorldItem>();
             foreach (var it in _data.items)
             {
                 var item = SpawnItem(it);
+                spawned.Add(item);
                 if (item && it.held) held = item;
             }
+            yield return null;            // lamps make their plugs and cords
+            RestorePlugs(spawned);
             if (_data.placed.Count > 0)
             {
                 var catalog = ItemCatalog.Build(_streamer ? _streamer.assets : null, _streamer);
@@ -134,15 +147,35 @@ namespace Backrooms.Saves
 
         static WorldItem SpawnItem(ItemData d)
         {
-            switch (d.id)
+            var item = ItemFactory.Spawn(d.id, d.position, d.rotation);
+            if (!item) { Debug.LogWarning($"[Backrooms] Saved item '{d.id}' is not known; left out."); return null; }
+            if (item is SprayCan can) can.paint = Mathf.Clamp01(d.amount);
+            else if (!(item is CordBox)) item.Amount = d.amount;
+            return item;
+        }
+
+        /// <summary>Extension cords laid out again, then every plug back in its socket (a wall socket is found when its chunk loads).</summary>
+        void RestorePlugs(List<WorldItem> spawned)
+        {
+            var data = _data.items;
+            for (int i = 0; i < data.Count && i < spawned.Count; i++)
+                if (spawned[i] is CordBox box && data[i].amount > 0.5f) box.Deploy(null, data[i].plugPosition);
+            for (int i = 0; i < data.Count && i < spawned.Count; i++)
             {
-                case "spraycan":
-                    var can = SprayCan.Create(d.position, d.rotation);
-                    can.paint = Mathf.Clamp01(d.amount);
-                    return can;
+                if (!(spawned[i] is PowerUser user) || !user.Plug || !data[i].hasPlug) continue;
+                var plug = user.Plug;
+                var rb = plug.Body;
+                rb.position = data[i].plugPosition; rb.rotation = data[i].plugRotation;
+                plug.transform.SetPositionAndRotation(data[i].plugPosition, data[i].plugRotation);
+                int target = data[i].plugTarget;
+                if (target == 0) plug.WaitForWall(data[i].plugWall);
+                else if (target > 0 && target - 1 < spawned.Count && spawned[target - 1] is CordBox into && !into.coiled)
+                {
+                    var sockets = into.BoxSockets;
+                    if (data[i].plugSocket >= 0 && data[i].plugSocket < sockets.Count) plug.PlugInto(sockets[data[i].plugSocket]);
+                }
+                user.WakeCord();
             }
-            Debug.LogWarning($"[Backrooms] Saved item '{d.id}' is not known; left out.");
-            return null;
         }
 
         // ---------------- Save ----------------
@@ -180,13 +213,33 @@ namespace Backrooms.Saves
             if (mgr) foreach (var s in mgr.Export()) d.props.Add(FromSpec(s.spec, s.position, s.rotation));
 
             d.items.Clear();
+            var users = new List<WorldItem>();
             foreach (var it in FindObjectsByType<WorldItem>())
             {
-                if (string.IsNullOrEmpty(it.itemId)) continue;
-                var data = new ItemData { id = it.itemId, position = it.transform.position, rotation = it.transform.rotation, held = it.Held };
+                // Plugs go with their lamp or cord; things still lying in a special room are its own (made again there).
+                if (string.IsNullOrEmpty(it.itemId) || it is Plug || it.IsLoot) continue;
+                users.Add(it);
+            }
+            foreach (var it in users)
+            {
+                // A plug held in the hand is saved where the hand holds it, as an item would be.
+                var data = new ItemData { id = it.itemId, position = it.transform.position, rotation = it.transform.rotation, held = it.Held, amount = it.Amount };
                 if (it is SprayCan can) data.amount = can.paint;
+                if (it is PowerUser user && user.Plug)
+                {
+                    var plug = user.Plug;
+                    data.hasPlug = true; data.plugPosition = plug.transform.position; data.plugRotation = plug.transform.rotation;
+                    if (plug.Plugged && (plug.Socket == null || plug.Socket.IsWall)) { data.plugTarget = 0; data.plugWall = plug.WallPosition; }
+                    else if (plug.Socket != null && plug.Socket.box)
+                    {
+                        int bi = users.IndexOf(plug.Socket.box);
+                        if (bi >= 0) { data.plugTarget = bi + 1; data.plugSocket = IndexOf(plug.Socket.box.BoxSockets, plug.Socket); }
+                    }
+                }
                 d.items.Add(data);
             }
+            d.takenLoot = LootRegistry.Export();
+            d.hasNoclipOrigin = NoclipTravel.HasOrigin; d.noclipOrigin = NoclipTravel.OriginPosition; d.noclipOriginNormal = NoclipTravel.OriginNormal;
             d.placed.Clear();
             foreach (var p in FindObjectsByType<PlacedThing>())
                 d.placed.Add(new PlacedData { name = p.catalogName, position = p.transform.position, rotation = p.transform.rotation });
@@ -200,7 +253,22 @@ namespace Backrooms.Saves
                 w.Flush();
                 paint = ms.ToArray();
             }
-            SaveSlots.Write(d, paint);
+            byte[] marks;
+            var mk = Marks.Existing;
+            var ms2 = new MemoryStream();
+            using (var w = new BinaryWriter(ms2))
+            {
+                if (mk) mk.Write(w); else Marks.WriteEmpty(w);
+                w.Flush();
+                marks = ms2.ToArray();
+            }
+            SaveSlots.Write(d, paint, marks);
+        }
+
+        static int IndexOf(IReadOnlyList<Socket> list, Socket s)
+        {
+            for (int i = 0; i < list.Count; i++) if (list[i] == s) return i;
+            return 0;
         }
 
         string ZoneName(Vector3 p)

@@ -8,7 +8,7 @@ namespace Backrooms.Audio
     /// Loops are long (7-29 s), use whole cycles of every periodic part, and crossfade their noise
     /// tail into the head, so they loop without clicks and without an obvious short repeat.
     /// </summary>
-    public static class ProceduralSounds
+    public static partial class ProceduralSounds
     {
         public const int Rate = 44100;
         const float TwoPi = 6.2831853f;

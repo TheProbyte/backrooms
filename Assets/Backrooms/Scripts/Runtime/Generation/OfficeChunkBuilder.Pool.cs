@@ -69,6 +69,7 @@ namespace Backrooms.Generation
                 if (r.spiral && !r.noFloor && r.rect.width == r.fullRect.width && r.rect.height == r.fullRect.height) BuildSpiral(r);
             BuildDoorways();
             BuildPortals();
+            BuildNoclipDoors();
             BuildCeilingColliders();
             BuildPoolMap();
         }

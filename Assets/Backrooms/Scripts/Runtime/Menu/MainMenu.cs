@@ -376,7 +376,7 @@ namespace Backrooms.Menu
                     {
                         s_font = UnityEngine.TextCore.Text.FontAsset.CreateFontAsset(family, "Bold");
                         if (!s_font) s_font = UnityEngine.TextCore.Text.FontAsset.CreateFontAsset(family, "Regular");
-                        if (s_font) { s_font.hideFlags = HideFlags.DontSave; break; }
+                        if (s_font) break;
                     }
                     catch (Exception) { }
                 }

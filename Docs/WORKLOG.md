@@ -15,6 +15,49 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 21:00  Claude Code  Five items, power, crawl spaces to special rooms, noclip doors into the Poolrooms
+- Game name: "Still Recording" (working title) in README/STATUS.
+- Items (L menu), models by a subagent in Tools/Blender/build_items2.py (Resources/Items/*.fbx):
+  - Chalk: draw freehand; it wears down.
+  - Blue tape: pulled strips on walls, doorframes and floors.
+  - Desk lamp: own 1.8 m cord, plugs into outlets, shadowed spot.
+  - Extension cord: 8 m verlet rope, 3 sockets, up to 3 chained, pops out when taut.
+  - Rubber chicken: squeeze blend shape and procedural squawk.
+  - Marks system (Items/Marks.cs, Shaders/Marks.shader) lights marks by the surface under them.
+  - Wall outlets register sockets per chunk (Power/Sockets.cs).
+- Crawl spaces: every vent is a crawl portal to a finite special room built above the drop ceiling over it.
+  - Templates: closet, storage, camp. Loot is taken for good (LootRegistry).
+  - URP Lit materials and the room's own shadowed light, on only when near.
+  - Placement: CrawlPortals.PlaceSpaces. Build: OfficeChunkBuilder.CrawlSpaces.cs, Interaction/SpecialRoom.cs.
+  - (An intermediate ladder-shaft version was reverted at the owner's request: the vent stays a portal.)
+- Noclip doors: Generation/NoclipDoors.cs, OfficeChunkBuilder.Noclip.cs, Interaction/NoclipPassage.cs, NoclipTravel.cs.
+  - One per 4 x 4 districts in Level 0, leading to a Poolrooms arrival door (one per Poolrooms district). The way back
+    leads to the door you came in by (saved).
+  - Tape outline marking kept separate and swappable (NoclipDoorMarking).
+  - Glitch on the camcorder pass: CamcorderVideo.shader `_CamVideo9`, CamcorderRig.Glitch/GlitchRoll,
+    CamcorderFrameHold.Freeze for dropped frames, CamcorderAudioChain.dropout plus a crackle clip.
+  - Destination preloaded as a streaming site.
+  - Replaced the far crawl hole into the Poolrooms (FarLinks/entrance unused).
+- World version 13. F5 > PLACES > TESTING: nearest vent / nearest noclip door.
+- Saves: marks, plugs, loot taken, the noclip way back.
+- Fixes:
+  - TeleportSafe no longer counts the player's own capsule as floor (far F5 jumps used to fall through).
+  - Q's set-down moves the rigidbody too.
+  - The main menu font no longer outlives Play Mode ("Deleting invalid font reference").
+- Checked:
+  - EditMode tests 66/66; four portal tests were rewritten for crawl spaces, noclip doors and Poolrooms doors.
+  - Played: lamp plugged into a wall outlet (lit pool of light, cord to the socket); chalk lines and a tape strip;
+    a closet with bulb, shelf and loot.
+  - Crawled into a vent and out of its room and back.
+  - A noclip door's tape; walked through it into the Poolrooms (glitch, held frames) and back to the same door.
+  - Extension cord into a wall outlet, lamp into its box (lit); saved and restored with plugs.
+  - L menu shows the five new items with pictures.
+  - My test save (World 3) was removed; World 1 was left alone.
+- Open:
+  - The click-to-plug path was tested by code for the lamp, by API for the cord.
+  - Not tried in a player build.
+  - Loot is placeholder.
+
 ## 2026-10-26 18:00  Claude Code  Main menu (camcorder on the carpet) and three world save slots
 - Main menu: the world scene starts on it unless a save is being played (Menu/MainMenu.cs).
   - Picture: the camcorder lying rolled on the carpet of a fixed world (seed 42), fixed focus on the carpet, background

@@ -12,10 +12,11 @@ mid-afternoon place and comes in through openings in the roof. One biome for now
   first; Voronoi sites never pick a pinned zone.
 - **Sealed**: `sealedEdges` makes every district edge between it and another zone a solid wall on both sides
   (`WorldGenSettings.SealedBetween`, used by `DistrictGenerator` for its edge openings). Walking there finds a wall.
-- **Entrance**: `ZoneRules.entrance` links district `entranceFrom` (0, 0), the spawn district, to `entranceTo` (24, 0)
-  with a far crawl hole (FarLinks treats it like a hand-placed link; lattice links stay out of pinned zones). The hole is
-  somewhere in the spawn district (seed-dependent); F5 > PLACES > POOLROOMS ENTRANCE goes to it, POOLROOMS goes to the
-  other end. Crawl in and you come out on a dry tiled deck.
+- **Entrance** (world version 13): noclip doors. Rare taped door outlines in Level 0 walls (one per 4 x 4 districts)
+  that you walk through; you come out of a taped wall on a dry tiled deck in one of the Poolrooms' districts, and that
+  wall leads back to the door you came in by. See CrawlSpacesAndNoclipDoors.md. (Before: a far crawl hole from the spawn
+  district, `ZoneRules.entrance`, now unused.) F5 > PLACES > POOLROOMS ENTRANCE goes to the nearest noclip door,
+  POOLROOMS to a Poolrooms arrival door.
 - Settings saved from F5 before the zone existed get it added on load (`AddMissingPinnedZones`).
 
 ## Plan (PoolPlan, DistrictGenerator)

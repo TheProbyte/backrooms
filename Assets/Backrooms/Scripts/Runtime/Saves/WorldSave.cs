@@ -29,6 +29,11 @@ namespace Backrooms.Saves
         public List<PropData> props = new List<PropData>();
         public List<ItemData> items = new List<ItemData>();
         public List<PlacedData> placed = new List<PlacedData>();
+        /// <summary>Things picked up in special rooms (their rooms do not make them again).</summary>
+        public List<string> takenLoot = new List<string>();
+        /// <summary>The door a Poolrooms noclip door leads back to (Interaction.NoclipTravel).</summary>
+        public bool hasNoclipOrigin;
+        public Vector3 noclipOrigin, noclipOriginNormal;
     }
 
     /// <summary>A movable prop that has been disturbed (generated or spawned from the menu), and where it is now.</summary>
@@ -65,8 +70,15 @@ namespace Backrooms.Saves
         public string id;                      // WorldItem.itemId
         public Vector3 position;
         public Quaternion rotation;
-        public float amount = 1f;              // paint left in a spray can
+        public float amount = 1f;              // paint left, chalk left, tape left, a lamp's switch, a cord laid out (1) or coiled (0)
         public bool held;
+        // Cords: where the plug is, and what it is in: -1 nothing, 0 the wall socket at plugWall, n > 0 socket plugSocket
+        // of the extension cord that is item n - 1.
+        public bool hasPlug;
+        public Vector3 plugPosition;
+        public Quaternion plugRotation;
+        public int plugTarget = -1, plugSocket;
+        public Vector3 plugWall;
     }
 
     /// <summary>A fixed piece spawned from the developer menu (floor lamp, wall clock).</summary>
@@ -88,6 +100,7 @@ namespace Backrooms.Saves
         public static string Folder => FolderOverride ?? Path.Combine(Application.persistentDataPath, "Saves");
         public static string DataPath(int slot) => Path.Combine(Folder, $"world{slot + 1}.json");
         public static string PaintPath(int slot) => Path.Combine(Folder, $"world{slot + 1}.paint");
+        public static string MarksPath(int slot) => Path.Combine(Folder, $"world{slot + 1}.marks");
 
         public static bool Exists(int slot) => File.Exists(DataPath(slot));
 
@@ -116,13 +129,16 @@ namespace Backrooms.Saves
         }
 
         /// <summary>Writes the save (and the paint, if given) safely: to a temporary file first, then over the old one.</summary>
-        public static void Write(WorldSaveData d, byte[] paint)
+        public static void Write(WorldSaveData d, byte[] paint) => Write(d, paint, null);
+
+        public static void Write(WorldSaveData d, byte[] paint, byte[] marks)
         {
             try
             {
                 Directory.CreateDirectory(Folder);
                 WriteAtomic(DataPath(d.slot), System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(d, true)));
                 if (paint != null) WriteAtomic(PaintPath(d.slot), paint);
+                if (marks != null) WriteAtomic(MarksPath(d.slot), marks);
             }
             catch (Exception e) { Debug.LogError($"[Backrooms] Could not write save {d.slot + 1}: {e}"); }
         }
@@ -133,6 +149,12 @@ namespace Backrooms.Saves
             File.WriteAllBytes(tmp, bytes);
             if (File.Exists(path)) File.Delete(path);
             File.Move(tmp, path);
+        }
+
+        public static byte[] ReadMarks(int slot)
+        {
+            try { var p = MarksPath(slot); return File.Exists(p) ? File.ReadAllBytes(p) : null; }
+            catch (Exception e) { Debug.LogWarning($"[Backrooms] Could not read marks of save {slot + 1}: {e.Message}"); return null; }
         }
 
         public static byte[] ReadPaint(int slot)
@@ -146,7 +168,7 @@ namespace Backrooms.Saves
         {
             try
             {
-                foreach (var p in new[] { DataPath(slot), PaintPath(slot) }) if (File.Exists(p)) File.Delete(p);
+                foreach (var p in new[] { DataPath(slot), PaintPath(slot), MarksPath(slot) }) if (File.Exists(p)) File.Delete(p);
             }
             catch (Exception e) { Debug.LogWarning($"[Backrooms] Could not erase save {slot + 1}: {e.Message}"); }
         }

@@ -42,6 +42,10 @@ the editor, starting a build, or "Main menu" from the pause menu). Build mode's 
 | Fixed pieces from the L menu | Floor lamp and wall clock (`PlacedThing`), by catalog name. |
 | Items | Spray cans by `WorldItem.itemId`, with the paint left in each; the one in your hand goes back into your hand. |
 | Spray paint | Every dot and run (`SprayPaint.Write/Read`, about 46 bytes each). Runs that are still running are saved as they are. |
+| Chalk and tape | Every mark (`Marks.Write/Read`, world{n}.marks). |
+| Power | Lamps' switches, cords laid out or coiled, and every plug's socket (a wall socket by its position, found again when its chunk loads; a cord's box by its index). |
+| Special rooms | Which loot has been taken (it is not made again). Loot still lying in a room is not saved (the room makes it). |
+| Noclip doors | The door a Poolrooms door leads back to. |
 | Time | Play time; the OSD's tape counter and date carry on from it (`CamcorderOSD.TapeSeconds`). |
 
 **When it saves:**

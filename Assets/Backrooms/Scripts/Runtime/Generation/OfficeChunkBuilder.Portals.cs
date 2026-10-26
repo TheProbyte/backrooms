@@ -87,7 +87,11 @@ namespace Backrooms.Generation
                 float e0 = along * C - T * 0.5f, e1 = (along + 1) * C + T * 0.5f;
                 var b1 = WallBox(e0, h0, 0f, HC + 0.2f, out var s1); _boxes.Add((b1, s1));
                 var b2 = WallBox(h1, e1, 0f, HC + 0.2f, out var s2); _boxes.Add((b2, s2));
-                var b3 = WallBox(h0, h1, HS, HC + 0.2f, out var s3); _boxes.Add((b3, s3));
+                // Over the opening up to the top; a crawl space's room sits above it, its vent's duct running back through
+                // this wall line, so there the wall stops under the room's floor.
+                var portal = _L.portals[kv.Value.portal];
+                float top = portal.space ? portal.roomFloor - 0.02f : HC + 0.2f;
+                var b3 = WallBox(h0, h1, HS, top, out var s3); _boxes.Add((b3, s3));
             }
         }
 

@@ -32,6 +32,8 @@ namespace Backrooms.Generation
 
         public int Seed { get; private set; }
         public int LoadedChunks => _chunks.Count;
+        /// <summary>The streamer of the world scene (null elsewhere).</summary>
+        public static WorldStreamer Current { get; private set; }
 
         /// <summary>Raised after a chunk's GameObject is built (e.g. to register its geometry with an audio engine).</summary>
         public event System.Action<Vector3Int, GameObject> ChunkLoaded;
@@ -127,6 +129,10 @@ namespace Backrooms.Generation
         void Awake()
         {
             // The main menu's world, a save's world, or (testing a room from build mode) a random one.
+            Current = this;
+            // A new world: nothing taken from its special rooms, no noclip door to return to (a save puts its own back).
+            Saves.LootRegistry.Clear();
+            Interaction.NoclipTravel.HasOrigin = false;
             bool playing = Saves.GameSession.Slot >= 0 && Saves.GameSession.Data != null;
             MenuMode = !playing && Saves.GameSession.InMenu;
             if (MenuMode) Seed = Menu.MainMenu.MenuSeed;
@@ -139,6 +145,7 @@ namespace Backrooms.Generation
             // The Poolrooms: materials before any chunk data is prepared (worker threads only read them), and the map,
             // fog and ripples.
             PoolMaterials.Ensure();
+            SpecialRoomMaterials.Ensure(assets);          // the rooms behind crawl spaces
             if (!GetComponent<PoolWorld>()) gameObject.AddComponent<PoolWorld>().streamer = this;
             // Developer menu: items and furniture (L).
             if (!GetComponent<Interaction.ItemsMenu>()) gameObject.AddComponent<Interaction.ItemsMenu>().streamer = this;
@@ -156,6 +163,7 @@ namespace Backrooms.Generation
             // The save being played: moved props are back on the list before any chunk is built. Or the main menu.
             if (playing) { _saver = gameObject.AddComponent<Saves.WorldSaver>(); _saver.RestoreProps(_world); }
             else if (MenuMode) gameObject.AddComponent<Menu.MainMenu>().streamer = this;
+            if (!MenuMode && !GetComponent<Interaction.NoclipTravel>()) gameObject.AddComponent<Interaction.NoclipTravel>().streamer = this;
         }
 
         /// <summary>The ground-storey chunk's layout as currently built (null if not loaded).</summary>
@@ -334,7 +342,7 @@ namespace Backrooms.Generation
             if (_uploadRoot) Destroy(_uploadRoot);
             _uploadRoot = null;
         }
-        void OnDestroy() { CancelUpload(); }
+        void OnDestroy() { CancelUpload(); if (Current == this) Current = null; }
 
         OfficeChunkBuilder Prepare(WorldGenerator world, Vector3Int coord, OfficeBiomeAssets assets)
         {
@@ -448,6 +456,14 @@ namespace Backrooms.Generation
         void PlaceSpawn()
         {
             if (!player) return;
+            SpawnPose(out var pos, out float yaw);
+            var ctrl = player.GetComponent<CamcorderPlayerController>();
+            if (ctrl) ctrl.Teleport(pos, yaw); else player.position = pos;
+        }
+
+        /// <summary>The world's spawn: a lit, walkable cell of chunk (0, 0), facing the most open direction.</summary>
+        public void SpawnPose(out Vector3 pos, out float yaw)
+        {
             var layout = _world.Chunk(Vector2Int.zero);
             float C = OfficeBiome.CellSize;
             Vector2Int best = new Vector2Int(layout.N / 2, layout.N / 2);
@@ -465,10 +481,8 @@ namespace Backrooms.Generation
                 if (score > bestScore) { bestScore = score; best = new Vector2Int(x, z); }
             }
             var room0 = layout.RoomAt(best.x, best.y);
-            float yaw = room0.rect.width >= room0.rect.height ? 90f : 0f;
-            var pos = new Vector3((best.x + 0.5f) * C, 0.05f, (best.y + 0.5f) * C);
-            var ctrl = player.GetComponent<CamcorderPlayerController>();
-            if (ctrl) ctrl.Teleport(pos, yaw); else player.position = pos;
+            yaw = room0.rect.width >= room0.rect.height ? 90f : 0f;
+            pos = new Vector3((best.x + 0.5f) * C, 0.05f, (best.y + 0.5f) * C);
         }
 
         static bool BlockedCell(OfficeLayout L, int x, int z)

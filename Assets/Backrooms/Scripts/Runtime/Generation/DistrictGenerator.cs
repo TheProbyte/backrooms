@@ -147,6 +147,7 @@ namespace Backrooms.Generation
                 // The Poolrooms: no lights, furniture or outlets; water, columns and the roof openings instead.
                 PoolPlan.Dress(L, rng);
                 CrawlPortals.Place(L, set, new System.Random(Hash(seed, district.x, district.y, 0x9047A1 + storey)));
+                NoclipDoors.Place(L, set, seed);
                 AssignColors(L);
                 return L;
             }
@@ -166,8 +167,9 @@ namespace Backrooms.Generation
                 if (landmarkRooms[i] != null) Landmarks.Decorate(L, placements[i], landmarkRooms[i]);
             // Loose cardboard boxes (movable). Their own dice, so the rest of the plan is unchanged.
             PlaceBoxes(L, new System.Random(Hash(seed, district.x, district.y, 0x0B0C5 + storey)));
-            // Crawl holes: their own dice too.
+            // Crawl spaces: their own dice too. Then the rare noclip door (after them, so it avoids their walls).
             CrawlPortals.Place(L, set, new System.Random(Hash(seed, district.x, district.y, 0x9047A1 + storey)));
+            NoclipDoors.Place(L, set, seed);
             AssignColors(L);
             return L;
         }

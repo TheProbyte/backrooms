@@ -314,59 +314,82 @@ namespace Backrooms.Tests
         }
     
         [Test]
-        public void CrawlHolesComeInFarApartPairsOnRealWalls()
+        public void CrawlSpacesLeadToSealedRoomsAboveOrdinaryRooms()
         {
-            var gen = new WorldGenerator(1234, WorldGenSettings.Defaults());
+            var set = WorldGenSettings.Defaults();
+            var gen = new WorldGenerator(1234, set);
             int found = 0;
             for (int dx = -1; dx <= 1; dx++)
             for (int dz = -1; dz <= 1; dz++)
             {
                 var plan = gen.District(new Vector3Int(dx, 0, dz));
+                var taken = new System.Collections.Generic.HashSet<Vector2Int>();
                 foreach (var p in plan.portals)
                 {
+                    Assert.IsTrue(p.space, "every vent is a crawl space now (no portal pairs, no far links)");
                     var behind = p.cell + (p.side == 0 ? Vector2Int.left : p.side == 1 ? Vector2Int.right : p.side == 2 ? Vector2Int.down : Vector2Int.up);
                     Assert.IsFalse(plan.plates.Exists(w => w.height < CrawlPortals.HoleSize &&
                         ((w.cell == p.cell && w.side == p.side) || (w.cell == behind && w.side == (p.side ^ 1)))), "no outlet floating in a hole");
-                }
-                var local = plan.portals.FindAll(p => !p.far);           // far links are checked in FarLinksJoinDistantDistricts
-                Assert.AreEqual(0, local.Count % 2, "holes come in pairs");
-                foreach (var p in local)
-                {
-                    found++;
                     Assert.AreEqual(EdgeKind.Wall, plan.EdgeOf(p.cell.x, p.cell.y, p.side), "a hole is cut into a solid wall");
-                    float apart = Vector3.Distance(p.position, p.partnerPosition);
-                    Assert.That(apart, Is.InRange(CrawlPortals.MinApart - 0.5f, CrawlPortals.MaxApart + 2f), "ends within streaming range but not close");
-                    Assert.IsTrue(plan.portals.Exists(q => q.position == p.partnerPosition && q.partnerPosition == p.position), "partner exists");
+                    Assert.IsTrue(p.room.Contains(p.cell), "the room lies over the vent's own cell");
+                    float maxCeil = 0f;
+                    foreach (var c in p.room.allPositionsWithin)
+                    {
+                        Assert.IsTrue(plan.InChunk(c.x, c.y));
+                        Assert.AreEqual(p.cell.x / OfficeBiome.ChunkCells, c.x / OfficeBiome.ChunkCells, "built by the vent's own chunk");
+                        Assert.AreEqual(p.cell.y / OfficeBiome.ChunkCells, c.y / OfficeBiome.ChunkCells);
+                        var r = plan.RoomAt(c.x, c.y);
+                        Assert.IsFalse(r.openAbove || r.noFloor || r.landmark != null, "only over ordinary rooms: nothing open up into it");
+                        maxCeil = Mathf.Max(maxCeil, r.ceiling);
+                        Assert.IsTrue(taken.Add(c), "special rooms never overlap");
+                    }
+                    Assert.AreEqual(maxCeil + CrawlPortals.PlenumGap, p.roomFloor, 1e-4f, "the floor sits just above the highest ceiling under it");
+                    Assert.Less(p.roomFloor + CrawlPortals.RoomHeight, set.storeyPitch - 0.5f, "and its top under the storey above");
+                    var flat = new Vector2(p.partnerPosition.x - p.position.x, p.partnerPosition.z - p.position.z);
+                    Assert.Less(flat.magnitude, 0.05f, "the room's vent is right above the hole");
+                    Assert.AreEqual(p.position.y + p.roomFloor, p.partnerPosition.y, 1e-4f);
+                    Assert.AreEqual(p.normal, p.partnerNormal);
+                    found++;
                 }
             }
-            Assert.Greater(found, 0, "no crawl holes near the origin");
+            Assert.Greater(found, 3, "crawl spaces near the origin");
         }
 
         [Test]
-        public void FarLinksJoinDistantDistricts()
+        public void NoclipDoorsAreRareAndLeadIntoThePoolrooms()
         {
             var set = WorldGenSettings.Defaults();
-            var gen = new WorldGenerator(1234, set);
-            Assert.IsTrue(FarLinks.PartnerOf(set, new Vector2Int(1, 1), out var b), "the lattice links district (1, 1)");
-            Assert.IsTrue(FarLinks.PartnerOf(set, b, out var back) && back == new Vector2Int(1, 1), "links are symmetric");
-            CrawlPortal FarHole(Vector2Int district)
+            var pool = set.zones[NoclipDoors.TargetZone(set)];
+            foreach (int seed in new[] { 1234, 7, 2032979943 })
             {
-                for (int x = 0; x < WorldGenSettings.DistrictChunks; x++)
-                for (int z = 0; z < WorldGenSettings.DistrictChunks; z++)
-                    foreach (var p in gen.Chunk(new Vector2Int(district.x * WorldGenSettings.DistrictChunks + x, district.y * WorldGenSettings.DistrictChunks + z)).portals)
-                        if (p.far) return p;
-                Assert.Fail("no far hole in district " + district);
-                return default;
+                var gen = new WorldGenerator(seed, set);
+                int links = 0, doors = 0;
+                for (int x = -8; x < 8; x++)
+                for (int z = -8; z < 8; z++)
+                {
+                    var d = new Vector2Int(x, z);
+                    if (!NoclipDoors.LinkHere(set, seed, d, out var partner)) continue;
+                    Assert.IsTrue(NoclipDoors.LinkHere(set, seed, d, out var again) && again == partner, "deterministic");
+                    Assert.IsTrue(pool.PinnedContains(partner), "it leads into the Poolrooms");
+                    links++;
+                    if (links > 3) continue;                       // building a few is enough
+                    var plan = gen.District(new Vector3Int(x, 0, z));
+                    foreach (var door in plan.noclipDoors)
+                    {
+                        Assert.IsFalse(door.arrival);
+                        Assert.AreEqual(EdgeKind.Wall, plan.EdgeOf(door.cell.x, door.cell.y, door.side), "a door-sized part of a solid wall");
+                        var chunk = gen.Chunk(new Vector3Int(Mathf.FloorToInt(door.position.x / OfficeBiome.ChunkSize), 0, Mathf.FloorToInt(door.position.z / OfficeBiome.ChunkSize)));
+                        var cut = chunk.noclipDoors.Find(n => n.id == door.id);
+                        Assert.IsTrue(cut.resolved, "the chunk knows where it leads");
+                        var arrival = gen.District(new Vector3Int(partner.x, 0, partner.y)).noclipDoors.Find(n => n.arrival);
+                        Assert.AreEqual(arrival.position, cut.partnerPosition, "to its Poolrooms district's taped door");
+                        doors++;
+                    }
+                }
+                // One per square of spacing x spacing districts: 16 in these 16 x 16, a few fewer where a square's pick falls on the Poolrooms.
+                Assert.That(links, Is.InRange(8, 16), $"seed {seed}: rare");
+                Assert.Greater(doors, 0, $"seed {seed}: doors placed");
             }
-            var a = FarHole(new Vector2Int(1, 1));
-            var far = FarHole(b);
-            Assert.AreEqual(a.position, far.partnerPosition, "each end leads to the other");
-            Assert.AreEqual(far.position, a.partnerPosition);
-            Assert.AreEqual(a.normal, far.partnerNormal);
-            Assert.Greater(Vector3.Distance(a.position, a.partnerPosition), 4 * OfficeBiome.ChunkSize * 2f, "well outside the load radius");
-            // The uncached build path resolves the same partner.
-            var chunk = WorldStreamer.ChunkOf(a.position);
-            Assert.IsTrue(gen.Build(chunk).portals.Exists(p => p.far && p.partnerPosition == a.partnerPosition));
         }
 
         [Test]
@@ -533,32 +556,39 @@ namespace Backrooms.Tests
         }
 
         [Test]
-        public void ChunksWithCrawlTunnelsBuildOnAWorkerThread()
+        public void ChunksWithCrawlSpacesAndNoclipDoorsBuildOnAWorkerThread()
         {
             var assets = UnityEditor.AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
             Assert.IsNotNull(assets);
-            var gen = new WorldGenerator(1234, WorldGenSettings.Defaults());
-            int built = 0;
-            for (int dx = -1; dx <= 1; dx++)
-            for (int dz = -1; dz <= 1; dz++)
+            SpecialRoomMaterials.Ensure(assets);
+            var set = WorldGenSettings.Defaults();
+            var gen = new WorldGenerator(1234, set);
+            void Build(OfficeLayout layout)
             {
-                var plan = gen.District(new Vector3Int(dx, 0, dz));
-                foreach (var p in plan.portals)
-                {
-                    int cx = (dx * WorldGenSettings.DistrictCells + p.cell.x) / OfficeBiome.ChunkCells, cz = (dz * WorldGenSettings.DistrictCells + p.cell.y) / OfficeBiome.ChunkCells;
-                    var layout = gen.Chunk(new Vector3Int(cx, 0, cz));
-                    Assert.Greater(layout.portals.Count, 0, "the chunk holds the hole");
-                    // BuildData runs on worker threads in the game: it must not touch Unity objects (e.g. create materials).
-                    System.Exception error = null;
-                    var t = new System.Threading.Thread(() => { try { new OfficeChunkBuilder(assets).BuildData(layout); } catch (System.Exception e) { error = e; } });
-                    t.Start(); t.Join();
-                    Assert.IsNull(error, error?.ToString());
-                    built++;
-                    goto done;
-                }
+                // BuildData runs on worker threads in the game: it must not touch Unity objects (e.g. create materials).
+                System.Exception error = null;
+                var t = new System.Threading.Thread(() => { try { new OfficeChunkBuilder(assets).BuildData(layout); } catch (System.Exception e) { error = e; } });
+                t.Start(); t.Join();
+                Assert.IsNull(error, error?.ToString());
             }
-            done:
-            Assert.Greater(built, 0, "no chunk with a crawl hole found");
+            OfficeLayout ChunkAt(Vector3 world) => gen.Chunk(new Vector3Int(Mathf.FloorToInt(world.x / OfficeBiome.ChunkSize), 0, Mathf.FloorToInt(world.z / OfficeBiome.ChunkSize)));
+            var plan = gen.District(new Vector3Int(0, 0, 0));
+            Assert.Greater(plan.portals.Count, 0, "a crawl space near spawn");
+            var withSpace = ChunkAt(plan.portals[0].position);
+            Assert.IsTrue(withSpace.portals.Exists(p => p.space), "the chunk holds the crawl space");
+            Build(withSpace);
+            for (int x = -8; x < 8; x++)
+            for (int z = -8; z < 8; z++)
+            {
+                if (!NoclipDoors.LinkHere(set, gen.Seed, new Vector2Int(x, z), out _)) continue;
+                var doors = gen.District(new Vector3Int(x, 0, z)).noclipDoors;
+                if (doors.Count == 0) continue;
+                var chunk = ChunkAt(doors[0].position);
+                Assert.Greater(chunk.noclipDoors.Count, 0, "the chunk holds the door");
+                Build(chunk);
+                return;
+            }
+            Assert.Fail("no noclip door found");
         }
     }
 }

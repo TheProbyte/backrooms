@@ -21,6 +21,8 @@ namespace Backrooms.Camcorder
         public static bool RecordThisFrame = true;
         /// <summary>Counts recorded pictures (the camcorder noise re-seeds on each).</summary>
         public static int RecordedFrames;
+        /// <summary>Dropped frames: while set, the last picture stays on screen (a noclip door's glitch), whatever the frame rate.</summary>
+        public static bool Freeze;
 
         static double _next;
         static int _tickedFrame = -1;
@@ -30,6 +32,7 @@ namespace Backrooms.Camcorder
         {
             if (_tickedFrame == Time.frameCount) return;
             _tickedFrame = Time.frameCount;
+            if (Freeze) { RecordThisFrame = false; return; }
             if (Fps <= 0.01f) { RecordThisFrame = true; RecordedFrames++; return; }
             double now = Time.unscaledTimeAsDouble, step = 1.0 / Fps;
             if (now >= _next)
@@ -49,7 +52,7 @@ namespace Backrooms.Camcorder
             public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
             {
                 var cam = frameData.Get<UniversalCameraData>();
-                if (Fps <= 0.01f || cam.cameraType != CameraType.Game || cam.camera.targetTexture != null) { _valid = false; return; }
+                if ((Fps <= 0.01f && !Freeze) || cam.cameraType != CameraType.Game || cam.camera.targetTexture != null) { _valid = false; return; }
                 var res = frameData.Get<UniversalResourceData>();
                 var desc = cam.cameraTargetDescriptor;
                 desc.depthStencilFormat = GraphicsFormat.None;
@@ -80,7 +83,7 @@ namespace Backrooms.Camcorder
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
-            if (Fps > 0.01f) renderer.EnqueuePass(_pass);
+            if (Fps > 0.01f || Freeze) renderer.EnqueuePass(_pass);
         }
 
         protected override void Dispose(bool disposing) { _pass?.Dispose(); }

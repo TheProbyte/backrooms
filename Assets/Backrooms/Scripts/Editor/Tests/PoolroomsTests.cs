@@ -52,32 +52,21 @@ namespace Backrooms.Tests
         }
 
         [Test]
-        public void EntranceLeadsIntoThePoolrooms()
+        public void EveryPoolroomsDistrictHasADoorBack()
         {
             var s = Set();
             var z = Pool(s);
-            Assert.IsTrue(FarLinks.PartnerOf(s, z.entranceFrom, out var to) && to == z.entranceTo);
-            Assert.IsTrue(FarLinks.PartnerOf(s, z.entranceTo, out var back) && back == z.entranceFrom);
             foreach (int seed in new[] { 1234, 7, 2032979943 })
             {
                 var gen = new WorldGenerator(seed, s);
-                CrawlPortal FarHole(Vector2Int district)
+                foreach (var d in new[] { z.pinCentre, z.pinCentre + new Vector2Int(z.pinRadius, 0), z.pinCentre - new Vector2Int(2, z.pinRadius) })
                 {
-                    for (int x = 0; x < WorldGenSettings.DistrictChunks; x++)
-                    for (int y = 0; y < WorldGenSettings.DistrictChunks; y++)
-                        foreach (var p in gen.Chunk(new Vector2Int(district.x * WorldGenSettings.DistrictChunks + x, district.y * WorldGenSettings.DistrictChunks + y)).portals)
-                            if (p.far) return p;
-                    Assert.Fail($"seed {seed}: no far hole in district {district}");
-                    return default;
+                    var plan = gen.District(new Vector3Int(d.x, 0, d.y));
+                    var doors = plan.noclipDoors.FindAll(n => n.arrival);
+                    Assert.AreEqual(1, doors.Count, $"seed {seed}: one taped way back in district {d}");
+                    Assert.IsFalse(plan.pool[doors[0].cell.x, doors[0].cell.y].basin, "you come out on a dry deck, not into water");
+                    Assert.AreEqual(0, plan.portals.Count, "no crawl spaces in the Poolrooms");
                 }
-                var a = FarHole(z.entranceFrom);
-                var b = FarHole(z.entranceTo);
-                Assert.AreEqual(b.position, a.partnerPosition, "the spawn district's hole leads to the Poolrooms' hole");
-                Assert.AreEqual(a.position, b.partnerPosition);
-                var plan = gen.District(new Vector3Int(z.entranceTo.x, 0, z.entranceTo.y));
-                var hole = plan.portals.Find(p => p.far);
-                Assert.AreEqual(b.position, hole.position);
-                Assert.IsFalse(plan.pool[hole.cell.x, hole.cell.y].basin, "you come out on a dry deck, not into water");
             }
         }
 

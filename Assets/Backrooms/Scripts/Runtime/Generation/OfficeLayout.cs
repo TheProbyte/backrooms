@@ -112,6 +112,27 @@ namespace Backrooms.Generation
         /// when a chunk is cut from the plan (partnerPosition/Normal are only valid in chunk layouts).</summary>
         public bool far;
         public Vector2Int partnerDistrict;
+
+        /// <summary>A crawl space (see CrawlPortals.PlaceSpaces): the hole is a portal to the vent of a small sealed
+        /// special room built above the ceiling over it (partnerPosition/Normal are that vent).</summary>
+        public bool space;
+        public RectInt room;           // layout-local cells the special room lies above (the hole's cell is one of them)
+        public float roomFloor;        // height of its floor above the storey's floor
+        public int template;           // what kind of room (CrawlSpaces.Template)
+        public int seed;               // its own dice (dressing, loot)
+    }
+    /// <summary>A door-sized section of a wall that can be walked through into another zone (see NoclipDoors).</summary>
+    public struct NoclipDoor
+    {
+        public Vector2Int cell;        // layout-local cell on one side of the wall
+        public int side;               // which side of that cell the wall is on (0 -X, 1 +X, 2 -Z, 3 +Z)
+        public Vector3 position;       // world: middle of the wall line, at floor level
+        public Vector3 normal;         // world: out of the wall into the cell
+        public ulong id;
+        public bool arrival;           // a Poolrooms door: leads back to the door you came in by
+        public Vector2Int partnerDistrict;
+        public bool resolved;          // Level 0 doors: the partner was found (chunk layouts only)
+        public Vector3 partnerPosition, partnerNormal;
     }
     public struct Prop
     {
@@ -157,6 +178,7 @@ namespace Backrooms.Generation
         public readonly List<WallPlate> plates = new List<WallPlate>();
         public readonly List<Prop> props = new List<Prop>();
         public readonly List<CrawlPortal> portals = new List<CrawlPortal>();
+        public readonly List<NoclipDoor> noclipDoors = new List<NoclipDoor>();
         /// <summary>Biome rules of this chunk (blended across biome transitions). District plans use <see cref="RulesAt"/>.</summary>
         public BiomeRules rules = BiomeRules.Offices();
         public string biomeName = "Offices";

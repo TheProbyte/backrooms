@@ -44,6 +44,11 @@ namespace Backrooms.Audio
 
         // ---- Live inputs from gameplay ----
         [System.NonSerialized] public float handlingMotion;   // 0..1, from walking speed
+        /// <summary>0..1: the recording breaking up (a noclip door): the sound cuts out in bursts and crackles.</summary>
+        [System.NonSerialized] public float dropout;
+        float _drop, _holdV;
+        int _holdN;
+        float _gate = 1f;
         int _stepRequests;                                    // incremented by the main thread per footstep
         public void HandlingImpulse() { System.Threading.Interlocked.Increment(ref _stepRequests); }
 
@@ -125,6 +130,7 @@ namespace Backrooms.Audio
             float ratio = 1f + 3f * Mathf.Clamp01(compression), thr = -20f;
             float drive = 1f + 2.5f * Mathf.Clamp01(saturation);
             float rumK = 1f - Mathf.Exp(-dt * 6.2831853f * 90f);
+            float dropT = Mathf.Clamp01(dropout), dropK = 1f - Mathf.Exp(-dt / 0.01f);
 
             int steps = _stepRequests;
             if (steps != _stepsSeen) { _stepsSeen = steps; _thumpT = 0f; _thumpAmp = 0.7f + 0.3f * Mathf.Abs(Rand()); }
@@ -194,6 +200,22 @@ namespace Backrooms.Audio
                 // Crossfade processed / unprocessed, then output volume and a safety clip.
                 float outL = (inL + (l - inL) * _mix) * _vol;
                 float outR = (inR + (r - inR) * _mix) * _vol;
+                // Dropout: the signal is gated off in bursts, crushed to a few levels, and digital crackle comes through.
+                _drop += (dropT - _drop) * dropK;
+                if (_drop > 0.001f)
+                {
+                    if (--_holdN <= 0)
+                    {
+                        _holdN = 40 + (int)(Mathf.Abs(Rand()) * 1800f);
+                        _gate = Mathf.Abs(Rand()) > _drop * 0.85f ? 1f : 0f;
+                        _holdV = Rand();
+                    }
+                    if ((_holdN & 7) == 0) _holdV = Rand();
+                    float crushL = Mathf.Round(outL * 6f) / 6f, crushR = Mathf.Round(outR * 6f) / 6f;
+                    float crackle = _holdV * 0.05f * (Mathf.Abs(Rand()) < 0.02f ? 4f : 1f);
+                    outL = Mathf.Lerp(outL, crushL * _gate + crackle, _drop);
+                    outR = Mathf.Lerp(outR, crushR * _gate + crackle, _drop);
+                }
                 outL = Mathf.Clamp(outL, -0.99f, 0.99f); outR = Mathf.Clamp(outR, -0.99f, 0.99f);
                 _sumOut += outL * outL + outR * outR;
 

@@ -9,6 +9,24 @@ namespace Backrooms.Interaction
     /// physics object; it freezes while the floor under it is not loaded, so it never falls out of the world. Held,
     /// it follows the hand and the player's left mouse button is its "use".
     /// </summary>
+    /// <summary>What the hand holding an item sees and does this frame (see <see cref="WorldItem.HoldUpdate"/>).</summary>
+    public struct HoldInput
+    {
+        public bool use, pressed, released;      // left mouse: held, went down, came up this frame
+        public bool secondary;                   // right mouse went down this frame
+        public bool hit;                         // the view hits something within 6 m (not the player or the item)
+        public RaycastHit hitInfo;
+        public Vector3 eye, aimDir, aimAt;       // aimAt: the hit point, or 2 m ahead
+        public float dt;
+        public PropGrabber hand;
+    }
+
+    /// <summary>Something the empty hand can click (a plug in a socket): asked before picking anything up.</summary>
+    public interface IHandUse
+    {
+        bool HandUse(PropGrabber hand);
+    }
+
     [RequireComponent(typeof(Rigidbody))]
     public abstract class WorldItem : MonoBehaviour
     {
@@ -33,9 +51,13 @@ namespace Backrooms.Interaction
             _colliders = GetComponentsInChildren<Collider>();
         }
 
+        /// <summary>Held in place by something other than the hand (a plug in a socket): stays kinematic.</summary>
+        protected virtual bool Pinned => false;
+
         protected virtual void FixedUpdate()
         {
             if (Held) return;
+            if (Pinned) { if (!Body.isKinematic) Body.isKinematic = true; return; }
             // Frozen while the ground under it is unloaded (it would fall forever), awake otherwise.
             if (!_streamer) _streamer = FindAnyObjectByType<WorldStreamer>();
             bool ground = !_streamer || _streamer.LayoutAt(WorldStreamer.ChunkOf(transform.position)) != null;
@@ -50,6 +72,7 @@ namespace Backrooms.Interaction
             Body.interpolation = held ? RigidbodyInterpolation.None : RigidbodyInterpolation.Interpolate;
             foreach (var c in _colliders) if (c) c.enabled = !held;
             foreach (var r in GetComponentsInChildren<Renderer>()) r.shadowCastingMode = held ? ShadowCastingMode.Off : ShadowCastingMode.On;
+            if (held && lootId != 0) { Saves.LootRegistry.Take(lootId); lootId = 0; transform.SetParent(null, true); }   // taken from its room: a free item from now on
             if (held) OnPickedUp(); else OnDropped();
         }
 
@@ -58,6 +81,25 @@ namespace Backrooms.Interaction
 
         /// <summary>Every frame while held. use: the button is down. aimFrom/aimAt: the eye and what it looks at.</summary>
         public virtual void Hold(bool use, Vector3 aimAt, float dt) { }
+
+        /// <summary>Every frame while held, with everything the hand knows (by default calls <see cref="Hold"/>).</summary>
+        public virtual void HoldUpdate(in HoldInput input) => Hold(input.use, input.aimAt, input.dt);
+
+        /// <summary>A pose of its own for the item while in use (chalk on the wall), with a weight 0..1; 0: the usual hold pose.</summary>
+        public virtual float UsePose(out Vector3 position, out Quaternion rotation) { position = default; rotation = default; return 0f; }
+
+        /// <summary>Q sets it down upright where you look (a lamp) instead of tossing it.</summary>
+        public virtual bool PlaceOnDrop => false;
+
+        /// <summary>Called after the hand let go of it by setting it down (PlaceOnDrop).</summary>
+        public virtual void OnPlaced() { }
+
+        /// <summary>Extra state for the world save (paint left, length of chalk, a lamp's switch...).</summary>
+        public virtual float Amount { get => 1f; set { } }
+
+        /// <summary>Spawned in a special room and not yet taken: it belongs to its chunk and is not saved on its own.</summary>
+        [System.NonSerialized] public ulong lootId;
+        public bool IsLoot => lootId != 0;
 
         /// <summary>Use pose blend 0..1 (the hand raises the item while using it).</summary>
         public virtual float UseBlend => 0f;

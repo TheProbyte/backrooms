@@ -42,15 +42,17 @@ namespace Backrooms.Generation
         [Tooltip("Height between storeys, metres (above the tallest ceiling).")] public float storeyPitch = 9f;
 
         [Header("Crawl holes")]
-        [Tooltip("Pairs of crawl holes per district (fractions are a chance of one more). Crawl into one, come out of the other.")]
+        [Tooltip("Crawl spaces per district are twice this (fractions are a chance of one more). Each vent leads to a small special room above the ceiling.")]
         public float crawlPortals = 1.5f;
+        [Tooltip("Noclip doors: one per square of this many districts (0 = none). Each leads into the Poolrooms.")]
+        public int noclipDoorSpacing = 4;
         [Tooltip("Far crawl holes: one link per square of this many districts (0 = none). The two ends are far apart (about " +
                  "(spacing - 3) x 81 m), so each leads somewhere well outside the load radius; see FarLinks.")]
         public int farLinkSpacing = 6;
 
         /// <summary>Bump when generation code changes how a seed plays out.
         /// 2: fixture spacing, strips, open plan. 3: arches. 4: zones, landmarks, districts, storeys.</summary>
-        public const int Version = 12;   // 10: far crawl-hole links. 11: pinned, sealed zones (the Poolrooms). 12: Poolrooms arches, curves, spiral stairs, second floor
+        public const int Version = 13;   // 10: far crawl-hole links. 11: pinned, sealed zones (the Poolrooms). 12: Poolrooms arches, curves, spiral stairs, second floor. 13: crawl spaces to special rooms, noclip doors
 
         /// <summary>District size in chunks and cells.</summary>
         public const int DistrictChunks = 4, DistrictCells = DistrictChunks * OfficeBiome.ChunkCells;

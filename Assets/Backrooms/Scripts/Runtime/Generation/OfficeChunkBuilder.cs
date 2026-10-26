@@ -49,6 +49,8 @@ namespace Backrooms.Generation
         public OfficeLayout Layout => _L;
         public readonly List<LightSource> lights = new List<LightSource>();
         public readonly List<Doorway> doorways = new List<Doorway>();
+        /// <summary>Wall outlets (world position of the plate's face, its normal): sockets for plugs (Interaction.ChunkOutlets).</summary>
+        public readonly List<(Vector3 pos, Vector3 normal)> outlets = new List<(Vector3, Vector3)>();
         readonly List<(MeshWriter w, bool dome)> faultyLenses = new List<(MeshWriter, bool)>();
 
         /// <summary>After Instantiate: renderers whose emission the light manager animates.</summary>
@@ -121,7 +123,7 @@ namespace Backrooms.Generation
         public void BuildData(OfficeLayout layout, OfficeLayout[] neighbours)
         {
             _neighbours = neighbours;
-            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear(); _movables.Clear(); doorways.Clear();
+            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear(); _movables.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
             _capsules.Clear(); poolMap = null;
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
@@ -131,6 +133,7 @@ namespace Backrooms.Generation
             _cellMask = LightLayers.CellMasks(_L, Neighbour);
             if (Pool) { for (int x = 0; x < _L.N; x++) for (int z = 0; z < _L.N; z++) _cellMask[x, z] = 1u; }   // no fixture lights here
             IndexHoles();
+            IndexNoclip();
             if (Pool) { BuildPoolData(); return; }
             BuildFloorAndCeiling();
             BuildCeilingGrid();
@@ -142,6 +145,8 @@ namespace Backrooms.Generation
             BuildShadowProxies();
             BuildDoorways();
             BuildPortals();
+            BuildNoclipDoors();
+            BuildCrawlSpaces();
             BuildFixtures(lights);
             BuildPlates();
             BuildProps(lights);
@@ -267,6 +272,9 @@ namespace Backrooms.Generation
             }
 
             InstantiatePortals(root.transform);
+            InstantiateCrawlSpaces(root.transform);
+            InstantiateNoclipDoors(root.transform);
+            if (outlets.Count > 0) root.AddComponent<Interaction.ChunkOutlets>().Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), outlets, true);
             if (poolMap != null) root.AddComponent<PoolChunk>().Set(_L.coord, _L.storey, poolMap);
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
@@ -604,7 +612,7 @@ namespace Backrooms.Generation
                 int start = -1;
                 for (int z = 0; z <= N; z++)
                 {
-                    bool solid = z < N && _L.vEdges[x, z] == EdgeKind.Wall && !HoleAt(true, x, z, out _);
+                    bool solid = z < N && _L.vEdges[x, z] == EdgeKind.Wall && !HoleAt(true, x, z, out _) && !NoclipAt(true, x, z);
                     if (solid && start < 0) start = z;
                     if (!solid && start >= 0)
                     {
@@ -622,7 +630,7 @@ namespace Backrooms.Generation
                 int start = -1;
                 for (int x = 0; x <= N; x++)
                 {
-                    bool solid = x < N && _L.hEdges[x, z] == EdgeKind.Wall && !HoleAt(false, z, x, out _);
+                    bool solid = x < N && _L.hEdges[x, z] == EdgeKind.Wall && !HoleAt(false, z, x, out _) && !NoclipAt(false, z, x);
                     if (solid && start < 0) start = x;
                     if (!solid && start >= 0)
                     {
@@ -988,6 +996,7 @@ namespace Backrooms.Generation
                 Vector3 right = Vector3.Cross(Vector3.up, n);   // horizontal axis on the wall
                 float hw = 0.035f, hh = 0.0575f;
                 Vector3 f = pos + n * depth;
+                if (!p.isSwitch) outlets.Add((_origin + f, n));
                 // Atlas: left half outlet, right half switch.
                 float u0 = p.isSwitch ? 0.5f : 0f, u1 = u0 + 0.5f;
                 var w = W(_a.wallPlate, p.roomColor);

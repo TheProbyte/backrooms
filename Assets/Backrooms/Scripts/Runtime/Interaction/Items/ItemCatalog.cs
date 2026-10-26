@@ -44,6 +44,11 @@ namespace Backrooms.Interaction
                 name = "Spray paint (red)", category = "ITEMS", clearance = 0.75f,
                 spawn = (p, r, preview) => SprayCan.Create(p, r).gameObject,
             });
+            list.Add(new Entry { name = "Chalk", category = "ITEMS", clearance = 0.7f, spawn = (p, r, pv) => Chalk.Create(p + Vector3.up * 0.01f, r * Quaternion.Euler(0f, 90f, 0f)).gameObject });
+            list.Add(new Entry { name = "Blue tape", category = "ITEMS", clearance = 0.75f, spawn = (p, r, pv) => TapeRoll.Create(p, r).gameObject });
+            list.Add(new Entry { name = "Desk lamp", category = "ITEMS", clearance = 0.9f, spawn = (p, r, pv) => DeskLamp.Create(p, r).gameObject });
+            list.Add(new Entry { name = "Extension cord", category = "ITEMS", clearance = 0.9f, spawn = (p, r, pv) => CordBox.Create(p, r).gameObject });
+            list.Add(new Entry { name = "Rubber chicken", category = "ITEMS", clearance = 0.8f, spawn = (p, r, pv) => RubberChicken.Create(p + Vector3.up * 0.08f, r * Quaternion.Euler(0f, 90f, 0f)).gameObject });
             if (!a) return list;
 
             uint MaskAt(Vector3 p)

@@ -36,6 +36,12 @@ namespace Backrooms.Camcorder
         static readonly int ID6 = Shader.PropertyToID("_CamVideo6");
         static readonly int ID7 = Shader.PropertyToID("_CamVideo7");
         static readonly int ID8 = Shader.PropertyToID("_CamVideo8");
+        static readonly int ID9 = Shader.PropertyToID("_CamVideo9");
+
+        /// <summary>The tape breaking up (noclip doors): 0 clean .. 1 tracking lost, tearing, rolling. Set by NoclipTravel.</summary>
+        public static float Glitch;
+        /// <summary>How far the picture has rolled (0..1 of the frame) while the glitch lasts.</summary>
+        public static float GlitchRoll;
 
         /// <summary>Set for repeatable stills: no handheld motion, exposure/focus locked, tape effects that vary with time stopped.</summary>
         [System.NonSerialized] public bool freezeForStills;
@@ -74,6 +80,7 @@ namespace Backrooms.Camcorder
 
         void OnDisable()
         {
+            Shader.SetGlobalVector(ID9, Vector4.zero);
             Shader.SetGlobalVector(ID3, Vector4.zero); // disable video pass in edit mode / other scenes
         }
 
@@ -170,6 +177,7 @@ namespace Backrooms.Camcorder
             // Frame index re-seeds the noise every recorded frame; the noise grid follows the recording resolution (720-line sensor otherwise); 480 video lines.
             Shader.SetGlobalVector(ID4, new Vector4(frameIndex, s.videoLines > 0 ? s.videoLines : 720f, 480f, s.grainSize));
             Shader.SetGlobalVector(ID8, new Vector4(s.videoLines, s.chromaDetail, s.lineDoubling, 0f));
+            Shader.SetGlobalVector(ID9, new Vector4(Mathf.Clamp01(Glitch), GlitchRoll, Random.value, 0f));
             // OSD composite: curvature of the viewfinder overlay, and whether the OSD texture is in use.
             Shader.SetGlobalVector(ID5, new Vector4(s.osdCurvature, osd && osd.Curved ? 1f : 0f, 0f, 0f));
 

@@ -260,7 +260,7 @@ namespace Backrooms
             if (_holdForGround > 0f)
             {
                 _holdForGround -= Time.deltaTime;
-                if (Physics.Raycast(transform.position + Vector3.up * 0.6f, Vector3.down, 1.2f, ~0, QueryTriggerInteraction.Ignore)) _holdForGround = 0f;
+                if (GroundBelow()) _holdForGround = 0f;
                 else { _verticalVelocity = 0f; PlanarVelocity = Vector3.zero; return; }
             }
 
@@ -307,6 +307,16 @@ namespace Backrooms
             }
             if (grounded) _airMinVy = 0f;
             _wasGrounded = grounded;
+        }
+
+        readonly RaycastHit[] _groundHits = new RaycastHit[8];
+
+        /// <summary>Is there floor under the player (not the player's own capsule)?</summary>
+        bool GroundBelow()
+        {
+            int n = Physics.RaycastNonAlloc(transform.position + Vector3.up * 0.6f, Vector3.down, _groundHits, 1.2f, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++) if (!_groundHits[i].collider.transform.IsChildOf(transform)) return true;
+            return false;
         }
 
         bool SnapToGround(float maxDrop)

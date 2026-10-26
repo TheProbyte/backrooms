@@ -54,6 +54,7 @@ namespace Backrooms.Generation
                 var d = DistrictKey(k);
                 var S = Slice(District(d), k);
                 ResolveFarLinks(S, new Vector2Int(d.x, d.z), o => District(new Vector3Int(o.x, d.y, o.y)));
+                ResolveNoclipDoors(S, o => District(new Vector3Int(o.x, d.y, o.y)));
                 return S;
             })).Value;
 
@@ -64,6 +65,7 @@ namespace Backrooms.Generation
             var d = DistrictKey(c);
             var S = Slice(DistrictGenerator.Generate(Settings, Seed, new Vector2Int(d.x, d.z), d.y), c);
             ResolveFarLinks(S, new Vector2Int(d.x, d.z), o => DistrictGenerator.Generate(Settings, Seed, o, d.y));
+            ResolveNoclipDoors(S, o => DistrictGenerator.Generate(Settings, Seed, o, d.y));
             return S;
         }
 
@@ -85,6 +87,27 @@ namespace Backrooms.Generation
                         if (q.far && q.partnerDistrict == district) { p.partnerPosition = q.position; p.partnerNormal = q.normal; found = true; break; }
                 if (found) chunk.portals[i] = p;
                 else chunk.portals.RemoveAt(i);
+            }
+        }
+
+        /// <summary>
+        /// Noclip doors in a chunk (see NoclipDoors): a Level 0 door's partner is the arrival door of its Poolrooms
+        /// district (only that district's plan is generated). A door whose partner could not be placed is removed, so its
+        /// wall stays an ordinary wall. Arrival doors lead back to wherever the player came from (decided at runtime).
+        /// </summary>
+        static void ResolveNoclipDoors(OfficeLayout chunk, Func<Vector2Int, OfficeLayout> plan)
+        {
+            for (int i = chunk.noclipDoors.Count - 1; i >= 0; i--)
+            {
+                var door = chunk.noclipDoors[i];
+                if (door.arrival) continue;
+                var other = plan(door.partnerDistrict);
+                bool found = false;
+                if (other != null)
+                    foreach (var q in other.noclipDoors)
+                        if (q.arrival) { door.partnerPosition = q.position; door.partnerNormal = q.normal; door.resolved = found = true; break; }
+                if (found) chunk.noclipDoors[i] = door;
+                else chunk.noclipDoors.RemoveAt(i);
             }
         }
 
@@ -185,7 +208,14 @@ namespace Backrooms.Generation
             foreach (var l in plan.landmarks)
                 if (l.rect.Overlaps(chunkRect)) S.landmarks.Add(l);
             foreach (var p in plan.portals)
-                if (Mine(p.cell.x, p.cell.y)) { var g = p; g.cell -= new Vector2Int(ox, oz); S.portals.Add(g); }
+                if (Mine(p.cell.x, p.cell.y))
+                {
+                    var g = p; var off = new Vector2Int(ox, oz);
+                    g.cell -= off; g.room.position -= off;
+                    S.portals.Add(g);
+                }
+            foreach (var nd in plan.noclipDoors)
+                if (Mine(nd.cell.x, nd.cell.y)) { var g = nd; g.cell -= new Vector2Int(ox, oz); S.noclipDoors.Add(g); }
             return S;
         }
 
