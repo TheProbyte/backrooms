@@ -168,6 +168,52 @@ namespace Backrooms.Interaction
             _busy = false;
         }
 
+        /// <summary>
+        /// A thrown (or falling) item goes through a noclip door like the player does: as it reaches the wall inside the
+        /// opening, it is moved to the same place at the other door's face, its motion turned with it (with a faint
+        /// crackle where it went in). Called from <see cref="WorldItem"/>'s FixedUpdate. Items with a cord out (a plug,
+        /// a lamp or extension cord in use) stay on this side: the cord would stretch between zones.
+        /// </summary>
+        public static void ItemStep(WorldItem item)
+        {
+            var inst = Instance;
+            if (!inst || !item || item.Held) return;
+            var body = item.Body;
+            Vector3 v = body.linearVelocity;
+            if (v.sqrMagnitude < 0.2f) return;
+            if (item is Plug || (item is PowerUser pu && pu.Plug)) return;
+            Vector3 c = body.worldCenterOfMass;
+            float T = OfficeBiome.WallThickness;
+            foreach (var d in NoclipPassage.All)
+            {
+                if (!d || (c - d.centre).sqrMagnitude > 16f) continue;
+                float s = d.Distance(c, out bool inOpening, -0.04f);
+                if (!inOpening) continue;
+                float vn = Vector3.Dot(v, d.normal);
+                if (s * vn >= 0f) continue;                                     // moving away from the wall
+                float extent = 0.05f;
+                foreach (var col in item.GetComponentsInChildren<Collider>()) if (col.enabled && !col.isTrigger) extent = Mathf.Max(extent, Vector3.Dot(col.bounds.extents, new Vector3(Mathf.Abs(d.normal.x), Mathf.Abs(d.normal.y), Mathf.Abs(d.normal.z))));
+                float reach = T * 0.5f + extent + Mathf.Abs(vn) * Time.fixedDeltaTime * 1.5f + 0.02f;
+                if (Mathf.Abs(s) > reach) continue;
+                if (!inst.Destination(d, out var to, out var toNormal)) return;
+                Vector3 travel = -d.normal * Mathf.Sign(s);
+                Quaternion turn = Quaternion.AngleAxis(Vector3.SignedAngle(travel, toNormal, Vector3.up), Vector3.up);
+                Vector3 r1 = Vector3.Cross(Vector3.up, travel), r2 = Vector3.Cross(Vector3.up, toNormal);
+                float lateral = Mathf.Clamp(Vector3.Dot(c - d.centre, r1), -d.Width * 0.5f + extent, d.Width * 0.5f - extent);
+                Vector3 cOut = to + toNormal * (T * 0.5f + extent + 0.03f) + r2 * lateral + Vector3.up * (c.y - d.centre.y);
+                AudioSource.PlayClipAtPoint(SoundBank.NoclipCrackle, c, 0.35f);
+                // Turn it about its centre and move it across.
+                Vector3 pivotOffset = body.position - c;
+                Quaternion rot = turn * body.rotation;
+                Vector3 pos = cOut + turn * pivotOffset;
+                body.position = pos; body.rotation = rot;
+                item.transform.SetPositionAndRotation(pos, rot);
+                body.linearVelocity = turn * v;
+                body.angularVelocity = turn * body.angularVelocity;
+                return;
+            }
+        }
+
         /// <summary>For the F5 debug places: a noclip door's face to stand in front of.</summary>
         public static void FaceOf(NoclipPassage d, out Vector3 standAt, out Vector3 lookAt)
         {

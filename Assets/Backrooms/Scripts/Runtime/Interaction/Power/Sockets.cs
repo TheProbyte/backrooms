@@ -59,6 +59,9 @@ namespace Backrooms.Interaction
 
         public static int WallCount { get { int n = 0; foreach (var l in s_wall.Values) n += l.Count; return n; } }
 
+        /// <summary>Every socket in the chunks around a point, and every extension cord's.</summary>
+        public static IEnumerable<Socket> Around(Vector3 p) => Near(p);
+
         static IEnumerable<Socket> Near(Vector3 p)
         {
             var c = WorldStreamer.ChunkOf(p);

@@ -60,7 +60,9 @@ Shader "Backrooms/PoolLit"
                 float ao = 1.0, aoDirect = 1.0;
                 #if defined(_SCREEN_SPACE_OCCLUSION)
                     AmbientOcclusionFactor aof = GetScreenSpaceAmbientOcclusion(GetNormalizedScreenSpaceUV(i.positionCS));
-                    ao = aof.indirectAmbientOcclusion; aoDirect = aof.directAmbientOcclusion;
+                    // The Poolrooms are lit mostly by soft bounce, which made full-strength SSAO draw hard dark bands at
+                    // every floor-wall join and in corners: a gentle share of it on the bounce, none on the sun.
+                    ao = lerp(1.0, aof.indirectAmbientOcclusion, 0.38); aoDirect = 1.0;
                 #endif
                 float sun = PoolSunVisibility(i.positionWS + N * 0.02);
                 float NdotL = saturate(dot(N, POOL_SUN));

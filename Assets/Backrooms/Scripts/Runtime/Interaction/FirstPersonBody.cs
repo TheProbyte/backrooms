@@ -31,10 +31,9 @@ namespace Backrooms.Interaction
         Vector3 _wristToGrip;                              // grip point in the hand's frame (fingers, back, side)
         readonly List<(Transform t, Quaternion rest, Vector3 axis, float weight, string finger)> _fingerJoints = new List<(Transform, Quaternion, Vector3, float, string)>();
         Vector3 _wristToTip;                               // index fingertip in the hand's frame (side, back, fingers)
-        Vector3 _thighAxisL, _thighAxisR;
-        Quaternion _thighRestL, _thighRestR, _shinRestL, _shinRestR, _torsoRest;
-        Vector3 _legSwingAxisL, _legSwingAxisR, _shinAxisL, _shinAxisR, _torsoBendAxis;
-        float _walkPhase, _walkAmount;
+        Quaternion _torsoRest;
+        Vector3 _torsoBendAxis;
+        float _walkAmount;
         float _hipsHeight = 0.93f;
         Vector3 _elbowSmoothed;
         Renderer[] _armRenderers;
@@ -264,47 +263,154 @@ namespace Backrooms.Interaction
         }
 
         // ---------------- Body ----------------
+        //
+        // The legs are placed, not swung: each foot has a target on the ground from a walk cycle that follows the actual
+        // motion in the body's frame (forwards, backwards, sideways, any mix), and a two-bone IK puts the hip, knee and
+        // ankle on it with the knee forward. The hips go as low as the eye is (after what bending the torso accounts for),
+        // so crouching, stooping and getting up or down bend the knees, and the body is hidden while the eye is too low for
+        // a person to be standing under it (crawling, and the start of getting up from it).
+
+        class Leg
+        {
+            public Transform thigh, shin, foot;
+            public float upper, lower, ankle, side;      // lengths, ankle height over the sole, hip offset to the side
+            public Vector3 thighAxis, thighFront, shinAxis, shinFront, footFwd, footUp;   // rest axes, local to each bone
+            public float phase;                          // 0 or 0.5: half a cycle apart
+        }
+        Leg _legA, _legB;
+        Vector3 _torsoUpAxis;
+        float _gait, _air;
+        Vector2 _moveLocal;
+        const float HideBelowEye = 0.82f, TorsoLength = 0.65f, StanceShare = 0.6f;
+
+        Leg MeasureLeg(Transform thigh, Transform shin, Transform foot, float phase)
+        {
+            if (!thigh || !shin) return null;
+            if (!foot) foot = shin;
+            Vector3 fwd = transform.forward, up = transform.up;
+            var g = new Leg { thigh = thigh, shin = shin, foot = foot, phase = phase };
+            g.upper = Vector3.Distance(thigh.position, shin.position);
+            g.lower = foot != shin ? Vector3.Distance(shin.position, foot.position) : 0.42f;
+            g.ankle = foot != shin ? Mathf.Clamp(Vector3.Dot(foot.position - _body.position, up), 0.03f, 0.15f) : 0.08f;
+            g.side = Vector3.Dot(thigh.position - _body.position, transform.right);
+            g.thighAxis = thigh.InverseTransformDirection((shin.position - thigh.position).normalized);
+            g.thighFront = thigh.InverseTransformDirection(fwd);
+            g.shinAxis = shin.InverseTransformDirection(foot != shin ? (foot.position - shin.position).normalized : -up);
+            g.shinFront = shin.InverseTransformDirection(fwd);
+            g.footFwd = foot.InverseTransformDirection(fwd);
+            g.footUp = foot.InverseTransformDirection(up);
+            return g;
+        }
 
         void MeasureBody()
         {
             _hipsHeight = Vector3.Dot(_hips.position - _body.position, transform.up);
             _torsoRest = _torso.localRotation;
-            _thighRestL = _thighL.localRotation; _thighRestR = _thighR.localRotation;
-            _shinRestL = _shinL.localRotation; _shinRestR = _shinR.localRotation;
-            // Legs swing about the body's side axis.
-            Vector3 side = _body.right;
-            _legSwingAxisL = _thighL.InverseTransformDirection(side); _legSwingAxisR = _thighR.InverseTransformDirection(side);
-            _shinAxisL = _shinL.InverseTransformDirection(side); _shinAxisR = _shinR.InverseTransformDirection(side);
-            _torsoBendAxis = _torso.InverseTransformDirection(side);
+            _torsoBendAxis = _torso.InverseTransformDirection(transform.right);
+            _torsoUpAxis = _torso.InverseTransformDirection(transform.up);
+            _legA = MeasureLeg(_thighL, _shinL, Find(_body, "FootL"), 0f);
+            _legB = MeasureLeg(_thighR, _shinR, Find(_body, "FootR"), 0.5f);
         }
 
         void UpdateBody()
         {
             if (!_body) return;
-            bool visible = _player.CurrentStance != CamcorderPlayerController.Stance.Crawl && !_player.noclip;
+            float eye = _player.Eye;
+            bool visible = !_player.noclip && eye > HideBelowEye;
             if (_body.gameObject.activeSelf != visible) _body.gameObject.SetActive(visible);
             if (!visible) return;
-            _body.localPosition = new Vector3(0f, 0f, -bodyBack);
+            float dt = Mathf.Max(Time.deltaTime, 1e-4f);
+            Vector3 right = transform.right, fwd = transform.forward, up = transform.up;
 
-            // Walk cycle from the distance actually covered.
-            float speed = _player.PlanarVelocity.magnitude;
-            float fwd = Vector3.Dot(_player.PlanarVelocity, transform.forward) >= -0.05f ? 1f : -1f;
-            _walkPhase += speed * Time.deltaTime / 0.7f * Mathf.PI * fwd;
-            _walkAmount = Mathf.MoveTowards(_walkAmount, Mathf.Clamp01(speed / 1.2f), Time.deltaTime * 3f);
-            float swing = Mathf.Sin(_walkPhase) * 26f * _walkAmount;
-            bool crouch = _player.CurrentStance == CamcorderPlayerController.Stance.Crouch;
-            float squat = crouch ? 1f : Mathf.Clamp01(_player.stoop / 0.8f) * 0.6f;      // knees bend for a deep stoop
-            _thighL.localRotation = _thighRestL * Quaternion.AngleAxis(-swing - squat * 70f, _legSwingAxisL);
-            _thighR.localRotation = _thighRestR * Quaternion.AngleAxis(swing - squat * 70f, _legSwingAxisR);
-            float kneeL = Mathf.Max(0f, Mathf.Sin(_walkPhase + 1.2f)) * 35f * _walkAmount + squat * 100f;
-            float kneeR = Mathf.Max(0f, Mathf.Sin(_walkPhase + Mathf.PI + 1.2f)) * 35f * _walkAmount + squat * 100f;
-            _shinL.localRotation = _shinRestL * Quaternion.AngleAxis(kneeL, _shinAxisL);
-            _shinR.localRotation = _shinRestR * Quaternion.AngleAxis(kneeR, _shinAxisR);
-            // Hips drop for a squat; the torso leans into a stoop.
-            float hipsY = Mathf.Lerp(_hipsHeight, _hipsHeight - 0.31f, squat);
-            _hips.position = _body.position + transform.up * hipsY;
-            float bend = Mathf.Clamp(_player.stoop, 0f, 0.8f) * 55f + (crouch ? 15f : 0f);
-            _torso.localRotation = _torsoRest * Quaternion.AngleAxis(-bend, _torsoBendAxis);
+            // Motion in the body's frame (x to the side, y forward), smoothed a little so the cycle does not twitch.
+            Vector3 v = _player.PlanarVelocity;
+            var local = new Vector2(Vector3.Dot(v, right), Vector3.Dot(v, fwd));
+            _moveLocal = Vector2.Lerp(_moveLocal, local, 1f - Mathf.Exp(-dt / 0.1f));
+            float speed = _moveLocal.magnitude;
+            bool grounded = _player.IsGrounded;
+            _air = Mathf.MoveTowards(_air, grounded ? 0f : 1f, dt * 6f);
+            // A step gets longer with speed; the cycle (two steps) advances with the distance covered.
+            float step = Mathf.Clamp(0.3f + 0.22f * speed, 0.3f, 1.1f);
+            _gait = Mathf.Repeat(_gait + speed * dt / (2f * step), 1f);
+            _walkAmount = Mathf.MoveTowards(_walkAmount, grounded ? Mathf.Clamp01(speed / 0.5f) : 0f, dt * 4f);
+            Vector2 dir = speed > 0.03f ? _moveLocal / speed : Vector2.up;
+
+            // How far the eye is below standing: leaning the torso forward gives some (stooping to reach, and a lean that
+            // comes with crouching), the knees the rest.
+            float low = Mathf.Clamp01((_player.standEye - eye) / Mathf.Max(0.1f, _player.standEye - _player.crouchEye));
+            float bend = Mathf.Clamp(_player.stoop, 0f, 0.8f) * 55f + low * 30f;
+            float torsoDrop = TorsoLength * (1f - Mathf.Cos(Mathf.Min(bend, 80f) * Mathf.Deg2Rad));
+            float drop = Mathf.Clamp(_player.standEye - eye - torsoDrop, 0f, 0.5f);
+            float squat = drop / 0.5f;
+            // The eye stays where it is: as the torso leans forward, the body goes back under it (or the shoulders and
+            // neck would come up in front of the lens).
+            _body.localPosition = new Vector3(0f, 0f, -bodyBack - TorsoLength * 0.9f * Mathf.Sin(Mathf.Min(bend, 80f) * Mathf.Deg2Rad));
+            // Hips: down with the squat (and back, for balance), a bob through each step, a sway over the standing foot.
+            float bob = -0.022f * Mathf.Cos(_gait * 4f * Mathf.PI) * _walkAmount;
+            float sway = (_legA != null ? Mathf.Sign(_legA.side) : 1f) * 0.012f * Mathf.Cos(2f * Mathf.PI * (_gait - StanceShare * 0.5f)) * _walkAmount;
+            _hips.position = _body.position + up * (_hipsHeight - drop + bob) + right * sway - fwd * (squat * 0.12f);
+            // Torso: the stoop, a lean into a crouch, a little twist against the stride.
+            float lean = bend + Mathf.Clamp(_moveLocal.y, -1f, 3f) * 2.5f;           // forward (a little more walking faster)
+            float twist = Mathf.Sin(_gait * 2f * Mathf.PI) * 4f * _walkAmount * Mathf.Clamp(dir.y, -1f, 1f);
+            _torso.localRotation = _torsoRest * Quaternion.AngleAxis(lean, _torsoBendAxis) * Quaternion.AngleAxis(twist, _torsoUpAxis);
+
+            foreach (var g in new[] { _legA, _legB })
+            {
+                if (g == null) continue;
+                float p = Mathf.Repeat(_gait + g.phase, 1f);
+                float x, lift = 0f, pitch = 0f;
+                if (p < StanceShare)
+                {
+                    // On the ground: the foot stays put while the body goes over it (it moves back in the body's frame);
+                    // the heel comes up at the end, ready to push off.
+                    x = Mathf.Lerp(0.5f, -0.5f, p / StanceShare);
+                    pitch = 22f * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(StanceShare * 0.65f, StanceShare, p));
+                }
+                else
+                {
+                    // In the air: forward to the next step, lifted in the middle, toes up as it reaches out.
+                    float sw = (p - StanceShare) / (1f - StanceShare);
+                    x = Mathf.Lerp(-0.5f, 0.5f, Mathf.SmoothStep(0f, 1f, sw));
+                    lift = Mathf.Sin(sw * Mathf.PI);
+                    pitch = Mathf.Lerp(22f, -12f, Mathf.SmoothStep(0f, 1f, sw));
+                }
+                float k = _walkAmount;
+                Vector2 off = dir * (x * step * k);
+                off.x *= 0.6f;                                                       // sideways steps are shorter
+                float lateral = g.side + off.x;
+                if (lateral * Mathf.Sign(g.side) < 0.05f) lateral = Mathf.Sign(g.side) * 0.05f;   // feet never cross
+                lateral += Mathf.Sign(g.side) * squat * 0.06f;                                    // knees apart in a squat
+                float liftH = Mathf.Lerp(0.07f, 0.13f, Mathf.InverseLerp(1.5f, 3.6f, speed));
+                Vector3 hip = g.thigh.position;
+                Vector3 sole = _body.position + right * lateral + fwd * (off.y + squat * 0.04f) + up * (lift * liftH * k);
+                pitch *= k;
+                // In the air (jumping, falling): the feet hang under the hips, knees a little bent.
+                Vector3 hang = hip - up * ((g.upper + g.lower) * 0.9f + g.ankle) + fwd * 0.06f;
+                sole = Vector3.Lerp(sole, hang, _air);
+                Vector3 footFwd = Quaternion.AngleAxis(pitch, right) * fwd;
+                // A raised heel lifts the ankle: it turns about the ball of the foot.
+                Vector3 ankle = sole + up * g.ankle + up * (Mathf.Sin(Mathf.Max(0f, pitch) * Mathf.Deg2Rad) * 0.11f);
+                SolveLeg(g, hip, ankle, fwd, footFwd, up);
+            }
+        }
+
+        /// <summary>Two-bone IK for a leg: hip to ankle with the knee pointing forward, then the foot's own angle.</summary>
+        static void SolveLeg(Leg g, Vector3 hip, Vector3 ankleTarget, Vector3 front, Vector3 footFwd, Vector3 up)
+        {
+            Vector3 d = ankleTarget - hip;
+            float a = g.upper, b = g.lower;
+            float len = Mathf.Clamp(d.magnitude, Mathf.Abs(a - b) + 0.05f, (a + b) * 0.999f);
+            Vector3 dirn = d.sqrMagnitude > 1e-8f ? d.normalized : -up;
+            Vector3 pole = Vector3.ProjectOnPlane(front, dirn);
+            pole = pole.sqrMagnitude > 1e-6f ? pole.normalized : Vector3.ProjectOnPlane(up, dirn).normalized;
+            float cosA = Mathf.Clamp((a * a + len * len - b * b) / (2f * a * len), -1f, 1f);
+            Vector3 knee = hip + dirn * (cosA * a) + pole * (Mathf.Sqrt(1f - cosA * cosA) * a);
+            Vector3 ankle = hip + dirn * len;
+            Orient(g.thigh, g.thighAxis, g.thighFront, knee - hip, pole);
+            if (g.shin != g.foot || g.foot == null)
+                Orient(g.shin, g.shinAxis, g.shinFront, ankle - knee, Vector3.ProjectOnPlane(front, ankle - knee));
+            if (g.foot && g.foot != g.shin)
+                Orient(g.foot, g.footFwd, g.footUp, footFwd, Vector3.ProjectOnPlane(up, footFwd));
         }
     }
 }

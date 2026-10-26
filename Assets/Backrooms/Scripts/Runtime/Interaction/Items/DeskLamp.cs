@@ -145,11 +145,18 @@ namespace Backrooms.Interaction
             var hand = FindAnyObjectByType<PropGrabber>();
             if (hand && _plug && hand.HeldItem == _plug) hand.LetGo(_plug);
             _bundled = true;
+            StopReel(_cord);
+            if (_cord) _cord.SetLength(CordLength);          // reeled in: full length again for next time
             ShowBundle();
             _fx.PlayOneShot(SoundBank.CordWhip, 0.3f);
         }
 
         public override void WakeCord() { if (_cord) _cord.Wake(); }
+        public override float CordReach => CordLength;
+        protected override Cord GetCord() => _cord;
+
+        public override bool TakesSocket(Socket s) =>
+            _plug && !_plug.Plugged && _plug.CanUse(s) && Vector3.Distance(s.Position, transform.TransformPoint(CordExit)) < CordLength * 0.92f;
 
         void OnDestroy()
         {
@@ -160,10 +167,12 @@ namespace Backrooms.Interaction
         public override void HoldUpdate(in HoldInput i)
         {
             if (i.secondary) { Bundle(); return; }
+            if (!_bundled && ReelUpdate(_cord, _plug, i.reel, i.dt)) { if (_plug && _plug.Plugged) _plug.Unplug(false); Bundle(); return; }
             if (!i.pressed) return;
-            if (i.hit && i.hitInfo.distance <= reach && _plug && !_plug.Plugged)
+            if (_plug && !_plug.Plugged)
             {
-                var s = Sockets.Nearest(i.hitInfo.point, 0.1f);
+                var s = i.socket;
+                if (s == null && i.hit && i.hitInfo.distance <= reach) s = Sockets.Nearest(i.hitInfo.point, 0.1f);
                 if (s != null && _plug.CanUse(s))
                 {
                     if (Vector3.Distance(s.Position, transform.TransformPoint(CordExit)) < CordLength * 0.92f) { Unbundle(); _plug.PlugInto(s); return; }

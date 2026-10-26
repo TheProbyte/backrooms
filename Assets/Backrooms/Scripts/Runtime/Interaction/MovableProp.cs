@@ -225,6 +225,44 @@ namespace Backrooms.Interaction
             }
         }
 
+        static readonly System.Collections.Generic.Dictionary<Mesh, Vector3[]> s_vertices = new System.Collections.Generic.Dictionary<Mesh, Vector3[]>();
+
+        /// <summary>
+        /// Puts a grip found on the collider boxes onto the surface you see: the colliders are boxes round padded, rounded
+        /// models, so a box edge can be inside a cushion or hang in the air beside a rolled arm. The model's highest point
+        /// (along the surface normal) within a few centimetres of the grip's line is where the palm goes.
+        /// </summary>
+        public Vector3 OnSurface(Vector3 grip, Vector3 normal)
+        {
+            float best = float.MinValue;
+            for (int pass = 0; pass < 2 && best == float.MinValue; pass++)
+            {
+                float r = pass == 0 ? 0.045f : 0.09f, r2 = r * r;
+                foreach (var mf in GetComponentsInChildren<MeshFilter>())
+                {
+                    var mesh = mf.sharedMesh;
+                    var mr = mf.GetComponent<MeshRenderer>();
+                    if (!mesh || !mr || !mr.enabled || mr.shadowCastingMode == UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly) continue;
+                    if (!s_vertices.TryGetValue(mesh, out var verts))
+                    {
+                        verts = mesh.isReadable ? mesh.vertices : null;
+                        s_vertices[mesh] = verts;
+                    }
+                    if (verts == null) continue;
+                    var m = mf.transform.localToWorldMatrix;
+                    for (int i = 0; i < verts.Length; i++)
+                    {
+                        Vector3 d = m.MultiplyPoint3x4(verts[i]) - grip;
+                        float h = Vector3.Dot(d, normal);
+                        if (h < -0.15f || h > 0.15f) continue;
+                        if ((d - normal * h).sqrMagnitude > r2) continue;
+                        if (h > best) best = h;
+                    }
+                }
+            }
+            return best == float.MinValue ? grip : grip + normal * best;
+        }
+
         /// <summary>Closest grab spot to a point the player is looking at: on one of the prop's edges, or the
         /// surface itself if no edge is near. A little randomness keeps grabs from looking identical.</summary>
         public bool FindGrip(Vector3 hitPoint, Vector3 hitNormal, Vector3 shoulder, System.Random rng, out Vector3 point, out Vector3 surfaceNormal, out Vector3 edgeDir)

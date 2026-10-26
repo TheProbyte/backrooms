@@ -156,6 +156,28 @@ namespace Backrooms.Audio
             return Clip("CordWhip", d, 1);
         }
 
+        /// <summary>A cord being reeled in hand over hand: it hisses along the floor, with a soft slap of each loop. Loops.</summary>
+        public static AudioClip CordReel()
+        {
+            int fade = Rate / 10, n = Rate * 2 + fade;
+            var raw = new float[n];
+            var rng = new System.Random(5151);
+            var drag = Biquad.BandPass(1300f, 0.7f); var slap = Biquad.LowPass(700f);
+            float next = 0.05f, env = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
+                if (t >= next) { env = 0.8f + (float)rng.NextDouble() * 0.4f; next = t + 0.3f + (float)rng.NextDouble() * 0.12f; }
+                env *= 0.9992f;
+                float rub = 0.55f + 0.45f * Mathf.Sin(t * 2f * Mathf.PI * 3.1f + Mathf.Sin(t * 5f));
+                float x = White(rng);
+                raw[i] = drag.Run(x) * 0.35f * rub + slap.Run(x) * Mathf.Pow(env, 24f) * 1.6f;
+            }
+            var d = LoopJoin(raw, fade);
+            Normalize(d, 0.4f);
+            return Clip("CordReel", d, 1);
+        }
+
         /// <summary>
         /// The rubber chicken squeezed: a harsh rubber-reed squawk that climbs in pitch and wavers (variant changes the
         /// pitch a little), or released: the wheezy whistle of air going back in.

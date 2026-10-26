@@ -106,6 +106,15 @@ namespace Backrooms.Interaction
         }
 
         public override void WakeCord() { if (_cord) _cord.Wake(); }
+        public override float CordReach => Length;
+        protected override Cord GetCord() => _cord;
+
+        public override bool TakesSocket(Socket s)
+        {
+            if (s == null || s.occupant != null || s.dead || s.box == this) return false;
+            if (coiled) return s.Depth + 1 <= MaxChain;
+            return _plug && !_plug.Plugged && _plug.CanUse(s) && Vector3.Distance(s.Position, transform.position) < Length * 0.95f;
+        }
 
         /// <summary>Out of its coil with the plug in a socket (from a save: plugged = null, the plug lies at plugPosition).</summary>
         public void Deploy(Socket socket, Vector3? plugPosition = null)
@@ -124,6 +133,7 @@ namespace Backrooms.Interaction
         public void Coil()
         {
             if (coiled) return;
+            StopReel(_cord);
             foreach (var s in _sockets) if (s.occupant) s.occupant.Unplug(true);
             if (_plug) { _plug.Unplug(false); var hand = FindAnyObjectByType<PropGrabber>(); if (hand && hand.HeldItem == _plug) hand.LetGo(_plug); Destroy(_plug.gameObject); }
             if (_cord) Destroy(_cord.gameObject);
@@ -136,8 +146,10 @@ namespace Backrooms.Interaction
         public override void HoldUpdate(in HoldInput i)
         {
             if (i.secondary) { Coil(); return; }
-            if (!i.pressed || !i.hit || i.hitInfo.distance > reach) return;
-            var s = Sockets.Nearest(i.hitInfo.point, 0.1f, this);
+            if (!coiled && ReelUpdate(_cord, _plug, i.reel, i.dt)) { StopReel(_cord); Coil(); return; }
+            if (!i.pressed) return;
+            var s = i.socket;
+            if (s == null && i.hit && i.hitInfo.distance <= reach) s = Sockets.Nearest(i.hitInfo.point, 0.1f, this);
             if (s == null) return;
             if (coiled)
             {

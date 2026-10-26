@@ -29,20 +29,30 @@
   gets thinner as you use it; an empty roll is the bare cardboard core with a torn stub.
 - **Desk lamp**: its cord starts wound up in a bundle behind the base. Click an outlet (or an extension cord's box)
   with the lamp in hand to unwind it and plug in (1.8 m of cord), or click the bundle to take the plug in your hand.
-  Right mouse winds the cord back up (not while it is plugged in). Click anywhere else to switch the lamp. Q sets it
+  Tap right mouse to wind the cord back up (not while it is plugged in); hold right mouse to reel it in hand over hand
+  (it pulls the plug out of its socket and drags it in, then winds it up). Click anywhere else to switch the lamp. Q sets it
   down upright. It lights (a shadowed warm spot) when on and powered. Walk off with it too far and the plug yanks out
   of the socket: a pop, the plug flies toward you and the camera jolts.
 - **Extension cord**: as found it is coiled; click an outlet with it in hand and the plug goes in while you carry the
-  box (three sockets) away on 8 m of physics cord. Right mouse coils it up again. Walking further than a cord reaches
-  pops its plug out. Pick up a plug to pull it out; with a plug in hand, click a socket to push it in. Up to 3 cords
-  in a row.
+  box (three sockets) away on 8 m of physics cord. Tap right mouse to coil it up again, or hold it to reel the cord in
+  (the plug comes out and is dragged back, then it coils). Walking further than a cord reaches pops its plug out. Pick
+  up a plug to pull it out; with a plug in hand, click a socket to push it in. Up to 3 cords in a row. Q with a plug in
+  hand just lets it fall.
+- **Plugging in**: holding a plug, the lamp or an extension cord, the socket you would plug into gets camcorder focus
+  brackets once you aim near it (within about 10 degrees, 2.2 m, in sight, and within the cord's reach). Clicking plugs
+  into that socket, so you do not have to hit it exactly.
+- **Grabbing a cord**: look at a cord (the lamp's or an extension cord's) and click to take its plug, wherever the cord
+  is (the brackets sit on the cord). It is pulled out of its socket if it was in one.
 - **Rubber chicken**: like a real one. Hold the left mouse button to squeeze it: it squashes and wheezes as it takes
   in air. Release and it squawks; the longer the squeeze (up to about half a second), the longer and louder the squawk.
   It squeaks when thrown and when it lands hard.
 - Items lying in the world have a soft contact shadow under them (`Items/ContactShadow.cs`) instead of shadow-map
   shadows, which flickered on small moving things.
 - Cords no longer pass through floors and walls: each particle sweeps from where it last was and slides along what it
-  hits, and each span is checked against the world.
+  hits. A span that cuts through a corner puts its nearer particle on the corner's outside edge (where the two faces it
+  went in and out of meet), so a cord wraps round door frames and wall ends instead of through them.
+- **Throwing through a noclip door**: a thrown (or falling) item that reaches the wall inside a noclip door's opening
+  comes out of the other door, moving the same way (`NoclipTravel.ItemStep`). Items with a cord out stay on this side.
 
 ## Pieces (`Scripts/Runtime/Interaction`)
 | File | What it does |
@@ -50,8 +60,8 @@
 | `MovableSpec.cs` | Plain data for one movable prop (kind, models, size), made by the chunk builder; `MovableShapes` turns it into collider boxes, grab edges and mass on the main thread. |
 | `MovableProp.cs` | The prop: frozen (kinematic) until disturbed, simulates until it settles, then freezes and saves its pose. Wakes frozen props it touches or hits. Shadows come from proxy boxes. |
 | `MovablePropManager.cs` | The list of moved props (the "edits" on top of the generated world). A moved prop no longer belongs to its chunk; it is stored when the chunk it stands in unloads and rebuilt when that chunk loads. Records last for the session and reset with a new seed. |
-| `PropGrabber.cs` | The hand: grab, reach, stoop, hold (a strength-limited spring at the grip point), controls, shove. Exposes the hand pose for the body. |
-| `FirstPersonBody.cs` | Placeholder body: two-bone IK for the right arm (`Resources/Player/PlayerArmRight.fbx`) onto the grip, finger curl, legs that swing while walking, torso that bends with the stoop. |
+| `PropGrabber.cs` | The hand: grab, reach, stoop, hold (a strength-limited spring at the grip point), controls, shove. Exposes the hand pose for the body. The grip found on the collider boxes is moved onto the model's real surface (`MovableProp.OnSurface`: the highest point of the mesh within a few centimetres), so the palm is on padded and rounded furniture, not inside it or beside it. |
+| `FirstPersonBody.cs` | The body: two-bone IK for the right arm (`Resources/Player/PlayerArmRight.fbx`) onto the grip, finger curl; legs placed by IK from a walk cycle that follows the actual motion (forwards, backwards, sideways), feet planted, heel off and toes up; hips that bob, sway and drop with the eye (crouching, stooping, getting up and down bend the knees and lean the torso); hidden while the eye is too low for a body to be standing under it (crawling, the start of getting up). |
 | `PropGrabber.Items.cs` | Holding items: pick up, carry low on the right of the view (raised while in use), use, drop. Places the item after the camera has moved, and the hand on its grip. |
 | `Items/WorldItem.cs` | Base of a held item: light physics lying in the world (frozen while the ground under it is unloaded), its hold pose and grip, `Hold(use, aimAt, dt)` every frame while held. |
 | `Items/SprayCan.cs` | Red spray paint (model: `Tools/Blender/build_items.py`, `Resources/Items/SprayCan.fbx`). Hold to spray where you look: ~300 traced droplets a second in a 4.5 degree cone, reaching 1.8 m; mist particles; hiss; the ball rattles when picked up. `SprayCan.Lifespan` = 45 s of spraying, sputters for the last 10 %, then only hisses. |

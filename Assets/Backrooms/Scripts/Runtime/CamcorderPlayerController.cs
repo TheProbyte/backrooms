@@ -131,6 +131,8 @@ namespace Backrooms
         float _yaw, _pitch, _verticalVelocity;
         int _unblockFrame = -10;
         float _eye, _eyeVel, _eyeK = 40f, _eyeC = 11f;      // eye height spring
+        /// <summary>The eye's height above the feet right now (stances ease between their heights, stooping lowers it).</summary>
+        public float Eye => _eye;
         float _chargeT = -1f, _launchAt = -1f, _launchHeight;
         bool _wasGrounded = true;
         float _airMinVy, _hopCarry;
@@ -344,8 +346,14 @@ namespace Backrooms
             Stance want = CurrentStance;
             if (kb.cKey.wasPressedThisFrame) want = CurrentStance == Stance.Crouch ? Stance.Stand : Stance.Crouch;
             if (kb.leftCtrlKey.wasPressedThisFrame) want = CurrentStance == Stance.Crawl ? Stance.Crouch : Stance.Crawl;
-            if (want == CurrentStance) return;
-            if (HeightFor(want) > HeightFor(CurrentStance) && !RoomToStand(HeightFor(want))) return;   // ceiling too low
+            SetStanceEased(want);
+        }
+
+        /// <summary>Changes stance the way the keys do (eased, checking for room to stand). False if there is no room.</summary>
+        public bool SetStanceEased(Stance want)
+        {
+            if (want == CurrentStance) return true;
+            if (HeightFor(want) > HeightFor(CurrentStance) && !RoomToStand(HeightFor(want))) return false;   // ceiling too low
 
             bool fromRun = IsRunning || PlanarVelocity.magnitude > walkSpeed * 1.3f;
             if (fromRun && want != Stance.Stand)
@@ -362,6 +370,7 @@ namespace Backrooms
             CurrentStance = want;
             _controller.height = HeightFor(want);
             _controller.center = new Vector3(0f, _controller.height * 0.5f, 0f);
+            return true;
         }
 
         /// <summary>Sets the stance directly, with the matching capsule (scripts and the benchmark; no room check).</summary>

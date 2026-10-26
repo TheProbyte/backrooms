@@ -13,7 +13,9 @@ namespace Backrooms.Interaction
     public struct HoldInput
     {
         public bool use, pressed, released;      // left mouse: held, went down, came up this frame
-        public bool secondary;                   // right mouse went down this frame
+        public bool secondary;                   // right mouse tapped (released within a moment)
+        public bool reel;                        // right mouse held down (past the tap)
+        public Socket socket;                    // the socket the hand aims at (focus brackets), for items that plug in
         public bool hit;                         // the view hits something within 6 m (not the player or the item)
         public RaycastHit hitInfo;
         public Vector3 eye, aimDir, aimAt;       // aimAt: the hit point, or 2 m ahead
@@ -67,6 +69,7 @@ namespace Backrooms.Interaction
             bool ground = !_streamer || _streamer.LayoutAt(WorldStreamer.ChunkOf(transform.position)) != null;
             if (Body.isKinematic == ground) Body.isKinematic = !ground;
             if (transform.position.y < -50f) { Body.linearVelocity = Vector3.zero; transform.position += Vector3.up * 52f; }
+            if (!Body.isKinematic) NoclipTravel.ItemStep(this);           // thrown through a noclip door
         }
 
         public void SetHeld(bool held)
@@ -94,6 +97,10 @@ namespace Backrooms.Interaction
 
         /// <summary>Q sets it down upright where you look (a lamp) instead of tossing it.</summary>
         public virtual bool PlaceOnDrop => false;
+        /// <summary>Q lets it fall straight from the hand (no toss).</summary>
+        public virtual bool DropsStraight => false;
+        /// <summary>Could clicking this socket with the item in hand plug something in (it gets focus brackets)?</summary>
+        public virtual bool TakesSocket(Socket s) => false;
 
         /// <summary>Called after the hand let go of it by setting it down (PlaceOnDrop).</summary>
         public virtual void OnPlaced() { }

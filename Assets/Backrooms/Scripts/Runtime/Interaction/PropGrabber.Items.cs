@@ -27,6 +27,13 @@ namespace Backrooms.Interaction
         readonly Collider[] _near = new Collider[48];
         /// <summary>What a click would pick up right now (for the focus marks), or null.</summary>
         public WorldItem AimedItem { get; private set; }
+        /// <summary>The point of a cord the view is on (its plug is the AimedItem), or null.</summary>
+        public Vector3? AimedCordPoint { get; private set; }
+        /// <summary>The socket a click would plug into with the held item (for the focus marks), or null.</summary>
+        public Socket AimedSocket { get; private set; }
+        [Tooltip("Plugging in forgives this much aim (degrees off the centre of the view).")] public float socketAssistAngle = 10f;
+        [Tooltip("Furthest socket the hand plugs into (m from the eye).")] public float socketReach = 2.2f;
+        [Tooltip("A cord's plug further than this from the eye is not taken by looking at the cord (m).")] public float cordGrabReach = 4.5f;
 
         /// <summary>
         /// The item a click picks up: the one the centre of the view is on, or else the item nearest the aim within
@@ -35,6 +42,7 @@ namespace Backrooms.Interaction
         bool LookItem(float range, out WorldItem item)
         {
             item = null;
+            AimedCordPoint = null;
             var cam = _cam ? _cam.transform : transform;
             int n = Physics.RaycastNonAlloc(cam.position, cam.forward, _hits, range, ~0, QueryTriggerInteraction.Ignore);
             float best = float.MaxValue;
@@ -45,6 +53,14 @@ namespace Backrooms.Interaction
                 best = _hits[i].distance;
                 first = _hits[i].collider;
                 item = first.GetComponentInParent<WorldItem>();
+            }
+            // A cord in front of whatever the view is on: its plug (you take the cord, not what it belongs to).
+            var cord = Cord.Aimed(cam.position, cam.forward, Mathf.Min(best + 0.05f, range), out float along, out Vector3 onCord);
+            if (cord && (!item || along < best - 0.02f) && cord.endA is Plug plug && !plug.Held && plug.gameObject.activeInHierarchy
+                && (plug.transform.position - cam.position).sqrMagnitude < cordGrabReach * cordGrabReach)
+            {
+                item = plug; AimedCordPoint = onCord;
+                return true;
             }
             if (item && !item.Held) return true;
             item = null;
@@ -90,12 +106,26 @@ namespace Backrooms.Interaction
         /// <summary>Camcorder-style focus marks around what a click would pick up.</summary>
         void OnGUI()
         {
-            if (Event.current.type != EventType.Repaint || !AimedItem || HeldItem || Current != State.Idle || !_cam) return;
+            if (Event.current.type != EventType.Repaint || !_cam) return;
+            if (HeldItem)
+            {
+                // The socket a click would plug into: small marks round it.
+                if (AimedSocket != null) FocusMarks(AimedSocket.Position, 0.022f, 16f);
+                return;
+            }
+            if (!AimedItem || Current != State.Idle) return;
+            if (AimedCordPoint.HasValue) { FocusMarks(AimedCordPoint.Value, 0.03f, 18f); return; }
             var b = new Bounds(AimedItem.transform.position, Vector3.zero);
             foreach (var r in AimedItem.GetComponentsInChildren<Renderer>()) b.Encapsulate(r.bounds);
-            Vector3 sp = _cam.WorldToScreenPoint(b.center);
+            FocusMarks(b.center, b.extents.magnitude, 22f);
+        }
+
+        /// <summary>Camcorder-style focus marks (four corners) round a point of the world, sized by a world radius.</summary>
+        void FocusMarks(Vector3 at, float radius, float minSize)
+        {
+            Vector3 sp = _cam.WorldToScreenPoint(at);
             if (sp.z <= 0f) return;
-            float size = Mathf.Clamp(b.extents.magnitude / Mathf.Max(0.2f, sp.z) * Screen.height * 0.9f, 22f, 160f);
+            float size = Mathf.Clamp(radius / Mathf.Max(0.2f, sp.z) * Screen.height * 0.9f, minSize, 160f);
             float x = sp.x, y = Screen.height - sp.y, h = size * 0.5f, len = Mathf.Max(6f, size * 0.22f), t = Mathf.Max(1.5f, Screen.height / 540f);
             var old = GUI.color;
             GUI.color = new Color(1f, 1f, 1f, 0.75f);
@@ -137,6 +167,7 @@ namespace Backrooms.Interaction
             if (HeldItem) Drop();
             if (Current != State.Idle) Release("picked up an item");
             HeldItem = item;
+            AimedItem = null; AimedCordPoint = null;
             _itemFromPos = item.transform.position; _itemFromRot = item.transform.rotation;
             _itemT = 0f;
             _swayInit = false; _qDown = -1f; ThrowCharge = 0f;
@@ -175,10 +206,48 @@ namespace Backrooms.Interaction
                 return;
             }
             HeldItem = null;
+            AimedSocket = null;
             item.SetHeld(false);
+            if (item.DropsStraight)
+            {
+                // Just let go: it falls from where the hand had it.
+                item.Body.linearVelocity = Vector3.zero;
+                item.Body.angularVelocity = Random.insideUnitSphere * 1.5f;
+                return;
+            }
             var cam = _cam ? _cam.transform : transform;
             item.Body.linearVelocity = _player.PlanarVelocity + cam.forward * 1.1f + Vector3.up * 0.4f;
             item.Body.angularVelocity = Random.insideUnitSphere * 3f;
+        }
+
+        /// <summary>
+        /// The socket a click would plug into: the one the view is nearest (within <see cref="socketAssistAngle"/>, or a
+        /// few centimetres off the line), within reach, that can be seen and that the held item can use.
+        /// </summary>
+        Socket FindSocket(WorldItem item)
+        {
+            var cam = _cam ? _cam.transform : transform;
+            Vector3 eye = cam.position, fwd = cam.forward;
+            Socket best = null; float bestScore = float.MaxValue;
+            foreach (var s in Sockets.Around(eye))
+            {
+                if (s.occupant != null || s.dead) continue;
+                Vector3 p = s.Position, to = p - eye;
+                float dist = to.magnitude;
+                if (dist > socketReach || dist < 0.05f) continue;
+                if (Vector3.Dot(s.Normal, -to) <= 0f) continue;                     // from behind its wall
+                float angle = Vector3.Angle(fwd, to);
+                float off = Vector3.Cross(fwd, to).magnitude;
+                if (angle > socketAssistAngle && off > 0.06f) continue;
+                float score = angle + dist * 2f;
+                if (score >= bestScore || !item.TakesSocket(s)) continue;
+                // Nothing in the way (the socket's own plate is right at it).
+                Vector3 target = p + s.Normal * 0.01f, d = target - eye;
+                if (Physics.Raycast(eye, d.normalized, out var block, d.magnitude - 0.005f, ~0, QueryTriggerInteraction.Ignore)
+                    && !block.collider.transform.IsChildOf(transform) && !block.collider.transform.IsChildOf(item.transform)) continue;
+                bestScore = score; best = s;
+            }
+            return best;
         }
 
         /// <summary>Where Q sets an item down: a floor or table top within reach, the item turned to face you.</summary>
@@ -208,7 +277,8 @@ namespace Backrooms.Interaction
         }
 
         bool _wasUse;
-        float _qDown = -1f;
+        float _qDown = -1f, _rmbDown = -1f;
+        const float RightTap = 0.25f;
         /// <summary>0..1 while Q is held to throw (wind-up), 0 otherwise.</summary>
         public float ThrowCharge { get; private set; }
         [Header("Throwing")]
@@ -250,8 +320,15 @@ namespace Backrooms.Interaction
             bool use = focus && mouse != null && mouse.leftButton.isPressed && _itemT >= 1f;
             if (botHold.HasValue) use = botHold.Value;
             var cam = _cam ? _cam.transform : transform;
+            // Right mouse: a tap (released within RightTap) is the item's quick action; held longer, it reels a cord in.
+            bool rmb = focus && mouse != null && mouse.rightButton.isPressed;
+            if (rmb && _rmbDown < 0f) _rmbDown = Time.time;
+            bool tap = !rmb && _rmbDown >= 0f && Time.time - _rmbDown <= RightTap;
+            bool reel = rmb && _rmbDown >= 0f && Time.time - _rmbDown > RightTap;
+            if (!rmb) _rmbDown = -1f;
+            AimedSocket = FindSocket(HeldItem);
             var input = new HoldInput { use = use, pressed = use && !_wasUse, released = !use && _wasUse, eye = cam.position, aimDir = cam.forward, dt = Time.deltaTime, hand = this,
-                                        secondary = focus && mouse != null && mouse.rightButton.wasPressedThisFrame };
+                                        secondary = tap, reel = reel, socket = AimedSocket };
             _wasUse = use;
             input.hit = AimHit(out input.hitInfo);
             input.aimAt = input.hit ? input.hitInfo.point : cam.position + cam.forward * 2f;

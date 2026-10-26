@@ -15,6 +15,34 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 16:30  Claude Code  Culling behind walls, cords (aim, corners, reel, grab), throws through noclip doors, walking body
+- Culling: `Generation/ChunkVisibility.cs` hides loaded chunks no ray across the view can reach over the cell grid
+  (walls stop rays; the chunk past a stopping wall and chunks within 1.5 m of the eye stay drawn). Hidden chunks keep
+  their shadows (casters go shadows-only). Spawn view: 44/49 chunks hidden, 88 -> 107 fps in the editor.
+  `Debug/VisibilityProbe.cs`: 150 random views with and without it, 0 pixels differ.
+- Cords: focus brackets on the socket you would plug into (aim assist ~10 degrees, `PropGrabber.FindSocket`,
+  `WorldItem.TakesSocket`); right mouse tap still coils / winds up, held it reels the cord in (`PowerUser.ReelUpdate`,
+  `Cord.SetLength`, a procedural reel sound); Q with a plug just drops it; looking at a cord picks up its plug
+  (`Cord.Aimed`); spans that cut a corner put a particle on the corner's outside edge (`Cord.Spans`).
+- Noclip doors: thrown or falling items pass through like the player (`NoclipTravel.ItemStep`, from WorldItem.FixedUpdate);
+  not items with a cord out.
+- Body (`FirstPersonBody`): legs placed by two-bone IK from a walk cycle in the body's frame (forwards, backwards,
+  strafing), planted feet, heel lift and toe; hips bob, sway and follow the eye height (crouch, stoop, getting up/down
+  bend the knees and lean the torso forward); the body moves back under the eye as it leans; hidden below 0.82 m eye
+  height, so getting up from a crawl never shows the legs from inside. `CamcorderPlayerController.Eye`,
+  `SetStanceEased`. `Debug/BodyShots.cs` records walk/crouch/get-up frames and the player's shadow.
+- Grips: the grip found on the collider boxes is moved onto the model's surface (`MovableProp.OnSurface`); the furniture
+  FBXs (sofas, armchair, office chair, table) are imported readable for it.
+- Shadows: the 4 ceiling lights nearest the viewer get 1024 shadow maps when the rest are at 512
+  (`FixtureLightManager.NearShadowTiers`). Poolrooms: SSAO at 38 % on the bounce and none on the sun (PoolTile, PoolLit).
+- Checked: EditMode 66/66. Played World 3 (erased after; World 1 untouched): culling A/B and pixel probe; walk, back,
+  strafe, crouch and get-up frames; noclip throw (a tape roll came out in the Poolrooms basin); socket bracket aim (2.3
+  degrees off), plug by click, reel (popped out, dragged, bundled); cord look-to-grab; sofa and armchair grabs held.
+- Open: the walking shadow jitter could not be reproduced clearly in recordings (the nearest lights' shadows were
+  stable); the higher-resolution near maps and the smoother gait are the fix attempted. The focus brackets and the reel
+  sound were not seen or heard (OnGUI and audio in a background editor). Debug/GrabProbe's "walk away" step drops the
+  player through unloaded ground (probe only).
+
 ## 2026-10-26 13:45  Claude Code  Polish pass: pick-up, throw, cords, tape, maps, plates, rigged arm and body, vents
 - Camcorder presets: `Resources/CamcorderPresets.json` holds saved preset values (editor: written into the project;
   build: PlayerPrefs). SET AS DEFAULT saves the current preset's values; the current preset is highlighted. Clean was

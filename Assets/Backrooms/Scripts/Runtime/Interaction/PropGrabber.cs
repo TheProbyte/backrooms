@@ -172,6 +172,7 @@ namespace Backrooms.Interaction
         {
             if (!Look(lookRange, out var hit, out var prop)) return;
             prop.FindGrip(hit.point, hit.normal, Shoulder, _rng, out var grip, out var normal, out var edge);
+            grip = prop.OnSurface(grip, normal.normalized);              // on the model, not the collider box
             _target = prop;
             _gripLocal = prop.transform.InverseTransformPoint(grip);
             _normalLocal = prop.transform.InverseTransformDirection(normal);

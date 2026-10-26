@@ -260,6 +260,7 @@ namespace Backrooms.Generation
             {
                 ApplyShadowTier();
                 LateUpdateGrid(eye, now);
+                NearShadowTiers(eye);
                 UpdateLensEmission(now);
                 LastUpdateMs = Mathf.Lerp(LastUpdateMs, (float)_timer.Elapsed.TotalMilliseconds, 0.1f);
                 return;
@@ -298,6 +299,7 @@ namespace Backrooms.Generation
             UpdateDoorways(eye);
 
             ActiveLights = Assign(_troffers, _wantedTroffers, eye, shadowedTroffers) + Assign(_lamps, _wantedLamps, eye, shadowedLamps);
+            NearShadowTiers(eye);
             UpdateLensEmission(now);
             LastUpdateMs = Mathf.Lerp(LastUpdateMs, (float)_timer.Elapsed.TotalMilliseconds, 0.1f);
         }
@@ -314,6 +316,7 @@ namespace Backrooms.Generation
         void ApplyShadowTier()
         {
             int maps = UseGrid ? Mathf.Min(shadowedTroffers, 64) + faultyRealLights + realLamps * 6 + 4 : shadowedTroffers + 3 + shadowedLamps * 6;
+            _mapsNeeded = maps;
             int fit = maps <= 16 ? 2 : maps <= 64 ? 1 : 0;
             int want = Mathf.Min(shadowTier, fit);
             if (_appliedTier == want) return;
@@ -322,7 +325,50 @@ namespace Backrooms.Generation
                      : want == 2 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierHigh
                      : UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium;
             foreach (var t in _troffers) s_tierField?.SetValue(t.main.GetUniversalAdditionalLightData(), tier);   // the shadowed ceiling lights
+            _highNear.Clear();
         }
+
+        [Tooltip("The ceiling lights nearest the viewer get 1024 shadow maps when the rest are at 512: the player's own shadow " +
+                 "under them is cast by thin, moving legs, which a coarse map turns into a shimmering blob.")]
+        public int nearHighShadows = 4;
+        int _mapsNeeded;
+        readonly HashSet<Slot> _highNear = new HashSet<Slot>();
+        readonly List<Slot> _nearSort = new List<Slot>();
+
+        void NearShadowTiers(Vector3 eye)
+        {
+            int room = _appliedTier == 1 ? Mathf.Clamp((64 - _mapsNeeded) / 3, 0, nearHighShadows) : 0;   // a 1024 map is four 512 tiles
+            _nearSort.Clear();
+            foreach (var s in _troffers) if (s.busy && s.main.enabled && s.main.shadows != LightShadows.None) _nearSort.Add(s);
+            _nearEye = eye;
+            if (_nearCmp == null) _nearCmp = (a, b) => (a.main.transform.position - _nearEye).sqrMagnitude.CompareTo((b.main.transform.position - _nearEye).sqrMagnitude);
+            _nearSort.Sort(_nearCmp);
+            // The nearest few, but a light already high keeps it until another is clearly nearer (no flipping as you walk).
+            float edge = room > 0 && _nearSort.Count > 0 ? Vector3.Distance(_nearSort[Mathf.Min(room, _nearSort.Count) - 1].main.transform.position, eye) + 0.8f : -1f;
+            int kept = 0;
+            for (int i = 0; i < _nearSort.Count; i++)
+            {
+                var s = _nearSort[i];
+                bool want = kept < room && (i < room || (_highNear.Contains(s) && Vector3.Distance(s.main.transform.position, eye) < edge));
+                if (want) kept++;
+                bool have = _highNear.Contains(s);
+                if (want == have) continue;
+                if (want) _highNear.Add(s); else _highNear.Remove(s);
+                s_tierField?.SetValue(s.main.GetUniversalAdditionalLightData(), want ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierHigh
+                                                                                      : UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium);
+            }
+            // Lights that went out or lost their shadow drop back.
+            _highDrop.Clear();
+            foreach (var s in _highNear) if (!s.busy || !s.main.enabled || s.main.shadows == LightShadows.None) _highDrop.Add(s);
+            foreach (var s in _highDrop)
+            {
+                _highNear.Remove(s);
+                s_tierField?.SetValue(s.main.GetUniversalAdditionalLightData(), UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium);
+            }
+        }
+        readonly List<Slot> _highDrop = new List<Slot>();
+        Vector3 _nearEye;
+        System.Comparison<Slot> _nearCmp;
 
         /// <summary>Lights currently enabled (ceiling, lamps and bounce) and shadowed, for the Graphics tab.</summary>
         public int EnabledLights { get; private set; }

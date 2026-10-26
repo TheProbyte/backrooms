@@ -23,6 +23,18 @@ The editor adds its own work every frame (its windows, inspector, safety checks)
 while you play, it draws the whole world a second time. A build has none of that. Use the build benchmark for real
 numbers; in the editor, keep the Scene tab hidden behind the Game tab while playing.
 
+## Chunks behind walls are not drawn (ChunkVisibility)
+
+`Generation/ChunkVisibility.cs` (added by the streamer) works out every frame which loaded chunks the camera could see,
+from the layout itself: about 250 rays across the view (wider when looking down) are walked over the 1.2 m cell grid
+and stop at solid walls. A chunk is drawn if a ray enters it, if a ray stops at a wall whose far face it might own, or if
+it is within 1.5 m of the eye. Hidden chunks keep casting shadows (their shadow casters switch to shadows-only, the rest
+are turned off) and come back the frame they can be seen. Items, moved furniture, upper storeys and debug noclip flying
+are never hidden. `ChunkVisibility.Enabled` turns it off.
+- Spawn view, editor: 44 of 49 chunks hidden; 88 -> 107 fps (GPU 10.4 -> 8.0 ms).
+- `Debug/VisibilityProbe.Run(folder, samples)` renders random views with and without it and counts differing pixels:
+  150 views, 0 pixels different (a deliberately broken setting is caught).
+
 ## What costs what (2026-10-25, RTX 4070, 1080p, seed 1234 corridor, editor)
 
 | Item | Approx. GPU cost |

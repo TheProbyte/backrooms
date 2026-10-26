@@ -20,6 +20,9 @@ namespace Backrooms.Interaction
         public float length = 1.8f;
         public float radius = 0.003f;
         public System.Action<Cord> onTaut;     // pulled past its length with neither end able to give (owner decides)
+        /// <summary>Being reeled in: a plug that pops out does not jerk the hand.</summary>
+        public bool reeling;
+        public static readonly List<Cord> All = new List<Cord>();
 
         Vector3[] _p, _prev, _valid;
         int _n;
@@ -79,7 +82,50 @@ namespace Backrooms.Interaction
 
         public void Wake() { _asleep = false; _sleepT = 0f; }
 
+        /// <summary>A new length (reeling in): the same particles, shorter spans.</summary>
+        public void SetLength(float metres)
+        {
+            length = Mathf.Max(0.05f, metres);
+            if (_n > 1) _seg = length / (_n - 1);
+            Wake();
+        }
+
+        void OnEnable() { if (!All.Contains(this)) All.Add(this); }
+        void OnDisable() { All.Remove(this); }
         void OnDestroy() { if (_mesh) Destroy(_mesh); }
+
+        /// <summary>
+        /// The cord the view ray passes closest to (within a few centimetres, more further away), before maxDistance:
+        /// the distance along the ray and the point on the cord.
+        /// </summary>
+        public static Cord Aimed(Vector3 eye, Vector3 dir, float maxDistance, out float along, out Vector3 point)
+        {
+            Cord best = null; along = float.MaxValue; point = default;
+            foreach (var c in All)
+            {
+                if (!c || c._p == null || !c.isActiveAndEnabled) continue;
+                for (int i = 0; i < c._n - 1; i++)
+                {
+                    ClosestRaySegment(eye, dir, c._p[i], c._p[i + 1], out float t, out Vector3 q);
+                    if (t <= 0.05f || t > maxDistance || t >= along) continue;
+                    float tol = c.radius + 0.02f + t * 0.012f;
+                    if ((eye + dir * t - q).sqrMagnitude > tol * tol) continue;
+                    best = c; along = t; point = q;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>Closest points of a ray (unit dir) and a segment: distance along the ray, and the point on the segment.</summary>
+        static void ClosestRaySegment(Vector3 o, Vector3 d, Vector3 a, Vector3 b, out float t, out Vector3 q)
+        {
+            Vector3 u = b - a, w = o - a;
+            float uu = Vector3.Dot(u, u), du = Vector3.Dot(d, u), dw = Vector3.Dot(d, w), uw = Vector3.Dot(u, w);
+            float den = uu - du * du;                       // |d| = 1
+            float s = den > 1e-8f ? Mathf.Clamp01((uw - du * dw) / den) : 0f;
+            q = a + u * s;
+            t = Vector3.Dot(q - o, d);
+        }
 
         void LateUpdate()
         {
@@ -112,7 +158,7 @@ namespace Backrooms.Interaction
                 var plug = plugA && plugA.Plugged ? plugA : plugB;
                 var other = plug == plugA ? endB : endA;
                 plug.Unplug(true);
-                if (other.Held) Yank(plug, other);
+                if (other.Held && !reeling) Yank(plug, other);
                 return;
             }
             WorldItem free = aHeld && !bHeld ? endB : bHeld && !aHeld ? endA : null;
@@ -215,24 +261,66 @@ namespace Backrooms.Interaction
             }
         }
 
-        /// <summary>A span between two particles that cuts through something (around a corner): push its free ends back out.</summary>
+        /// <summary>
+        /// A span between two particles that cuts through something (around a corner): the particle nearer the corner is put
+        /// on the corner's outside edge, so the cord wraps it. The corner is where the two faces the span goes in and out
+        /// of meet (or, for one face, just clear of it).
+        /// </summary>
         void Spans()
         {
+            for (int pass = 0; pass < 2; pass++)
             for (int i = 0; i < _n - 1; i++)
             {
-                Vector3 a = _p[i], d = _p[i + 1] - a;
+                Vector3 a = _p[i], b = _p[i + 1], d = b - a;
                 float len = d.magnitude;
                 if (len < 1e-4f) continue;
-                int hits = Physics.RaycastNonAlloc(a, d / len, _hits, len, ~0, QueryTriggerInteraction.Ignore);
-                for (int h = 0; h < hits; h++)
+                Vector3 dir = d / len;
+                if (!FirstHit(a, dir, len, out var inHit)) continue;
+                bool outFound = FirstHit(b, -dir, len, out var outHit);
+                Vector3 n1 = inHit.normal, n2 = outFound ? outHit.normal : n1;
+                Vector3 corner;
+                if (Vector3.Dot(n1, n2) > 0.95f)
                 {
-                    if (Ignored(_hits[h].collider) || _hits[h].distance <= 0f) continue;
-                    Vector3 push = _hits[h].normal * (radius * 2f + 0.004f);
-                    if (i > 0) { var p = Sweep(_valid[i], _valid[i] + push, out _); _p[i] = _valid[i] = p; }
-                    if (i + 1 < _n - 1) { var p = Sweep(_valid[i + 1], _valid[i + 1] + push, out _); _p[i + 1] = _valid[i + 1] = p; }
-                    break;
+                    // One face (a bump, a floor edge): lift the span's middle clear of it.
+                    corner = (inHit.point + (outFound ? outHit.point : inHit.point)) * 0.5f;
                 }
+                else
+                {
+                    // Two faces: the corner edge is where their planes meet; the point on it nearest the span.
+                    Vector3 edgeDir = Vector3.Cross(n1, n2);
+                    float e2 = edgeDir.sqrMagnitude;
+                    Vector3 mid = (a + b) * 0.5f;
+                    // A point on both planes (the planes' line of intersection), then the point on it nearest the span.
+                    float d1 = Vector3.Dot(n1, inHit.point), d2 = Vector3.Dot(n2, outHit.point);
+                    Vector3 onBoth = (Vector3.Cross(n2, edgeDir) * d1 + Vector3.Cross(edgeDir, n1) * d2) / e2;   // n1.p = d1, n2.p = d2
+                    Vector3 ed = edgeDir / Mathf.Sqrt(e2);
+                    corner = onBoth + ed * Vector3.Dot(mid - onBoth, ed);
+                    if ((corner - mid).sqrMagnitude > len * len) corner = (inHit.point + outHit.point) * 0.5f;   // a poor fit: the hits' middle
+                }
+                Vector3 outward = (n1 + n2).normalized;
+                Vector3 target = corner + outward * (radius * 1.6f + Skin * 2f);
+                // Move the free particle nearer the corner (both if neither end is pinned and they are equally near).
+                bool aFree = i > 0, bFree = i + 1 < _n - 1;
+                int k = !aFree ? i + 1 : !bFree ? i : ((a - corner).sqrMagnitude <= (b - corner).sqrMagnitude ? i : i + 1);
+                if (k == 0 || k == _n - 1) continue;
+                var got = Sweep(_valid[k], target, out _);
+                _p[k] = _valid[k] = got;
+                _prev[k] = Vector3.Lerp(_prev[k], got, 0.8f);                 // it sticks on the edge rather than bouncing off
             }
+        }
+
+        /// <summary>The nearest solid thing along a short segment (not the cord's own ends).</summary>
+        bool FirstHit(Vector3 from, Vector3 dir, float dist, out RaycastHit hit)
+        {
+            hit = default;
+            int hits = Physics.RaycastNonAlloc(from, dir, _hits, dist, ~0, QueryTriggerInteraction.Ignore);
+            float best = float.MaxValue;
+            for (int h = 0; h < hits; h++)
+            {
+                if (Ignored(_hits[h].collider) || _hits[h].distance <= 0f || _hits[h].distance >= best) continue;
+                best = _hits[h].distance; hit = _hits[h];
+            }
+            return best < float.MaxValue;
         }
 
         float Step(Vector3 a, Vector3 b, float dt)

@@ -6,6 +6,12 @@ Last updated 2026-10-26 (world version 13).
 
 ## Newest (2026-10-26)
 
+- **Second polish pass**: chunks behind walls are no longer drawn (about +20% fps at spawn, no pop-in: Performance.md);
+  outlet focus brackets, cords wrapping corners, hold right mouse to reel a cord in, look at a cord to grab its plug;
+  thrown items go through noclip doors; a walking body with IK legs (forwards, backwards, strafing), crouch and
+  get-up poses, no legs in the camera when getting up from a crawl; grips on the furniture's real surface; sharper
+  shadow maps near the player; softer AO in the Poolrooms.
+
 - **Polish pass** (see WORKLOG): forgiving item pick-up (no crosshair needed; focus brackets), hold Q to throw, held
   items move with the hand, cords no longer clip through the world, the lamp's cord starts bundled and yanks out with a
   sound and jolt, chicken wheezes in and squawks on release, contact shadows under items, normal maps on all world

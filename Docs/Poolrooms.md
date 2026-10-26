@@ -55,6 +55,9 @@ layer Default only (no fixture lights here).
   destroyed.
 - `PoolWorld` light settings (sun colour/intensity, ambient, bounce, sky) are inspector fields, set as shader globals.
 - The zone's fog is swapped in per camera (the player's, or a portal camera looking into the Poolrooms).
+- SSAO: only a gentle share (38 %) of it on the bounce light, none on the sun (PoolTile/PoolLit). At full strength it drew
+  hard dark bands along every floor-wall join and in corners, far heavier than in Level 0, which is lit mostly by
+  direct light.
 
 ## Water
 
