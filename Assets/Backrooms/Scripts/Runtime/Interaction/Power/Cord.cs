@@ -141,18 +141,36 @@ namespace Backrooms.Interaction
                 int steps = dt > 1f / 70f ? 2 : 1;
                 float move = 0f;
                 for (int s = 0; s < steps; s++) move = Mathf.Max(move, Step(a, b, dt / steps));
+                // Never left broken: anything not a number lays the cord out again.
+                if (float.IsNaN(move) || float.IsNaN(_p[_n / 2].x)) { Lay(); move = 1f; }
                 if (move < 0.0005f) { _sleepT += dt; if (_sleepT > 0.6f) _asleep = true; } else _sleepT = 0f;
                 Rebuild();
             }
         }
 
-        /// <summary>Past its length: pop a plugged end, or drag a free end toward the held one.</summary>
+        float _pull;            // seconds spent walking on against the taut cord
+        bool _tugged;           // the tug of it going taut has been felt
+        [Tooltip("Seconds of walking on against a taut cord (held at one end, plugged in at the other) before the plug comes out.")]
+        public float pullOutTime = 0.55f;
+        static CamcorderPlayerController s_player;
+
+        /// <summary>
+        /// Past its length: pop a plugged end, or drag a free end toward the held one. Held at one end and plugged in at the
+        /// other, it first holds you back (a tug, and you stop); walk on against it and the plug comes out.
+        /// </summary>
         void Taut(Vector3 a, Vector3 b)
         {
             float d = Vector3.Distance(a, b);
-            if (d <= length) return;
             bool aHeld = endA.Held, bHeld = endB.Held;
             var plugA = endA as Plug; var plugB = endB as Plug;
+            Plug wall = plugA && plugA.Plugged && !aHeld && bHeld ? plugA : plugB && plugB.Plugged && !bHeld && aHeld ? plugB : null;
+            if (wall && !reeling)
+            {
+                HoldBack(wall, wall == plugA ? endB : endA, d);
+                return;
+            }
+            _pull = 0f; _tugged = false;
+            if (d <= length) return;
             if ((plugA && plugA.Plugged && !aHeld && (bHeld || d > length * 1.15f)) || (plugB && plugB.Plugged && !bHeld && (aHeld || d > length * 1.15f)))
             {
                 var plug = plugA && plugA.Plugged ? plugA : plugB;
@@ -164,7 +182,20 @@ namespace Backrooms.Interaction
             WorldItem free = aHeld && !bHeld ? endB : bHeld && !aHeld ? endA : null;
             if (free && !free.Body.isKinematic)
             {
+                // Along the cord (toward the first bit of it more than 15 cm away), so a dragged end follows it round a
+                // corner instead of into the wall.
                 Vector3 toward = (free == endA ? b - a : a - b) / Mathf.Max(d, 1e-4f);
+                if (_p != null && _n > 2)
+                {
+                    Vector3 from = free == endA ? a : b;
+                    for (int k = 1; k < _n - 1; k++)
+                    {
+                        Vector3 q = _p[free == endA ? k : _n - 1 - k] - from;
+                        if (q.sqrMagnitude < 0.15f * 0.15f || float.IsNaN(q.x)) continue;
+                        toward = q.normalized;
+                        break;
+                    }
+                }
                 float excess = d - length;
                 Vector3 v = free.Body.linearVelocity;
                 float along = Vector3.Dot(v, toward);
@@ -173,6 +204,49 @@ namespace Backrooms.Interaction
                 free.Body.WakeUp();
             }
             else if (!free && d > length * 1.02f) onTaut?.Invoke(this);
+        }
+
+        /// <summary>
+        /// Held at one end, plugged in at the other, near its length: the player's feet are kept within what the cord allows
+        /// (a short tug when it first goes taut); walking on against it for <see cref="pullOutTime"/> pulls the plug out.
+        /// </summary>
+        void HoldBack(Plug wall, WorldItem held, float d)
+        {
+            if (!s_player) s_player = FindAnyObjectByType<CamcorderPlayerController>();
+            var player = s_player;
+            float slack = length - d;
+            if (slack > 0.3f || !player)
+            {
+                if (slack > 0.15f) _tugged = false;
+                _pull = Mathf.MoveTowards(_pull, 0f, Time.deltaTime);
+                if (!player && d > length * 1.15f) { wall.Unplug(true); Yank(wall, held); }
+                return;
+            }
+            Vector3 plugAt = wall.transform.position;
+            Vector3 flat = player.transform.position - plugAt; flat.y = 0f;
+            player.Leash(plugAt, flat.magnitude + slack);
+            if (slack <= 0.01f && !_tugged) { _tugged = true; Tug(wall, held); }
+            float strain = player.LeashStrain;
+            if (slack <= 0.03f && strain > 0.25f) _pull += Time.deltaTime * (strain > 2f ? 1.7f : 1f);
+            else _pull = Mathf.MoveTowards(_pull, 0f, Time.deltaTime * 0.6f);
+            if (_pull >= pullOutTime || d > length + 0.35f)
+            {
+                wall.Unplug(true);
+                Yank(wall, held);
+                _pull = 0f; _tugged = false;
+            }
+        }
+
+        /// <summary>The cord goes taut against the hand: a soft snap and a small jerk of the view toward the plug.</summary>
+        static void Tug(Plug plug, WorldItem held)
+        {
+            AudioSource.PlayClipAtPoint(Audio.SoundBank.CordWhip, held.transform.position, 0.45f);
+            var shake = FindAnyObjectByType<HandheldCameraShake>();
+            var cam = Camera.main;
+            if (!shake || !cam) return;
+            Vector3 toward = plug.transform.position - held.transform.position;
+            float side = Vector3.Dot(toward.normalized, cam.transform.right) >= 0f ? 1f : -1f;
+            shake.Jolt(new Vector3(7f, 6f * side, -3f * side));
         }
 
         /// <summary>Walked off with the far end in hand: the plug tears out with a snap, flies after the cord, and the hand
@@ -278,6 +352,9 @@ namespace Backrooms.Interaction
                 if (!FirstHit(a, dir, len, out var inHit)) continue;
                 bool outFound = FirstHit(b, -dir, len, out var outHit);
                 Vector3 n1 = inHit.normal, n2 = outFound ? outHit.normal : n1;
+                // Straight through something thin (its two faces facing away from each other): no corner to wrap; the
+                // particle goes back out of the face it went in by.
+                if (Vector3.Cross(n1, n2).sqrMagnitude < 1e-3f && Vector3.Dot(n1, n2) < 0f) n2 = n1;
                 Vector3 corner;
                 if (Vector3.Dot(n1, n2) > 0.95f)
                 {
@@ -297,7 +374,7 @@ namespace Backrooms.Interaction
                     corner = onBoth + ed * Vector3.Dot(mid - onBoth, ed);
                     if ((corner - mid).sqrMagnitude > len * len) corner = (inHit.point + outHit.point) * 0.5f;   // a poor fit: the hits' middle
                 }
-                Vector3 outward = (n1 + n2).normalized;
+                Vector3 outward = (n1 + n2).sqrMagnitude > 1e-4f ? (n1 + n2).normalized : n1;
                 Vector3 target = corner + outward * (radius * 1.6f + Skin * 2f);
                 // Move the free particle nearer the corner (both if neither end is pinned and they are equally near).
                 bool aFree = i > 0, bFree = i + 1 < _n - 1;

@@ -2,9 +2,23 @@ using UnityEngine;
 
 namespace Backrooms.Interaction
 {
+    /// <summary>Something the index finger presses or flicks (an elevator button, a light switch).</summary>
+    public interface IPokeTarget
+    {
+        /// <summary>Out of the wall, toward whoever presses it.</summary>
+        Vector3 PokeNormal { get; }
+        /// <summary>The fingertip's stroke: it comes to <paramref name="from"/> and pushes through to <paramref name="to"/>.</summary>
+        void PokeStroke(out Vector3 from, out Vector3 to);
+        /// <summary>Called half way through the stroke.</summary>
+        void Press();
+        /// <summary>Where the focus marks go.</summary>
+        Vector3 FocusPoint { get; }
+    }
+
     /// <summary>
-    /// The free hand also presses buttons (elevator call buttons): click one within reach and the free arm
-    /// reaches out with the index finger extended, taps it, and goes back. If it is a little far you step in.
+    /// The free hand also presses buttons and flicks light switches: click one within reach and the free arm reaches
+    /// out with the index finger extended, pushes it (a button in, a switch's toggle down or up), and goes back. If it is
+    /// a little far you step in.
     /// </summary>
     public partial class PropGrabber
     {
@@ -12,7 +26,7 @@ namespace Backrooms.Interaction
         [Tooltip("How far you can click a button from (m); the hand steps you in to reach it.")]
         public float pokeRange = 2.0f;
 
-        enum PokePhase { None, Approach, Reach, Tap, Hold, Pull }
+        enum PokePhase { None, Approach, Reach, Tap, Stroke, Hold, Pull }
 
         /// <summary>The arm is out pressing a button.</summary>
         public bool Poking => _poke >= PokePhase.Reach;
@@ -25,41 +39,56 @@ namespace Backrooms.Interaction
         public bool PokePose { get; private set; }
 
         PokePhase _poke;
-        ElevatorButton _pokeButton;
+        IPokeTarget _pokeButton;
+        Object _pokeObject;              // the target as a Unity object (to notice it being destroyed)
         float _pokeT;
-        Vector3 _pokePoint, _pokeNormal;
-        readonly RaycastHit[] _pokeHits = new RaycastHit[12];
+        bool _pressed;
+        Vector3 _pokePoint, _pokeTo, _pokeNormal;
 
-        bool TryStartPoke()
+        /// <summary>The button or switch a click would press right now (for the focus marks), or null.</summary>
+        public IPokeTarget AimedPoke { get; private set; }
+
+        /// <summary>The nearest thing the view hits within reach, if it is a button or a switch (a wall in front blocks it).</summary>
+        IPokeTarget LookPoke()
         {
             var cam = _cam ? _cam : Camera.main;
-            if (!cam) return false;
+            if (!cam) return null;
             int n = Physics.RaycastNonAlloc(new Ray(cam.transform.position, cam.transform.forward), _pokeHits, pokeRange, ~0, QueryTriggerInteraction.Collide);
-            float best = float.MaxValue; ElevatorButton btn = null;
+            float best = float.MaxValue; IPokeTarget btn = null;
             for (int i = 0; i < n; i++)
             {
                 var h = _pokeHits[i];
                 if (h.collider.transform.IsChildOf(transform) || h.distance >= best) continue;
-                best = h.distance;
-                btn = h.collider.GetComponentInParent<ElevatorButton>();          // the nearest thing hit decides: a wall in front blocks it
+                var t = h.collider.GetComponentInParent<IPokeTarget>();
+                if (t == null && h.collider.isTrigger) continue;           // other triggers do not block
+                best = h.distance; btn = t;
             }
-            if (!btn) return false;
+            return btn;
+        }
+        readonly RaycastHit[] _pokeHits = new RaycastHit[12];
+
+        bool TryStartPoke()
+        {
+            var btn = LookPoke();
+            if (btn == null) return false;
             _pokeButton = btn;
-            _pokeNormal = btn.Normal;
-            _pokePoint = btn.transform.TransformPoint(new Vector3(0f, 0.02f, 0.028f));      // the face of the lamp
+            _pokeObject = btn as Object;
+            _pokeNormal = btn.PokeNormal;
+            btn.PokeStroke(out _pokePoint, out _pokeTo);
+            _pressed = false;
             _poke = PokePhase.Approach; _pokeT = 0f;
             return true;
         }
 
         void CancelPoke()
         {
-            _poke = PokePhase.None; _pokeButton = null;
+            _poke = PokePhase.None; _pokeButton = null; _pokeObject = null;
             if (_player.botInput.HasValue && !botHold.HasValue) _player.botInput = null;
         }
 
         void UpdatePoke()
         {
-            if (!_pokeButton) { CancelPoke(); return; }
+            if (_pokeButton == null || !_pokeObject) { CancelPoke(); return; }
             _pokeT += Time.deltaTime;
             Vector3 hover = _pokePoint + _pokeNormal * 0.11f;
             Vector3 toBtn = _pokePoint - Shoulder;
@@ -68,7 +97,8 @@ namespace Backrooms.Interaction
             {
                 case PokePhase.Approach:
                 {
-                    if (toBtn.magnitude <= reach * 0.92f + 0.05f) { _player.botInput = null; _poke = PokePhase.Reach; _pokeT = 0f; break; }
+                    // The fingertip is further out than the palm: a little closer than for a grab.
+                    if (toBtn.magnitude <= reach * 0.95f) { _player.botInput = null; _poke = PokePhase.Reach; _pokeT = 0f; break; }
                     if (_pokeT > 2.5f) { CancelPoke(); break; }
                     Vector3 local = transform.InverseTransformDirection(toBtn); local.y = 0f;
                     var flat = new Vector2(local.x, local.z);
@@ -83,18 +113,27 @@ namespace Backrooms.Interaction
                 {
                     float t = Mathf.Clamp01(_pokeT / 0.11f);
                     PokeTip = Vector3.Lerp(hover, _pokePoint, t * t * (3f - 2f * t));
-                    if (t >= 1f) { _pokeButton.Press(); _poke = PokePhase.Hold; _pokeT = 0f; }
+                    if (t >= 1f) { _poke = PokePhase.Stroke; _pokeT = 0f; }
+                    break;
+                }
+                case PokePhase.Stroke:
+                {
+                    // Pushed in (a button) or flicked over (a switch): quick, and it gives half way.
+                    float t = Mathf.Clamp01(_pokeT / 0.08f);
+                    PokeTip = Vector3.Lerp(_pokePoint, _pokeTo, t * t);
+                    if (t >= 0.5f && !_pressed) { _pressed = true; _pokeButton.Press(); }
+                    if (t >= 1f) { _poke = PokePhase.Hold; _pokeT = 0f; }
                     break;
                 }
                 case PokePhase.Hold:
-                    PokeTip = _pokePoint;
-                    if (_pokeT > 0.12f) { _poke = PokePhase.Pull; _pokeT = 0f; }
+                    PokeTip = _pokeTo;
+                    if (_pokeT > 0.1f) { _poke = PokePhase.Pull; _pokeT = 0f; }
                     break;
                 case PokePhase.Pull:
                 {
                     float t = Mathf.Clamp01(_pokeT / 0.16f);
-                    PokeTip = Vector3.Lerp(_pokePoint, hover, t);
-                    if (t >= 1f) { _poke = PokePhase.None; _pokeButton = null; }
+                    PokeTip = Vector3.Lerp(_pokeTo, hover, t * t * (3f - 2f * t));
+                    if (t >= 1f) { _poke = PokePhase.None; _pokeButton = null; _pokeObject = null; }
                     break;
                 }
             }

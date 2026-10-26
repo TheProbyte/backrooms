@@ -25,6 +25,7 @@ The world builder (Backrooms > Build Infinite Offices Scene) picks them up; noth
 | Carpet detail | `CarpetDetail_Albedo`, `CarpetDetail_Normal` | about **0.5 m** | 512–1024 square | Close-up fibre texture layered on top. Mostly neutral grey around 50% so it only adds grain. |
 | Ceiling tile | `CeilingTile_Albedo`, `CeilingTile_Normal`, `CeilingTile_Roughness` | **2.4 m × 2.4 m = 4 × 4 tiles of 0.6 m** | square | The grid bars are separate geometry. Paint only the tile faces with a hairline gap at each 0.6 m edge. Fissured mineral-fibre look, a few stained tiles. |
 | Plaster / painted wall | `Plaster_Albedo`, `Plaster_Normal`, `Plaster_Roughness` | **2.4 m × 2.4 m** | square | Used on painted walls and plaster ceilings in tall halls. Off-white with a subtle roller texture. |
+| (Current, 2026-10-26) | `Plaster_*`, `RefCeiling_*`, `Resources/Textures/DuctMetal` | as above | | Made from the player's photos by `Tools/Textures/make_surface_textures.py` (sources in `Tools/Textures/Source`): painted drywall (seamless, 0.6 m repeat, with a normal map), the drop ceiling's fissured tiles (16 tiles turned and flipped differently), the crawl ducts' riveted perforated metal panels (two panels a section). |
 | Wood (doors, trim) | `Wood_Albedo` (+ normal, roughness) | **1 m** | square | Optional. |
 | Upholstery | `Fabric_Albedo`, `Fabric_Normal` | **1 m** | square | Optional. Chair and armchair fabric. |
 

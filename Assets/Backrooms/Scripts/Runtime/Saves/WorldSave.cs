@@ -31,6 +31,11 @@ namespace Backrooms.Saves
         public List<PlacedData> placed = new List<PlacedData>();
         /// <summary>Things picked up in special rooms (their rooms do not make them again).</summary>
         public List<string> takenLoot = new List<string>();
+        /// <summary>Rooms whose lights were switched off at the wall: chunk x, storey, z and room, four ints each (Generation.LightZones).</summary>
+        public List<int> lightsOff = new List<int>();
+        /// <summary>Doors that were opened or shut (Interaction.DoorStates): their keys and angles.</summary>
+        public List<string> doorKeys = new List<string>();
+        public List<float> doorAngles = new List<float>();
         /// <summary>The door a Poolrooms noclip door leads back to (Interaction.NoclipTravel).</summary>
         public bool hasNoclipOrigin;
         public Vector3 noclipOrigin, noclipOriginNormal;

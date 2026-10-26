@@ -226,6 +226,132 @@ namespace Backrooms.Interaction
         }
 
         static readonly System.Collections.Generic.Dictionary<Mesh, Vector3[]> s_vertices = new System.Collections.Generic.Dictionary<Mesh, Vector3[]>();
+        static readonly System.Collections.Generic.Dictionary<Mesh, int[]> s_triangles = new System.Collections.Generic.Dictionary<Mesh, int[]>();
+        static readonly System.Collections.Generic.List<Vector3> s_near = new System.Collections.Generic.List<Vector3>();
+        const int Grid = 9;
+        const float Cell = 0.035f;
+        static readonly float[,] s_height = new float[Grid, Grid];
+
+        /// <summary>
+        /// Where the hand goes for a grab near <paramref name="grip"/> on a face with normal <paramref name="normal"/> (found
+        /// on the collider boxes), worked out on the model itself. The model's surface is sampled in a small grid around the
+        /// grip (rays straight down onto its triangles), then every way the fingers could point is tried on it:
+        ///  - the palm lies on the highest point under it, so no part of it is inside padding or a rounded arm;
+        ///  - fingers hook over an edge where the surface drops away under them, and lie flat where it does not;
+        ///  - a rise under the fingers (a sofa's back beyond its seat) counts against that way, and so does pointing the
+        ///    fingers back toward the shoulder (the wrist cannot bend like that).
+        /// Returns false if the model has no readable mesh there (the caller keeps the collider's grip).
+        /// </summary>
+        public bool PlaceHand(Vector3 grip, Vector3 normal, Vector3 shoulder, out Vector3 palm, out Vector3 fingers, out bool hook)
+        {
+            palm = grip; fingers = Vector3.zero; hook = false;
+            Vector3 n = normal.normalized;
+            // Triangles near the grip, in world space.
+            s_near.Clear();
+            float reach = Cell * (Grid - 1) * 0.5f * 1.5f + 0.05f;
+            foreach (var mf in GetComponentsInChildren<MeshFilter>())
+            {
+                var mesh = mf.sharedMesh;
+                var mr = mf.GetComponent<MeshRenderer>();
+                if (!mesh || !mr || !mr.enabled || mr.shadowCastingMode == ShadowCastingMode.ShadowsOnly || !mesh.isReadable) continue;
+                if (!s_vertices.TryGetValue(mesh, out var verts) || verts == null) { verts = mesh.vertices; s_vertices[mesh] = verts; }
+                if (!s_triangles.TryGetValue(mesh, out var tris)) { tris = mesh.triangles; s_triangles[mesh] = tris; }
+                var m = mf.transform.localToWorldMatrix;
+                for (int i = 0; i + 2 < tris.Length; i += 3)
+                {
+                    Vector3 a = m.MultiplyPoint3x4(verts[tris[i]]), b = m.MultiplyPoint3x4(verts[tris[i + 1]]), c = m.MultiplyPoint3x4(verts[tris[i + 2]]);
+                    Vector3 lo = Vector3.Min(a, Vector3.Min(b, c)), hi = Vector3.Max(a, Vector3.Max(b, c));
+                    Vector3 q = Vector3.Max(lo, Vector3.Min(grip, hi));
+                    if ((q - grip).sqrMagnitude > reach * reach) continue;
+                    s_near.Add(a); s_near.Add(b); s_near.Add(c);
+                }
+            }
+            if (s_near.Count == 0) return false;
+
+            // Heights over the grip's plane (NaN: nothing there, off the model).
+            Vector3 T = Vector3.ProjectOnPlane(Mathf.Abs(n.y) < 0.9f ? Vector3.up : transform.forward, n).normalized;
+            Vector3 S = Vector3.Cross(n, T);
+            const float above = 0.3f;
+            int hits = 0;
+            for (int i = 0; i < Grid; i++)
+            for (int j = 0; j < Grid; j++)
+            {
+                Vector3 o = grip + S * ((i - (Grid - 1) * 0.5f) * Cell) + T * ((j - (Grid - 1) * 0.5f) * Cell) + n * above;
+                float best = float.MaxValue;
+                for (int k = 0; k < s_near.Count; k += 3)
+                    if (RayTriangle(o, -n, s_near[k], s_near[k + 1], s_near[k + 2], out float t) && t < best) best = t;
+                s_height[i, j] = best < above * 2f ? above - best : float.NaN;
+                if (best < above * 2f) hits++;
+            }
+            if (hits == 0) return false;
+
+            // Every way the fingers could point.
+            Vector3 toward = Vector3.ProjectOnPlane(grip - shoulder, n);
+            if (Mathf.Abs(n.y) < 0.6f) toward += Vector3.ProjectOnPlane(Vector3.up, n) * 0.35f;     // on a side: fingers up a little, as when pushing
+            Vector3 prefer = toward.sqrMagnitude > 1e-6f ? toward.normalized : T;
+            float bestScore = float.MaxValue; float bestPalm = 0f;
+            for (int c = 0; c < 16; c++)
+            {
+                Vector3 F = Quaternion.AngleAxis(c * 22.5f, n) * T;
+                Vector3 side = Vector3.Cross(n, F);
+                float palmH = float.MinValue, fingerHi = float.MinValue;
+                int fingerHits = 0;
+                for (int s = -1; s <= 1; s++)
+                {
+                    foreach (float along in PalmAlong) palmH = Mathf.Max(palmH, Sample(grip, F * along + side * (s * 0.038f), S, T, n));
+                    foreach (float along in FingerAlong)
+                    {
+                        float h = Sample(grip, F * along + side * (s * 0.034f), S, T, n);
+                        if (float.IsNaN(h)) continue;
+                        fingerHi = Mathf.Max(fingerHi, h); fingerHits++;
+                    }
+                }
+                if (palmH == float.MinValue || float.IsNaN(palmH)) continue;
+                float rise = fingerHits > 0 ? Mathf.Max(0f, fingerHi - palmH) : 0f;
+                bool edge = fingerHits == 0 || fingerHi < palmH - 0.03f;
+                float score = rise * 3f + Vector3.Angle(F, prefer) / 180f * 0.14f + (edge ? -0.015f : 0f);
+                if (score >= bestScore) continue;
+                bestScore = score; fingers = F; hook = edge; bestPalm = palmH;
+            }
+            if (bestScore == float.MaxValue) return false;
+            palm = grip + n * (bestPalm + 0.004f);
+            return true;
+        }
+
+        static readonly float[] PalmAlong = { -0.05f, -0.02f, 0.01f };
+        static readonly float[] FingerAlong = { 0.045f, 0.075f, 0.1f };
+
+        /// <summary>The sampled height at a point of the grip's plane (bilinear; NaN off the model).</summary>
+        static float Sample(Vector3 grip, Vector3 offset, Vector3 S, Vector3 T, Vector3 n)
+        {
+            float x = Vector3.Dot(offset, S) / Cell + (Grid - 1) * 0.5f, y = Vector3.Dot(offset, T) / Cell + (Grid - 1) * 0.5f;
+            if (x < 0f || y < 0f || x > Grid - 1 || y > Grid - 1) return float.NaN;
+            int i = Mathf.Min((int)x, Grid - 2), j = Mathf.Min((int)y, Grid - 2);
+            float fx = x - i, fy = y - j;
+            float a = s_height[i, j], b = s_height[i + 1, j], c = s_height[i, j + 1], d = s_height[i + 1, j + 1];
+            // Off the model at any corner: the nearest sample as it is (an edge is not smoothed into the air).
+            if (float.IsNaN(a) || float.IsNaN(b) || float.IsNaN(c) || float.IsNaN(d))
+                return fx < 0.5f ? (fy < 0.5f ? a : c) : (fy < 0.5f ? b : d);
+            return Mathf.Lerp(Mathf.Lerp(a, b, fx), Mathf.Lerp(c, d, fx), fy);
+        }
+
+        /// <summary>Moller-Trumbore, both faces.</summary>
+        static bool RayTriangle(Vector3 o, Vector3 d, Vector3 a, Vector3 b, Vector3 c, out float t)
+        {
+            t = 0f;
+            Vector3 e1 = b - a, e2 = c - a, p = Vector3.Cross(d, e2);
+            float det = Vector3.Dot(e1, p);
+            if (det > -1e-9f && det < 1e-9f) return false;
+            float inv = 1f / det;
+            Vector3 s = o - a;
+            float u = Vector3.Dot(s, p) * inv;
+            if (u < 0f || u > 1f) return false;
+            Vector3 q = Vector3.Cross(s, e1);
+            float v = Vector3.Dot(d, q) * inv;
+            if (v < 0f || u + v > 1f) return false;
+            t = Vector3.Dot(e2, q) * inv;
+            return t > 0f;
+        }
 
         /// <summary>
         /// Puts a grip found on the collider boxes onto the surface you see: the colliders are boxes round padded, rounded

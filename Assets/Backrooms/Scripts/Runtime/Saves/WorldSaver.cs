@@ -210,6 +210,8 @@ namespace Backrooms.Saves
                 d.zone = ZoneName(player.position);
             }
 
+            d.lightsOff = Generation.LightZones.Save();
+            Interaction.DoorStates.Save(d.doorKeys, d.doorAngles);
             d.props.Clear();
             var mgr = MovablePropManager.Instance;
             if (mgr) foreach (var s in mgr.Export()) d.props.Add(FromSpec(s.spec, s.position, s.rotation));

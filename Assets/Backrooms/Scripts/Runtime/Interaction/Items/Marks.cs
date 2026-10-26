@@ -131,6 +131,60 @@ namespace Backrooms.Interaction
             b.dirty = true;
         }
 
+        /// <summary>
+        /// A strip along a path over surfaces (tape bent a little as it was laid, or wrapped round a corner): points, and the
+        /// normal of the surface each piece lies on (normals[i] for the piece from points[i] to points[i + 1]). Pieces on
+        /// the same surface share their ends (mitred, no gaps or overlaps on a bend); at a corner each ends on the edge.
+        /// The "along" texture coordinate runs on over the whole strip, so it is torn at its two ends only.
+        /// </summary>
+        public static void Path(Batch b, IReadOnlyList<Vector3> points, IReadOnlyList<Vector3> normals, float width, float kind, Color32 col)
+        {
+            int n = points.Count;
+            if (n < 2) return;
+            float total = 0f;
+            for (int i = 0; i < n - 1; i++) total += Vector3.Distance(points[i], points[i + 1]);
+            if (total < 1e-4f) return;
+            float half = width * 0.5f, lift = kind < 0.5f ? 0.0007f : 0.0012f, s = 0f;
+            for (int i = 0; i < n - 1; i++)
+            {
+                Vector3 a = points[i], c = points[i + 1], nn = normals[i];
+                float len = Vector3.Distance(a, c);
+                if (len < 1e-5f) continue;
+                Vector3 t = (c - a) / len;
+                Vector3 sa = JoinSide(points, normals, i, i - 1, t, nn) * half, sc = JoinSide(points, normals, i, i + 1, t, nn) * half;
+                Vector3 up = nn * lift;
+                Quad(b, a - sa + up, a + sa + up, c + sc + up, c - sc + up, s, s + len, total, kind, col, nn);
+                s += len;
+            }
+        }
+
+        /// <summary>The side vector at one end of piece i: mitred with the neighbouring piece j if it lies on the same surface.</summary>
+        static Vector3 JoinSide(IReadOnlyList<Vector3> p, IReadOnlyList<Vector3> nrm, int i, int j, Vector3 t, Vector3 nn)
+        {
+            Vector3 own = Vector3.Cross(nn, t).normalized;
+            if (j < 0 || j >= p.Count - 1 || Vector3.Dot(nrm[j], nn) < 0.99f) return own;
+            Vector3 tj = p[j + 1] - p[j];
+            if (tj.sqrMagnitude < 1e-10f) return own;
+            Vector3 avg = (t + tj.normalized).normalized;
+            Vector3 side = Vector3.Cross(nn, avg).normalized;
+            float k = Vector3.Dot(side, own);
+            return k > 0.5f ? side / k : own;
+        }
+
+        /// <summary>One quad of a strip: corners start-left, start-right, end-right, end-left, and where along the strip it runs.</summary>
+        static void Quad(Batch b, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 v3, float s0, float s1, float total, float kind, Color32 col, Vector3 normal)
+        {
+            int s = b.v.Count;
+            b.v.Add(v0); b.v.Add(v1); b.v.Add(v2); b.v.Add(v3);
+            b.uv.Add(new Vector4(-1, s0, kind, total)); b.uv.Add(new Vector4(1, s0, kind, total));
+            b.uv.Add(new Vector4(1, s1, kind, total)); b.uv.Add(new Vector4(-1, s1, kind, total));
+            for (int k = 0; k < 4; k++) b.c.Add(col);
+            if (Vector3.Dot(Vector3.Cross(v1 - v0, v2 - v0), normal) > 0f)
+            { b.idx.Add(s); b.idx.Add(s + 1); b.idx.Add(s + 2); b.idx.Add(s); b.idx.Add(s + 2); b.idx.Add(s + 3); }
+            else { b.idx.Add(s); b.idx.Add(s + 2); b.idx.Add(s + 1); b.idx.Add(s); b.idx.Add(s + 3); b.idx.Add(s + 2); }
+            b.dirty = true;
+        }
+
         Batch Current()
         {
             if (_current == null || _current.Quads >= QuadsPerBatch)
@@ -153,6 +207,24 @@ namespace Backrooms.Interaction
         {
             Strip(Current(), a, b, normal, TapeStripWidth, KindTape, TapeColor);
             Count++;
+        }
+
+        /// <summary>A strip of tape along a path (see <see cref="Path"/>).</summary>
+        public void AddTape(IReadOnlyList<Vector3> points, IReadOnlyList<Vector3> normals)
+        {
+            var b = Current();
+            if (b.Quads + points.Count > QuadsPerBatch) { _current = null; b = Current(); }
+            Path(b, points, normals, TapeStripWidth, KindTape, TapeColor);
+            Count++;
+        }
+
+        /// <summary>The strip being pulled off a roll, as a path.</summary>
+        public void SetPreview(IReadOnlyList<Vector3> points, IReadOnlyList<Vector3> normals)
+        {
+            if (_preview == null) _preview = NewBatch("MarkPreview", transform);
+            _preview.Clear();
+            Path(_preview, points, normals, TapeStripWidth, KindTape, TapeColor);
+            _preview.go.SetActive(true);
         }
 
         /// <summary>The strip being pulled off a roll right now (one at a time).</summary>
@@ -180,8 +252,9 @@ namespace Backrooms.Interaction
         // ---------------- Saving ----------------
         // Per strip: kind, colour, and three corners (start-left, start-right, end-left), as laid.
 
+        // Version 2: every quad's four corners, and where along its strip it runs (a strip can be several quads now).
         const int SaveMagic = 0x4B524D42;     // "BMRK"
-        const int SaveVersion = 1;
+        const int SaveVersion = 2;
 
         public static void WriteEmpty(System.IO.BinaryWriter w) { w.Write(SaveMagic); w.Write(SaveVersion); w.Write(0); }
 
@@ -196,7 +269,8 @@ namespace Backrooms.Interaction
                     int s = q * 4;
                     w.Write((byte)Mathf.RoundToInt(b.uv[s].z));
                     var c = b.c[s]; w.Write(c.r); w.Write(c.g); w.Write(c.b); w.Write(c.a);
-                    Vec(w, b.v[s]); Vec(w, b.v[s + 1]); Vec(w, b.v[s + 3]);
+                    Vec(w, b.v[s]); Vec(w, b.v[s + 1]); Vec(w, b.v[s + 2]); Vec(w, b.v[s + 3]);
+                    w.Write(b.uv[s].y); w.Write(b.uv[s + 2].y); w.Write(b.uv[s].w);
                 }
         }
 
@@ -206,15 +280,26 @@ namespace Backrooms.Interaction
         public void Read(System.IO.BinaryReader r)
         {
             if (r.BaseStream.Length < 12 || r.ReadInt32() != SaveMagic) return;
-            if (r.ReadInt32() > SaveVersion) return;
+            int version = r.ReadInt32();
+            if (version > SaveVersion) return;
             int count = r.ReadInt32();
             for (int i = 0; i < count; i++)
             {
                 float kind = r.ReadByte();
                 var col = new Color32(r.ReadByte(), r.ReadByte(), r.ReadByte(), r.ReadByte());
-                Vector3 v0 = Vec(r), v1 = Vec(r), v3 = Vec(r);
-                Vector3 n = Vector3.Cross(v1 - v0, v3 - v0).normalized;
-                Corners(Current(), v0, v1, v3, kind, col, -n);
+                if (version == 1)
+                {
+                    Vector3 v0 = Vec(r), v1 = Vec(r), v3 = Vec(r);
+                    Vector3 n = Vector3.Cross(v1 - v0, v3 - v0).normalized;
+                    Corners(Current(), v0, v1, v3, kind, col, -n);
+                }
+                else
+                {
+                    Vector3 v0 = Vec(r), v1 = Vec(r), v2 = Vec(r), v3 = Vec(r);
+                    float s0 = r.ReadSingle(), s1 = r.ReadSingle(), total = r.ReadSingle();
+                    Vector3 n = Vector3.Cross(v3 - v0, v1 - v0).normalized;
+                    Quad(Current(), v0, v1, v2, v3, s0, s1, total, kind, col, n);
+                }
                 Count++;
             }
         }

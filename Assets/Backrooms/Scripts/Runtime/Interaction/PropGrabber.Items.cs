@@ -109,10 +109,13 @@ namespace Backrooms.Interaction
             if (Event.current.type != EventType.Repaint || !_cam) return;
             if (HeldItem)
             {
-                // The socket a click would plug into: small marks round it.
+                // The socket a click would plug into: small marks round it (or where the held item points: tape's start).
                 if (AimedSocket != null) FocusMarks(AimedSocket.Position, 0.022f, 16f);
+                else if (HeldItem.AimMark(out var mark)) FocusMarks(mark, 0.03f, 16f);
                 return;
             }
+            if (AimedPoke != null && Current == State.Idle && _poke == PokePhase.None) { FocusMarks(AimedPoke.FocusPoint, 0.045f, 18f); return; }
+            if (AimedDoorGrip.HasValue && !OnDoor) { FocusMarks(AimedDoorGrip.Value, 0.05f, 18f); return; }
             if (!AimedItem || Current != State.Idle) return;
             if (AimedCordPoint.HasValue) { FocusMarks(AimedCordPoint.Value, 0.03f, 18f); return; }
             var b = new Bounds(AimedItem.transform.position, Vector3.zero);
@@ -276,7 +279,9 @@ namespace Backrooms.Interaction
             return true;
         }
 
-        bool _wasUse;
+        bool _wasUse, _rmbWas;
+        /// <summary>Automated tests: the right mouse button held.</summary>
+        [System.NonSerialized] public bool botRmb;
         float _qDown = -1f, _rmbDown = -1f;
         const float RightTap = 0.25f;
         /// <summary>0..1 while Q is held to throw (wind-up), 0 otherwise.</summary>
@@ -321,14 +326,16 @@ namespace Backrooms.Interaction
             if (botHold.HasValue) use = botHold.Value;
             var cam = _cam ? _cam.transform : transform;
             // Right mouse: a tap (released within RightTap) is the item's quick action; held longer, it reels a cord in.
-            bool rmb = focus && mouse != null && mouse.rightButton.isPressed;
+            bool rmb = botRmb || (focus && mouse != null && mouse.rightButton.isPressed);
             if (rmb && _rmbDown < 0f) _rmbDown = Time.time;
             bool tap = !rmb && _rmbDown >= 0f && Time.time - _rmbDown <= RightTap;
             bool reel = rmb && _rmbDown >= 0f && Time.time - _rmbDown > RightTap;
+            bool rmbPressed = rmb && !_rmbWas;
+            _rmbWas = rmb;
             if (!rmb) _rmbDown = -1f;
             AimedSocket = FindSocket(HeldItem);
             var input = new HoldInput { use = use, pressed = use && !_wasUse, released = !use && _wasUse, eye = cam.position, aimDir = cam.forward, dt = Time.deltaTime, hand = this,
-                                        secondary = tap, reel = reel, socket = AimedSocket };
+                                        secondary = tap, reel = reel, socket = AimedSocket, aim = rmb, aimPressed = rmbPressed };
             _wasUse = use;
             input.hit = AimHit(out input.hitInfo);
             input.aimAt = input.hit ? input.hitInfo.point : cam.position + cam.forward * 2f;
@@ -394,7 +401,7 @@ namespace Backrooms.Interaction
             offset += new Vector3(0.04f * Side, 0.1f, -0.16f) * ThrowCharge;
             Vector3 pos = _swayPos + view * offset;
             // Upright in the view, turned a little in toward the middle, tipped forward while in use.
-            Quaternion rot = view * Quaternion.Euler(-8f * item.UseBlend - 25f * ThrowCharge, -10f * Side, 4f * Side);
+            Quaternion rot = view * Quaternion.Euler(-8f * item.UseBlend - 25f * ThrowCharge, -10f * Side, 4f * Side) * item.HoldTurn;
             float w = item.UsePose(out var usePos, out var useRot);
             if (w > 0f) { pos = Vector3.Lerp(pos, usePos, w); rot = Quaternion.Slerp(rot, useRot, w); }
             if (_itemT < 1f)

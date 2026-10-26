@@ -15,6 +15,7 @@ namespace Backrooms.Interaction
         public bool use, pressed, released;      // left mouse: held, went down, came up this frame
         public bool secondary;                   // right mouse tapped (released within a moment)
         public bool reel;                        // right mouse held down (past the tap)
+        public bool aim, aimPressed;             // right mouse held down (at once), and went down this frame
         public Socket socket;                    // the socket the hand aims at (focus brackets), for items that plug in
         public bool hit;                         // the view hits something within 6 m (not the player or the item)
         public RaycastHit hitInfo;
@@ -44,6 +45,10 @@ namespace Backrooms.Interaction
         public virtual Vector3 UseOffset => HoldOffset;
         /// <summary>Palm contact point and hand frame in the item's own frame (for the arm IK).</summary>
         public virtual Vector3 GripLocal => Vector3.zero;
+        /// <summary>How the item is turned in the hand (camera frame, after the usual upright-in-view hold).</summary>
+        public virtual Quaternion HoldTurn => Quaternion.identity;
+        /// <summary>A point to put focus marks on while held (where a strip of tape will start), if any.</summary>
+        public virtual bool AimMark(out Vector3 at) { at = default; return false; }
         public virtual Quaternion GripRotationLocal => Quaternion.identity;
         public virtual float GripCurl => 0.85f;
 
@@ -60,8 +65,22 @@ namespace Backrooms.Interaction
         /// <summary>Held in place by something other than the hand (a plug in a socket): stays kinematic.</summary>
         protected virtual bool Pinned => false;
 
+        bool _playerIgnored;
+
+        /// <summary>Small things (a plug, chalk, tape) do not trip the player up: walking over them would bump the view.</summary>
+        void IgnorePlayer()
+        {
+            _playerIgnored = true;
+            if (Body.mass > 0.5f) return;
+            var player = FindAnyObjectByType<CamcorderPlayerController>();
+            var cc = player ? player.GetComponent<CharacterController>() : null;
+            if (!cc) { _playerIgnored = false; return; }
+            foreach (var c in GetComponentsInChildren<Collider>(true)) Physics.IgnoreCollision(cc, c, true);
+        }
+
         protected virtual void FixedUpdate()
         {
+            if (!_playerIgnored) IgnorePlayer();
             if (Held) return;
             if (Pinned) { if (!Body.isKinematic) Body.isKinematic = true; return; }
             // Frozen while the ground under it is unloaded (it would fall forever), awake otherwise.
@@ -77,6 +96,9 @@ namespace Backrooms.Interaction
             Held = held;
             Body.isKinematic = held;
             Body.interpolation = held ? RigidbodyInterpolation.None : RigidbodyInterpolation.Interpolate;
+            // All of them, as they are now: parts added after Awake (the lamp's cord bundle) would stay solid in the hand
+            // and shove the player along as they walked.
+            _colliders = GetComponentsInChildren<Collider>(true);
             foreach (var c in _colliders) if (c) c.enabled = !held;
 
             if (held && lootId != 0) { Saves.LootRegistry.Take(lootId); lootId = 0; transform.SetParent(null, true); }   // taken from its room: a free item from now on

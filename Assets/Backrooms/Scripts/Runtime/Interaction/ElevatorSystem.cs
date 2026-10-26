@@ -7,10 +7,18 @@ using UnityEngine.Rendering.Universal;
 namespace Backrooms.Interaction
 {
     /// <summary>A push button on a wall (or inside the cab). Clicked by the player's hand (<see cref="PropGrabber"/>).</summary>
-    public class ElevatorButton : MonoBehaviour
+    public class ElevatorButton : MonoBehaviour, IPokeTarget
     {
         public System.Action onPress;
         public Vector3 Normal => transform.forward;          // out of the wall, toward whoever presses it
+        public Vector3 PokeNormal => Normal;
+        public Vector3 FocusPoint => transform.TransformPoint(new Vector3(0f, 0.02f, 0.028f));
+        /// <summary>The face of the lamp, pushed in a few millimetres.</summary>
+        public void PokeStroke(out Vector3 from, out Vector3 to)
+        {
+            from = FocusPoint + Normal * 0.002f;
+            to = FocusPoint - Normal * 0.003f;
+        }
         Renderer _lamp;
         Material _on, _off;
         bool _lit;

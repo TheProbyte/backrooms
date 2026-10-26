@@ -95,6 +95,9 @@ namespace Backrooms.Generation
         {
             public List<LightSource> lights;
             public List<Renderer> lenses, faulty;
+            public List<(Renderer r, RoomLens rl)> roomLenses;   // lit lenses of each room (switched with LightZones)
+            public RoomLens[] faultyRooms;
+            public bool roomClean;         // room lenses shown plainly lit (nothing to do until a switch or a power change)
             public float start;            // time power began (start-up) or -1 when steady
             public float stop = -1f;       // time power-down began
             public float seed;
@@ -117,9 +120,21 @@ namespace Backrooms.Generation
         {
             _minStorey = Mathf.Min(_minStorey, chunk.y); _maxStorey = Mathf.Max(_maxStorey, chunk.y);
             for (int i = 0; i < lights.Count; i++) { var l = lights[i]; l.chunk = chunk; lights[i] = l; }
+            // A room's lenses go on and off with its switch: kept apart from the rest.
+            var plain = new List<Renderer>();
+            var rooms = new List<(Renderer, RoomLens)>();
+            if (lenses != null)
+                foreach (var r in lenses)
+                {
+                    var rl = r ? r.GetComponent<RoomLens>() : null;
+                    if (rl) rooms.Add((r, rl)); else plain.Add(r);
+                }
+            faulty = faulty ?? new List<Renderer>();
+            var faultyRooms = new RoomLens[faulty.Count];
+            for (int i = 0; i < faulty.Count; i++) faultyRooms[i] = faulty[i] ? faulty[i].GetComponent<RoomLens>() : null;
             _chunks[chunk] = new ChunkPower
             {
-                lights = lights, lenses = lenses ?? new List<Renderer>(), faulty = faulty ?? new List<Renderer>(),
+                lights = lights, lenses = plain, faulty = faulty, roomLenses = rooms, faultyRooms = faultyRooms,
                 start = animatePowerOn ? Time.time : -1f, seed = (chunk.x * 0.731f + chunk.z * 1.37f + chunk.y * 2.11f) % 10f,
             };
         }
@@ -634,6 +649,7 @@ namespace Backrooms.Generation
             }
             if (cp.stop >= 0f) level *= ShutdownCurve(now - cp.stop - seed * powerFlickerTime * 0.4f, seed);
             if (src.faultyId >= 0) level *= FaultyCurve(now, seed);
+            if (src.room >= 0) level *= LightZones.Level(src.chunk, src.room, now, seed);     // the room's wall switch
             return level;
         }
 
@@ -698,13 +714,35 @@ namespace Backrooms.Generation
                     if (!animating) { if (r.HasPropertyBlock()) r.SetPropertyBlock(null); continue; }
                     _mpb.Clear(); _mpb.SetColor(EmissionId, BaseEmission(r) * level); r.SetPropertyBlock(_mpb);
                 }
+                bool switched = LightZones.Touched(kv.Key);
                 for (int i = 0; i < cp.faulty.Count; i++)
                 {
                     var r = cp.faulty[i];
                     if (!r) continue;
                     float f = level;
                     foreach (var l in cp.lights) if (l.faultyId == i) { f *= FaultyCurve(now, Hash01(l.position)); break; }
+                    var rl = cp.faultyRooms != null && i < cp.faultyRooms.Length ? cp.faultyRooms[i] : null;
+                    if (switched && rl)
+                    {
+                        float z = LightZones.Level(kv.Key, rl.room, now, cp.seed % 1f);
+                        var want = z <= 0.02f && rl.off ? rl.off : rl.on;
+                        if (r.sharedMaterial != want) r.sharedMaterial = want;
+                        f *= z;
+                    }
                     _mpb.Clear(); _mpb.SetColor(EmissionId, BaseEmission(r) * f); r.SetPropertyBlock(_mpb);
+                }
+                // Each room's lenses: the unlit lens while its switch is off, flickering on with the tubes.
+                if (cp.roomLenses == null || (!switched && !animating && cp.roomClean)) continue;
+                cp.roomClean = !switched && !animating;
+                foreach (var (r, rl) in cp.roomLenses)
+                {
+                    if (!r) continue;
+                    float z = switched ? LightZones.Level(kv.Key, rl.room, now, cp.seed % 1f) : 1f;
+                    var want = z <= 0.02f && rl.off ? rl.off : rl.on;
+                    if (r.sharedMaterial != want) r.sharedMaterial = want;
+                    float k = z * level;
+                    if (k >= 0.999f || want == rl.off) { if (r.HasPropertyBlock()) r.SetPropertyBlock(null); continue; }
+                    _mpb.Clear(); _mpb.SetColor(EmissionId, BaseEmission(r) * k); r.SetPropertyBlock(_mpb);
                 }
             }
         }

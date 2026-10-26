@@ -15,6 +15,50 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 16:35  Claude Code  Doors, light switches, tape that bends and wraps corners, arm joint limits, planted feet, photo textures
+- Cords: reel from either end (holding a plug, hold right mouse: the box or lamp is dragged in along the cord, coiled /
+  wound up and put in the hand; `PowerUser.ReelFromPlug`). A plugged cord held at the other end first holds the player
+  back (`CamcorderPlayerController.Leash`, a small tug and jolt), and only pulls out after ~0.55 s of walking on against
+  it (`Cord.HoldBack`). Walking with the lamp was shoved by its cord bundle's collider (added after Awake, so it stayed
+  solid in the hand): `WorldItem.SetHeld` now disables every collider; items under 0.5 kg no longer block the player.
+  A dragged end follows the cord round corners. Fixed a NaN in `Cord.Spans` when a span went straight through a thin
+  object (opposite faces); a NaN cord is laid out again.
+- Light switches: the toggle is its own object (`Interaction/LightSwitch.cs`, plate still baked); click it and the
+  finger flicks it (`IPokeTarget`, a stroke phase in `PropGrabber.Poke.cs`; elevator buttons use the same). Down puts out
+  the ceiling lights of its room in its chunk (`Generation/LightZones.cs`, multiplied into `FixtureLightManager.PowerLevel`,
+  so grid, real lights and hum follow); each room's lit lenses are their own mesh (`RoomLens`) and switch to the unlit
+  material; on again they strike with a flicker. Saved (`WorldSaveData.lightsOff`).
+- Arm (`FirstPersonBody`): the elbow swing is searched each frame (scored on forearm turn <= 95 deg, wrist flex 70 / ext 60 /
+  side 28 deg, elbow not up or across the chest) and smoothed; what is past a limit is not done and the palm is kept on
+  its point; the shoulder comes forward up to 9 cm on a long reach. Grab reach 0.78 -> 0.7 m (what the arm can reach).
+  Watch and ring removed from the arm model (`make_player_rig.py`; an empty "WatchCase" stays for the code).
+- Furniture grips: `MovableProp.PlaceHand` samples the model's surface (rays onto its triangles, 9 x 9 grid) and tries
+  16 finger directions: palm on the highest point, hook over a real edge, avoid rises and fingers back at the shoulder.
+- Legs: planted feet that step when left behind (one at a time; landing from the body's motion; long steps take longer,
+  foot speed capped), so start/stop/turn/direction changes have no snap; hips bob over steps; feet only on the floor
+  within a step (not on furniture, items or rack beams). `Debug/BodyShots.RunTransitions` logs foot speed.
+- Items: `WorldItem.HoldTurn`, `AimMark`; `HoldInput.aim/aimPressed`. Tape rewritten (`TapeRoll`): carried on the
+  fingers through its core; hold right mouse to line up the start (marks + a tab), hold left to stick and drag, right
+  again cancels; the strip walks over surfaces in 2 cm pieces, turning no tighter than 0.45 m radius, over outside edges
+  and up inside corners, peeling back; laid as one strip (`Marks.Path`, mitred pieces, save version 2 with 4 corners).
+- Doors: `Tools/Blender/build_door.py` -> `Resources/Items/Door.fbx` (six-panel stained wood door, frame and casings, three
+  hinges, lever handles; the FBX import mirrors x, see `Door.cs`). `OfficeChunkBuilder.Doors.cs`: square-headed interior
+  doorways between two ordinary rooms by `BiomeRules.doorChance` (0.3 offices, 0.4 hallways, 0 Poolrooms), hashed per
+  edge; swing side and shut / ajar / wide from the hash. `Door.cs`: latched until the lever is turned, follows the hand,
+  momentum, bump at the stop, bang when shut hard, never through the player, nudged when walked into; sounds in
+  `ProceduralSounds.Doors.cs`; angles saved (`DoorStates`, `WorldSaveData.doorKeys/doorAngles`). `PropGrabber.Door.cs`.
+- Textures from the player's photos (`Tools/Textures/make_surface_textures.py`, sources in `Tools/Textures/Source`):
+  painted drywall walls and plaster ceilings (`Plaster_*`), the drop ceiling tiles (`RefCeiling_*`), vent ducts
+  (`Resources/Textures/DuctMetal.png`). Lighting divided out, seamless, means matched to the old textures, normal maps.
+- Checked: EditMode 69/69 (new `RoundFourTests`). Played World 3 (erased after; World 1 untouched): `Debug/CordProbe`
+  (lamp walk 1.35 m/s every frame; held back at 0.63 s, out at 1.16 s; reel from plug: box in hand after 4.7 s),
+  `Debug/HandShots` (items, sofa grabs, switch flick and room on/off/on, doors pushed 0 -> 14 -> 46 -> 82 deg after
+  letting go; tape held, aimed, bent, laid), tape round a test cube's edge and from floor up a wall, foot speed through
+  forward/back/sideways/stop (no spikes but editor hitches).
+- Open: the light grid still carries light through a shut door (the grid does not know doors). A switch only covers its
+  room's part of its chunk. Pulling a door open in a narrow hallway stops at the player (step aside). Unity crashed once
+  in the Steam Audio plugin's mixer thread during a script reload after play mode (third-party; relaunched).
+
 ## 2026-10-26 16:30  Claude Code  Culling behind walls, cords (aim, corners, reel, grab), throws through noclip doors, walking body
 - Culling: `Generation/ChunkVisibility.cs` hides loaded chunks no ray across the view can reach over the cell grid
   (walls stop rays; the chunk past a stopping wall and chunks within 1.5 m of the eye stay drawn). Hidden chunks keep

@@ -37,9 +37,9 @@ so physically it overlaps the room behind. That room never sees or touches it:
 
 ## Look, outlets, hitches
 
-- **Vent duct.** The duct is lined with galvanized sheet metal (`Resources/Textures/DuctMetal.png`, generated: zinc
-  spangle, rolling streaks, a cross-break crease, joint flanges with screws, dust in the corners) on all four sides, in
-  1.1 m sections (joints at the entrance, the middle and the window; CrawlDuct `_ObjectUV`, metallic 0.25). If the texture
+- **Vent duct.** The duct is lined with sheet metal (`Resources/Textures/DuctMetal.png`: since 2026-10-26 the player's
+  photo of riveted panels with diagonal perforated ridges, made by `Tools/Textures/make_surface_textures.py`; before that
+  a generated galvanized sheet) on all four sides, in 1.1 m sections (joints at the entrance, the middle and the window; CrawlDuct `_ObjectUV`, metallic 0.25). If the texture
   is missing the duct falls back to the room's finish.
 - **Outlets.** Wall plates are placed before the holes; `CrawlPortals.ClearPlates` drops any low plate on either face of
   a holed wall (light switches sit above the hole and stay). The pair test checks it.

@@ -129,6 +129,15 @@ namespace Backrooms.Interaction
             _cord.onTaut = c => { if (_plug && _plug.Plugged) _plug.Unplug(true); };
         }
 
+        public override void ReelFromPlug(Plug plug, in HoldInput i)
+        {
+            if (coiled || plug != _plug) return;
+            if (!ReelUpdate(_cord, _plug, i.reel, i.dt)) return;
+            var hand = i.hand;
+            Coil();                       // lets go of the plug (it is part of the coil again)
+            if (hand) hand.PickUp(this);
+        }
+
         /// <summary>Back into its coil: its plug comes out, and so does anything plugged into it.</summary>
         public void Coil()
         {

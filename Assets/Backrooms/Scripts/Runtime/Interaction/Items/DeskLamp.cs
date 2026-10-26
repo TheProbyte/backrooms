@@ -151,6 +151,15 @@ namespace Backrooms.Interaction
             _fx.PlayOneShot(SoundBank.CordWhip, 0.3f);
         }
 
+        public override void ReelFromPlug(Plug plug, in HoldInput i)
+        {
+            if (_bundled || plug != _plug) return;
+            if (!ReelUpdate(_cord, _plug, i.reel, i.dt)) return;
+            var hand = i.hand;
+            Bundle();                     // lets go of the plug: the cord is wound up behind the base
+            if (hand) hand.PickUp(this);
+        }
+
         public override void WakeCord() { if (_cord) _cord.Wake(); }
         public override float CordReach => CordLength;
         protected override Cord GetCord() => _cord;

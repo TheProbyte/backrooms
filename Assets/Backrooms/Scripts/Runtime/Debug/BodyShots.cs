@@ -37,6 +37,72 @@ namespace Backrooms.DebugTools
             return b;
         }
 
+        public bool transitions;
+
+        /// <summary>Walks forward, back, sideways and stops, logging the fastest any foot moved (a snap shows as a spike).</summary>
+        public static BodyShots RunTransitions()
+        {
+            var go = new GameObject("BodyShots");
+            go.SetActive(false);
+            var b = go.AddComponent<BodyShots>();
+            b.transitions = true;
+            go.SetActive(true);
+            return b;
+        }
+
+        IEnumerator Transitions(CamcorderPlayerController ctrl)
+        {
+            Transform fl = null, fr = null;
+            foreach (var t in ctrl.GetComponentsInChildren<Transform>(true)) { if (t.name == "FootL") fl = t; if (t.name == "FootR") fr = t; }
+            if (!fl || !fr) { Report = "no feet"; Done = true; yield break; }
+            var sb = new System.Text.StringBuilder();
+            // Somewhere open (nothing within 1.8 m at knee to head height), so the walk is not stopped by walls.
+            Vector3 origin = ctrl.transform.position;
+            for (int ring = 0; ring < 14; ring++)
+            {
+                bool found = false;
+                for (int k = 0; k < 16 && !found; k++)
+                {
+                    float a = k * Mathf.PI / 8f;
+                    Vector3 c = origin + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * ring * 1.2f;
+                    if (!Physics.Raycast(c + Vector3.up * 1f, Vector3.down, out var floor, 1.5f) || floor.normal.y < 0.9f) continue;
+                    if (Physics.CheckBox(floor.point + Vector3.up * 1f, new Vector3(1.8f, 0.55f, 1.8f), Quaternion.identity, ~0, QueryTriggerInteraction.Ignore)) continue;
+                    ctrl.Teleport(floor.point + Vector3.up * 0.05f, 0f, 0f);
+                    sb.AppendLine($"open floor at {floor.point}");
+                    found = true;
+                }
+                if (found) break;
+            }
+            yield return Wait(0.6f);
+            var phases = new (string name, Vector2 input, float time)[]
+            {
+                ("still", Vector2.zero, 0.6f), ("forward", new Vector2(0, 1), 1.2f), ("back", new Vector2(0, -1), 1.2f),
+                ("right", new Vector2(1, 0), 1.2f), ("forward-left", new Vector2(-0.7f, 0.7f), 1.0f), ("stop", Vector2.zero, 1.2f),
+            };
+            Vector3 lastL = fl.position - ctrl.transform.position, lastR = fr.position - ctrl.transform.position;
+            Vector3 lastP = ctrl.transform.position;
+            foreach (var p in phases)
+            {
+                ctrl.botInput = p.input;
+                float worst = 0f, worstStep = 0f, worstBody = 0f;
+                for (float t = 0; t < p.time; t += Time.deltaTime)
+                {
+                    yield return null;
+                    float dt = Mathf.Max(Time.deltaTime, 1e-4f);
+                    // Foot speed in the world (planted feet stand still; a swinging foot moves a few m/s).
+                    Vector3 dl = fl.position - (lastL + lastP), dr = fr.position - (lastR + lastP);
+                    float v = Mathf.Max(dl.magnitude, dr.magnitude) / dt;
+                    worst = Mathf.Max(worst, v);
+                    worstStep = Mathf.Max(worstStep, Mathf.Max(dl.magnitude, dr.magnitude));
+                    worstBody = Mathf.Max(worstBody, (ctrl.transform.position - lastP).magnitude);
+                    lastP = ctrl.transform.position; lastL = fl.position - lastP; lastR = fr.position - lastP;
+                }
+                sb.AppendLine($"{p.name}: fastest foot {worst:0.0} m/s, biggest frame step {worstStep * 100f:0.0} cm (body {worstBody * 100f:0.0} cm), at {ctrl.transform.position}");
+            }
+            ctrl.botInput = null;
+            Report = sb.ToString(); Done = true;
+        }
+
         IEnumerator Shadow(CamcorderPlayerController ctrl)
         {
             // A still camera ahead of the player, looking down at the floor the player walks over (or the eye, looking down).
@@ -66,6 +132,11 @@ namespace Backrooms.DebugTools
 
         IEnumerator Start()
         {
+            if (transitions)
+            {
+                yield return Transitions(WorldStreamer.Current.player.GetComponent<CamcorderPlayerController>());
+                yield break;
+            }
             if (shadowOnly)
             {
                 Directory.CreateDirectory(folder);

@@ -19,7 +19,14 @@ namespace Backrooms.Generation
             public Vector4[] tangents;
             public Vector2[] uv;
             public int[] triangles;
+            public bool toggle;          // the switch's toggle: not baked, it is its own object (Interaction.LightSwitch)
         }
+
+        /// <summary>The switch's toggle as a mesh of its own (model frame), and its material.</summary>
+        public static Mesh ToggleMesh { get; private set; }
+        public static Material ToggleMaterial { get; private set; }
+        /// <summary>The toggle mesh exists (a plain flag: chunk data is built on worker threads, away from the engine).</summary>
+        public static bool HasToggle { get; private set; }
 
         static readonly HashSet<Material> s_materials = new HashSet<Material>();
 
@@ -33,6 +40,32 @@ namespace Backrooms.Generation
         {
             if (Outlet == null) Outlet = Load("WallOutlet");
             if (Switch == null) Switch = Load("LightSwitch");
+            if (!ToggleMesh && Switch != null)
+                foreach (var p in Switch)
+                {
+                    if (!p.toggle) continue;
+                    // Only the toggle's own vertices.
+                    var map = new Dictionary<int, int>();
+                    var v = new List<Vector3>(); var n = new List<Vector3>(); var t = new List<Vector4>(); var uv = new List<Vector2>();
+                    var tris = new int[p.triangles.Length];
+                    for (int i = 0; i < tris.Length; i++)
+                    {
+                        int k = p.triangles[i];
+                        if (!map.TryGetValue(k, out int m))
+                        {
+                            m = v.Count; map[k] = m;
+                            v.Add(p.vertices[k]); n.Add(p.normals[k]); t.Add(p.tangents[k]); uv.Add(p.uv[k]);
+                        }
+                        tris[i] = m;
+                    }
+                    var mesh = new Mesh { name = "SwitchToggle" };
+                    mesh.SetVertices(v); mesh.SetNormals(n); mesh.SetTangents(t); mesh.SetUVs(0, uv); mesh.SetTriangles(tris, 0);
+                    mesh.RecalculateBounds();
+                    ToggleMesh = mesh;
+                    ToggleMaterial = p.material;
+                    HasToggle = true;
+                    break;
+                }
         }
 
         static Part[] Load(string name)
@@ -70,7 +103,8 @@ namespace Backrooms.Generation
                     // The screws and the toggle are the plate's own ivory plastic: one material (one draw per room)
                     // for all of it but the outlet's dark slots.
                     string slot = src ? src.name.Replace(" (Instance)", "") : "PlatePlastic";
-                    if (slot == "Screw" || slot == "SwitchToggle") { slot = "PlatePlastic"; col = null; }
+                    bool toggle = slot == "SwitchToggle";
+                    if (slot == "Screw" || toggle) { slot = "PlatePlastic"; col = null; }
                     var mat = Interaction.ItemModels.Mat(slot, col);
                     s_materials.Add(mat);
                     parts.Add(new Part
@@ -78,6 +112,7 @@ namespace Backrooms.Generation
                         material = mat,
                         vertices = outV, normals = outN, tangents = outT, uv = uv,
                         triangles = mesh.GetTriangles(s),
+                        toggle = toggle,
                     });
                 }
             }

@@ -6,6 +6,13 @@ Last updated 2026-10-26 (world version 13).
 
 ## Newest (2026-10-26)
 
+- **Third pass**: wooden doors in some Backrooms doorways (take the lever, walk to open; they swing on and remember
+  where they were left); working light switches (a finger flicks the toggle, the room's lights go out or strike back
+  on); tape lined up with right mouse, pulled with left, bending a little and wrapping wall ends and floor-to-wall
+  corners; cords reel in from either end and hold you back before a plug pulls out; walking with the lamp no longer
+  shoves you; arm joint limits and grips placed on the furniture's real surface; feet that plant and step (no snapping
+  between walk directions); no watch or ring; drywall, drop-ceiling and vent textures from the player's photos.
+
 - **Second polish pass**: chunks behind walls are no longer drawn (about +20% fps at spawn, no pop-in: Performance.md);
   outlet focus brackets, cords wrapping corners, hold right mouse to reel a cord in, look at a cord to grab its plug;
   thrown items go through noclip doors; a walking body with IK legs (forwards, backwards, strafing), crouch and

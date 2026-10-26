@@ -129,6 +129,7 @@ namespace Backrooms.Interaction
         void LateUpdate() { if (Socket != null && !Held) Pose(); }
 
         protected override void OnPickedUp() { if (Plugged) Unplug(false); }
+        protected override void OnDropped() { if (owner is PowerUser user) user.StopReeling(); }
 
         /// <summary>Put down, a plug just falls from the hand.</summary>
         public override bool DropsStraight => true;
@@ -143,6 +144,8 @@ namespace Backrooms.Interaction
 
         public override void HoldUpdate(in HoldInput i)
         {
+            // Right mouse held: reel the cord in toward this end (the thing at the other end is dragged in).
+            if (owner is PowerUser user) { user.ReelFromPlug(this, i); if (!Held) return; }
             if (!i.pressed) return;
             var s = i.socket;
             if (s == null && i.hit && i.hitInfo.distance <= reach) s = Sockets.Nearest(i.hitInfo.point, 0.1f, owner as CordBox);
@@ -173,6 +176,14 @@ namespace Backrooms.Interaction
         AudioSource _reelFx;
 
         /// <summary>
+        /// Holding this item's plug with the right mouse held: the cord comes in toward the plug and this is dragged along
+        /// the floor; once it is all in, it is wound up and in the hand. (Called every frame the plug is held.)
+        /// </summary>
+        public virtual void ReelFromPlug(Plug plug, in HoldInput i) { }
+
+        public void StopReeling() => StopReel(GetCord());
+
+        /// <summary>
         /// Right mouse held: the cord comes in hand over hand. Its length shrinks; past it the plug pops out of its socket
         /// (no jolt) and is dragged in along the floor. True once it is all in (the owner then coils or winds it up).
         /// </summary>
@@ -180,10 +191,14 @@ namespace Backrooms.Interaction
         {
             if (!_reelFx)
             {
-                _reelFx = ItemModels.Source(gameObject, 8f);
+                var at = new GameObject("ReelSound");
+                at.transform.SetParent(transform, false);
+                _reelFx = ItemModels.Source(at, 8f);
                 _reelFx.clip = SoundBank.CordReel; _reelFx.loop = true; _reelFx.volume = 0f;
             }
             bool active = reel && cord && plug && cord.isActiveAndEnabled;
+            // The sound is the cord running through the hand: at whichever end is held.
+            if (plug) _reelFx.transform.position = plug.Held ? plug.transform.position : transform.position;
             if (active && !_reelFx.isPlaying) _reelFx.Play();
             _reelFx.volume = Mathf.MoveTowards(_reelFx.volume, active ? 0.55f : 0f, dt * 6f);
             if (!active)
@@ -193,8 +208,9 @@ namespace Backrooms.Interaction
                 return false;
             }
             cord.reeling = true;
-            cord.SetLength(Mathf.Max(0.3f, cord.length - reelSpeed * dt));
             float d = Vector3.Distance(cord.A, cord.B);
+            // Not while the far end is still catching up (stuck behind something): the cord would only stretch.
+            if (d < cord.length + 0.25f) cord.SetLength(Mathf.Max(0.3f, cord.length - reelSpeed * dt));
             if (plug.Plugged && d > cord.length) plug.Unplug(true);
             if (!plug.Plugged) plug.Body.WakeUp();
             return cord.length <= 0.32f || d < 0.3f;

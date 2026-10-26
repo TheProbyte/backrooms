@@ -26,9 +26,9 @@ milestone-1 room is still in `OfficeRoom_Prototype.unity`.)
 | F5 | Camcorder menu (settings; PLACES > TESTING jumps to the nearest crawl space or noclip door) |
 | L | Developer menu: spawn any item or piece of furniture |
 | Esc | Pause menu (resume, save and quit to menu, quit) / close a panel |
-| Left click | Pick up an item; hold to grab furniture; with an item in hand: use it |
+| Left click | Pick up an item; flick a light switch; hold on a door to take its lever (then walk to open it); hold to grab furniture; with an item in hand: use it |
 | Q | Tap: drop the item in your hand (a lamp or a cord's box is set down upright). Hold and release: throw it (harder the longer you hold) |
-| Right click | With an extension cord or the desk lamp in hand: tap to coil / wind up the cord, hold to reel it in. Otherwise: shove |
+| Right click | With an extension cord, the desk lamp or a plug in hand: tap to coil / wind up the cord, hold to reel it in. With tape: hold at a wall to line up the start, then hold left click to pull a strip (right click again cancels). Otherwise: shove |
 
 ## Items, power, crawl spaces, noclip doors
 

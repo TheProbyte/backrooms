@@ -24,6 +24,7 @@ namespace Backrooms.Generation
         public bool strip;           // hanging cool-white warehouse strip
         public float ceiling;        // ceiling height at the fixture
         public int faultyId;         // index of this tube's own lens renderer when it stutters, else -1
+        public int room;             // the room it is in (index in its chunk's layout; LightZones), -1 for lamps
         public Vector3Int chunk;     // owning chunk (x, storey, z), set by the streamer
     }
 
@@ -51,7 +52,10 @@ namespace Backrooms.Generation
         public readonly List<Doorway> doorways = new List<Doorway>();
         /// <summary>Wall outlets (world position of the plate's face, its normal): sockets for plugs (Interaction.ChunkOutlets).</summary>
         public readonly List<(Vector3 pos, Vector3 normal)> outlets = new List<(Vector3, Vector3)>();
-        readonly List<(MeshWriter w, bool dome)> faultyLenses = new List<(MeshWriter, bool)>();
+        readonly List<(MeshWriter w, bool dome, int room)> faultyLenses = new List<(MeshWriter, bool, int)>();
+        /// <summary>The lit lenses of each room (so a wall switch can put one room out): key room * 4 + kind.</summary>
+        readonly Dictionary<int, (MeshWriter w, Material on, Material off, uint mask, int room)> _roomLenses = new Dictionary<int, (MeshWriter, Material, Material, uint, int)>();
+        readonly List<(Vector3 pos, Quaternion rot, int room, int color)> _switches = new List<(Vector3, Quaternion, int, int)>();
 
         /// <summary>After Instantiate: renderers whose emission the light manager animates.</summary>
         public readonly List<Renderer> litLensRenderers = new List<Renderer>();
@@ -124,7 +128,7 @@ namespace Backrooms.Generation
         public void BuildData(OfficeLayout layout, OfficeLayout[] neighbours)
         {
             _neighbours = neighbours;
-            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _instances.Clear(); _movables.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
+            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
             _capsules.Clear(); poolMap = null;
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
@@ -145,6 +149,7 @@ namespace Backrooms.Generation
             BuildHalfWalls();
             BuildShadowProxies();
             BuildDoorways();
+            BuildDoors();
             BuildPortals();
             BuildNoclipDoors();
             BuildCrawlSpaces();
@@ -225,14 +230,48 @@ namespace Backrooms.Generation
                 yield return root;
             }
 
+            foreach (var kv in _roomLenses)
+            {
+                var (w, on, off, mask, room) = kv.Value;
+                if (w.VertexCount == 0) continue;
+                var go = new GameObject("RoomLens_" + room);
+                go.transform.SetParent(root.transform, false);
+                go.AddComponent<MeshFilter>().sharedMesh = resources.Own(w.ToMesh(go.name));
+                var r = go.AddComponent<MeshRenderer>();
+                r.sharedMaterial = on;
+                r.renderingLayerMask = mask;
+                r.shadowCastingMode = ShadowCastingMode.Off;
+                r.lightProbeUsage = LightProbeUsage.Off;
+                r.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                var rl = go.AddComponent<RoomLens>();
+                rl.room = room; rl.on = on; rl.off = off;
+                litLensRenderers.Add(r);
+                yield return root;
+            }
+
+            var chunkKey = new Vector3Int(_L.coord.x, _L.storey, _L.coord.y);
+            foreach (var (pos, rot, room, color) in _switches)
+            {
+                var go = new GameObject("LightSwitch");
+                go.transform.SetParent(root.transform, false);
+                go.transform.localPosition = pos;
+                go.transform.localRotation = rot;
+                var bc = go.AddComponent<BoxCollider>();
+                bc.isTrigger = true;
+                bc.center = new Vector3(0f, 0f, 0.012f); bc.size = new Vector3(0.08f, 0.125f, 0.03f);
+                go.AddComponent<Interaction.LightSwitch>().Init(chunkKey, room, LayerBit(color));
+            }
+
             for (int i = 0; i < faultyLenses.Count; i++)
             {
-                var (w, dome) = faultyLenses[i];
+                var (w, dome, room) = faultyLenses[i];
                 var go = new GameObject("FaultyLens_" + i);
                 go.transform.SetParent(root.transform, false);
                 go.AddComponent<MeshFilter>().sharedMesh = resources.Own(w.ToMesh(go.name));
                 var r = go.AddComponent<MeshRenderer>();
                 r.sharedMaterial = dome && _a.domeOn ? _a.domeOn : _a.lensOn;
+                var rl = go.AddComponent<RoomLens>();
+                rl.room = room; rl.on = r.sharedMaterial; rl.off = dome && _a.domeOff ? _a.domeOff : _a.lensOff;
                 r.shadowCastingMode = ShadowCastingMode.Off;
                 r.lightProbeUsage = LightProbeUsage.Off;
                 r.reflectionProbeUsage = ReflectionProbeUsage.Off;
@@ -277,6 +316,7 @@ namespace Backrooms.Generation
             InstantiatePortals(root.transform);
             InstantiateCrawlSpaces(root.transform);
             InstantiateNoclipDoors(root.transform);
+            InstantiateDoors(root.transform);
             if (outlets.Count > 0) root.AddComponent<Interaction.ChunkOutlets>().Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), outlets, true);
             if (poolMap != null) root.AddComponent<PoolChunk>().Set(_L.coord, _L.storey, poolMap);
 
@@ -932,11 +972,25 @@ namespace Backrooms.Generation
             {
                 float h = f.height > 0f ? f.height : H;
                 var c = new Vector3(f.cell.x * C + C * 0.5f, h, f.cell.y * C + C * 0.5f);
-                // Faulty tubes get their own lens mesh so their emission can stutter independently.
+                // Faulty tubes get their own lens mesh so their emission can stutter independently; the other lit ones a
+                // mesh per room, so the room's switch can put them out.
+                int room = _L.roomOf[f.cell.x, f.cell.y];
                 MeshWriter lens;
-                if (f.faulty) { lens = new MeshWriter { worldOffset = _origin }; faultyLenses.Add((lens, f.dome)); }
-                else if (f.strip) lens = W(f.on ? _a.stripOn ?? _a.lensOn : _a.stripOff ?? _a.lensOff, f.roomColor);
-                else lens = W(f.on ? (f.dome ? _a.domeOn ?? _a.lensOn : _a.lensOn) : (f.dome ? _a.domeOff ?? _a.lensOff : _a.lensOff), f.roomColor);
+                if (f.faulty) { lens = new MeshWriter { worldOffset = _origin }; faultyLenses.Add((lens, f.dome, room)); }
+                else if (f.on)
+                {
+                    int kind = f.strip ? 2 : f.dome ? 1 : 0;
+                    var on = f.strip ? _a.stripOn ?? _a.lensOn : f.dome ? _a.domeOn ?? _a.lensOn : _a.lensOn;
+                    var off = f.strip ? _a.stripOff ?? _a.lensOff : f.dome ? _a.domeOff ?? _a.lensOff : _a.lensOff;
+                    if (!_roomLenses.TryGetValue(room * 4 + kind, out var rl))
+                    {
+                        rl = (new MeshWriter { worldOffset = _origin }, on, off, LayerBit(f.roomColor), room);
+                        _roomLenses[room * 4 + kind] = rl;
+                    }
+                    lens = rl.w;
+                }
+                else if (f.strip) lens = W(_a.stripOff ?? _a.lensOff, f.roomColor);
+                else lens = W(f.dome ? _a.domeOff ?? _a.lensOff : _a.lensOff, f.roomColor);
 
                 if (f.strip)
                 {
@@ -975,7 +1029,7 @@ namespace Backrooms.Generation
                     {
                         position = _origin + c + (f.dome ? Vector3.down * 0.07f : f.strip ? Vector3.down * 0.03f : SquareFixtureShift),
                         isLamp = false, dome = f.dome, strip = f.strip, ceiling = h, roomLayer = LayerBit(f.roomColor),
-                        faultyId = f.faulty ? faultyLenses.Count - 1 : -1,
+                        faultyId = f.faulty ? faultyLenses.Count - 1 : -1, room = room,
                     });
             }
         }
@@ -1005,8 +1059,11 @@ namespace Backrooms.Generation
                 if (parts != null)
                 {
                     var rot = Quaternion.LookRotation(n, Vector3.up);
+                    bool live = p.isSwitch && WallPlateModels.HasToggle;      // the toggle is its own object (it flicks)
                     foreach (var part in parts)
-                        W(part.material, p.roomColor).AddMesh(part.vertices, part.normals, part.tangents, part.uv, part.triangles, pos, rot);
+                        if (!(part.toggle && live))
+                            W(part.material, p.roomColor).AddMesh(part.vertices, part.normals, part.tangents, part.uv, part.triangles, pos, rot);
+                    if (live) _switches.Add((pos, rot, _L.roomOf[p.cell.x, p.cell.y], p.roomColor));
                     continue;
                 }
                 // Atlas: left half outlet, right half switch.
@@ -1127,7 +1184,7 @@ namespace Backrooms.Generation
                 }
                 case PropKind.FloorLamp:
                     Place(_a.floorLampPrefab, at, p.variant * 37f, col, null, p.lit);
-                    if (p.lit) lights.Add(new LightSource { position = _origin + at + Vector3.up * 1.5f, isLamp = true, roomLayer = LayerBit(col), faultyId = -1 });
+                    if (p.lit) lights.Add(new LightSource { position = _origin + at + Vector3.up * 1.5f, isLamp = true, roomLayer = LayerBit(col), faultyId = -1, room = -1 });
                     break;
                 case PropKind.ConferenceTable:
                 {
@@ -1218,7 +1275,7 @@ namespace Backrooms.Generation
             sw.Frustum(at + Vector3.up * 1.36f, 0.23f, 0.16f, 0.30f, 12, true, MeshWriter.MetreUV);
             sw.Frustum(at + Vector3.up * 1.36f, 0.23f, 0.16f, 0.30f, 12, false, MeshWriter.MetreUV);
             _boxes.Add((at + Vector3.up * 0.8f, new Vector3(0.3f, 1.6f, 0.3f)));
-            if (p.lit) lights.Add(new LightSource { position = _origin + at + Vector3.up * 1.48f, isLamp = true, roomLayer = LayerBit(col), faultyId = -1 });
+            if (p.lit) lights.Add(new LightSource { position = _origin + at + Vector3.up * 1.48f, isLamp = true, roomLayer = LayerBit(col), faultyId = -1, room = -1 });
         }
 
         void Table(Prop p, Vector3 at, Quaternion rot)

@@ -176,6 +176,22 @@ namespace Backrooms
             UpdateEye();
         }
 
+        // ---------------- Leash ----------------
+        Vector3 _leashAnchor;
+        float _leashRadius;
+        int _leashFrame = -10;
+        /// <summary>How hard (m/s) the player walked against the leash last frame (0 when not held back).</summary>
+        public float LeashStrain { get; private set; }
+
+        /// <summary>
+        /// For this frame and the next: the feet may not go further than radius (horizontally) from anchor. A taut cord in
+        /// hand calls it every frame; walking on against it shows in <see cref="LeashStrain"/>.
+        /// </summary>
+        public void Leash(Vector3 anchor, float radius)
+        {
+            _leashAnchor = anchor; _leashRadius = Mathf.Max(0f, radius); _leashFrame = Time.frameCount;
+        }
+
         /// <summary>Moves the player instantly (spawning, room transitions) and resets look and velocity.</summary>
         public void Teleport(Vector3 position, float yaw, float pitch = 0f)
         {
@@ -277,6 +293,22 @@ namespace Backrooms
             if (_hopCarry > 0f) { _hopCarry -= Time.deltaTime; rate *= 0.25f; }
             if (!_controller.isGrounded) rate *= 0.3f;                    // little control in the air
             PlanarVelocity = Vector3.MoveTowards(PlanarVelocity, target, rate * Mathf.Max(targetSpeed, 1f) * Time.deltaTime);
+
+            // Held back by a taut cord: no further out than it lets the hand go (pulled back in a little if past).
+            LeashStrain = 0f;
+            if (Time.frameCount - _leashFrame <= 2)
+            {
+                Vector3 off = transform.position - _leashAnchor; off.y = 0f;
+                float dist = off.magnitude;
+                if (dist > 1e-3f)
+                {
+                    Vector3 outDir = off / dist;
+                    float room = Mathf.Max((_leashRadius - dist) / Mathf.Max(Time.deltaTime, 1e-4f), -0.35f);
+                    float outward = Vector3.Dot(PlanarVelocity, outDir);
+                    if (outward > room) PlanarVelocity -= outDir * (outward - room);
+                    if (dist > _leashRadius - 0.04f) LeashStrain = Mathf.Max(0f, Vector3.Dot(target, outDir));
+                }
+            }
 
             if (platformMotion != Vector3.zero) { _controller.Move(platformMotion); platformMotion = Vector3.zero; }
             UpdateJump(keyboard, hasFocus);

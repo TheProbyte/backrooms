@@ -1,4 +1,4 @@
-# Realistic skinned first-person player: a right arm (sleeve, forearm, hand with nails, watch, ring) and a body
+# Realistic skinned first-person player: a right arm (sleeve, forearm, hand with nails; no watch or ring) and a body
 # (shirt, trousers, belt, shoes), each one armature + skinned mesh. Same interface as make_player.py: the bones
 # (= Unity Transforms) carry the same names and sit at the same joints, so FirstPersonBody.cs drives them as before.
 #
@@ -968,28 +968,13 @@ def build_arm():
     Wt = thumb_prof(np.array([0.5 * (TSC + TSF)]))[0][0]
     V, F = nail_mesh(TC, TS, TA, TB, 0.72 * Wt, TSC, TSF, TST - 0.0088, thumb_sdf)
     mb.add(V, F, "Nail", {"Thumb3": 1.0})
-    # ---- ring on Ring1
-    name, fx, fy, r, L, *_ = fdata(2)
-    c = np.array([fx, HY + fy - 0.0195, FZ])
-    prof = [(-0.0031, 0.0002), (-0.0027, 0.0011), (-0.0016, 0.0017), (0.0, 0.0018), (0.0016, 0.0017),
-            (0.0027, 0.0011), (0.0031, 0.0002), (0.0015, -0.0001), (-0.0015, -0.0001)]
-    V, F = band_mesh(c, np.array([0, -1.0, 0]), np.array([1.0, 0, 0]), np.array([0, 0, 1.0]),
-                     lambda P: finger_sdf(P, 2), 0.003, prof, NA=28, rmax=0.02, gap=0.0003)
-    mb.add(V, F, "Ring", {"Ring1": 1.0})
-    # ---- watch strap around the forearm
-    c = np.array([0.0, WATCH_O[1], 0.0])
-    prof = [(-0.0100, 0.0003), (-0.0097, 0.0016), (-0.0088, 0.0025), (0.0, 0.0026), (0.0088, 0.0025),
-            (0.0097, 0.0016), (0.0100, 0.0003), (0.0085, -0.0001), (0.0, -0.0001), (-0.0085, -0.0001)]
-    V, F = band_mesh(c, np.array([0, -1.0, 0]), np.array([1.0, 0, 0]), np.array([0, 0, 1.0]),
-                     lambda P: smin(forearm_sdf(P), palm_sdf(P), 0.014), 0.01, prof, NA=40, rmax=0.06, gap=0.0006)
-    mb.add(V, F, "WatchStrap", {"Forearm": 1.0})
+    # (No ring and no watch: the player wanted a bare hand. An empty named WatchCase stays on the back of the wrist,
+    # where the code measures the back of the forearm from.)
     mesh = mb.build("ArmMesh", mirror=not LEFT)
-    # ---- watch case (separate object on the Forearm bone; the code finds the back of the wrist from it)
-    case = watch_case_object()
-    if not LEFT:
-        co = get_co(case) * np.array([-1.0, 1.0, 1.0])
-        set_co(case, co)
-        case.data.flip_normals()
+    # ---- a marker on the back of the wrist (FirstPersonBody finds the back of the forearm from it)
+    case = bpy.data.objects.new("WatchCase", None)
+    case.empty_display_size = 0.01
+    scene.collection.objects.link(case)
     # ---- armature (heads at the joints of make_player.py)
     root = "LeftArm" if LEFT else "RightArm"
     X = lambda p: (p[0] * S, p[1], p[2])
@@ -1013,7 +998,7 @@ def build_arm():
     rig = build_armature("ArmRig", bones)
     skin_to(mesh, rig)
     parent_to_bone(case, rig, "Forearm", Matrix.Translation(Vector(WATCH_O)))
-    log("ARM tris", tri_count(mesh) + tri_count(case))
+    log("ARM tris", tri_count(mesh))
     return rig, [rig, mesh, case]
 
 

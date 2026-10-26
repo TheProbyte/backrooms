@@ -24,7 +24,7 @@ namespace Backrooms.Interaction
     {
         [Header("Reach")]
         public float lookRange = 2.4f;
-        [Tooltip("Arm reach from the shoulder (m).")] public float reach = 0.78f;
+        [Tooltip("Arm reach from the shoulder to the palm (m); further and you step in.")] public float reach = 0.7f;
         [Tooltip("Shoulder relative to the eye, in the body's frame (x is mirrored to the working side).")] public Vector3 shoulderOffset = new Vector3(0.2f, -0.28f, -0.08f);
         [Tooltip("The free hand is the right one (the camcorder is in the left). Off: the old left-handed setup.")]
         public bool rightHanded = true;
@@ -75,6 +75,8 @@ namespace Backrooms.Interaction
 
         MovableProp _target;
         Vector3 _gripLocal, _normalLocal, _edgeLocal;
+        Vector3 _fingersLocal;           // which way the fingers lie on the prop (PlaceHand), or zero
+        bool _hook;                      // they hook over an edge there
         Vector3 _offset;                 // wanted grip position: shoulder + yaw * _offset
         Quaternion _carryRel;            // carried props keep this rotation relative to the body
         float _reachT, _slipT, _savedAngularDamping;
@@ -104,13 +106,22 @@ namespace Backrooms.Interaction
             botShove = false;
             Vector2 md = botHold.HasValue ? botMouse : focus && mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
 
-            AimedItem = !HeldItem && Current == State.Idle && focus && LookItem(itemRange, out var aimed) ? aimed : null;
+            bool free = !HeldItem && Current == State.Idle && _poke == PokePhase.None && !OnDoor && focus;
+            AimedPoke = free ? LookPoke() : null;
+            AimedItem = AimedPoke == null && free && LookItem(itemRange, out var aimed) ? aimed : null;
+            AimedDoorGrip = null;
+            if (free && AimedPoke == null && !AimedItem)
+            {
+                var d = LookDoor(lookRange);
+                if (d) AimedDoorGrip = d.GripPoint(d.SideOf(Eye), 0f);
+            }
             if (HeldItem) UpdateHeldItem(focus, mouse);
             else switch (Current)
             {
                 case State.Idle:
                     if (_poke != PokePhase.None) break;
-                    if (pressed) { if (!TryHandUse() && !TryPickUp() && !TryStartPoke()) TryStart(); }
+                    if (OnDoor) { UpdateDoor(hold); break; }
+                    if (pressed) { if (!TryHandUse() && !TryStartPoke() && !TryPickUp() && !TryStartDoor()) TryStart(); }
                     else if (shovePressed) Push();
                     break;
                 case State.Reaching:
@@ -172,7 +183,18 @@ namespace Backrooms.Interaction
         {
             if (!Look(lookRange, out var hit, out var prop)) return;
             prop.FindGrip(hit.point, hit.normal, Shoulder, _rng, out var grip, out var normal, out var edge);
-            grip = prop.OnSurface(grip, normal.normalized);              // on the model, not the collider box
+            // On the model, not the collider box: the hand placed on its real surface, fingers the best way round.
+            if (prop.PlaceHand(grip, normal, Shoulder, out var palm, out var fingers, out bool hook))
+            {
+                grip = palm;
+                _fingersLocal = prop.transform.InverseTransformDirection(fingers);
+                _hook = hook;
+            }
+            else
+            {
+                grip = prop.OnSurface(grip, normal.normalized);
+                _fingersLocal = Vector3.zero;
+            }
             _target = prop;
             _gripLocal = prop.transform.InverseTransformPoint(grip);
             _normalLocal = prop.transform.InverseTransformDirection(normal);
@@ -360,16 +382,22 @@ namespace Backrooms.Interaction
 
         void UpdateHandPose()
         {
-            bool active = (Current != State.Idle && _target) || Poking || HeldItem;
+            bool active = (Current != State.Idle && _target) || Poking || HeldItem || OnDoor;
             HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? 3.2f : 2.5f));
             if (HeldItem) { HandCurl = Mathf.MoveTowards(HandCurl, HeldItem.GripCurl, Time.deltaTime * 4f); return; }   // pose set in LateUpdate
             if (Poking) PokePose = true; else if (HandBlend <= 0.01f) PokePose = false;
+            if (OnDoor && _door) { PokePose = false; DoorHandPose(); return; }
             if (!_target) { HandCurl = Mathf.MoveTowards(HandCurl, 0.25f, Time.deltaTime * 2f); return; }
             Vector3 grip = _target.transform.TransformPoint(_gripLocal);
             Vector3 n = _target.transform.TransformDirection(_normalLocal).normalized;
             Vector3 edge = _target.transform.TransformDirection(_edgeLocal);
             Vector3 fingers;
-            if (edge.sqrMagnitude > 0.01f)
+            if (_fingersLocal.sqrMagnitude > 0.5f)
+            {
+                // Chosen on the model's surface when the hand went for it (PlaceHand).
+                fingers = Vector3.ProjectOnPlane(_target.transform.TransformDirection(_fingersLocal), n).normalized;
+            }
+            else if (edge.sqrMagnitude > 0.01f)
             {
                 // Across the edge, pointing away from the body: palm on top, fingers over the far side.
                 fingers = Vector3.Cross(n, edge).normalized;
@@ -383,13 +411,20 @@ namespace Backrooms.Interaction
             // its top (the near edge) they lie nearly flat instead of sinking into it.
             Vector3 centre = _target.Body ? _target.Body.worldCenterOfMass : _target.transform.position;
             bool overOutside = Vector3.Dot(fingers, Vector3.ProjectOnPlane(centre - grip, n)) < 0f;
-            float hook = edge.sqrMagnitude > 0.01f && overOutside ? 0.75f : 0.12f;
+            float hook = _fingersLocal.sqrMagnitude > 0.5f ? (_hook ? 0.75f : 0.12f) : edge.sqrMagnitude > 0.01f && overOutside ? 0.75f : 0.12f;
             float curl = Current == State.Holding ? hook + 0.15f * Strain : 0.2f;
             HandCurl = Mathf.MoveTowards(HandCurl, curl, Time.deltaTime * 3f);
         }
 
         void OnControllerColliderHit(ControllerColliderHit hit)
         {
+            // Walking into a door that is not latched pushes it along.
+            var door = hit.collider ? hit.collider.GetComponentInParent<Door>() : null;
+            if (door)
+            {
+                if (door != _door) door.Nudge(hit.point, hit.moveDirection * _player.PlanarVelocity.magnitude);
+                return;
+            }
             // Walking into light props nudges them along.
             var p = hit.rigidbody ? hit.rigidbody.GetComponent<MovableProp>() : null;
             if (!p || p == Held || p == _target || p.Mass > 25f) return;     // not what the hand is reaching for
