@@ -1,0 +1,311 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using Backrooms.Generation;
+using Backrooms.Interaction;
+using UnityEngine;
+
+namespace Backrooms.Saves
+{
+    /// <summary>
+    /// Keeps the world being played (<see cref="GameSession.Data"/>) saved: it puts back what was saved when the world
+    /// starts (moved furniture, things spawned from the developer menu, items, paint, where the player was), and saves
+    /// on quitting (in game, or stopping Play Mode in the editor), on leaving for the menu or another scene, and every
+    /// few minutes in case the game crashes.
+    /// Added by the WorldStreamer while a save slot is being played.
+    /// </summary>
+    public class WorldSaver : MonoBehaviour
+    {
+        public static WorldSaver Instance { get; private set; }
+        [Tooltip("Seconds between automatic saves (0: only on quit and leaving).")]
+        public float autosaveInterval = 180f;
+
+        WorldStreamer _streamer;
+        WorldSaveData _data;
+        double _playAtStart;
+        float _timeAtStart, _nextAutosave;
+        bool _restored;
+
+        public static double PlaySeconds => Instance ? Instance._playAtStart + (Time.time - Instance._timeAtStart) : 0;
+
+        void Awake()
+        {
+            Instance = this;
+            _streamer = GetComponent<WorldStreamer>();
+            _data = GameSession.Data;
+            _playAtStart = _data != null ? _data.playSeconds : 0;
+            _timeAtStart = Time.time;
+            _nextAutosave = Time.time + autosaveInterval;
+            Camcorder.CamcorderOSD.TapeSeconds = (float)_playAtStart;
+        }
+
+        void OnDestroy()
+        {
+            if (Instance == this) Instance = null;
+            Camcorder.CamcorderOSD.TapeSeconds = 0f;
+        }
+
+        void Update()
+        {
+            if (autosaveInterval > 0f && Time.time >= _nextAutosave && _restored)
+            {
+                _nextAutosave = Time.time + autosaveInterval;
+                Save();
+            }
+        }
+
+        void OnApplicationQuit() => Save();
+
+        /// <summary>Saves the world being played, if there is one.</summary>
+        public static void SaveNow() { if (Instance) Instance.Save(); }
+
+        // ---------------- Restore ----------------
+
+        /// <summary>Moved props go back on the list before any chunk is built (so their chunks leave them out).</summary>
+        public void RestoreProps(WorldGenerator world)
+        {
+            var mgr = MovablePropManager.Instance;
+            if (_data == null || !mgr) return;
+            var list = new List<MovablePropManager.Saved>();
+            foreach (var p in _data.props)
+            {
+                var spec = ToSpec(p);
+                if (spec == null) continue;
+                list.Add(new MovablePropManager.Saved { spec = spec, position = p.position, rotation = p.rotation });
+                ItemCatalog.ReserveId(spec.id);
+            }
+            mgr.Import(world, list);
+        }
+
+        /// <summary>Puts the player where they were (instead of the spawn). False if the save has no player yet.</summary>
+        public bool RestorePlayer(Transform player)
+        {
+            if (_data == null || !_data.hasPlayer || !player) return false;
+            var ctrl = player.GetComponent<CamcorderPlayerController>();
+            if (!ctrl) { player.position = _data.playerPosition; return true; }
+            if (_data.noclip) ctrl.SetNoclip(true);
+            ctrl.SetStance((CamcorderPlayerController.Stance)Mathf.Clamp(_data.stance, 0, 2));
+            ctrl.TeleportSafe(_data.playerPosition, _data.playerYaw, _data.playerPitch);
+            return true;
+        }
+
+        /// <summary>After the first chunks are built: paint, items and placed pieces.</summary>
+        public void RestoreWorld()
+        {
+            if (_data == null) { _restored = true; return; }
+            var paint = SaveSlots.ReadPaint(_data.slot);
+            if (paint != null)
+            {
+                try { using (var r = new BinaryReader(new MemoryStream(paint))) SprayPaint.Instance.Read(r); }
+                catch (Exception e) { Debug.LogWarning($"[Backrooms] Paint of save {_data.slot + 1} could not be read: {e.Message}"); }
+            }
+            StartCoroutine(RestoreThings());
+        }
+
+        IEnumerator RestoreThings()
+        {
+            yield return null;            // the player's hand is set up
+            WorldItem held = null;
+            foreach (var it in _data.items)
+            {
+                var item = SpawnItem(it);
+                if (item && it.held) held = item;
+            }
+            if (_data.placed.Count > 0)
+            {
+                var catalog = ItemCatalog.Build(_streamer ? _streamer.assets : null, _streamer);
+                foreach (var p in _data.placed)
+                {
+                    var e = catalog.Find(x => x.name == p.name);
+                    if (e == null) continue;
+                    var go = e.spawn(p.position, p.rotation, false);
+                    if (go && !go.GetComponent<PlacedThing>()) go.AddComponent<PlacedThing>().catalogName = p.name;
+                }
+            }
+            if (held)
+            {
+                var grabber = _streamer && _streamer.player ? _streamer.player.GetComponent<PropGrabber>() : null;
+                if (grabber) grabber.PickUp(held);
+            }
+            _restored = true;
+        }
+
+        static WorldItem SpawnItem(ItemData d)
+        {
+            switch (d.id)
+            {
+                case "spraycan":
+                    var can = SprayCan.Create(d.position, d.rotation);
+                    can.paint = Mathf.Clamp01(d.amount);
+                    return can;
+            }
+            Debug.LogWarning($"[Backrooms] Saved item '{d.id}' is not known; left out.");
+            return null;
+        }
+
+        // ---------------- Save ----------------
+
+        public void Save()
+        {
+            if (_data == null) return;
+            if (!_restored)
+            {
+                // Quitting before the saved things were put back: keep the file as it is.
+                return;
+            }
+            var d = _data;
+            d.version = WorldSaveData.CurrentVersion;
+            d.slot = GameSession.Slot >= 0 ? GameSession.Slot : d.slot;
+            if (_streamer) d.seed = _streamer.Seed;
+            d.playSeconds = PlaySeconds;
+            d.saved = DateTime.Now.ToString("o");
+
+            var player = _streamer ? _streamer.player : null;
+            if (player)
+            {
+                var ctrl = player.GetComponent<CamcorderPlayerController>();
+                d.hasPlayer = true;
+                d.playerPosition = player.position;
+                d.playerYaw = player.eulerAngles.y;
+                d.playerPitch = ctrl ? ctrl.Pitch : 0f;
+                d.stance = ctrl ? (int)ctrl.CurrentStance : 0;
+                d.noclip = ctrl && ctrl.noclip;
+                d.zone = ZoneName(player.position);
+            }
+
+            d.props.Clear();
+            var mgr = MovablePropManager.Instance;
+            if (mgr) foreach (var s in mgr.Export()) d.props.Add(FromSpec(s.spec, s.position, s.rotation));
+
+            d.items.Clear();
+            foreach (var it in FindObjectsByType<WorldItem>())
+            {
+                if (string.IsNullOrEmpty(it.itemId)) continue;
+                var data = new ItemData { id = it.itemId, position = it.transform.position, rotation = it.transform.rotation, held = it.Held };
+                if (it is SprayCan can) data.amount = can.paint;
+                d.items.Add(data);
+            }
+            d.placed.Clear();
+            foreach (var p in FindObjectsByType<PlacedThing>())
+                d.placed.Add(new PlacedData { name = p.catalogName, position = p.transform.position, rotation = p.transform.rotation });
+
+            byte[] paint = null;
+            var sp = SprayPaint.Existing;
+            var ms = new MemoryStream();
+            using (var w = new BinaryWriter(ms))
+            {
+                if (sp) sp.Write(w); else SprayPaint.WriteEmpty(w);
+                w.Flush();
+                paint = ms.ToArray();
+            }
+            SaveSlots.Write(d, paint);
+        }
+
+        string ZoneName(Vector3 p)
+        {
+            var settings = _streamer ? _streamer.Settings : null;
+            if (settings == null || settings.zones == null || settings.zones.Count == 0) return "";
+            var hit = settings.ZoneAt(_streamer.Seed, WorldGenerator.DistrictOf(WorldStreamer.ChunkOf(p)));
+            return settings.zones[Mathf.Clamp(hit.zone, 0, settings.zones.Count - 1)].name;
+        }
+
+        // ---------------- Props <-> data ----------------
+
+        static PropData FromSpec(MovableSpec s, Vector3 position, Quaternion rotation)
+        {
+            var d = new PropData
+            {
+                id = s.id.ToString("X16"), kind = (int)s.kind, renderMask = s.renderMask, proxy = AssetKeys.Key(s.proxyMaterial),
+                size = s.size, variant = s.variant, cardboard = s.cardboard, origin = s.position, originYaw = s.yaw,
+                position = position, rotation = rotation,
+            };
+            if (s.materials != null) { d.materials = new string[s.materials.Length]; for (int i = 0; i < s.materials.Length; i++) d.materials[i] = AssetKeys.Key(s.materials[i]); }
+            foreach (var p in s.parts)
+                d.parts.Add(new PartData { prefab = AssetKeys.Key(p.prefab), material = AssetKeys.Key(p.material), position = p.position, scale = p.scale, yaw = p.yaw });
+            return d;
+        }
+
+        static MovableSpec ToSpec(PropData d)
+        {
+            if (!ulong.TryParse(d.id, System.Globalization.NumberStyles.HexNumber, null, out ulong id)) return null;
+            var s = new MovableSpec
+            {
+                id = id, kind = (MovableKind)d.kind, renderMask = (uint)d.renderMask, proxyMaterial = AssetKeys.Find<Material>(d.proxy),
+                size = d.size, variant = d.variant, cardboard = d.cardboard, position = d.origin, yaw = d.originYaw,
+            };
+            if (d.materials != null) { s.materials = new Material[d.materials.Length]; for (int i = 0; i < d.materials.Length; i++) s.materials[i] = AssetKeys.Find<Material>(d.materials[i]); }
+            foreach (var p in d.parts)
+            {
+                var prefab = AssetKeys.Find<GameObject>(p.prefab);
+                var mat = AssetKeys.Find<Material>(p.material);
+                if (!prefab && !mat) { Debug.LogWarning($"[Backrooms] A saved {s.kind} lost a part ('{p.prefab}{p.material}')."); continue; }
+                s.parts.Add(new MovableSpec.Part { prefab = prefab, material = mat, position = p.position, scale = p.scale, yaw = p.yaw });
+            }
+            if (s.parts.Count == 0 && !s.cardboard) return null;
+            return s;
+        }
+    }
+
+    /// <summary>Names for the biome's prefabs and materials in a save: "field" or "field/index" of OfficeBiomeAssets.</summary>
+    public static class AssetKeys
+    {
+        static OfficeBiomeAssets s_for;
+        static readonly Dictionary<UnityEngine.Object, string> s_key = new Dictionary<UnityEngine.Object, string>();
+        static readonly Dictionary<string, UnityEngine.Object> s_obj = new Dictionary<string, UnityEngine.Object>();
+
+        static void Ensure()
+        {
+            var a = FindAssets();
+            if (a == s_for && s_obj.Count > 0) return;
+            s_for = a; s_key.Clear(); s_obj.Clear();
+            if (!a) return;
+            foreach (var f in typeof(OfficeBiomeAssets).GetFields(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (typeof(UnityEngine.Object).IsAssignableFrom(f.FieldType)) Add(f.Name, f.GetValue(a) as UnityEngine.Object);
+                else if (f.FieldType.IsArray && typeof(UnityEngine.Object).IsAssignableFrom(f.FieldType.GetElementType()) && f.GetValue(a) is Array arr)
+                    for (int i = 0; i < arr.Length; i++) Add(f.Name + "/" + i, arr.GetValue(i) as UnityEngine.Object);
+            }
+        }
+
+        static void Add(string key, UnityEngine.Object o)
+        {
+            if (!o) return;
+            s_obj[key] = o;
+            if (!s_key.ContainsKey(o)) s_key[o] = key;
+        }
+
+        static OfficeBiomeAssets FindAssets()
+        {
+            var ws = UnityEngine.Object.FindAnyObjectByType<WorldStreamer>();
+            return ws ? ws.assets : null;
+        }
+
+        public static string Key(UnityEngine.Object o)
+        {
+            if (!o) return "";
+            Ensure();
+            return s_key.TryGetValue(o, out var k) ? k : "name:" + o.name;
+        }
+
+        public static T Find<T>(string key) where T : UnityEngine.Object
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            Ensure();
+            if (key.StartsWith("name:"))
+            {
+                string n = key.Substring(5);
+                foreach (var o in s_obj.Values) if (o is T t && o.name == n) return t;
+                return null;
+            }
+            return s_obj.TryGetValue(key, out var v) ? v as T : null;
+        }
+    }
+
+    /// <summary>Marks a fixed piece spawned from the developer menu, so it is saved with the world.</summary>
+    public class PlacedThing : MonoBehaviour
+    {
+        public string catalogName;
+    }
+}

@@ -28,6 +28,14 @@ namespace Backrooms.Interaction
         static ulong s_next = 1;
         static ulong NextId() => 0xDE00000000000000ul | (s_next++ << 16);
 
+        /// <summary>A saved world uses this id: the next spawned piece gets a later one.</summary>
+        public static void ReserveId(ulong id)
+        {
+            if ((id >> 56) != 0xDEul) return;
+            ulong n = (id >> 16) & 0xFFFFFFFFFFul;
+            if (n >= s_next) s_next = n + 1;
+        }
+
         public static List<Entry> Build(OfficeBiomeAssets a, WorldStreamer streamer)
         {
             var list = new List<Entry>();
@@ -102,15 +110,15 @@ namespace Backrooms.Interaction
                         }) });
             if (a.floorLampPrefab)
                 list.Add(new Entry { name = "Floor lamp", category = "FURNITURE", clearance = 0.9f,
-                    spawn = (p, r, pv) => Static(a.floorLampPrefab, p, r, pv, new Vector3(0.45f, 1.7f, 0.45f)) });
+                    spawn = (p, r, pv) => Static("Floor lamp", a.floorLampPrefab, p, r, pv, new Vector3(0.45f, 1.7f, 0.45f)) });
             if (a.wallClockPrefab)
                 list.Add(new Entry { name = "Wall clock", category = "FURNITURE", placement = Placement.Wall,
-                    spawn = (p, r, pv) => Static(a.wallClockPrefab, p, r, pv, Vector3.zero) });
+                    spawn = (p, r, pv) => Static("Wall clock", a.wallClockPrefab, p, r, pv, Vector3.zero) });
             return list;
         }
 
-        /// <summary>A fixed (not movable) piece: the model and, if given, one box collider.</summary>
-        static GameObject Static(GameObject prefab, Vector3 p, Quaternion r, bool preview, Vector3 box)
+        /// <summary>A fixed (not movable) piece: the model and, if given, one box collider. Saved with the world under its entry name.</summary>
+        static GameObject Static(string entry, GameObject prefab, Vector3 p, Quaternion r, bool preview, Vector3 box)
         {
             var root = new GameObject(prefab.name);
             root.transform.SetPositionAndRotation(p, r);
@@ -122,6 +130,7 @@ namespace Backrooms.Interaction
             {
                 foreach (var rr in root.GetComponentsInChildren<Renderer>()) rr.renderingLayerMask = 0xFFFFFFFFu;
                 PoolLitSwitch.Attach(root);
+                root.AddComponent<Saves.PlacedThing>().catalogName = entry;
                 var mgr = MovablePropManager.Instance;
                 if (mgr) root.transform.SetParent(mgr.transform, true);
             }

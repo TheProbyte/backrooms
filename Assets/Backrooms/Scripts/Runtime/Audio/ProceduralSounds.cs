@@ -193,6 +193,25 @@ namespace Backrooms.Audio
             return Clip("Tick_" + variant, d, 1);
         }
 
+        /// <summary>A camcorder menu's key beep: a short square-ish tone (variant 0: move, 1: choose, 2: back).</summary>
+        public static AudioClip MenuBeep(int variant)
+        {
+            float f = variant == 1 ? 2350f : variant == 2 ? 1500f : 1950f;
+            float len = variant == 1 ? 0.075f : 0.04f;
+            int n = (int)(Rate * len);
+            var d = new float[n];
+            var lp = Biquad.LowPass(5200f);
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
+                float ph = t * (variant == 1 && t > 0.035f ? f * 1.26f : f);           // "choose" rises a third halfway
+                float sq = Mathf.Clamp(Mathf.Sin(ph * Mathf.PI * 2f) * 3f, -1f, 1f);
+                d[i] = lp.Run(sq) * Mathf.Min(1f, t / 0.002f) * Mathf.Min(1f, (len - t) / 0.006f);
+            }
+            Normalize(d, 0.35f);
+            return Clip("MenuBeep_" + variant, d, 1);
+        }
+
         // ---------------- Beds (stereo) ----------------
 
         /// <summary>Air handling: low duct rumble plus soft airy diffuser noise, decorrelated L/R.</summary>

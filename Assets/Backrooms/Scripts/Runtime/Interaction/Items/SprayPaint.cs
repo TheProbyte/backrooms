@@ -12,11 +12,13 @@ namespace Backrooms.Interaction
     /// Wet paint is counted per 2.5 cm cell. Where a vertical surface gets more than a coat (the can held on one
     /// spot), the excess runs: a drip starts there and crawls down the wall, slowing as it goes; more paint on the same
     /// spot keeps feeding it, so it gets longer. A drip stops where the wall ends (a doorway, the floor). Finished
-    /// drips join the dots. Paint lasts for the session, wherever it was put.
+    /// drips join the dots. Paint stays wherever it was put, and is saved with the world (<see cref="Write"/>).
     /// </summary>
     public class SprayPaint : MonoBehaviour
     {
         static SprayPaint _instance;
+        /// <summary>The paint, if any has been made in this scene (null otherwise; never creates it).</summary>
+        public static SprayPaint Existing => _instance;
         public static SprayPaint Instance
         {
             get
@@ -228,6 +230,66 @@ namespace Backrooms.Interaction
             b.mesh.SetUVs(0, b.uv);
             b.mesh.SetColors(b.c);
             b.mesh.SetTriangles(b.idx, 0, true);
+        }
+
+        // ---------------- Saving ----------------
+        // Every quad is a parallelogram: its first, second and fourth corners, its kind (dot or run), seed, strength,
+        // and which way it is wound. Running drips are written as they are now (they stop running).
+
+        const int SaveMagic = 0x54505242;     // "BRPT"
+        const int SaveVersion = 1;
+
+        public static void WriteEmpty(System.IO.BinaryWriter w) { w.Write(SaveMagic); w.Write(SaveVersion); w.Write(0); }
+
+        public void Write(System.IO.BinaryWriter w)
+        {
+            int count = _dripBatch.Quads;
+            foreach (var b in _batches) count += b.Quads;
+            w.Write(SaveMagic); w.Write(SaveVersion); w.Write(count);
+            foreach (var b in _batches) WriteBatch(w, b);
+            WriteBatch(w, _dripBatch);
+        }
+
+        static void WriteBatch(System.IO.BinaryWriter w, Batch b)
+        {
+            for (int q = 0; q < b.Quads; q++)
+            {
+                int s = q * 4;
+                var uv = b.uv[s];
+                byte flags = (byte)((uv.y > -0.5f ? 1 : 0) | (b.idx[q * 6 + 1] != s + 1 ? 2 : 0));
+                w.Write(flags); w.Write(b.c[s].a); w.Write(uv.z); w.Write(uv.w);
+                Vec(w, b.v[s]); Vec(w, b.v[s + 1]); Vec(w, b.v[s + 3]);
+            }
+        }
+
+        static void Vec(System.IO.BinaryWriter w, Vector3 v) { w.Write(v.x); w.Write(v.y); w.Write(v.z); }
+        static Vector3 Vec(System.IO.BinaryReader r) => new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+
+        /// <summary>Adds saved paint (from <see cref="Write"/>).</summary>
+        public void Read(System.IO.BinaryReader r)
+        {
+            if (r.BaseStream.Length < 12 || r.ReadInt32() != SaveMagic) return;
+            if (r.ReadInt32() > SaveVersion) return;
+            int count = r.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                byte flags = r.ReadByte(), alpha = r.ReadByte();
+                float kind = r.ReadSingle(), seed = r.ReadSingle();
+                Vector3 v0 = Vec(r), v1 = Vec(r), v3 = Vec(r);
+                var b = Current();
+                int s = b.v.Count;
+                b.v.Add(v0); b.v.Add(v1); b.v.Add(v1 + v3 - v0); b.v.Add(v3);
+                bool drip = (flags & 1) != 0;
+                float y0 = drip ? -0.02f : -1f, y1 = drip ? 1.08f : 1f;
+                b.uv.Add(new Vector4(-1, y0, kind, seed)); b.uv.Add(new Vector4(1, y0, kind, seed));
+                b.uv.Add(new Vector4(1, y1, kind, seed)); b.uv.Add(new Vector4(-1, y1, kind, seed));
+                var col = new Color32(255, 255, 255, alpha);
+                for (int k = 0; k < 4; k++) b.c.Add(col);
+                if ((flags & 2) == 0) { b.idx.Add(s); b.idx.Add(s + 1); b.idx.Add(s + 2); b.idx.Add(s); b.idx.Add(s + 2); b.idx.Add(s + 3); }
+                else { b.idx.Add(s); b.idx.Add(s + 2); b.idx.Add(s + 1); b.idx.Add(s); b.idx.Add(s + 3); b.idx.Add(s + 2); }
+                b.dirty = true;
+                if (drip) FinishedDrips++; else Dots++;
+            }
         }
 
         /// <summary>Removes all paint (a new world).</summary>

@@ -17,6 +17,10 @@ namespace Backrooms.Camcorder
         Text _debug;
         [Tooltip("Date the tape thinks it is. Time advances from here in real time.")]
         public string startDate = "1998-10-19 22:41:00";
+        [Tooltip("STBY instead of a blinking REC (the main menu).")]
+        public bool standby;
+        /// <summary>Seconds already on the tape when this scene started (the world save's play time).</summary>
+        public static float TapeSeconds;
 
         Canvas _canvas;
         RectTransform _frame, _barL, _barR, _content;
@@ -257,10 +261,12 @@ namespace Backrooms.Camcorder
                 _debug.text = $"pos {p.x:F1} {p.y:F1} {p.z:F1}   chunk {ch.x},{ch.y}   seed {(ws ? ws.Seed : 0)}   {1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):F0} fps";
             }
 
-            float elapsed = Time.time - _t0;
-            var now = _start.AddSeconds(elapsed);
-            bool blink = (elapsed % 1.2f) < 0.8f;
-            _recDot.enabled = blink;
+            float elapsed = standby ? 0f : Time.time - _t0 + TapeSeconds;
+            var now = _start.AddSeconds(standby ? Time.time - _t0 : elapsed);
+            bool blink = ((Time.time - _t0) % 1.2f) < 0.8f;
+            _recDot.enabled = blink && !standby;
+            _rec.text = standby ? "STBY" : "REC";
+            _rec.rectTransform.anchoredPosition = new Vector2(standby ? 0 : 32, 0);
             var span = TimeSpan.FromSeconds(elapsed);
             _counter.text = $"{(int)span.TotalHours}:{span.Minutes:00}:{span.Seconds:00}";
             _date.text = now.ToString("MMM. dd yyyy").ToUpperInvariant();

@@ -76,7 +76,7 @@ namespace Backrooms.CustomRooms
             if (kb.escapeKey.wasPressedThisFrame && ToggledFrame != Time.frameCount)
             {
                 if (_open) Close();
-                else if (!InBuilder && !_f5WasOpen && !Interaction.ItemsMenu.WasOpen) Open();     // those close themselves on Escape       // the builder opens the menu itself when nothing else wants Escape
+                else if (!InBuilder && !_f5WasOpen && !Interaction.ItemsMenu.WasOpen && !Menu.MainMenu.IsShowing) Open();     // those close themselves on Escape       // the builder opens the menu itself when nothing else wants Escape
             }
         }
 
@@ -111,6 +111,7 @@ namespace Backrooms.CustomRooms
         static void Load(string scene)
         {
             if (!Application.CanStreamedLevelBeLoaded(scene)) { Debug.LogWarning($"[Backrooms] Scene '{scene}' is not in the build settings."); return; }
+            Saves.GameSession.Leave();          // the world being played is saved first
             SceneManager.LoadScene(scene);
         }
 
@@ -136,7 +137,11 @@ namespace Backrooms.CustomRooms
             {
                 if (ImUi.Button(col.Row(), "BACK TO THE BUILDER")) { Close(); Load(SceneIds.Build); }
             }
-            if (ImUi.Button(col.Row(), scene == SceneIds.World ? "PLAY (RESTART THE WORLD)" : "PLAY — PROCEDURAL WORLD"))
+            if (scene == SceneIds.World && Saves.GameSession.Slot >= 0)
+            {
+                if (ImUi.Button(col.Row(), "SAVE AND QUIT TO MENU")) { Close(); Saves.GameSession.ToMenu(); }
+            }
+            else if (ImUi.Button(col.Row(), "MAIN MENU"))
             {
                 Close(); CustomRoomTest.End();
                 Load(SceneIds.World);
@@ -147,7 +152,7 @@ namespace Backrooms.CustomRooms
                 Close(); CustomRoomTest.End();
                 if (InBuilder) BuilderApp.Current?.ShowLibrary(); else Load(SceneIds.Build);
             }
-            if (ImUi.Button(col.Row(), "QUIT"))
+            if (ImUi.Button(col.Row(), "QUIT"))      // the world is saved as the game quits (WorldSaver)
             {
 #if UNITY_EDITOR
                 UnityEditor.EditorApplication.isPlaying = false;

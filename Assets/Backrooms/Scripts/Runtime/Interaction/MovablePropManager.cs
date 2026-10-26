@@ -11,7 +11,7 @@ namespace Backrooms.Interaction
     ///    under this object instead.
     ///  - When the chunk it now stands in unloads, its pose is stored and the object destroyed; when that
     ///    chunk loads again, it is rebuilt there.
-    /// Records are per world (seed + settings). Saving them to disk is not done yet; they last a session.
+    /// Records are per world (seed + settings); the world's save keeps them (WorldSaver: <see cref="Export"/>, <see cref="Import"/>).
     /// The same records are meant for anything else that moves things while you are away (creatures).
     /// </summary>
     public class MovablePropManager : MonoBehaviour
@@ -32,6 +32,33 @@ namespace Backrooms.Interaction
         WorldGenerator _world;
 
         public int MovedCount => _moved.Count;
+
+        /// <summary>A moved prop as it goes into a save.</summary>
+        public struct Saved { public MovableSpec spec; public Vector3 position; public Quaternion rotation; }
+
+        /// <summary>Every moved prop, where it is now.</summary>
+        public List<Saved> Export()
+        {
+            var list = new List<Saved>(_moved.Count);
+            foreach (var r in _moved.Values)
+            {
+                if (r.live) Store(r.live);
+                list.Add(new Saved { spec = r.spec, position = r.position, rotation = r.rotation });
+            }
+            return list;
+        }
+
+        /// <summary>Moved props from a save, for this world. Call before its chunks are built: each one appears when the
+        /// chunk it stands in loads, and the chunk that generated it leaves it out.</summary>
+        public void Import(WorldGenerator world, List<Saved> list)
+        {
+            _world = world;
+            foreach (var s in list)
+            {
+                if (s.spec == null || _moved.ContainsKey(s.spec.id)) continue;
+                _moved[s.spec.id] = new Record { spec = s.spec, position = s.position, rotation = s.rotation, chunk = ChunkKey(s.position) };
+            }
+        }
         public bool IsMoved(ulong id) => _moved.ContainsKey(id);
 
         void Awake() { Instance = this; }

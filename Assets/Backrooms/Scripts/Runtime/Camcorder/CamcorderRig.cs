@@ -39,6 +39,8 @@ namespace Backrooms.Camcorder
 
         /// <summary>Set for repeatable stills: no handheld motion, exposure/focus locked, tape effects that vary with time stopped.</summary>
         [System.NonSerialized] public bool freezeForStills;
+        /// <summary>Fixed focus (metres) and aperture (f-number) instead of the autofocus, e.g. for the main menu; 0 or less: off.</summary>
+        [System.NonSerialized] public float focusOverride = -1f, apertureOverride = -1f;
         Quaternion _prevRot; bool _havePrev; Vector2 _blurVel;
 
         void Awake()
@@ -192,9 +194,11 @@ namespace Backrooms.Camcorder
         /// <summary>Contrast-AF style: sample the centre, then drive focus with a damped motor that overshoots.</summary>
         void UpdateFocus(CamcorderSettings s)
         {
-            _dof.active = s.autofocus;
-            if (!s.autofocus) return;
-            if (Time.time >= _nextFocusCheck)
+            bool manual = focusOverride > 0f;
+            _dof.active = s.autofocus || manual;
+            if (!_dof.active) return;
+            if (manual) { _focus = focusOverride; _focusTarget = focusOverride; _focusVel = 0f; }
+            else if (Time.time >= _nextFocusCheck)
             {
                 _nextFocusCheck = Time.time + 0.15f;
                 float d = 6f;
@@ -203,14 +207,17 @@ namespace Backrooms.Camcorder
                 // Ignore tiny changes (AF dead band) so focus isn't constantly breathing.
                 if (Mathf.Abs(d - _focusTarget) / Mathf.Max(_focusTarget, 0.5f) > 0.12f) _focusTarget = d;
             }
-            float stiffness = 6f * s.focusSpeed, damping = Mathf.Lerp(2f, 0.6f, s.focusHunting) * Mathf.Sqrt(stiffness);
-            float acc = (_focusTarget - _focus) * stiffness - _focusVel * damping;
-            _focusVel += acc * Time.deltaTime;
-            _focus = Mathf.Max(0.3f, _focus + _focusVel * Time.deltaTime);
+            if (!manual)
+            {
+                float stiffness = 6f * s.focusSpeed, damping = Mathf.Lerp(2f, 0.6f, s.focusHunting) * Mathf.Sqrt(stiffness);
+                float acc = (_focusTarget - _focus) * stiffness - _focusVel * damping;
+                _focusVel += acc * Time.deltaTime;
+                _focus = Mathf.Max(0.3f, _focus + _focusVel * Time.deltaTime);
+            }
 
             _dof.mode.Override(DepthOfFieldMode.Bokeh);
             _dof.focusDistance.Override(_focus);
-            _dof.aperture.Override(s.aperture);
+            _dof.aperture.Override(manual && apertureOverride > 0f ? apertureOverride : s.aperture);
             // Zooming in lengthens the focal length, so depth of field gets shallower like a real lens.
             _dof.focalLength.Override(Mathf.Lerp(18f, 32f, Mathf.InverseLerp(80f, 45f, s.fieldOfView)) / Mathf.Max(0.1f, _player ? _player.FovMultiplier : 1f));
             _dof.bladeCount.Override(6);

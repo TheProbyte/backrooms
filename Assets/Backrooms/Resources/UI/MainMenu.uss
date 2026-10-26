@@ -1,0 +1,53 @@
+/* Main menu, styled like the F5 camcorder menu (CamcorderMenu.uss): a navy box with a thin white frame on the left of
+   the picture, white capitals with a dark drop shadow, the item under the cursor on an amber bar with a play arrow. */
+
+.mm-root { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
+.mm-root .unity-label, .mm-root .unity-text-element {
+    color: rgb(242, 246, 255); letter-spacing: 1px; margin: 0; padding: 0;
+    text-shadow: 2px 2px 0 rgba(0, 0, 20, 0.9);
+}
+
+.mm-panel {
+    position: absolute; left: 8%; top: 25%; width: 430px;
+    background-color: rgba(10, 22, 70, 0.92);
+    border-width: 2px; border-color: rgba(225, 232, 255, 0.9);
+    padding: 12px 14px 12px 14px;
+}
+.mm-panel.mm-wide { width: 640px; top: 19%; }
+
+.mm-header { flex-direction: row; align-items: flex-end; margin: 0 2px 6px 2px; }
+.mm-root .mm-title { font-size: 30px; -unity-font-style: bold; letter-spacing: 4px; }
+.mm-root .mm-page { font-size: 17px; margin-left: 16px; margin-bottom: 5px; flex-grow: 1; color: rgb(170, 200, 255); letter-spacing: 2px; }
+.mm-rule { height: 2px; background-color: rgba(225, 232, 255, 0.75); margin: 2px 0 10px 0; }
+
+.mm-list { flex-direction: column; }
+
+/* A menu item: the arrow column and the words. */
+.mm-item { flex-direction: row; align-items: center; padding: 6px 10px 6px 4px; margin: 2px 0; }
+.mm-root .mm-cursor { width: 34px; font-size: 26px; -unity-text-align: middle-center; opacity: 0; }
+.mm-root .mm-text { font-size: 30px; letter-spacing: 5px; -unity-font-style: bold; }
+.mm-item.mm-sel { background-color: rgb(255, 196, 60); }
+.mm-root .mm-item.mm-sel .unity-label { color: rgb(10, 22, 70); text-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+.mm-root .mm-item.mm-sel .mm-cursor { opacity: 1; }
+.mm-item.mm-small .mm-text { font-size: 22px; letter-spacing: 4px; }
+
+/* A save slot: its name and what is on it, and an ERASE tag on the right. */
+.mm-slot { align-items: flex-start; padding: 10px 10px 10px 4px; margin: 4px 0; border-width: 1px; border-color: rgba(225, 232, 255, 0.45); }
+.mm-slot.mm-sel { border-color: rgb(255, 196, 60); }
+.mm-slot .mm-cursor { margin-top: 2px; }
+.mm-slotbody { flex-grow: 1; flex-direction: column; }
+.mm-root .mm-slotname { font-size: 26px; letter-spacing: 4px; -unity-font-style: bold; }
+.mm-root .mm-detail { font-size: 16px; letter-spacing: 1px; margin-top: 4px; color: rgb(170, 200, 255); }
+.mm-root .mm-empty { font-size: 18px; letter-spacing: 2px; margin-top: 6px; color: rgb(255, 196, 60); }
+.mm-root .mm-erase {
+    font-size: 14px; letter-spacing: 2px; padding: 4px 10px; margin-top: 2px;
+    border-width: 1px; border-color: rgba(225, 232, 255, 0.6); -unity-text-align: middle-center;
+}
+.mm-root .mm-erase:hover { background-color: rgb(242, 246, 255); color: rgb(10, 22, 70); text-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+.mm-root .mm-erase.mm-armed { background-color: rgb(200, 40, 30); border-color: rgb(255, 120, 100); color: rgb(255, 255, 255); }
+.mm-root .mm-slot.mm-sel .mm-erase { border-color: rgba(10, 22, 70, 0.6); }
+
+.mm-root .mm-note { font-size: 20px; letter-spacing: 2px; margin: 8px 4px 6px 4px; }
+.mm-root .mm-desc { font-size: 16px; color: rgb(170, 200, 255); margin: 0 4px 14px 4px; white-space: normal; letter-spacing: 0; }
+
+.mm-root .mm-hint { font-size: 13px; color: rgb(170, 200, 255); margin: 10px 2px 0 2px; letter-spacing: 1px; }

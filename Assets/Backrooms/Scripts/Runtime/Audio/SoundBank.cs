@@ -58,6 +58,8 @@ namespace Backrooms.Audio
             return s_steps[variant & 7];
         }
         static AudioClip s_zoom;
+        static AudioClip[] s_beep;
+        public static AudioClip MenuBeep(int variant) { if (s_beep == null) { s_beep = new AudioClip[3]; for (int i = 0; i < 3; i++) s_beep[i] = ProceduralSounds.MenuBeep(i); } return s_beep[Mathf.Clamp(variant, 0, 2)]; }
         public static AudioClip ZoomMotor => s_zoom ? s_zoom : (s_zoom = ProceduralSounds.ZoomMotor());
         public static AudioClip Buzz => s_buzz ? s_buzz : (s_buzz = ProceduralSounds.FaultyBuzz());
         public static AudioClip Ventilation => s_vent ? s_vent : (s_vent = ProceduralSounds.Ventilation());

@@ -15,7 +15,7 @@ namespace Backrooms.Generation
     /// </summary>
     public class WorldStreamer : MonoBehaviour
     {
-        [Tooltip("World seed. 0 = random each session.")]
+        [Tooltip("World seed when no save is being played (build mode's room test). 0 = random each session.")]
         public int seed = 0;
         [Tooltip("Chunks kept loaded in each direction around the player's chunk.")]
         [Range(2, 5)] public int loadRadius = 3;
@@ -120,9 +120,18 @@ namespace Backrooms.Generation
         readonly Dictionary<Vector3Int, int> _pendingGen = new Dictionary<Vector3Int, int>();
         Vector2Int _center = new Vector2Int(int.MinValue, int.MinValue);
 
+        Saves.WorldSaver _saver;
+        /// <summary>Showing the main menu (a fixed world behind it, no player).</summary>
+        public bool MenuMode { get; private set; }
+
         void Awake()
         {
-            Seed = seed != 0 ? seed : new System.Random().Next(1, int.MaxValue);
+            // The main menu's world, a save's world, or (testing a room from build mode) a random one.
+            bool playing = Saves.GameSession.Slot >= 0 && Saves.GameSession.Data != null;
+            MenuMode = !playing && Saves.GameSession.InMenu;
+            if (MenuMode) Seed = Menu.MainMenu.MenuSeed;
+            else if (playing) Seed = Saves.GameSession.Data.seed;
+            else Seed = seed != 0 ? seed : new System.Random().Next(1, int.MaxValue);
             Backrooms.CustomRooms.RoomLibrary.Reload();        // the player's custom rooms join the landmark pool
             Settings = WorldGenSettings.Load();
             _world = new WorldGenerator(Seed, Settings);
@@ -144,6 +153,9 @@ namespace Backrooms.Generation
                 player.gameObject.AddComponent<Interaction.PropGrabber>();
             if (player && player.GetComponent<CamcorderPlayerController>() && !player.GetComponent<Interaction.FirstPersonBody>())
                 player.gameObject.AddComponent<Interaction.FirstPersonBody>();
+            // The save being played: moved props are back on the list before any chunk is built. Or the main menu.
+            if (playing) { _saver = gameObject.AddComponent<Saves.WorldSaver>(); _saver.RestoreProps(_world); }
+            else if (MenuMode) gameObject.AddComponent<Menu.MainMenu>().streamer = this;
         }
 
         /// <summary>The ground-storey chunk's layout as currently built (null if not loaded).</summary>
@@ -239,9 +251,10 @@ namespace Backrooms.Generation
 
         void Start()
         {
-            // Build everything the player could see before the first frame.
-            PlaceSpawn();
+            // Build everything the player could see before the first frame (where the save left them, or the spawn).
+            if (!(_saver && _saver.RestorePlayer(player))) PlaceSpawn();
             Refresh(true);
+            if (_saver) _saver.RestoreWorld();
         }
 
         void Update()

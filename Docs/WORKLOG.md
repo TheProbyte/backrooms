@@ -15,6 +15,30 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 18:00  Claude Code  Main menu (camcorder on the carpet) and three world save slots
+- Main menu: the world scene starts on it unless a save is being played (Menu/MainMenu.cs).
+  - Picture: the camcorder lying rolled on the carpet of a fixed world (seed 42), fixed focus on the carpet, background
+    slightly out of focus, OSD on STBY.
+  - Menu: F5-style menu on the left (PLAY / SETTINGS placeholder / QUIT) with beeps.
+  - Between menu and world: a blue "PLAY" / "STOP" screen (TapeTransition).
+- Saves: three slots in persistentDataPath/Saves (Saves/WorldSave.cs, WorldSaver.cs).
+  - A new save gets a random seed.
+  - Saved: seed, player pose and stance, moved and spawned furniture (full spec), lamp/clock from the L menu, spray
+    cans (paint left, held), all spray paint, and play time (the tape counter carries on).
+  - Saves on quit / stopping Play Mode, "Save and quit to menu", leaving for another scene, and every 3 min.
+  - Slots can be erased from the menu.
+- Pause menu: "SAVE AND QUIT TO MENU" in a saved world, "MAIN MENU" elsewhere (was "Play (restart the world)").
+- Hooks: WorldStreamer, MovablePropManager.Export/Import, SprayPaint.Write/Read, ItemCatalog.ReserveId,
+  CamcorderRig.focusOverride, CamcorderOSD.standby/TapeSeconds. Docs/MainMenuAndSaves.md.
+- Checked:
+  - EditMode tests: 66/66, including the new WorldSaveTests (in a temp folder).
+  - Played the menu, new save, changes (moved chair, spawned sofa and lamp, can held at 60%, 400 paint dots, crouched
+    at a spot), and "save and quit to menu". Continuing restored all of it.
+  - Stopping Play Mode rewrote the save.
+  - Erase works.
+  - The test save was erased afterwards.
+- Open: no thumbnails on the slot cards; settings page is empty; not tried in a player build.
+
 ## 2026-10-26 16:30  Claude Code  Poolrooms arches, curves, spiral stairs to a second floor; sound; right hand; spray can; items menu
 - Poolrooms: arched spans and arcades, rounded inside corners, free-standing curved walls, spiral stair towers to a
   full second storey (ZoneRules.fullStoreys, two-storey shader map). World version 12. Docs/Poolrooms.md.
