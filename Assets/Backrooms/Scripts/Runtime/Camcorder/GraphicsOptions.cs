@@ -15,7 +15,7 @@ namespace Backrooms.Camcorder
     public class GraphicsOptions
     {
         public bool vSync = false;
-        public int frameCap = 0;              // 0 = unlimited (when vsync is off)
+        public int frameCap = 60;             // frames a second at most (0 = unlimited); with vsync, every Nth refresh nearest it
         public float renderScale = 1f;
         public int shadowLights = 16;         // nearest lights that cast shadows (the biggest cost: each redraws the geometry around it)
         public float shadowDistance = 18f;    // shadows fade out smoothly toward this distance
@@ -148,7 +148,7 @@ namespace Backrooms.Camcorder
         }
 
         const string Key = "Backrooms.Graphics.v1";
-        const int CurrentVersion = 3;
+        const int CurrentVersion = 4;
         public static GraphicsOptions Load()
         {
             try
@@ -171,6 +171,12 @@ namespace Backrooms.Camcorder
                         // full: a room with light walls is evenly lit, as in the reference footage), and dim areas are not
                         // pushed darker. Only for players who had not changed these two.
                         o.darkSpots = 0f; o.multiBounce = 1f;
+                    }
+                    if (o.version < 4 && o.frameCap == 0)
+                    {
+                        // Version 4: a 60 fps limit. Unlimited (vsync at a 240 Hz display is no limit) ran the graphics card
+                        // flat out for frames nobody sees, and the fans loud.
+                        o.frameCap = 60;
                     }
                     o.version = CurrentVersion;
                     return o;
@@ -283,9 +289,19 @@ namespace Backrooms.Camcorder
         void LateUpdate()
         {
             var o = Options;
-            int vs = o.vSync ? 1 : 0;
+            int cap = o.frameCap > 0 ? o.frameCap : -1, vs = 0, fps = cap;
+            if (o.vSync)
+            {
+                // In step with the display, at the fraction of its rate nearest the limit (240 Hz and 60: every 4th refresh).
+                double hz = Screen.currentResolution.refreshRateRatio.value;
+                vs = cap > 0 && hz > 1.0 ? Mathf.Clamp(Mathf.RoundToInt((float)(hz / cap)), 1, 4) : 1;
+                fps = -1;
+            }
+#if UNITY_EDITOR
+            // The editor's Game view keeps its own vsync: there the limit alone holds the rate.
+            if (vs > 0) { vs = 0; fps = cap; }
+#endif
             if (QualitySettings.vSyncCount != vs) QualitySettings.vSyncCount = vs;
-            int fps = o.vSync ? -1 : o.frameCap > 0 ? o.frameCap : -1;
             if (Application.targetFrameRate != fps) Application.targetFrameRate = fps;
 
             var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;

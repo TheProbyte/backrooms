@@ -22,7 +22,7 @@ namespace Backrooms.Interaction
         public const float MaxStrip = 2.4f, MinStrip = 0.03f;
         [Tooltip("Furthest you can stick the end down from your eye (m).")] public float reach = 1.6f;
         [Tooltip("Tightest bend the tape takes on a flat surface (m radius).")] public float bendRadius = 0.45f;
-        public float metres = 40f;
+        [NotTuned] public float metres = 40f;
 
         const float Step = 0.02f;                     // the strip is laid in pieces this long
 

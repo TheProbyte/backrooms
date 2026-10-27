@@ -18,7 +18,7 @@ namespace Backrooms.Interaction
         public static float Lifespan = 45f;
         public const float Radius = 0.033f, Height = 0.226f;
 
-        [Range(0f, 1f)] public float paint = 1f;
+        [NotTuned, Range(0f, 1f)] public float paint = 1f;
         [Tooltip("Droplets that are traced per second at full flow.")] public float dropletsPerSecond = 300f;
         [Tooltip("Spread of the spray cone (standard deviation, degrees).")] public float spread = 4.5f;
         public float range = 1.8f;

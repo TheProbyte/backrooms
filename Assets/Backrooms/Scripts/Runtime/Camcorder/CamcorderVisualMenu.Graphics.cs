@@ -28,9 +28,9 @@ namespace Backrooms.Camcorder
             }
 
             Section("DISPLAY", "Frame pacing and resolution.");
-            Toggle("VSync", "Locks the frame rate to your monitor's refresh rate, removing tearing. Off lets it run as fast as it can (or up to the cap below).",
+            Toggle("VSync", "Keeps frames in step with your monitor, removing tearing: at the fraction of its refresh rate nearest the cap below (a 240 Hz monitor and a 60 cap: every 4th refresh).",
                 () => O().vSync, v => { O().vSync = v; O().Save(); });
-            Slider("Frame rate cap (0 = unlimited)", "Upper limit on frames per second when VSync is off. 30 feels like NTSC video; 0 removes the limit.",
+            Slider("Frame rate cap (0 = unlimited)", "Upper limit on frames per second (60 by default). Frames beyond what you can see only heat the graphics card and spin its fans up. 30 feels like NTSC video; 0 removes the limit.",
                 0f, 240f, "0", " fps", () => O().frameCap, v => { O().frameCap = Mathf.RoundToInt(v); O().Save(); }, true);
             Slider("Render scale", "Resolution the 3D view is drawn at, relative to the window. Below 1 is faster and softer (the camcorder look hides it well).",
                 0.5f, 1.5f, "0.00", "x", () => O().renderScale, v => { O().renderScale = v; O().Save(); });

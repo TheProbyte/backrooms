@@ -108,6 +108,7 @@ namespace Backrooms.Interaction
             // Small things get a steady contact shadow instead of a flickering shadow-map one.
             foreach (var r in GetComponentsInChildren<Renderer>()) if (!(r is ParticleSystemRenderer)) r.shadowCastingMode = ShadowCastingMode.Off;
             if (!GetComponent<ContactShadow>()) gameObject.AddComponent<ContactShadow>();
+            ItemTuning.Apply(this);                        // its settings as tuned in the F2 menu
         }
 
         /// <summary>Held in place by something other than the hand (a plug in a socket): stays kinematic.</summary>

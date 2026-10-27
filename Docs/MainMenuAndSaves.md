@@ -46,7 +46,7 @@ the editor, starting a build, or "Main menu" from the pause menu). Build mode's 
 | Power | Lamps' switches, cords laid out or coiled, and every plug's socket (a wall socket by its position, found again when its chunk loads; a cord's box by its index). |
 | Special rooms | Which loot has been taken (it is not made again). Loot still lying in a room is not saved (the room makes it). |
 | Noclip doors | The door a Poolrooms door leads back to. |
-| Broken walls | Every wall broken with the sledgehammer (`WallDamage.Export/Import`, `WallData`): which pieces of each board are gone or cracked, baseboards, batts, studs, and where its rubble came to rest. Restored before any chunk builds, so the chunks leave the broken panels out. See BreakingWalls.md. |
+| Broken walls | Every wall broken with the sledgehammer (`WallDamage.Export/Import`, `WallData`): which pieces of each board are gone or cracked, baseboards, batts, studs, and where its rubble came to rest. Restored before any chunk builds, so the chunks leave the broken panels out. Walls saved before 2026-10-27 load under the new rules (loose pieces are found on the floor, batts gone, steel studs whole). See BreakingWalls.md. Item tuning (F2) is not part of a world: it is the items' defaults everywhere (Interaction.md). |
 | Time | Play time; the OSD's tape counter and date carry on from it (`CamcorderOSD.TapeSeconds`). |
 
 **When it saves:**

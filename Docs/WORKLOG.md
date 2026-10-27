@@ -15,6 +15,48 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-27 14:20  Claude Code  Walls and hammer from play-testing; F2 item tuning; frame cap; shader warmup gap
+- Light through holes: `LG_HoleOpenBox` (LightGridCommon.hlsl), the open share of a box on a holed wall (blocks weighted
+  by cover, rows in four fixed samples, no loop); `LGrid_EmitterVisibleH` tests the panel's cone footprint on the wall
+  and `LGrid_LightVisibleH` a block round the crossing (fractional for grid lights, any-opening gate for shadow-mapped
+  ones; `LG_HidePiece` takes a weight). The grid's lights drew hard 0.15 m squares on the wall opposite a hole.
+  `PanelGeometry.Shadow`: each piece left casts as a block through the whole wall (shadow bias ate the thin boards).
+- Bounce over doorways: `LGrid_ProbeIrradiance` treats a door or arch as wall above its top (dark rooms showed a bright
+  cell-wide band above a doorway to a lit room, and a patch on the ceiling in front). Flicker: probes settle
+  (`LightGrid.compute` ProbeTrace: a count of updates without a real change in the top 8 bits of `_ProbeKey`, history up
+  to `settle` 0.99); FlickerProbe in the dark room measured 0.13 % change a frame before.
+- Walls: drywall hangs on screws every 0.3 m up the posts and standing studs, and holds a neighbour only along 3 cm or
+  more of edge (`WallDamage.Loose`, `FracturePiece.joins`; the old rule held anything whose box overlapped a stud's line:
+  floating chips). Debris always leaves the board's plane and tips over. Steel walls: one stud, off-centre, 0.75 m clear
+  beside it (player 0.6 m across), unbreakable; wood unchanged. Insulation off (`WallPanelModel.InsulationOn`). Stronger
+  blows (`Blow`: radius 8-22 cm by wind-up, power 1.3). Saved walls load under the new rules (`SettleLoose`: loose
+  pieces lie on the floor; batt rubble dropped; steel stud data ignored). Broken panels draw no baseboard where the level
+  has none (`noBaseboard`); copper and steel less metallic (they showed black).
+- Sledgehammer: a short-handled club hammer (43 cm, 2.1 kg) modelled on the user's reference photo; settings as fields
+  (`fullWindUp`, `breakRadius`, `tapRadius`, `power`, `crackSpread`, `swingTime`, `armReach`).
+- F2 item tuning (`Items/ItemTuning.cs`, `Items/ItemTuningMenu.cs`): the held or looked-at item's settings (its class's
+  public float/int/bool fields and its weight, by reflection; [NotTuned] for state), applied to every item of the kind and
+  saved into the project (`Resources/ItemTuning.json`; in a build, persistentDataPath over it). Applied in
+  `WorldItem.Awake`. PauseMenu ignores the Escape that closes it.
+- Load: `GraphicsOptions` caps frames at 60 by default (version 4 moves an unlimited cap to 60); with vsync a build syncs
+  to every Nth refresh. The user's display is 240 Hz: vsync was no limit (GPU 146 W, fans loud).
+- Shader compiles mid-play: the crawl holes' portal views used 2 lit variants the warmup list lacked (soft shadows off);
+  every portal variant now also has its plain-shadow twin, plus the plain forward and shadow passes and two CrawlDuct
+  variants a session used (`BackroomsLitVariants.shadervariants`, 76).
+- Saved walls: the user's World 2 (copied into World 3) had rubble of a second steel stud; building it threw while its
+  chunk came in, so the chunk never finished and the player fell through the floor. `WallDamage.Fits` leaves such rubble
+  out, `WallBreaker.Ensure` catches a failing panel, `BrokenPanel` removes itself if a script reload in Play left it stale.
+- Checked: EditMode 100/100; WallDamageTests (steel holds and leaves room, wood splits at the third blow, a chip over a
+  stud with no screw falls, a saved wall's loose pieces end up on the floor, an older save with parts the wall no longer
+  has loads), ItemTuningTests. Play, World 3 = a copy of the user's World 2: the hole's light is one soft patch (was
+  squares), no band over the dark room's doorways, no floating chunks or batts, 60 fps, FlickerProbe in the dark room
+  0.08 % a frame (worst block 0.19 %; was 0.13 / 0.31), first full blow 21 pieces, steel stud holds, F2 panel opens on the
+  held hammer, save and reload kept the wall. Screenshots Docs/screenshots/walls/ (13-17 the fixes).
+- Open: the lit warmup is now about 17 min after a shader change (76 variants, the hole box adds a little to each). The
+  hammer's swing poses were kept, only scaled to the shorter handle (not looked at closely in motion). A script reload in
+  Play Mode ("Recompile and continue playing") still breaks other systems' state (SprayPaint's batches threw); exit Play
+  before scripts change.
+
 ## 2026-10-27 12:00  Claude Code  Sledgehammer and breakable walls
 - New `Scripts/Runtime/Destruction/`: `WallKey` (a 1.2 m wall panel in world cells, its u/v/w frame), `WallFracture`
   (fixed per-board Voronoi break pattern, shared jagged edges), `WallPanel` (`WallPanelModel`: boards, steel or wood

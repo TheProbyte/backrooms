@@ -116,21 +116,111 @@ namespace Backrooms.Tests
         }
 
         [Test]
-        public void StudsDentThenBreak()
+        public void SteelStudsHoldAndLeaveRoomForAPerson()
         {
             var p = WallDamage.Get(Key, true);
             Assert.IsTrue(p.model.steel, "an office wall: steel studs");
-            // Clear the board in front of the first stud, then hit it.
+            Assert.AreEqual(1, p.model.studs.Length, "one steel stud a panel");
+            // The player is 0.6 m across: the gap on one side of the stud is wide enough, clear of the post's flanges.
+            float u = p.model.studs[0], half = WallSpec.StudWidth(true) * 0.5f;
+            float gap = Mathf.Max(u - half - (WallSpec.U0 + WallSpec.SteelFlange), WallSpec.U1 - WallSpec.SteelFlange - (u + half));
+            Assert.GreaterOrEqual(gap, 0.7f, "a person fits beside the stud");
+            // Clear the board in front of the stud, then hit it, again and again: it rings and holds.
+            for (int i = 0; i < p.model.boards[0].pieces.Count; i++)
+                if (Mathf.Abs(p.model.boards[0].pieces[i].centroid.x - u) < 0.2f) p.state.removed[0][i] = true;
+            for (int k = 0; k < 4; k++)
+            {
+                var r = Hit(u, 1.2f, 1.5f);
+                Assert.AreEqual(StrikeKind.Stud, r.kind);
+                Assert.IsFalse(r.studBroke, "steel does not give way");
+            }
+            Assert.AreEqual(1, p.state.studSegments[0].Count, "still one whole length");
+        }
+
+        [Test]
+        public void WoodStudsSplitAtTheThirdBlow()
+        {
+            var L = TwoRooms();
+            L.biomeName = "Hallways";
+            WallDamage.Layouts = c => c == Vector3Int.zero ? L : null;
+            var p = WallDamage.Get(Key, true);
+            Assert.IsFalse(p.model.steel, "the older hallways: wood studs");
+            Assert.AreEqual(2, p.model.studs.Length, "wood at 400 mm");
             float u = p.model.studs[0];
             for (int i = 0; i < p.model.boards[0].pieces.Count; i++)
                 if (Mathf.Abs(p.model.boards[0].pieces[i].centroid.x - u) < 0.2f) p.state.removed[0][i] = true;
-            var first = Hit(u, 1.2f, 1f);
-            Assert.AreEqual(StrikeKind.Stud, first.kind);
-            Assert.IsFalse(first.studBroke, "one blow dents it");
-            var second = Hit(u, 1.2f, 1f);
-            Assert.IsTrue(second.studBroke, "the second tears it");
+            Assert.IsFalse(Hit(u, 1.2f, 1f).studBroke, "one blow");
+            Assert.IsFalse(Hit(u, 1.2f, 1f).studBroke, "two");
+            Assert.IsTrue(Hit(u, 1.2f, 1f).studBroke, "the third splits it");
             Assert.AreEqual(2, p.state.studSegments[0].Count, "two lengths left, one each side of the break");
             Assert.IsFalse(p.state.StudAt(0, 1.2f));
+        }
+
+        [Test]
+        public void APieceOverAStudWithoutAScrewFalls()
+        {
+            var p = WallDamage.Get(Key, true);
+            var m = p.model; var board = m.boards[0];
+            float u = m.studs[0];
+            // The pieces with a screw in them (every 0.3 m up the stud), and one over the stud's line without one.
+            var screwed = new System.Collections.Generic.HashSet<int>();
+            for (float v = WallDamage.ScrewFirst; v < m.height - 0.05f; v += WallDamage.ScrewSpacing) screwed.Add(board.PieceAt(new Vector2(u, v)));
+            int chip = -1, held = -1;
+            float half = WallSpec.StudWidth(m.steel) * 0.5f;
+            for (int i = 0; i < board.pieces.Count && (chip < 0 || held < 0); i++)
+            {
+                var f = board.pieces[i];
+                if (f.bounds.xMax < u - half || f.bounds.xMin > u + half || f.bounds.yMin < 0.3f || f.bounds.yMax > m.height - 0.3f) continue;
+                if (screwed.Contains(i)) { if (held < 0) held = i; }
+                else if (chip < 0) chip = i;
+            }
+            Assume.That(chip >= 0 && held >= 0, "this pattern has both");
+            // Cut both free of their neighbours.
+            foreach (int j in board.pieces[chip].neighbours) p.state.removed[0][j] = true;
+            foreach (int j in board.pieces[held].neighbours) p.state.removed[0][j] = true;
+            p.state.removed[0][chip] = p.state.removed[0][held] = false;
+            Hit(0.6f, 2.5f, 0.2f);                       // any blow makes the wall look again
+            Assert.IsTrue(p.state.removed[0][chip], "a chip over the stud with no screw in it falls");
+            Assert.IsFalse(p.state.removed[0][held], "a piece with a screw in it stays");
+        }
+
+        [Test]
+        public void ASavedWallsLoosePiecesAreFoundOnTheFloor()
+        {
+            var p = WallDamage.Get(Key, true);
+            var board = p.model.boards[0];
+            int island = board.PieceAt(new Vector2(0.6f, 1.4f));
+            Hit(0.6f, 2.5f, 1f);                         // taken over, so it is saved
+            foreach (int j in board.pieces[island].neighbours) p.state.removed[0][j] = true;
+            p.state.removed[0][island] = false;          // left floating, as an older version could leave it
+            var saved = WallDamage.Export();
+            WallDamage.Clear();
+            WallDamage.Import(saved);
+            var q = WallDamage.Find(Key);
+            Assert.IsTrue(q.state.removed[0][island], "nothing holds it: it is not in the wall");
+            if (board.pieces[island].area >= 0.0035f)
+            {
+                var r = q.rubble.Find(x => x.part == Fallen.Part.Board && x.side == 0 && x.index == island);
+                Assert.AreEqual(island, r.index, "it lies at the foot of the wall");
+                Assert.Less(r.position.y, 0.05f, "on the floor");
+            }
+        }
+
+        [Test]
+        public void AnOlderSaveNamingPartsTheWallNoLongerHasStillLoads()
+        {
+            Hit(0.6f, 1.3f, 1f);
+            var saved = WallDamage.Export();
+            // Saved when steel walls had two studs and batts: a length of the second stud and a batt lie as rubble.
+            saved[0].rubble.Add(new WallDamage.Rubble { part = Fallen.Part.Stud, index = 1, span = new Vector2(0.5f, 1.2f), position = Vector3.one, rotation = Quaternion.identity });
+            saved[0].rubble.Add(new WallDamage.Rubble { part = Fallen.Part.Insulation, index = 3, position = Vector3.one, rotation = Quaternion.identity });
+            int before = saved[0].rubble.Count;
+            WallDamage.Clear();
+            WallDamage.Import(saved);
+            var q = WallDamage.Find(Key);
+            Assert.AreEqual(1, q.model.studs.Length);
+            Assert.AreEqual(before - 2, q.rubble.Count, "what the wall no longer has is left out");
+            Assert.IsTrue(q.rubble.TrueForAll(r => WallDamage.Fits(q.model, r)));
         }
 
         [Test]

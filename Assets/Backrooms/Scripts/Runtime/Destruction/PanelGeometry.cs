@@ -45,24 +45,32 @@ namespace Backrooms.Destruction
             Services(mb, m, pitch);
         }
 
-        /// <summary>The panel's shadow: plain pieces, frame, batts, baseboards (no cracks or jags).</summary>
+        /// <summary>
+        /// The panel's shadow: plain pieces, frame, batts, baseboards (no cracks or jags). Each board piece left casts as a
+        /// block through the whole wall (as the chunks' walls do): light passes only where both boards are open, and a
+        /// 12.7 mm plate alone was thin enough for the shadow bias to eat, so light came through the pieces.
+        /// </summary>
         public static void Shadow(PanelMesh mb, WallPanelModel m, WallPanelState st, float pitch)
         {
             var k = m.key;
+            float w0 = -T * 0.5f, w1 = T * 0.5f;
             for (int side = 0; side < 2; side++)
             {
-                float sgn = side == 0 ? -1f : 1f, wo = sgn * T * 0.5f, wi = sgn * (T * 0.5f - B);
-                Vector3 nOut = k.Across * sgn;
                 foreach (var f in m.boards[side].pieces)
                 {
                     if (st.removed[side][f.index]) continue;
                     var c = f.cell;
-                    Vector3 sO = k.ToWorld(f.site.x, f.site.y, wo, pitch), sI = k.ToWorld(f.site.x, f.site.y, wi, pitch);
+                    Vector3 s0 = k.ToWorld(f.site.x, f.site.y, w0, pitch), s1 = k.ToWorld(f.site.x, f.site.y, w1, pitch);
                     for (int i = 0; i < c.Length; i++)
                     {
                         Vector2 a = c[i], b = c[(i + 1) % c.Length];
-                        mb.Tri(0, sO, k.ToWorld(a.x, a.y, wo, pitch), k.ToWorld(b.x, b.y, wo, pitch), nOut, Vector2.zero, Vector2.zero, Vector2.zero);
-                        mb.Tri(0, sI, k.ToWorld(b.x, b.y, wi, pitch), k.ToWorld(a.x, a.y, wi, pitch), -nOut, Vector2.zero, Vector2.zero, Vector2.zero);
+                        mb.Tri(0, s0, k.ToWorld(a.x, a.y, w0, pitch), k.ToWorld(b.x, b.y, w0, pitch), -k.Across, Vector2.zero, Vector2.zero, Vector2.zero);
+                        mb.Tri(0, s1, k.ToWorld(b.x, b.y, w1, pitch), k.ToWorld(a.x, a.y, w1, pitch), k.Across, Vector2.zero, Vector2.zero, Vector2.zero);
+                        // The edge, out from the piece's centre.
+                        Vector2 d = b - a, n2 = new Vector2(d.y, -d.x);
+                        if (Vector2.Dot(n2, (a + b) * 0.5f - f.site) < 0f) n2 = -n2;
+                        var n = k.DirToWorld(new Vector3(n2.x, n2.y, 0f)).normalized;
+                        mb.Quad(0, k.ToWorld(a.x, a.y, w0, pitch), k.ToWorld(b.x, b.y, w0, pitch), k.ToWorld(b.x, b.y, w1, pitch), k.ToWorld(a.x, a.y, w1, pitch), n, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);
                     }
                 }
                 for (int i = 0; i < WallPanelModel.BaseboardPieces; i++)

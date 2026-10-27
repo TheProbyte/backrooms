@@ -4,15 +4,18 @@ using UnityEngine;
 namespace Backrooms.Interaction
 {
     /// <summary>
-    /// The sledgehammer's model, made in code: a 6 lb (2.7 kg) head on a 24 inch hickory handle. The handle is oval (deeper
-    /// in the swing than across), swells into a knob at the butt and toward the head; the head is a chamfered steel block
-    /// painted black, its two striking faces bevelled and worn bright. Frame: the handle's butt at the origin, the handle
-    /// up +Y, the head's faces along +Z and -Z.
+    /// The sledgehammer's model, made in code: a short-handled one (a club or drilling hammer, about 43 cm long), a 4 lb
+    /// forged head on a hickory handle, after a photograph of an old one. The head is a long block with chamfered edges, a
+    /// little fuller in the middle round the eye, its ends stepped down and bevelled into the two striking faces, worn
+    /// bright; the rest painted black and worn. The handle is oval (deeper in the swing than across), slimmer in the middle,
+    /// swelling into a rounded knob at the butt and a little toward the head. Frame: the handle's butt at the origin, the
+    /// handle up +Y, the head's faces along +Z and -Z.
     /// </summary>
     public static class SledgehammerModel
     {
-        public const float HeadY = 0.625f, HeadHalfX = 0.0325f, HeadHalfY = 0.0325f, HeadHalfZ = 0.0825f;
-        public const float HandleA = 0.0135f, HandleB = 0.0185f;       // the handle's half widths across (x) and in the swing (z)
+        public const float HeadY = 0.4f, HeadHalfX = 0.0245f, HeadHalfY = 0.0275f, HeadHalfZ = 0.06f;
+        public const float HandleA = 0.0135f, HandleB = 0.0175f;       // the handle's half widths across (x) and in the swing (z)
+        public const float Length = HeadY + HeadHalfY + 0.003f;        // butt to the top of the head
         static Mesh s_mesh;
 
         public static Mesh Mesh => s_mesh ? s_mesh : (s_mesh = Build());
@@ -28,11 +31,12 @@ namespace Backrooms.Interaction
             var sub = new[] { new List<int>(), new List<int>(), new List<int>() };
             void Tri(int s, int a, int b, int c) { sub[s].Add(a); sub[s].Add(b); sub[s].Add(c); }
 
-            // ---- Handle: rings of an oval along y, smooth.
+            // ---- Handle: rings of an oval along y, smooth. (height, size)
+            float top = HeadY + HeadHalfY + 0.003f;
             (float y, float k)[] profile =
             {
-                (0f, 0.78f), (0.005f, 1.1f), (0.016f, 1.18f), (0.032f, 1.12f), (0.06f, 1.0f), (0.2f, 0.95f), (0.38f, 0.96f),
-                (0.5f, 1.03f), (0.585f, 1.12f), (0.59f, 0.86f), (HeadY + HeadHalfY + 0.002f, 0.86f),
+                (0f, 0.62f), (0.004f, 1.02f), (0.012f, 1.2f), (0.026f, 1.18f), (0.05f, 1.05f), (0.09f, 0.95f), (0.2f, 0.9f),
+                (0.3f, 0.95f), (0.35f, 1.04f), (HeadY - HeadHalfY - 0.002f, 1.08f), (HeadY - HeadHalfY, 0.9f), (top, 0.9f),
             };
             const int seg = 20;
             int ring0 = v.Count;
@@ -54,35 +58,39 @@ namespace Backrooms.Interaction
                 int a = ring0 + r * (seg + 1) + i, b = a + 1, c = a + seg + 1, d = c + 1;
                 Tri(0, a, c, b); Tri(0, b, c, d);
             }
-            // Butt and top caps.
-            void Cap(float y, float k, bool up)
+            // The butt (rounded over) and the top of the handle in the eye (end grain, with its wedge).
+            void Cap(float y, float k, bool up, float dome)
             {
                 int centre = v.Count;
-                v.Add(new Vector3(0f, y, 0f)); n.Add(up ? Vector3.up : Vector3.down); uv.Add(new Vector2(0.06f, y));
+                v.Add(new Vector3(0f, y + (up ? dome : -dome), 0f)); n.Add(up ? Vector3.up : Vector3.down); uv.Add(new Vector2(0.06f, y));
                 for (int i = 0; i <= seg; i++)
                 {
                     float t = i / (float)seg * Mathf.PI * 2f;
-                    v.Add(new Vector3(Mathf.Cos(t) * HandleA * k, y, Mathf.Sin(t) * HandleB * k)); n.Add(up ? Vector3.up : Vector3.down);
+                    var rim = new Vector3(Mathf.Cos(t) * HandleA * k, y, Mathf.Sin(t) * HandleB * k);
+                    v.Add(rim); n.Add((rim.normalized * 0.6f + (up ? Vector3.up : Vector3.down)).normalized);
                     uv.Add(new Vector2(0.06f + Mathf.Cos(t) * 0.02f, y + Mathf.Sin(t) * 0.02f));
                 }
                 for (int i = 0; i < seg; i++) { if (up) Tri(0, centre, centre + 2 + i, centre + 1 + i); else Tri(0, centre, centre + 1 + i, centre + 2 + i); }
             }
-            Cap(0f, 0.78f, false);
-            Cap(HeadY + HeadHalfY + 0.002f, 0.86f, true);
+            Cap(0f, 0.62f, false, 0.004f);
+            Cap(top, 0.9f, true, 0f);
 
-            // ---- Head: an octagonal (chamfered) block along z, its faces bevelled.
-            const float chamfer = 0.006f, bevel = 0.004f;
-            var oct = new Vector2[8];
+            // ---- Head: an octagonal (chamfered) block along z, fuller round the eye, its ends stepped down and bevelled.
+            // Stations along z: (z, grow: added to the half widths, slot: 1 paint / 2 bright).
+            const float chamfer = 0.0065f;
+            (float z, float grow, int slot)[] st =
             {
-                float x = HeadHalfX, y = HeadHalfY;
-                float c = chamfer;
-                oct[0] = new Vector2(x - c, y); oct[1] = new Vector2(x, y - c); oct[2] = new Vector2(x, -(y - c)); oct[3] = new Vector2(x - c, -y);
-                oct[4] = new Vector2(-(x - c), -y); oct[5] = new Vector2(-x, -(y - c)); oct[6] = new Vector2(-x, y - c); oct[7] = new Vector2(-(x - c), y);
-            }
-            Vector3 P(Vector2 q, float z, float inset)
+                (-HeadHalfZ, -0.0065f, 2), (-HeadHalfZ + 0.0055f, 0f, 2), (-HeadHalfZ + 0.011f, 0f, 1), (-0.03f, 0f, 1), (-0.025f, 0.0018f, 1),
+                (0.025f, 0.0018f, 1), (0.03f, 0f, 1), (HeadHalfZ - 0.011f, 0f, 1), (HeadHalfZ - 0.0055f, 0f, 2), (HeadHalfZ, -0.0065f, 2),
+            };
+            Vector2[] Oct(float grow)
             {
-                Vector2 d = q.normalized;
-                return new Vector3(q.x - d.x * inset, HeadY + q.y - d.y * inset, z);
+                float x = HeadHalfX + grow, y = HeadHalfY + grow, c = chamfer + grow * 0.5f;
+                return new[]
+                {
+                    new Vector2(x - c, y), new Vector2(x, y - c), new Vector2(x, -(y - c)), new Vector2(x - c, -y),
+                    new Vector2(-(x - c), -y), new Vector2(-x, -(y - c)), new Vector2(-x, y - c), new Vector2(-(x - c), y),
+                };
             }
             void Quad(int s, Vector3 a, Vector3 b, Vector3 cc, Vector3 d, Vector3 normal)
             {
@@ -94,30 +102,31 @@ namespace Backrooms.Interaction
                 if (Vector3.Dot(Vector3.Cross(b - a, cc - a), normal) >= 0f) { Tri(s, i0, i0 + 1, i0 + 2); Tri(s, i0, i0 + 2, i0 + 3); }
                 else { Tri(s, i0, i0 + 2, i0 + 1); Tri(s, i0, i0 + 3, i0 + 2); }
             }
-            float z0 = -HeadHalfZ + bevel, z1 = HeadHalfZ - bevel;
-            for (int i = 0; i < 8; i++)
+            Vector3 At(Vector2 q, float z) => new Vector3(q.x, HeadY + q.y, z);
+            for (int k = 0; k < st.Length - 1; k++)
             {
-                Vector2 a = oct[i], b = oct[(i + 1) % 8];
-                Vector2 mid = (a + b) * 0.5f;
-                Vector3 nrm = new Vector3(mid.x, mid.y, 0f).normalized;
-                // Sides: paint, except the narrow chamfers (worn to bare steel along the edges).
-                bool worn = i % 2 == 0;
-                Quad(worn ? 2 : 1, P(a, z0, 0f), P(b, z0, 0f), P(b, z1, 0f), P(a, z1, 0f), nrm);
-                // Bevels round the faces (bright).
-                for (int e = -1; e <= 1; e += 2)
+                var o0 = Oct(st[k].grow); var o1 = Oct(st[k + 1].grow);
+                float z0 = st[k].z, z1 = st[k + 1].z;
+                // The bevels into the faces and the steps are bright; the body is paint, its narrow chamfers worn to bare steel.
+                for (int i = 0; i < 8; i++)
                 {
-                    float zi = e < 0 ? z0 : z1, zo = e < 0 ? -HeadHalfZ : HeadHalfZ;
-                    Vector3 bn = (nrm + Vector3.forward * e).normalized;
-                    Quad(2, P(a, zi, 0f), P(b, zi, 0f), P(b, zo, bevel), P(a, zo, bevel), bn);
+                    int j = (i + 1) % 8;
+                    Vector3 a = At(o0[i], z0), b = At(o0[j], z0), c = At(o1[j], z1), d = At(o1[i], z1);
+                    Vector3 nrm = Vector3.Cross(b - a, d - a);
+                    Vector3 mid = (a + b + c + d) * 0.25f - new Vector3(0f, HeadY, (z0 + z1) * 0.5f);
+                    if (Vector3.Dot(nrm, mid) < 0f) nrm = -nrm;
+                    bool bevel = st[k].slot == 2 && st[k + 1].slot == 2;
+                    Quad(bevel || i % 2 == 0 ? 2 : 1, a, b, c, d, nrm.normalized);
                 }
             }
             // The striking faces.
             for (int e = -1; e <= 1; e += 2)
             {
                 float z = e * HeadHalfZ;
+                var o = Oct(-0.0065f);
                 int centre = v.Count;
                 v.Add(new Vector3(0f, HeadY, z)); n.Add(Vector3.forward * e); uv.Add(new Vector2(0f, 0f));
-                for (int i = 0; i < 8; i++) { v.Add(P(oct[i], z, bevel)); n.Add(Vector3.forward * e); uv.Add(oct[i] * 4f); }
+                for (int i = 0; i < 8; i++) { v.Add(At(o[i], z)); n.Add(Vector3.forward * e); uv.Add(o[i] * 4f); }
                 for (int i = 0; i < 8; i++)
                 {
                     int a = centre + 1 + i, b = centre + 1 + (i + 1) % 8;

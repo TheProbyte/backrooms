@@ -47,6 +47,8 @@ namespace Backrooms.Destruction
         /// <summary>The plain cell (straight edges), for the shadow caster and the sound geometry.</summary>
         public Vector2[] cell;
         public int[] neighbours;
+        /// <summary>Per neighbour: the length of the edge shared with it (m).</summary>
+        public float[] joins;
         public Vector2 centroid;
         public float area, radius;
         public Rect bounds;
@@ -189,7 +191,7 @@ namespace Backrooms.Destruction
         {
             var pts = new List<Vector2>(f.cell.Length * 3);
             var lab = new List<int>(f.cell.Length * 3);
-            var nb = new HashSet<int>();
+            var nb = new Dictionary<int, float>();
             bool border = false;
             for (int k = 0; k < f.cell.Length; k++)
             {
@@ -197,8 +199,8 @@ namespace Backrooms.Destruction
                 int l = f.label[k];
                 pts.Add(a); lab.Add(l);
                 if (l < 0) { border = true; continue; }
-                nb.Add(l);
                 float len = (b - a).magnitude;
+                nb[l] = (nb.TryGetValue(l, out float had) ? had : 0f) + len;
                 int segs = Mathf.Clamp(Mathf.RoundToInt(len / 0.028f), 1, 4);
                 if (segs < 2 || len < 0.012f) continue;
                 // Canonical direction: from the lexicographically smaller end, so both pieces put the jags in the same places.
@@ -216,7 +218,9 @@ namespace Backrooms.Destruction
                 }
             }
             f.outline = pts.ToArray(); f.label = lab.ToArray();
-            f.neighbours = new int[nb.Count]; nb.CopyTo(f.neighbours);
+            f.neighbours = new int[nb.Count]; f.joins = new float[nb.Count];
+            int at = 0;
+            foreach (var kv in nb) { f.neighbours[at] = kv.Key; f.joins[at] = kv.Value; at++; }
             f.border = border;
             // Area, centroid and bounds of the outline.
             float A = 0f; Vector2 C = Vector2.zero;

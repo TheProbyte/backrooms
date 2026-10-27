@@ -77,6 +77,8 @@ namespace Backrooms.Destruction
 
         void LateUpdate()
         {
+            // Scripts reloaded in Play Mode (the registry is gone): this copy is stale; the wall is made again as its chunk loads.
+            if (Panel == null) { Destroy(gameObject); return; }
             if (Panel.state.version != _built) Rebuild();
             if (Panel.rubbleVersion != _rubbleBuilt && Time.time >= _rubbleDue) { _rubbleDue = Time.time + 0.25f; RebuildRubble(); }
         }
@@ -122,6 +124,7 @@ namespace Backrooms.Destruction
             s_mb.Clear(); s_mb.origin = origin;
             foreach (var r in Panel.rubble)
             {
+                if (!WallDamage.Fits(Panel.model, r)) continue;
                 s_part.Clear();
                 s_part.origin = Part(s_part, Panel.model, r.part, r.side, r.index, r.span, pitch);
                 s_part.origin = Vector3.zero;          // the part was built round its own centre: place it by its pose

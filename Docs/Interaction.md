@@ -54,11 +54,12 @@
 - **Rubber chicken**: like a real one. Hold the left mouse button to squeeze it: it squashes and wheezes as it takes
   in air. Release and it squawks; the longer the squeeze (up to about half a second), the longer and louder the squawk.
   It squeaks when thrown and when it lands hard.
-- **Sledgehammer**: carried choked up near the head; hold left mouse to wind up (the hand slides to the end of the handle
-  and lifts it over the shoulder, up to 0.6 s for the hardest blow; you step in if the wall is a little out of reach),
-  release to swing at what the view is on. It breaks walls (studs, boards, batts, baseboards), knocks furniture, shoves
-  doors; thrown hard into a wall it breaks that too. Found in maintenance closets and sealed storage, or from the L menu.
-  How walls break: BreakingWalls.md (`Items/Sledgehammer.cs`, model `Items/SledgehammerModel.cs`).
+- **Sledgehammer**: a short-handled one (a 4 lb club hammer, 43 cm). Carried choked up near the head; hold left mouse to
+  wind up (the hand slides to the end of the handle and lifts it over the shoulder, up to 0.6 s for the hardest and widest
+  blow; you step in if the wall is a little out of reach), release to swing at what the view is on. It breaks walls
+  (boards, wood studs, baseboards; steel studs ring and hold), knocks furniture, shoves doors; thrown hard into a wall it
+  breaks that too. Found in maintenance closets and sealed storage, or from the L menu. How walls break:
+  BreakingWalls.md (`Items/Sledgehammer.cs`, model `Items/SledgehammerModel.cs`).
 - Items lying in the world have a soft contact shadow under them (`Items/ContactShadow.cs`) instead of shadow-map
   shadows, which flickered on small moving things.
 - Cords no longer pass through floors and walls: each particle sweeps from where it last was and slides along what it
@@ -100,6 +101,24 @@
   (`FirstPersonBody`, "Fingers"; `PropGrabber.ContactDistance`, `WorldItem.ContactDistance`).
 - **Weight**: a heavy item in the hand (the lamp, a coiled cord) slows your steps and turns a little and lags the view
   more. Picking something up off the floor, you bend down for it first.
+
+## Item tuning (F2)
+F2 with an item in your hand, or looking at one (within 4 m), opens a small panel of that kind of item's settings on the
+right of the screen (`Items/ItemTuningMenu.cs`, the F5 menu's look). Sliders for numbers (or type an exact value in the
+box beside each: past the slider's ends widens it), boxes for on/off; under each, what it does and its built-in value.
+Every change applies at once to every item of that kind already out, and to every one made from then on, in every world;
+RESET puts the kind back to its built-in values. Escape or F2 closes it.
+
+- **What is listed** (`Items/ItemTuning.cs`): the item class's own public fields of type float, int or bool, found by
+  reflection, plus its weight (the Rigidbody's mass). A new item shows up with no extra code; give a field [Range] for its
+  slider's range (otherwise 0 to three times its built-in value) and [Tooltip] for its explanation, or [NotTuned] to
+  leave it out (live state such as the paint or tape left, a lamp's switch).
+- **Where it is kept**: per item kind (its class name), applied as each item wakes (`WorldItem.Awake`). In the editor it
+  is saved into the project, `Assets/Backrooms/Resources/ItemTuning.json` (a moment after the last change, and on
+  closing), so it is part of the game and builds ship with it; in a build, changes are saved on that machine
+  (persistentDataPath/ItemTuning.json) over the shipped file. Not part of a world's save.
+- The sledgehammer's: wind-up time, break radius (full blow) and tap radius (quick click), power, crack spread, swing
+  time, reach, weight (BreakingWalls.md, Tuning).
 
 ## Pieces (`Scripts/Runtime/Interaction`)
 | File | What it does |

@@ -6,20 +6,33 @@ using UnityEngine.Rendering;
 namespace Backrooms.Interaction
 {
     /// <summary>
-    /// A 6 lb sledgehammer, swung one-handed (the other hand keeps filming). Carried choked up near the head, the head in
-    /// view at the lower right. Hold the left mouse button to wind up: the hand slides down to the end of the handle and
-    /// raises it over the shoulder (the longer, up to 0.6 s, the harder the blow); if the wall is a little out of reach
-    /// you step in. Release to swing: the head comes over and down onto what the view is on. A wall breaks
-    /// (Destruction.WallBreaker): the head stops dead against a stud or a post and springs back, punches on into a hole it
-    /// makes, and sails through when it meets nothing. Furniture and loose things are knocked. Thrown hard at a wall, it
-    /// breaks that too.
+    /// A short-handled sledgehammer (a 4 lb club hammer, 43 cm), swung one-handed (the other hand keeps filming). Carried
+    /// choked up near the head, the head in view at the lower right. Hold the left mouse button to wind up: the hand slides
+    /// down to the end of the handle and raises it over the shoulder (the longer, up to fullWindUp, the harder the blow); if
+    /// the wall is a little out of reach you step in. Release to swing: the head comes over and down onto what the view is
+    /// on. A wall breaks (Destruction.WallBreaker): the head stops dead against a steel stud or a post and springs back,
+    /// punches on into a hole it makes, and sails through when it meets nothing. Furniture and loose things are knocked.
+    /// Thrown hard at a wall, it breaks that too. Its settings (how wide and how hard it breaks, the wind-up) are tuned in
+    /// game with F2 (ItemTuningMenu).
     /// </summary>
     public class Sledgehammer : WorldItem
     {
         const float HeadY = SledgehammerModel.HeadY, HeadHalf = SledgehammerModel.HeadHalfZ;
-        const float GripEnd = 0.075f, GripCarry = 0.46f;
-        [Tooltip("Furthest the hand reaches from the shoulder (m).")] public float armReach = 0.68f;
-        [Tooltip("Seconds of winding up for the hardest blow.")] public float fullWindUp = 0.6f;
+        const float GripEnd = 0.05f, GripCarry = 0.27f;
+        [Tooltip("Seconds of winding up for the hardest blow (a quick click is a tap).")]
+        [Range(0.1f, 2f)] public float fullWindUp = 0.6f;
+        [Tooltip("How wide the hardest blow breaks: the radius of drywall it knocks out (m). Over a stud the board breaks less; the far board, knocked out from behind, a little less.")]
+        [Range(0.05f, 0.6f)] public float breakRadius = 0.22f;
+        [Tooltip("How wide a quick click (no wind-up) breaks (m).")]
+        [Range(0.02f, 0.4f)] public float tapRadius = 0.08f;
+        [Tooltip("How much each blow destroys: how hard it lands on wood studs and baseboards and how far the pieces fly (1 = an ordinary swing). Below about 0.9 a quick click only cracks.")]
+        [Range(0.2f, 4f)] public float power = 1.3f;
+        [Tooltip("How far the cracks reach round what a blow knocks out, times the break radius.")]
+        [Range(1f, 4f)] public float crackSpread = 2.2f;
+        [Tooltip("Seconds from the top of the swing to the wall at full wind-up (a quick click swings faster).")]
+        [Range(0.06f, 0.5f)] public float swingTime = 0.2f;
+        [Tooltip("Furthest the hand reaches from the shoulder (m); a wall farther than this and you step in toward it.")]
+        [Range(0.4f, 1f)] public float armReach = 0.68f;
 
         enum Phase { Carry, WindUp, Swing, Recoil, Follow, Recover }
         Phase _phase = Phase.Carry;
@@ -50,7 +63,7 @@ namespace Backrooms.Interaction
         public override bool DropsStraight => false;
         public override string Status => _phase == Phase.WindUp ? $"sledgehammer: winding up {Mathf.RoundToInt(_charge * 100f)} %" : "sledgehammer (hold to wind up, release to swing)";
         public override float UseBlend => _phase == Phase.Carry ? 0f : 1f;
-        // Holding a 3 kg hammer up over the shoulder: the camera strains with it.
+        // Holding a 2 kg hammer up over the shoulder: the camera strains with it.
         public override float Effort => _phase == Phase.WindUp ? _charge * 0.6f : 0f;
 
         public static Sledgehammer Create(Vector3 position, Quaternion rotation)
@@ -65,15 +78,15 @@ namespace Backrooms.Interaction
             ItemModels.Prepare(r);
             // Handle (a capsule) and head (a box).
             var cap = go.AddComponent<CapsuleCollider>();
-            cap.direction = 1; cap.radius = 0.02f; cap.height = HeadY + 0.02f; cap.center = new Vector3(0f, (HeadY + 0.02f) * 0.5f, 0f);
+            cap.direction = 1; cap.radius = 0.018f; cap.height = HeadY + 0.02f; cap.center = new Vector3(0f, (HeadY + 0.02f) * 0.5f, 0f);
             var box = go.AddComponent<BoxCollider>();
             box.size = new Vector3(SledgehammerModel.HeadHalfX * 2f, SledgehammerModel.HeadHalfY * 2f, HeadHalf * 2f);
             box.center = new Vector3(0f, HeadY, 0f);
             var rb = go.AddComponent<Rigidbody>();
-            rb.mass = 3.3f; rb.linearDamping = 0.05f; rb.angularDamping = 0.6f;
+            rb.mass = 2.1f; rb.linearDamping = 0.05f; rb.angularDamping = 0.6f;
             rb.interpolation = RigidbodyInterpolation.Interpolate;
             rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
-            rb.centerOfMass = new Vector3(0f, 0.5f, 0f);              // most of its weight is the head
+            rb.centerOfMass = new Vector3(0f, HeadY * 0.82f, 0f);     // most of its weight is the head
             var s = go.AddComponent<Sledgehammer>();
             s.itemId = "sledgehammer"; s.displayName = "Sledgehammer";
             Generation.PoolLitSwitch.Attach(go);
@@ -172,7 +185,7 @@ namespace Backrooms.Interaction
             _impact = Solve(_aimPoint, _aimDir, out _axis, out _reachable);
             var cam = Camera.main;
             _strikeFrom = cam ? cam.transform.position : Shoulder;
-            _swingTime = Mathf.Lerp(0.12f, 0.2f, _charge);
+            _swingTime = Mathf.Lerp(swingTime * 0.6f, swingTime, _charge);
             _hitDone = false;
             Begin(Phase.Swing);
             _fx.pitch = Mathf.Lerp(1.15f, 0.9f, _charge);
@@ -187,7 +200,7 @@ namespace Backrooms.Interaction
             // Along the line the view was on when the swing began (where the head was sent).
             float dist = Vector3.Distance(_strikeFrom, _aimPoint);
             _result = default;
-            if (_reachable && breaker) _result = breaker.Strike(_strikeFrom, _aimDir, dist + 0.12f, _energy, _hand ? _hand.transform : null);
+            if (_reachable && breaker) _result = breaker.Strike(_strikeFrom, _aimDir, dist + 0.12f, BlowFor(_energy, _charge), _hand ? _hand.transform : null);
             if (!_result.hit) { Begin(Phase.Follow); _give = 1f; return; }
             _give = _result.give;
             if (_shake)
@@ -199,6 +212,14 @@ namespace Backrooms.Interaction
             if (chain) chain.HandlingImpulse();
             Begin(_give > 0.6f ? Phase.Follow : Phase.Recoil);
         }
+
+        /// <summary>A blow of this hammer: its strength (0..1, times its power), as wide as the wind-up and its settings give.</summary>
+        Blow BlowFor(float strength, float windUp) => new Blow
+        {
+            energy = strength * power,
+            radius = Mathf.Lerp(tapRadius, breakRadius, Mathf.Clamp01(windUp)),
+            crackSpread = crackSpread,
+        };
 
         // ---------------- Where it is (LateUpdate, from the hand) ----------------
 
@@ -346,7 +367,8 @@ namespace Backrooms.Interaction
             if (v > 6f && WallBreaker.Instance && Body)
             {
                 Vector3 dir = -c.relativeVelocity.normalized;
-                var r = WallBreaker.Instance.Strike(contact.point - dir * 0.25f, dir, 0.45f, Mathf.Clamp01(v / 14f), transform);
+                float e = Mathf.Clamp01(v / 14f);
+                var r = WallBreaker.Instance.Strike(contact.point - dir * 0.25f, dir, 0.45f, BlowFor(e, e), transform);
                 if (r.hit) return;
             }
             _fx.pitch = Random.Range(0.85f, 1.05f);

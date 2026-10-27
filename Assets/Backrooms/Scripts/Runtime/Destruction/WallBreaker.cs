@@ -89,7 +89,9 @@ namespace Backrooms.Destruction
         {
             var p = WallDamage.Find(k);
             if (p == null || BrokenPanel.Live.ContainsKey(k)) return;
-            BrokenPanel.Spawn(k, p, transform);
+            // Called while a chunk comes in: whatever goes wrong with one broken wall must not stop the chunk (and its floor).
+            try { BrokenPanel.Spawn(k, p, transform); }
+            catch (System.Exception e) { Debug.LogException(e); }
         }
 
         void OnChunkLoaded(Vector3Int coord, GameObject go)
@@ -145,7 +147,12 @@ namespace Backrooms.Destruction
         /// energy: 0..1. ignore: the player (and what they hold).
         /// </summary>
         public Impact Strike(Vector3 origin, Vector3 dir, float reach, float energy, Transform ignore)
+            => Strike(origin, dir, reach, Blow.Of(energy), ignore);
+
+        /// <summary>A blow with its own break radius and crack spread (the sledgehammer's settings).</summary>
+        public Impact Strike(Vector3 origin, Vector3 dir, float reach, Blow blow, Transform ignore)
         {
+            float energy = Mathf.Clamp01(blow.energy);                               // sounds, dust, knocks
             var impact = new Impact();
             LastBlow = "nothing in reach";
             dir.Normalize();
@@ -173,7 +180,7 @@ namespace Backrooms.Destruction
                 if (wall)
                 {
                     if (!tried.Add(key)) continue;
-                    var r = WallDamage.Strike(key, origin, dir, reach, energy);
+                    var r = WallDamage.Strike(key, origin, dir, reach, blow);
                     if (r.kind == StrikeKind.Passed) continue;                          // through a hole: on to what is behind
                     if (r.kind == StrikeKind.None)
                     {

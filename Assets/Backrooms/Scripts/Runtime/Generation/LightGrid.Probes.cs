@@ -32,6 +32,8 @@ namespace Backrooms.Generation
         [Range(0.5f, 0.98f)] public float hysteresis = 0.95f;
         [Tooltip("Blend fast only on changes bigger than the rays' measured noise (off: on any big relative change, which made dark places shimmer).")]
         public bool noiseAwareBlend = true;
+        [Tooltip("History kept once a probe has gone a while without a real change: a still room averages over a longer window (its rays' noise fades), and blends fast again when something changes.")]
+        [Range(0.9f, 0.995f)] public float settle = 0.99f;
         [Tooltip("Shade with each probe averaged with its open neighbours (never across walls); the traced history stays unsmoothed.")]
         public bool probeFilter = true;
         public const int ProbeSlices = 4;
@@ -132,7 +134,7 @@ namespace Backrooms.Generation
             EnsureProbes();
             if (_bounceDirty) { _faceCycle = ProbeSlices; _bounceDirty = false; }
             compute.SetVector("_ProbeParams", new Vector4(ProbeFrames, hysteresis, multiBounce, colourBleed));
-            compute.SetVector("_ProbeParams2", new Vector4(noiseAwareBlend ? 1f : 0f, 0f, 0f, 0f));
+            compute.SetVector("_ProbeParams2", new Vector4(noiseAwareBlend ? 1f : 0f, Mathf.Max(settle, hysteresis), 0f, 0f));
             if (_faceCycle > 0 || !_faceValid)
             {
                 int slice = _faceValid ? (_faceSlice++ & (ProbeSlices - 1)) : -1;   // the first time: every cell at once

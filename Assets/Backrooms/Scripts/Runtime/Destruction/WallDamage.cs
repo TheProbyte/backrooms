@@ -19,6 +19,19 @@ namespace Backrooms.Destruction
         public bool crumble;          // too small to keep: it crumbles to dust
     }
 
+    /// <summary>
+    /// How a blow breaks drywall: how hard it lands (0 a tap .. 1 a full swing; more for a heavier tool or a tuned one: studs,
+    /// baseboards and the debris take it), the radius of the board it knocks out (m), and how far its cracks reach round
+    /// that (times the radius). The sledgehammer's come from its settings (the F2 menu).
+    /// </summary>
+    public struct Blow
+    {
+        public float energy, radius, crackSpread;
+
+        /// <summary>The built-in blow for a strength 0..1 (a thrown hammer, the tests).</summary>
+        public static Blow Of(float energy) => new Blow { energy = energy, radius = Mathf.Lerp(0.08f, 0.22f, Mathf.Clamp01(energy)), crackSpread = 2.2f };
+    }
+
     public sealed class StrikeResult
     {
         public StrikeKind kind;
@@ -160,7 +173,11 @@ namespace Backrooms.Destruction
         /// hammer's face meets first, breaks it as far as the blow goes, lets fall whatever is left hanging free.
         /// </summary>
         public static StrikeResult Strike(WallKey k, Vector3 origin, Vector3 dir, float maxDistance, float energy)
+            => Strike(k, origin, dir, maxDistance, Blow.Of(energy));
+
+        public static StrikeResult Strike(WallKey k, Vector3 origin, Vector3 dir, float maxDistance, Blow blow)
         {
+            float energy = blow.energy;
             var r = new StrikeResult { kind = StrikeKind.None, fallen = new List<Fallen>() };
             var p = Get(k, true);
             if (p == null) return r;
@@ -248,8 +265,8 @@ namespace Backrooms.Destruction
             Vector2 uv = new Vector2(at.x, at.y);
             switch (kind)
             {
-                case StrikeKind.Board: BreakBoard(p, front, uv, energy, swing, true, r); break;
-                case StrikeKind.BoardBack: BreakBoard(p, back, uv, energy * 0.9f, swing, false, r); break;
+                case StrikeKind.Board: BreakBoard(p, front, uv, blow, swing, true, r); break;
+                case StrikeKind.BoardBack: { var b = blow; b.energy *= 0.9f; BreakBoard(p, back, uv, b, swing, false, r); break; }
                 case StrikeKind.Stud: HitStud(p, which, at.y, energy, swing, r); break;
                 case StrikeKind.Insulation:
                 {
@@ -300,18 +317,20 @@ namespace Backrooms.Destruction
         }
 
         /// <summary>Breaks a board round a point: the plates the face of the hammer meets come out, the ones round them crack.</summary>
-        static void BreakBoard(Panel p, int side, Vector2 uv, float energy, Vector3 swing, bool fromFront, StrikeResult r)
+        static void BreakBoard(Panel p, int side, Vector2 uv, Blow blow, Vector3 swing, bool fromFront, StrikeResult r)
         {
+            float energy = blow.energy;
             var m = p.model; var st = p.state; var board = m.boards[side];
             int stud = m.StudAt(uv.x, 0.012f);
             bool backed = fromFront && stud >= 0 && st.StudAt(stud, uv.y);
-            float radius = Mathf.Lerp(0.05f, 0.13f, energy) * (backed ? 0.55f : 1f) * (fromFront ? 1f : 0.85f);
+            float radius = Mathf.Max(0.01f, blow.radius) * (backed ? 0.55f : 1f) * (fromFront ? 1f : 0.85f);
             int hitPiece = board.PieceAt(uv);
             for (int i = 0; i < board.pieces.Count; i++)
             {
                 if (st.removed[side][i]) continue;
                 var f = board.pieces[i];
-                if ((f.centroid - uv).sqrMagnitude > (radius * 2.4f + f.radius * 2f) * (radius * 2.4f + f.radius * 2f)) continue;
+                float near = radius * Mathf.Max(2.4f, blow.crackSpread + 0.2f) + f.radius * 2f;
+                if ((f.centroid - uv).sqrMagnitude > near * near) continue;
                 float dist = FracturePattern.Distance(f, uv);
                 float reach = radius * (0.7f + 0.6f * (Dice.Hash(i, side, m.key.line, m.key.along) * 0.5f + 0.5f));
                 // A weak tap only cracks; one on a cracked plate knocks it out. A full swing knocks out everything it meets.
@@ -328,7 +347,7 @@ namespace Backrooms.Destruction
                     if (v.z * out_ < least) v.z = out_ * least;
                     r.fallen.Add(new Fallen { part = Fallen.Part.Board, side = side, index = i, velocity = v, spin = UnityEngine.Random.insideUnitSphere * 9f, crumble = f.area < 0.0035f });
                 }
-                else if (dist < radius * 2.2f) st.cracked[side][i] = true;
+                else if (dist < radius * Mathf.Max(1f, blow.crackSpread)) st.cracked[side][i] = true;
             }
             if (backed) Damage(p, stud, uv.y, energy * 0.35f, swing, r);
             r.broke = true;
@@ -344,6 +363,7 @@ namespace Backrooms.Destruction
         static void Damage(Panel p, int stud, float v, float energy, Vector3 swing, StrikeResult r)
         {
             var m = p.model; var st = p.state;
+            if (m.steel) return;                         // steel studs ring and stop the hammer; they do not give way
             int bin = Mathf.Clamp(Mathf.FloorToInt(v / WallPanelState.BinHeight), 0, WallPanelState.DamageBins - 1);
             var dmg = st.studDamage[stud];
             dmg[bin] += energy;
@@ -378,53 +398,96 @@ namespace Backrooms.Destruction
             }
         }
 
-        /// <summary>Pieces of a board held by nothing (no screw into a stud, post or track, no unbroken neighbour that is) fall.</summary>
+        /// <summary>
+        /// Pieces of a board held by nothing fall. Drywall hangs on its screws: one every 0.3 m (12 in.) up each post and each
+        /// standing length of stud. A piece with a screw in it holds, and so does one joined to a held piece along 3 cm or more
+        /// of unbroken edge; the rest come out. (Before: any piece whose box overlapped a stud's line, or touched the board's
+        /// edge, held, and so did anything joined to one at a corner: chips stayed floating in the hole.)
+        /// </summary>
         static void Drop(Panel p, StrikeResult r)
         {
             var m = p.model; var st = p.state;
             for (int side = 0; side < 2; side++)
-            {
-                var board = m.boards[side];
-                int n = board.pieces.Count;
-                var held = new bool[n];
-                var queue = new Queue<int>();
-                for (int i = 0; i < n; i++)
+                foreach (int i in Loose(m, st, side))
                 {
-                    if (st.removed[side][i]) continue;
-                    var f = board.pieces[i];
-                    if (f.border || Screwed(m, st, f)) { held[i] = true; queue.Enqueue(i); }
-                }
-                while (queue.Count > 0)
-                {
-                    int i = queue.Dequeue();
-                    foreach (int j in board.pieces[i].neighbours)
-                        if (!held[j] && !st.removed[side][j]) { held[j] = true; queue.Enqueue(j); }
-                }
-                for (int i = 0; i < n; i++)
-                {
-                    if (held[i] || st.removed[side][i]) continue;
                     st.removed[side][i] = true;
                     r.removed++;
-                    var f = board.pieces[i];
+                    var f = m.boards[side].pieces[i];
                     float out_ = side == 0 ? -1f : 1f;
                     var v = new Vector3(UnityEngine.Random.Range(-0.2f, 0.2f), UnityEngine.Random.Range(-0.3f, 0.1f), out_ * UnityEngine.Random.Range(0.3f, 0.6f));
                     r.fallen.Add(new Fallen { part = Fallen.Part.Board, side = side, index = i, velocity = v, spin = UnityEngine.Random.insideUnitSphere * 3f, crumble = f.area < 0.0035f });
                 }
-            }
         }
 
-        /// <summary>A piece lies over a standing stud (screwed to it).</summary>
-        static bool Screwed(WallPanelModel m, WallPanelState st, FracturePiece f)
+        /// <summary>Spacing of the screws up a stud or a post (m), and the first one's height.</summary>
+        public const float ScrewSpacing = 0.3f, ScrewFirst = 0.15f;
+        /// <summary>Shortest unbroken edge by which a piece still holds its neighbour (m).</summary>
+        public const float MinJoin = 0.03f;
+        static readonly List<int> s_loose = new List<int>();
+        static readonly Queue<int> s_queue = new Queue<int>();
+
+        /// <summary>The pieces of a board still in the wall that nothing holds (see <see cref="Drop"/>).</summary>
+        public static List<int> Loose(WallPanelModel m, WallPanelState st, int side)
         {
-            float sw = WallSpec.StudWidth(m.steel) * 0.5f;
-            for (int s = 0; s < m.studs.Length; s++)
+            s_loose.Clear();
+            var board = m.boards[side];
+            int n = board.pieces.Count;
+            var held = new bool[n];
+            s_queue.Clear();
+            void Screw(float u, float v)
             {
-                float u = m.studs[s];
-                if (f.bounds.xMax < u - sw || f.bounds.xMin > u + sw) continue;
-                foreach (var seg in st.studSegments[s])
-                    if (seg.y >= f.bounds.yMin && seg.x <= f.bounds.yMax) return true;
+                int i = board.PieceAt(new Vector2(u, v));
+                if (i < 0 || held[i] || st.removed[side][i]) return;
+                held[i] = true; s_queue.Enqueue(i);
             }
-            return false;
+            for (float v = ScrewFirst; v < m.height - 0.05f; v += ScrewSpacing)
+            {
+                Screw(WallSpec.U0 + 0.012f, v); Screw(WallSpec.U1 - 0.012f, v);           // the posts
+                for (int s = 0; s < m.studs.Length; s++)
+                    foreach (var seg in st.studSegments[s])
+                        if (v >= seg.x && v <= seg.y) { Screw(m.studs[s], v); break; }
+            }
+            while (s_queue.Count > 0)
+            {
+                var f = board.pieces[s_queue.Dequeue()];
+                for (int k = 0; k < f.neighbours.Length; k++)
+                {
+                    int j = f.neighbours[k];
+                    if (held[j] || st.removed[side][j] || f.joins[k] < MinJoin) continue;
+                    held[j] = true; s_queue.Enqueue(j);
+                }
+            }
+            for (int i = 0; i < n; i++) if (!held[i] && !st.removed[side][i]) s_loose.Add(i);
+            return s_loose;
+        }
+
+        /// <summary>
+        /// A saved wall's pieces that nothing holds any more (the rule changed, 2026-10-27): they are found on the floor at
+        /// the foot of the wall, lying flat on their side of it, as if they fell while you were away.
+        /// </summary>
+        static void SettleLoose(Panel p)
+        {
+            var m = p.model; var st = p.state; var k = m.key;
+            for (int side = 0; side < 2; side++)
+            {
+                var loose = Loose(m, st, side);
+                if (loose.Count == 0) continue;
+                var dice = new Dice(k.Seed(WorldSeed) * 13 + side);
+                float sgn = side == 0 ? -1f : 1f;
+                foreach (int i in loose)
+                {
+                    st.removed[side][i] = true;
+                    var f = m.boards[side].pieces[i];
+                    if (f.area < 0.0035f) continue;                                         // crumbled to dust
+                    Vector3 at = k.ToWorld(f.centroid.x, 0f, sgn * (WallSpec.T * 0.5f + dice.Range(0.08f, 0.45f)), Pitch);
+                    at.y = k.storey * Pitch + WallSpec.Board * 0.5f + dice.Range(0f, 0.004f);
+                    // Flat on the floor, face up or down, turned any way.
+                    var lie = Quaternion.AngleAxis(dice.Value < 0.5f ? 90f : -90f, k.Along) ;
+                    var turn = Quaternion.AngleAxis(dice.Range(0f, 360f), Vector3.up);
+                    p.rubble.Add(new Rubble { part = Fallen.Part.Board, side = side, index = i, position = at, rotation = turn * lie });
+                }
+                p.rubbleVersion++;
+            }
         }
 
         // ---------------- What the wall lets through ----------------
@@ -544,7 +607,7 @@ namespace Backrooms.Destruction
                 WallPanelState.ReadBits(d.insulation, st.insulationGone);
                 st.baseboardGone = d.baseboard;
                 if (d.baseboardDamage != null) for (int i = 0; i < Mathf.Min(6, d.baseboardDamage.Length); i++) st.baseboardDamage[i] = d.baseboardDamage[i];
-                if (d.studs != null)
+                if (d.studs != null && !p.model.steel)                 // steel studs do not break (since 2026-10-27): whole
                 {
                     int at = 0;
                     for (int s = 0; s < st.studSegments.Length && at < d.studs.Length; s++)
@@ -555,13 +618,31 @@ namespace Backrooms.Destruction
                         for (int i = 0; i < WallPanelState.DamageBins && at < d.studs.Length; i++) st.studDamage[s][i] = d.studs[at++];
                     }
                 }
-                if (d.rubble != null) p.rubble.AddRange(d.rubble);
+                if (d.rubble != null)
+                    foreach (var rb in d.rubble)
+                        if (Fits(p.model, rb)) p.rubble.Add(rb);       // not batts (off for now), nor parts the wall no longer has
+                SettleLoose(p);
                 Refresh(p);
                 st.version++;
                 taken[k] = p.model.height;
             }
             s_taken = taken;
             Version++;
+        }
+
+        /// <summary>
+        /// Is a piece of rubble a part this wall has? A save from before a change of the wall's make-up can name one it no
+        /// longer has (a second steel stud, batts): building it would fail, and with it the chunk.
+        /// </summary>
+        public static bool Fits(WallPanelModel m, Rubble r)
+        {
+            switch (r.part)
+            {
+                case Fallen.Part.Board: return (r.side == 0 || r.side == 1) && r.index >= 0 && r.index < m.boards[r.side].pieces.Count;
+                case Fallen.Part.Baseboard: return (r.side == 0 || r.side == 1) && r.index >= 0 && r.index < WallPanelModel.BaseboardPieces;
+                case Fallen.Part.Stud: return r.index >= 0 && r.index < m.studs.Length;
+                default: return WallPanelModel.InsulationOn && m.insulated && r.index >= 0 && r.index < m.bays.Count * m.rows;
+            }
         }
 
         // ---------------- Helpers ----------------

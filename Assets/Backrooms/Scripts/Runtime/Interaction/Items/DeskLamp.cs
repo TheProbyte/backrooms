@@ -22,7 +22,7 @@ namespace Backrooms.Interaction
         static readonly Vector3 CordExit = new Vector3(0.007f, 0.0029f, -0.12f);
         public static readonly Color CordColor = new Color(0.04f, 0.04f, 0.04f);
 
-        public bool switchOn = true;
+        [NotTuned] public bool switchOn = true;
         [Tooltip("Furthest outlet you can plug into from your eye (m).")] public float reach = 2.2f;
 
         Plug _plug;

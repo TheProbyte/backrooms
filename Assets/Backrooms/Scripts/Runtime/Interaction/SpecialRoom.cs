@@ -123,9 +123,9 @@ namespace Backrooms.Interaction
                 if (hd.NextDouble() < (template == 0 ? 0.45 : 0.25))
                 {
                     float side = hd.Next(2) == 0 ? -1f : 1f, way = hd.Next(2) == 0 ? 1f : -1f;
-                    // Its butt is the item's origin: the 0.66 m hammer lies centred along the side wall, clear of the ends.
+                    // Its butt is the item's origin: the hammer lies centred along the side wall, clear of the ends, on its head.
                     float mid = D * 0.5f + ((float)hd.NextDouble() - 0.5f) * Mathf.Max(0f, D - 1.6f);
-                    var at = At(mid - way * 0.33f, side * (W * 0.5f - 0.07f), 0.035f);
+                    var at = At(mid - way * SledgehammerModel.Length * 0.5f, side * (W * 0.5f - 0.07f), SledgehammerModel.HeadHalfX + 0.003f);
                     var along = F * way;
                     loot.Add((at, Quaternion.LookRotation(Vector3.Cross(along, Vector3.up), along), "sledgehammer"));     // on the head's side
                 }

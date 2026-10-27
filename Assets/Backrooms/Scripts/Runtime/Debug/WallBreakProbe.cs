@@ -159,7 +159,7 @@ namespace Backrooms.DebugTools
                 LightZones.Set(c1, room, false);
             }
             var panel = WallDamage.Find(found);
-            if (panel != null) Note($"final: holed {panel.holed}, see-through {panel.seeThrough}, open {panel.openFraction:P0}, studs {panel.state.studSegments[0].Count}+{panel.state.studSegments[1].Count} lengths, steel {panel.model.steel}, batts {panel.model.insulated}");
+            if (panel != null) Note($"final: holed {panel.holed}, see-through {panel.seeThrough}, open {panel.openFraction:P0}, studs {string.Join("+", System.Array.ConvertAll(panel.state.studSegments, s => s.Count.ToString()))} lengths, steel {panel.model.steel}, batts {panel.model.insulated}");
             Note($"broken panel object: {(BrokenPanel.Live.ContainsKey(found) ? "yes" : "no")}, taken {WallDamage.Taken(found)}");
             if (_full) { _full.Release(); Destroy(_full); }
             Done = true;

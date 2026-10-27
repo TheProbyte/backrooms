@@ -8,9 +8,10 @@ namespace Backrooms.Destruction
     /// <summary>
     /// What is inside one breakable wall panel, all from the world seed and the layout (never saved): the two gypsum
     /// boards and how each breaks (<see cref="FracturePattern"/>), the studs between the posts (galvanised steel in the
-    /// Offices, wood in the older Hallways and the Warehouse's storage), the tracks or plates top and bottom, insulation
-    /// batts in some walls, the electrical box behind each outlet and switch with its cable, now and then a copper pipe, and
-    /// the baseboard on each side in three lengths.
+    /// Offices: one, off to one side, so a person fits through beside it, and it does not break; wood at 400 mm in the older
+    /// Hallways and the Warehouse's storage), the tracks or plates top and bottom, the electrical box behind each outlet and
+    /// switch with its cable, now and then a copper pipe, and the baseboard on each side in three lengths. (Insulation batts
+    /// are switched off for now: <see cref="InsulationOn"/>.)
     /// </summary>
     public sealed class WallPanelModel
     {
@@ -18,7 +19,7 @@ namespace Backrooms.Destruction
         public readonly float height;
         public readonly bool steel, insulated;
         public readonly FracturePattern[] boards = new FracturePattern[2];
-        public readonly float[] studs = (float[])WallSpec.StudU.Clone();
+        public readonly float[] studs;
         /// <summary>Insulation bays (u ranges between the studs) and rows of batts in each.</summary>
         public readonly List<Vector2> bays = new List<Vector2>();
         public int rows;
@@ -42,6 +43,20 @@ namespace Backrooms.Destruction
         public struct Cable { public Vector3 a, b; public float radius; }
 
         public const int BaseboardPieces = 3;
+        /// <summary>Insulation batts in some walls. Off for now (2026-10-27: a batt knocked loose stayed hanging, and could
+        /// not be moved); the code for them stays.</summary>
+        public static bool InsulationOn = false;
+
+        /// <summary>
+        /// Where the one steel stud of a panel stands (u): far enough from one post that the clear gap between the post's
+        /// flanges and the stud is <see cref="WallSpec.PersonGap"/> (a person fits through once the boards are gone); which
+        /// post, by the panel's dice.
+        /// </summary>
+        public static float SteelStudU(bool fromStart)
+        {
+            float u = WallSpec.U0 + WallSpec.SteelFlange + WallSpec.PersonGap + WallSpec.StudWidth(true) * 0.5f;
+            return fromStart ? u : WallSpec.C - u;
+        }
         public const float BaseboardHeight = OfficeBiome.BaseboardHeight, BaseboardDepth = OfficeBiome.BaseboardDepth;
 
         public WallPanelModel(WallKey key, int worldSeed, float height, bool steel, OfficeLayout[] side, OfficeBiomeAssets assets)
@@ -51,14 +66,17 @@ namespace Backrooms.Destruction
             var dice = new Dice(seed);
             for (int s = 0; s < 2; s++) boards[s] = new FracturePattern(seed * 31 + s * 7919 + 1, WallSpec.U0, WallSpec.U1, 0f, height);
 
+            // Studs: steel, one, beside a gap a person fits through; wood at 400 mm.
+            studs = steel ? new[] { SteelStudU(Dice.Hash(seed, 17, 3, 5) > 0f) } : (float[])WallSpec.StudU.Clone();
             // Insulation: whole stretches of wall (groups of five panels) are filled or not.
             int group = Mathf.FloorToInt(key.along / 5f);
-            insulated = Dice.Hash(worldSeed, key.line * 2 + (key.vertical ? 1 : 0), group, key.storey) * 0.5f + 0.5f < (steel ? 0.4f : 0.2f);
+            insulated = InsulationOn && Dice.Hash(worldSeed, key.line * 2 + (key.vertical ? 1 : 0), group, key.storey) * 0.5f + 0.5f < (steel ? 0.4f : 0.2f);
             float sw = WallSpec.StudWidth(steel);
             float bottom = WallSpec.StudBottom(steel), top = WallSpec.StudTop(steel, height);
-            bays.Add(new Vector2(WallSpec.U0, studs[0] - sw * 0.5f));
-            bays.Add(new Vector2(studs[0] + sw * 0.5f, studs[1] - sw * 0.5f));
-            bays.Add(new Vector2(studs[1] + sw * 0.5f, WallSpec.U1));
+            // Bays: between the posts and the studs.
+            float from = WallSpec.U0;
+            foreach (float u in studs) { bays.Add(new Vector2(from, u - sw * 0.5f)); from = u + sw * 0.5f; }
+            bays.Add(new Vector2(from, WallSpec.U1));
             rows = Mathf.Max(1, Mathf.RoundToInt((top - bottom) / 0.3f));
             rowHeight = (top - bottom) / rows;
 
@@ -100,7 +118,7 @@ namespace Backrooms.Destruction
             // Now and then a copper water pipe up through a bay.
             if (dice.Value < (steel ? 0.04f : 0.07f))
             {
-                var bay = bays[1 + dice.Range(0, 2)];
+                var bay = bays[bays.Count > 2 ? 1 + dice.Range(0, 2) : dice.Range(0, bays.Count)];
                 pipe = new Vector2(Mathf.Lerp(bay.x, bay.y, dice.Range(0.3f, 0.7f)), 0.011f);
             }
         }

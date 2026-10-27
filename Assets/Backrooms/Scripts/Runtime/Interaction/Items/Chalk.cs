@@ -16,7 +16,7 @@ namespace Backrooms.Interaction
         public static float LineMetres = 30f;
         public const float Length = 0.09f, Radius = 0.008f;
         [Tooltip("Furthest you can draw from your eye (m).")] public float reach = 1.15f;
-        [Range(0f, 1f)] public float left = 1f;
+        [NotTuned, Range(0f, 1f)] public float left = 1f;
 
         Transform _model;
         AudioSource _scratch;

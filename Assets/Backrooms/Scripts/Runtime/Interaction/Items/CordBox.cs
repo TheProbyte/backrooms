@@ -25,7 +25,7 @@ namespace Backrooms.Interaction
         static readonly Vector3 CoilSize = new Vector3(0.28f, 0.06f, 0.28f), BoxSize = new Vector3(0.045f, 0.036f, 0.075f);
         [Tooltip("Furthest outlet you can plug into from your eye (m).")] public float reach = 2.2f;
 
-        public bool coiled = true;
+        [NotTuned] public bool coiled = true;
         Plug _plug;
         Cord _cord;
         GameObject _coilModel, _boxModel, _bundlePlug;

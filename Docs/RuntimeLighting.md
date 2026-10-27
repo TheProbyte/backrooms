@@ -68,14 +68,25 @@ stop.
 A wall broken with the sledgehammer is still a wall in the occupancy, flagged as holed (bits 29 and 30 for the west and
 south edge), with a record in the hole table (`LightGrid.Holes.cs`, `LightGridCommon.hlsl`: which 0.15 m blocks are open
 right through, 8 across by 18 up, and which have any opening) found through a per-cell index laid out as the occupancy
-(no search inside the walks: FXC compiles loops nested in them very slowly). Lights with a shadow map pass a holed wall
-in blocks with any opening, except at its posts (`LGrid_EmitterVisibleH` / `LGrid_LightVisibleH` with shadowMapped,
-chosen per light from its shadow parameters), and the broken panel's pieces cast their shadows: the light of the real
-lights near you comes through the hole exactly, soft and broken by the studs; whole blocks stop it (shadow bias on the
-thin boards alone let a line of light under the foot of the wall). Everything else reads the blocks: the grid's lights and the far part of real lights, the traced
-bounce (rays go on through an open block), the probe filter (a wall more than half open joins its two sides), and the
-CPU mirror `LightGridMath.Visible`. A wall that breaks more is encoded again and the light around it redrawn (14 m).
-See BreakingWalls.md.
+(no search inside the walks: FXC compiles loops nested in them very slowly). The shaders test a light's footprint on the
+wall, not the one block its centre line meets (`LG_HoleOpenBox`: the share of a box that is open, each block weighted by
+how much of it the box covers, rows in four fixed samples so there is no loop): for a ceiling panel the box is its cone
+where it crosses the wall (as wide along the wall as the cone, as tall as the panel's depth spreads, at least a block),
+for a point test a block round the crossing. Lights with a shadow map pass a holed wall where any of the footprint has
+an opening, except at its posts (`LGrid_EmitterVisibleH` / `LGrid_LightVisibleH` with shadowMapped, chosen per light from
+its shadow parameters), and the broken panel's pieces cast the shadows (each piece as a block through the whole wall
+thickness, so the shadow bias cannot eat the 12.7 mm boards): the real lights near you come through a hole exactly,
+broken by the studs; a footprint that is all whole wall stops them. The grid's lights and the far part of real lights
+pass the footprint's open share: soft-edged light through a hole, as a panel's would be, not hard 0.15 m squares (what
+they drew before, on the wall opposite a hole). The traced bounce (rays go on through an open block), the probe filter
+(a wall more than half open joins its two sides) and the CPU mirror `LightGridMath.Visible` read the blocks. A wall that
+breaks more is encoded again and the light around it redrawn (14 m). See BreakingWalls.md.
+
+### Doorway headers in the traced bounce (2026-10-27)
+The probe lookup (`LGrid_ProbeIrradiance`) blends a sample with the next cell's probes across open floor and openings.
+Above a doorway's or arch's top the edge is wall (the header), but it blended there too, so in a dark room the wall
+above a doorway to a lit room, and the ceiling in front of it, showed the lit room's bounce: a bright cell-wide band
+with sharp sides. Now a door or arch counts as wall above its top.
 
 ## Runtime indirect light
 
@@ -157,6 +168,11 @@ run only for surviving distant fixtures. Source samples, shadows, bounce, materi
 World replacement cancels old probe captures; a time-sliced probe remains enabled until completion across distant moves.
 See FpsRecovery.md for verified same-view editor timings, GPU regressions and remaining standalone-player checks.
 
+2026-10-27: frames are capped at 60 a second by default (F5 > DISPLAY, `GraphicsOptions.frameCap`; settings saved with no
+limit move to 60 once). With vsync on a 240 Hz display there was no limit at all: the graphics card drew every frame it
+could (about 146 W, fans loud) for frames nobody sees. With vsync, a build syncs to every Nth refresh nearest the cap
+(240 Hz and 60: every 4th); the editor holds the cap with the frame-rate limit.
+
 
 ## Look panel and the light it controls (2026-10-26)
 
@@ -181,7 +197,9 @@ SAVE MY LOOK keeps one of your own (PlayerPrefs). Moving a control marks the loo
   fixtures, real or not, times the surface colour with the colour-bleed setting), refreshed a quarter of the cells per
   frame while anything changes. Each frame a quarter of the probes trace 64 rays through the layout (walls, shut doors,
   slabs, header beams, the nearby furniture boxes), read the face cache where they hit plus that surface's bounce from
-  last frame's probes (second bounce), and blend into their history (hysteresis 0.95). An update blends in fast only
+  last frame's probes (second bounce), and blend into their history (hysteresis 0.95, and longer the longer the probe
+  goes without a real change: up to 0.99 after about a hundred updates, `settle`; the count rides in the top 8 bits of
+  `_ProbeKey`, so a still room's bounce no longer shimmers with each update's 64 new rays). An update blends in fast only
   when it differs from the history by more than its own rays' spread explains (the standard error of the estimate from
   the 64 rays' luminance): a light switched or a door opened shows within a few frames, while the noise of a few rays
   finding light in a dark room does not (the first version blended fast on any big relative change, which made dark
@@ -231,4 +249,7 @@ crashed ("failed to wait for fence", "command lists ... corrupted"), even with e
 Direct3D 11 the same stall survived. `Editor/LitShaderWarmup.cs` compiles the variants a play session used
 (`Shaders/BackroomsLitVariants.shadervariants`) in Edit Mode whenever the shader changes, and holds Play until they are
 in the shader cache (Backrooms > Compile Lit Shader Variants runs it by hand). Re-record the list (Project Settings >
-Graphics > Save to asset, same path) after adding materials with new keyword sets.
+Graphics > Save to asset, same path) after adding materials with new keyword sets. 2026-10-27: the crawl holes' portal
+views drew 2 variants the list lacked (soft shadows off), which compiled mid-play (the "Compiling shader" box while
+walking around); every portal variant now also has its plain-shadow twin, and the plain (no keyword) forward and shadow
+passes are in (76 variants). The warmup now takes about 17 minutes here after a lit shader change.

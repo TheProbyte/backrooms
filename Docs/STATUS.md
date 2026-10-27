@@ -6,14 +6,23 @@ Last updated 2026-10-27 (world version 13).
 
 ## Newest (2026-10-27)
 
-- **Sledgehammer and breaking walls** (Docs/BreakingWalls.md): a 6 lb sledgehammer, swung one-handed (hold left mouse to
-  wind up, release to swing), found in maintenance closets and sealed storage or from the L menu. Ordinary Level 0 walls
-  break realistically: each panel's two gypsum boards come apart in irregular plates where the hammer meets them (cracks
-  round the hole, pieces falling as debris, dust), and inside are galvanised steel studs (Offices) or wood studs (Hallways,
-  Warehouse) that dent and tear or split, batts in some walls, electrical boxes and cable behind the outlets and switches,
-  the odd copper pipe. Light from the real lights near you comes through a hole exactly (the broken pieces cast the
-  shadows); grid light and bounce go through where it is open right through; the chunk behind is drawn when you can see
-  through; sound goes through. Saved with the world (which pieces are gone, studs, rubble).
+- **Item tuning, F2** (Docs/Interaction.md): with an item in hand or in view, F2 opens its settings (every public number
+  or switch of its class, and its weight, found by reflection: new items show up by themselves). Changes apply to every
+  item of that kind at once and are saved into the project (`Resources/ItemTuning.json`) as its defaults in every world.
+
+- **Sledgehammer and breaking walls** (Docs/BreakingWalls.md): a short-handled sledgehammer (a 4 lb club hammer, 43 cm),
+  swung one-handed (hold left mouse to wind up, release to swing), found in maintenance closets and sealed storage or from
+  the L menu. Ordinary Level 0 walls break realistically: each panel's two gypsum boards come apart in irregular plates
+  where the hammer meets them (up to 22 cm round a full blow; cracks round the hole, pieces falling as debris, dust), held
+  only by their screws. Inside: one steel stud a panel in the Offices, off to one side so you fit through beside it once
+  the boards are gone (it does not break), or wood studs at 400 mm (Hallways, Warehouse) that split; electrical boxes and
+  cable behind the outlets and switches, the odd copper pipe (batts are off for now). Light from the real lights near you
+  comes through a hole exactly (the broken pieces cast the shadows), grid light softly through the open share of its
+  footprint; the chunk behind is drawn when you can see through; sound goes through. Saved with the world.
+- **Fixed from play-testing** (2026-10-27): square patches of light opposite a hole; a lit band over doorways in dark
+  rooms (the bounce blended across the header); the bounce shimmering in dark rooms (probes now settle); floating drywall
+  chunks and batts; the lighting shader compiling mid-play (two crawl-hole view variants were missing from the warmup);
+  the fans (frames are capped at 60 by default).
 
 - **Reference room on the game's own lighting** (Escape > Reference room, Docs/ReferenceMatch.md): Kane's room is now a
   room of the procedural world (rebuilt on the 1.2 m grid, forced in beside the spawn hall), lit exactly like every other

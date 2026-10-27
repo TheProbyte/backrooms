@@ -111,6 +111,8 @@ namespace Backrooms.Destruction
         public const float CavityHalf = T * 0.5f - Board;
         /// <summary>Studs at 400 mm centres (the posts are the ones at 0 and 1.2 m).</summary>
         public static readonly float[] StudU = { 0.4f, 0.8f };
+        /// <summary>Clear width beside a steel stud (between it and a post's flanges): the player (0.6 m across) fits through.</summary>
+        public const float PersonGap = 0.75f;
         public const float SteelFlange = 0.032f, SteelGauge = 0.0012f, SteelLip = 0.008f;
         public const float WoodWidth = 0.038f;
         public const float WoodPlate = 0.038f;

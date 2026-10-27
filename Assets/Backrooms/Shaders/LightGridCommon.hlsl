@@ -62,6 +62,38 @@ bool LG_HoleOpen(int2 cell, bool west, uint storey, float along, float height, b
     return ((word >> (bit & 31u)) & 1u) != 0u;
 }
 
+// How much of a box on a holed wall is open (0..1): along u0..u1 (metres from the edge's start), up v0..v1 (metres above
+// its storey's floor). The blocks open right through, weighted by how much of each the box covers (columns exactly, rows
+// by four samples), over the part of the box on this edge (the next edges are tested on their own); above the panel's
+// blocks (2.7 m) is wall. any: 1 if a block in the box has any opening at all (lights with shadow maps: their shadows of
+// the pieces shape the light there), else 0. A box the size of a light's footprint on the wall gives that light a soft
+// edge (it is not a point); a box of one block rounds off the blocks' steps. No loop, for the reason above.
+float LG_HoleOpenBox(int2 cell, bool west, uint storey, float u0, float u1, float v0, float v1, bool any)
+{
+    uint r = LG_HoleRecord1(cell, west, storey);
+    float c0 = clamp(u0 / 0.15, 0.0, 8.0), c1 = clamp(u1 / 0.15, 0.0, 8.0);
+    float b0 = v0 / 0.15, height = max((v1 - v0) / 0.15, 1e-4);
+    if (r == 0u || c1 - c0 < 1e-4) return 0;
+    uint base = (r - 1u) * 16u + (any ? 7u : 2u);
+    int i0 = (int)floor(c0), i1 = clamp((int)ceil(c1) - 1, i0, 7);
+    // Columns: the first and last by how much of them the box covers, the ones between in full.
+    float wFirst = i0 == i1 ? c1 - c0 : (i0 + 1) - c0;
+    float wLast = i0 == i1 ? 0.0 : c1 - i1;
+    uint between = i1 - i0 > 1 ? ((1u << (uint)(i1 - i0 - 1)) - 1u) << (uint)(i0 + 1) : 0u;
+    float sum = 0;
+    [unroll] for (int s = 0; s < 4; s++)
+    {
+        int row = (int)floor(b0 + (s + 0.5) * 0.25 * height);
+        if (row >= 0 && row <= 17)
+        {
+            uint bits = (_LGridHoleTable[base + ((uint)row >> 2)] >> (((uint)row & 3u) * 8u)) & 0xFFu;
+            sum += ((bits >> (uint)i0) & 1u) * wFirst + ((bits >> (uint)i1) & 1u) * wLast + countbits(bits & between);
+        }
+    }
+    float open = sum * 0.25 / (c1 - c0);
+    return any ? (open > 0 ? 1.0 : 0.0) : saturate(open);
+}
+
 // How open a holed wall is as a whole (0..1).
 float LG_HoleShare(int2 cell, bool west, uint storey)
 {
