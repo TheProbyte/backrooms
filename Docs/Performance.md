@@ -49,6 +49,8 @@ are never hidden. `ChunkVisibility.Enabled` turns it off.
 | 4:3 frame | the camera's viewport is the 4:3 part only: 25 % fewer pixels at 16:9, 62 % at 32:9 |
 | Removed with the camcorder rebuild | the exposure probe camera (a second scene render with shadows, 6 times a second), URP motion blur, always-on bokeh depth of field (now only when blur would show), HQ half-resolution bloom (now quarter, no HQ) |
 | A crawl-hole window | one extra camera, cropped to the window; shadows only for the one you are at |
+| Ceiling lights' shadow maps over 120 degrees instead of 150-179 (2026-10-27, World 3 seed 424242, a wide office view, interleaved A/B) | 1.9 ms *less* GPU (11.5 vs 13.4 ms): each map draws fewer casters |
+| Panels as rectangles, with the panel-visibility wall test and the panel-shaped shadow filter, vs point fixtures (same view) | 1.6 ms (11.9 vs 10.3 ms); the panel-shaped filter alone ~0.2 ms over URP's |
 
 Defaults (graphics options version 2): 16 shadow lights, 18-20 m shadow distance, exact light radius 4.5 m, SSAO on.
 Editor result at the benchmark pose: old saved settings 48 fps, new defaults 66 fps (81 with SSAO off).

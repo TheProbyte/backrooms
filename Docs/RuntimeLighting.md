@@ -16,9 +16,25 @@ Per-pixel grid fixtures and real fixtures both use URP's material BRDF, includin
 contrast and optional diffuse wrap. Grid direct no longer enters bakedGI. Full-power intensity determines contrast,
 so real/grid shares remain complementary during handover. The coarse texture fallback remains diffuse-only by design.
 
-Architectural visibility uses the existing layout ray test. The finite fitting shares its centre visibility/shadow map,
-with extra sample visibility tests within 1 m. Nearby furniture uses a central soft URP shadow map: this does not produce
-physically exact area-light penumbras. Real shadows independently ease strength and retain atlas capacity until fade-out;
+Walls and door headers (`LGrid_EmitterVisible`, LightGridSample.hlsl): how much of the panel a point sees past them,
+not a yes/no line test. Walls are full height on 1.2 m cell edges and a fitting lies inside its own cell, so the walls
+that can hide any part of it lie on the cell lines the line to its centre crosses: the same walk as the old test, and at
+each crossing the wall pieces inside the cone to the panel hide the share of its width they cover, seen from the point
+(weighted by the panel's area across that direction, so a square seen corner-on fades in an S). A header hides the
+share of the panel's depth whose rays pass above the opening's top. The result is the penumbra a real panel casts:
+sharp at a wall end and widening away from it (panel width x distance from the wall end / distance from the wall end to
+the panel), so there are no hard wedges on the floor past wall ends and doorways. `Editor/Tests/ShadowLightTests`
+checks it against counting rays to 1600 points over the panel. Lamps (point sources) keep the line test.
+
+Furniture uses the real lights' shadow maps. URP spreads a spot light's map over its whole cone, and the fixtures' soft
+falloff runs to 150-179 degrees, where a 512 map's texels were 17-60 cm on the floor (a chair left almost no shadow).
+The maps now cover 120 degrees (`FixtureLightManager.shadowCone`): everything a fixture reaches on the floor (6 m range,
+2.6 m up) is within about 128 degrees, and at the 120 degree edge the floor gets about 1 % of the light right under the
+fixture; the texels are about 1.8 cm at 512 (0.9 cm at 1024). The real light skips points more than 58 degrees off its
+axis and the grid's per-pixel lights draw its share there instead (`BR_InShadowCone`, `_BRShadowCone`), with local box
+occlusion for furniture; where that share is under about 0.5 % of the light right under the fixture (the floor several
+metres out) it fades out instead of being worked out. Without the per-pixel distant light (F5) the light's own cone is used.
+Real shadows independently ease strength and retain atlas capacity until fade-out;
 new shadow maps wait if needed instead of oversubscribing the 64-map budget (point lamps cost six maps). Distance fade
 and selection hysteresis apply independently of the real/grid energy handover.
 
@@ -144,10 +160,14 @@ SAVE MY LOOK keeps one of your own (PlayerPrefs). Moving a control marks the loo
   `Debug/FlickerProbe.cs` measures frame-to-frame light change in a dark place (the camcorder's sensor noise switched off
   for its renders).
 - **Shadow softness** (`BackroomsSoftShadow`): for real spot-light fixtures, a blocker search in URP's own shadow atlas
-  (linear depths recovered from the shadow matrix; the fitting's own body within 0.3 m is ignored), then a filter as wide
-  as the penumbra a panel that size casts, with each sample's depth reference moved by the receiver's slope (otherwise a
-  wall the light skims along shadows itself). Sharp at contact, soft farther away. Lamps (point-light shadows) keep URP's
-  filter. Shadow maps are not cached (URP redraws them every frame; there is no supported way to keep static ones).
+  (linear depths recovered from the shadow matrix; the fitting's own body within 0.3 m is ignored), then a filter the
+  shape of the panel scaled by (receiver - blocker) / blocker depth on each of its axes: a uniform rectangle of light
+  casts the occluder's shadow averaged over its own shape, so a square panel gives a square filter and a tube a long,
+  narrow one (soft along the tube, sharp across it). A jittered 3 x 3 grid for the search and 4 x 4 for the filter (one
+  shift per pixel, which the camcorder's raster averages), capped at 0.6 m and kept inside the map's own atlas tile.
+  Each sample's depth reference is moved by the receiver's slope (otherwise a wall the light skims along shadows
+  itself). Lamps (point-light shadows) keep URP's filter. Shadow maps are not cached (URP redraws them every frame;
+  there is no supported way to keep static ones).
 - **Contact shadows** (`Generation/ContactShadows.cs`, `Resources/Shaders/ContactShadowMask.shader`): a render pass of its
   own on the player's camera, after the depth prepass, marches 8 steps toward the two strongest fixtures at each pixel
   through the camera depth and writes a mask; Backrooms/Lit looks it up per light. The pass declares the depth texture

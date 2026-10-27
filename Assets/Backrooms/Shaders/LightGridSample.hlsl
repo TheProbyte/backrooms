@@ -362,6 +362,158 @@ half LGrid_LightVisible(float3 P, float3 N, float3 L)
     return 1;
 }
 
+// ---------------- Real panels: how much of the panel a point sees past the walls ----------------
+// A ceiling panel is not a point. Past a wall end its light does not stop on a line: the point sees less and less of the
+// panel, so the shadow edge is a penumbra that is sharp at the wall and widens away from it (panel width x distance from
+// the wall end / distance from the wall end to the panel). The same holds under a door header, where the near part of the
+// panel (the steeper rays) is hidden first.
+//
+// Walls are full height on 1.2 m cell edges, and a fitting lies inside its own cell. So, in plan, the walls that can hide
+// any part of the panel lie on the cell lines that the line to its centre crosses: it is the same walk as
+// LGrid_LightVisible. At each crossing, the wall pieces inside the cone to the panel hide the share of the panel's width
+// they cover as seen from P, and an opening's header hides the share of the panel's depth whose rays pass above its top.
+// Returns the fraction of the panel seen (0..1); halfSize zero is the point test.
+
+// The interval across the line of sight (metres at the panel, centre 0) that the wall piece q0-q1 covers, seen from p.
+float2 LG_AcrossInterval(float2 p, float2 along, float2 across, float D, float2 q0, float2 q1)
+{
+    float a0 = dot(q0 - p, along), a1 = dot(q1 - p, along);
+    float b0 = dot(q0 - p, across), b1 = dot(q1 - p, across);
+    const float aMin = 0.02;
+    if (max(a0, a1) <= aMin || min(a0, a1) >= D) return float2(1, -1);   // beside or behind P, or beyond the panel
+    // Only the part in front of P and short of the panel counts.
+    if (a0 < aMin) { b0 = lerp(b0, b1, (aMin - a0) / (a1 - a0)); a0 = aMin; }
+    if (a1 < aMin) { b1 = lerp(b1, b0, (aMin - a1) / (a0 - a1)); a1 = aMin; }
+    if (a0 > D) { b0 = lerp(b0, b1, (a0 - D) / (a0 - a1)); a0 = D; }
+    if (a1 > D) { b1 = lerp(b1, b0, (a1 - D) / (a1 - a0)); a1 = D; }
+    float s0 = b0 * D / a0, s1 = b1 * D / a1;
+    return float2(min(s0, s1), max(s0, s1));
+}
+
+// Share of a rectangle's area lying at or below s across the line of sight: the panel's half sizes seen across it are a
+// and b, so its area is spread across as a trapezoid (two box widths convolved). A panel seen square-on fades out
+// linearly past a wall end; one seen corner-on fades in an S, as its area is.
+float LG_PanelCdf(float s, float a, float b)
+{
+    float hi = max(a, b), lo = max(min(a, b), 1e-4);
+    if (s <= lo - hi) return s <= -(hi + lo) ? 0 : (s + hi + lo) * (s + hi + lo) / (8 * hi * lo);
+    if (s >= hi - lo) return s >= hi + lo ? 1 : 1 - (hi + lo - s) * (hi + lo - s) / (8 * hi * lo);
+    return 0.5 + s / (2 * hi);
+}
+
+half LGrid_EmitterVisible(float3 P, float3 N, float3 L, float2 halfSize)
+{
+    if (dot(halfSize, halfSize) < 1e-6) return LGrid_LightVisible(P, N, L);
+    if (_LGridParams.x < 0.5) return 1;
+    float pitch = _LGridParams.w;
+    P += N * 0.06;
+    if (any(P.xz < _LGridWindow.xy) || any(P.xz > _LGridWindow.zw)) return 1;
+    uint sp = P.y >= pitch ? 1u : 0u, sl = L.y >= pitch ? 1u : 0u;
+    if (sp != sl)
+    {
+        float ts = (pitch - P.y) / (L.y - P.y);
+        float3 X = lerp(P, L, ts);
+        if ((LGrid_Occ((int2)floor(X.xz / LG_CELL), 0u) & LG_OPENABOVE) == 0u) return 0;
+    }
+    float2 p = P.xz, toL = L.xz - P.xz;
+    float D = length(toL);
+    if (D < 1e-3) return 1;
+    float2 along = toL / D, across = float2(-along.y, along.x);
+    float wx = abs(across.x) * halfSize.x, wz = abs(across.y) * halfSize.y;
+    float hw = wx + wz;                                                   // the panel's half width across the line of sight
+    float lo = -hw, hi = hw, hidden = 0;                                  // the part of the width still seen; inner parts hidden
+    float rise = L.y - P.y;
+    bool done = false;                                                    // fully hidden, or past the loaded area
+    // A header that hides part of the panel (the most): the rows of the panel beyond `limit` (panel-local metres) along
+    // x (axis 0) or z (axis 1), on the side toward P (side +1: below the limit), for the width `range` it spans.
+    float hAxis = -1, hLimit = 0, hSide = 0, hFrac = 0;
+    float2 hRange = float2(1, -1);
+    float2 a = p / LG_CELL, b = L.xz / LG_CELL;
+    int2 c = (int2)floor(a), e = (int2)floor(b);
+    float2 d = b - a;
+    int2 stp = int2(d.x > 0 ? 1 : (d.x < 0 ? -1 : 0), d.y > 0 ? 1 : (d.y < 0 ? -1 : 0));
+    float2 tDelta = float2(stp.x != 0 ? abs(1.0 / d.x) : 1e30, stp.y != 0 ? abs(1.0 / d.y) : 1e30);
+    float2 tMax = float2(stp.x > 0 ? (c.x + 1 - a.x) * tDelta.x : (stp.x < 0 ? (a.x - c.x) * tDelta.x : 1e30),
+                         stp.y > 0 ? (c.y + 1 - a.y) * tDelta.y : (stp.y < 0 ? (a.y - c.y) * tDelta.y : 1e30));
+    [loop] for (int i = 0; i < 32 && !done; i++)
+    {
+        if (c.x == e.x && c.y == e.y) break;
+        bool stepX = tMax.x < tMax.y;
+        float t = stepX ? tMax.x : tMax.y;
+        if (t > 1.0) break;
+        uint storey = P.y + rise * t >= pitch ? 1u : 0u;
+        int2 n = c + (stepX ? int2(stp.x, 0) : int2(0, stp.y));
+        int2 owner = stepX ? int2(max(c.x, n.x), c.y) : int2(c.x, max(c.y, n.y));
+        // The cone to the panel meets this cell line over about t x hw / |sin| of the angle between them: the wall piece
+        // crossed, and the next ones along the line when the cone reaches them.
+        float local = (stepX ? (p.y + toL.y * t) : (p.x + toL.x * t)) / LG_CELL - (stepX ? owner.y : owner.x);
+        float span = t * hw / max(stepX ? abs(along.x) : abs(along.y), 0.2) / LG_CELL;
+        int first = local < span ? -1 : 0, last = 1.0 - local < span ? 1 : 0;
+        float aCross = t * D;
+        [loop] for (int k = first; k <= last && !done; k++)
+        {
+            int2 cell = stepX ? int2(owner.x, owner.y + k) : int2(owner.x + k, owner.y);
+            uint o = LGrid_Occ(cell, storey);
+            if (!LG_Loaded(o)) { done = k == 0; continue; }     // the edge of the loaded area: what is known so far
+            float2 q0 = stepX ? float2(owner.x, cell.y) * LG_CELL : float2(cell.x, owner.y) * LG_CELL;
+            float2 q1 = q0 + (stepX ? float2(0, LG_CELL) : float2(LG_CELL, 0));
+            float opacity = 1;
+            if ((stepX ? LG_WestKind(o) : LG_SouthKind(o)) != LG_EDGE_WALL)
+            {
+                // An opening: its header hides the rays that cross this line above its top. A ray to a panel point crosses
+                // at the fraction (line - P) / (point - P) of the way along the line's normal, so the hidden part is the
+                // panel's rows nearer P than a limit: a strip of the panel (panels and cell lines both run along x and z).
+                float top = (stepX ? LG_WestTop(o) : LG_SouthTop(o)) + storey * pitch + 0.02;
+                if (rise <= 0.01) opacity = P.y + rise * t > top ? 1 : 0;
+                else if (top <= P.y) opacity = 1;
+                else
+                {
+                    float r = (top - P.y) / rise;                 // how far along a ray it reaches the top
+                    if (r >= 1) continue;                         // the opening reaches above the panel
+                    float pc = stepX ? P.x : P.z, at = stepX ? q0.x : q0.y, h = stepX ? halfSize.x : halfSize.y;
+                    float limit = pc + (at - pc) / r - (stepX ? L.x : L.z);
+                    float side = at > pc ? 1 : -1;
+                    opacity = saturate(side > 0 ? (limit + h) / (2 * h) : (h - limit) / (2 * h));
+                    if (opacity > 0 && opacity < 0.999)
+                    {
+                        float2 sr = LG_AcrossInterval(p, along, across, D, q0, q1);
+                        if (opacity > hFrac) { hAxis = stepX ? 0 : 1; hLimit = limit; hSide = side; hFrac = opacity; }
+                        hRange = float2(min(hRange.x, sr.x), max(hRange.y, sr.y));
+                        continue;                                 // worked out at the end, against the final width
+                    }
+                }
+                if (opacity <= 0) continue;
+            }
+            float2 s = LG_AcrossInterval(p, along, across, D, q0, q1);
+            s.x = max(s.x, lo); s.y = min(s.y, hi);
+            if (s.y <= s.x) continue;
+            if (s.x <= lo + 1e-4) lo = s.y;               // a wall end on one side: the panel is cut from that side
+            else if (s.y >= hi - 1e-4) hi = s.x;
+            else hidden += s.y - s.x;                       // a short piece in the middle
+            if (hi - lo - hidden <= 1e-4) { hi = lo; done = true; }
+        }
+        c = n;
+        if (stepX) tMax.x += tDelta.x; else tMax.y += tDelta.y;
+    }
+    // The share of the panel's area across [lo, hi], less the inner pieces (taken as an even share of the width)...
+    float seen = LG_PanelCdf(hi, wx, wz) - LG_PanelCdf(lo, wx, wz) - hidden / (2 * hw);
+    // ...less the header's strip of the panel where the header spans that width: a smaller rectangle, the same way.
+    if (hAxis >= 0 && hi > lo)
+    {
+        float h = hAxis < 0.5 ? halfSize.x : halfSize.y;
+        float from = hSide > 0 ? -h : max(hLimit, -h), to = hSide > 0 ? min(hLimit, h) : h;
+        float ra = max(lo, hRange.x), rb = min(hi, hRange.y);
+        if (to > from && rb > ra)
+        {
+            float centre = 0.5 * (from + to), strip = 0.5 * (to - from);
+            float s0 = centre * (hAxis < 0.5 ? across.x : across.y);
+            float a2 = abs(across.x) * (hAxis < 0.5 ? strip : halfSize.x), b2 = abs(across.y) * (hAxis < 0.5 ? halfSize.y : strip);
+            seen -= (to - from) / (2 * h) * (LG_PanelCdf(rb - s0, a2, b2) - LG_PanelCdf(ra - s0, a2, b2));
+        }
+    }
+    return (half)saturate(seen);
+}
+
 // Bounded, single-hop diffuse transport through wall apertures. No extra real lights, shadow maps,
 // CPU readback or recursive contribution: the source samples only the ordinary destination lighting.
 int _PortalSpillCount;

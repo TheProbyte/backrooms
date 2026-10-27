@@ -2,9 +2,18 @@
 
 The game is called **Still Recording** (working title).
 
-Last updated 2026-10-26 (world version 13).
+Last updated 2026-10-27 (world version 13).
 
-## Newest (2026-10-26)
+## Newest (2026-10-27)
+
+- **Shadows like real ceiling panels** (Docs/RuntimeLighting.md): walls no longer draw hard wedge lines on the floor;
+  past a wall end or through a doorway the panel is hidden gradually, so the light fades over a penumbra that is sharp
+  at the wall and widens away from it. Furniture shadows come from shadow maps about 9 times sharper (they covered the
+  lights' whole 173-179 degree cone; now 120, the rest drawn by the light grid), which is also 1.9 ms faster. Shadows
+  are filtered in the shape of the panel: a strip light's are long and soft along the tube, crisp across it.
+  Screenshots: Docs/screenshots/shadows/.
+
+## Earlier (2026-10-26)
 
 - **Camcorder rebuilt as a real camera** (F5 > CAMERA, Docs/Camcorder.md): every old filter was checked against how a
   camcorder makes a picture; most were redone. Lens (barrel distortion sign fixed, lens glare, rounded vignette, real

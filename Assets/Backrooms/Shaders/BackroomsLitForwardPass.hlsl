@@ -208,14 +208,7 @@ half3 BackroomsRectFixture(LGridLight f, half3 energy, half shadow, float sizeWe
     float formFactor = BR_RectFormFactor(P, N, f.pos, h);
     float attenuation = formFactor * PI / area * cone / max(cosE, 0.02) * window;
     if (attenuation < 1e-5) return 0;
-    // Close to the fitting a wall can cut through it: only the visible quarters count.
-    if (distanceSquared < 1.0)
-    {
-        float visible = 0;
-        [loop] for (int s = 0; s < 4; s++) visible += LGrid_LightVisible(P, N, LG_EmitterPoint(f.pos, h, s, true));
-        attenuation *= visible * 0.25;
-        if (attenuation < 1e-5) return 0;
-    }
+    // (How much of the panel walls hide is in shadow: LGrid_EmitterVisible.)
     // Contrast is based on full output, independent of the handover share (as for the point fixture).
     float lum = max(dot(f.colorAll, float3(0.2126, 0.7152, 0.0722)) * attenuation, 1e-5);
     float contrast = pow(saturate(lum), _LGridShape.w * 1.2);
@@ -255,7 +248,13 @@ half3 BackroomsFixturePBR(LGridLight f, uint lightId, half3 energy, half shadow,
     shadow *= BackroomsContact(lightId, data.normalizedScreenSpaceUV);
     if (!knownVisible && !LGrid_FixtureMayReach(f, data.positionWS)) return 0;
     float sizeWeight = 1.0 - smoothstep(36.0, 64.0, distanceSquared);
-    if (!knownVisible && LGrid_LightVisible(data.positionWS, data.normalWS, f.pos) < 0.5) return 0;
+    if (!knownVisible)
+    {
+        // The share of the panel seen past the walls (a penumbra past wall ends and under headers, not a cut).
+        half seen = LGrid_EmitterVisible(data.positionWS, data.normalWS, f.pos, f.halfSize);
+        if (seen <= 0) return 0;
+        shadow *= seen;
+    }
     if (localContact) shadow *= LocalLightVisibility(data.positionWS, data.normalWS, f.pos);
     // Ceiling panels as rectangles (F5 > LIGHT > Rectangular panels); otherwise, and for lamps and far fixtures, a point.
     [branch] if (_BRLook.x > 0.5 && dot(f.halfSize, f.halfSize) > 0 && sizeWeight > 0 && f.dir.y < -0.99)
@@ -292,11 +291,21 @@ half3 BackroomsDistantPBR(InputData data, BRDFData brdf, BRDFData coat, SurfaceD
     {
         uint id = _LGridTileLights[tile.x + i];
         LGridLight f = _LGridLights[id];
-        if (dot(f.color, f.color) < 1e-10) continue;
+        float distanceToLight = distance(f.pos, data.positionWS);
         // Farther fixtures come from the grid texture (see LGrid_NearWeight): skip them before any visibility work.
-        half nearWeight = LGrid_NearWeight(distance(f.pos, data.positionWS));
-        if (nearWeight <= 0) continue;
-        sum += BackroomsFixturePBR(f, id, f.color * nearWeight, ao, true, false, data, brdf, coat, surface, noSpecular);
+        half3 energy = f.color * LGrid_NearWeight(distanceToLight);
+        // A real light's own share outside its shadow-mapped cone is drawn here (the real light skips it: BR_InShadowCone).
+        // Far out in that ring (the floor several metres away) it adds under about 0.5 % of the light right under the
+        // fixture: faded out there, not worked out.
+        if (_BRShadowCone.z > 0.5 && distanceToLight < f.range && !BR_InShadowCone(f, data.positionWS))
+        {
+            float3 v = data.positionWS - f.pos;
+            float d2 = max(dot(v, v), 0.01);
+            float reach = LGrid_DistAtten(d2, f.range) * LGrid_AngleAtten(dot(f.dir, v) * rsqrt(d2), f.cosOuter, f.cosInner);
+            energy += max(f.colorAll - f.color, 0) * (half)smoothstep(0.0002, 0.0008, reach);
+        }
+        if (dot(energy, energy) < 1e-10) continue;
+        sum += BackroomsFixturePBR(f, id, energy, ao, true, false, data, brdf, coat, surface, noSpecular);
     }
     return sum * edge;
 }
@@ -372,11 +381,14 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
         uint fixtureId = 0;
         bool isFixture = source.w > 0.5 && LGrid_FindFixtureIndex(source.xyz, inputData.positionWS, fixture, fixtureId);
         half3 energy = isFixture ? max(fixture.colorAll - fixture.color, 0) : 0;
+        half seen = 1;
         // Layout-blocked fixtures cannot contribute. Reject before URP samples their soft shadow maps.
         if (isFixture)
         {
             if (dot(energy, energy) < 1e-10 || !LGrid_FixtureMayReach(fixture, inputData.positionWS)) continue;
-            if (LGrid_LightVisible(inputData.positionWS, inputData.normalWS, fixture.pos) < 0.5) continue;
+            if (!BR_InShadowCone(fixture, inputData.positionWS)) continue;   // outside its shadow map: BackroomsDistantPBR
+            seen = LGrid_EmitterVisible(inputData.positionWS, inputData.normalWS, fixture.pos, fixture.halfSize);
+            if (seen <= 0) continue;
         }
         Light light;
 #if USE_CLUSTER_LIGHT_LOOP
@@ -389,7 +401,7 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
         {
             // Contact-hardening soft shadow instead of URP's fixed filter (the fixture's colour comes from the grid light).
             light = GetAdditionalPerObjectLight(realIndex, inputData.positionWS);
-            float size = max(2.0 * max(fixture.halfSize.x, fixture.halfSize.y), 0.3) * _BRLook.y;
+            float2 size = max(fixture.halfSize, 0.02) * _BRLook.y;   // the panel's own half sizes (a tube: long and narrow)
             light.shadowAttenuation = BackroomsSoftShadow(realIndex, shadowParams, inputData.positionWS, inputData.normalWS, light.direction, source.xyz, size, pixel);
         }
         else light = GetAdditionalLight(lightIndex, inputData, shadowMask, aoFactor);
@@ -399,7 +411,7 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
         {
             if (isFixture)
             {
-                lightingData.additionalLightsColor += BackroomsFixturePBR(fixture, fixtureId, energy, light.shadowAttenuation * aoFactor.directAmbientOcclusion, false, true,
+                lightingData.additionalLightsColor += BackroomsFixturePBR(fixture, fixtureId, energy, light.shadowAttenuation * seen * aoFactor.directAmbientOcclusion, false, true,
                     inputData, brdfData, brdfDataClearCoat, surfaceData, specularHighlightsOff);
             }
             else

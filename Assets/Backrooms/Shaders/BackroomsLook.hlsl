@@ -12,24 +12,31 @@
 
 float4 _BRLook;          // x: rectangular panels (0/1), y: shadow softness (0 = URP's filter), z: contact shadows (0..1), w: set (1)
 float4 _BREmissionTint;  // rgb: the look's colour shift x panel glow, a: set (1)
+// Real ceiling lights' shadow maps cover a narrower cone than their light (FixtureLightManager.ShadowConeAngle), so the map's
+// texels are small. x: cosine of the half angle the real light draws (inside its map, with a margin), y: tangent of the
+// map's half angle, z: on (0/1). Outside x the light grid draws the real light's share too (BackroomsDistantPBR).
+float4 _BRShadowCone;
+
+// Whether this real fixture's own URP light draws P (inside its shadow-mapped cone). Lamps (no direction) always.
+bool BR_InShadowCone(LGridLight f, float3 P)
+{
+    if (_BRShadowCone.z < 0.5 || dot(f.dir, f.dir) < 0.5) return true;
+    float3 v = P - f.pos;
+    return dot(f.dir, v) >= _BRShadowCone.x * length(v);
+}
 
 #include "Assets/Backrooms/Shaders/BackroomsAreaLight.hlsl"
 
 // ---------------- Contact-hardening soft shadows ----------------
 
-#define BR_SOFT_TAPS 12
-static const float2 BR_Poisson[BR_SOFT_TAPS] =
-{
-    float2(-0.326, -0.406), float2(-0.840, -0.074), float2(-0.696, 0.457), float2(-0.203, 0.621),
-    float2(0.962, -0.195), float2(0.473, -0.480), float2(0.519, 0.767), float2(0.185, -0.893),
-    float2(0.507, 0.064), float2(0.896, 0.412), float2(-0.322, -0.933), float2(-0.792, -0.598),
-};
-
 float BR_Noise(float2 pixel) { return frac(52.9829189 * frac(dot(pixel, float2(0.06711056, 0.00583715)))); }
 
-// URP's shadow for a real spot light, filtered by the penumbra a panel lightSize wide would cast at this point. Spot lights
-// only: the light loop gives point-light shadows (lamps) to URP's own sampling.
-half BackroomsSoftShadow(int lightIndex, half4 params, float3 positionWS, half3 normalWS, half3 lightDirection, float3 lightPosition, float lightSize, float2 pixel)
+// URP's shadow for a real spot light, filtered by the penumbra the panel casts at this point. A uniform rectangle of light
+// casts a penumbra that is the occluder's shadow averaged over the panel's own shape, scaled by (receiver - blocker) /
+// blocker depth: so the filter is a rectangle of the panel's proportions (a tube: long along it, narrow across), not a
+// disc. halfSize: the panel's half sizes along world x and z. Spot lights pointing down only (the ceiling fixtures); the
+// light loop gives point-light shadows (lamps) to URP's own sampling.
+half BackroomsSoftShadow(int lightIndex, half4 params, float3 positionWS, half3 normalWS, half3 lightDirection, float3 lightPosition, float2 halfSize, float2 pixel)
 {
 #if defined(ADDITIONAL_LIGHT_CALCULATE_SHADOWS)
     int slice = (int)params.w;
@@ -46,27 +53,39 @@ half BackroomsSoftShadow(int lightIndex, half4 params, float3 positionWS, half3 
     // Along one texel's ray from the light, clip z is affine in the view depth w: z = A w + B, and w is zero at the light.
     float B = mul(m, float4(lightPosition, 1)).z;
     float A = (c.z - B) / c.w;
-    // Shadow-map uv per metre sideways at this depth.
-    float3 side = normalize(cross(float3(lightDirection), abs(lightDirection.y) < 0.95 ? float3(0, 1, 0) : float3(1, 0, 0)));
-    float4 c2 = mul(m, float4(positionWS + side * 0.1, 1));
-    float uvPerMetre = length(c2.xy / c2.w - uvz.xy) * 10.0;
+    // Shadow-map uv per metre along world x and along world z at this depth (the panel's own axes).
+    float4 cx = mul(m, float4(positionWS + float3(0.1, 0, 0), 1));
+    float4 cz = mul(m, float4(positionWS + float3(0, 0, 0.1), 1));
+    float2 ux = (cx.xy / cx.w - uvz.xy) * 10.0, uz = (cz.xy / cz.w - uvz.xy) * 10.0;
+    float uvPerMetre = 0.5 * (length(ux) + length(uz));
     float texel = _AdditionalShadowmapSize.x;
-    float2 rot; sincos(BR_Noise(pixel) * 6.2831853, rot.y, rot.x);
-    float2x2 spin = float2x2(rot.x, -rot.y, rot.y, rot.x);
+    // The map's tile in the atlas: taps stay inside it (its frustum is _BRShadowCone.y wide each way at depth 1, centred
+    // straight below the light).
+    float2 tileLo = -1e6, tileHi = 1e6;
+    if (_BRShadowCone.z > 0.5)
+    {
+        float4 ca = mul(m, float4(lightPosition.x, positionWS.y, lightPosition.z, 1));
+        float h = _BRShadowCone.y * uvPerMetre * c.w - 1.5 * texel;
+        tileLo = ca.xy / ca.w - h; tileHi = ca.xy / ca.w + h;
+    }
+    // A jittered grid over the rectangle (one shift per pixel; the camcorder's raster averages it).
+    float2 jitter = float2(BR_Noise(pixel), BR_Noise(pixel.yx + float2(23.17, 5.31)));
     // Samples away from this point see its own surface nearer or farther from the light, the more so the more the light
     // skims along it (a wall under a fixture): their depth reference is moved toward the light by that slope, or the
     // surface would shadow itself in streaks.
     float cosL = saturate(dot(float3(normalWS), float3(lightDirection)));
     float slope = min(sqrt(1 - cosL * cosL) / max(cosL, 0.1), 10.0) / uvPerMetre;   // metres of depth per uv of offset
 
-    // Blocker search over the area the panel could be hidden from (capped): average linear depth of what is in front.
-    // The fitting's own body, within 0.3 m of the light, is not a blocker.
-    float searchUV = clamp(0.5 * lightSize * uvPerMetre, 2.0 * texel, 14.0 * texel);
+    // Blocker search over the part of the map the panel could be hidden by (the panel's size at this point, capped):
+    // average linear depth of what is in front. The fitting's own body, within 0.3 m of the light, is not a blocker.
+    float2 search = min(halfSize, 0.6);
+    float2 sx = ux * search.x, sz = uz * search.y;
     float blockerW = 0, blockers = 0;
-    [loop] for (int i = 0; i < 8; i++)
+    [loop] for (int i = 0; i < 9; i++)
     {
-        float2 offset = mul(spin, BR_Poisson[i]) * searchUV;
-        float d = SAMPLE_TEXTURE2D_LOD(_AdditionalLightsShadowmapTexture, sampler_PointClamp, uvz.xy + offset, 0).r;
+        float2 g = (float2(i % 3, i / 3) + jitter) * (2.0 / 3.0) - 1.0;
+        float2 offset = g.x * sx + g.y * sz;
+        float d = SAMPLE_TEXTURE2D_LOD(_AdditionalLightsShadowmapTexture, sampler_PointClamp, clamp(uvz.xy + offset, tileLo, tileHi), 0).r;
         float w = B / (d - A);
         float limit = c.w - 0.03 - length(offset) * slope;
         if (w > 0.3 && w < limit) { blockerW += w; blockers += 1; }
@@ -74,17 +93,22 @@ half BackroomsSoftShadow(int lightIndex, half4 params, float3 positionWS, half3 
     half attenuation = 1;
     if (blockers > 0)
     {
+        // The penumbra: the panel scaled by (receiver - blocker) / blocker depth, on each of its axes (capped).
         float wb = blockerW / blockers;
-        float penumbraMetres = lightSize * saturate((c.w - wb) / wb);
-        float filterUV = clamp(0.5 * penumbraMetres * uvPerMetre, 1.0 * texel, 9.0 * texel);
+        float2 extent = min(halfSize * min((c.w - wb) / wb, 2.5), 0.6);
+        float2 fx = ux * extent.x, fz = uz * extent.y;
+        fx *= max(1.0, texel / max(length(fx), 1e-6));                  // at least a texel each way: a smooth edge
+        fz *= max(1.0, texel / max(length(fz), 1e-6));
         float sum = 0;
-        [loop] for (int k = 0; k < BR_SOFT_TAPS; k++)
+        [loop] for (int k = 0; k < 16; k++)
         {
-            float2 offset = mul(spin, BR_Poisson[k]) * filterUV;
+            float2 g = (float2(k & 3, k >> 2) + jitter) * 0.5 - 1.0;
+            float2 offset = g.x * fx + g.y * fz;
             float reference = A + B / max(c.w - length(offset) * slope, 0.05);   // this point's depth, moved by the slope
-            sum += SAMPLE_TEXTURE2D_SHADOW(_AdditionalLightsShadowmapTexture, sampler_LinearClampCompare, float3(uvz.xy + offset, reference));
+            sum += SAMPLE_TEXTURE2D_SHADOW(_AdditionalLightsShadowmapTexture, sampler_LinearClampCompare,
+                                           float3(clamp(uvz.xy + offset, tileLo, tileHi), reference));
         }
-        attenuation = (half)(sum / BR_SOFT_TAPS);
+        attenuation = (half)(sum / 16.0);
     }
     attenuation = LerpWhiteTo(attenuation, params.x);
     return lerp(attenuation, (half)1, GetAdditionalLightShadowFade(positionWS));

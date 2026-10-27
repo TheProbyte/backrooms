@@ -15,6 +15,31 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-27 08:00  Claude Code  Panel shadows: soft wall penumbras (no floor wedges), sharp furniture maps, tube-shaped penumbras
+- Walls: the yes/no wall line test (razor-sharp wedges on the floor past every wall end and doorway) is replaced by
+  `LGrid_EmitterVisible` (LightGridSample.hlsl): the share of the panel a point sees past walls and headers, from the same
+  cell walk (a fitting lies inside its cell, so only cell lines the centre line crosses can hide it), weighted by the
+  panel's area across the line of sight, and headers cut a strip of the panel. Gives the penumbra a real panel casts:
+  sharp at the wall end, widening away. Used by real and per-pixel grid fixtures; lamps keep the point test. The 4-sample
+  near-panel wall test in the rectangle code is gone (covered).
+- Shadow maps: URP spread each ceiling light's map over its 150-179 degree cone (8-60 cm texels on the floor; chairs
+  left almost no shadow). `FixtureLightManager.shadowCone` (120) narrows the real light's cone; points more than 58
+  degrees off its axis are drawn by the grid's per-pixel loop with the real share (`_BRShadowCone`, `BR_InShadowCone`),
+  faded where it is under ~0.5 % of the light under the fixture. Off without per-pixel distant light. Texels ~1.8 cm at
+  512.
+- Filter: `BackroomsSoftShadow` filters with a rectangle of the panel's own proportions (jittered 3x3 search, 4x4 PCF,
+  capped 0.6 m, kept in the map's atlas tile): tubes give long-and-narrow penumbras, squares square ones.
+- Checked: new `ShadowLightTests` (GPU, vs counting rays to 1600 points on the panel: wall end near/far, both tube
+  orientations, a headed doorway and its jambs; all within 0.05). World 3 (seed 424242): the wall-end and conference
+  room shots from yesterday's review before/after, two views through openings next to the Kane reference
+  (Docs/screenshots/shadows/). GPU (interleaved A/B, wide office view): 120 degree maps 11.5 ms vs 13.4 ms at the old
+  cone; the whole panel model (rectangles, panel wall test, panel filter) 11.9 vs 10.3 ms for points; the panel-shaped
+  filter ~0.2 ms over URP's. FlickerProbe: room switched off beside lit ones 0.04 % frame-to-frame (worst block 0.10 %).
+  EditMode 83/83. World 3 erased.
+- Open: the editor crashed once on entering Play right after the shader rebuild (D3D12 "failed to wait for fence", the
+  known issue; the same happened at 02:45 before these changes); relaunched, warm-up cached, Play then ran clean. Scene
+  backup kept in Assets/_Recovery. Strip-light rooms are dim at 4.5 m (lighting balance, not shadows).
+
 ## 2026-10-26 23:50  Claude Code  Camcorder rebuilt as a real signal chain (formats, AE iris/gain, smear, shutter blur, 4:3 viewport)
 - Reviewed every camcorder filter against real camcorder physics (Docs/Camcorder.md has the per-effect verdicts). Most
   were redone: new `CamcorderPipeline` (ScriptableRenderPass enqueued from beginCameraRendering) with

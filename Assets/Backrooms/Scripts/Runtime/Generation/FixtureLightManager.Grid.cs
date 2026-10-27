@@ -50,6 +50,14 @@ namespace Backrooms.Generation
 
         [Range(0f, 1f)] public float emitterSize = 1f;
 
+        [Tooltip("The cone (degrees) a real ceiling light's shadow map covers. URP spreads a spot light's map over its whole cone, " +
+                 "and the fixtures' soft falloff runs to 150-179 degrees, where a map's texels are 8-60 cm on the floor. Everything " +
+                 "a fixture reaches on the floor lies within 120 degrees, where they are about 1-2 cm. The light grid draws each real " +
+                 "light's weak outer ring past it (the per-pixel distant light must be on; otherwise the light's own cone is used). " +
+                 "0 = the light's own cone.")]
+        [Range(0f, 150f)] public float shadowCone = 120f;
+        static readonly int ShadowConeId = Shader.PropertyToID("_BRShadowCone");
+
         class Share
         {
             public LightSource src;
@@ -102,6 +110,7 @@ namespace Backrooms.Generation
             _shares.Clear();
             if (UseGrid) { EnsureGrid(); if (grid && !grid.enabled) grid.enabled = true; }
             else if (grid && grid.enabled) grid.enabled = false;
+            if (!UseGrid) Shader.SetGlobalVector(ShadowConeId, Vector4.zero);
             // In grid mode walls stop real lights in the shader; their shadow casters would only add artifacts.
             OfficeChunkBuilder.WallShadows = !UseGrid;
         }
@@ -295,6 +304,13 @@ namespace Backrooms.Generation
             }
             foreach (var k in _dropShares) _shares.Remove(k);
 
+            // Real ceiling lights' shadow maps cover a narrower cone than their light; the shader hands the ring outside it
+            // (with a 2 degree margin inside the map) to the grid's per-pixel lights.
+            bool narrow = shadowCone > 1f && grid && grid.perPixelDirect;
+            Shader.SetGlobalVector(ShadowConeId, narrow
+                ? new Vector4(Mathf.Cos((shadowCone * 0.5f - 2f) * Mathf.Deg2Rad), Mathf.Tan(shadowCone * 0.5f * Mathf.Deg2Rad), 1f, 0f)
+                : Vector4.zero);
+
             // Grid lights (with change tracking) and real lights.
             _gridLights.Clear();
             int enabled = 0, shadowed = 0;
@@ -356,7 +372,11 @@ namespace Backrooms.Generation
                 L.intensity = intensity * k * Mains;                   // the building's supply sags now and then
                 L.range = range;
                 L.color = col;
-                if (!c.isLamp) { L.spotAngle = outer; L.innerSpotAngle = inner; }
+                if (!c.isLamp)
+                {
+                    L.spotAngle = narrow ? Mathf.Min(outer, shadowCone) : outer;   // the shadow map's cone (see shadowCone)
+                    L.innerSpotAngle = Mathf.Min(inner, L.spotAngle);
+                }
                 // Keep outgoing shadow maps until their strength reaches zero; only then give that
                 // atlas capacity to an incoming map. Fast movement cannot oversubscribe the atlas.
                 int maps = c.isLamp ? 6 : 1;
