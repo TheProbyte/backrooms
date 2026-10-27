@@ -226,7 +226,7 @@ namespace Backrooms.Camcorder
                 hm.SetVector(IdRaster, rasterVec);
                 hm.SetVector(IdFrame, new Vector4(frameIndex, exposure, 0f, softness));
                 var low = _mat.GetVector(IdLowLight);
-                hm.SetVector(IdLowLight, nr ? low : new Vector4(low.x, 0f, 0f, 0f));
+                hm.SetVector(IdLowLight, new Vector4(low.x, nr ? low.y : 0f, low.z, low.w));   // (only the noise reduction is per frame)
                 Draw(renderGraph, "Camcorder Head", PHead, head, raster, IdRasterTex, smear, IdSmearTex, nr ? headPrev : default, IdHeadPrev);
 
                 // Encode: format bandwidths, edge enhancement, tape and playback.

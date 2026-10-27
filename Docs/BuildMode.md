@@ -9,7 +9,7 @@
 | Resume / Back to building | Close the menu |
 | Back to the builder | Only while testing a room in the world: returns to the editor with your edits |
 | Play | Loads the procedural world (`Backrooms_Infinite`) |
-| Reference room | Loads the Reference Match scene |
+| Reference room | Kane's reference room as a room of the procedural world, at the reference camera pose (see ReferenceMatch.md) |
 | Build a section | Loads build mode (`BuildMode`) |
 | Quit | Quits |
 

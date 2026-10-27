@@ -76,11 +76,11 @@ float DistanceAtten(float d2, float range)
     return s * s / max(d2, 0.0001);
 }
 
+// Fixture emission profile, as LGrid_AngleAtten (LightGridSample.hlsl): Lambertian at full spread.
 float AngleAtten(float cosAngle, float cosOuter, float cosInner)
 {
     float inv = 1.0 / max(cosInner - cosOuter, 0.001);
-    float a = saturate(cosAngle * inv - cosOuter * inv);
-    return a * a;
+    return saturate(cosAngle * inv - cosOuter * inv);
 }
 
 uint StoreyAt(float y) { return y >= _GridMisc.x ? 1u : 0u; }

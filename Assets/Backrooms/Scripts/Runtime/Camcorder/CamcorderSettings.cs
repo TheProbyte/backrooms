@@ -68,6 +68,7 @@ namespace Backrooms.Camcorder
         public float chromaShift = 1f;          // colour delay, x
         public float highlightKnee = 0.85f;     // knee point (bright light compressed above it); 1 = no knee
         public float whiteClip = 1f;            // hard white clip (1 = 100 IRE)
+        public float highlightColour = 0.8f;    // highlight chroma suppression starts at this level: colour fades to none at the clip
         public float pedestal = 0.075f;         // setup: black level (7.5 IRE on analog NTSC)
 
         // Colour
@@ -121,6 +122,7 @@ namespace Backrooms.Camcorder
 
         const string PrefsKey = "Backrooms.CamcorderSettings.v1";
         const string BackupKey = "Backrooms.CamcorderSettings.v1.BeforeLook2";
+        const string HighlightKey = "Backrooms.CamcorderSettings.RefMatchHighlight";
 
         public static CamcorderSettings Load()
         {
@@ -136,6 +138,13 @@ namespace Backrooms.Camcorder
                         if (!PlayerPrefs.HasKey(BackupKey)) PlayerPrefs.SetString(BackupKey, json);
                         s = Migrate(s, CurrentPreset);
                         s.Save();
+                    }
+                    else if (CurrentPreset == 7 && !PlayerPrefs.HasKey(HighlightKey))
+                    {
+                        // Once: the Reference Match preset took the footage's highlight colour (2026-10-27). Only that value
+                        // changes, and only if it was still the default; everything else stays as the player left it.
+                        PlayerPrefs.SetInt(HighlightKey, 1);
+                        if (Mathf.Approximately(s.highlightColour, 0.8f)) { s.highlightColour = BuiltIn(7).highlightColour; s.Save(); }
                     }
                     return s;
                 }
@@ -333,6 +342,8 @@ namespace Backrooms.Camcorder
                     s.videoLines = 536; s.lineDoubling = 1f; s.bottomLine = 1f; s.handheldRoughness = 1.3f;
                     s.sharpening = 0.7f; s.softness = 0.8f; s.blockiness = 0.6f; s.noise = 0.4f; s.gainNoise = 0.5f;
                     s.pedestal = 0.02f; s.highlightKnee = 0.9f; s.exposureBias = 0.25f; s.maxGain = 1f;
+                    s.highlightColour = 0.6f;    // the footage's bright walls go pale cream: half their colour at 80 %, measured
+                    s.whiteBalanceTint = -20f;   // and its yellow leans 4-5 degrees greener than the game's (hue 47-50, measured)
                     s.autofocus = false; s.aspect43 = false; s.showOSD = false; s.awbStrength = 0.15f;
                     s.micColoration = 0.8f; s.autoGain = 0.75f; s.micHiss = 0.3f; s.handlingNoise = 0.6f; s.stereoWidth = 0.6f;
                     break;

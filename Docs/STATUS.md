@@ -6,6 +6,16 @@ Last updated 2026-10-27 (world version 13).
 
 ## Newest (2026-10-27)
 
+- **Reference room on the game's own lighting** (Escape > Reference room, Docs/ReferenceMatch.md): Kane's room is now a
+  room of the procedural world (rebuilt on the 1.2 m grid, forced in beside the spawn hall), lit exactly like every other
+  room, so tuning it tunes the game. Matched to the footage within about a quarter stop everywhere: ceiling panels throw
+  light like real flat panels (Lambertian: walls fade from the top, no round hot spots), bounce light passes on all of
+  each bounce (rooms with light walls are evenly lit), AO no longer darkens direct light (the dark smudge at pillar tops
+  and the dark lines along the ceiling grid are gone), off-white ceiling tiles, panels bright enough to clip to white,
+  a calmer carpet, a camcorder white balance that keeps yellow rooms yellow, and the footage's highlight colour in the
+  Reference Match preset. Screenshots: Docs/screenshots/refmatch/compare_kane_world_lit.jpg,
+  Docs/screenshots/shadows/game_vs_chatgpt.jpg.
+
 - **Shadows like real ceiling panels** (Docs/RuntimeLighting.md): walls no longer draw hard wedge lines on the floor;
   past a wall end or through a doorway the panel is hidden gradually, so the light fades over a penumbra that is sharp
   at the wall and widens away from it. Furniture shadows come from shadow maps about 9 times sharper (they covered the

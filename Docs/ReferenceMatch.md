@@ -1,4 +1,44 @@
-# Reference Match scene
+# Reference Match
+
+## The reference room is a room of the procedural world (2026-10-27)
+
+**Escape > Reference room** no longer opens the hand-built scene. It forces Kane's room, rebuilt on the world's 1.2 m
+grid (`CustomRooms/ReferenceBlueprint`), into the procedural world beside the spawn hall, by the same path as build
+mode's "Test in world" (`CustomRoomTest.BeginReference`), and puts you at the reference camera pose with the Reference
+Match controls (F8 back to the pose, F9 freeze, `ReferenceMatch.Capture`). It is built by the world's chunk builder with
+the world's own materials and lit by exactly the game's lighting (real panel lights and their shadow maps, the light
+grid, traced bounce, AO, haze), so whatever is tuned against the photograph there is what every generated room gets.
+The hand-built stand-in lighting below (and `Scenes/ReferenceMatch.unity`, kept but no longer in the menu) could match
+the photo with tricks the world does not have.
+
+Rebuilt on the grid: a front room (camera 5.2 m from the opening wall, as before), the opening as three headed cells
+(3.6 m under the world's 2.1 m doorway header; the photo's is 3.3 x 2.35 m with rounded corners), 0.5 m pillars for its
+deep reveals, the left wall straight (the photo's is slanted; the world has no slanted walls), a back room 8.4 m deep with
+two supports, square one-tile panels: 7 in the front room above and right of the camera (the photo's left side is darker),
+10 in the back room. Exit doorway behind the camera.
+
+Matched against the photo (`40_world_lit.png`, `compare_kane_world_lit.jpg`), linear luminance:
+
+| Area | Photo | Reference room |
+|---|---|---|
+| Floor, centre / left / right | 0.31 / 0.23 / 0.45 | 0.35 / 0.22 / 0.38 |
+| Left wall / right wall | 0.35 / 0.61 | 0.37 / 0.59 |
+| Through the opening | 0.43 | 0.47 |
+| Right wall colour (saturation) | 0.25 | 0.30 |
+| Hue of walls and floor | 47-50 degrees | 46-50 degrees |
+| Frame median (10th / 90th percentile) | 0.55 (0.39 / 0.71) | 0.55 (0.42 / 0.70) |
+| Floor texture contrast (fine / mottle) | 0.0072 / 0.0064 | 0.0094 / 0.0072 |
+
+What it took, all on the game's side (see RuntimeLighting.md, Camcorder.md): the panels' light falls off as a Lambertian
+panel's (cos), bounce light passes on all of each bounce and dim areas are not pushed darker, AO only on bounced light
+(it had darkened direct light too), white ceiling tiles, brighter fittings, a calmer carpet texture, a camcorder AWB that
+keeps yellow rooms yellow, and in the Reference Match preset the footage's highlight colour (0.6) and tint (-20).
+Before all that, in the world room, the floor was 1-1.5 stops darker than the photo and the left wall 3 stops.
+
+Remaining differences: the opening's shape (lower, square corners), the photo's olive header (the world has one finish
+per room), the slanted left wall.
+
+# The hand-built Reference Match scene (until 2026-10-26)
 
 A playable scene built to match one reference photograph (an empty office room with a large opening into a second room).
 It also tunes the lighting, materials and camcorder against that photograph. The procedural world, its scenes and the

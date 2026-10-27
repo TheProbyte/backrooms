@@ -310,7 +310,8 @@ namespace Backrooms.Camcorder
             float gamma = Mathf.Clamp(0.45f + s.contrast * 0.002f, 0.3f, 0.7f);
             float clip = Mathf.Clamp(s.whiteClip, 0.8f, 1.1f), knee = Mathf.Clamp(s.highlightKnee, 0.5f, clip);
             m.SetVector(IdTone, new Vector4(gamma, knee, KneeSlope(knee, clip, gamma), clip));
-            m.SetVector(IdLowLight, new Vector4(lowLight * 0.8f, Mathf.Clamp(s.noiseReduction * Mathf.Lerp(0.3f, 1f, lowLight), 0f, 0.7f), 0f, 0f));
+            m.SetVector(IdLowLight, new Vector4(lowLight * 0.8f, Mathf.Clamp(s.noiseReduction * Mathf.Lerp(0.3f, 1f, lowLight), 0f, 0.7f),
+                Mathf.Clamp(s.highlightColour, 0.4f, 0.98f), 0f));
 
             // Format: bandwidths, edge enhancement, tape and playback.
             m.SetVector(IdFmt, new Vector4(fmt.analog ? 1f : 0f, fmt.comb ? 1f : 0f, fmt.dv411 ? 1f : 0f, fmt.compression * s.blockiness));

@@ -192,17 +192,19 @@ namespace Backrooms
         }
 
         /// <summary>
-        /// Gains that pull the average mid-tone toward grey along the warm/cool axis (limited, like the blackbody range of a
-        /// real AWB) and a little along green/magenta. Luma stays 1. The average is measured before white balance.
+        /// A camcorder's AWB: the red and blue gains are pulled toward the green channel's level, each partly (strength) and
+        /// within a limited range, from the average mid-tone measured before white balance. Luma stays 1. In a yellow room
+        /// red already sits near green, so it mostly lifts blue and the room stays yellow; a warm/cool axis instead (red down
+        /// as far as blue goes up) tipped yellow walls toward green (hue 47 to 62-67 degrees, measured).
         /// </summary>
         public static Vector3 AwbGains(Vector3 avg, float strength)
         {
             avg = Vector3.Max(avg, new Vector3(1e-4f, 1e-4f, 1e-4f));
-            float warmCool = Mathf.Log(avg.z / avg.x);                    // < 0: warm (more red than blue)
-            float greenMag = Mathf.Log(avg.y / Mathf.Sqrt(avg.x * avg.z)); // > 0: green
-            float t = Mathf.Clamp(-strength * warmCool, -0.6f, 0.6f);
-            float gm = Mathf.Clamp(-strength * 0.3f * greenMag, -0.08f, 0.08f);
-            var g = new Vector3(Mathf.Exp(-t * 0.5f), Mathf.Exp(gm), Mathf.Exp(t * 0.5f));
+            float k = Mathf.Clamp01(strength);
+            const float range = 0.6f;                                      // the gain range of the AWB circuit (e^0.6 = 1.8x)
+            float r = Mathf.Clamp(k * Mathf.Log(avg.y / avg.x), -range, range);
+            float b = Mathf.Clamp(k * Mathf.Log(avg.y / avg.z), -range, range);
+            var g = new Vector3(Mathf.Exp(r), 1f, Mathf.Exp(b));
             float luma = 0.2126f * g.x + 0.7152f * g.y + 0.0722f * g.z;
             return g / Mathf.Max(luma, 1e-3f);
         }

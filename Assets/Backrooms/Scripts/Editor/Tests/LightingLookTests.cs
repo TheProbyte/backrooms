@@ -226,7 +226,8 @@ namespace Backrooms.Tests
                 float litDown = Irradiance(walled, 1, 0, Vector3.up, 1);     // from above
                 float eastWalled = Irradiance(walled, 3, 0, Vector3.left);
                 Assert.Greater(litUp, 0.01f, "the lit room has bounce light");
-                Assert.Greater(litUp, litDown * 1.5f, "under the ceiling, more bounce comes up from the lit room than down from the unlit ceiling");
+                // (Lambertian panels light the upper walls too, so some light also arrives from above.)
+                Assert.Greater(litUp, litDown * 1.2f, "under the ceiling, more bounce comes up from the lit room than down from the unlit ceiling");
                 Assert.Greater(litDown, 0f, "the ceiling has its own (second) bounce");
                 Assert.Less(eastWalled, litUp * 0.01f, "nothing passes a solid wall (or a shut door)");
                 var open = Run(0u);

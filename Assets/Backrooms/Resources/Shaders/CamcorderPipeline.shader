@@ -38,7 +38,7 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
     float4 _CamSmearK;      // x: smear strength, y: purple fringing
     float4 _CamWB;          // rgb: white balance gains, w: saturation
     float4 _CamTone;        // x: transfer exponent (0.45), y: knee point, z: knee slope, w: white clip
-    float4 _CamLowLight;    // x: low-light colour cut 0..1, y: temporal noise reduction 0..1
+    float4 _CamLowLight;    // x: low-light colour cut 0..1, y: temporal noise reduction 0..1, z: highlight chroma suppression start (0 = 0.8)
 
     float4 _CamFmt;         // x: analog (1) / DV (0), y: NTSC comb (0/1), z: DV 4:1:1 (0/1), w: DV compression
     float4 _CamLumaW;       // luma filter weights: x centre, y +-1, z +-2
@@ -200,7 +200,10 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
         V = Knee(V, _CamTone.y, _CamTone.z, _CamTone.w);
         float Y = dot(V, float3(0.299, 0.587, 0.114));
         float2 C = float2((V.b - Y) * 0.564, (V.r - Y) * 0.713);
-        C *= saturate((_CamTone.w - Y) / max(_CamTone.w - 0.8, 1e-3));     // clipped lights are white, not tinted
+        // Highlight chroma suppression: colour fades out from a level below the clip to none at it, so clipped lights are
+        // white, not tinted, and bright walls go pale.
+        float chromaStart = _CamLowLight.z > 0 ? _CamLowLight.z : 0.8;
+        C *= saturate((_CamTone.w - Y) / max(_CamTone.w - chromaStart, 1e-3));
         C *= lerp(1, smoothstep(0.03, 0.15, Y), _CamLowLight.x);             // gained-up shadows lose their colour
         float3 o = float3(Y, C);
         // Temporal noise reduction (DV camcorders in low light): still areas average with the last frame; moving ones

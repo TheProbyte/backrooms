@@ -93,6 +93,14 @@ namespace Backrooms.Generation
         public static float WestTop(uint o) => (((o >> 4) & 63u) | (((o >> 27) & 1u) << 6)) * 0.1f;
         public static float SouthTop(uint o) => (((o >> 10) & 63u) | (((o >> 28) & 1u) << 6)) * 0.1f;
         public static float Ceiling(uint o) => ((o >> 16) & 255u) * 0.1f;
+
+        /// <summary>A ceiling fixture's falloff away from straight down (LGrid_AngleAtten): Lambertian, cos(angle), at full
+        /// spread (FixtureLightManager.TrofferCone), narrower below it.</summary>
+        public static float PanelProfile(float cosAngle, float cosOuter, float cosInner)
+        {
+            float inv = 1f / Mathf.Max(cosInner - cosOuter, 0.001f);
+            return Mathf.Clamp01(cosAngle * inv - cosOuter * inv);
+        }
         public static bool IsLoaded(uint o) => (o & Loaded) != 0;
 
         /// <summary>Occupancy lookup: (cell x, cell z, storey) -> packed cell (0 = not loaded).</summary>
@@ -148,7 +156,7 @@ namespace Backrooms.Generation
             if (d2 >= L.range * L.range) return 0f;
             float att = DistanceAtten(Mathf.Max(d2, 0.36f), L.range);   // near field capped at one texel (as in the shader)
             toLight /= Mathf.Sqrt(Mathf.Max(d2, 1e-8f));
-            if (L.dir.sqrMagnitude > 0.5f) att *= LightLayers.AngleAttenuation(Vector3.Dot(L.dir, -toLight), L.cosOuter, L.cosInner);
+            if (L.dir.sqrMagnitude > 0.5f) att *= PanelProfile(Vector3.Dot(L.dir, -toLight), L.cosOuter, L.cosInner);
             if (att <= 1e-6f || !Visible(L.pos, Q, occ, pitch)) return 0f;
             var c = all ? L.colorAll : L.color;
             return (0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z) * att;

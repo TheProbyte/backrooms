@@ -32,7 +32,7 @@ camera renders into one, for stills and probes). The shader has no keywords: one
 | Auto exposure | Partly. A probe camera rendered the scene (with shadows) 6 times a second for a log average; 40 % compensation; "gain" counted the exposure bias; a second low-light boost | Meters the camera's own picture (arithmetic, centre-weighted, clipped, top third counts less). Iris (7 stops, damped spring, dead band), then gain (+6 dB/s up after the iris is open, down first), then optional slow shutter. Noise follows the real gain only. No probe render |
 | Fluorescent flicker beat | No: a 1/60 s shutter averages exactly two 120 Hz flickers | 120 Hz flicker against the shutter time: invisible at 1/60, a slow 0.12 Hz pulse at faster shutters (new *Shutter* setting) |
 | Tone (Neutral filmic tonemap, LogC contrast, knee off, pedestal) | No | The camera's Rec.709 transfer curve, per-channel knee (400 % light reaches the clip), hard white clip, clipped lights pure white, setup 7.5 IRE on analog |
-| White balance (static, after the tonemap) | Partly | Auto white balance: slow, limited, along warm/cool (strength 0.3 keeps most of the yellow), plus your warm/tint shift, in linear light |
+| White balance (static, after the tonemap) | Partly | Auto white balance: slow and limited, the way a camcorder's works: the red and blue gains are pulled partway (strength 0.3 keeps most of the yellow) toward the green channel, within a 1.8x range, plus your warm/tint shift, in linear light. (Until 2026-10-27 it corrected along warm/cool, red down as far as blue went up, which tipped yellow walls toward green.) |
 | Lens distortion | The model was fine; the sign was wrong in the tooltip and presets (presets "barrel" were pincushion) | Positive = barrel everywhere; old negative values were replaced; turns toward slight pincushion at full zoom |
 | Chromatic aberration | About 3× too strong | Default 0.03; shrinks with zoom |
 | Vignette | Elliptical on the full screen (different on every monitor), −1.4 EV | Rounded, on the 4:3 frame, half as strong, weaker as the iris closes |
@@ -81,7 +81,13 @@ never shows artefacts it could not have.
 
 Default (VHS-C SP), Hi8 '98, MiniDV '04 (3D noise reduction, no setup), Low light gain (low-lux slow shutter, noise
 reduction), Clean (no camcorder picture), VHS '96 (heavier glare, warm-green cast left in), Found footage (VHS-C EP,
-worn tape, wide converter), Reference Match (536 lines line-doubled, DV, see `ReferenceMatch.md`).
+worn tape, wide converter), Reference Match (536 lines line-doubled, DV, the footage's highlight colour 0.6 and tint -20, see `ReferenceMatch.md`).
+
+**Highlight colour** (CAMERA PROCESSING, `highlightColour`): highlight chroma suppression. From this level of the
+recorded signal the colour fades out to none at the white clip, so clipped lights are white and bright walls go pale.
+0.8 by default; the reference footage measures about 0.6 (its walls at 80 % have half their colour). Saved settings from
+the Reference Match preset took 0.6 once (2026-10-27). It travels in `_CamLowLight.z`, which the head pass sets per
+pass (`CamcorderPipeline.cs`): keep z when changing that line.
 
 Saves from before this rebuild (no `lookVersion`) are converted on load: the picture settings take the new values of
 the preset that was in use; the field of view, frame shape, OSD, autofocus and auto exposure toggles, handheld motion,

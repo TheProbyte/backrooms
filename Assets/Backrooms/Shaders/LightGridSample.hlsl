@@ -107,11 +107,14 @@ float LGrid_DistAtten(float d2, float range)
     return s * s / max(d2, 0.0001);
 }
 
+// How a ceiling fixture's intensity falls off away from straight down. A flat diffuser panel is Lambertian: intensity goes
+// as cos(angle), so a wall beside a panel is brightest just under the ceiling and fades downward, and a floor is lit
+// evenly. (A squared spot falloff, cos^2-like, made round hot spots halfway down walls and darker rooms.) With the cone
+// TrofferCone gives at full spread (outer 179, inner 0) this is cos(angle); a lower spread narrows it.
 float LGrid_AngleAtten(float cosAngle, float cosOuter, float cosInner)
 {
     float inv = 1.0 / max(cosInner - cosOuter, 0.001);
-    float a = saturate(cosAngle * inv - cosOuter * inv);
-    return a * a;
+    return saturate(cosAngle * inv - cosOuter * inv);
 }
 
 // Shared tile lookup for the grid and real-light material-response paths.

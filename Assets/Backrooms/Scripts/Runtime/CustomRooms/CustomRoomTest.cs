@@ -16,6 +16,23 @@ namespace Backrooms.CustomRooms
         public static RoomBlueprint Blueprint;
         public static int Variant;
         public static bool Active => BuildSession.Testing && Blueprint != null;
+        /// <summary>The room under test is the reference room (Escape > Reference room), not one from the builder.</summary>
+        public static bool Reference { get; private set; }
+
+        /// <summary>Escape > Reference room: Kane's reference room as a room of the procedural world (see
+        /// <see cref="ReferenceBlueprint"/>), with the player at the reference camera pose and the Reference Match controls.</summary>
+        public static void BeginReference()
+        {
+            Begin(ReferenceBlueprint.Create(), 0);
+            Reference = true;
+        }
+
+        /// <summary>World position of a point given in the reference room's frame.</summary>
+        public static Vector3 ReferenceWorld(Vector3 frame)
+        {
+            var b = ReferenceBlueprint.ToBlueprint(frame);
+            return new Vector3(CellX * OfficeBiome.CellSize + b.x, b.y, CellZ * OfficeBiome.CellSize + b.z);
+        }
 
         /// <summary>Cell of the district (0, 0) where the room is placed: just beyond the spawn hall.</summary>
         public const int CellX = 15, CellZ = 15;
@@ -35,6 +52,7 @@ namespace Backrooms.CustomRooms
             CustomRoomStamp.Override = null;
             Blueprint = null;
             BuildSession.Testing = false;
+            Reference = false;
         }
 
         public static LandmarkPlacement Placement()
@@ -72,6 +90,22 @@ namespace Backrooms.CustomRooms
                 for (int i = 0; i < 300 && player == null; i++) { player = FindFirstObjectByType<CamcorderPlayerController>(); yield return null; }
                 if (!player || !Active) { Destroy(gameObject); yield break; }
                 for (int i = 0; i < 20; i++) yield return null;
+                if (Reference)
+                {
+                    // The reference pose, once the floor has loaded; then the Reference Match controls (preset in memory,
+                    // F8 back to the pose, F9 freeze, ReferenceMatch.Capture).
+                    var pose = ReferenceWorld(ReferenceBlueprint.Camera);
+                    player.TeleportSafe(pose, ReferenceBlueprint.Yaw, ReferenceBlueprint.Pitch);
+                    for (float t = 0f; t < 1.5f; t += Time.unscaledDeltaTime) yield return null;
+                    var go = new GameObject("ReferenceMatch");
+                    go.SetActive(false);
+                    var rm = go.AddComponent<ReferenceMatch>();
+                    rm.position = pose; rm.yaw = ReferenceBlueprint.Yaw; rm.pitch = ReferenceBlueprint.Pitch;
+                    go.SetActive(true);
+                    Debug.Log($"[Backrooms] Reference room at {pose}. F8 returns to the reference pose, F9 freezes for stills.");
+                    Destroy(gameObject);
+                    yield break;
+                }
                 var c = Centre();
                 player.TeleportSafe(c, 180f, 6f);          // you wait in place until the floor has loaded
                 Debug.Log($"[Backrooms] Testing custom room '{Blueprint.name}' at {c}. Escape > Back to the builder.");

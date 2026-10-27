@@ -38,6 +38,32 @@ Real shadows independently ease strength and retain atlas capacity until fade-ou
 new shadow maps wait if needed instead of oversubscribing the 64-map budget (point lamps cost six maps). Distance fade
 and selection hysteresis apply independently of the real/grid energy handover.
 
+### How a panel throws light (2026-10-27)
+
+A flat diffuser panel is Lambertian: its intensity falls off as cos(angle) from straight down. `LGrid_AngleAtten` (shader,
+`LightGrid.compute`, `LightGridMath.PanelProfile`) is linear between the cone's two cosines, and `TrofferCone` gives
+179 / 0 degrees at full spread, so a spread of 1 is exactly Lambertian; the default 0.8 is within 0.03 of it (tested in
+`ReferenceRoomTests`). It used to be a squared (URP spot) falloff, about cos^2: walls beside a panel had round hot spots
+halfway down instead of a fade from the top, and rooms were darker and patchier. A rectangular panel's form factor is
+already Lambertian, so there the profile now divides out.
+
+### Light as it falls: bounce and AO (2026-10-27)
+
+- `multiBounce` 1 (was 0.7): every bounce passes on all of the light its surface reflects (the surfaces' albedo already
+  takes its share). In a room with light walls that is what evens the light out; at 0.7 the wall facing away from the
+  lights was 10x darker than the lit one, against about 2-3x in a real room (and in the reference footage).
+- `darkSpots` 0 (was 0.35): no extra curve pushing dim surfaces darker than their light.
+- Saved options (graphics options version 3) take both values once, if the player had not changed them.
+- Screen-space AO (`GraphicsController`, set at runtime; the renderer asset is not edited): direct lighting strength 0
+  (it darkened direct light by 60 % in corners: a dark, grainy band where a lit pillar met the ceiling, and the dark
+  lines beside the ceiling grid), radius 0.2 m, intensity 0.6. AO stands in for bounced light a nearby surface blocks and
+  assumes the blocker is black, while here it is usually a lit wall or ceiling, and the traced bounce already handles
+  occlusion at room scale; what is left is the tight darkening where floors meet walls.
+
+Measured against the reference footage in the reference room (ReferenceMatch.md): with the old falloff and bounce the
+floor was 1-1.5 stops darker than the photo and the shadowed left wall 3 stops; now every area is within about a quarter
+stop.
+
 ## Runtime indirect light
 
 Three half-float atlases contain floor radiance, wall radiance and the wall field's first directional moment. Each has

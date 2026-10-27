@@ -304,6 +304,8 @@ namespace Backrooms.Camcorder
                 0.6f, 1f, "0.00", "", () => S().highlightKnee, v => S().highlightKnee = v);
             Slider("White clip", "The brightest level the camera records (1 = 100 IRE). Everything above is flat white.",
                 0.9f, 1.1f, "0.00", "", () => S().whiteClip, v => S().whiteClip = v);
+            Slider("Highlight colour", "Where the camera starts draining colour from bright areas (highlight chroma suppression): from this level the colour fades to none at the clip. Lower = paler bright walls; the reference footage is about 0.6.",
+                0.4f, 0.98f, "0.00", "", () => S().highlightColour, v => S().highlightColour = v);
             Slider("Black level (setup)", "Where black sits: 7.5 IRE (0.075) on analog NTSC tape, 0 on DV. Higher looks milky.",
                 0f, 0.12f, "0.000", "", () => S().pedestal, v => S().pedestal = v);
             Slider("Saturation", "The camera's colour matrix. Colour also drops in the dark as the gain rises.",

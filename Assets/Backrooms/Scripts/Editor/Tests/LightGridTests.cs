@@ -75,14 +75,17 @@ namespace Backrooms.Tests
         [Test]
         public void UnobstructedGridLightMatchesTheRealLight()
         {
-            // Same falloff as URP (and as the real light the fixture becomes when near).
+            // URP's distance falloff times the panel's own falloff away from straight down (LightGridMath.PanelProfile, the
+            // one Backrooms/Lit uses for a fixture's real light as well; a panel is not a URP spot).
             var f = new Fixture { height = OfficeBiome.CeilingHeight };
             var spec = LightLayers.FixtureSpec(f, new Vector2(0.5f * C, 0.5f * C));
             var g = LightGridMath.FromSpec(spec, Color.white, 0, 0f);
             var occ = Row((LightGridMath.Open, 2.7f), (LightGridMath.Open, 2.7f));
             foreach (var p in new[] { new Vector3(0.6f, 0.3f, 0.6f), new Vector3(1.8f, 0.3f, 0.6f), new Vector3(3.0f, 1.2f, 0.6f) })
             {
-                float expected = LightLayers.Irradiance(spec, p);
+                Vector3 d = p - spec.position;
+                float expected = spec.intensity * LightLayers.DistanceAttenuation(d.sqrMagnitude, spec.range)
+                               * LightGridMath.PanelProfile(Vector3.Dot(spec.direction, d.normalized), spec.cosOuter, spec.cosInner);
                 Assert.AreEqual(expected, LightGridMath.Irradiance(g, p, occ, Pitch), expected * 0.02f + 1e-5f, $"at {p}");
             }
         }

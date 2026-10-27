@@ -89,8 +89,10 @@ namespace Backrooms.EditorTools
                 float mottle = Fbm(u, v, 3, 4, 907) - 0.5f;                       // long soft mottling (the part that reads at a distance)
                 float lane = VNoise(u * 40, v * 3, 40, 3, 919) - 0.5f;             // faint pile direction streaks along the room
                 Color p = pile[(y % P) * P + (x % P)];
-                p = Color.white + (p - Color.white) * 0.85f;                          // keep the photo's grain, slightly calmer
-                float g = 0.72f * (1f + mottle * 0.30f + lane * 0.03f);
+                // The photo's grain and a long mottling, both calm: the reference footage's floor has about half the texture
+                // contrast the full-strength photo gave (measured on the camcorder picture).
+                p = Color.white + (p - Color.white) * 0.55f;
+                float g = 0.72f * (1f + mottle * 0.16f + lane * 0.03f);
                 carpet[y * S + x] = new Color(p.r * g, p.g * g, p.b * g, 1f);
                 height[y * S + x] = (p.r + p.g + p.b) / 3f;
             }
@@ -114,7 +116,7 @@ namespace Backrooms.EditorTools
                 float speck = VNoise(u * 400, v * 400, 400, 400, 967) - 0.5f;
                 float grid = Edge(1.5f, 4.5f, d);                                     // 0 on the grid line
                 float bevel = Edge(4f, 14f, d);                                       // soft shadow where the tile meets the grid
-                float g = (0.86f + tone + streak * 0.03f + speck * 0.05f - fiss * 0.07f) * (0.93f + 0.07f * bevel);
+                float g = (0.86f + tone + streak * 0.03f + speck * 0.035f - fiss * 0.04f) * (0.93f + 0.07f * bevel);   // clean tiles: faint fissures
                 g = Mathf.Lerp(0.66f, g, grid);
                 ceil[y * C + x] = new Color(g, g, g, 1f);
                 ch[y * C + x] = grid * 0.6f + bevel * 0.4f - fiss * 0.08f;

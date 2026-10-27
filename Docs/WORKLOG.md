@@ -15,6 +15,31 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-27 10:00  Claude Code  Reference room on the world's lighting; Lambertian panels, physical bounce and AO; matched to Kane
+- Reference room: Escape > Reference room now forces `CustomRooms/ReferenceBlueprint` (Kane's room on the 1.2 m grid: three
+  headed opening cells, jamb pillars, straight left wall, back room with supports, 17 panels) into the world via
+  `CustomRoomTest.BeginReference` and adds `ReferenceMatch` at the reference pose. The hand-built scene stays on disk, out
+  of the menu.
+- Light: `LGrid_AngleAtten` / `LightGrid.compute` / `LightGridMath.PanelProfile` linear in cos, `TrofferCone` inner -> 0 at
+  full spread: Lambertian panels. Graphics options v3: `multiBounce` 1, `darkSpots` 0 (migrated if unchanged). AO set at
+  runtime by `GraphicsController`: direct 0, radius 0.2, intensity 0.6 (restored on disable; PC_Renderer untouched).
+  `OfficeReferenceLook`: ceiling tint (0.86, 0.85, 0.80), panel/dome/strip glow 9/10/12; textures: calmer ceiling specks,
+  carpet grain 0.55 and mottle 0.16 (RefCeiling_*, RefCarpet_* regenerated).
+- Camera: `highlightColour` (highlight chroma suppression start, F5 CAMERA PROCESSING; Reference Match 0.6, migrated once
+  for players on that preset), `_CamLowLight.z` kept in the head pass; Reference Match tint -20; AWB as a camcorder's
+  (red and blue gains toward green, limited) instead of a warm/cool axis.
+- Checked: reference room captures against the photo by area (ReferenceMatch.md table; floor/walls/opening within ~0.25
+  stop, hue 46-50 vs 47-50, texture contrast close); the ChatGPT-compared World 3 view by real screenshot (no smudge, light
+  ceiling grid, white panels; a capture path that clips at 154/255 had made bright walls look green, not the game);
+  pillar smudge bisected to AO (shadows, contact shadows, contact occlusion, traced bounce, cone, vignette all ruled
+  out). New `ReferenceRoomTests` (world room, Lambertian profile, AWB keeps yellow); `LightGridTests` and a bounce test
+  updated for Lambertian panels. EditMode 86/86. World 3 erased.
+- Open: Direct3D 12 lost the device three times today when a shader compiled synchronously during Play (twice at Play
+  start right after a Lit rebuild, once capturing the old reference scene); the editor was relaunched with
+  -force-d3d11 for the rest (the user's project settings are unchanged). Scene backups were kept in Assets/_Recovery.
+  The reference room's opening is lower than the photo's (the world's 2.1 m header) and has no olive header. The GPU
+  cost of the Lambertian ring (more pixels get a real light's outer share) was not measured.
+
 ## 2026-10-27 08:00  Claude Code  Panel shadows: soft wall penumbras (no floor wedges), sharp furniture maps, tube-shaped penumbras
 - Walls: the yes/no wall line test (razor-sharp wedges on the floor past every wall end and doorway) is replaced by
   `LGrid_EmitterVisible` (LightGridSample.hlsl): the share of the panel a point sees past walls and headers, from the same

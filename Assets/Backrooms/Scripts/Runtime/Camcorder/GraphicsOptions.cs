@@ -33,7 +33,7 @@ namespace Backrooms.Camcorder
         [Look] public float fillLight = 1f;          // soft bounced light from lit floors
         [Look] public float softness = 0.15f;        // wrap: how far light bends round surfaces facing away
         [Look] public float poolSmoothing = 0.5f;   // rounds off boxy light pools of far fixtures
-        [Look] public float darkSpots = 0.35f;       // makes weakly lit areas darker
+        [Look] public float darkSpots = 0f;          // makes weakly lit areas darker than the light says (0 = as the light falls)
         [Look] public float shadowDarkness = 1f;     // real-light shadows
         public int farLights = 0;             // extra real (unshadowed) lights beyond the shadowed ones; 0 when per-pixel distant light is on
         public bool perPixelFar = true;       // distant fixtures are lit exactly per pixel (no visible grid texels)
@@ -51,7 +51,7 @@ namespace Backrooms.Camcorder
         [Look] public float colourTint = 0f;         // -1 magenta .. +1 green (tired fluorescent tubes run green)
         [Look] public float panelGlow = 1f;          // brightness of the fittings themselves as you see them (not the light they throw)
         [Look] public float colourBleed = 1f;        // how much surfaces tint the light they bounce (0 = grey bounce, 1 = their own colour)
-        [Look] public float multiBounce = 0.7f;      // traced bounce: how much of the bounced light bounces again
+        [Look] public float multiBounce = 1f;        // traced bounce: how much of the bounced light bounces again (1 = all of it, as in a real room)
         [Look] public float shadowSoftness = 1f;     // soft shadows that harden where things touch (0 = the plain soft filter)
         [Look] public float contactShadows = 0.6f;   // short screen-space shadows where things touch (their own depth pass)
         [Look] public float haze = 0.25f;            // thin haze in the air, lit by the lights (0 = clear)
@@ -148,7 +148,7 @@ namespace Backrooms.Camcorder
         }
 
         const string Key = "Backrooms.Graphics.v1";
-        const int CurrentVersion = 2;
+        const int CurrentVersion = 3;
         public static GraphicsOptions Load()
         {
             try
@@ -164,6 +164,13 @@ namespace Backrooms.Camcorder
                         o.shadowLights = Mathf.Min(o.shadowLights, 16);
                         o.shadowDistance = Mathf.Min(o.shadowDistance, 20f);
                         o.exactLightRadius = 4.5f;
+                    }
+                    if (o.version < 3 && Mathf.Approximately(o.darkSpots, 0.35f) && Mathf.Approximately(o.multiBounce, 0.7f))
+                    {
+                        // Version 3: light as it falls. Every surface passes on its share of the light (multiple bounces in
+                        // full: a room with light walls is evenly lit, as in the reference footage), and dim areas are not
+                        // pushed darker. Only for players who had not changed these two.
+                        o.darkSpots = 0f; o.multiBounce = 1f;
                     }
                     o.version = CurrentVersion;
                     return o;
@@ -233,8 +240,28 @@ namespace Backrooms.Camcorder
                     foreach (var data in list)
                         if (data)
                             foreach (var feat in data.rendererFeatures)
-                                if (feat && feat.GetType().Name.Contains("AmbientOcclusion")) _ssao.Add((feat, feat.isActive));
+                                if (feat && feat.GetType().Name.Contains("AmbientOcclusion")) { _ssao.Add((feat, feat.isActive)); PhysicalAO(feat, true); }
             }
+        }
+
+        // Screen-space AO stands in for bounced light that a nearby surface blocks. Direct light is the shadows' job, so it
+        // must not darken it (the asset has 0.6: a dark, grainy band where a lit pillar met the ceiling). It also assumes the
+        // blocker is black, while here it is usually a lit wall or ceiling reflecting its own light, and the traced bounce
+        // already covers occlusion at room scale; so it is kept to a tight 0.2 m at a little over half strength: the soft
+        // darkening where floors meet walls. Set at runtime (the renderer asset is not edited); restored on disable.
+        const float AOIntensity = 0.6f, AODirect = 0f, AORadius = 0.2f;
+        readonly System.Collections.Generic.List<(object settings, float intensity, float direct, float radius)> _aoOrig =
+            new System.Collections.Generic.List<(object, float, float, float)>();
+        void PhysicalAO(ScriptableRendererFeature feat, bool apply)
+        {
+            const System.Reflection.BindingFlags bf = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+            var st = feat.GetType().GetField("m_Settings", bf)?.GetValue(feat);
+            if (st == null) return;
+            var t = st.GetType();
+            System.Reflection.FieldInfo fi = t.GetField("Intensity", bf), fd = t.GetField("DirectLightingStrength", bf), fr = t.GetField("Radius", bf);
+            if (fi == null || fd == null || fr == null) return;
+            _aoOrig.Add((st, (float)fi.GetValue(st), (float)fd.GetValue(st), (float)fr.GetValue(st)));
+            fi.SetValue(st, AOIntensity); fd.SetValue(st, AODirect); fr.SetValue(st, AORadius);
         }
 
         void OnDisable()
@@ -243,6 +270,13 @@ namespace Backrooms.Camcorder
             var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             if (urp && _origScale > 0f) urp.renderScale = _origScale;
             foreach (var s in _ssao) if (s.f) s.f.SetActive(s.orig);
+            foreach (var (st, i, d, r) in _aoOrig)
+            {
+                const System.Reflection.BindingFlags bf = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+                var t = st.GetType();
+                t.GetField("Intensity", bf).SetValue(st, i); t.GetField("DirectLightingStrength", bf).SetValue(st, d); t.GetField("Radius", bf).SetValue(st, r);
+            }
+            _aoOrig.Clear();
             if (Instance == this) Instance = null;
         }
 

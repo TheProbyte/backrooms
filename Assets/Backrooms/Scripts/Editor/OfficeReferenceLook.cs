@@ -12,8 +12,14 @@ namespace Backrooms.EditorTools
     public static class OfficeReferenceLook
     {
         const string Tex = "Assets/Backrooms/Textures/";
-        /// <summary>Lighter than the Reference Match room's ceiling: the world has no hand-placed bounce light, so ceilings read darker.</summary>
-        static readonly Color WorldCeilingTint = new Color(0.9f, 0.88f, 0.55f);
+        /// <summary>Mineral-fibre tiles are near white (the yellow they show comes from the light bounced onto them, not the
+        /// tile). The old tint (0.9, 0.88, 0.55) made them olive.</summary>
+        static readonly Color WorldCeilingTint = new Color(0.86f, 0.85f, 0.80f);
+        /// <summary>The fittings as you see them. A real panel is many times brighter than the walls it lights, so the camera
+        /// clips it to white with a little glare around it; at the old 2.4 it sat just under the clip and took on the white
+        /// balance's blue. Absolute values (re-running this does not compound them).</summary>
+        static readonly Color PanelGlow = new Color(1f, 0.965f, 0.86f) * 9f, DomeGlow = new Color(1f, 0.93f, 0.8f) * 10f,
+                              StripGlow = new Color(0.9f, 0.95f, 1f) * 12f;
 
         [MenuItem("Backrooms/Apply Reference Look To Office Biome")]
         public static void ApplyMenu()
@@ -55,6 +61,8 @@ namespace Backrooms.EditorTools
                 m.SetFloat("_Smoothness", 0.05f);
                 Finish(m);
             }
+            void Glow(Material m, Color c) { if (!m) return; m.EnableKeyword("_EMISSION"); m.SetColor("_EmissionColor", c); EditorUtility.SetDirty(m); }
+            Glow(a.lensOn, PanelGlow); Glow(a.domeOn, DomeGlow); Glow(a.stripOn, StripGlow);
             a.noBaseboard = true;
             // Crawl tunnels: the wallpaper with a trace of self-light.
             if (a.wallpaper)

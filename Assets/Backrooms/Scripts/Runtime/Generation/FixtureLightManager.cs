@@ -205,13 +205,15 @@ namespace Backrooms.Generation
             for (int i = 0; i < maxLamps; i++) _lamps.Add(MakeSlot(true, i));
         }
 
-        /// <summary>Spot cone of a ceiling fixture for a given spread (see <see cref="spread"/>).</summary>
+        /// <summary>Cone of a ceiling fixture for a given spread (see <see cref="spread"/>). The falloff between the two angles
+        /// is linear in cos (LGrid_AngleAtten), so full spread (179 / 0) is a Lambertian panel, intensity ~ cos(angle), the
+        /// way a flat diffuser throws light; lower spreads narrow it toward a downlight.</summary>
         public static void TrofferCone(float spread, bool dome, bool strip, out float outer, out float inner)
         {
             float o0 = dome ? 170f : strip ? 160f : 150f, i0 = dome ? 40f : 60f;
             spread = Mathf.Clamp01(spread);
             outer = Mathf.Lerp(o0, 179f, spread);
-            inner = Mathf.Lerp(i0, dome ? 10f : 18f, spread);
+            inner = Mathf.Lerp(i0, 0f, spread);
         }
 
         Slot MakeSlot(bool lamp, int i)

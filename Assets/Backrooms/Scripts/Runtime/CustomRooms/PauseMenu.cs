@@ -122,8 +122,9 @@ namespace Backrooms.CustomRooms
             string scene = SceneManager.GetActiveScene().name;
             ImUi.Fill(new Rect(0, 0, ImUi.Width, ImUi.Height), new Color(0, 0, 0, 0.62f));
             float w = 420, cx = ImUi.Width * 0.5f - w * 0.5f;
-            bool testing = BuildSession.Testing && scene == SceneIds.World;
-            int rows = 4 + (testing ? 1 : 0) + (scene != SceneIds.Reference ? 1 : 0);
+            bool testing = BuildSession.Testing && scene == SceneIds.World && !CustomRoomTest.Reference;
+            bool offerReference = !(CustomRoomTest.Reference && scene == SceneIds.World);
+            int rows = 4 + (testing ? 1 : 0) + (offerReference ? 1 : 0);
             float h = 24 + 40 + 10 + rows * 56 + 24;
             var box = new Rect(cx, ImUi.Height * 0.5f - h * 0.5f, w, h);
             ImUi.PanelBox(box);
@@ -146,7 +147,8 @@ namespace Backrooms.CustomRooms
                 Close(); CustomRoomTest.End();
                 Load(SceneIds.World);
             }
-            if (scene != SceneIds.Reference && ImUi.Button(col.Row(), "REFERENCE ROOM")) { Close(); CustomRoomTest.End(); Load(SceneIds.Reference); }
+            // The reference room is a room of the procedural world (ReferenceBlueprint), lit exactly like the game.
+            if (offerReference && ImUi.Button(col.Row(), "REFERENCE ROOM")) { Close(); CustomRoomTest.End(); CustomRoomTest.BeginReference(); Load(SceneIds.World); }
             if (ImUi.Button(col.Row(), InBuilder ? "ROOM LIBRARY" : "BUILD A SECTION"))
             {
                 Close(); CustomRoomTest.End();
