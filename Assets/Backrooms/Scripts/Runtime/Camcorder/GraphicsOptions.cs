@@ -255,11 +255,13 @@ namespace Backrooms.Camcorder
         // Screen-space AO stands in for bounced light that a nearby surface blocks. Direct light is the shadows' job, so it
         // must not darken it (the asset has 0.6: a dark, grainy band where a lit pillar met the ceiling). It also assumes the
         // blocker is black, while here it is usually a lit wall or ceiling reflecting its own light, and the traced bounce
-        // already covers occlusion at room scale; so it is kept to a tight 0.2 m at a little over half strength: the soft
+        // already covers occlusion at room scale; so it is kept to a tight 0.1 m at under a third of its strength: the soft
         // darkening where floors meet walls. Set at runtime (the renderer asset is not edited); restored on disable.
         // At half resolution (2026-10-27): at full 1080p it took about a fifth of the graphics card (12 samples and a
         // bilateral blur over every pixel) for a soft 0.2 m darkening the camcorder records at 480 lines anyway.
-        const float AOIntensity = 0.6f, AODirect = 0f, AORadius = 0.2f;
+        // Softer since 2026-10-27 (was 0.6 over 0.2 m): close to a wall the ceiling line and corners darkened in a heavy band
+        // that seemed to load in as you came near (0.2 m is many pixels up close and a hairline far off).
+        const float AOIntensity = 0.3f, AODirect = 0f, AORadius = 0.1f;
         const bool AOHalfRes = true;
         readonly System.Collections.Generic.List<(object settings, float intensity, float direct, float radius, bool half)> _aoOrig =
             new System.Collections.Generic.List<(object, float, float, float, bool)>();

@@ -68,7 +68,9 @@ Each 1.2 m wall panel (`Destruction/WallPanel.cs`, all from the world seed and t
   the wall's plane, twice at most, then laid flat on the floor below (`WallDamage.Lodged`, `SettleOnFloor`); rubble
   wedged so (an older save's, or on an edge that breaks away later) falls the same way (`DropLodged`, on loading and
   after every blow). Debris that comes to rest becomes rubble: its pose is kept with its wall (and saved), drawn as one
-  mesh with the wall.
+  mesh with the wall. A piece coming to rest on rubble is lifted onto it (a board's thickness above what it overlaps):
+  rubble has no colliders, so pieces landed inside each other and flickered (`WallDamage.StackOn`; older saves are
+  restacked on loading).
 - **Does it go away?** Rubble is one mesh a wall, which costs little to draw, so it stays as the evidence of what you did.
   But once a wall's rubble has been out of sight for 20 s, its crumbs (board pieces under about 7 x 8 cm) are swept
   away, and beyond 150 pieces the smallest go (`WallDamage.Tidy`, `BrokenPanel.TidyAfter`): never while you are
@@ -88,13 +90,12 @@ Each 1.2 m wall panel (`Destruction/WallPanel.cs`, all from the world seed and t
   covers it.
 - `BrokenPanel.cs` draws what is left (`PanelGeometry.cs`): the board pieces with the wall's own texture mapping (the
   pattern runs on unbroken across cracks), core edges only where a neighbour is gone or loose, the frame, batts, boxes,
-  cable, pipe; a separate shadow caster (each piece left as a block through the whole wall thickness, as the chunks'
-  walls cast: a 12.7 mm plate alone is thin enough for the shadow bias to eat); colliders: the boards as one mesh
+  cable, pipe; a separate shadow caster (each piece left as a closed plate its own board's thickness; a block through the
+  whole wall, tried first, put the inside of the wall in its own shadow, dark and grainy); colliders: the boards as one mesh
   collider the shape of the pieces drawn (their jagged outlines, from each face 3 cm into the wall,
   `PanelGeometry.BoardCollider`; 5 cm cells merged into boxes stood up to several centimetres off the drawn edges, so a
   cord through a hole sank into the drywall or hung in the air and could slip through), boxes for the studs, tracks and
-  electrical boxes; and the rubble. A cord saved caught in a broken wall may slip out of it for as long as it still runs
-  through it (`Cord`, only for walls it is caught in when a world loads). It exists while a chunk on either side is loaded (`WallBreaker`).
+  electrical boxes; and the rubble. Cords meet broken walls as slabs instead (`WallSlabs`, Interaction.md). It exists while a chunk on either side is loaded (`WallBreaker`).
 
 ## Light, sight and sound through holes
 - **Light grid** (`LightGridMath.Encode`, `LightGrid.Holes.cs`, `LightGridCommon.hlsl`): a panel with any piece gone is

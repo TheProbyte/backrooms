@@ -79,7 +79,9 @@ namespace Backrooms.Interaction
                 _shake.exertion = Exertion * calm + (calm - 1f);
                 // Breaths heard with the camera's rise and fall: in as it rises, out as it falls.
                 float ph = Mathf.Repeat(_shake.BreathPhase, Mathf.PI * 2f);
-                float vol = Mathf.Clamp01((Exertion - 0.15f) / 0.85f) * 0.5f;
+                // Heard only when you are out of breath, and quietly (it was up to 0.5, close to the mic, and the camcorder's
+                // automatic gain lifts it further in a quiet room).
+                float vol = Mathf.Clamp01((Exertion - 0.3f) / 0.7f) * 0.16f;
                 if (vol > 0.01f)
                 {
                     if (_lastPhase > ph) _breath.PlayOneShot(SoundBank.BreathIn(_breathPick++), vol);

@@ -480,7 +480,7 @@ namespace Backrooms.Destruction
                     st.removed[side][i] = true;
                     var f = m.boards[side].pieces[i];
                     if (f.area < 0.0035f) continue;                                         // crumbled to dust
-                    p.rubble.Add(FloorPose(k, Fallen.Part.Board, side, i, Vector2.zero, f.centroid.x, sgn, dice.Value, dice.Value, dice.Value));
+                    p.rubble.Add(StackOn(p, FloorPose(k, Fallen.Part.Board, side, i, Vector2.zero, f.centroid.x, sgn, dice.Value, dice.Value, dice.Value), p.rubble.Count));
                 }
                 p.rubbleVersion++;
             }
@@ -595,7 +595,7 @@ namespace Backrooms.Destruction
                 var l = k.ToLocal(r.position, Pitch);
                 float sgn = Mathf.Abs(l.z) > 0.005f ? Mathf.Sign(l.z) : (r.side == 0 ? -1f : 1f);
                 var dice = new Dice(k.Seed(WorldSeed) * 31 + i);
-                p.rubble[i] = FloorPose(k, r.part, r.side, r.index, r.span, l.x, sgn, dice.Value * 0.6f, dice.Value, dice.Value);
+                p.rubble[i] = StackOn(p, FloorPose(k, r.part, r.side, r.index, r.span, l.x, sgn, dice.Value * 0.6f, dice.Value, dice.Value), i);
                 any = true;
             }
             if (any) p.rubbleVersion++;
@@ -633,10 +633,43 @@ namespace Backrooms.Destruction
             return true;
         }
 
+        /// <summary>
+        /// Rubble has no colliders, so the next piece to fall lands inside the ones already lying there, and two plates at
+        /// one height flicker through each other. A piece coming to rest on others is lifted onto them instead (a board's
+        /// thickness above the highest it overlaps, with a little play so no two faces are ever level).
+        /// </summary>
+        static Rubble StackOn(Panel p, Rubble r, int upTo)
+        {
+            float Size(Rubble x) => x.part == Fallen.Part.Board && Fits(p.model, x) ? p.model.boards[x.side].pieces[x.index].radius * 1.2f
+                                  : x.part == Fallen.Part.Baseboard ? 0.1f : 0.06f;
+            float ri = Size(r);
+            for (int pass = 0; pass < 6; pass++)
+            {
+                bool moved = false;
+                for (int j = 0; j < upTo && j < p.rubble.Count; j++)
+                {
+                    var e = p.rubble[j];
+                    Vector2 d = new Vector2(r.position.x - e.position.x, r.position.z - e.position.z);
+                    float reach = (ri + Size(e)) * 0.75f;
+                    if (d.sqrMagnitude > reach * reach || Mathf.Abs(r.position.y - e.position.y) > WallSpec.Board * 0.9f) continue;
+                    r.position.y = e.position.y + WallSpec.Board * 1.05f + 0.0004f * ((j * 7 + r.index) % 5);
+                    moved = true;
+                }
+                if (!moved) break;
+            }
+            return r;
+        }
+
+        /// <summary>Lifts every piece of a wall's rubble off the ones under it (a save from before the stacking).</summary>
+        static void Restack(Panel p)
+        {
+            for (int i = 1; i < p.rubble.Count; i++) p.rubble[i] = StackOn(p, p.rubble[i], i);
+        }
+
         public static void Settle(WallKey k, Rubble r)
         {
             if (!s_panels.TryGetValue(k, out var p)) return;
-            p.rubble.Add(r);
+            p.rubble.Add(StackOn(p, r, p.rubble.Count));
             if (p.rubble.Count > 320) p.rubble.RemoveAt(0);      // the oldest small bits are swept into the dust
             p.rubbleVersion++;
         }
@@ -705,6 +738,7 @@ namespace Backrooms.Destruction
                         if (Fits(p.model, rb)) p.rubble.Add(rb);       // not batts (off for now), nor parts the wall no longer has
                 SettleLoose(p);
                 DropLodged(p);
+                Restack(p);
                 Refresh(p);
                 st.version++;
                 taken[k] = p.model.height;

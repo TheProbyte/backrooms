@@ -90,32 +90,7 @@ namespace Backrooms.Interaction
             Wake();
         }
 
-        void OnEnable() { if (!All.Contains(this)) All.Add(this); _enabledAt = Time.time; }
-
-        // A cord saved running through a broken wall (an older version's coarse colliders let it slip in) is caught there:
-        // it may slip out of that wall, and only that, for as long as it still runs through it. Looked for in the first
-        // seconds after it appears (a loaded world), never later: a cord being laid stays out of walls.
-        readonly HashSet<Collider> _slipThrough = new HashSet<Collider>();
-        float _enabledAt;
-
-        void FindCaught(bool adding)
-        {
-            var still = adding ? null : new HashSet<Collider>();
-            for (int i = 0; i < _n - 1; i++)
-            {
-                Vector3 d = _p[i + 1] - _p[i]; float len = d.magnitude;
-                if (len < 1e-4f) continue;
-                int hits = Physics.RaycastNonAlloc(_p[i], d / len, _hits, len, ~0, QueryTriggerInteraction.Ignore);
-                for (int h = 0; h < hits; h++)
-                {
-                    var c = _hits[h].collider;
-                    if (!c || !c.GetComponentInParent<Destruction.BrokenPanel>()) continue;
-                    if (adding) { if (_slipThrough.Add(c)) Wake(); }
-                    else still.Add(c);
-                }
-            }
-            if (!adding) _slipThrough.IntersectWith(still);
-        }
+        void OnEnable() { if (!All.Contains(this)) All.Add(this); }
         void OnDisable() { All.Remove(this); }
         void OnDestroy() { if (_mesh) Destroy(_mesh); }
 
@@ -160,8 +135,6 @@ namespace Backrooms.Interaction
             _lastA = a; _lastB = b;
 
             Taut(a, b);
-            if (_p != null && Time.time - _enabledAt < 5f && Time.frameCount % 10 == 0) FindCaught(true);
-            else if (_slipThrough.Count > 0 && Time.frameCount % 30 == 0) FindCaught(false);
             if (!_asleep)
             {
                 float dt = Mathf.Min(Time.deltaTime, 1f / 30f);
@@ -292,9 +265,19 @@ namespace Backrooms.Interaction
             }
         }
 
+        static readonly Dictionary<int, bool> s_brokenWall = new Dictionary<int, bool>();
+        /// <summary>A collider of a broken wall: the cord meets those walls as slabs (Destruction.WallSlabs), not their thin boards.</summary>
+        static bool BrokenWall(Collider c)
+        {
+            int id = c.GetInstanceID();
+            if (s_brokenWall.TryGetValue(id, out bool v)) return v;
+            if (s_brokenWall.Count > 4096) s_brokenWall.Clear();
+            return s_brokenWall[id] = c.GetComponentInParent<Destruction.BrokenPanel>();
+        }
+
         bool Ignored(Collider c)
         {
-            if (c.isTrigger || c.GetComponent<CharacterController>() || _slipThrough.Contains(c)) return true;
+            if (c.isTrigger || c.GetComponent<CharacterController>() || BrokenWall(c)) return true;
             var t = c.transform;
             return (endA && t.IsChildOf(endA.transform)) || (endB && t.IsChildOf(endB.transform));
         }
@@ -302,7 +285,51 @@ namespace Backrooms.Interaction
         const float Skin = 0.0015f;
 
         /// <summary>Moves a particle from a free position toward a wanted one, stopping just short of anything solid.</summary>
-        Vector3 Sweep(Vector3 from, Vector3 to, out RaycastHit hitInfo)
+        Vector3 Sweep(Vector3 from, Vector3 to, out RaycastHit hitInfo) => Sweep(from, to, out hitInfo, out _, out _);
+
+        /// <summary>As above; hit and normal also for a broken wall (met as a slab: hitInfo has no collider then).</summary>
+        Vector3 Sweep(Vector3 from, Vector3 to, out RaycastHit hitInfo, out bool hit, out Vector3 normal)
+        {
+            Vector3 got = SweepColliders(from, to, out hitInfo);
+            hit = hitInfo.collider; normal = hit ? hitInfo.normal : Vector3.zero;
+            if (SlabMarch(from, got, out var stop, out var n, out _)) { got = stop; hit = true; normal = n; }
+            return got;
+        }
+
+        /// <summary>
+        /// The first point along from-to (1 cm steps) where the cord would be inside a broken wall's solid part: stop is
+        /// the last free point, normal the way out (Destruction.WallSlabs). False if it meets none.
+        /// </summary>
+        bool SlabMarch(Vector3 from, Vector3 to, out Vector3 stop, out Vector3 normal, out Destruction.BrokenPanel wall)
+        {
+            stop = to; normal = Vector3.zero; wall = null;
+            var near = Destruction.WallSlabs.Near(from, to, radius);
+            if (near.Count == 0) return false;
+            float len = Vector3.Distance(from, to);
+            int steps = Mathf.Max(1, Mathf.CeilToInt(len / 0.01f));
+            float bestT = float.MaxValue;
+            foreach (var bp in near)
+            {
+                Vector3 prev = from;
+                for (int s = 1; s <= steps; s++)
+                {
+                    float t = s / (float)steps;
+                    if (t >= bestT) break;
+                    Vector3 q = Vector3.Lerp(from, to, t);
+                    if (Destruction.WallSlabs.Blocked(bp, q, radius))
+                    {
+                        bestT = t; wall = bp;
+                        normal = Destruction.WallSlabs.Normal(bp, prev, q, radius);
+                        stop = prev;
+                        break;
+                    }
+                    prev = q;
+                }
+            }
+            return wall != null;
+        }
+
+        Vector3 SweepColliders(Vector3 from, Vector3 to, out RaycastHit hitInfo)
         {
             hitInfo = default;
             Vector3 delta = to - from;
@@ -349,17 +376,83 @@ namespace Backrooms.Interaction
             for (int i = 1; i < _n - 1; i++)
             {
                 if ((_p[i] - _valid[i]).sqrMagnitude < 1e-12f) continue;
+                OutOfWalls(i);
                 Vector3 want = _p[i];
-                Vector3 got = Sweep(_valid[i], want, out var hit);
-                if (got != want && hit.collider)
+                Vector3 got = Sweep(_valid[i], want, out _, out bool hit, out Vector3 normal);
+                if (got != want && hit)
                 {
                     // Slide along the surface with what is left of the move.
-                    Vector3 rest = Vector3.ProjectOnPlane(want - got, hit.normal);
+                    Vector3 rest = Vector3.ProjectOnPlane(want - got, normal);
                     got = Sweep(got, got + rest, out _);
                     _prev[i] = Vector3.Lerp(_prev[i], got, 0.6f);            // friction
                 }
                 _p[i] = got; _valid[i] = got;
             }
+        }
+
+        /// <summary>
+        /// A particle that finds itself inside a broken wall's solid part (the wall broke round a cord, or a cord saved so by
+        /// an older version) is put back out, through the face nearer it.
+        /// </summary>
+        void OutOfWalls(int i)
+        {
+            var near = Destruction.WallSlabs.Near(_valid[i], _valid[i], radius);
+            foreach (var bp in near)
+            {
+                if (!Destruction.WallSlabs.Blocked(bp, _valid[i], radius)) continue;
+                var l = bp.Key.ToLocal(_valid[i], Destruction.WallDamage.Pitch);
+                float side = l.z >= 0f ? 1f : -1f;
+                l.z = side * (Destruction.WallSpec.T * 0.5f + radius + Skin * 2f);
+                _valid[i] = _p[i] = _prev[i] = bp.Key.ToWorld(l, Destruction.WallDamage.Pitch);
+            }
+        }
+
+        /// <summary>
+        /// A span that cuts through the solid part of a broken wall goes through the wall's nearest opening instead: the
+        /// particle nearer the wall moves into the hole (its neighbours on either side of the wall), or onto the hole's rim
+        /// on its own side (a neighbour already in the hole), so the cord comes to lie over the edge of the drywall and
+        /// through the hole. A wall with no opening near: the particle goes back to its own side. True if it moved one.
+        /// </summary>
+        bool ThroughWall(int i)
+        {
+            Vector3 a = _p[i], b = _p[i + 1];
+            if (!SlabMarch(a, b, out _, out _, out var bp)) return false;
+            var k = bp.Key; float pitch = Destruction.WallDamage.Pitch;
+            float h = Destruction.WallSpec.T * 0.5f + radius;
+            Vector3 la = k.ToLocal(a, pitch), lb = k.ToLocal(b, pitch);
+            bool aIn = Mathf.Abs(la.z) < h, bIn = Mathf.Abs(lb.z) < h;
+            bool Free(int j) => j > 0 && j < _n - 1;
+            int mover; Vector3 target;
+            if (aIn != bIn)
+            {
+                // One end in the hole, the other out, and solid wall between: the outer one onto the rim, at the open edge
+                // nearest where the span meets the wall's face (or, pinned, the inner one to there inside the hole).
+                int inner = aIn ? i : i + 1, outer = aIn ? i + 1 : i;
+                Vector3 li = aIn ? la : lb, lo = aIn ? lb : la;
+                float side = Mathf.Sign(lo.z);
+                Vector3 f = Vector3.Lerp(li, lo, Mathf.Clamp01((side * h - li.z) / (lo.z - li.z)));
+                if (!Destruction.WallSlabs.NearestOpen(bp.Panel, f.x, f.y, 0.5f, out var open)) return false;
+                mover = Free(outer) ? outer : inner;
+                if (!Free(mover)) return false;
+                // Just inside the face: it settles onto the drywall's edge and rests there.
+                target = k.ToWorld(new Vector3(open.x, open.y, mover == outer ? side * (h - 0.001f) : li.z), pitch);
+            }
+            else if (!aIn && Mathf.Sign(la.z) != Mathf.Sign(lb.z))
+            {
+                // Either side of the wall: the nearer free one into the wall's nearest opening (or back to its own side).
+                mover = !Free(i) ? i + 1 : !Free(i + 1) ? i : (Mathf.Abs(la.z) <= Mathf.Abs(lb.z) ? i : i + 1);
+                if (!Free(mover)) return false;
+                Vector3 lm = mover == i ? la : lb;
+                Vector3 cross = Vector3.Lerp(la, lb, Mathf.Clamp01(la.z / (la.z - lb.z)));
+                target = Destruction.WallSlabs.NearestOpen(bp.Panel, cross.x, cross.y, 0.5f, out var open)
+                    ? k.ToWorld(new Vector3(open.x, open.y, 0f), pitch)
+                    : k.ToWorld(new Vector3(lm.x, lm.y, Mathf.Sign(lm.z) * (h + Skin * 2f)), pitch);
+            }
+            else return false;                    // both in the hole (across a stud): left to the colliders' corner wrap
+            if ((target - _p[mover]).sqrMagnitude < 1e-8f) return false;
+            _p[mover] = _valid[mover] = target;
+            _prev[mover] = Vector3.Lerp(_prev[mover], target, 0.8f);
+            return true;
         }
 
         /// <summary>
@@ -376,6 +469,7 @@ namespace Backrooms.Interaction
                 float len = d.magnitude;
                 if (len < 1e-4f) continue;
                 Vector3 dir = d / len;
+                if (ThroughWall(i)) continue;
                 if (!FirstHit(a, dir, len, out var inHit)) continue;
                 bool outFound = FirstHit(b, -dir, len, out var outHit);
                 Vector3 n1 = inHit.normal, n2 = outFound ? outHit.normal : n1;

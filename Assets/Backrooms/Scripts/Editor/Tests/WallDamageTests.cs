@@ -276,6 +276,34 @@ namespace Backrooms.Tests
         }
 
         [Test]
+        public void RubbleLandingOnRubbleLiesOnTopOfIt()
+        {
+            Hit(0.6f, 1.3f, 1f);
+            var p = WallDamage.Find(Key);
+            p.rubble.Clear();
+            var at = Key.ToWorld(0.6f, 0.007f, -0.3f, WallDamage.Pitch);
+            for (int i = 0; i < 4; i++)
+                WallDamage.Settle(Key, new WallDamage.Rubble { part = Fallen.Part.Board, side = 0, index = 40 + i, position = at, rotation = Quaternion.identity });
+            for (int i = 0; i < p.rubble.Count; i++)
+                for (int j = 0; j < i; j++)
+                    Assert.Greater(Mathf.Abs(p.rubble[i].position.y - p.rubble[j].position.y), WallSpec.Board * 0.9f, "no two plates at one height (they flickered through each other)");
+        }
+
+        [Test]
+        public void ACordMeetsABrokenWallAsASlabWithItsHoles()
+        {
+            var p = WallDamage.Get(Key, true);
+            Assert.IsTrue(WallSlabs.Solid(p, 0.6f, 1.3f), "a whole wall is solid");
+            Hit(0.6f, 1.3f, 1f); Hit(0.6f, 1.3f, 1f);
+            Assert.IsFalse(WallSlabs.Solid(p, 0.6f, 1.3f), "open where both boards are gone");
+            Assert.IsTrue(WallSlabs.Solid(p, 0.6f, 0.3f), "solid below the hole");
+            Assert.IsTrue(WallSlabs.Solid(p, 0.03f, 1.3f), "the posts");
+            Assert.IsTrue(WallSlabs.NearestOpen(p, 0.6f, 0.3f, 1.5f, out var open), "an opening above");
+            Assert.IsFalse(WallSlabs.Solid(p, open.x, open.y));
+            Assert.Greater(open.y, 0.3f);
+        }
+
+        [Test]
         public void OnlyOrdinaryWallsBreak()
         {
             Assert.IsTrue(WallDamage.Breakable(Key));

@@ -182,6 +182,10 @@ down to about 6 %; (3) the indoor reflection probes re-captured every 4 s (six f
 because the lighting revision moves all the time (faulty tubes): a room is now captured when you enter it and again for
 a change of light at most every 30 s. Together: 47 % GPU, 117 W, 67 C, fans 53 %.
 
+SSAO is softer (intensity 0.3 over 0.1 m, was 0.6 over 0.2 m): close to a wall the ceiling line and corners darkened in
+a heavy band that seemed to load in as you came near (0.2 m is many pixels up close and a hairline far off). Measured
+against the reference footage with the stronger setting: floor corners are now a little lighter than that match.
+
 
 ## Look panel and the light it controls (2026-10-26)
 

@@ -114,7 +114,10 @@ spatialised voices still playing as the editor left Play Mode crashed Steam Audi
   their own synthesized steps (`ProceduralSounds.Body.cs`). Stopping from a walk scuffs the shoe. Crawling steps by
   distance (hands and knees on metal in the ducts).
 - **Body** (`Interaction/BodyPresence.cs`): breaths close to the mic once you are out of breath, clothes rustling with
-  turns, crouching and walking, a sleeve rubbing along a wall.
+  turns, crouching and walking, a sleeve rubbing along a wall. Breaths (2026-10-27, `ProceduralSounds.Breath`): air
+  through a half-open mouth, soft pink noise shaped by the mouth's resonances (out about 1 kHz, a warm "haaa" with a
+  low puff on the microphone; in about 1.9 kHz, quieter), a little flutter, in swelling and out trailing away; heard
+  from exertion 0.3, at most 0.16 (was white noise through 1.5 and 2.8 kHz filters, a hiss, up to 0.5).
 - **Mic**: grabbing, picking up, throwing and letting go knock the camcorder (handling thumps); running or whipping the
   camera round puts wind on the mic (low buffeting in gusts, in `CamcorderAudioChain`).
 - **The building at rest** (`Audio/BuildingSettling.cs`): every 10-35 s a ceiling tile shifts somewhere near you (over a

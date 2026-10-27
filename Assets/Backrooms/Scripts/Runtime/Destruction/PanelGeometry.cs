@@ -47,15 +47,18 @@ namespace Backrooms.Destruction
 
         /// <summary>
         /// The panel's shadow: plain pieces, frame, batts, baseboards (no cracks or jags). Each board piece left casts as a
-        /// block through the whole wall (as the chunks' walls do): light passes only where both boards are open, and a
-        /// 12.7 mm plate alone was thin enough for the shadow bias to eat, so light came through the pieces.
+        /// closed plate its own board's thickness. (A block through the whole wall, tried first against the shadow bias,
+        /// filled the cavity too: the inside of a broken wall sat in its own shadow, dark and grainy, and the light coming
+        /// in through a hole stopped at the hole. A leak under the foot of the wall is kept out by the light grid's test of
+        /// the wall's footprint instead.)
         /// </summary>
         public static void Shadow(PanelMesh mb, WallPanelModel m, WallPanelState st, float pitch)
         {
             var k = m.key;
-            float w0 = -T * 0.5f, w1 = T * 0.5f;
             for (int side = 0; side < 2; side++)
             {
+                float sgn = side == 0 ? -1f : 1f;
+                float w0 = side == 0 ? -T * 0.5f : T * 0.5f - B, w1 = side == 0 ? -T * 0.5f + B : T * 0.5f;
                 foreach (var f in m.boards[side].pieces)
                 {
                     if (st.removed[side][f.index]) continue;

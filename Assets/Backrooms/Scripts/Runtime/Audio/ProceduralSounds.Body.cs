@@ -101,23 +101,43 @@ namespace Backrooms.Audio
             return Clip("Brush", d, 1);
         }
 
-        /// <summary>A breath, close to the microphone: in (rising, through the nose and mouth) or out (falling, warmer).</summary>
+        /// <summary>
+        /// A breath, close to the microphone, through a half-open mouth: air rushing through the throat and mouth, so soft
+        /// noise shaped by the mouth's resonances (a "haaa" for out, a slightly brighter, quieter "hhh" for in) with a
+        /// little flutter, and on the way out a low puff of air on the microphone. In: swells and stops; out: starts
+        /// firmly and trails away. (Until 2026-10-27 it was white noise through high band-passes: a hiss.)
+        /// </summary>
         public static AudioClip Breath(bool inhale, int variant)
         {
             var rng = new System.Random(1700 + (inhale ? 0 : 50) + variant);
-            float len = inhale ? 0.75f : 0.9f;
+            float len = (inhale ? 0.95f : 1.25f) * (0.88f + 0.24f * (float)rng.NextDouble());
             int n = (int)(Rate * len);
             var d = new float[n];
-            var bp = Biquad.BandPass(inhale ? 1500f : 900f, 0.7f); var hp = Biquad.HighPass(inhale ? 2800f : 1800f);
-            var low = Biquad.LowPass(500f);
+            // The mouth's resonances (formants), a little different each breath.
+            float shift = 0.9f + 0.2f * (float)rng.NextDouble();
+            var f1 = Biquad.BandPass((inhale ? 480f : 560f) * shift, 1.4f);
+            var f2 = Biquad.BandPass((inhale ? 1650f : 1250f) * shift, 1.8f);
+            var f3 = Biquad.BandPass((inhale ? 2900f : 2400f) * shift, 2.4f);
+            var puff = Biquad.LowPass(160f);
+            var soft = Biquad.LowPass(inhale ? 4200f : 3200f);
+            float b0 = 0f, b1 = 0f, b2 = 0f;                                   // pink noise (Paul Kellet's filter)
+            float seed = (float)rng.NextDouble() * 100f;
             for (int i = 0; i < n; i++)
             {
                 float t = i / (float)n;
-                float env = inhale ? Mathf.Sin(Mathf.PI * Mathf.Pow(t, 0.6f)) : Mathf.Sin(Mathf.PI * Mathf.Pow(t, 1.4f));
-                float x = White(rng);
-                d[i] = (bp.Run(x) * 0.9f + hp.Run(x) * 0.35f + low.Run(x) * (inhale ? 0.1f : 0.35f)) * env;
+                float w = White(rng);
+                b0 = 0.99765f * b0 + w * 0.0990460f; b1 = 0.96300f * b1 + w * 0.2965164f; b2 = 0.57000f * b2 + w * 1.0526913f;
+                float pink = (b0 + b1 + b2 + w * 0.1848f) * 0.25f;
+                // In: a slow swell, cut off at the top. Out: a firm start, a long fall.
+                float env = inhale ? Mathf.Pow(Mathf.Sin(Mathf.PI * 0.5f * Mathf.Clamp01(t / 0.8f)), 1.5f) * Mathf.Clamp01((1f - t) / 0.12f)
+                                   : Mathf.Clamp01(t / 0.1f) * Mathf.Pow(1f - t, 1.6f);
+                float flutter = 0.85f + 0.15f * Mathf.PerlinNoise(t * len * 9f, seed);
+                float air = inhale ? f1.Run(pink) * 0.55f + f2.Run(pink) * 0.75f + f3.Run(pink) * 0.35f
+                                   : f1.Run(pink) * 1.0f + f2.Run(pink) * 0.55f + f3.Run(pink) * 0.18f;
+                float mic = inhale ? 0f : puff.Run(w) * 2.2f * Mathf.Clamp01((0.6f - t) / 0.6f);      // air on the microphone
+                d[i] = soft.Run(air + mic) * env * flutter;
             }
-            Normalize(d, 0.35f);
+            Normalize(d, inhale ? 0.18f : 0.24f);
             return Clip("Breath_" + (inhale ? "In" : "Out") + variant, d, 1);
         }
 

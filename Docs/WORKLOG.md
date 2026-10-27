@@ -15,6 +15,22 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-27 15:50  Claude Code  Cords through wall holes, rubble flicker, in-wall shadows, softer AO, breathing
+- Cords: `Destruction/WallSlabs.cs` (a broken wall as a slab the whole thickness: solid where a board, stud, track or
+  post is left; a cached 2 cm map for the nearest opening). `Cord` ignores broken walls' colliders and sweeps against the
+  slab (`SlabMarch`), routes a span through solid wall into the nearest opening or onto its rim (`ThroughWall`), puts a
+  particle found inside solid back out (`OutOfWalls`); the load-time slip-through workaround is gone. A box thrown
+  through a hole: the cord over the lower edge, nothing inside the wall; pulled back, it comes back out.
+- Rubble flicker: settling pieces are lifted onto overlapping rubble (`WallDamage.StackOn`, `Restack` on load); the
+  user's world had none level-overlapping after loading.
+- In-wall shadows: broken panels cast each piece as a plate its own board's thickness (the full-thickness blocks put the
+  cavity in its own shadow: dark and grainy inside the wall).
+- AO: intensity 0.3 over 0.1 m (was 0.6 / 0.2): the heavy ceiling-line band close up (SSAO, checked by toggling).
+- Breathing: `ProceduralSounds.Breath` rebuilt (formant-shaped pink noise, out ~1 kHz with a mic puff, in ~1.9 kHz);
+  `BodyPresence` from exertion 0.3 at most 0.16 (was 0.15 / 0.5).
+- Checked: EditMode 105/105; play on a copy of the user's World 2 in World 3 (erased after).
+- Open: cords lie through rubble (not solid); the breath is synthesised, not recorded.
+
 ## 2026-10-27 15:10  Claude Code  Floating wall debris, cord through holes, rubble tidy, a third less GPU
 - Floating bits: debris that came to rest wedged in its wall (in the cavity, on a hole's edge) stayed there as rubble
   (25 such pieces in one of the user's walls). `WallDamage.Lodged`: in the wall's thickness and off the floor; WallDebris

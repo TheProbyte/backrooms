@@ -65,6 +65,15 @@
 - Cords no longer pass through floors and walls: each particle sweeps from where it last was and slides along what it
   hits. A span that cuts through a corner puts its nearer particle on the corner's outside edge (where the two faces it
   went in and out of meet), so a cord wraps round door frames and wall ends instead of through them.
+- **Cords and broken walls** (2026-10-27, `Destruction/WallSlabs.cs`): a cord meets a broken wall as a slab the wall's
+  whole thickness, solid wherever a board, a stud, a track or a post is left and open where the wall is open right
+  through (not its thin board colliders: a 12 cm span straddled a board, was pushed back out of the face it went in by
+  until it slipped through, and was then loose in the wall). A span that cuts through solid wall goes through the nearest
+  opening: with its ends either side, the nearer free particle moves into the hole; with one in the hole, the outer one
+  goes onto the rim just inside the face and settles on the drywall's edge. A particle inside solid wall (the wall broke
+  round it, an older save) goes back out through the nearer face. Checked: a box thrown through a hole lands in the next
+  room with the cord over the hole's lower edge; pulled back, the cord comes back out through the hole.
+- Cords lie through rubble (it is drawn, not solid).
 - **Throwing through a noclip door**: a thrown (or falling) item that reaches the wall inside a noclip door's opening
   comes out of the other door, moving the same way (`NoclipTravel.ItemStep`). Items with a cord out stay on this side.
 - **Light switches**: click one (focus brackets show it) and the hand reaches out and flicks the toggle with a finger:
