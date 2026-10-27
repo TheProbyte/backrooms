@@ -224,6 +224,58 @@ namespace Backrooms.Tests
         }
 
         [Test]
+        public void RubbleWedgedInAWallFallsToTheFloor()
+        {
+            Hit(0.6f, 1.3f, 1f);
+            var p = WallDamage.Find(Key);
+            p.rubble.Clear();
+            // Settled in the cavity at chest height (as an older version could leave it), and one on the floor beside the wall.
+            var wedged = new WallDamage.Rubble { part = Fallen.Part.Board, side = 0, index = 5, position = Key.ToWorld(0.6f, 1.3f, 0f, WallDamage.Pitch), rotation = Quaternion.identity };
+            var floor = new WallDamage.Rubble { part = Fallen.Part.Board, side = 0, index = 6, position = Key.ToWorld(0.4f, 0.006f, -0.4f, WallDamage.Pitch), rotation = Quaternion.identity };
+            Assert.IsTrue(WallDamage.Lodged(Key, wedged.position)); Assert.IsFalse(WallDamage.Lodged(Key, floor.position));
+            p.rubble.Add(wedged); p.rubble.Add(floor);
+            Assert.IsTrue(WallDamage.DropLodged(p));
+            Assert.Less(p.rubble[0].position.y, 0.05f, "on the floor now");
+            Assert.Greater(Mathf.Abs(Key.ToLocal(p.rubble[0].position, WallDamage.Pitch).z), WallSpec.T * 0.5f, "out of the wall");
+            Assert.AreEqual(floor.position, p.rubble[1].position, "what lay on the floor stays");
+        }
+
+        [Test]
+        public void TidyingSweepsCrumbsAndKeepsTheBiggest()
+        {
+            Hit(0.6f, 1.3f, 1f);
+            var p = WallDamage.Find(Key); var board = p.model.boards[0];
+            p.rubble.Clear();
+            for (int i = 0; i < board.pieces.Count; i++)
+                p.rubble.Add(new WallDamage.Rubble { part = Fallen.Part.Board, side = 0, index = i, position = Vector3.zero, rotation = Quaternion.identity });
+            p.rubble.Add(new WallDamage.Rubble { part = Fallen.Part.Stud, index = 0, span = new Vector2(0.2f, 0.6f), position = Vector3.zero, rotation = Quaternion.identity });
+            WallDamage.Tidy(p);
+            Assert.LessOrEqual(p.rubble.Count, WallDamage.KeepRubble);
+            Assert.IsTrue(p.rubble.TrueForAll(r => r.part != Fallen.Part.Board || board.pieces[r.index].area >= WallDamage.CrumbArea), "no crumbs left");
+            Assert.IsTrue(p.rubble.Exists(r => r.part == Fallen.Part.Stud), "the stud's length stays");
+        }
+
+        [Test]
+        public void TheBoardsColliderFollowsThePiecesLeft()
+        {
+            var p = WallDamage.Get(Key, true);
+            var v = new System.Collections.Generic.List<Vector3>(); var t = new System.Collections.Generic.List<int>();
+            var origin = Key.Origin(WallDamage.Pitch);
+            PanelGeometry.BoardCollider(v, t, p.model, p.state, WallDamage.Pitch, origin);
+            int whole = t.Count;
+            Assert.Greater(whole, 0);
+            foreach (var x in v)
+            {
+                var l = Key.ToLocal(x + origin, WallDamage.Pitch);
+                Assert.LessOrEqual(Mathf.Abs(l.z), WallSpec.T * 0.5f + 1e-4f, "inside the wall's thickness");
+                Assert.GreaterOrEqual(Mathf.Abs(l.z), WallSpec.T * 0.5f - PanelGeometry.BoardColliderDepth - 1e-4f, "no deeper than the collider's depth");
+            }
+            Hit(0.6f, 1.3f, 1f); Hit(0.6f, 1.3f, 1f);
+            PanelGeometry.BoardCollider(v, t, p.model, p.state, WallDamage.Pitch, origin);
+            Assert.Less(t.Count, whole, "fewer pieces, less collider");
+        }
+
+        [Test]
         public void OnlyOrdinaryWallsBreak()
         {
             Assert.IsTrue(WallDamage.Breakable(Key));

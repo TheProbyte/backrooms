@@ -141,7 +141,10 @@ namespace Backrooms.Generation
             if (!enabledInMenu || _capturing != null || current == null || Time.unscaledTime < current.nextCapture) return;
             if (current.ready && current.revision == revision) return;
             current.captureId = current.probe.RenderProbe();
-            current.nextCapture = Time.unscaledTime + 4f; current.revision = revision;
+            // A new room is captured at once; the same room again for a change of its light at most every 30 s (2026-10-27:
+            // the lighting revision moves all the time, faulty tubes and the real-light set, and a capture every 4 s, six
+            // faces with full lighting and shadows, cost about a tenth of the graphics card for reflections on laminate).
+            current.nextCapture = Time.unscaledTime + 30f; current.revision = revision;
             if (current.captureId >= 0) _capturing = current;
         }
 

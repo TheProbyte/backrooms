@@ -80,7 +80,33 @@ namespace Backrooms.Destruction
             float age = Time.time - _born;
             if (transform.position.y < -40f) { Destroy(gameObject); return; }
             _still = _rb.linearVelocity.sqrMagnitude < 0.0025f && _rb.angularVelocity.sqrMagnitude < 0.05f ? _still + Time.fixedDeltaTime : 0f;
-            if (age > 0.6f && (_rb.IsSleeping() || _still > 0.6f) || age > 12f) Settle();
+            if (age > 0.6f && (_rb.IsSleeping() || _still > 0.6f) || age > 12f)
+            {
+                // Come to rest wedged in the wall (in the cavity, on the edge of a hole, against a stud): it would hang in
+                // the hole for good. Knocked out of the wall's plane, twice at most, then laid on the floor below.
+                if (WallDamage.Lodged(key, transform.position))
+                {
+                    if (_nudges < 2 && age < 12f) { Nudge(); return; }
+                    WallDamage.SettleOnFloor(key, part, side, index, span, transform.position);
+                    Destroy(gameObject);
+                    return;
+                }
+                Settle();
+            }
+        }
+
+        int _nudges;
+
+        void Nudge()
+        {
+            _nudges++;
+            var l = key.ToLocal(transform.position, WallDamage.Pitch);
+            float sgn = Mathf.Abs(l.z) > 0.005f ? Mathf.Sign(l.z) : (side == 0 ? -1f : 1f);
+            _rb.WakeUp();
+            _rb.linearVelocity = key.DirToWorld(new Vector3(0f, 0f, sgn)).normalized * 0.9f + Vector3.up * 0.3f;
+            _rb.angularVelocity = Random.insideUnitSphere * 5f;
+            _still = 0f;
+            _born = Time.time - 0.2f;
         }
 
         /// <summary>Comes to rest here: rubble from now on.</summary>

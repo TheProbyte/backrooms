@@ -345,6 +345,54 @@ namespace Backrooms.Destruction
 
         // ---------------- Colliders ----------------
 
+        /// <summary>How deep the boards' collider reaches from each face into the wall (m): more than a board, so a thin
+        /// cord or a falling piece cannot slip through it, and less than half the cavity.</summary>
+        public const float BoardColliderDepth = 0.03f;
+
+        /// <summary>
+        /// The boards' collider (a MeshCollider): every piece left, the shape it is drawn (its jagged outline), from the
+        /// board's face 3 cm into the wall. Before 2026-10-27 the boards were 5 cm cells merged into boxes, which stood
+        /// up to several centimetres off the drawn edges: a cord through a hole sank into the drywall or hung in the air,
+        /// and could slip through. Vertices relative to origin.
+        /// </summary>
+        public static void BoardCollider(List<Vector3> verts, List<int> tris, WallPanelModel m, WallPanelState st, float pitch, Vector3 origin)
+        {
+            verts.Clear(); tris.Clear();
+            var k = m.key;
+            void Tri(int a, int b, int c, Vector3 want)
+            {
+                if (Vector3.Dot(Vector3.Cross(verts[b] - verts[a], verts[c] - verts[a]), want) >= 0f) { tris.Add(a); tris.Add(b); tris.Add(c); }
+                else { tris.Add(a); tris.Add(c); tris.Add(b); }
+            }
+            for (int side = 0; side < 2; side++)
+            {
+                float sgn = side == 0 ? -1f : 1f, wo = sgn * T * 0.5f, wi = wo - sgn * BoardColliderDepth;
+                Vector3 nOut = k.Across * sgn;
+                foreach (var f in m.boards[side].pieces)
+                {
+                    if (st.removed[side][f.index]) continue;
+                    var o = f.outline; int n = o.Length, s0 = verts.Count;
+                    verts.Add(k.ToWorld(f.site.x, f.site.y, wo, pitch) - origin);
+                    verts.Add(k.ToWorld(f.site.x, f.site.y, wi, pitch) - origin);
+                    for (int i = 0; i < n; i++)
+                    {
+                        verts.Add(k.ToWorld(o[i].x, o[i].y, wo, pitch) - origin);
+                        verts.Add(k.ToWorld(o[i].x, o[i].y, wi, pitch) - origin);
+                    }
+                    for (int i = 0; i < n; i++)
+                    {
+                        int j = (i + 1) % n, a0 = s0 + 2 + 2 * i, a1 = a0 + 1, b0 = s0 + 2 + 2 * j, b1 = b0 + 1;
+                        Tri(s0, a0, b0, nOut);                 // the face
+                        Tri(s0 + 1, b1, a1, -nOut);            // the inner face
+                        Vector2 d = o[j] - o[i], e2 = new Vector2(d.y, -d.x);
+                        if (Vector2.Dot(e2, (o[i] + o[j]) * 0.5f - f.site) < 0f) e2 = -e2;
+                        var side2 = k.DirToWorld(new Vector3(e2.x, e2.y, 0f));
+                        Tri(a0, a1, b1, side2); Tri(a0, b1, b0, side2);
+                    }
+                }
+            }
+        }
+
         /// <summary>World boxes (centre, size) for what is left: each board's standing area in 5 cm cells merged into rectangles, studs, tracks, batts, boxes, baseboards.</summary>
         public static void Colliders(List<(Vector3 c, Vector3 s)> into, WallPanelModel m, WallPanelState st, float pitch)
         {
@@ -356,38 +404,9 @@ namespace Backrooms.Destruction
                 Vector3 lo = Vector3.Min(a, b), hi = Vector3.Max(a, b);
                 into.Add(((lo + hi) * 0.5f, hi - lo));
             }
-            const float cell = 0.05f;
-            int cols = Mathf.CeilToInt((WallSpec.U1 - WallSpec.U0) / cell), rows = Mathf.CeilToInt(m.height / cell);
-            float cw = (WallSpec.U1 - WallSpec.U0) / cols, rh = m.height / rows;
-            var solid = new bool[cols * rows];
-            var used = new bool[cols * rows];
             for (int side = 0; side < 2; side++)
             {
-                float sgn = side == 0 ? -1f : 1f, wo = sgn * T * 0.5f, wi = sgn * (T * 0.5f - B);
-                for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                {
-                    solid[r * cols + c] = st.BoardAt(m, side, new Vector2(WallSpec.U0 + (c + 0.5f) * cw, (r + 0.5f) * rh));
-                    used[r * cols + c] = false;
-                }
-                // Greedy rectangles: widest run first, then as many rows as share it.
-                for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                {
-                    if (!solid[r * cols + c] || used[r * cols + c]) continue;
-                    int c1 = c;
-                    while (c1 + 1 < cols && solid[r * cols + c1 + 1] && !used[r * cols + c1 + 1]) c1++;
-                    int r1 = r;
-                    while (r1 + 1 < rows)
-                    {
-                        bool ok = true;
-                        for (int x = c; x <= c1 && ok; x++) ok = solid[(r1 + 1) * cols + x] && !used[(r1 + 1) * cols + x];
-                        if (!ok) break;
-                        r1++;
-                    }
-                    for (int y = r; y <= r1; y++) for (int x = c; x <= c1; x++) used[y * cols + x] = true;
-                    Add(new Vector3(WallSpec.U0 + c * cw, r * rh, Mathf.Min(wo, wi)), new Vector3(WallSpec.U0 + (c1 + 1) * cw, (r1 + 1) * rh, Mathf.Max(wo, wi)));
-                }
+                float sgn = side == 0 ? -1f : 1f, wo = sgn * T * 0.5f;
                 for (int i = 0; i < WallPanelModel.BaseboardPieces; i++)
                     if (m.HasBaseboard(st, side, i))
                     {

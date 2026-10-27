@@ -15,6 +15,27 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-27 15:10  Claude Code  Floating wall debris, cord through holes, rubble tidy, a third less GPU
+- Floating bits: debris that came to rest wedged in its wall (in the cavity, on a hole's edge) stayed there as rubble
+  (25 such pieces in one of the user's walls). `WallDamage.Lodged`: in the wall's thickness and off the floor; WallDebris
+  nudges such a piece out twice, then `SettleOnFloor` lays it flat on the floor below (`FloorPose`); `DropLodged` does the
+  same for saved rubble on load and after every blow.
+- Cord: broken boards' colliders were 5 cm cells merged into boxes (one 0.5 x 1.05 m box at the foot of a wall), up to
+  centimetres off the drawn edge: `PanelGeometry.BoardCollider` builds one MeshCollider from the pieces' jagged outlines,
+  3 cm deep from each face (a dropped cord-sized sphere rests within 1.1 cm of the drawn edge). The user's saved cord was
+  caught in the cavity of a wall: `Cord` lets a cord slip out of broken-wall colliders it is caught in during its first
+  5 s (a loaded world), until it no longer crosses them.
+- Rubble tidy: crumbs (board pieces under 0.006 m2) and beyond 150 pieces the smallest are removed once a wall's rubble
+  has been out of sight 20 s (`WallDamage.Tidy`, `BrokenPanel`); one wall 210 -> 150 out of view.
+- GPU (RTX 4070, user's settings, 60 fps cap): 72 % / 158 W / fans 100 % -> 47 % / 117 W / 53 %. `GraphicsOptions.matchRecording`
+  (default on): with the camcorder picture on, draw at 1.35 x the recording's lines (536 -> 0.67 of 1080); SSAO at half
+  resolution (runtime, restored on disable); `RuntimeIndoorReflections` re-captures a room for a change of light at most
+  every 30 s (was 4 s, continually, as the lighting revision moves with faulty tubes).
+- Checked: EditMode 103/103 (wedged rubble falls, tidy keeps the biggest, the board collider follows the pieces). Play on
+  a copy of the user's World 2 in World 3 (erased after): no wedged rubble in any of its 10 walls, the hole from the
+  first screenshot clear, GPU as above, tidy out of view.
+- Open: the user's cord still lies across the foot of that wall until moved (it can now be pulled free).
+
 ## 2026-10-27 14:20  Claude Code  Walls and hammer from play-testing; F2 item tuning; frame cap; shader warmup gap
 - Light through holes: `LG_HoleOpenBox` (LightGridCommon.hlsl), the open share of a box on a holed wall (blocks weighted
   by cover, rows in four fixed samples, no loop); `LGrid_EmitterVisibleH` tests the panel's cone footprint on the wall

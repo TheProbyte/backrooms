@@ -19,6 +19,10 @@ Last updated 2026-10-27 (world version 13).
   cable behind the outlets and switches, the odd copper pipe (batts are off for now). Light from the real lights near you
   comes through a hole exactly (the broken pieces cast the shadows), grid light softly through the open share of its
   footprint; the chunk behind is drawn when you can see through; sound goes through. Saved with the world.
+- **Second round** (2026-10-27): debris wedged in a wall drops to the floor (no more floating bits); the boards' collider
+  is the shape of the pieces drawn (a cord through a hole rests on the edge); crumbs of rubble are tidied away out of
+  sight; the graphics card does about a third less (the 3D view drawn at the camcorder's resolution, AO at half
+  resolution, reflections re-captured less): 72 % -> 47 % at 60 fps.
 - **Fixed from play-testing** (2026-10-27): square patches of light opposite a hole; a lit band over doorways in dark
   rooms (the bounce blended across the header); the bounce shimmering in dark rooms (probes now settle); floating drywall
   chunks and batts; the lighting shader compiling mid-play (two crawl-hole view variants were missing from the warmup);

@@ -293,6 +293,7 @@ namespace Backrooms.Destruction
             if (r.broke)
             {
                 Drop(p, r);
+                DropLodged(p);                                            // rubble on an edge that just broke away
                 Refresh(p);
                 st.version++; Version++;
                 if (!wasTaken) TakeOver(k, p);
@@ -479,12 +480,7 @@ namespace Backrooms.Destruction
                     st.removed[side][i] = true;
                     var f = m.boards[side].pieces[i];
                     if (f.area < 0.0035f) continue;                                         // crumbled to dust
-                    Vector3 at = k.ToWorld(f.centroid.x, 0f, sgn * (WallSpec.T * 0.5f + dice.Range(0.08f, 0.45f)), Pitch);
-                    at.y = k.storey * Pitch + WallSpec.Board * 0.5f + dice.Range(0f, 0.004f);
-                    // Flat on the floor, face up or down, turned any way.
-                    var lie = Quaternion.AngleAxis(dice.Value < 0.5f ? 90f : -90f, k.Along) ;
-                    var turn = Quaternion.AngleAxis(dice.Range(0f, 360f), Vector3.up);
-                    p.rubble.Add(new Rubble { part = Fallen.Part.Board, side = side, index = i, position = at, rotation = turn * lie });
+                    p.rubble.Add(FloorPose(k, Fallen.Part.Board, side, i, Vector2.zero, f.centroid.x, sgn, dice.Value, dice.Value, dice.Value));
                 }
                 p.rubbleVersion++;
             }
@@ -550,6 +546,92 @@ namespace Backrooms.Destruction
         }
 
         // ---------------- Rubble ----------------
+
+        /// <summary>
+        /// A loose part lying flat on the floor at the foot of a wall, on one side of it (sgn), at u along it: out from the wall
+        /// by 8-45 cm (out01), face up or down (flip01), turned any way (yaw01).
+        /// </summary>
+        public static Rubble FloorPose(WallKey k, Fallen.Part part, int side, int index, Vector2 span, float u, float sgn, float out01, float flip01, float yaw01)
+        {
+            Quaternion lie; float lift;
+            switch (part)
+            {
+                case Fallen.Part.Stud: lie = Quaternion.AngleAxis(90f, k.Across); lift = 0.02f; break;          // a length of stud, on its side
+                case Fallen.Part.Baseboard: lie = Quaternion.AngleAxis(flip01 < 0.5f ? 90f : -90f, k.Along); lift = WallPanelModel.BaseboardDepth * 0.5f; break;
+                default: lie = Quaternion.AngleAxis(flip01 < 0.5f ? 90f : -90f, k.Along); lift = WallSpec.Board * 0.5f; break;
+            }
+            Vector3 at = k.ToWorld(Mathf.Clamp(u, 0.05f, WallSpec.C - 0.05f), 0f, sgn * (WallSpec.T * 0.5f + Mathf.Lerp(0.08f, 0.45f, out01)), Pitch);
+            at.y = k.storey * Pitch + lift + 0.002f;
+            return new Rubble { part = part, side = side, index = index, span = span, position = at, rotation = Quaternion.AngleAxis(yaw01 * 360f, Vector3.up) * lie };
+        }
+
+        /// <summary>
+        /// Is a point wedged in a wall: inside its thickness (or just off it) and off the floor? Debris that comes to rest
+        /// there (in the cavity, on the edge of a hole, against a stud) would hang in the hole for good: it is dropped to
+        /// the floor instead (WallDebris, <see cref="DropLodged"/>).
+        /// </summary>
+        public static bool Lodged(WallKey k, Vector3 world)
+        {
+            var l = k.ToLocal(world, Pitch);
+            return l.y > 0.1f && Mathf.Abs(l.z) < WallSpec.T * 0.5f + 0.04f && l.x > -0.1f && l.x < WallSpec.C + 0.1f;
+        }
+
+        /// <summary>A part that has come to rest wedged in its wall: on the floor below instead, on the side it is nearer.</summary>
+        public static void SettleOnFloor(WallKey k, Fallen.Part part, int side, int index, Vector2 span, Vector3 world)
+        {
+            var l = k.ToLocal(world, Pitch);
+            float sgn = Mathf.Abs(l.z) > 0.005f ? Mathf.Sign(l.z) : (side == 0 ? -1f : 1f);
+            Settle(k, FloorPose(k, part, side, index, span, l.x, sgn, UnityEngine.Random.value * 0.6f, UnityEngine.Random.value, UnityEngine.Random.value));
+        }
+
+        /// <summary>Rubble wedged in its wall (saved so by an older version, or left on an edge that has since broken away) falls to the floor.</summary>
+        public static bool DropLodged(Panel p)
+        {
+            var k = p.model.key; bool any = false;
+            for (int i = 0; i < p.rubble.Count; i++)
+            {
+                var r = p.rubble[i];
+                if (!Lodged(k, r.position)) continue;
+                var l = k.ToLocal(r.position, Pitch);
+                float sgn = Mathf.Abs(l.z) > 0.005f ? Mathf.Sign(l.z) : (r.side == 0 ? -1f : 1f);
+                var dice = new Dice(k.Seed(WorldSeed) * 31 + i);
+                p.rubble[i] = FloorPose(k, r.part, r.side, r.index, r.span, l.x, sgn, dice.Value * 0.6f, dice.Value, dice.Value);
+                any = true;
+            }
+            if (any) p.rubbleVersion++;
+            return any;
+        }
+
+        /// <summary>Board pieces smaller than this (m², about 7 x 8 cm) are crumbs: tidied away out of view (<see cref="Tidy"/>).</summary>
+        public const float CrumbArea = 0.006f;
+        /// <summary>Most pieces of rubble a wall keeps once tidied (the biggest).</summary>
+        public const int KeepRubble = 150;
+        static readonly List<(float area, int i)> s_bySize = new List<(float, int)>();
+
+        /// <summary>
+        /// Sweeps a wall's rubble while it is out of sight (BrokenPanel, after a while unseen): its crumbs go, and beyond
+        /// <see cref="KeepRubble"/> pieces the smallest; the plates, studs and baseboards that show what happened stay.
+        /// Rubble costs little to draw (one mesh a wall); this keeps the floors, the saves and the rubble meshes from growing.
+        /// </summary>
+        public static bool Tidy(Panel p)
+        {
+            var m = p.model; int before = p.rubble.Count;
+            float Area(Rubble r) => r.part == Fallen.Part.Board && Fits(m, r) ? m.boards[r.side].pieces[r.index].area : 1f;
+            p.rubble.RemoveAll(r => Area(r) < CrumbArea);
+            if (p.rubble.Count > KeepRubble)
+            {
+                s_bySize.Clear();
+                for (int i = 0; i < p.rubble.Count; i++) s_bySize.Add((Area(p.rubble[i]), i));
+                s_bySize.Sort((a, b) => a.area.CompareTo(b.area));
+                var drop = new HashSet<int>();
+                for (int i = 0; i < p.rubble.Count - KeepRubble; i++) drop.Add(s_bySize[i].i);
+                int at = 0;
+                p.rubble.RemoveAll(r => drop.Contains(at++));
+            }
+            if (p.rubble.Count == before) return false;
+            p.rubbleVersion++;
+            return true;
+        }
 
         public static void Settle(WallKey k, Rubble r)
         {
@@ -622,6 +704,7 @@ namespace Backrooms.Destruction
                     foreach (var rb in d.rubble)
                         if (Fits(p.model, rb)) p.rubble.Add(rb);       // not batts (off for now), nor parts the wall no longer has
                 SettleLoose(p);
+                DropLodged(p);
                 Refresh(p);
                 st.version++;
                 taken[k] = p.model.height;

@@ -63,9 +63,17 @@ Each 1.2 m wall panel (`Destruction/WallPanel.cs`, all from the world seed and t
 - Everything that comes out falls as debris (`WallDebris.cs`: light bodies that do not trip the player, at most 70 at
   once); bits under about 6 x 6 cm crumble into crumbs and dust. A board piece always leaves the board's plane (at least
   0.45 m/s out of it, more for a harder blow; 0.3-0.6 m/s for one that drops) and tips over at the top as it goes:
-  dropping straight down it could come to rest standing on the edge of the hole below. Pieces that fall into the wall
-  can still lodge against a stud there. Debris that comes to rest becomes rubble: its pose is
-  kept with its wall (and saved), drawn as one mesh with the wall.
+  dropping straight down it could come to rest standing on the edge of the hole below. A piece that comes to rest
+  wedged in the wall (inside its thickness and off the floor: in the cavity, on the edge of a hole) is knocked out of
+  the wall's plane, twice at most, then laid flat on the floor below (`WallDamage.Lodged`, `SettleOnFloor`); rubble
+  wedged so (an older save's, or on an edge that breaks away later) falls the same way (`DropLodged`, on loading and
+  after every blow). Debris that comes to rest becomes rubble: its pose is kept with its wall (and saved), drawn as one
+  mesh with the wall.
+- **Does it go away?** Rubble is one mesh a wall, which costs little to draw, so it stays as the evidence of what you did.
+  But once a wall's rubble has been out of sight for 20 s, its crumbs (board pieces under about 7 x 8 cm) are swept
+  away, and beyond 150 pieces the smallest go (`WallDamage.Tidy`, `BrokenPanel.TidyAfter`): never while you are
+  looking. The plates, stud lengths and baseboards stay. Falling debris is at most 70 bodies at once; bits under
+  6 x 6 cm crumble to dust as they fall.
 - Dust: a cloud of soft puffs lit by what is behind them (`Resources/Shaders/Dust.shader`, the light of the camera's
   opaque copy) and crumbs that bounce on the floor.
 - Paint, chalk and tape on a piece that is gone go with it (`SprayPaint.Erase`, `Marks.Erase`). An outlet or switch plate
@@ -81,8 +89,12 @@ Each 1.2 m wall panel (`Destruction/WallPanel.cs`, all from the world seed and t
 - `BrokenPanel.cs` draws what is left (`PanelGeometry.cs`): the board pieces with the wall's own texture mapping (the
   pattern runs on unbroken across cracks), core edges only where a neighbour is gone or loose, the frame, batts, boxes,
   cable, pipe; a separate shadow caster (each piece left as a block through the whole wall thickness, as the chunks'
-  walls cast: a 12.7 mm plate alone is thin enough for the shadow bias to eat); colliders (each board in 5 cm cells merged
-  into rectangles, studs, tracks, boxes); and the rubble. It exists while a chunk on either side is loaded (`WallBreaker`).
+  walls cast: a 12.7 mm plate alone is thin enough for the shadow bias to eat); colliders: the boards as one mesh
+  collider the shape of the pieces drawn (their jagged outlines, from each face 3 cm into the wall,
+  `PanelGeometry.BoardCollider`; 5 cm cells merged into boxes stood up to several centimetres off the drawn edges, so a
+  cord through a hole sank into the drywall or hung in the air and could slip through), boxes for the studs, tracks and
+  electrical boxes; and the rubble. A cord saved caught in a broken wall may slip out of it for as long as it still runs
+  through it (`Cord`, only for walls it is caught in when a world loads). It exists while a chunk on either side is loaded (`WallBreaker`).
 
 ## Light, sight and sound through holes
 - **Light grid** (`LightGridMath.Encode`, `LightGrid.Holes.cs`, `LightGridCommon.hlsl`): a panel with any piece gone is

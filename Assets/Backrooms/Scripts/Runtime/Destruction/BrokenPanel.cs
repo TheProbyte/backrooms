@@ -24,6 +24,13 @@ namespace Backrooms.Destruction
         float _rubbleDue;
         static PanelMesh s_mb, s_part;
         static readonly List<(Vector3 c, Vector3 s)> s_boxes = new List<(Vector3, Vector3)>();
+        static readonly List<Vector3> s_cv = new List<Vector3>();
+        static readonly List<int> s_ct = new List<int>();
+        Mesh _boardMesh;
+        MeshCollider _boardCollider;
+        float _unseenSince, _nextTidy;
+        /// <summary>Seconds the rubble must have been out of sight before its crumbs are tidied away (WallDamage.Tidy).</summary>
+        public const float TidyAfter = 20f;
         Material[] _slots, _shadowSlots;
 
         public static BrokenPanel Spawn(WallKey key, WallDamage.Panel p, Transform parent)
@@ -73,6 +80,7 @@ namespace Backrooms.Destruction
             if (_viewMesh) Destroy(_viewMesh);
             if (_shadowMesh) Destroy(_shadowMesh);
             if (_rubbleMesh) Destroy(_rubbleMesh);
+            if (_boardMesh) Destroy(_boardMesh);
         }
 
         void LateUpdate()
@@ -80,6 +88,9 @@ namespace Backrooms.Destruction
             // Scripts reloaded in Play Mode (the registry is gone): this copy is stale; the wall is made again as its chunk loads.
             if (Panel == null) { Destroy(gameObject); return; }
             if (Panel.state.version != _built) Rebuild();
+            // Out of sight a while: the crumbs are swept away (never where you are looking).
+            if (_rubbleR.isVisible || Panel.rubble.Count == 0) _unseenSince = Time.time;
+            else if (Time.time - _unseenSince > TidyAfter && Time.time > _nextTidy) { _nextTidy = Time.time + 10f; WallDamage.Tidy(Panel); }
             if (Panel.rubbleVersion != _rubbleBuilt && Time.time >= _rubbleDue) { _rubbleDue = Time.time + 0.25f; RebuildRubble(); }
         }
 
@@ -111,6 +122,16 @@ namespace Backrooms.Destruction
                 b.center = s_boxes[i].c - origin; b.size = s_boxes[i].s;
             }
             for (; i < _boxes.Count; i++) if (_boxes[i]) _boxes[i].enabled = false;
+
+            // The boards: one mesh collider the shape of the pieces left.
+            PanelGeometry.BoardCollider(s_cv, s_ct, Panel.model, Panel.state, pitch, origin);
+            if (!_boardMesh) _boardMesh = new Mesh { name = "BrokenWallCollider", hideFlags = HideFlags.DontSave, indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+            _boardMesh.Clear();
+            _boardMesh.SetVertices(s_cv); _boardMesh.SetTriangles(s_ct, 0, true);
+            if (!_boardCollider) _boardCollider = _cols.AddComponent<MeshCollider>();
+            _boardCollider.sharedMesh = null;                                  // recooked with what is left
+            _boardCollider.sharedMesh = s_ct.Count > 0 ? _boardMesh : null;
+            _boardCollider.enabled = s_ct.Count > 0;
         }
 
         /// <summary>Everything that came to rest from this wall, as one mesh.</summary>

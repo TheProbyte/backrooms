@@ -90,7 +90,32 @@ namespace Backrooms.Interaction
             Wake();
         }
 
-        void OnEnable() { if (!All.Contains(this)) All.Add(this); }
+        void OnEnable() { if (!All.Contains(this)) All.Add(this); _enabledAt = Time.time; }
+
+        // A cord saved running through a broken wall (an older version's coarse colliders let it slip in) is caught there:
+        // it may slip out of that wall, and only that, for as long as it still runs through it. Looked for in the first
+        // seconds after it appears (a loaded world), never later: a cord being laid stays out of walls.
+        readonly HashSet<Collider> _slipThrough = new HashSet<Collider>();
+        float _enabledAt;
+
+        void FindCaught(bool adding)
+        {
+            var still = adding ? null : new HashSet<Collider>();
+            for (int i = 0; i < _n - 1; i++)
+            {
+                Vector3 d = _p[i + 1] - _p[i]; float len = d.magnitude;
+                if (len < 1e-4f) continue;
+                int hits = Physics.RaycastNonAlloc(_p[i], d / len, _hits, len, ~0, QueryTriggerInteraction.Ignore);
+                for (int h = 0; h < hits; h++)
+                {
+                    var c = _hits[h].collider;
+                    if (!c || !c.GetComponentInParent<Destruction.BrokenPanel>()) continue;
+                    if (adding) { if (_slipThrough.Add(c)) Wake(); }
+                    else still.Add(c);
+                }
+            }
+            if (!adding) _slipThrough.IntersectWith(still);
+        }
         void OnDisable() { All.Remove(this); }
         void OnDestroy() { if (_mesh) Destroy(_mesh); }
 
@@ -135,6 +160,8 @@ namespace Backrooms.Interaction
             _lastA = a; _lastB = b;
 
             Taut(a, b);
+            if (_p != null && Time.time - _enabledAt < 5f && Time.frameCount % 10 == 0) FindCaught(true);
+            else if (_slipThrough.Count > 0 && Time.frameCount % 30 == 0) FindCaught(false);
             if (!_asleep)
             {
                 float dt = Mathf.Min(Time.deltaTime, 1f / 30f);
@@ -267,7 +294,7 @@ namespace Backrooms.Interaction
 
         bool Ignored(Collider c)
         {
-            if (c.isTrigger || c.GetComponent<CharacterController>()) return true;
+            if (c.isTrigger || c.GetComponent<CharacterController>() || _slipThrough.Contains(c)) return true;
             var t = c.transform;
             return (endA && t.IsChildOf(endA.transform)) || (endB && t.IsChildOf(endB.transform));
         }

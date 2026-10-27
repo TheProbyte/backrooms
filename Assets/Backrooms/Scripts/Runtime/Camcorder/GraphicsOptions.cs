@@ -17,6 +17,7 @@ namespace Backrooms.Camcorder
         public bool vSync = false;
         public int frameCap = 60;             // frames a second at most (0 = unlimited); with vsync, every Nth refresh nearest it
         public float renderScale = 1f;
+        public bool matchRecording = true;    // camcorder look on: draw at about 1.35 x the recording's lines (no finer than renderScale)
         public int shadowLights = 16;         // nearest lights that cast shadows (the biggest cost: each redraws the geometry around it)
         public float shadowDistance = 18f;    // shadows fade out smoothly toward this distance
         public int shadowResolution = 1;      // 0 low, 1 medium, 2 high
@@ -211,6 +212,7 @@ namespace Backrooms.Camcorder
         FixtureLightManager _lights;
         int _appliedGrid = -1;
         Camera _cam;
+        CamcorderRig _rig;
         float _origScale = -1f;
         float _baseTube, _baseLamp, _baseTubeRange, _baseLampRange;
         Color _baseTubeColour, _baseLampColour, _baseStripColour;
@@ -255,19 +257,23 @@ namespace Backrooms.Camcorder
         // blocker is black, while here it is usually a lit wall or ceiling reflecting its own light, and the traced bounce
         // already covers occlusion at room scale; so it is kept to a tight 0.2 m at a little over half strength: the soft
         // darkening where floors meet walls. Set at runtime (the renderer asset is not edited); restored on disable.
+        // At half resolution (2026-10-27): at full 1080p it took about a fifth of the graphics card (12 samples and a
+        // bilateral blur over every pixel) for a soft 0.2 m darkening the camcorder records at 480 lines anyway.
         const float AOIntensity = 0.6f, AODirect = 0f, AORadius = 0.2f;
-        readonly System.Collections.Generic.List<(object settings, float intensity, float direct, float radius)> _aoOrig =
-            new System.Collections.Generic.List<(object, float, float, float)>();
+        const bool AOHalfRes = true;
+        readonly System.Collections.Generic.List<(object settings, float intensity, float direct, float radius, bool half)> _aoOrig =
+            new System.Collections.Generic.List<(object, float, float, float, bool)>();
         void PhysicalAO(ScriptableRendererFeature feat, bool apply)
         {
             const System.Reflection.BindingFlags bf = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
             var st = feat.GetType().GetField("m_Settings", bf)?.GetValue(feat);
             if (st == null) return;
             var t = st.GetType();
-            System.Reflection.FieldInfo fi = t.GetField("Intensity", bf), fd = t.GetField("DirectLightingStrength", bf), fr = t.GetField("Radius", bf);
+            System.Reflection.FieldInfo fi = t.GetField("Intensity", bf), fd = t.GetField("DirectLightingStrength", bf), fr = t.GetField("Radius", bf), fh = t.GetField("Downsample", bf);
             if (fi == null || fd == null || fr == null) return;
-            _aoOrig.Add((st, (float)fi.GetValue(st), (float)fd.GetValue(st), (float)fr.GetValue(st)));
+            _aoOrig.Add((st, (float)fi.GetValue(st), (float)fd.GetValue(st), (float)fr.GetValue(st), fh != null && (bool)fh.GetValue(st)));
             fi.SetValue(st, AOIntensity); fd.SetValue(st, AODirect); fr.SetValue(st, AORadius);
+            fh?.SetValue(st, AOHalfRes);
         }
 
         void OnDisable()
@@ -276,11 +282,12 @@ namespace Backrooms.Camcorder
             var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             if (urp && _origScale > 0f) urp.renderScale = _origScale;
             foreach (var s in _ssao) if (s.f) s.f.SetActive(s.orig);
-            foreach (var (st, i, d, r) in _aoOrig)
+            foreach (var (st, i, d, r, h) in _aoOrig)
             {
                 const System.Reflection.BindingFlags bf = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
                 var t = st.GetType();
                 t.GetField("Intensity", bf).SetValue(st, i); t.GetField("DirectLightingStrength", bf).SetValue(st, d); t.GetField("Radius", bf).SetValue(st, r);
+                t.GetField("Downsample", bf)?.SetValue(st, h);
             }
             _aoOrig.Clear();
             if (Instance == this) Instance = null;
@@ -306,6 +313,15 @@ namespace Backrooms.Camcorder
 
             var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             float scale = Mathf.Clamp(o.renderScale, 0.5f, 1.5f);
+            // The camcorder records at its own lines (480-540) and processes the picture at that size: drawing the 3D
+            // view at the full window (1080 lines) shaded 4-5 times the pixels it keeps. At 1.35 x the recording it looks
+            // the same through the camcorder and the graphics card does about a third less (2026-10-27: 67 % -> 46 %).
+            if (o.matchRecording)
+            {
+                if (!_rig) _rig = FindAnyObjectByType<CamcorderRig>();
+                if (_rig && _rig.Settings != null && _rig.Settings.camcorderLook && Screen.height > 0)
+                    scale = Mathf.Clamp(_rig.Settings.videoLines * 1.35f / Screen.height, 0.5f, scale);
+            }
             if (urp && Mathf.Abs(urp.renderScale - scale) > 0.001f) urp.renderScale = scale;
             foreach (var s in _ssao) if (s.f && s.f.isActive != o.ambientOcclusion) s.f.SetActive(o.ambientOcclusion);
 

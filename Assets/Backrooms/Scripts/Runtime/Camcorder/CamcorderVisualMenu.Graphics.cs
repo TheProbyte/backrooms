@@ -34,6 +34,8 @@ namespace Backrooms.Camcorder
                 0f, 240f, "0", " fps", () => O().frameCap, v => { O().frameCap = Mathf.RoundToInt(v); O().Save(); }, true);
             Slider("Render scale", "Resolution the 3D view is drawn at, relative to the window. Below 1 is faster and softer (the camcorder look hides it well).",
                 0.5f, 1.5f, "0.00", "x", () => O().renderScale, v => { O().renderScale = v; O().Save(); });
+            Toggle("Match the recording", "With the camcorder picture on, draws the 3D view at about 1.35 times the recording's lines (720 for 536) instead of the full window: it looks the same through the camcorder, and the graphics card does about a third less work (quieter fans). Render scale above stays the most it draws.",
+                () => O().matchRecording, v => { O().matchRecording = v; O().Save(); });
             Toggle("Ambient occlusion", "Soft contact shadows in corners and under furniture (screen-space).",
                 () => O().ambientOcclusion, v => { O().ambientOcclusion = v; O().Save(); });
             Toggle("Anti-aliasing (SMAA)", "Smooths jagged edges.",

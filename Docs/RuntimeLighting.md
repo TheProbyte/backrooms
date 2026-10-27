@@ -173,6 +173,15 @@ limit move to 60 once). With vsync on a 240 Hz display there was no limit at all
 could (about 146 W, fans loud) for frames nobody sees. With vsync, a build syncs to every Nth refresh nearest the cap
 (240 Hz and 60: every 4th); the editor holds the cap with the frame-rate limit.
 
+Measured again at 60 fps (RTX 4070, 1080p, the user's settings: 24 shadowed lights, high shadows): 72 % GPU, 158 W, fans
+at 100 %. Most of it was pixels: (1) the 3D view drew the full 1080 lines while the camcorder records and processes
+480-540: with the camcorder picture on it now draws at 1.35 x the recording's lines (F5 > DISPLAY > Match the recording,
+on by default; render scale stays the most it draws): 67 % -> 46 %; (2) SSAO at full resolution with 12 samples and a
+bilateral blur: now at half resolution (set at runtime, `GraphicsController.PhysicalAO`), about a fifth of the card
+down to about 6 %; (3) the indoor reflection probes re-captured every 4 s (six faces with full lighting and shadows)
+because the lighting revision moves all the time (faulty tubes): a room is now captured when you enter it and again for
+a change of light at most every 30 s. Together: 47 % GPU, 117 W, 67 C, fans 53 %.
+
 
 ## Look panel and the light it controls (2026-10-26)
 
