@@ -19,6 +19,8 @@ namespace Backrooms.Generation
             public float angle;           // degrees open as built
             public uint mask;             // both rooms' light layers
             public string key;
+            public DoorEdges.Edge edge;   // the doorway in world cells (shut, it is a wall to light and sound)
+            public int roomFront, roomBack; // rooms on the +z (swing) side and the other side (this chunk's indices)
         }
 
         readonly List<DoorSpec> _doors = new List<DoorSpec>();
@@ -65,11 +67,20 @@ namespace Backrooms.Generation
                     // Model +z toward room B (+x or +z of the edge) or room A.
                     float yaw = vertical ? (toB ? 90f : -90f) : (toB ? 0f : 180f);
                     var ra = _L.RoomAt(ax, az); var rb = _L.RoomAt(bx, bz);
+                    int gLine = vertical ? _L.coord.x * n + line : _L.coord.y * n + line;
+                    int gAlong = vertical ? _L.coord.y * n + along : _L.coord.x * n + along;
                     _doors.Add(new DoorSpec
                     {
                         position = pos, yaw = yaw, angle = angle,
                         mask = LayerBit(ra.color) | LayerBit(rb.color),
                         key = $"{_L.coord.x},{_L.storey},{_L.coord.y},{(vertical ? 1 : 0)},{line},{along}",
+                        edge = new DoorEdges.Edge
+                        {
+                            vertical = vertical, line = gLine, along = gAlong, storey = _L.storey,
+                            chunk = new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), centre = _origin + pos + Vector3.up * 1.05f,
+                        },
+                        roomFront = toB ? _L.roomOf[bx, bz] : _L.roomOf[ax, az],
+                        roomBack = toB ? _L.roomOf[ax, az] : _L.roomOf[bx, bz],
                     });
                 }
             }
@@ -85,7 +96,7 @@ namespace Backrooms.Generation
                 go.transform.localRotation = Quaternion.Euler(0f, d.yaw, 0f);
                 var model = DoorModels.Make(go.transform, d.mask);
                 if (!model) { Object.Destroy(go); continue; }
-                go.AddComponent<Interaction.Door>().Init(model, d.angle, d.key);
+                go.AddComponent<Interaction.Door>().Init(model, d.angle, d.key, d.edge, d.roomFront, d.roomBack);
             }
         }
     }

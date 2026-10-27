@@ -74,6 +74,21 @@ namespace Backrooms.Generation
         public float powerFlickerTime = 1.1f;
 
         public int ActiveLights { get; private set; }
+        /// <summary>
+        /// The building's supply, 1 normally: every so often it sags a few percent for a second or two (the nearby lights
+        /// dim together and the hum drops and slurs with them), as old wiring does under load.
+        /// </summary>
+        public float Mains { get; private set; } = 1f;
+        [Tooltip("How deep the building's occasional brownouts go (0 = never).")]
+        [Range(0f, 0.2f)] public float brownoutDepth = 0.07f;
+
+        void UpdateMains(float now)
+        {
+            float n = Mathf.PerlinNoise(now * 0.045f, 7.3f);
+            float sag = Mathf.Clamp01((n - 0.74f) / 0.14f);
+            float quiver = 1f - 0.25f * Mathf.PerlinNoise(now * 9f, 1.7f) * sag;
+            Mains = 1f - brownoutDepth * sag * quiver;
+        }
         /// <summary>Smoothed CPU time of LateUpdate (both modes), for comparisons.</summary>
         public float LastUpdateMs { get; private set; }
         readonly System.Diagnostics.Stopwatch _timer = new System.Diagnostics.Stopwatch();
@@ -269,6 +284,7 @@ namespace Backrooms.Generation
             Vector3 eye = viewer.position;
             float now = Time.time;
             _eye = eye;
+            UpdateMains(now);
 
             ApplyMode();
             if (UseGrid)
@@ -492,7 +508,7 @@ namespace Backrooms.Generation
                 float extra = s.src.ceiling - OfficeBiome.CeilingHeight;
                 float boost = s.src.dome || s.src.strip ? 1f + extra * domeHeightBoost : 1f;
                 if (s.src.dome) boost *= 1.6f;                // domes are spaced wider than troffers
-                float intensity = tubeIntensity * k * boost;
+                float intensity = tubeIntensity * k * boost * Mains;
                 float range = s.src.dome || s.src.strip ? tubeRange + extra * 1.3f : tubeRange;
                 // Domes light the whole hemisphere: a near-180 cone with a wide soft falloff, so no
                 // cone edge is drawn across tall walls. Strips are a little narrower.
@@ -631,6 +647,23 @@ namespace Backrooms.Generation
                 l.range = 4.5f;
                 l.GetUniversalAdditionalLightData().renderingLayers = dw.layer & ~1u;
             }
+        }
+
+        /// <summary>
+        /// How lit a room of a chunk is, 0..1, from its ceiling lights' power (switched off, faulty, powering down all
+        /// count): what shows under a shut door from that room.
+        /// </summary>
+        public float RoomLight(Vector3Int chunk, int room, float now)
+        {
+            if (room < 0 || !_chunks.TryGetValue(chunk, out var cp)) return 0f;
+            float sum = 0f;
+            for (int i = 0; i < cp.lights.Count; i++)
+            {
+                var l = cp.lights[i];
+                if (l.room != room || l.isLamp) continue;
+                sum += PowerLevel(l, now);
+            }
+            return 1f - Mathf.Exp(-sum * 0.9f);
         }
 
         // ---------------- Flicker ----------------

@@ -44,6 +44,9 @@ namespace Backrooms.Audio
 
         // ---- Live inputs from gameplay ----
         [System.NonSerialized] public float handlingMotion;   // 0..1, from walking speed
+        /// <summary>0..1: air rushing past the microphone (running, a fast turn): low buffeting rumble in gusts.</summary>
+        [System.NonSerialized] public float wind;
+        float _wind, _windG, _w1, _w2, _gust;
         /// <summary>0..1: the recording breaking up (a noclip door): the sound cuts out in bursts and crackles.</summary>
         [System.NonSerialized] public float dropout;
         float _drop, _holdV;
@@ -160,6 +163,15 @@ namespace Backrooms.Audio
                     _thumpT += dt;
                 }
                 hand *= _handLevel;
+                // Wind on the mic: low-passed noise (two poles, ~100 Hz) in slow gusts.
+                _wind += (Mathf.Clamp01(wind) - _wind) * (sk * 0.15f);
+                if (_wind > 0.001f)
+                {
+                    _gust += (Rand() * 0.5f + 0.5f - _gust) * (dt * 2.5f);
+                    float wn = Rand();
+                    _w1 += (wn - _w1) * (rumK * 1.2f); _w2 += (_w1 - _w2) * (rumK * 1.2f);
+                    hand += _w2 * 0.09f * _wind * (0.4f + _gust);
+                }
                 l += hand; r += hand;
 
                 // Coloration: high-pass then low-pass (transposed direct form II).

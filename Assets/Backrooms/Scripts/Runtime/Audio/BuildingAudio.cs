@@ -243,14 +243,14 @@ namespace Backrooms.Audio
             var p = Field.Query(source);
             float occ = Mathf.Clamp01(Dev.occlusion);
             var r = new Render { pos = source, extra = 1f, cutoff = 22000f };
-            if (p.walls == 0 || occ <= 0f) { r.gain = SoundCatalog.DistanceGain(id, p.direct); return r; }
+            if ((p.walls == 0 && p.doors == 0) || occ <= 0f) { r.gain = SoundCatalog.DistanceGain(id, p.direct); return r; }
 
             // Around the walls: from the doorway's direction, at the walking distance, a little duller.
             float bend = Mathf.Clamp01((p.path - p.direct) / 6f);
             float viaExtra = Mathf.Lerp(1f, 0.5f, bend * occ);
             float via = p.reachable ? SoundCatalog.DistanceGain(id, p.path) * viaExtra : 0f;
-            // Through the walls: quiet and heavily muffled (about -18 dB per wall).
-            float thruExtra = Mathf.Lerp(1f, Mathf.Pow(0.12f, p.walls), occ);
+            // Through the walls: quiet and heavily muffled (about -18 dB per wall); a shut door about -9 dB, less muffled.
+            float thruExtra = Mathf.Lerp(1f, Mathf.Pow(0.12f, p.walls) * Mathf.Pow(0.35f, p.doors), occ);
             float thru = SoundCatalog.DistanceGain(id, p.direct) * thruExtra;
             if (via >= thru && p.reachable)
             {
@@ -265,7 +265,7 @@ namespace Backrooms.Audio
             else
             {
                 r.extra = thruExtra;
-                r.cutoff = Mathf.Lerp(22000f, p.walls > 1 ? 450f : 700f, occ);
+                r.cutoff = Mathf.Lerp(22000f, p.walls > 1 ? 450f : p.walls == 1 ? 700f : 1600f, occ);
                 r.gain = thru;
             }
             return r;
@@ -455,8 +455,10 @@ namespace Backrooms.Audio
                 oct = Mathf.Clamp(oct, -10f * dt, 10f * dt);
                 v.cutoff *= Mathf.Pow(2f, oct);
                 v.lpf.cutoffFrequency = v.cutoff;
-                v.src.pitch = pitch * v.detune;
-                v.src.volume = baseLvl * catVol * v.level * pathGain * _compSmoothed * Smooth(v.fade) * power;
+                // A brownout: the hum drops and slurs with the sagging supply.
+                float mains = lights ? lights.Mains : 1f;
+                v.src.pitch = pitch * v.detune * (1f - (1f - mains) * 0.35f);
+                v.src.volume = baseLvl * catVol * v.level * pathGain * _compSmoothed * Smooth(v.fade) * power * mains * mains * mains;
 
                 // Faulty stutter and strike edges come from the same curve as the light.
                 if (v.lastPower < 0.35f && power > 0.75f)

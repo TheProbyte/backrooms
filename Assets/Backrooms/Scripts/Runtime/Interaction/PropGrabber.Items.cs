@@ -20,6 +20,8 @@ namespace Backrooms.Interaction
         [Tooltip("Reach for picking up items (m).")] public float itemRange = 2.1f;
 
         float _itemT;                    // 0..1 while the item travels from where it lay into the hand
+        bool _itemFromLow;               // it was picked up off the floor (the body bends down for it)
+        bool _weighted;                  // the held item's weight is slowing the player
         Vector3 _itemFromPos;
         Quaternion _itemFromRot;
 
@@ -173,6 +175,8 @@ namespace Backrooms.Interaction
             AimedItem = null; AimedCordPoint = null;
             _itemFromPos = item.transform.position; _itemFromRot = item.transform.rotation;
             _itemT = 0f;
+            _itemFromLow = item.transform.position.y < transform.position.y + 0.55f && Vector3.Distance(item.transform.position, transform.position) < 2.5f;
+            MicThump();
             _swayInit = false; _qDown = -1f; ThrowCharge = 0f;
             item.SetHeld(true);
         }
@@ -291,9 +295,30 @@ namespace Backrooms.Interaction
         [Tooltip("Seconds of holding Q for the hardest throw.")] public float throwFullCharge = 0.9f;
         [Tooltip("Throw speed (m/s) from a short to a full wind-up.")] public Vector2 throwSpeed = new Vector2(3.5f, 13f);
 
+        /// <summary>
+        /// A held item's weight in the hand: something heavy (the lamp, a coiled cord) slows your steps and your turns a
+        /// little. Furniture and doors set their own.
+        /// </summary>
+        void UpdateCarriedWeight()
+        {
+            if (HeldItem)
+            {
+                float m = HeldItem.Body ? HeldItem.Body.mass : 0f;
+                _player.moveScale = Mathf.Lerp(1f, 0.82f, Mathf.Clamp01(m / 2f));
+                _player.lookScale = Mathf.Lerp(1f, 0.86f, Mathf.Clamp01(m / 2f));
+                _weighted = true;
+            }
+            else if (_weighted)
+            {
+                _weighted = false;
+                if (Current == State.Idle && !OnDoor) { _player.moveScale = 1f; _player.lookScale = 1f; }
+            }
+        }
+
         /// <summary>Throws the held item along the view, harder the longer Q was held.</summary>
         void Throw(float charge)
         {
+            MicThump();
             var item = HeldItem;
             if (!item) return;
             HeldItem = null;
@@ -388,7 +413,9 @@ namespace Backrooms.Interaction
             // bobs with the steps, and the hand (which grips it) goes with it.
             float dt = Time.deltaTime;
             if (!_swayInit) { _swayRot = pivot.rotation; _swayPos = pivot.position; _swayInit = true; }
-            _swayRot = Quaternion.Slerp(_swayRot, pivot.rotation, 1f - Mathf.Exp(-dt / 0.075f));
+            // Heavier things lag the view's turns more.
+            float lag = 0.075f * (1f + Mathf.Clamp(item.Body ? item.Body.mass : 0.3f, 0f, 2f) * 0.6f);
+            _swayRot = Quaternion.Slerp(_swayRot, pivot.rotation, 1f - Mathf.Exp(-dt / lag));
             if (Quaternion.Angle(_swayRot, pivot.rotation) > 25f) _swayRot = Quaternion.RotateTowards(pivot.rotation, _swayRot, 25f);
             _swayPos = Vector3.Lerp(_swayPos, pivot.position, 1f - Mathf.Exp(-dt / 0.045f));
             _swayPos = pivot.position + Vector3.ClampMagnitude(_swayPos - pivot.position, 0.06f);
@@ -406,7 +433,8 @@ namespace Backrooms.Interaction
             if (w > 0f) { pos = Vector3.Lerp(pos, usePos, w); rot = Quaternion.Slerp(rot, useRot, w); }
             if (_itemT < 1f)
             {
-                _itemT = Mathf.Min(1f, _itemT + Time.deltaTime / 0.28f);
+                // Off the floor takes longer: the body bends down for it first.
+                _itemT = Mathf.Min(1f, _itemT + Time.deltaTime / (_itemFromLow ? 0.55f : 0.28f));
                 float s = Mathf.SmoothStep(0f, 1f, _itemT);
                 pos = Vector3.Lerp(_itemFromPos, pos, s);
                 rot = Quaternion.Slerp(_itemFromRot, rot, s);

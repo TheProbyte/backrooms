@@ -42,6 +42,9 @@ namespace Backrooms.Interaction
         public override Vector3 GripLocal => coiled ? new Vector3(0.12f, 0.03f, 0f) : new Vector3(0.02f, 0.02f, 0f);
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(-0.4f, -0.3f, 0.86f), Vector3.up);
         public override float GripCurl => 0.9f;
+        /// <summary>Coiled: the ring of cord (the hand round one side of it); out: the box.</summary>
+        public override float ContactDistance(Vector3 p) =>
+            coiled ? RingDistance(p, new Vector3(0f, 0.03f, 0f), Vector3.up, 0.085f, 0.14f, 0.03f) : base.ContactDistance(p);
         public override float Amount { get => coiled ? 0f : 1f; set { } }
         public override string Status => coiled ? $"extension cord ({Length:0} m): click an outlet"
                                                 : (Powered ? "extension cord: live" : "extension cord: no power") + "  (right mouse: coil)";

@@ -70,7 +70,7 @@ namespace Backrooms.Interaction
                     if (toGrip.magnitude <= reach + 0.05f)
                     {
                         _player.botInput = null;
-                        if (HandBlend > 0.85f) { _doorPhase = DoorPhase.Turn; _doorT = 0f; _door.Grab(_doorSide); }
+                        if (HandBlend > 0.85f) { _doorPhase = DoorPhase.Turn; _doorT = 0f; _door.Grab(_doorSide); MicThump(); }
                         break;
                     }
                     if (_doorT > 2f || toGrip.magnitude > lookRange + 0.6f) { EndDoor(); break; }

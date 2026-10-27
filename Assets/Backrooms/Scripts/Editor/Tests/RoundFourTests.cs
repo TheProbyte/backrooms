@@ -11,7 +11,44 @@ namespace Backrooms.Tests
     public class RoundFourTests
     {
         [TearDown]
-        public void TearDown() => LightZones.Clear();
+        public void TearDown() { LightZones.Clear(); DoorEdges.Clear(); }
+
+        [Test]
+        public void AShutDoorIsAWallToLight()
+        {
+            var gen = new WorldGenerator(1234, WorldGenSettings.Defaults());
+            for (int cx = -2; cx <= 2; cx++)
+            for (int cz = -2; cz <= 2; cz++)
+            {
+                var L = gen.Chunk(new Vector2Int(cx, cz));
+                for (int x = 1; x < L.N; x++)
+                for (int z = 0; z < L.N; z++)
+                {
+                    if (L.vEdges[x, z] != EdgeKind.DoorHeader) continue;
+                    uint open = LightGridMath.WestKind(LightGridMath.Encode(L, x, z, null));
+                    Assert.AreEqual(LightGridMath.Header, open, "a headed doorway is an opening");
+                    var e = new DoorEdges.Edge { vertical = true, line = L.coord.x * L.N + x, along = L.coord.y * L.N + z, storey = L.storey };
+                    DoorEdges.Set(e, true);
+                    Assert.AreEqual(LightGridMath.Wall, LightGridMath.WestKind(LightGridMath.Encode(L, x, z, null)), "shut: a wall");
+                    DoorEdges.Set(e, false);
+                    Assert.AreEqual(LightGridMath.Header, LightGridMath.WestKind(LightGridMath.Encode(L, x, z, null)), "open again");
+                    return;
+                }
+            }
+            Assert.Inconclusive("no headed doorway in the sample");
+        }
+
+        [Test]
+        public void HandContactShapes()
+        {
+            // A roll of tape: 4 cm hole, 5 cm outside, 5 cm wide, round x.
+            Assert.Less(WorldItem.RingDistance(new Vector3(0f, 0.045f, 0f), Vector3.zero, Vector3.right, 0.04f, 0.05f, 0.025f), 0f, "inside the tape");
+            Assert.AreEqual(0.02f, WorldItem.RingDistance(new Vector3(0f, 0.02f, 0f), Vector3.zero, Vector3.right, 0.04f, 0.05f, 0.025f), 1e-4f, "in the hole, 2 cm from the core");
+            Assert.AreEqual(0.01f, WorldItem.RingDistance(new Vector3(0f, 0.06f, 0f), Vector3.zero, Vector3.right, 0.04f, 0.05f, 0.025f), 1e-4f, "1 cm outside");
+            Assert.AreEqual(0.1f, WorldItem.BoxDistance(new Vector3(0.6f, 0f, 0f), Vector3.zero, new Vector3(0.5f, 0.5f, 0.5f)), 1e-4f);
+            Assert.Less(WorldItem.BoxDistance(Vector3.zero, Vector3.zero, new Vector3(0.5f, 0.5f, 0.5f)), 0f);
+            Assert.AreEqual(0.3f, WorldItem.SegmentDistance(new Vector3(0.3f, 0.5f, 0f), Vector3.zero, Vector3.up), 1e-4f);
+        }
 
         [Test]
         public void SwitchedOffRoomsAreDarkAndSurviveTheSave()

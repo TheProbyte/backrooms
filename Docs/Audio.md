@@ -74,6 +74,9 @@ whenever you enter a new cell (and every 0.5 s), in about 0.5 ms:
   ring (up to ~2 s). Reverb parameters glide over ~0.6 s, so doorways blend the two.
 - Ventilation is louder and brighter in big or tall spaces and drops in dark areas; room tone is constant.
 
+**Shut doors** (`DoorEdges`): a shut door's edge is closed to the walking paths, and the straight line through it is
+counted apart from walls: about -9 dB and a 1.6 kHz low-pass each (a wall: -18 dB, 700 Hz).
+
 **Limits (approximation):** one path per source (the shortest), not a sum over several doorways; only within
 the window and loaded chunks; furniture, pillars and half walls are ignored; the reverb is a single listener-
 side room, not per-source. Wall colliders are not used for acoustics at all.
@@ -81,6 +84,34 @@ side room, not per-source. Wall colliders are not used for acoustics at all.
 **Portals later:** a portal will be one more edge in the path graph whose far side is elsewhere. The search
 crosses it, the visible point becomes the portal mouth, and the remote fixture's sound appears at the entrance
 with no change to the emitters.
+
+## Steam Audio and the world's walls (2026-10-26)
+
+`Audio/SteamAudioWorld.cs` (added by the streamer in play mode) gives Steam Audio the world: each loaded chunk's wall,
+post, floor and ceiling collider boxes become one static mesh with acoustic materials (painted drywall walls, carpet
+floors, mineral-fibre ceilings), and every shut door (`DoorEdges`) a wooden slab in its doorway. Typical load: about
+140 meshes, 34k triangles. Sounds of things in the world (everything made with `ItemModels.Source`: items, doors, light
+switches, cords, the settling sounds below) use Steam Audio's direct path (`SteamAudioWorld.Attach`): HRTF, volumetric
+occlusion by those meshes and frequency-dependent transmission through them, so a door shutting in the next room is
+muffled by the wall. The building's own hum, buzz, ventilation and room tone keep the walking-path model below (which
+now also knows shut doors), so nothing is muffled twice. No baked data and no Steam Audio reflections: the reverb is
+still the listener-side room reverb.
+
+## Footsteps, the body and the building at rest (2026-10-26)
+
+- **Footsteps** come from the feet: with the legs shown, each step plays when and where a foot comes down
+  (`FirstPersonBody.FootLanded`), on what is under it (`Audio/Surfaces.cs`: carpet, wood or laminate from the room's
+  floor finish, the Poolrooms' tile, water, sheet metal in a crawl duct, plywood above the ceilings). Hard floors have
+  their own synthesized steps (`ProceduralSounds.Body.cs`). Stopping from a walk scuffs the shoe. Crawling steps by
+  distance (hands and knees on metal in the ducts).
+- **Body** (`Interaction/BodyPresence.cs`): breaths close to the mic once you are out of breath, clothes rustling with
+  turns, crouching and walking, a sleeve rubbing along a wall.
+- **Mic**: grabbing, picking up, throwing and letting go knock the camcorder (handling thumps); running or whipping the
+  camera round puts wind on the mic (low buffeting in gusts, in `CamcorderAudioChain`).
+- **The building at rest** (`Audio/BuildingSettling.cs`): every 10-35 s a ceiling tile shifts somewhere near you (over a
+  real drop ceiling, 2.5-11 m away) or a sofa, chair or table nearby settles with a knock. The building's supply sags a
+  few percent now and then for a second or two (`FixtureLightManager.Mains`): the nearby lights dim together and the hum
+  drops and slurs.
 
 ## Camcorder chain (F5 > AUDIO)
 

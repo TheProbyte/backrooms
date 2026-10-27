@@ -343,7 +343,7 @@ namespace Backrooms.Generation
                 var L = sh.slot.main;
                 float k = sh.w * power;
                 L.enabled = k > 0.002f;
-                L.intensity = intensity * k;
+                L.intensity = intensity * k * Mains;                   // the building's supply sags now and then
                 L.range = range;
                 L.color = col;
                 if (!c.isLamp) { L.spotAngle = outer; L.innerSpotAngle = inner; }

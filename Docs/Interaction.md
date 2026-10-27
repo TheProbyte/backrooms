@@ -74,6 +74,22 @@
   from one side, pull from the other), never swings through you, and walking into an unlatched door nudges it.
   Shut doors are latched until you use the lever. Doors remember where they were left (saved with the world). About
   4 in 10 such doorways in the Hallways, 3 in 10 in the Offices.
+  A shut door (under 2.5 degrees open) is a wall to light and sound (`Generation/DoorEdges.cs`): the light grid encodes
+  its edge as a wall, so neither the bounce field nor real lights pass it; the building audio's paths cannot go through
+  it and the straight line through it costs about -9 dB and muffles (a wall: -18 dB); Steam Audio gets a wooden slab in
+  the doorway. Light from a lit room shows as a bright line under the door on the dark side (`Resources/Shaders/
+  LightSpill.shader`, strength from `FixtureLightManager.RoomLight`); once the door opens the light comes through the
+  gap for real. An unlatched door is never quite still: air moves it a degree or two now and then (a gust a little
+  more, with a creak). It never latches itself.
+- **Leaning**: hold **Z** or **X** to lean the head out to the left or right (0.32 m, the view rolls 9 degrees, the
+  torso tilts) to look round a corner. It stops short of walls; not while running or crawling.
+- **Steadying hand**: walking past a door jamb or the end of a wall on the hand's side, the free hand sometimes reaches
+  out and rests on it for a moment (palm flat, a soft pat), then lets go (`PropGrabber.Touch.cs`).
+- **Fingers**: every finger and the thumb curl only until they touch what the hand holds (the held item's own shape,
+  the furniture's colliders, a door's lever, the wall), so they close round a stem, lie on a flat top and never sink in
+  (`FirstPersonBody`, "Fingers"; `PropGrabber.ContactDistance`, `WorldItem.ContactDistance`).
+- **Weight**: a heavy item in the hand (the lamp, a coiled cord) slows your steps and turns a little and lags the view
+  more. Picking something up off the floor, you bend down for it first.
 
 ## Pieces (`Scripts/Runtime/Interaction`)
 | File | What it does |
@@ -83,6 +99,8 @@
 | `MovablePropManager.cs` | The list of moved props (the "edits" on top of the generated world). A moved prop no longer belongs to its chunk; it is stored when the chunk it stands in unloads and rebuilt when that chunk loads. Records last for the session and reset with a new seed. |
 | `PropGrabber.cs` | The hand: grab, reach, stoop, hold (a strength-limited spring at the grip point), controls, shove. Exposes the hand pose for the body. Where the hand goes is worked out on the model (`MovableProp.PlaceHand`): the surface round the grip is sampled with rays onto the mesh's triangles, every way the fingers could point is tried, and the palm lies on the highest point under it (nothing inside padding), fingers hooking over an edge where the surface drops away, avoiding a rise under the fingers and fingers pointing back at the shoulder. |
 | `PropGrabber.Door.cs`, `Door.cs` | Doors: taking the lever, unlatching, the door following the hand, momentum, latching, the player blocking its swing, `DoorStates` (saved angles). |
+| `BodyPresence.cs` | The body as camera and mic feel it: exertion and breathing (deeper and faster after running, heard close to the mic; shallow when crouched still), clothes rustling, a shoulder brushing a wall (a rub and a small knock to the camera). Presentation only. |
+| `PropGrabber.Touch.cs` | The steadying hand on door jambs and wall ends. |
 | `LightSwitch.cs` | A wall switch's toggle (its own object, the plate is baked into the chunk) and what a flick does (`LightZones`). |
 | `FirstPersonBody.cs` | The body. Arm: two-bone IK with a skeleton's limits: the elbow's swing round the shoulder-wrist line is chosen (searched every frame, smoothed) so the forearm can turn and the wrist bend to the hand's angle without going past a forearm's turn (95 degrees either way from thumb-up) or a wrist's bend (70 toward the palm, 60 back, 28 sideways), keeping the elbow down and out; anything still past a limit is not done (the palm stays on its point); a long reach brings the shoulder forward a little. Legs: feet planted where they land and stepping (lifted, swung, landing where the body's motion says) once left behind, one at a time, so starting, stopping, turning on the spot and changing direction come out as natural steps instead of a snap; hips bob over each step and sway over the standing foot; hips drop with the eye (crouching, stooping, getting up and down bend the knees and lean the torso); hidden while the eye is too low for a body to be standing under it. |
 | `PropGrabber.Items.cs` | Holding items: pick up, carry low on the right of the view (raised while in use), use, drop. Places the item after the camera has moved, and the hand on its grip. |

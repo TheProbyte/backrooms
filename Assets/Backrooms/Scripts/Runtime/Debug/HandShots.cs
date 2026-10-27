@@ -67,8 +67,26 @@ namespace Backrooms.DebugTools
             Done = true;
         }
 
+        /// <summary>Under a lit ceiling light near the player (the hand shows; a dark room's raised gain would wash it out).</summary>
+        IEnumerator GoSomewhereLit()
+        {
+            Light best = null; float bd = float.MaxValue;
+            foreach (var l in FindObjectsByType<Light>(FindObjectsSortMode.None))
+            {
+                if (!l.enabled || l.type != LightType.Spot || l.intensity < 1f || l.transform.position.y < 2f) continue;
+                float d = (l.transform.position - _pl.transform.position).sqrMagnitude;
+                if (d < bd) { bd = d; best = l; }
+            }
+            if (!best) yield break;
+            Vector3 p = best.transform.position + new Vector3(0.7f, 0f, 0.4f);
+            if (Physics.Raycast(p, Vector3.down, out var floor, 4f)) p = floor.point + Vector3.up * 0.05f;
+            _pl.Teleport(p, _pl.transform.eulerAngles.y, 0f);
+            yield return Wait(2.5f);
+        }
+
         IEnumerator Items()
         {
+            yield return GoSomewhereLit();
             foreach (var id in new[] { "tape", "desklamp", "extensioncord", "spraycan", "chalk" })
             {
                 var t = _pl.transform;

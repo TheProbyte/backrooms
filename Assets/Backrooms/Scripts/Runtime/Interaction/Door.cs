@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Backrooms.Audio;
+using Backrooms.Generation;
 using UnityEngine;
 
 namespace Backrooms.Interaction
@@ -41,9 +42,20 @@ namespace Backrooms.Interaction
         bool _moved;                     // moved since it was built (only then is its angle remembered)
         static CharacterController s_cc;
 
-        public void Init(Transform model, float angle, string key)
+        DoorEdges.Edge _edge;
+        int _roomFront, _roomBack;
+        bool _shutRegistered;
+        Renderer _spillFront, _spillBack;
+        MaterialPropertyBlock _mpb;
+        float _nextSpill, _spillF, _spillB, _driftSeed;
+        static Material s_spill;
+        const float ShutBelow = 2.5f;           // degrees: still shut as far as light and sound are concerned
+
+        public void Init(Transform model, float angle, string key, DoorEdges.Edge edge, int roomFront, int roomBack)
         {
             Key = key;
+            _edge = edge; _roomFront = roomFront; _roomBack = roomBack;
+            _driftSeed = Mathf.Abs(key.GetHashCode() % 1000) * 0.137f;
             _leaf = Find(model, "Leaf"); _front = Find(model, "HandleFront"); _back = Find(model, "HandleBack");
             var slab = Find(model, "Slab");
             if (!_leaf || !slab) { enabled = false; return; }
@@ -58,6 +70,91 @@ namespace Backrooms.Interaction
             Angle = Mathf.Clamp(angle, 0f, MaxOpen);
             Latched = Angle < 0.5f;
             Pose();
+            MakeSpill();
+            UpdateShut();
+        }
+
+        void OnDestroy()
+        {
+            if (_shutRegistered) DoorEdges.Set(_edge, false);
+            foreach (var r in new[] { _spillFront, _spillBack })
+                if (r) { var mf = r.GetComponent<MeshFilter>(); if (mf && mf.sharedMesh) Destroy(mf.sharedMesh); }
+        }
+
+        /// <summary>Shut (or as good as), the doorway is a wall to light and sound.</summary>
+        void UpdateShut()
+        {
+            bool shut = Angle < ShutBelow;
+            if (shut == _shutRegistered) return;
+            _shutRegistered = shut;
+            DoorEdges.Set(_edge, shut);
+        }
+
+        // ---------------- Light under the door ----------------
+
+        /// <summary>A thin glow on the floor each side of the door, for light from the room behind it to show under it.</summary>
+        void MakeSpill()
+        {
+            if (!s_spill)
+            {
+                var sh = Shader.Find("Backrooms/LightSpill");
+                if (!sh) return;
+                s_spill = new Material(sh) { name = "DoorLightSpill", hideFlags = HideFlags.DontSave };
+            }
+            _mpb = new MaterialPropertyBlock();
+            _spillFront = SpillQuad("SpillFront", 1f);
+            _spillBack = SpillQuad("SpillBack", -1f);
+        }
+
+        Renderer SpillQuad(string name, float side)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(transform, false);
+            const float half = 0.47f, from = 0.0f, to = 0.42f, y = 0.004f;
+            var mesh = new Mesh { name = name };
+            mesh.vertices = new[] { new Vector3(-half, y, from * side), new Vector3(half, y, from * side), new Vector3(half, y, to * side), new Vector3(-half, y, to * side) };
+            mesh.uv = new[] { new Vector2(0, 0), new Vector2(1, 0), new Vector2(1, 1), new Vector2(0, 1) };
+            mesh.triangles = side > 0 ? new[] { 0, 2, 1, 0, 3, 2 } : new[] { 0, 1, 2, 0, 2, 3 };
+            mesh.RecalculateBounds();
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var r = go.AddComponent<MeshRenderer>();
+            r.sharedMaterial = s_spill;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            r.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+            r.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+            r.enabled = false;
+            return r;
+        }
+
+        /// <summary>Each side shows the light of the room on the other side, while the door is shut.</summary>
+        void UpdateSpill(float now)
+        {
+            if (!_spillFront || now < _nextSpill) return;
+            _nextSpill = now + 0.12f + (_driftSeed % 0.08f);
+            var lights = FindLights();
+            float shut = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(ShutBelow * 0.5f, 8f, Angle));
+            float front = lights ? lights.RoomLight(_edge.chunk, _roomBack, now) : 0f;       // the front floor shows the back room
+            float back = lights ? lights.RoomLight(_edge.chunk, _roomFront, now) : 0f;
+            _spillF = front * shut; _spillB = back * shut;
+            Show(_spillFront, _spillF);
+            Show(_spillBack, _spillB);
+        }
+
+        void Show(Renderer r, float k)
+        {
+            bool on = k > 0.02f;
+            if (r.enabled != on) r.enabled = on;
+            if (!on) return;
+            _mpb.SetColor("_Color", new Color(1f, 0.95f, 0.82f) * (0.55f * k));
+            r.SetPropertyBlock(_mpb);
+        }
+
+        static Generation.FixtureLightManager s_lights;
+        static Generation.FixtureLightManager FindLights()
+        {
+            if (!s_lights) s_lights = FindAnyObjectByType<Generation.FixtureLightManager>();
+            return s_lights;
         }
 
         static Transform Find(Transform root, string name)
@@ -89,6 +186,21 @@ namespace Backrooms.Interaction
             float a = LeverDown * turn * Mathf.Deg2Rad;
             float z = side > 0 ? LeverOut : -SlabT - LeverOut;
             return Spindle + new Vector3(Lever * Mathf.Cos(a), -Lever * Mathf.Sin(a), z);
+        }
+
+        /// <summary>Distance from a point to the lever on that face (a rounded bar, and its rose): what the fingers close on.</summary>
+        public float LeverDistance(int side, float turn, Vector3 p)
+        {
+            float a = LeverDown * turn * Mathf.Deg2Rad;
+            float z = side > 0 ? LeverOut : -SlabT - LeverOut;
+            Vector3 s = OnLeaf(Spindle + new Vector3(0f, 0f, z), Angle);
+            Vector3 tip = OnLeaf(Spindle + new Vector3(0.1f * Mathf.Cos(a), -0.1f * Mathf.Sin(a), z), Angle);
+            float bar = WorldItem.SegmentDistance(p, s, tip) - 0.0095f;
+            // The door's face behind it.
+            Vector3 n = Swing(Angle) * transform.forward * side;
+            Vector3 face = OnLeaf(Spindle + new Vector3(0f, 0f, side > 0 ? 0f : -SlabT), Angle);
+            float slab = Vector3.Dot(p - face, n);
+            return Mathf.Min(bar, slab);
         }
 
         /// <summary>The hand's frame on the lever: palm down on it, fingers over it toward the door, turned with it.</summary>
@@ -155,6 +267,8 @@ namespace Backrooms.Interaction
         void Update()
         {
             float dt = Time.deltaTime;
+            UpdateSpill(Time.time);
+            Drift(dt);
             // Levers spring back up when not held.
             bool posed = false;
             if (!Held || _side < 0) { if (_turnFront > 0f) { _turnFront = Mathf.MoveTowards(_turnFront, 0f, dt * 6f); posed = true; } }
@@ -181,7 +295,7 @@ namespace Backrooms.Interaction
             }
             else if (posed) Pose();
             // The hinges creak while it moves.
-            float creak = Mathf.Clamp01((Mathf.Abs(_vel) - 6f) / 90f);
+            float creak = Mathf.Clamp01((Mathf.Max(Mathf.Abs(_vel), Mathf.Abs(_driftVel) * 1.6f) - 6f) / 90f);
             if (creak > 0.001f || (_creak && _creak.isPlaying))
             {
                 if (!_creak)
@@ -220,10 +334,35 @@ namespace Backrooms.Interaction
                 if (into > 0.002f && into > Overlap(t.position, t.rotation)) return false;
             }
             Angle = angle;
-            _moved = true;
+            if (!_drifting) _moved = true;
             if (Angle > 0.5f) Latched = false;
             Pose();
+            UpdateShut();
             return true;
+        }
+
+        // ---------------- Air ----------------
+
+        bool _drifting;
+        float _driftVel;
+
+        /// <summary>
+        /// An unlatched door left alone is never quite still: air moving through the building pushes it a degree or two
+        /// now and then (and once in a while a gust swings it a little more, the hinges creaking). It never latches itself.
+        /// </summary>
+        void Drift(float dt)
+        {
+            if (Held || Latched || _vel != 0f || Angle < 1.5f || Angle > MaxOpen - 1f) { _driftVel = 0f; return; }
+            float t = Time.time * 0.06f + _driftSeed;
+            float push = (Mathf.PerlinNoise(t, _driftSeed) - 0.5f) * 5f;                      // deg/s^2
+            float gust = Mathf.PerlinNoise(Time.time * 0.03f, _driftSeed * 3.1f);
+            if (gust > 0.78f) push += (gust - 0.78f) * 140f * Mathf.Sign(Mathf.PerlinNoise(_driftSeed, Time.time * 0.02f) - 0.5f);
+            _driftVel = Mathf.Clamp(_driftVel + push * dt, -14f, 14f) * Mathf.Exp(-dt * 0.8f);
+            float next = Angle + _driftVel * dt;
+            if (next < 1.5f || next > MaxOpen - 1f) { _driftVel = -_driftVel * 0.3f; return; }
+            _drifting = true;
+            if (!TryMove(next)) _driftVel = 0f;
+            _drifting = false;
         }
 
         /// <summary>How far the slab, posed so, is into the player's capsule (0 if clear).</summary>

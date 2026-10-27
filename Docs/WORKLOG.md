@@ -15,6 +15,39 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 17:17  Claude Code  Realism pass: doors block light and sound, Steam Audio walls, finger contact, feet, body, camcorder, living building
+- Doors: `Generation/DoorEdges.cs` registers shut doors (under 2.5 deg). `LightGridMath.Encode` turns a shut door's edge
+  into a wall (LightGrid re-encodes the chunk on change), so bounce light and real lights stop at it. `AcousticField`
+  closes it to paths and counts it apart on the straight line (BuildingAudio: -9 dB, 1.6 kHz per door). A line of light
+  under a shut door from a lit room (`Resources/Shaders/LightSpill.shader`, `FixtureLightManager.RoomLight`). Unlatched
+  doors drift in the air (never latch themselves; drift is not saved).
+- Steam Audio: `Audio/SteamAudioWorld.cs` builds a static mesh per loaded chunk from its collider boxes (drywall, carpet,
+  ceiling tile materials) and a wooden slab per shut door; item/door/switch sounds (`ItemModels.Source`) get a
+  SteamAudioSource with volumetric occlusion and frequency-dependent transmission. Building hum keeps AcousticField.
+- Fingers: `FirstPersonBody` sweeps each finger's curl and stops at the first touch of its tip or last knuckle against
+  `PropGrabber.ContactDistance` (held item shape `WorldItem.ContactDistance`: colliders, lamp stem, tape and coil rings;
+  furniture and wall colliders; door lever). Lamp grip turned to a handshake round the stem.
+- Feet and body: footsteps from `FirstPersonBody.FootLanded` with `Audio/Surfaces.cs` (carpet, wood, tile, water, duct
+  metal, concrete; new hard-floor steps, scuff on stopping). `Interaction/BodyPresence.cs`: exertion-driven breathing
+  (camera and breaths), clothes rustle, shoulder brushing walls (rub, camera knock). Lean Z/X
+  (`CamcorderPlayerController.Lean`, collision-limited, torso tilts). Steadying hand on jambs (`PropGrabber.Touch.cs`).
+  Held weight slows steps/turns and lags the view; bending down to pick things off the floor.
+- Camcorder: low-light gain boost after 1.2 s of near darkness (`CamcorderAutoExposure.lowLightBoost`); autofocus sees
+  the hand/held item close in front and hunts in the dark; handling thumps on grabs/pick-ups/throws; wind on the mic.
+- Living building: `Audio/BuildingSettling.cs` (ceiling-tile creaks over real drop ceilings, furniture ticks, vent
+  positions for the marks shader), tape ends flutter near vents (`Marks.shader`, normals now in the marks meshes),
+  brownouts (`FixtureLightManager.Mains`: real lights and hum), dust motes in the desk lamp's beam
+  (`Resources/Shaders/DustMote.shader`). New sounds in `ProceduralSounds.Body.cs`.
+- Checked: EditMode 71/71 (new: shut door is a wall to light; contact shapes). Played World 3 (erased after; World 1
+  untouched) with `Debug/RealismProbe.cs`: 138 Steam Audio meshes / 34k triangles; a shut door reads as a wall in the
+  grid, an opening at 25 deg, a wall again; the light line under a door in a dark room; 5-7 steps from the feet per 2.5
+  s; lean 0.32 m (stopped at 0.53 by a wall on the left); 3-5 fingers stopped on held items; lights off: 0.0 -> 1.76 EV
+  over 6.6 s with 1.16 EV low-light boost; 128 dust motes; the hand steadied on 5 of 5 jambs (chance forced to 1).
+  `Debug/HandShots` items in a lit room: lamp fist round the stem, fingers through the tape core, can wrapped.
+- Open: loose paper does not exist yet, so only tape flutters. Steam Audio reflections are not used (reverb stays the
+  listener room model). Doors partly open (2.5 to ~10 deg) let the light grid's full opening through; real lights are
+  shadowed by the door. Running exertion was not measured (the bot cannot run); breathing levels were not listened to.
+
 ## 2026-10-26 16:35  Claude Code  Doors, light switches, tape that bends and wraps corners, arm joint limits, planted feet, photo textures
 - Cords: reel from either end (holding a plug, hold right mouse: the box or lamp is dragged in along the cord, coiled /
   wound up and put in the hand; `PowerUser.ReelFromPlug`). A plugged cord held at the other end first holds the player

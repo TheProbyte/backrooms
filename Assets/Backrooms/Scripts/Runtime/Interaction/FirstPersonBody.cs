@@ -50,7 +50,16 @@ namespace Backrooms.Interaction
         {
             _player = GetComponent<CamcorderPlayerController>();
             _grab = GetComponent<PropGrabber>();
+            if (!GetComponent<BodyPresence>()) gameObject.AddComponent<BodyPresence>();
         }
+
+        /// <summary>A foot came down (world position of the sole, the body's speed then): the footstep is heard from it.</summary>
+        public event System.Action<Vector3, float> FootLanded;
+        /// <summary>Steps taken (for tests).</summary>
+        public int StepsLanded { get; private set; }
+        /// <summary>The legs are shown and walking (not crawling, flying or hidden): footsteps come from the feet.</summary>
+        public bool FeetActive => _body && _body.gameObject.activeSelf && !_player.noclip;
+        Vector3 _torsoFwdAxis;
 
         void Start()
         {
@@ -192,6 +201,7 @@ namespace Backrooms.Interaction
 
         void LateUpdate()
         {
+            ContactStops = 0;
             UpdateArm();
             UpdateBody();
         }
@@ -262,12 +272,98 @@ namespace Backrooms.Interaction
 
             float curl = _grab ? _grab.HandCurl : 0.2f;
             float pointing = _grab ? _grab.PokeIndex : 0f;
-            foreach (var (t, rest, axis, w, finger) in _fingerJoints)
+            if (_fingers == null) GroupFingers();
+            bool contact = _grab && _grab.HasContact && pointing < 0.5f && blend > 0.6f;
+            float ease = 1f - Mathf.Exp(-Time.deltaTime / 0.05f);
+            foreach (var f in _fingers)
             {
                 // Pointing: the index finger straight out, the other fingers and the thumb curled in.
-                float c = finger == "Index" ? Mathf.Lerp(curl, -0.05f, pointing) : Mathf.Lerp(curl, finger == "Thumb" ? 0.6f : 1.2f, pointing);
-                t.localRotation = rest * Quaternion.AngleAxis(c * 62f * w, axis);
+                float want = f.name == "Index" ? Mathf.Lerp(curl, -0.05f, pointing) : Mathf.Lerp(curl, f.name == "Thumb" ? 0.6f : 1.2f, pointing);
+                // Holding something: no further than the finger can go before it touches it.
+                float c = contact ? ContactCurl(f, want) : want;
+                f.curl = f.placed ? Mathf.Lerp(f.curl, c, ease) : c;
+                f.placed = true;
+                Curl(f, f.curl);
             }
+        }
+
+        // ---------------- Fingers ----------------
+        //
+        // Each finger (and the thumb) curls only as far as it can before it meets the surface of what the hand holds
+        // (PropGrabber.ContactDistance: a held item's shape, the furniture's colliders, a door's lever, a wall): the curl
+        // is swept from straight to the pose's amount and stops at the first touch of a knuckle or the fingertip. So
+        // fingers wrap a thin stem tightly, lie on a flat top, and never sink into what they hold.
+
+        class Finger
+        {
+            public string name;
+            public readonly List<(Transform t, Quaternion rest, Vector3 axis, float w)> joints = new List<(Transform, Quaternion, Vector3, float)>();
+            public Vector3 tipLocal;          // the fingertip in the last joint's frame
+            public float curl;
+            public bool placed;
+        }
+        List<Finger> _fingers;
+        const float FingerRadius = 0.0065f;
+        public int ContactStops { get; private set; }  // fingers stopped by a surface last frame (for tests)
+
+        void GroupFingers()
+        {
+            _fingers = new List<Finger>();
+            foreach (var (t, rest, axis, w, name) in _fingerJoints)
+            {
+                var f = _fingers.Find(x => x.name == name);
+                if (f == null) { f = new Finger { name = name }; _fingers.Add(f); }
+                f.joints.Add((t, rest, axis, w));
+            }
+            foreach (var f in _fingers)
+            {
+                foreach (var j in f.joints) j.t.localRotation = j.rest;
+                var last = f.joints[f.joints.Count - 1].t;
+                var prev = f.joints.Count > 1 ? f.joints[f.joints.Count - 2].t : last.parent;
+                Vector3 dir = (last.position - prev.position);
+                Vector3 tip = last.position + dir.normalized * (dir.magnitude * 0.9f);
+                f.tipLocal = last.InverseTransformPoint(tip);
+            }
+        }
+
+        static void Curl(Finger f, float c)
+        {
+            foreach (var j in f.joints) j.t.localRotation = j.rest * Quaternion.AngleAxis(c * 62f * j.w, j.axis);
+        }
+
+        /// <summary>The fingertip or the last knuckle touches (the base of the finger lies against what is held anyway).</summary>
+        bool Touches(Finger f)
+        {
+            int n = f.joints.Count;
+            var last = f.joints[n - 1].t;
+            if (_grab.ContactDistance(last.TransformPoint(f.tipLocal)) < FingerRadius) return true;
+            return n > 1 && _grab.ContactDistance(last.position) < FingerRadius;
+        }
+
+        /// <summary>How far this finger may curl toward want before it touches what the hand holds.</summary>
+        float ContactCurl(Finger f, float want)
+        {
+            if (want <= 0.02f) return want;
+            Curl(f, 0f);
+            if (Touches(f)) { ContactStops++; return Mathf.Min(want, 0.12f); }
+            const int Steps = 8;
+            float ok = 0f;
+            for (int s = 1; s <= Steps; s++)
+            {
+                float c = want * s / Steps;
+                Curl(f, c);
+                if (Touches(f))
+                {
+                    // Halfway back between the last free curl and this one.
+                    float mid = (ok + c) * 0.5f;
+                    Curl(f, mid);
+                    if (!Touches(f)) ok = mid;
+                    ContactStops++;
+                    return ok;
+                }
+                ok = c;
+            }
+            return want;
         }
 
         [Header("Arm limits")]
@@ -389,6 +485,7 @@ namespace Backrooms.Interaction
             _torsoRest = _torso.localRotation;
             _torsoBendAxis = _torso.InverseTransformDirection(transform.right);
             _torsoUpAxis = _torso.InverseTransformDirection(transform.up);
+            _torsoFwdAxis = _torso.InverseTransformDirection(transform.forward);
             _legA = MeasureLeg(_thighL, _shinL, Find(_body, "FootL"));
             _legB = MeasureLeg(_thighR, _shinR, Find(_body, "FootR"));
         }
@@ -526,7 +623,8 @@ namespace Backrooms.Interaction
             _hips.position = _body.position + up * (_hipsHeight - drop + _bob) + right * _sway - fwd * (squat * 0.12f);
             // Torso: the stoop, a lean into a crouch, a lean into the walk.
             float lean = bend + Mathf.Clamp(_moveLocal.y, -1f, 3f) * 2.5f;
-            _torso.localRotation = _torsoRest * Quaternion.AngleAxis(lean, _torsoBendAxis) * Quaternion.AngleAxis(_twist, _torsoUpAxis);
+            _torso.localRotation = _torsoRest * Quaternion.AngleAxis(lean, _torsoBendAxis) * Quaternion.AngleAxis(_twist, _torsoUpAxis)
+                                   * Quaternion.AngleAxis(-_player.Lean * 11f, _torsoFwdAxis);           // leaning round a corner
 
             float liftH = Mathf.Lerp(0.06f, 0.13f, run) * Mathf.Lerp(0.6f, 1f, Mathf.Clamp01(speed / 0.8f));
             float swingUp = 0f;
@@ -557,7 +655,7 @@ namespace Backrooms.Interaction
                     // Toes leave last, heel lands first.
                     pitch = Mathf.Lerp(18f, -10f, Mathf.SmoothStep(0f, 1f, g.t)) * Mathf.Clamp01(speed / 0.6f);
                     swingUp = Mathf.Max(swingUp, arc);
-                    if (g.t >= 1f) { g.swinging = false; g.plant = target; g.plantFwd = fwd; }
+                    if (g.t >= 1f) { g.swinging = false; g.plant = target; g.plantFwd = fwd; StepsLanded++; FootLanded?.Invoke(target, speed); }
                 }
                 else
                 {

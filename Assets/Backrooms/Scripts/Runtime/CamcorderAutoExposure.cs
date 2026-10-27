@@ -38,6 +38,11 @@ namespace Backrooms
         [Range(0f, 1f)] public float flicker = 0f;
         [Tooltip("Probe renders per second.")]
         [Range(1f, 30f)] public float sampleRate = 6f;
+        [Tooltip("In near darkness for a while, a camcorder turns its gain up further (grainier): extra EV it may add.")]
+        [Range(0f, 3f)] public float lowLightBoost = 1.3f;
+        float _boost, _darkT;
+        /// <summary>The extra low-light gain being used now (EV).</summary>
+        public float LowLightBoost => _boost;
 
         public float CurrentEV { get; private set; }
         /// <summary>Geometric-mean scene luminance from the last probe sample (before exposure).</summary>
@@ -87,8 +92,13 @@ namespace Backrooms
                 }
             }
 
+            // Lights out: the picture goes nearly black, then after a moment the camera winds its gain up, slowly and
+            // grainily, as far as it can; back in the light the extra gain drops at once.
+            bool dark = autoExposure && MeasuredLuminance > 0f && MeasuredLuminance < targetLuminance * 0.12f;
+            _darkT = dark ? _darkT + Time.deltaTime : 0f;
+            _boost = snap ? 0f : Mathf.MoveTowards(_boost, _darkT > 1.2f ? lowLightBoost : 0f, Time.deltaTime * (dark ? 0.22f : 1.5f));
             float target = autoExposure && MeasuredLuminance > 0f
-                ? Mathf.Clamp(Mathf.Log(targetLuminance / Mathf.Max(MeasuredLuminance, 1e-4f), 2f) * compensation, minEV, maxEV)
+                ? Mathf.Clamp(Mathf.Log(targetLuminance / Mathf.Max(MeasuredLuminance, 1e-4f), 2f) * Mathf.Lerp(compensation, 0.85f, _boost / Mathf.Max(0.01f, lowLightBoost)), minEV, maxEV + _boost)
                 : 0f;
             float speed = (target < CurrentEV ? darkenSpeed : brightenSpeed) * speedScale;
             CurrentEV = snap ? target : Mathf.MoveTowards(CurrentEV, target, speed * Time.deltaTime);

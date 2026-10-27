@@ -71,6 +71,13 @@ namespace Backrooms.Generation
             var room = L.RoomAt(x, z);
             uint o = Loaded;
             uint west = Kind(L.vEdges[x, z]), south = Kind(L.hEdges[x, z]);
+            // A shut door is a wall to light (DoorEdges): the edge's world cell line and position.
+            if (DoorEdges.Count > 0)
+            {
+                int n = L.N, gx = L.coord.x * n + x, gz = L.coord.y * n + z;
+                if (west != Wall && DoorEdges.IsShut(true, gx, gz, L.storey)) west = Wall;
+                if (south != Wall && DoorEdges.IsShut(false, gz, gx, L.storey)) south = Wall;
+            }
             o |= west | (south << 2);
             if (west != Wall) o |= PackTop(Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, true, x, z, 1).top), 4, 27);
             if (south != Wall) o |= PackTop(Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, false, z, x, 1).top), 10, 28);

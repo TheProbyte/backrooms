@@ -171,6 +171,9 @@ namespace Backrooms.Interaction
             var a = go.AddComponent<AudioSource>();
             a.playOnAwake = false; a.spatialBlend = 1f; a.minDistance = 0.4f; a.maxDistance = maxDistance; a.dopplerLevel = 0f;
             a.rolloffMode = AudioRolloffMode.Logarithmic;
+#if STEAMAUDIO_ENABLED
+            Backrooms.Audio.SteamAudioWorld.Attach(a);         // occluded by walls and shut doors, through them muffled
+#endif
             return a;
         }
     }

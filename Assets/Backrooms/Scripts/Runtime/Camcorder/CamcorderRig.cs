@@ -26,6 +26,8 @@ namespace Backrooms.Camcorder
         ColorAdjustments _color; WhiteBalance _wb; LiftGammaGain _lgg; Bloom _bloom; FilmGrain _grain;
         Vignette _vig; ChromaticAberration _ca; LensDistortion _lens; DepthOfField _dof; MotionBlur _mb; Tonemapping _tone;
         float _focus = 3f, _focusVel, _focusTarget = 3f, _nextFocusCheck;
+        float _huntUntil, _nextHunt, _huntTarget;
+        Backrooms.Interaction.PropGrabber _hand;
         float _baseBreathDeg, _baseBreathHeight;
 
         static readonly int ID1 = Shader.PropertyToID("_CamVideo1");
@@ -212,8 +214,25 @@ namespace Backrooms.Camcorder
                 float d = 6f;
                 if (Physics.SphereCast(transform.position, 0.05f, transform.forward, out var hit, 30f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                     d = hit.distance;
+                // The hand, or what it holds, close in front of the lens: the camera focuses on it (and the room goes soft).
+                if (!_hand) _hand = FindAnyObjectByType<Backrooms.Interaction.PropGrabber>();
+                if (_hand && _hand.HandBlend > 0.5f)
+                {
+                    Vector3 p = _hand.HeldItem ? _hand.HeldItem.transform.position : _hand.HandPosition;
+                    Vector3 to = p - transform.position;
+                    if (to.magnitude < d && to.magnitude < 0.9f && Vector3.Angle(transform.forward, to) < 13f) d = Mathf.Max(0.3f, to.magnitude);
+                }
+                // In the dark a contrast autofocus has nothing to lock on: it hunts, sweeping near and far now and then.
+                bool dark = exposure && exposure.MeasuredLuminance > 0f && exposure.MeasuredLuminance < exposure.targetLuminance * 0.15f;
+                if (dark && Time.time > _nextHunt)
+                {
+                    _nextHunt = Time.time + Random.Range(1.4f, 3.2f);
+                    _huntUntil = Time.time + Random.Range(0.35f, 0.7f);
+                    _huntTarget = Random.value < 0.5f ? Random.Range(0.4f, 1.2f) : Random.Range(6f, 20f);
+                }
+                if (dark && Time.time < _huntUntil) d = _huntTarget;
                 // Ignore tiny changes (AF dead band) so focus isn't constantly breathing.
-                if (Mathf.Abs(d - _focusTarget) / Mathf.Max(_focusTarget, 0.5f) > 0.12f) _focusTarget = d;
+                if (Mathf.Abs(d - _focusTarget) / Mathf.Max(_focusTarget, 0.5f) > 0.12f || Time.time < _huntUntil) _focusTarget = d;
             }
             if (!manual)
             {

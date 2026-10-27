@@ -6,6 +6,15 @@ Last updated 2026-10-26 (world version 13).
 
 ## Newest (2026-10-26)
 
+- **Realism pass**: shut doors block light and sound (and a line of light shows under a door from a lit room); Steam
+  Audio has the world's walls (items, doors and switches are occluded and muffled through them); fingers stop on what
+  they hold; footsteps from the feet on carpet, wood, tile, water or duct metal, a scuff when stopping; lean round
+  corners (Z/X); the free hand steadies on door jambs; shoulders brush walls; breathing after running; clothes rustle;
+  wind and handling on the mic; the camcorder winds its gain up in the dark and its focus hunts there (and focuses on
+  your hand up close); doors drift in the air, tape ends flutter near vents, ceiling tiles creak, furniture ticks,
+  brownouts dim the lights and the hum; dust in the desk lamp's beam; heavy things slow you, and you bend to pick
+  things up.
+
 - **Third pass**: wooden doors in some Backrooms doorways (take the lever, walk to open; they swing on and remember
   where they were left); working light switches (a finger flicks the toggle, the room's lights go out or strike back
   on); tape lined up with right mouse, pulled with left, bending a little and wrapping wall ends and floor-to-wall

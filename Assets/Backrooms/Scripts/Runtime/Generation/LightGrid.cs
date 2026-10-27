@@ -142,6 +142,7 @@ namespace Backrooms.Generation
             _tileLights = new ComputeBuffer(8192, 4);
             _fixtureLookup = new ComputeBuffer(4, 4); _fixtureLookup.SetData(new uint[4]);
             if (streamer) { streamer.ChunkLoaded += OnChunkChanged; streamer.ChunkUnloaded += OnChunkUnloaded; }
+            DoorEdges.Changed += OnDoorChanged;
             if (bindGlobals)
             {
                 Shader.SetGlobalTexture(GA, _a); Shader.SetGlobalTexture(GB, _b); Shader.SetGlobalBuffer(GOcc, _occ);
@@ -156,6 +157,7 @@ namespace Backrooms.Generation
             Ready = false;
             if (bindGlobals) LightGridGlobals.BindFallbacks();          // never leave the shader pointing at released resources
             if (streamer) { streamer.ChunkLoaded -= OnChunkChanged; streamer.ChunkUnloaded -= OnChunkUnloaded; }
+            DoorEdges.Changed -= OnDoorChanged;
             void Rel(RenderTexture r) { if (r) { r.Release(); if (Application.isPlaying) Destroy(r); else DestroyImmediate(r); } }
             Rel(_a); Rel(_b); Rel(_bounceSrc); Rel(_bounce0); Rel(_bounce1);
             _occ?.Release(); _lights?.Release(); _tiles?.Release(); _tileLights?.Release(); _fixtureLookup?.Release();
@@ -276,6 +278,16 @@ namespace Backrooms.Generation
             float S = OfficeBiome.ChunkSize, reach = 18f;
             var centre = new Vector3((c.x + 0.5f) * S, c.y * _pitch + 4f, (c.z + 0.5f) * S);
             MarkDirty(centre, S * 0.75f + reach);
+        }
+
+        /// <summary>A door shut or opened: its chunk is encoded again (the edge is a wall or an opening) and the light
+        /// around it is drawn again.</summary>
+        void OnDoorChanged(DoorEdges.Edge e, bool shut)
+        {
+            _encoded.Remove(e.chunk);
+            _occDirty = true;
+            _bounceDirty = true;
+            MarkDirty(e.centre, 14f);
         }
 
         void OnChunkUnloaded(Vector3Int c, GameObject go) { _encoded.Remove(c); OnChunkChanged(c, go); _encoded.Remove(c); }

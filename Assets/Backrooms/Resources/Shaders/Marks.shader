@@ -32,11 +32,13 @@ Shader "Backrooms/Marks"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareOpaqueTexture.hlsl"
             float _PoolScreenTextures;
+            float4 _MarksAir[8];        // air moving out of vents near the camera: xyz position, w strength
+            float _MarksAirCount;
             CBUFFER_START(UnityPerMaterial)
                 float _Reference;
             CBUFFER_END
 
-            struct Attributes { float4 positionOS : POSITION; float4 uv : TEXCOORD0; half4 color : COLOR; };
+            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; float4 uv : TEXCOORD0; half4 color : COLOR; };
             struct Varyings
             {
                 float4 positionCS : SV_POSITION; float4 uv : TEXCOORD0; half4 color : COLOR;
@@ -47,6 +49,28 @@ Shader "Backrooms/Marks"
             {
                 Varyings o;
                 o.positionWS = TransformObjectToWorld(i.positionOS.xyz);
+                // Tape near a vent: its torn ends lift and flutter a few millimetres in the moving air.
+                if (i.uv.z > 0.5 && _MarksAirCount > 0.5)
+                {
+                    float len = max(i.uv.w, 1e-4), along = i.uv.y;
+                    float lift = saturate(1.0 - min(along, len - along) / 0.07);
+                    lift *= lift;
+                    if (lift > 0.0)
+                    {
+                        float air = 0.0;
+                        [unroll] for (int k = 0; k < 8; k++)
+                        {
+                            float on = k < (int)_MarksAirCount ? 1.0 : 0.0;
+                            air += on * _MarksAir[k].w * saturate(1.0 - distance(o.positionWS, _MarksAir[k].xyz) / 3.5);
+                        }
+                        air = saturate(air);
+                        float h = frac(sin(dot(floor(o.positionWS * 20.0), float3(12.9898, 78.233, 37.719))) * 43758.5453);
+                        float t = _Time.y;
+                        float flutter = 0.5 + 0.25 * sin(t * 21.0 + h * 40.0) + 0.25 * sin(t * 33.7 + h * 13.0);
+                        float3 n = normalize(TransformObjectToWorldNormal(i.normalOS));
+                        o.positionWS += n * lift * air * flutter * (0.004 + 0.003 * (i.uv.x * 0.5 + 0.5));
+                    }
+                }
                 o.positionCS = TransformWorldToHClip(o.positionWS);
                 o.screen = ComputeScreenPos(o.positionCS);
                 o.uv = i.uv; o.color = i.color;

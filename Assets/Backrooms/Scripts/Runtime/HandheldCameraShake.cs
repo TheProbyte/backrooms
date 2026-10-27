@@ -63,6 +63,10 @@ namespace Backrooms
         [System.NonSerialized] public float effort;
         /// <summary>How far the camcorder hand dips while the other hand works (0..1, set by PropGrabber).</summary>
         [System.NonSerialized] public float dip;
+        /// <summary>How hard the operator is breathing (set by Interaction.BodyPresence): above 0 deeper, below 0 shallower.</summary>
+        [System.NonSerialized] public float exertion;
+        /// <summary>Where the breath is (radians; in from 0, out from pi).</summary>
+        public float BreathPhase => _breathPhase;
         float _effort, _dip;
 
         float _walkBlend, _runBlend, _stepPhase, _breathPhase;
@@ -112,7 +116,9 @@ namespace Backrooms
             // Breathing: irregular period (rate wanders a little) so it never reads as a metronome.
             _breathPhase += dt * breathingRate * (0.85f + 0.3f * Mathf.PerlinNoise(t * 0.05f, _seed.x)) * Mathf.PI * 2f;
             float breath = Mathf.Sin(_breathPhase) + 0.25f * Mathf.Sin(_breathPhase * 2f + 0.8f);
-            float breathWeight = 1f - _walkBlend * 0.7f;
+            // Out of breath, it shows even while walking.
+            float ex = Mathf.Clamp(exertion, -0.6f, 1f);
+            float breathWeight = (1f - _walkBlend * 0.7f * (1f - Mathf.Max(0f, ex))) * (1f + (ex >= 0f ? 2.2f * ex : ex));
             Vector3 breathRot = new Vector3(breath * breathingDegrees, 0f, breath * breathingDegrees * 0.25f) * breathWeight;
             Vector3 breathPos = new Vector3(0f, breath * breathingHeight, 0f) * breathWeight;
 

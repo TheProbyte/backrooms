@@ -47,6 +47,54 @@ namespace Backrooms.Interaction
         public virtual Vector3 GripLocal => Vector3.zero;
         /// <summary>How the item is turned in the hand (camera frame, after the usual upright-in-view hold).</summary>
         public virtual Quaternion HoldTurn => Quaternion.identity;
+        /// <summary>
+        /// Distance from a point (in the item's own frame) to its surface, negative inside: what the fingers wrap round.
+        /// By default its collider box or capsule (they are switched off in the hand, so this is worked out here).
+        /// </summary>
+        public virtual float ContactDistance(Vector3 local)
+        {
+            float best = float.MaxValue;
+            foreach (var c in GetComponents<Collider>())
+            {
+                if (c is BoxCollider b) best = Mathf.Min(best, BoxDistance(local, b.center, b.size * 0.5f));
+                else if (c is CapsuleCollider cc)
+                {
+                    Vector3 axis = cc.direction == 0 ? Vector3.right : cc.direction == 1 ? Vector3.up : Vector3.forward;
+                    float h = Mathf.Max(0f, cc.height * 0.5f - cc.radius);
+                    best = Mathf.Min(best, SegmentDistance(local, cc.center - axis * h, cc.center + axis * h) - cc.radius);
+                }
+                else if (c is SphereCollider s) best = Mathf.Min(best, Vector3.Distance(local, s.center) - s.radius);
+            }
+            return best;
+        }
+
+        public float ContactDistanceWorld(Vector3 world) => ContactDistance(transform.InverseTransformPoint(world));
+
+        public static float BoxDistance(Vector3 p, Vector3 centre, Vector3 half)
+        {
+            Vector3 q = p - centre;
+            q = new Vector3(Mathf.Abs(q.x) - half.x, Mathf.Abs(q.y) - half.y, Mathf.Abs(q.z) - half.z);
+            Vector3 o = Vector3.Max(q, Vector3.zero);
+            return o.magnitude + Mathf.Min(Mathf.Max(q.x, Mathf.Max(q.y, q.z)), 0f);
+        }
+
+        public static float SegmentDistance(Vector3 p, Vector3 a, Vector3 b)
+        {
+            Vector3 ab = b - a;
+            float t = ab.sqrMagnitude > 1e-10f ? Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude) : 0f;
+            return Vector3.Distance(p, a + ab * t);
+        }
+
+        /// <summary>A ring (a roll of tape, a coil of cord): radii ri..ro round an axis through centre, halfWidth along it.</summary>
+        public static float RingDistance(Vector3 p, Vector3 centre, Vector3 axis, float ri, float ro, float halfWidth)
+        {
+            Vector3 d = p - centre;
+            float along = Vector3.Dot(d, axis);
+            float r = (d - axis * along).magnitude;
+            float qx = Mathf.Abs(r - (ri + ro) * 0.5f) - (ro - ri) * 0.5f, qy = Mathf.Abs(along) - halfWidth;
+            return new Vector2(Mathf.Max(qx, 0f), Mathf.Max(qy, 0f)).magnitude + Mathf.Min(Mathf.Max(qx, qy), 0f);
+        }
+
         /// <summary>A point to put focus marks on while held (where a strip of tape will start), if any.</summary>
         public virtual bool AimMark(out Vector3 at) { at = default; return false; }
         public virtual Quaternion GripRotationLocal => Quaternion.identity;

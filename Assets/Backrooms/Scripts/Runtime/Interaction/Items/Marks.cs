@@ -54,10 +54,11 @@ namespace Backrooms.Interaction
             public readonly List<Vector3> v = new List<Vector3>(QuadsPerBatch * 4);
             public readonly List<Vector4> uv = new List<Vector4>(QuadsPerBatch * 4);
             public readonly List<Color32> c = new List<Color32>(QuadsPerBatch * 4);
+            public readonly List<Vector3> n = new List<Vector3>(QuadsPerBatch * 4);   // the surface's normal (tape ends flutter along it)
             public readonly List<int> idx = new List<int>(QuadsPerBatch * 6);
             public bool dirty;
             public int Quads => v.Count / 4;
-            public void Clear() { v.Clear(); uv.Clear(); c.Clear(); idx.Clear(); dirty = true; }
+            public void Clear() { v.Clear(); uv.Clear(); c.Clear(); n.Clear(); idx.Clear(); dirty = true; }
         }
 
         readonly List<Batch> _batches = new List<Batch>();
@@ -98,6 +99,7 @@ namespace Backrooms.Interaction
             b.mesh.SetVertices(b.v);
             b.mesh.SetUVs(0, b.uv);
             b.mesh.SetColors(b.c);
+            if (b.n.Count == b.v.Count) b.mesh.SetNormals(b.n);
             b.mesh.SetTriangles(b.idx, 0, true);
         }
 
@@ -124,7 +126,7 @@ namespace Backrooms.Interaction
             b.v.Add(v0); b.v.Add(v1); b.v.Add(v2); b.v.Add(v3);
             b.uv.Add(new Vector4(-1, 0, kind, len)); b.uv.Add(new Vector4(1, 0, kind, len));
             b.uv.Add(new Vector4(1, len, kind, len)); b.uv.Add(new Vector4(-1, len, kind, len));
-            for (int k = 0; k < 4; k++) b.c.Add(col);
+            for (int k = 0; k < 4; k++) { b.c.Add(col); b.n.Add(normal.normalized); }
             if (Vector3.Dot(Vector3.Cross(v1 - v0, v2 - v0), normal) > 0f)
             { b.idx.Add(s); b.idx.Add(s + 1); b.idx.Add(s + 2); b.idx.Add(s); b.idx.Add(s + 2); b.idx.Add(s + 3); }
             else { b.idx.Add(s); b.idx.Add(s + 2); b.idx.Add(s + 1); b.idx.Add(s); b.idx.Add(s + 3); b.idx.Add(s + 2); }
@@ -178,7 +180,7 @@ namespace Backrooms.Interaction
             b.v.Add(v0); b.v.Add(v1); b.v.Add(v2); b.v.Add(v3);
             b.uv.Add(new Vector4(-1, s0, kind, total)); b.uv.Add(new Vector4(1, s0, kind, total));
             b.uv.Add(new Vector4(1, s1, kind, total)); b.uv.Add(new Vector4(-1, s1, kind, total));
-            for (int k = 0; k < 4; k++) b.c.Add(col);
+            for (int k = 0; k < 4; k++) { b.c.Add(col); b.n.Add(normal.normalized); }
             if (Vector3.Dot(Vector3.Cross(v1 - v0, v2 - v0), normal) > 0f)
             { b.idx.Add(s); b.idx.Add(s + 1); b.idx.Add(s + 2); b.idx.Add(s); b.idx.Add(s + 2); b.idx.Add(s + 3); }
             else { b.idx.Add(s); b.idx.Add(s + 2); b.idx.Add(s + 1); b.idx.Add(s); b.idx.Add(s + 3); b.idx.Add(s + 2); }

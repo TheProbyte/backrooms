@@ -136,6 +136,8 @@ namespace Backrooms.Interaction
             }
             if (_poke != PokePhase.None) UpdatePoke();
             UpdatePokeFingers();
+            UpdateTouch(!HeldItem && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking);
+            UpdateCarriedWeight();
             UpdateStoop();
             UpdateHandPose();
 
@@ -156,6 +158,12 @@ namespace Backrooms.Interaction
             {
                 float handY = Current == State.Holding ? (StandShoulder + transform.rotation * _offset).y : _target.transform.TransformPoint(_gripLocal).y;
                 want = Mathf.Clamp(StandShoulder.y - (handY + 0.35f), 0f, 0.8f);
+            }
+            // Picking something up off the floor: bend down to it, and straighten as it comes up.
+            if (HeldItem && _itemT < 1f && _itemFromLow)
+            {
+                float down = Mathf.Clamp(StandShoulder.y - (_itemFromPos.y + 0.4f), 0f, 0.8f);
+                want = Mathf.Max(want, down * (1f - Mathf.SmoothStep(0.35f, 1f, _itemT)));
             }
             _player.stoop = Mathf.MoveTowards(_player.stoop, want, Time.deltaTime * (want > _player.stoop ? 1.6f : 1.0f));
         }
@@ -222,8 +230,17 @@ namespace Backrooms.Interaction
             _player.botInput = flat.magnitude > 0.3f ? flat.normalized * 0.6f : (Vector2?)null;
         }
 
+        /// <summary>The body knocks the camcorder (a grab, a pick-up, a throw): the mic hears it.</summary>
+        void MicThump()
+        {
+            if (!_chain) { var l = FindAnyObjectByType<AudioListener>(); if (l) _chain = l.GetComponent<Audio.CamcorderAudioChain>(); }
+            if (_chain) _chain.HandlingImpulse();
+        }
+        Audio.CamcorderAudioChain _chain;
+
         void Attach()
         {
+            MicThump();
             Held = _target;
             Held.Wake();
             Held.held = true;
@@ -250,6 +267,7 @@ namespace Backrooms.Interaction
 
         public void Release(string reason)
         {
+            if (Current == State.Holding) MicThump();
             if (Current == State.Holding) LastRelease = reason;
             if (Held)
             {
@@ -378,15 +396,56 @@ namespace Backrooms.Interaction
             Strain = Mathf.Clamp01(Mathf.Max(err / 0.3f, F.magnitude / (maxPush * 1.1f)));
         }
 
+        // ---------------- What the fingers touch ----------------
+
+        Collider[] _targetColliders;
+        MovableProp _contactProp;
+
+        /// <summary>The hand holds or touches something its fingers should stop at.</summary>
+        public bool HasContact => HeldItem || (OnDoor && _door) || (_target && (Current == State.Holding || Current == State.Reaching)) || TouchingWall;
+
+        /// <summary>
+        /// Distance from a point to the surface of what the hand holds (negative or zero inside it): a held item's own
+        /// shape, a door's lever, the furniture's colliders, the wall the hand rests on. Large if there is nothing.
+        /// </summary>
+        public float ContactDistance(Vector3 p)
+        {
+            if (HeldItem) return HeldItem.ContactDistanceWorld(p);
+            if (OnDoor && _door) return _door.LeverDistance(_doorSide, _doorTurn, p);
+            if (_target && (Current == State.Holding || Current == State.Reaching))
+            {
+                if (_contactProp != _target) { _contactProp = _target; _targetColliders = _target.GetComponentsInChildren<Collider>(); }
+                return CollidersDistance(_targetColliders, p);
+            }
+            if (TouchingWall) return CollidersDistance(_touchColliders, p);
+            return float.MaxValue;
+        }
+
+        static float CollidersDistance(Collider[] cols, Vector3 p)
+        {
+            float best = float.MaxValue;
+            if (cols == null) return best;
+            foreach (var c in cols)
+            {
+                if (!c || !c.enabled || c.isTrigger) continue;
+                if (c is MeshCollider mc && !mc.convex) continue;
+                Vector3 q = Physics.ClosestPoint(p, c, c.transform.position, c.transform.rotation);
+                float d = (q - p).sqrMagnitude < 1e-12f ? -0.001f : Vector3.Distance(q, p);
+                if (d < best) best = d;
+            }
+            return best;
+        }
+
         // ---------------- Hand pose (for the body / IK) ----------------
 
         void UpdateHandPose()
         {
-            bool active = (Current != State.Idle && _target) || Poking || HeldItem || OnDoor;
+            bool active = (Current != State.Idle && _target) || Poking || HeldItem || OnDoor || _touching;
             HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? 3.2f : 2.5f));
             if (HeldItem) { HandCurl = Mathf.MoveTowards(HandCurl, HeldItem.GripCurl, Time.deltaTime * 4f); return; }   // pose set in LateUpdate
             if (Poking) PokePose = true; else if (HandBlend <= 0.01f) PokePose = false;
             if (OnDoor && _door) { PokePose = false; DoorHandPose(); return; }
+            if (_touching) { PokePose = false; TouchHandPose(); return; }
             if (!_target) { HandCurl = Mathf.MoveTowards(HandCurl, 0.25f, Time.deltaTime * 2f); return; }
             Vector3 grip = _target.transform.TransformPoint(_gripLocal);
             Vector3 n = _target.transform.TransformDirection(_normalLocal).normalized;

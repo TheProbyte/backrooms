@@ -50,7 +50,13 @@ namespace Backrooms.Interaction
         // The palm just outside the roll's side, under the fingers that go through the core and carry it on their backs.
         public override Vector3 GripLocal => new Vector3(-0.037f, 0.063f, 0f);
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(Vector3.right, Vector3.up);
-        public override float GripCurl => 0.32f;
+        public override float GripCurl => 0.55f;
+        /// <summary>The roll: a ring of tape on its core, round its axis (x); the fingers inside the core stop on it.</summary>
+        public override float ContactDistance(Vector3 p)
+        {
+            float outer = _wound ? FullRadius * _wound.localScale.y : FullRadius;
+            return RingDistance(p, new Vector3(0f, FullRadius, 0f), Vector3.right, 0.038f, outer, 0.024f);
+        }
         public override string Status => metres <= 0.01f ? "tape: empty"
             : _pulling ? $"tape {metres - _len:0.0} m  (release: tear off, right mouse: cancel)"
             : _aiming ? (_aimValid ? "tape: hold left mouse to stick it here" : "tape: get closer to a wall or the floor")

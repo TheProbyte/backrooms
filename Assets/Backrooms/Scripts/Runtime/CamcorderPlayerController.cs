@@ -123,7 +123,7 @@ namespace Backrooms
             _yaw += yaw;
             _pitch = Mathf.Clamp(_pitch + pitch, -pitchLimit, pitchLimitDown);
             transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
-            if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
+            ApplyPivotRotation();
         }
         public float Pitch => _pitch;
 
@@ -173,7 +173,53 @@ namespace Backrooms
             UpdateZoom(keyboard, hasFocus);
             UpdateStance(keyboard, hasFocus);
             UpdateMove(keyboard, hasFocus);
+            UpdateLean(keyboard, hasFocus);
             UpdateEye();
+        }
+
+        // ---------------- Lean ----------------
+        [Header("Lean")]
+        [Tooltip("How far the head goes to the side when leaning (Z left, X right), metres.")] public float leanDistance = 0.32f;
+        [Tooltip("How far the view rolls when fully leaned, degrees.")] public float leanRoll = 9f;
+        float _leanInput, _leanAmount;
+        /// <summary>Automated tests: lean input (-1..1) instead of the keys.</summary>
+        [System.NonSerialized] public float? botLean;
+        /// <summary>-1 leaned fully left .. 1 fully right (after walls have had their say).</summary>
+        public float Lean => _leanAmount;
+        readonly RaycastHit[] _leanHits = new RaycastHit[6];
+
+        void UpdateLean(Keyboard kb, bool hasFocus)
+        {
+            float want = 0f;
+            if (hasFocus && !noclip && CurrentStance != Stance.Crawl && !IsRunning)
+            {
+                if (kb.zKey.isPressed) want -= 1f;
+                if (kb.xKey.isPressed) want += 1f;
+            }
+            if (botLean.HasValue) want = botLean.Value;
+            _leanInput = Mathf.MoveTowards(_leanInput, want, Time.deltaTime * 3.5f);
+            float eased = Mathf.Sign(_leanInput) * Mathf.SmoothStep(0f, 1f, Mathf.Abs(_leanInput));
+            // Not into a wall: the head stops short of whatever is beside it.
+            float dist = Mathf.Abs(eased) * leanDistance;
+            if (dist > 0.001f)
+            {
+                Vector3 from = transform.TransformPoint(new Vector3(0f, _eye, 0f));
+                Vector3 dir = transform.right * Mathf.Sign(eased);
+                int n = Physics.SphereCastNonAlloc(from, 0.13f, dir, _leanHits, dist + 0.03f, ~0, QueryTriggerInteraction.Ignore);
+                for (int i = 0; i < n; i++)
+                {
+                    if (_leanHits[i].collider.transform.IsChildOf(transform) || _leanHits[i].distance <= 0f) continue;
+                    dist = Mathf.Min(dist, Mathf.Max(0f, _leanHits[i].distance - 0.03f));
+                }
+            }
+            float target = Mathf.Sign(eased) * dist / Mathf.Max(0.01f, leanDistance);
+            _leanAmount = Mathf.MoveTowards(_leanAmount, target, Time.deltaTime * 4f);
+            ApplyPivotRotation();
+        }
+
+        void ApplyPivotRotation()
+        {
+            if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, -_leanAmount * leanRoll);
         }
 
         // ---------------- Leash ----------------
@@ -200,7 +246,7 @@ namespace Backrooms
             _controller.enabled = !noclip;
             _yaw = yaw; _pitch = Mathf.Clamp(pitch, -pitchLimit, pitchLimitDown); _verticalVelocity = 0f;
             PlanarVelocity = Vector3.zero;
-            if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
+            ApplyPivotRotation();
         }
 
         /// <summary>
@@ -239,7 +285,7 @@ namespace Backrooms
             _lookFrame = Time.frameCount;
             _pitch = Mathf.Clamp(_pitch, -pitchLimit, pitchLimitDown);
             transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
-            if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
+            ApplyPivotRotation();
         }
 
         void UpdateMove(Keyboard keyboard, bool hasFocus)
@@ -444,7 +490,8 @@ namespace Backrooms
             _eye = Mathf.Clamp(_eye, 0.25f, standEye + 0.3f);
             if (Mathf.Abs(target - _eye) < 0.01f && Mathf.Abs(_eyeVel) < 0.05f) { _eyeK = 40f; _eyeC = 11f; }
             var lp = cameraPitchPivot.localPosition;
-            cameraPitchPivot.localPosition = new Vector3(lp.x, _eye, lp.z);
+            // Leaning: the head goes to the side and a little down.
+            cameraPitchPivot.localPosition = new Vector3(_leanAmount * leanDistance, _eye - Mathf.Abs(_leanAmount) * 0.045f, lp.z);
         }
 
         // ---------------- Jump ----------------

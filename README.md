@@ -27,6 +27,7 @@ milestone-1 room is still in `OfficeRoom_Prototype.unity`.)
 | L | Developer menu: spawn any item or piece of furniture |
 | Esc | Pause menu (resume, save and quit to menu, quit) / close a panel |
 | Left click | Pick up an item; flick a light switch; hold on a door to take its lever (then walk to open it); hold to grab furniture; with an item in hand: use it |
+| Z / X (hold) | Lean left / right (round a corner; stops short of walls) |
 | Q | Tap: drop the item in your hand (a lamp or a cord's box is set down upright). Hold and release: throw it (harder the longer you hold) |
 | Right click | With an extension cord, the desk lamp or a plug in hand: tap to coil / wind up the cord, hold to reel it in. With tape: hold at a wall to line up the start, then hold left click to pull a strip (right click again cancels). Otherwise: shove |
 

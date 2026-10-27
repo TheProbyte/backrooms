@@ -136,6 +136,7 @@ namespace Backrooms.Generation
             bool playing = Saves.GameSession.Slot >= 0 && Saves.GameSession.Data != null;
             // Every light on, but those the save has switched off (before the first chunk lights up).
             LightZones.Load(playing ? Saves.GameSession.Data.lightsOff : null);
+            DoorEdges.Clear();
             if (playing) Interaction.DoorStates.Load(Saves.GameSession.Data.doorKeys, Saves.GameSession.Data.doorAngles); else Interaction.DoorStates.Clear();
             MenuMode = !playing && Saves.GameSession.InMenu;
             if (MenuMode) Seed = Menu.MainMenu.MenuSeed;
@@ -150,6 +151,10 @@ namespace Backrooms.Generation
             PoolMaterials.Ensure();
             SpecialRoomMaterials.Ensure(assets);          // the rooms behind crawl spaces
             if (Application.isPlaying && !GetComponent<ChunkVisibility>()) gameObject.AddComponent<ChunkVisibility>();   // chunks behind walls are not drawn
+            if (Application.isPlaying && !GetComponent<Audio.BuildingSettling>()) gameObject.AddComponent<Audio.BuildingSettling>().streamer = this;   // creaks, ticks, air at vents
+#if STEAMAUDIO_ENABLED
+            if (Application.isPlaying && !GetComponent<Audio.SteamAudioWorld>()) gameObject.AddComponent<Audio.SteamAudioWorld>().streamer = this;   // walls for Steam Audio
+#endif
             WallPlateModels.Ensure();                     // outlet and switch models, copied into the chunk meshes
             DoorModels.Ensure(assets);                    // the wooden doors in some doorways
             MaterialMaps.Ensure(assets);                  // normal maps for the materials that had none

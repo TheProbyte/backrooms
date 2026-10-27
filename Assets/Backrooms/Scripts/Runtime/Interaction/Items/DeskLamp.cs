@@ -46,9 +46,15 @@ namespace Backrooms.Interaction
         public override bool PlaceOnDrop => true;
         public override Vector3 HoldOffset => new Vector3(0.2f, -0.42f, 0.42f);
         public override Vector3 UseOffset => HoldOffset;
-        public override Vector3 GripLocal => new Vector3(0f, 0.17f, 0.012f);       // round the upright stem
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(-0.6f, 0f, 0.8f), Vector3.up);
+        // Round the upright stem like a handshake: the palm on its right, fingers forward round its front, thumb behind; the
+        // stem sits inside the curl of the fingers, a little ahead of the knuckles.
+        public override Vector3 GripLocal => new Vector3(0.014f, 0.17f, -0.004f);
+        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0.12f, 0f, 1f), Vector3.right);
         public override float GripCurl => 0.95f;
+        /// <summary>The fingers close round the upright stem (and stop on the base).</summary>
+        public override float ContactDistance(Vector3 p) =>
+            Mathf.Min(SegmentDistance(p, new Vector3(0f, 0.035f, 0.012f), new Vector3(0f, 0.3f, 0.012f)) - 0.009f,
+                      BoxDistance(p, new Vector3(0f, 0.015f, 0f), new Vector3(0.075f, 0.015f, 0.075f)));
         public override float Amount { get => switchOn ? 1f : 0f; set => switchOn = value > 0.5f; }
         public override string Status
         {
@@ -94,6 +100,7 @@ namespace Backrooms.Interaction
             _light.shadows = LightShadows.Soft; _light.shadowNearPlane = 0.06f; _light.shadowStrength = 0.9f;
             _light.renderingLayerMask = -1;
             _light.enabled = false;
+            MakeDust();
 
             // The wound-up cord behind the base; clicking it lets the cord out into your hand.
             _bundle = new GameObject("CordBundle");
@@ -196,8 +203,74 @@ namespace Backrooms.Interaction
             _fx.PlayOneShot(SoundBank.SwitchClick, 0.6f);
         }
 
+        // ---------------- Dust in the beam ----------------
+
+        ParticleSystem _dust;
+        ParticleSystemRenderer _dustRenderer;
+        MaterialPropertyBlock _dustMpb;
+        static Material s_dustMat;
+
+        /// <summary>
+        /// Dust floats in the air round the lamp all the time; the shader shows a mote only while it is inside the beam,
+        /// so they drift into the light, glint, and drift out again.
+        /// </summary>
+        void MakeDust()
+        {
+            if (!s_dustMat)
+            {
+                var sh = Shader.Find("Backrooms/DustMote");
+                if (!sh) return;
+                s_dustMat = new Material(sh) { name = "DustMote", hideFlags = HideFlags.DontSave };
+            }
+            var go = new GameObject("Dust");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = Bulb + ShadeDir * 0.45f;
+            _dust = go.AddComponent<ParticleSystem>();
+            _dust.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            var main = _dust.main;
+            main.loop = true; main.playOnAwake = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(7f, 12f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0f, 0.015f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.003f, 0.0065f);
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 1f, 1f, 0.45f), new Color(1f, 1f, 1f, 1f));
+            main.gravityModifier = 0.0005f;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.maxParticles = 140;
+            main.prewarm = true;
+            var emission = _dust.emission;
+            emission.rateOverTime = 14f;
+            var shape = _dust.shape;
+            shape.shapeType = ParticleSystemShapeType.Box;
+            shape.scale = new Vector3(0.9f, 0.9f, 0.9f);
+            var noise = _dust.noise;
+            noise.enabled = true; noise.strength = 0.012f; noise.frequency = 0.35f; noise.scrollSpeed = 0.05f;
+            _dustRenderer = go.GetComponent<ParticleSystemRenderer>();
+            _dustRenderer.sharedMaterial = s_dustMat;
+            _dustRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+            _dustRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            _dustRenderer.receiveShadows = false;
+            _dustMpb = new MaterialPropertyBlock();
+        }
+
+        void UpdateDust()
+        {
+            if (!_dust) return;
+            bool on = _level > 0.05f && !Held;
+            if (on && !_dust.isPlaying) _dust.Play();
+            else if (!on && _dust.isPlaying) _dust.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            if (!on) return;
+            var t = _light.transform;
+            _dustMpb.SetVector("_ConePos", t.position);
+            _dustMpb.SetVector("_ConeDir", t.forward);
+            _dustMpb.SetFloat("_ConeCos", Mathf.Cos(_light.spotAngle * 0.5f * 0.8f * Mathf.Deg2Rad));
+            _dustMpb.SetFloat("_Range", 1.6f);
+            _dustMpb.SetFloat("_Strength", 1.5f * _level);
+            _dustRenderer.SetPropertyBlock(_dustMpb);
+        }
+
         void LateUpdate()
         {
+            UpdateDust();
             // The filament warms up and cools down in a moment; a lamp far from the camera keeps no shadow map.
             _level = Mathf.MoveTowards(_level, Lit ? 1f : 0f, Time.deltaTime * (Lit ? 12f : 6f));
             bool on = _level > 0.01f;

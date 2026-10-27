@@ -33,6 +33,8 @@ namespace Backrooms.Audio
         readonly bool[] _valid = new bool[W * W];
         readonly bool[] _passE = new bool[W * W];           // edge between (x,z) and (x+1,z)
         readonly bool[] _passN = new bool[W * W];           // edge between (x,z) and (x,z+1)
+        readonly bool[] _doorE = new bool[W * W];           // that edge is a shut door (closed, but thin)
+        readonly bool[] _doorN = new bool[W * W];
         readonly float[] _ceiling = new float[W * W];
         readonly float[] _dist = new float[W * W];
         readonly int[] _parent = new int[W * W];
@@ -60,6 +62,7 @@ namespace Backrooms.Audio
             public float direct;          // straight-line distance, m
             public float path;            // walking distance around walls, m
             public int walls;             // solid walls on the straight line
+            public int doors;             // shut doors on the straight line (not counted in walls)
             public Vector3 visiblePoint;  // where the path becomes visible to the listener
         }
 
@@ -84,12 +87,16 @@ namespace Backrooms.Audio
                 var L = cached;
                 _valid[i] = L != null;
                 _passE[i] = _passN[i] = false;
+                _doorE[i] = _doorN[i] = false;
                 _dist[i] = float.MaxValue; _parent[i] = -1; _visiblePoint[i] = -2;
                 if (L == null) continue;
                 int lx = gx - ch.x * n, lz = gz - ch.y * n;
                 _ceiling[i] = L.CeilingAt(lx, lz);
                 _passE[i] = OfficeLayout.IsPassable(L.vEdges[lx + 1, lz]);
                 _passN[i] = OfficeLayout.IsPassable(L.hEdges[lx, lz + 1]);
+                // A shut door closes its doorway: no path through, and it muffles less than a wall.
+                if (_passE[i] && DoorEdges.IsShut(true, gx + 1, gz, L.storey)) { _passE[i] = false; _doorE[i] = true; }
+                if (_passN[i] && DoorEdges.IsShut(false, gz + 1, gx, L.storey)) { _passN[i] = false; _doorN[i] = true; }
             }
             // An edge is only open if the cell beyond it is loaded too.
             for (int z = 0; z < W; z++)
@@ -182,9 +189,25 @@ namespace Backrooms.Audio
 
         // ---------------- Line of sight through the wall grid ----------------
 
-        /// <summary>Solid walls crossed by the straight line between two points (window cell units).</summary>
+        /// <summary>Solid walls and shut doors crossed by the straight line between two points (window cell units).</summary>
         int WallsBetween(Vector2 a, Vector2 b, int cap = 4)
         {
+            int w = WallsBetween(a, b, cap, out int doors);
+            return Mathf.Min(cap, w + doors);
+        }
+
+        bool DoorStep(int x, int z, int dx, int dz)
+        {
+            if (dx == 1) return _doorE[z * W + x];
+            if (dx == -1) return x > 0 && _doorE[z * W + x - 1];
+            if (dz == 1) return _doorN[z * W + x];
+            return z > 0 && _doorN[(z - 1) * W + x];
+        }
+
+        /// <summary>Solid walls crossed by the straight line (doors counted apart: they are thin).</summary>
+        int WallsBetween(Vector2 a, Vector2 b, int cap, out int doors)
+        {
+            doors = 0;
             int x = Mathf.FloorToInt(a.x), z = Mathf.FloorToInt(a.y);
             int ex = Mathf.FloorToInt(b.x), ez = Mathf.FloorToInt(b.y);
             float dx = b.x - a.x, dz = b.y - a.y;
@@ -200,14 +223,14 @@ namespace Backrooms.Audio
                 {
                     int nx = x + sx;
                     if (nx < 0 || nx >= W) return cap;
-                    if (!Open(x, z, sx, 0)) { if (++walls >= cap) return cap; }
+                    if (!Open(x, z, sx, 0)) { if (DoorStep(x, z, sx, 0)) doors++; else if (++walls >= cap) return cap; }
                     x = nx; tmx += tdx;
                 }
                 else
                 {
                     int nz = z + sz;
                     if (nz < 0 || nz >= W) return cap;
-                    if (!Open(x, z, 0, sz)) { if (++walls >= cap) return cap; }
+                    if (!Open(x, z, 0, sz)) { if (DoorStep(x, z, 0, sz)) doors++; else if (++walls >= cap) return cap; }
                     z = nz; tmz += tdz;
                 }
             }
@@ -247,14 +270,14 @@ namespace Backrooms.Audio
             if (sx < 0 || sz < 0 || sx >= W || sz >= W) { r.path = r.direct * 2f; r.walls = 4; return r; }
             r.inField = true;
             int i = sz * W + sx;
-            r.walls = WallsBetween(l, s);
+            r.walls = WallsBetween(l, s, 4, out r.doors);
             float dy = source.y - _listener.y;
             if (_dist[i] == float.MaxValue) { r.path = r.direct * 2f; return r; }
             r.reachable = true;
             // Walking distance from cell centres, plus the leftover offsets, never shorter than straight.
             float horiz = _dist[i] + (s - new Vector2(sx + 0.5f, sz + 0.5f)).magnitude * C * 0.5f;
             r.path = Mathf.Max(r.direct, Mathf.Sqrt(horiz * horiz + dy * dy));
-            if (r.walls == 0) return r;
+            if (r.walls == 0 && r.doors == 0) return r;
 
             if (_visiblePoint[i] == -2)
             {
