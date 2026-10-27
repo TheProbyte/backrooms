@@ -49,6 +49,8 @@ namespace Backrooms.Interaction
             list.Add(new Entry { name = "Desk lamp", category = "ITEMS", clearance = 0.9f, spawn = (p, r, pv) => DeskLamp.Create(p, r).gameObject });
             list.Add(new Entry { name = "Extension cord", category = "ITEMS", clearance = 0.9f, spawn = (p, r, pv) => CordBox.Create(p, r).gameObject });
             list.Add(new Entry { name = "Rubber chicken", category = "ITEMS", clearance = 0.8f, spawn = (p, r, pv) => RubberChicken.Create(p + Vector3.up * 0.08f, r * Quaternion.Euler(0f, 90f, 0f)).gameObject });
+            // Lying on its side, the handle toward you.
+            list.Add(new Entry { name = "Sledgehammer", category = "ITEMS", clearance = 1f, spawn = (p, r, pv) => Sledgehammer.Create(p + Vector3.up * 0.04f, r * Quaternion.Euler(-90f, 0f, 0f) * Quaternion.Euler(0f, 90f, 0f)).gameObject });
             if (!a) return list;
 
             uint MaskAt(Vector3 p)

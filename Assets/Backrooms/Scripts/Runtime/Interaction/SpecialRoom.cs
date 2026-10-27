@@ -115,6 +115,21 @@ namespace Backrooms.Interaction
                     break;
                 }
             }
+            // A sledgehammer lying along a wall: often in a maintenance closet, sometimes in sealed storage. Its own dice (so
+            // what else lies in the room is as it always was), and last on the list (so the others keep their loot ids).
+            if (template <= 1)
+            {
+                var hd = new System.Random(unchecked((int)(id ^ (id >> 29)) ^ 0x51ED6E));
+                if (hd.NextDouble() < (template == 0 ? 0.45 : 0.25))
+                {
+                    float side = hd.Next(2) == 0 ? -1f : 1f, way = hd.Next(2) == 0 ? 1f : -1f;
+                    // Its butt is the item's origin: the 0.66 m hammer lies centred along the side wall, clear of the ends.
+                    float mid = D * 0.5f + ((float)hd.NextDouble() - 0.5f) * Mathf.Max(0f, D - 1.6f);
+                    var at = At(mid - way * 0.33f, side * (W * 0.5f - 0.07f), 0.035f);
+                    var along = F * way;
+                    loot.Add((at, Quaternion.LookRotation(Vector3.Cross(along, Vector3.up), along), "sledgehammer"));     // on the head's side
+                }
+            }
             for (int i = 0; i < loot.Count; i++)
             {
                 ulong lootId = (id * 0x9E3779B97F4A7C15ul) ^ (ulong)(i + 1) * 0xC2B2AE3D27D4EB4Ful;

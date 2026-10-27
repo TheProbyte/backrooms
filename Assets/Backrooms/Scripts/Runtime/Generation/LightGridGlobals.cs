@@ -10,7 +10,7 @@ namespace Backrooms.Generation
     public static class LightGridGlobals
     {
         static ComputeBuffer s_occ, s_lights, s_tiles, s_tileLights, s_fixtureLookup;
-        static ComputeBuffer s_occBoxes, s_occTiles, s_occIndices;
+        static ComputeBuffer s_occBoxes, s_occTiles, s_occIndices, s_holes, s_holeCells;
         static Texture3D s_tex3D;
         static Texture2D s_tex2D;
         static bool s_releasing;
@@ -35,7 +35,7 @@ namespace Backrooms.Generation
             void Release(ref ComputeBuffer buffer) { buffer?.Release(); buffer = null; }
             Release(ref s_occ); Release(ref s_lights); Release(ref s_tiles); Release(ref s_tileLights);
             Release(ref s_fixtureLookup);
-            Release(ref s_occBoxes); Release(ref s_occTiles); Release(ref s_occIndices);
+            Release(ref s_occBoxes); Release(ref s_occTiles); Release(ref s_occIndices); Release(ref s_holes); Release(ref s_holeCells);
             void ReleaseTexture(Texture texture)
             {
                 if (!texture) return;
@@ -74,6 +74,12 @@ namespace Backrooms.Generation
             if (s_occIndices == null || !s_occIndices.IsValid()) { s_occIndices = new ComputeBuffer(1, 4); s_occIndices.SetData(new uint[1]); }
             Shader.SetGlobalBuffer("_LocalOccBoxes", s_occBoxes); Shader.SetGlobalBuffer("_LocalOccTiles", s_occTiles); Shader.SetGlobalBuffer("_LocalOccIndices", s_occIndices);
             Shader.SetGlobalVector("_LocalOccInfo", new Vector4(4.8f, LightGrid.Tiles, 0, 0));
+            // No broken walls.
+            if (s_holes == null || !s_holes.IsValid()) { s_holes = new ComputeBuffer(LightGridMath.HoleRecord, 4); s_holes.SetData(new uint[LightGridMath.HoleRecord]); }
+            if (s_holeCells == null || !s_holeCells.IsValid()) { s_holeCells = new ComputeBuffer(1, 4); s_holeCells.SetData(new uint[1]); }
+            Shader.SetGlobalBuffer("_LGridHoleTable", s_holes);
+            Shader.SetGlobalBuffer("_LGridHoleCells", s_holeCells);
+            Shader.SetGlobalInteger("_LGridHoleN", 0);
             Shader.SetGlobalBuffer(GOcc, s_occ);
             Shader.SetGlobalTexture(GA, s_tex3D);
             Shader.SetGlobalTexture(GB, s_tex3D);

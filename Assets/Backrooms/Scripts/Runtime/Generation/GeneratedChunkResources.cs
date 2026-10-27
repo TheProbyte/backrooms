@@ -10,6 +10,12 @@ namespace Backrooms.Generation
         [SerializeField, HideInInspector] List<Mesh> _meshes = new List<Mesh>();
         public int MeshCount => _meshes.Count;
         public Mesh Own(Mesh mesh) { _meshes.Add(mesh); return mesh; }
+        /// <summary>A mesh this chunk no longer draws (its walls were rebuilt): destroyed now.</summary>
+        public void Drop(Mesh mesh)
+        {
+            if (!mesh || !_meshes.Remove(mesh)) return;
+            if (Application.isPlaying) Destroy(mesh); else DestroyImmediate(mesh);
+        }
         void OnDestroy() => Release();
         public void Release()
         {

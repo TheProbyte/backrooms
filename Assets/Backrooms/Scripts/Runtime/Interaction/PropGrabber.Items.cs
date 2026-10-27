@@ -366,7 +366,7 @@ namespace Backrooms.Interaction
             input.aimAt = input.hit ? input.hitInfo.point : cam.position + cam.forward * 2f;
             HeldItem.HoldUpdate(input);
             if (!HeldItem) return;                // used up
-            if (_shake) { _shake.dip = 0.12f + 0.1f * HeldItem.UseBlend; _shake.effort = 0f; }
+            if (_shake) { _shake.dip = 0.12f + 0.1f * HeldItem.UseBlend; _shake.effort = HeldItem.Effort; }
         }
 
         /// <summary>The nearest thing the centre of the view is on, within 6 m (not the player or the held item).</summary>

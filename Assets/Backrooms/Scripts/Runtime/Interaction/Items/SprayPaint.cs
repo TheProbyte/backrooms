@@ -292,6 +292,43 @@ namespace Backrooms.Interaction
             }
         }
 
+        /// <summary>
+        /// Paint on what is gone (pieces knocked out of a wall): every dot and run within the bounds whose middle `gone`
+        /// says is no longer there is taken away (and a run still going there stops).
+        /// </summary>
+        public void Erase(Bounds within, System.Func<Vector3, bool> gone)
+        {
+            foreach (var b in _batches) Dots -= EraseIn(b, within, gone);
+            for (int i = _drips.Count - 1; i >= 0; i--)
+                if (within.Contains(_drips[i].top) && gone(_drips[i].top)) { _dripAt.Remove(_drips[i].cell); _drips.RemoveAt(i); _dripBatch.dirty = true; }
+        }
+
+        static int EraseIn(Batch b, Bounds within, System.Func<Vector3, bool> gone)
+        {
+            int quads = b.Quads, kept = 0, removed = 0;
+            for (int q = 0; q < quads; q++)
+            {
+                int s = q * 4;
+                Vector3 mid = (b.v[s] + b.v[s + 2]) * 0.5f;
+                bool flip = b.idx[q * 6 + 1] != s + 1;
+                if (within.Contains(mid) && gone(mid)) { removed++; continue; }
+                if (kept != q)
+                {
+                    int t = kept * 4;
+                    for (int k = 0; k < 4; k++) { b.v[t + k] = b.v[s + k]; b.uv[t + k] = b.uv[s + k]; b.c[t + k] = b.c[s + k]; }
+                    int i = kept * 6;
+                    if (!flip) { b.idx[i] = t; b.idx[i + 1] = t + 1; b.idx[i + 2] = t + 2; b.idx[i + 3] = t; b.idx[i + 4] = t + 2; b.idx[i + 5] = t + 3; }
+                    else { b.idx[i] = t; b.idx[i + 1] = t + 2; b.idx[i + 2] = t + 1; b.idx[i + 3] = t; b.idx[i + 4] = t + 3; b.idx[i + 5] = t + 2; }
+                }
+                kept++;
+            }
+            if (removed == 0) return 0;
+            b.v.RemoveRange(kept * 4, b.v.Count - kept * 4); b.uv.RemoveRange(kept * 4, b.uv.Count - kept * 4);
+            b.c.RemoveRange(kept * 4, b.c.Count - kept * 4); b.idx.RemoveRange(kept * 6, b.idx.Count - kept * 6);
+            b.dirty = true;
+            return removed;
+        }
+
         /// <summary>Removes all paint (a new world).</summary>
         public void Clear()
         {

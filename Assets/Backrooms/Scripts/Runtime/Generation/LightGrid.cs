@@ -127,6 +127,7 @@ namespace Backrooms.Generation
             shader.SetVector("_LGridFar", new Vector4(perPixelDirect ? 1 : 0, TileTexels, Tiles, Split));
             shader.SetFloat("_LGridFillAmt", roomFill);
             BindProbesTo(shader, kernel);
+            BindHolesTo(shader, kernel);
             return true;
         }
 
@@ -140,7 +141,7 @@ namespace Backrooms.Generation
             _a = Make3D("LightGridA"); _b = Make3D("LightGridB");
             _bounceSrc = Make2D("LightGridBounceSrc"); _bounce0 = Make2D("LightGridBounce0"); _bounce1 = Make2D("LightGridBounce1");
             _occ = new ComputeBuffer(OccN * OccN * 2, 4);
-            InitSurfaces(); InitOccluders();
+            InitSurfaces(); InitOccluders(); InitHoles();
             _lights = new ComputeBuffer(_lightArr.Length, LightGridMath.GridLight.Stride);
             _tiles = new ComputeBuffer(Tiles * Tiles, 8);
             _tileLights = new ComputeBuffer(8192, 4);
@@ -167,7 +168,7 @@ namespace Backrooms.Generation
             _occ?.Release(); _lights?.Release(); _tiles?.Release(); _tileLights?.Release(); _fixtureLookup?.Release();
             _occ = _lights = _tiles = _tileLights = _fixtureLookup = null;
             _encoded.Clear();
-            ReleaseSurfaces(); ReleaseOccluders(); ReleaseProbes();
+            ReleaseSurfaces(); ReleaseOccluders(); ReleaseProbes(); ReleaseHoles();
         }
 
         static RenderTexture Make3D(string name)
@@ -332,6 +333,7 @@ namespace Backrooms.Generation
                 _occDirty = true;
             }
             if (_occDirty) { RebuildOccupancy(); _bounceDirty = true; }
+            UpdateHoles();
             SetLights(lights);
             TrackHazeLights(lights);
             UpdateOccluders(viewer);
@@ -353,6 +355,7 @@ namespace Backrooms.Generation
             {
                 compute.SetTexture(_kDirect, IdA, _a); compute.SetTexture(_kDirect, IdB, _b); compute.SetBuffer(_kDirect, IdOcc, _occ);
                 compute.SetBuffer(_kDirect, IdLights, _lights); compute.SetBuffer(_kDirect, IdTiles, _tiles); compute.SetBuffer(_kDirect, IdTileLights, _tileLights);
+                BindHolesTo(compute, _kDirect);
                 _pending.AddRange(_dirty);
                 long volume = 0;
                 foreach (var (mn, mx) in _pending) volume += Volume(Clip(mn, mx));
@@ -392,6 +395,7 @@ namespace Backrooms.Generation
             {
                 compute.SetBuffer(_kBounceSrc, IdOcc, _occ); compute.SetTexture(_kBounceSrc, IdBounceSrc, _bounceSrc);
                 compute.SetBuffer(_kBounceSrc, IdLights, _lights); compute.SetBuffer(_kBounceSrc, IdTiles, _tiles); compute.SetBuffer(_kBounceSrc, IdTileLights, _tileLights);
+                BindHolesTo(compute, _kBounceSrc);
                 BindBounceSurfaces();
                 compute.Dispatch(_kBounceSrc, OccN / 8, OccN / 8, 2);
                 BounceDispatchesLastFrame++;
@@ -439,6 +443,7 @@ namespace Backrooms.Generation
             Shader.SetGlobalVector(GFar, new Vector4(perPixelDirect ? 1f : 0f, TileTexels, Tiles, Split));
             BindOccluderGlobals();
             BindProbeGlobals();
+            BindHoleGlobals();
         }
 
         /// <summary>Is a world point inside this grid's window (with a margin, metres)?</summary>

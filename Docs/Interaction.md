@@ -54,6 +54,11 @@
 - **Rubber chicken**: like a real one. Hold the left mouse button to squeeze it: it squashes and wheezes as it takes
   in air. Release and it squawks; the longer the squeeze (up to about half a second), the longer and louder the squawk.
   It squeaks when thrown and when it lands hard.
+- **Sledgehammer**: carried choked up near the head; hold left mouse to wind up (the hand slides to the end of the handle
+  and lifts it over the shoulder, up to 0.6 s for the hardest blow; you step in if the wall is a little out of reach),
+  release to swing at what the view is on. It breaks walls (studs, boards, batts, baseboards), knocks furniture, shoves
+  doors; thrown hard into a wall it breaks that too. Found in maintenance closets and sealed storage, or from the L menu.
+  How walls break: BreakingWalls.md (`Items/Sledgehammer.cs`, model `Items/SledgehammerModel.cs`).
 - Items lying in the world have a soft contact shadow under them (`Items/ContactShadow.cs`) instead of shadow-map
   shadows, which flickered on small moving things.
 - Cords no longer pass through floors and walls: each particle sweeps from where it last was and slides along what it

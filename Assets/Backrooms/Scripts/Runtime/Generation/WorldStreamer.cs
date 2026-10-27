@@ -39,6 +39,8 @@ namespace Backrooms.Generation
         public event System.Action<Vector3Int, GameObject> ChunkLoaded;
         /// <summary>Raised just before a chunk's GameObject is destroyed.</summary>
         public event System.Action<Vector3Int, GameObject> ChunkUnloaded;
+        /// <summary>Raised after a loaded chunk's walls and their colliders were rebuilt (a wall in it was broken).</summary>
+        public event System.Action<Vector3Int, GameObject> ChunkWallsRebuilt;
 
         /// <summary>Live world-gen rules (edited by F5 > World Gen). Call <see cref="Regenerate"/> after changes.</summary>
         public WorldGenSettings Settings { get; private set; }
@@ -172,6 +174,10 @@ namespace Backrooms.Generation
                 player.gameObject.AddComponent<Interaction.PropGrabber>();
             if (player && player.GetComponent<CamcorderPlayerController>() && !player.GetComponent<Interaction.FirstPersonBody>())
                 player.gameObject.AddComponent<Interaction.FirstPersonBody>();
+            // Broken walls: the world they belong to (the save puts its own back before any chunk is built).
+            Destruction.WallDamage.Clear();
+            Destruction.WallDamage.Bind(_world, Settings.storeyPitch, assets);
+            if (Application.isPlaying && !GetComponent<Destruction.WallBreaker>()) gameObject.AddComponent<Destruction.WallBreaker>().streamer = this;
             // The save being played: moved props are back on the list before any chunk is built. Or the main menu.
             if (playing) { _saver = gameObject.AddComponent<Saves.WorldSaver>(); _saver.RestoreProps(_world); }
             else if (MenuMode) gameObject.AddComponent<Menu.MainMenu>().streamer = this;
@@ -192,6 +198,7 @@ namespace Backrooms.Generation
         public void Regenerate()
         {
             _world = new WorldGenerator(Seed, Settings);
+            Destruction.WallDamage.Bind(_world, Settings.storeyPitch, assets);
             _generation++;
             _frozen = player ? ChunkOf(player.position) : (Vector2Int?)null;
             if (_frozen.HasValue && _chunks.TryGetValue(Key(_frozen.Value, 0), out var keep)) keep.generation = _generation;
@@ -204,6 +211,8 @@ namespace Backrooms.Generation
             CancelUpload();
             Seed = newSeed;
             _world = new WorldGenerator(Seed, Settings);
+            Destruction.WallDamage.Clear();                // another world: none of its walls are broken
+            Destruction.WallDamage.Bind(_world, Settings.storeyPitch, assets);
             _generation++;
             _frozen = null;
             foreach (var k in new List<Vector3Int>(_chunks.Keys)) DestroyNow(k);
@@ -277,9 +286,50 @@ namespace Backrooms.Generation
             if (_saver) _saver.RestoreWorld();
         }
 
+        // ---------------- Walls rebuilt (a wall in the chunk was broken) ----------------
+
+        readonly Dictionary<Vector3Int, Task<OfficeChunkBuilder>> _wallRebuilds = new Dictionary<Vector3Int, Task<OfficeChunkBuilder>>();
+        readonly HashSet<Vector3Int> _wallsAgain = new HashSet<Vector3Int>();
+        readonly List<Vector3Int> _wallsDone = new List<Vector3Int>();
+
+        /// <summary>
+        /// Builds a chunk's walls again (off the main thread) and swaps them into the loaded chunk: a broken panel in it
+        /// draws itself from now on. A chunk not loaded yet is built without the panel anyway; one being prepared right now
+        /// is rebuilt once it is in.
+        /// </summary>
+        public void RebuildWalls(Vector3Int coord)
+        {
+            if (!_chunks.ContainsKey(coord))
+            {
+                if (_pending.ContainsKey(coord) || (_upload != null && _uploadKey == coord)) _wallsAgain.Add(coord);
+                return;
+            }
+            if (_wallRebuilds.ContainsKey(coord)) { _wallsAgain.Add(coord); return; }
+            var a = assets; var w = _world;
+            _wallRebuilds[coord] = Task.Run(() => Prepare(w, coord, a));
+        }
+
+        void FinishWallRebuilds()
+        {
+            if (_wallRebuilds.Count == 0) return;
+            _wallsDone.Clear();
+            foreach (var kv in _wallRebuilds) if (kv.Value.IsCompleted) _wallsDone.Add(kv.Key);
+            foreach (var coord in _wallsDone)
+            {
+                var task = _wallRebuilds[coord];
+                _wallRebuilds.Remove(coord);
+                if (task.IsFaulted) { Debug.LogException(task.Exception); continue; }
+                if (!_chunks.TryGetValue(coord, out var ch) || !ch.go) continue;
+                task.Result.ReplaceWalls(ch.go);
+                ChunkWallsRebuilt?.Invoke(coord, ch.go);
+                if (_wallsAgain.Remove(coord)) RebuildWalls(coord);
+            }
+        }
+
         void Update()
         {
             if (!player) return;
+            FinishWallRebuilds();
             var c = ChunkOf(player.position);
             if (c != _center || _sitesChanged) { _sitesChanged = false; Refresh(false); }
 
@@ -438,6 +488,7 @@ namespace Backrooms.Generation
             if (lightManager) lightManager.Register(coord, ch.lights, ch.lenses, ch.faulty, animate && strikeOnStream);
             if (lightManager) lightManager.RegisterDoorways(coord, ch.doors);
             ChunkLoaded?.Invoke(coord, go);
+            if (_wallsAgain.Remove(coord)) RebuildWalls(coord);        // a wall in it broke while it was being prepared
             if (uploadTimer != null) RecordUpload((float)uploadTimer.Elapsed.TotalMilliseconds);
         }
 

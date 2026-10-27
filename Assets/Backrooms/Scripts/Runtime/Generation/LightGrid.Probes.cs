@@ -140,6 +140,7 @@ namespace Backrooms.Generation
                 compute.SetBuffer(_kFace, IdOcc, _occ); compute.SetBuffer(_kFace, "_Surfaces", _surfaces);
                 compute.SetBuffer(_kFace, IdLights, _lights); compute.SetBuffer(_kFace, IdTiles, _tiles); compute.SetBuffer(_kFace, IdTileLights, _tileLights);
                 BindOccludersTo(_kFace);
+                BindHolesTo(compute, _kFace);
                 compute.SetBuffer(_kFace, "_FaceLightOut", _faceLight);
                 compute.Dispatch(_kFace, OccN / 8, OccN / 8, 2);
                 BounceDispatchesLastFrame++;
@@ -164,12 +165,14 @@ namespace Backrooms.Generation
             if (holes) { compute.SetVectorArray("_HolePos", _holePos); compute.SetVectorArray("_HoleNormal", _holeNormal); compute.SetVectorArray("_HolePartner", _holePartner); }
             compute.SetTexture(_kProbeTrace, "_DuctMouthLight", holes ? _ductMouthLight : (Texture)(_bounceCur ? _bounceCur : _bounce0));
             BindOccludersTo(_kProbeTrace);
+            BindHolesTo(compute, _kProbeTrace);
             compute.Dispatch(_kProbeTrace, OccN / ProbeSlices * OccN * 4, 1, 1);
             BounceDispatchesLastFrame += 2;
             if (probeFilter)
             {
                 for (int i = 0; i < 3; i++) { compute.SetTexture(_kProbeFilter, ProbeIn[i], cur[i]); compute.SetTexture(_kProbeFilter, ProbeSmooth[i], _probeSmooth[i]); }
                 compute.SetBuffer(_kProbeFilter, IdOcc, _occ);
+                BindHolesTo(compute, _kProbeFilter);
                 compute.Dispatch(_kProbeFilter, OccN / 8, OccN / 8, 4);
             }
             ProbeFrames++;

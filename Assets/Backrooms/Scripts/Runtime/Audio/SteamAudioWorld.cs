@@ -46,16 +46,60 @@ namespace Backrooms.Audio
         void OnEnable()
         {
             if (!streamer) streamer = GetComponent<WorldStreamer>();
-            if (streamer) { streamer.ChunkLoaded += OnChunkLoaded; streamer.ChunkUnloaded += OnChunkUnloaded; }
+            if (streamer) { streamer.ChunkLoaded += OnChunkLoaded; streamer.ChunkUnloaded += OnChunkUnloaded; streamer.ChunkWallsRebuilt += OnChunkLoaded; }
             DoorEdges.Changed += OnDoor;
+            Destruction.WallDamage.Changed += OnWall;
         }
 
         void OnDisable()
         {
-            if (streamer) { streamer.ChunkLoaded -= OnChunkLoaded; streamer.ChunkUnloaded -= OnChunkUnloaded; }
+            if (streamer) { streamer.ChunkLoaded -= OnChunkLoaded; streamer.ChunkUnloaded -= OnChunkUnloaded; streamer.ChunkWallsRebuilt -= OnChunkLoaded; }
             DoorEdges.Changed -= OnDoor;
+            Destruction.WallDamage.Changed -= OnWall;
             ReleaseAll();
         }
+
+        // ---------------- Broken walls ----------------
+        // A broken wall is no longer in its chunks' boxes: what is left of its boards is a mesh of its own, so sound goes
+        // through the holes and is stopped (muffled through) by the rest.
+
+        readonly Dictionary<Destruction.WallKey, (SteamAudio.StaticMesh mesh, int tris)> _walls = new Dictionary<Destruction.WallKey, (SteamAudio.StaticMesh, int)>();
+        readonly HashSet<Destruction.WallKey> _wallsWaiting = new HashSet<Destruction.WallKey>();
+
+        void OnWall(Destruction.WallKey k) { if (Ready) BuildWall(k); else _wallsWaiting.Add(k); }
+
+        void BuildWall(Destruction.WallKey k)
+        {
+            if (_walls.TryGetValue(k, out var old)) { _walls.Remove(k); Drop(old.mesh, old.tris); }
+            var p = Destruction.WallDamage.Find(k);
+            if (p == null) return;
+            _v.Clear(); _t.Clear(); _m.Clear();
+            float pitch = Destruction.WallDamage.Pitch;
+            for (int side = 0; side < 2; side++)
+            {
+                float w = (side == 0 ? -1f : 1f) * (Destruction.WallSpec.T * 0.5f - Destruction.WallSpec.Board * 0.5f);
+                foreach (var f in p.model.boards[side].pieces)
+                {
+                    if (p.state.removed[side][f.index]) continue;
+                    int start = _v.Count;
+                    var c = f.cell;
+                    Add(k.ToWorld(f.site.x, f.site.y, w, pitch));
+                    for (int i = 0; i < c.Length; i++) Add(k.ToWorld(c[i].x, c[i].y, w, pitch));
+                    for (int i = 0; i < c.Length; i++)
+                    {
+                        _t.Add(new SteamAudio.Triangle { index0 = start, index1 = start + 1 + i, index2 = start + 1 + (i + 1) % c.Length });
+                        _m.Add(0);
+                    }
+                }
+            }
+            if (_t.Count == 0) return;
+            var mesh = Make(new[] { Drywall, Carpet, CeilingTile, Generic, DoorWood });
+            if (mesh == null) return;
+            _walls[k] = (mesh, _t.Count);
+            Meshes++; Triangles += _t.Count;
+        }
+
+        void Add(Vector3 w) => _v.Add(new Vector3(w.x, w.y, -w.z));          // Steam Audio's frame (z flipped)
 
         void Update()
         {
@@ -70,15 +114,33 @@ namespace Backrooms.Audio
                 foreach (var e in _waitingDoors) if (DoorEdges.IsShut(e.vertical, e.line, e.along, e.storey)) AddDoor(e);
                 _waitingDoors.Clear();
             }
+            if (_wallsWaiting.Count > 0)
+            {
+                foreach (var k in _wallsWaiting) BuildWall(k);
+                _wallsWaiting.Clear();
+            }
         }
 
         void OnChunkLoaded(Vector3Int coord, GameObject go)
         {
             if (Ready) Build(coord, go); else _waiting.Add((coord, go));
+            // Broken walls on its edges (a saved world's) that have no mesh yet.
+            foreach (var kv in Destruction.WallDamage.All)
+                if ((kv.Key.Chunk(0) == coord || kv.Key.Chunk(1) == coord) && !_walls.ContainsKey(kv.Key)) OnWall(kv.Key);
         }
 
         void OnChunkUnloaded(Vector3Int coord, GameObject go)
         {
+            // Broken walls with neither side loaded any more go with it.
+            List<Destruction.WallKey> gone = null;
+            foreach (var kv in _walls)
+            {
+                var k = kv.Key;
+                if (k.Chunk(0) != coord && k.Chunk(1) != coord) continue;
+                var other = k.Chunk(0) == coord ? k.Chunk(1) : k.Chunk(0);
+                if (other == coord || !streamer || streamer.LayoutAt(other) == null) (gone ??= new List<Destruction.WallKey>()).Add(k);
+            }
+            if (gone != null) foreach (var k in gone) { var w = _walls[k]; _walls.Remove(k); Drop(w.mesh, w.tris); }
             if (!_chunks.TryGetValue(coord, out var m)) return;
             _chunks.Remove(coord);
             Drop(m.mesh, m.tris);
@@ -192,7 +254,8 @@ namespace Backrooms.Audio
         {
             foreach (var m in _chunks.Values) Drop(m.mesh, m.tris);
             foreach (var m in _doors.Values) Drop(m, 12);
-            _chunks.Clear(); _doors.Clear();
+            foreach (var m in _walls.Values) Drop(m.mesh, m.tris);
+            _chunks.Clear(); _doors.Clear(); _walls.Clear();
         }
 
         // ---------------- Sources ----------------

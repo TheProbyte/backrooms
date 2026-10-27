@@ -323,7 +323,22 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
 // in stair-stepped bands. Walls lie on cell edges and the occupancy buffer knows them exactly, so each
 // real light is also tested here: the line from the surface to the light, crossing cell edges, must not
 // pass a wall, a door header (by height) or a floor (except down a well). The same test the grid uses.
-half LGrid_LightVisible(float3 P, float3 N, float3 L)
+// A broken wall crossed at a point: does it let the light by? A shadow-casting light passes everywhere but the posts at
+// its ends (the broken panel's pieces shadow it in the shadow map); any other light only where the panel is open right
+// through (the hole table's blocks). along: metres along the edge from its start; height: above its storey's floor.
+bool LGrid_HolePasses(int2 owner, bool west, uint storey, float along, float height, bool shadowMapped)
+{
+    // (The posts' columns are never open.) A light with a shadow map passes any block with an opening: its shadows of
+    // the broken pieces shape the light inside it; a whole block stops it like the wall (no shadow-bias leaks there).
+    return LG_HoleOpen(owner, west, storey, along, height, shadowMapped);
+}
+
+half LGrid_LightVisibleH(float3 P, float3 N, float3 L, bool shadowMapped);
+half LGrid_LightVisible(float3 P, float3 N, float3 L) { return LGrid_LightVisibleH(P, N, L, false); }
+// shadowMapped: a light with a shadow map of its own (a real light) leaves broken walls to its shadows. Pass it as a
+// value, not two calls: each call inlines the whole walk.
+
+half LGrid_LightVisibleH(float3 P, float3 N, float3 L, bool shadowMapped)
 {
     if (_LGridParams.x < 0.5) return 1;
     float pitch = _LGridParams.w;
@@ -358,7 +373,10 @@ half LGrid_LightVisible(float3 P, float3 N, float3 L)
         if (!LG_Loaded(o)) return 1;                       // edge of the loaded area: leave it to the shadows
         uint kind = stepX ? LG_WestKind(o) : LG_SouthKind(o);
         float top = (stepX ? LG_WestTop(o) : LG_SouthTop(o)) + storey * pitch;
-        if (kind == LG_EDGE_WALL || y > top + 0.02) return 0;
+        bool hole = false;
+        [branch] if (kind == LG_EDGE_WALL && LG_Holed(o, stepX))
+            hole = LGrid_HolePasses(owner, stepX, storey, stepX ? lerp(P.z, L.z, t) - owner.y * LG_CELL : lerp(P.x, L.x, t) - owner.x * LG_CELL, y - storey * pitch, shadowMapped);
+        if (kind == LG_EDGE_WALL ? !hole : y > top + 0.02) return 0;
         c = n;
         if (stepX) tMax.x += tDelta.x; else tMax.y += tDelta.y;
     }
@@ -404,9 +422,24 @@ float LG_PanelCdf(float s, float a, float b)
     return 0.5 + s / (2 * hi);
 }
 
-half LGrid_EmitterVisible(float3 P, float3 N, float3 L, float2 halfSize)
+// A wall piece q0-q1 hides the share of the panel's width it covers (a wall end on one side cuts the panel from that side).
+void LG_HidePiece(float2 p, float2 along, float2 across, float D, float2 q0, float2 q1, inout float lo, inout float hi, inout float hidden, inout bool done)
 {
-    if (dot(halfSize, halfSize) < 1e-6) return LGrid_LightVisible(P, N, L);
+    float2 s = LG_AcrossInterval(p, along, across, D, q0, q1);
+    s.x = max(s.x, lo); s.y = min(s.y, hi);
+    if (s.y <= s.x) return;
+    if (s.x <= lo + 1e-4) lo = s.y;               // a wall end on one side: the panel is cut from that side
+    else if (s.y >= hi - 1e-4) hi = s.x;
+    else hidden += s.y - s.x;                       // a short piece in the middle
+    if (hi - lo - hidden <= 1e-4) { hi = lo; done = true; }
+}
+
+half LGrid_EmitterVisibleH(float3 P, float3 N, float3 L, float2 halfSize, bool shadowMapped);
+half LGrid_EmitterVisible(float3 P, float3 N, float3 L, float2 halfSize) { return LGrid_EmitterVisibleH(P, N, L, halfSize, false); }
+
+half LGrid_EmitterVisibleH(float3 P, float3 N, float3 L, float2 halfSize, bool shadowMapped)
+{
+    if (dot(halfSize, halfSize) < 1e-6) return LGrid_LightVisibleH(P, N, L, shadowMapped);
     if (_LGridParams.x < 0.5) return 1;
     float pitch = _LGridParams.w;
     P += N * 0.06;
@@ -487,13 +520,21 @@ half LGrid_EmitterVisible(float3 P, float3 N, float3 L, float2 halfSize)
                 }
                 if (opacity <= 0) continue;
             }
-            float2 s = LG_AcrossInterval(p, along, across, D, q0, q1);
-            s.x = max(s.x, lo); s.y = min(s.y, hi);
-            if (s.y <= s.x) continue;
-            if (s.x <= lo + 1e-4) lo = s.y;               // a wall end on one side: the panel is cut from that side
-            else if (s.y >= hi - 1e-4) hi = s.x;
-            else hidden += s.y - s.x;                       // a short piece in the middle
-            if (hi - lo - hidden <= 1e-4) { hi = lo; done = true; }
+            else if (LG_Holed(o, stepX))
+            {
+                // A broken wall, where the line to the panel's centre crosses it. A real light (it has a shadow map): if the
+                // block there has any opening, only the wall's post nearest the line hides the panel (the broken pieces
+                // shadow the rest); a whole block hides it as a wall. Other lights: through only where the block is open
+                // right through. (One call to LG_HidePiece below for every case: each call inlines it again.)
+                bool open = false;
+                [branch] if (k == 0) open = LG_HoleOpen(cell, stepX, storey, local * LG_CELL, P.y + rise * t - storey * pitch, shadowMapped);
+                if (open && !shadowMapped) continue;
+                float2 e = (q1 - q0) * (LG_HOLE_POST / LG_CELL);
+                bool nearStart = k == 0 ? local < 0.5 : k > 0;
+                bool post = shadowMapped && (open || k != 0);
+                if (post) { q1 = nearStart ? q0 + e : q1; q0 = nearStart ? q0 : q1 - e; }
+            }
+            LG_HidePiece(p, along, across, D, q0, q1, lo, hi, hidden, done);
         }
         c = n;
         if (stepX) tMax.x += tDelta.x; else tMax.y += tDelta.y;

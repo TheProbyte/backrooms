@@ -24,6 +24,52 @@ float LG_SouthTop(uint o) { return (((o >> 10) & 63u) | (((o >> 28) & 1u) << 6))
 float LG_Ceiling(uint o) { return ((o >> 16) & 255u) * 0.1; }
 bool LG_Loaded(uint o) { return (o & LG_LOADED) != 0u; }
 
+// ---------------- Broken walls (Destruction.WallDamage) ----------------
+// A wall edge with pieces knocked out of it is still a wall, flagged as holed. Lights that cast shadows (the real lights)
+// pass it except at its two posts, and the broken panel's pieces stop them in the shadow map, so their light comes
+// through the holes exactly. Everything else (the grid's lights, bounce) tests the hole table: per holed edge, which
+// 0.15 m blocks of the panel (8 along, 18 up) are open right through.
+#define LG_WEST_HOLED (1u << 29)
+#define LG_SOUTH_HOLED (1u << 30)
+#define LG_HOLE_POST 0.075
+
+StructuredBuffer<uint> _LGridHoleTable;   // 16 uints a record: key (2), blocks open right through (5), blocks with any opening (5), open share x 65535, 3 spare
+StructuredBuffer<uint> _LGridHoleCells;   // per occupancy cell (the same layout): record + 1 of its west wall (low 16 bits), of its south wall (high 16 bits)
+uint _LGridHoleN;                          // occupancy cells per side (0: no broken walls bound)
+
+bool LG_Holed(uint o, bool west) { return (o & (west ? LG_WEST_HOLED : LG_SOUTH_HOLED)) != 0u; }
+
+// The record of a cell's broken west (vertical) or south wall, plus one; 0 if none. One read, no search: the shaders that
+// walk lines of sight call this inside their loops, and the old FXC compiler is very slow with loops nested in loops.
+uint LG_HoleRecord1(int2 cell, bool west, uint storey)
+{
+    uint n = max(_LGridHoleN, 1u);
+    uint i = (storey * n + ((uint)cell.y & (n - 1u))) * n + ((uint)cell.x & (n - 1u));
+    uint w = _LGridHoleN > 0u ? _LGridHoleCells[i] : 0u;
+    return west ? (w & 0xFFFFu) : (w >> 16);
+}
+
+// Is a holed wall open at a point (along: metres along the edge from its start, height: above its storey's floor)? any:
+// the block has any opening at all (lights with shadow maps: the broken pieces' shadows shape the rest); otherwise it
+// must be open right through for the most part.
+bool LG_HoleOpen(int2 cell, bool west, uint storey, float along, float height, bool any)
+{
+    uint r = LG_HoleRecord1(cell, west, storey);
+    int col = (int)floor(along / 0.15), row = (int)floor(height / 0.15);
+    bool inside = r != 0u && col >= 0 && col <= 7 && row >= 0 && row <= 17;
+    uint bit = (uint)clamp(row * 8 + col, 0, 143);
+    uint word = inside ? _LGridHoleTable[(max(r, 1u) - 1u) * 16u + (any ? 7u : 2u) + (bit >> 5)] : 0u;
+    return ((word >> (bit & 31u)) & 1u) != 0u;
+}
+
+// How open a holed wall is as a whole (0..1).
+float LG_HoleShare(int2 cell, bool west, uint storey)
+{
+    uint r = LG_HoleRecord1(cell, west, storey);
+    uint v = r != 0u ? _LGridHoleTable[(max(r, 1u) - 1u) * 16u + 12u] : 0u;
+    return v / 65535.0;
+}
+
 // Traced bounce: heights of a cell's two probes above its storey's floor (low, high), shared by the tracer and the shader.
 float2 LG_ProbeHeights(uint o, float base)
 {

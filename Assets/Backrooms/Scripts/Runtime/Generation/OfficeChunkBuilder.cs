@@ -204,29 +204,7 @@ namespace Backrooms.Generation
             {
                 var (mat, mask) = kv.Key;
                 if (kv.Value.VertexCount == 0) continue;
-                var go = new GameObject(mat.name + "_" + mask.ToString("X2"));
-                go.transform.SetParent(root.transform, false);
-                go.AddComponent<MeshFilter>().sharedMesh = resources.Own(kv.Value.ToMesh(go.name));
-                var r = go.AddComponent<MeshRenderer>();
-                r.sharedMaterial = mat;
-                r.renderingLayerMask = mask;
-                if (mat == _a.lensOn || (_a.domeOn && mat == _a.domeOn) || (_a.stripOn && mat == _a.stripOn) || mat == _a.lampShadeOn) litLensRenderers.Add(r);
-                bool architecture = mat == _a.wallpaper || mat == _a.paintedWall || mat == _a.referenceCream || mat == _a.referenceOlive || mat == _a.baseboard || mat == _a.halfWallCap;
-                bool caster = !architecture && mat != _a.lensOn && mat != _a.lensOff && mat != _a.ceilingGrid && mat != _a.carpet && mat != _a.ceilingTile && mat != _a.lampShadeOn
-                              && mat != _a.domeOn && mat != _a.domeOff && mat != _a.ceilingPlaster && mat != _a.stripOn && mat != _a.stripOff
-                              && mat != _a.referenceCarpet && mat != _a.cardboard && mat != _a.boxTape && mat != _a.boxPrint && mat != _a.rackUpright && mat != _a.rackBeam && mat != _a.pallet
-                              && !WallPlateModels.IsPlate(mat);   // warehouse dressing: proxies cast the shadows
-                r.shadowCastingMode = mask == ProxyMask || mask == WallProxyMask ? ShadowCastingMode.ShadowsOnly : caster ? ShadowCastingMode.On : ShadowCastingMode.Off;
-                if (Pool) r.shadowCastingMode = ShadowCastingMode.Off;      // the Poolrooms' sun is traced in the shader, not shadow-mapped
-                if (mask == WallProxyMask)
-                {
-                    if (WallProxies.Count > 4000) WallProxies.RemoveWhere(x => !x);   // unloaded chunks
-                    r.renderingLayerMask = ProxyMask;
-                    r.enabled = WallShadows;
-                    WallProxies.Add(r);
-                }
-                r.lightProbeUsage = LightProbeUsage.Off;
-                r.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                MakeRenderer(root.transform, resources, mat, mask, kv.Value);
                 yield return root;
             }
 
@@ -329,10 +307,12 @@ namespace Backrooms.Generation
                 yield return root;
             }
             foreach (var e in _elevators) { ElevatorSystem.Spawn(root.transform, e); yield return root; }
+            var chunkBoxes = root.AddComponent<ChunkBoxes>();
             foreach (var (c, s) in _boxes)
             {
                 var b = root.AddComponent<BoxCollider>();
                 b.center = c; b.size = s;
+                chunkBoxes.boxes.Add(b);
                 yield return root;
             }
             foreach (var (c, s, yaw) in _rotBoxes)
@@ -500,6 +480,12 @@ namespace Backrooms.Generation
                 if (e == EdgeKind.Wall)
                 {
                     if (HoleAt(vertical, line, along, out int entry)) { HoleFaces(room, cm, vertical, along, l, f, a0, a1, n, myCeil, s == entry); continue; }
+                    if (Broken(vertical, line, along, out float broken))
+                    {
+                        // A broken panel draws itself (Destruction.BrokenPanel); above what breaks the wall stays as it was.
+                        if (myCeil > broken + 0.001f) WallFace(room, cm, A(f, a0), A(f, a1), broken, myCeil, n);
+                        continue;
+                    }
                     WallFace(room, cm, A(f, a0), A(f, a1), 0f, myCeil, n);
                     if (!room.noFloor) Baseboard(cm, A(f, a0), A(f, a1), n);
                     continue;
@@ -645,17 +631,58 @@ namespace Backrooms.Generation
             w.Quad(fa + Vector3.up * BB, fb + Vector3.up * BB, b + Vector3.up * BB, a + Vector3.up * BB, Vector3.up, MeshWriter.MetreUV);
         }
 
+        /// <summary>
+        /// Is this wall a broken panel (Destruction.WallDamage, read from the worker thread)? height: how far up it is
+        /// broken. vertical: line X = line at z = along; else line Z = line at x = along (chunk cells).
+        /// </summary>
+        bool Broken(bool vertical, int line, int along, out float height)
+        {
+            int n = _L.N;
+            int gl = vertical ? _L.coord.x * n + line : _L.coord.y * n + line, ga = vertical ? _L.coord.y * n + along : _L.coord.x * n + along;
+            return Destruction.WallDamage.Taken(vertical, gl, ga, _L.storey, out height);
+        }
+
+        /// <summary>A broken panel's colliders are its own; its posts and the wall above it keep the chunk's.</summary>
+        void BrokenPanelColliders(bool vertical, int line, int along, float height)
+        {
+            const float HC = OfficeBiome.MaxCeilingHeight;
+            int N = _L.N;
+            for (int k = 0; k <= 1; k++)
+            {
+                float a = (along + k) * C;
+                Vector3 c = vertical ? new Vector3(line * C, HC * 0.5f, a) : new Vector3(a, HC * 0.5f, line * C);
+                Vector3 s = new Vector3(T, HC + 0.4f, T);
+                // A post on the chunk's outer line is half this chunk's, as the wall runs are.
+                if (line == 0 || line == N) { float sh = (line == 0 ? 1f : -1f) * T * 0.25f; if (vertical) { c.x += sh; s.x = T * 0.5f; } else { c.z += sh; s.z = T * 0.5f; } }
+                _boxes.Add((c, s));
+            }
+            if (HC > height + 0.01f)
+            {
+                float a0 = along * C + T * 0.5f, a1 = (along + 1) * C - T * 0.5f, y0 = height, y1 = HC + 0.2f;
+                Vector3 c = vertical ? new Vector3(line * C, (y0 + y1) * 0.5f, (a0 + a1) * 0.5f) : new Vector3((a0 + a1) * 0.5f, (y0 + y1) * 0.5f, line * C);
+                Vector3 s = vertical ? new Vector3(T, y1 - y0, a1 - a0) : new Vector3(a1 - a0, y1 - y0, T);
+                if (line == 0 || line == N) { float sh = (line == 0 ? 1f : -1f) * T * 0.25f; if (vertical) { c.x += sh; s.x = T * 0.5f; } else { c.z += sh; s.z = T * 0.5f; } }
+                _boxes.Add((c, s));
+            }
+        }
+
         /// <summary>Merges runs of solid wall edges into single colliders. Border walls get half thickness.</summary>
         void BuildWallColliders()
         {
             int N = _L.N;
             const float HC = OfficeBiome.MaxCeilingHeight;
             for (int x = 0; x <= N; x++)
+            for (int z = 0; z < N; z++)
+                if (_L.vEdges[x, z] == EdgeKind.Wall && Broken(true, x, z, out float bh)) BrokenPanelColliders(true, x, z, bh);
+            for (int z = 0; z <= N; z++)
+            for (int x = 0; x < N; x++)
+                if (_L.hEdges[x, z] == EdgeKind.Wall && Broken(false, z, x, out float bh)) BrokenPanelColliders(false, z, x, bh);
+            for (int x = 0; x <= N; x++)
             {
                 int start = -1;
                 for (int z = 0; z <= N; z++)
                 {
-                    bool solid = z < N && _L.vEdges[x, z] == EdgeKind.Wall && !HoleAt(true, x, z, out _) && !NoclipAt(true, x, z);
+                    bool solid = z < N && _L.vEdges[x, z] == EdgeKind.Wall && !HoleAt(true, x, z, out _) && !NoclipAt(true, x, z) && !Broken(true, x, z, out _);
                     if (solid && start < 0) start = z;
                     if (!solid && start >= 0)
                     {
@@ -673,7 +700,7 @@ namespace Backrooms.Generation
                 int start = -1;
                 for (int x = 0; x <= N; x++)
                 {
-                    bool solid = x < N && _L.hEdges[x, z] == EdgeKind.Wall && !HoleAt(false, z, x, out _) && !NoclipAt(false, z, x);
+                    bool solid = x < N && _L.hEdges[x, z] == EdgeKind.Wall && !HoleAt(false, z, x, out _) && !NoclipAt(false, z, x) && !Broken(false, z, x, out _);
                     if (solid && start < 0) start = x;
                     if (!solid && start >= 0)
                     {

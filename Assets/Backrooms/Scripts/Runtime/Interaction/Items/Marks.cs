@@ -187,6 +187,36 @@ namespace Backrooms.Interaction
             b.dirty = true;
         }
 
+        /// <summary>Chalk and tape on what is gone (pieces knocked out of a wall): quads within the bounds whose middle is gone are taken away.</summary>
+        public void Erase(Bounds within, System.Func<Vector3, bool> gone)
+        {
+            foreach (var b in _batches)
+            {
+                int quads = b.Quads, kept = 0;
+                for (int q = 0; q < quads; q++)
+                {
+                    int s = q * 4;
+                    Vector3 mid = (b.v[s] + b.v[s + 2]) * 0.5f;
+                    bool flip = b.idx[q * 6 + 1] != s + 1;
+                    if (within.Contains(mid) && gone(mid)) { Count--; continue; }
+                    if (kept != q)
+                    {
+                        int t = kept * 4;
+                        for (int k = 0; k < 4; k++) { b.v[t + k] = b.v[s + k]; b.uv[t + k] = b.uv[s + k]; b.c[t + k] = b.c[s + k]; if (b.n.Count > s + k) b.n[t + k] = b.n[s + k]; }
+                        int i = kept * 6;
+                        if (!flip) { b.idx[i] = t; b.idx[i + 1] = t + 1; b.idx[i + 2] = t + 2; b.idx[i + 3] = t; b.idx[i + 4] = t + 2; b.idx[i + 5] = t + 3; }
+                        else { b.idx[i] = t; b.idx[i + 1] = t + 2; b.idx[i + 2] = t + 1; b.idx[i + 3] = t; b.idx[i + 4] = t + 3; b.idx[i + 5] = t + 2; }
+                    }
+                    kept++;
+                }
+                if (kept == quads) continue;
+                b.v.RemoveRange(kept * 4, b.v.Count - kept * 4); b.uv.RemoveRange(kept * 4, b.uv.Count - kept * 4);
+                b.c.RemoveRange(kept * 4, b.c.Count - kept * 4); if (b.n.Count > kept * 4) b.n.RemoveRange(kept * 4, b.n.Count - kept * 4);
+                b.idx.RemoveRange(kept * 6, b.idx.Count - kept * 6);
+                b.dirty = true;
+            }
+        }
+
         Batch Current()
         {
             if (_current == null || _current.Quads >= QuadsPerBatch)

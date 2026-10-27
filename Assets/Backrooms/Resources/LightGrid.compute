@@ -118,7 +118,11 @@ bool Visible(float3 P, float3 Q)
         uint o = Occ(owner, storey);
         uint kind = stepX ? LG_WestKind(o) : LG_SouthKind(o);
         float top = (stepX ? LG_WestTop(o) : LG_SouthTop(o)) + storey * pitch;
-        if (!LG_Loaded(o) || kind == LG_EDGE_WALL || y > top + 0.02) { visible = false; break; }
+        // A broken wall lets light through where it is open right through. (HLSL's && does not skip its right side.)
+        bool hole = false;
+        [branch] if (kind == LG_EDGE_WALL && LG_Holed(o, stepX))
+            hole = LG_HoleOpen(owner, stepX, storey, (stepX ? lerp(P.z, Q.z, t) - owner.y * LG_CELL : lerp(P.x, Q.x, t) - owner.x * LG_CELL), y - storey * pitch, false);
+        if (!LG_Loaded(o) || (kind == LG_EDGE_WALL ? !hole : y > top + 0.02)) { visible = false; break; }
         c = n;
         if (stepX) tMax.x += tDelta.x; else tMax.y += tDelta.y;
     }
@@ -572,7 +576,12 @@ float3 TraceRadiance(float3 P, float3 d, uint storey)
         if (!LG_Loaded(owner)) return 0;
         uint kind = stepX ? LG_WestKind(owner) : LG_SouthKind(owner);
         float top = (stepX ? LG_WestTop(owner) : LG_SouthTop(owner)) + base;
-        if (kind == LG_EDGE_WALL || y > top + 0.02)
+        // Through a hole in a broken wall, on into the next room.
+        float3 X = P + d * tExit;
+        bool hole = false;
+        [branch] if (kind == LG_EDGE_WALL && LG_Holed(owner, stepX))
+            hole = LG_HoleOpen(ownerCell, stepX, storey, stepX ? X.z - ownerCell.y * LG_CELL : X.x - ownerCell.x * LG_CELL, y - base, false);
+        if (kind == LG_EDGE_WALL ? !hole : y > top + 0.02)
         {
             float3 holeLight;
             if (_HoleCount > 0 && HoleRadiance(P + d * tExit, d, holeLight)) return holeLight;   // into a crawl hole
@@ -717,7 +726,10 @@ void ProbeFilter(uint3 id : SV_DispatchThreadID)
             uint other = Occ(cell + offset, storey);
             uint owner = side == 0 || side == 2 ? o : other;
             uint kind = side < 2 ? LG_WestKind(owner) : LG_SouthKind(owner);
-            if (kind == LG_EDGE_WALL || !LG_Loaded(other)) continue;
+            // A broken wall that is mostly open lets the probes on its two sides share.
+            bool open = false;
+            [branch] if (kind == LG_EDGE_WALL && LG_Holed(owner, side < 2)) open = LG_HoleShare(side == 0 || side == 2 ? cell : cell + offset, side < 2, storey) > 0.5;
+            if ((kind == LG_EDGE_WALL && !open) || !LG_Loaded(other)) continue;
             uint2 t = ProbeTexel(cell + offset, slab);
             r += _ProbeInR[t]; g += _ProbeInG[t]; b += _ProbeInB[t]; weight += 1;
         }

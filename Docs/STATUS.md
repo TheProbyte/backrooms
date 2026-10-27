@@ -6,6 +6,15 @@ Last updated 2026-10-27 (world version 13).
 
 ## Newest (2026-10-27)
 
+- **Sledgehammer and breaking walls** (Docs/BreakingWalls.md): a 6 lb sledgehammer, swung one-handed (hold left mouse to
+  wind up, release to swing), found in maintenance closets and sealed storage or from the L menu. Ordinary Level 0 walls
+  break realistically: each panel's two gypsum boards come apart in irregular plates where the hammer meets them (cracks
+  round the hole, pieces falling as debris, dust), and inside are galvanised steel studs (Offices) or wood studs (Hallways,
+  Warehouse) that dent and tear or split, batts in some walls, electrical boxes and cable behind the outlets and switches,
+  the odd copper pipe. Light from the real lights near you comes through a hole exactly (the broken pieces cast the
+  shadows); grid light and bounce go through where it is open right through; the chunk behind is drawn when you can see
+  through; sound goes through. Saved with the world (which pieces are gone, studs, rubble).
+
 - **Reference room on the game's own lighting** (Escape > Reference room, Docs/ReferenceMatch.md): Kane's room is now a
   room of the procedural world (rebuilt on the 1.2 m grid, forced in beside the spawn hall), lit exactly like every other
   room, so tuning it tunes the game. Matched to the footage within about a quarter stop everywhere: ceiling panels throw

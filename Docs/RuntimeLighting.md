@@ -64,6 +64,19 @@ Measured against the reference footage in the reference room (ReferenceMatch.md)
 floor was 1-1.5 stops darker than the photo and the shadowed left wall 3 stops; now every area is within about a quarter
 stop.
 
+### Light through broken walls (2026-10-27)
+A wall broken with the sledgehammer is still a wall in the occupancy, flagged as holed (bits 29 and 30 for the west and
+south edge), with a record in the hole table (`LightGrid.Holes.cs`, `LightGridCommon.hlsl`: which 0.15 m blocks are open
+right through, 8 across by 18 up, and which have any opening) found through a per-cell index laid out as the occupancy
+(no search inside the walks: FXC compiles loops nested in them very slowly). Lights with a shadow map pass a holed wall
+in blocks with any opening, except at its posts (`LGrid_EmitterVisibleH` / `LGrid_LightVisibleH` with shadowMapped,
+chosen per light from its shadow parameters), and the broken panel's pieces cast their shadows: the light of the real
+lights near you comes through the hole exactly, soft and broken by the studs; whole blocks stop it (shadow bias on the
+thin boards alone let a line of light under the foot of the wall). Everything else reads the blocks: the grid's lights and the far part of real lights, the traced
+bounce (rays go on through an open block), the probe filter (a wall more than half open joins its two sides), and the
+CPU mirror `LightGridMath.Visible`. A wall that breaks more is encoded again and the light around it redrawn (14 m).
+See BreakingWalls.md.
+
 ## Runtime indirect light
 
 Three half-float atlases contain floor radiance, wall radiance and the wall field's first directional moment. Each has

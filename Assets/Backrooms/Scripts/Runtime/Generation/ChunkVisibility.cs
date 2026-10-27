@@ -42,11 +42,15 @@ namespace Backrooms.Generation
         {
             if (!streamer) streamer = GetComponent<WorldStreamer>();
             if (streamer) { streamer.ChunkLoaded += Loaded; streamer.ChunkUnloaded += Unloaded; }
+            Destruction.WallDamage.Changed += WallChanged;
         }
+
+        void WallChanged(Destruction.WallKey k) => _dirty = true;           // a hole may show what was behind the wall
 
         void OnDisable()
         {
             if (streamer) { streamer.ChunkLoaded -= Loaded; streamer.ChunkUnloaded -= Unloaded; }
+            Destruction.WallDamage.Changed -= WallChanged;
             foreach (var e in _chunks.Values) Show(e);
             _chunks.Clear();
         }
@@ -149,7 +153,11 @@ namespace Backrooms.Generation
             if (L == null) return true;
             int lx = gx - ck.x * n, lz = gz - ck.y * n;
             if (!L.InChunk(lx, lz)) return true;
-            return OfficeLayout.IsSolid(L.EdgeOf(lx, lz, side));
+            if (!OfficeLayout.IsSolid(L.EdgeOf(lx, lz, side))) return false;
+            // A broken wall with a hole right through it can be seen through.
+            if (Destruction.WallDamage.Count == 0) return true;
+            var key = side < 2 ? new Destruction.WallKey(true, side == 0 ? gx : gx + 1, gz, 0) : new Destruction.WallKey(false, side == 2 ? gz : gz + 1, gx, 0);
+            return !Destruction.WallDamage.SeeThrough(key);
         }
 
         /// <summary>Walks one ray over the cells (Amanatides-Woo), marking chunks, until a wall, an unloaded chunk or the range.</summary>

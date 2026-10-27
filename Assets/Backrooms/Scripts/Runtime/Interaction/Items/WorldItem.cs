@@ -185,6 +185,9 @@ namespace Backrooms.Interaction
         /// <summary>Use pose blend 0..1 (the hand raises the item while using it).</summary>
         public virtual float UseBlend => 0f;
 
+        /// <summary>How hard the body is working with it (0..1: the camera strains, as when hauling furniture).</summary>
+        public virtual float Effort => 0f;
+
         /// <summary>A short line for the HUD ("paint 63 %").</summary>
         public virtual string Status => "";
     }

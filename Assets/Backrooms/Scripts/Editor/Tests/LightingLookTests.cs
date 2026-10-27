@@ -177,6 +177,10 @@ namespace Backrooms.Tests
                 shader.SetBuffer(kFace, "_Lights", lights); shader.SetBuffer(kFace, "_Tiles", tiles); shader.SetBuffer(kFace, "_TileLights", indices);
                 shader.SetBuffer(kFace, "_FaceLightOut", face); shader.SetBuffer(kTrace, "_FaceLightIn", face);
                 shader.SetInt("_HoleCount", 0); shader.SetTexture(kTrace, "_DuctMouthLight", Probe());   // no crawl holes here
+                var wallHoles = Buffer(LightGridMath.HoleRecord, 4); wallHoles.SetData(new uint[LightGridMath.HoleRecord]);   // no broken walls
+                var wallCells = Buffer(1, 4); wallCells.SetData(new uint[1]);
+                foreach (int k in new[] { kFace, kTrace }) { shader.SetBuffer(k, "_LGridHoleTable", wallHoles); shader.SetBuffer(k, "_LGridHoleCells", wallCells); }
+                shader.SetInt("_LGridHoleN", 0);
                 shader.SetVector("_ProbeParams2", new Vector4(1, 0, 0, 0));
 
                 // Irradiance of a cell's low (slab 0) or high (slab 1) probe toward a normal, read back from the SH textures.

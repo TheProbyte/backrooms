@@ -15,6 +15,43 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-27 12:00  Claude Code  Sledgehammer and breakable walls
+- New `Scripts/Runtime/Destruction/`: `WallKey` (a 1.2 m wall panel in world cells, its u/v/w frame), `WallFracture`
+  (fixed per-board Voronoi break pattern, shared jagged edges), `WallPanel` (`WallPanelModel`: boards, steel or wood
+  studs, tracks/plates, batts, boxes, cable, pipe, baseboards, all from the seed; `WallPanelState`: what is gone),
+  `WallDamage` (registry, the blow, falling pieces, studs, light blocks, save), `PanelGeometry`/`PanelMesh` (meshes and
+  colliders), `BrokenPanel` (draws a broken wall and its rubble), `WallDebris` (falling pieces), `WallBreaker` (blows,
+  sounds, dust, chunk wall rebuilds, panel lifetimes, paint/marks), `DemolitionMaterials` (runtime textures and
+  materials). `Resources/Shaders/Dust.shader` (lit by the opaque copy).
+- Sledgehammer: `Items/Sledgehammer.cs` (carry choked up, wind-up, step-in, swing, recoil, follow-through, thrown blows),
+  `Items/SledgehammerModel.cs` (procedural mesh); ItemFactory/ItemCatalog (L menu); loot in maintenance closets (45 %) and
+  sealed storage (25 %) from its own dice (other loot and its ids unchanged). `WorldItem.Effort` (camera strain).
+- Chunks: `OfficeChunkBuilder` leaves broken panels out (faces, baseboards, wall-run colliders; posts and the wall above
+  2.7 m keep colliders); `ChunkBoxes` records box colliders; `ReplaceWalls` swaps a rebuilt chunk's wall meshes and the
+  colliders that changed; `WorldStreamer.RebuildWalls` prepares it off the main thread (`ChunkWallsRebuilt`).
+- Light: occupancy bits 29/30 (holed west/south wall) and a hole table (16-uint records with blocks open right through
+  and blocks with any opening, plus a per-cell index laid out as the occupancy: `LightGrid.Holes.cs`,
+  `LightGridCommon.hlsl`). Lights with shadow maps pass blocks with any opening except at the posts (the broken pieces
+  shadow the rest; whole blocks stop them, so no shadow-bias leak at the foot of the wall); everything else passes
+  blocks open right through (grid direct, traced bounce, probe filter, the CPU mirror). `ChunkVisibility` sees through
+  holes; `AcousticField` paths through holes; `SteamAudioWorld` meshes of the remaining boards.
+- Saves: `WorldSaveData.walls` (`WallData`), restored before chunks build; `SprayPaint.Erase`/`Marks.Erase` remove marks
+  on gone pieces. Sounds: `ProceduralSounds.Demolition.cs`, played through plain 3D voices.
+- Checked: new `WallDamageTests` (8: pattern tiles the board, a blow and the far board, falling pieces, studs, which walls
+  break, save round trip, light through a hole and the shader table, the chunk leaving the panel out); a traced-bounce
+  test binds the new buffers; EditMode 94/94.
+  Play: `Debug/WallBreakProbe` in World 3, four runs (ten swings at a wood-stud wall each, one of them wallpapered
+  with a switch plate: holes through both boards, debris on both sides, light through the hole, no leak at
+  the foot, saved and loaded again with the same pieces and rubble; screenshots in Docs/screenshots/walls/). Found and
+  fixed in play: the copper pipe and steel showed black (fully metallic with nothing to reflect; now 0.4-0.6 as the
+  game's own metals); broken panels drew a baseboard where the level has none (`noBaseboard`, the default); a board
+  piece could come to rest upright in the hole (pieces now leave the plane at 0.45 m/s or more, tipped at the top).
+- Open: the first shader version (a hashed lookup inside the line-of-sight loops) made each lit variant compile for
+  minutes on D3D11; now 16.8 s a variant, as before, but the warmup after a shader change takes 9-11 minutes here. The
+  editor crashed once in Steam Audio's mixer thread leaving Play with eight new spatialised wall-sound voices; they are
+  plain 3D voices now (relaunched with -force-d3d11; scene backup in Assets/_Recovery/0 (16).unity). A light leak at the
+  foot of a broken wall (shadow bias on the thin boards) was stopped by the any-opening blocks.
+
 ## 2026-10-27 10:00  Claude Code  Reference room on the world's lighting; Lambertian panels, physical bounce and AO; matched to Kane
 - Reference room: Escape > Reference room now forces `CustomRooms/ReferenceBlueprint` (Kane's room on the 1.2 m grid: three
   headed opening cells, jamb pillars, straight left wall, back room with supports, 17 panels) into the world via

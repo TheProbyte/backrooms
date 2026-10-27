@@ -66,9 +66,10 @@ namespace Backrooms.Saves
 
         // ---------------- Restore ----------------
 
-        /// <summary>Moved props go back on the list before any chunk is built (so their chunks leave them out).</summary>
+        /// <summary>Moved props go back on the list before any chunk is built (so their chunks leave them out); broken walls too.</summary>
         public void RestoreProps(WorldGenerator world)
         {
+            if (_data != null) Destruction.WallDamage.Import(_data.walls);
             var mgr = MovablePropManager.Instance;
             if (_data == null || !mgr) return;
             var list = new List<MovablePropManager.Saved>();
@@ -243,6 +244,13 @@ namespace Backrooms.Saves
                 d.items.Add(data);
             }
             d.takenLoot = LootRegistry.Export();
+            // Broken walls, with their rubble (and the bits still falling, where they are now).
+            d.walls = Destruction.WallDamage.Export();
+            foreach (var deb in FindObjectsByType<Destruction.WallDebris>())
+            {
+                var w = d.walls.Find(x => x.vertical == deb.key.vertical && x.line == deb.key.line && x.along == deb.key.along && x.storey == deb.key.storey);
+                w?.rubble.Add(new Destruction.WallDamage.Rubble { part = deb.part, side = deb.side, index = deb.index, span = deb.span, position = deb.transform.position, rotation = deb.transform.rotation });
+            }
             d.hasNoclipOrigin = NoclipTravel.HasOrigin; d.noclipOrigin = NoclipTravel.OriginPosition; d.noclipOriginNormal = NoclipTravel.OriginNormal;
             d.placed.Clear();
             foreach (var p in FindObjectsByType<PlacedThing>())

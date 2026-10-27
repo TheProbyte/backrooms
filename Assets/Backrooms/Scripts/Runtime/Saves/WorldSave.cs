@@ -39,6 +39,25 @@ namespace Backrooms.Saves
         /// <summary>The door a Poolrooms noclip door leads back to (Interaction.NoclipTravel).</summary>
         public bool hasNoclipOrigin;
         public Vector3 noclipOrigin, noclipOriginNormal;
+        /// <summary>Walls broken with the sledgehammer (Destruction.WallDamage): what is left of each, and its rubble.</summary>
+        public List<WallData> walls = new List<WallData>();
+    }
+
+    /// <summary>
+    /// One broken wall panel. The pieces it breaks into come from the seed; this lists which are gone (bits, base64) and
+    /// where its debris settled.
+    /// </summary>
+    [Serializable]
+    public class WallData
+    {
+        public bool vertical;
+        public int line, along, storey;
+        public string board0, board1, crack0, crack1, insulation;
+        public int baseboard;
+        public float[] baseboardDamage;
+        /// <summary>Per stud: the number of lengths standing, each length (from, to), then its damage per 0.45 m.</summary>
+        public float[] studs;
+        public List<Destruction.WallDamage.Rubble> rubble = new List<Destruction.WallDamage.Rubble>();
     }
 
     /// <summary>A movable prop that has been disturbed (generated or spawned from the menu), and where it is now.</summary>

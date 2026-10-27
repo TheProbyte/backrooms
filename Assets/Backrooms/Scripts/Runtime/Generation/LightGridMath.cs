@@ -15,6 +15,58 @@ namespace Backrooms.Generation
 
         public const uint Open = 0, Wall = 1, Door = 2, Header = 3;
         public const uint Loaded = 1u << 24, NoFloor = 1u << 25, OpenAbove = 1u << 26;
+        /// <summary>The cell's west / south wall is broken (LG_WEST_HOLED / LG_SOUTH_HOLED).</summary>
+        public const uint WestHoled = 1u << 29, SouthHoled = 1u << 30;
+
+        // ---------------- The hole table (broken walls), as LightGridCommon.hlsl reads it ----------------
+
+        /// <summary>uints a record: two key words, the open mask (5), the any-opening mask (5), the open share, 3 spare.</summary>
+        public const int HoleRecord = 16;
+
+        public static void HoleKey(bool vertical, int line, int along, int storey, out uint k0, out uint k1)
+        {
+            unchecked
+            {
+                k0 = ((uint)line & 0xFFFFu) | ((uint)along << 16);
+                k1 = (vertical ? 1u : 0u) | ((uint)storey << 1) | 0x80000000u;
+            }
+        }
+
+        /// <summary>
+        /// Packs broken walls into records (16 uints each: two key words, five words of blocks open right through, five of
+        /// blocks with any opening, the open share x 65535), in list order, and marks each one's cell (the cell the wall is the west or south edge of) in a per-cell index laid out as
+        /// the occupancy is (n cells a side, two storeys, toroidal): record + 1, west wall in the low 16 bits, south wall in
+        /// the high 16. cellMin: the window's corner cell (walls outside the window are left out of the index).
+        /// </summary>
+        public static uint[] BuildHoleTable(List<(bool vertical, int line, int along, int storey, uint[] mask, uint[] maskAny, float share)> holes, uint[] table, uint[] cells, int n, Vector2Int cellMin)
+        {
+            int records = Mathf.Max(1, holes.Count);
+            if (table == null || table.Length < records * HoleRecord) table = new uint[Mathf.NextPowerOfTwo(records) * HoleRecord];
+            else Array.Clear(table, 0, table.Length);
+            if (cells != null) Array.Clear(cells, 0, cells.Length);
+            for (int r = 0; r < holes.Count && r < 65535; r++)
+            {
+                var h = holes[r];
+                HoleKey(h.vertical, h.line, h.along, h.storey, out uint k0, out uint k1);
+                int b = r * HoleRecord;
+                table[b] = k0; table[b + 1] = k1;
+                for (int w = 0; w < 5; w++)
+                {
+                    table[b + 2 + w] = h.mask != null && w < h.mask.Length ? h.mask[w] : 0u;
+                    table[b + 7 + w] = h.maskAny != null && w < h.maskAny.Length ? h.maskAny[w] : 0u;
+                }
+                table[b + 12] = (uint)Mathf.Clamp(Mathf.RoundToInt(h.share * 65535f), 0, 65535);
+                if (cells == null || h.storey < 0 || h.storey > 1) continue;
+                int cx = h.vertical ? h.line : h.along, cz = h.vertical ? h.along : h.line;
+                if (cx < cellMin.x || cz < cellMin.y || cx >= cellMin.x + n || cz >= cellMin.y + n) continue;
+                int i = h.storey * n * n + WrapCell(cz, n) * n + WrapCell(cx, n);
+                uint rec = (uint)(r + 1);
+                cells[i] = h.vertical ? (cells[i] & 0xFFFF0000u) | rec : (cells[i] & 0xFFFFu) | (rec << 16);
+            }
+            return table;
+        }
+
+        static int WrapCell(int v, int n) { int m = v % n; return m < 0 ? m + n : m; }
 
         /// <summary>One light as the compute shader reads it (80 bytes).</summary>
         [Serializable]
@@ -82,6 +134,13 @@ namespace Backrooms.Generation
             o |= west | (south << 2);
             if (west != Wall) o |= PackTop(Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, true, x, z, 1).top), 4, 27);
             if (south != Wall) o |= PackTop(Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, false, z, x, 1).top), 10, 28);
+            // A broken wall (Destruction.WallDamage): still a wall, flagged as holed (the hole table says where it is open).
+            if (Destruction.WallDamage.Count > 0)
+            {
+                int n = L.N, gx = L.coord.x * n + x, gz = L.coord.y * n + z;
+                if (west == Wall && Destruction.WallDamage.Holed(new Destruction.WallKey(true, gx, gz, L.storey), out _)) o |= WestHoled;
+                if (south == Wall && Destruction.WallDamage.Holed(new Destruction.WallKey(false, gz, gx, L.storey), out _)) o |= SouthHoled;
+            }
             o |= Tenths(room.ceiling) << 16;
             if (L.Has(x, z, CellFlags.NoFloor)) o |= NoFloor;
             if (L.Has(x, z, CellFlags.OpenAbove)) o |= OpenAbove;
@@ -139,9 +198,17 @@ namespace Backrooms.Generation
                 uint o = occ(ox, oz, storey);
                 if (!IsLoaded(o)) return false;
                 uint kind = stepX ? WestKind(o) : SouthKind(o);
-                if (kind == Wall) return false;
+                if (kind == Wall)
+                {
+                    // A broken wall: through where it is open right through (as the shaders' hole table says).
+                    if ((o & (stepX ? WestHoled : SouthHoled)) == 0) return false;
+                    var key = stepX ? new Destruction.WallKey(true, ox, oz, storey) : new Destruction.WallKey(false, oz, ox, storey);
+                    if (!Destruction.WallDamage.Holed(key, out var panel)) return false;
+                    float along = stepX ? Mathf.Lerp(P.z, Q.z, t) - oz * Cell : Mathf.Lerp(P.x, Q.x, t) - ox * Cell;
+                    if (!Destruction.WallDamage.MaskOpen(panel.mask, along, y - storey * pitch)) return false;
+                }
                 float top = (stepX ? WestTop(o) : SouthTop(o)) + storey * pitch;
-                if (y > top + 0.02f) return false;
+                if (kind != Wall && y > top + 0.02f) return false;          // (a wall has no opening top: a hole in it is checked above)
                 cx = nx; cz = nz;
                 if (stepX) tmx += tdx; else tmz += tdz;
             }

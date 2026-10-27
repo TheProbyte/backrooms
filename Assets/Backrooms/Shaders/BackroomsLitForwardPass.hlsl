@@ -382,21 +382,23 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
         bool isFixture = source.w > 0.5 && LGrid_FindFixtureIndex(source.xyz, inputData.positionWS, fixture, fixtureId);
         half3 energy = isFixture ? max(fixture.colorAll - fixture.color, 0) : 0;
         half seen = 1;
-        // Layout-blocked fixtures cannot contribute. Reject before URP samples their soft shadow maps.
-        if (isFixture)
-        {
-            if (dot(energy, energy) < 1e-10 || !LGrid_FixtureMayReach(fixture, inputData.positionWS)) continue;
-            if (!BR_InShadowCone(fixture, inputData.positionWS)) continue;   // outside its shadow map: BackroomsDistantPBR
-            seen = LGrid_EmitterVisible(inputData.positionWS, inputData.normalWS, fixture.pos, fixture.halfSize);
-            if (seen <= 0) continue;
-        }
-        Light light;
 #if USE_CLUSTER_LIGHT_LOOP
         int realIndex = lightIndex;
 #else
         int realIndex = GetPerObjectLightIndex(lightIndex);
 #endif
         half4 shadowParams = GetAdditionalLightShadowParams(realIndex);
+        // A light with a shadow map leaves broken walls to its shadows (the broken pieces cast them); others use the holes.
+        bool shadowMapped = shadowParams.x > 0 && shadowParams.w >= 0;    // strength, and a slice in the shadow atlas
+        // Layout-blocked fixtures cannot contribute. Reject before URP samples their soft shadow maps.
+        if (isFixture)
+        {
+            if (dot(energy, energy) < 1e-10 || !LGrid_FixtureMayReach(fixture, inputData.positionWS)) continue;
+            if (!BR_InShadowCone(fixture, inputData.positionWS)) continue;   // outside its shadow map: BackroomsDistantPBR
+            seen = LGrid_EmitterVisibleH(inputData.positionWS, inputData.normalWS, fixture.pos, fixture.halfSize, shadowMapped);
+            if (seen <= 0) continue;
+        }
+        Light light;
         [branch] if (isFixture && _BRLook.y > 0 && shadowParams.z < 0.5)
         {
             // Contact-hardening soft shadow instead of URP's fixed filter (the fixture's colour comes from the grid light).
@@ -416,7 +418,7 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
             }
             else
             {
-                if (source.w > 0.5) light.shadowAttenuation *= LGrid_LightVisible(inputData.positionWS, inputData.normalWS, source.xyz);
+                if (source.w > 0.5) light.shadowAttenuation *= LGrid_LightVisibleH(inputData.positionWS, inputData.normalWS, source.xyz, shadowMapped);
                 if (light.shadowAttenuation > 0)
                     lightingData.additionalLightsColor += LightingPhysicallyBased(brdfData, brdfDataClearCoat, light,
                         inputData.normalWS, inputData.viewDirectionWS, surfaceData.clearCoatMask, specularHighlightsOff);

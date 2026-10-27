@@ -97,6 +97,15 @@ muffled by the wall. The building's own hum, buzz, ventilation and room tone kee
 now also knows shut doors), so nothing is muffled twice. No baked data and no Steam Audio reflections: the reverb is
 still the listener-side room reverb.
 
+## Broken walls (2026-10-27)
+A wall broken with the sledgehammer (BreakingWalls.md) lets sound through its holes: the building's sound paths
+(`AcousticField`) go through a wall open by 12 % or more, a smaller hole muffles like a shut door, and Steam Audio gets
+what is left of its boards as a mesh of its own (the chunk's mesh is rebuilt without it). Its sounds are procedural
+(`ProceduralSounds.Demolition.cs`): the swing, drywall thump and crunch, crumbling, a steel stud's bang and tearing, a
+wood stud's thock and crack, a dead thud into a post, clanks, a batt's whump, bits landing (at most three a tenth of a
+second). They play through a small pool of plain 3D voices (`WallBreaker.Play`), not Steam Audio ones: eight
+spatialised voices still playing as the editor left Play Mode crashed Steam Audio's mixer thread once.
+
 ## Footsteps, the body and the building at rest (2026-10-26)
 
 - **Footsteps** come from the feet: with the legs shown, each step plays when and where a foot comes down

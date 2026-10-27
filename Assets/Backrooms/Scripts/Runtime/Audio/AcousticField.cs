@@ -97,6 +97,12 @@ namespace Backrooms.Audio
                 // A shut door closes its doorway: no path through, and it muffles less than a wall.
                 if (_passE[i] && DoorEdges.IsShut(true, gx + 1, gz, L.storey)) { _passE[i] = false; _doorE[i] = true; }
                 if (_passN[i] && DoorEdges.IsShut(false, gz + 1, gx, L.storey)) { _passN[i] = false; _doorN[i] = true; }
+                // A broken wall: a real hole is a way through for sound; a crack or a small hole muffles like a door.
+                if (Destruction.WallDamage.Count > 0)
+                {
+                    if (!_passE[i]) Broken(new Destruction.WallKey(true, gx + 1, gz, L.storey), ref _passE[i], ref _doorE[i]);
+                    if (!_passN[i]) Broken(new Destruction.WallKey(false, gz + 1, gx, L.storey), ref _passN[i], ref _doorN[i]);
+                }
             }
             // An edge is only open if the cell beyond it is loaded too.
             for (int z = 0; z < W; z++)
@@ -114,6 +120,13 @@ namespace Backrooms.Audio
         }
 
         static int FloorDiv(int a, int b) => a >= 0 ? a / b : -((-a + b - 1) / b);
+
+        static void Broken(Destruction.WallKey k, ref bool pass, ref bool door)
+        {
+            var p = Destruction.WallDamage.Find(k);
+            if (p == null || !p.seeThrough) return;
+            if (p.openFraction >= 0.12f) pass = true; else door = true;
+        }
 
         bool Open(int x, int z, int dx, int dz)
         {
