@@ -247,9 +247,9 @@ namespace Backrooms.Generation
                 go.transform.SetParent(root.transform, false);
                 go.AddComponent<MeshFilter>().sharedMesh = resources.Own(w.ToMesh(go.name));
                 var r = go.AddComponent<MeshRenderer>();
-                r.sharedMaterial = dome && _a.domeOn ? _a.domeOn : _a.lensOn;
+                r.sharedMaterial = dome && _a.domeOn ? _a.domeOn : MaterialMaps.TrofferOn ? MaterialMaps.TrofferOn : _a.lensOn;
                 var rl = go.AddComponent<RoomLens>();
-                rl.room = room; rl.on = r.sharedMaterial; rl.off = dome && _a.domeOff ? _a.domeOff : _a.lensOff;
+                rl.room = room; rl.on = r.sharedMaterial; rl.off = dome && _a.domeOff ? _a.domeOff : MaterialMaps.TrofferOff ? MaterialMaps.TrofferOff : _a.lensOff;
                 r.shadowCastingMode = ShadowCastingMode.Off;
                 r.lightProbeUsage = LightProbeUsage.Off;
                 r.reflectionProbeUsage = ReflectionProbeUsage.Off;
@@ -992,6 +992,10 @@ namespace Backrooms.Generation
         /// <summary>A square panel fills the tile just west of its cell's centre (centre of a 0.6 m ceiling tile).</summary>
         static readonly Vector3 SquareFixtureShift = new Vector3(-0.3f, 0f, 0f);
 
+        /// <summary>A square panel's lens: the copy with the tubes behind its diffuser (MaterialMaps), or the plain one.</summary>
+        Material TrofferLens(bool on) => on ? (MaterialMaps.TrofferOn ? MaterialMaps.TrofferOn : _a.lensOn)
+                                            : (MaterialMaps.TrofferOff ? MaterialMaps.TrofferOff : _a.lensOff);
+
         void BuildFixtures(List<LightSource> lights)
         {
             // Grid cut-outs must be known before the ceiling grid is written, so collect first.
@@ -1007,8 +1011,8 @@ namespace Backrooms.Generation
                 else if (f.on)
                 {
                     int kind = f.strip ? 2 : f.dome ? 1 : 0;
-                    var on = f.strip ? _a.stripOn ?? _a.lensOn : f.dome ? _a.domeOn ?? _a.lensOn : _a.lensOn;
-                    var off = f.strip ? _a.stripOff ?? _a.lensOff : f.dome ? _a.domeOff ?? _a.lensOff : _a.lensOff;
+                    var on = f.strip ? _a.stripOn ?? _a.lensOn : f.dome ? _a.domeOn ?? _a.lensOn : TrofferLens(true);
+                    var off = f.strip ? _a.stripOff ?? _a.lensOff : f.dome ? _a.domeOff ?? _a.lensOff : TrofferLens(false);
                     if (!_roomLenses.TryGetValue(room * 4 + kind, out var rl))
                     {
                         rl = (new MeshWriter { worldOffset = _origin }, on, off, LayerBit(f.roomColor), room);
@@ -1017,7 +1021,7 @@ namespace Backrooms.Generation
                     lens = rl.w;
                 }
                 else if (f.strip) lens = W(_a.stripOff ?? _a.lensOff, f.roomColor);
-                else lens = W(f.dome ? _a.domeOff ?? _a.lensOff : _a.lensOff, f.roomColor);
+                else lens = W(f.dome ? _a.domeOff ?? _a.lensOff : TrofferLens(false), f.roomColor);
 
                 if (f.strip)
                 {
@@ -1043,7 +1047,7 @@ namespace Backrooms.Generation
                 {
                     // Square troffer: one 0.6 m ceiling tile, in the tile just west of the cell centre.
                     var sc = c + SquareFixtureShift;
-                    lens.Box(sc + Vector3.down * 0.004f, new Vector3(0.57f, 0.006f, 0.57f), 4 | 1 | 2 | 16 | 32, MeshWriter.MetreUV);
+                    lens.Box(sc + Vector3.down * 0.004f, new Vector3(0.57f, 0.006f, 0.57f), 4 | 1 | 2 | 16 | 32, MaterialMaps.TrofferUV(_origin + sc, 0.57f));
                     var hw = W(_a.fixtureHousing, f.roomColor);
                     const int m = 1 | 2 | 4 | 16 | 32;
                     hw.Box(sc + new Vector3(0, -0.009f, 0.291f), new Vector3(0.6f, 0.016f, 0.018f), m, MeshWriter.MetreUV);

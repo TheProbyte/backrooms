@@ -39,8 +39,12 @@
   down upright. It lights (a shadowed warm spot) when on and powered. Walking away with it plugged in, the cord goes
   taut with a small tug and holds you back (`CamcorderPlayerController.Leash`); keep walking against it for about half
   a second and the plug comes out of the socket: a pop, the plug flies toward you and the camera jolts.
-- **Extension cord**: as found it is coiled; click an outlet with it in hand and the plug goes in while you carry the
-  box (three sockets) away on 8 m of physics cord. Tap right mouse to coil it up again, or hold it to reel the cord in
+- **Extension cord**: as found it is coiled; click an outlet with it in hand and the plug goes in while you keep the
+  coil in hand: the cord pays out of it as you walk away (`Cord.Feed`: as much as the way from the outlet down to the
+  floor, along it and up to the coil needs, plus 25 cm; at most 5 m/s, so it slides off rather than appearing), lying on
+  the floor behind you, and the coil gets thinner. When all 8 m are out the coil is gone and you hold the box (three
+  sockets) at its end. Let go of, the box falls from the hand (it used to be set down on the floor in front of you at
+  once). Saved with how much is out. Tap right mouse to coil it up again, or hold it to reel the cord in
   (the plug comes out and is dragged back, then it coils). Reeling works from either end: holding the plug, hold right
   mouse and the box (or the desk lamp, for its plug) is dragged in along the cord, then coiled (wound up) and put in your
   hand. Walking further than a cord reaches holds you back, then pops its plug out, as for the lamp. Pick up a plug to
@@ -67,12 +71,22 @@
   went in and out of meet), so a cord wraps round door frames and wall ends instead of through them.
 - **Cords and broken walls** (2026-10-27, `Destruction/WallSlabs.cs`): a cord meets a broken wall as a slab the wall's
   whole thickness, solid wherever a board, a stud, a track or a post is left and open where the wall is open right
-  through (not its thin board colliders: a 12 cm span straddled a board, was pushed back out of the face it went in by
-  until it slipped through, and was then loose in the wall). A span that cuts through solid wall goes through the nearest
-  opening: with its ends either side, the nearer free particle moves into the hole; with one in the hole, the outer one
-  goes onto the rim just inside the face and settles on the drywall's edge. A particle inside solid wall (the wall broke
-  round it, an older save) goes back out through the nearer face. Checked: a box thrown through a hole lands in the next
-  room with the cord over the hole's lower edge; pulled back, the cord comes back out through the hole.
+  through (not its thin board colliders: a span straddled a board, was pushed back out of the face it went in by
+  until it slipped through, and was then loose in the wall). A span that cuts through solid wall is moved out of it by
+  as little as will do (`Cord.ThroughWall`): over a sill (open just above, as along the bottom of a hole) it is lifted
+  straight up to the edge, as a floor holds it; otherwise out of the nearer face, or (its ends either side) to the edge
+  of the nearest opening, whichever leaves the whole span clear. A particle inside solid wall (the wall broke round it,
+  an older save) goes back out through the nearer face; a cord resting on a wall that is struck again wakes and can fall.
+- **Still and smooth** (2026-10-27): the cord used to jiggle where it lay over the drywall: the particle on the edge was
+  put back on it at the end of each step, slid off with the next, and was put back (pushed sideways or up at a slant,
+  against gravity at an angle, and once to the middle of the opening's 2 cm map cells, 3 cm up). Now edges are put right
+  inside the solver too (`Wraps`, every few rounds, for spans that lay over an edge the step before), so the cord's
+  length and its edges agree before the step ends, a corrected particle loses its speed, and a cord whose particles all
+  stay within 1.5 cm for 0.8 s with its ends still goes to sleep (`Settle`). Laid through a hole, it settles in about
+  2.5 s and lies still (measured: was 4 to 7 mm of movement every frame, forever). Particles are 7 cm apart (were 12),
+  no joint folds more than about 50 degrees (`Bend`), and it is drawn through them as a curve, three points a span, eight
+  sides round, so it lies in curves instead of 12 cm kinks. Cost, 8 m of cord, editor: about 0.3 ms a step lying still,
+  0.5 ms with an end in the hand (particles resting on the floor skip the physics), 1 ms falling; two steps a frame.
 - Cords lie through rubble (it is drawn, not solid).
 - **Throwing through a noclip door**: a thrown (or falling) item that reaches the wall inside a noclip door's opening
   comes out of the other door, moving the same way (`NoclipTravel.ItemStep`). Items with a cord out stay on this side.

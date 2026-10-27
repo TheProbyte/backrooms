@@ -71,11 +71,14 @@ Each 1.2 m wall panel (`Destruction/WallPanel.cs`, all from the world seed and t
   mesh with the wall. A piece coming to rest on rubble is lifted onto it (a board's thickness above what it overlaps):
   rubble has no colliders, so pieces landed inside each other and flickered (`WallDamage.StackOn`; older saves are
   restacked on loading).
-- **Does it go away?** Rubble is one mesh a wall, which costs little to draw, so it stays as the evidence of what you did.
-  But once a wall's rubble has been out of sight for 20 s, its crumbs (board pieces under about 7 x 8 cm) are swept
-  away, and beyond 150 pieces the smallest go (`WallDamage.Tidy`, `BrokenPanel.TidyAfter`): never while you are
-  looking. The plates, stud lengths and baseboards stay. Falling debris is at most 70 bodies at once; bits under
-  6 x 6 cm crumble to dust as they fall.
+- **Does it go away?** Yes, most of it. Once a wall's rubble has been out of sight for 20 s, all but its 6 biggest
+  pieces (board plates, stud lengths, baseboards, by size) are swept away, so the floor still shows the wall was smashed
+  (`WallDamage.Tidy`, `KeepRubble`, `BrokenPanel.TidyAfter`); the same when its chunk unloads, unless you were looking a
+  moment before. Out of sight means really hidden (2026-10-27): out of the view, more than 40 m away, or walls, doors or
+  furniture between the eye and every piece (`BrokenPanel.Seen`, a few rays every half second). It used to be the
+  renderer's own visibility, which only knows the view cone (rubble behind a wall in front of you counted as seen, and
+  so did the editor's scene view), and it kept up to 150 pieces, so in play nothing seemed to go. Falling debris is at
+  most 70 bodies at once; bits under 6 x 6 cm crumble to dust as they fall.
 - Dust: a cloud of soft puffs lit by what is behind them (`Resources/Shaders/Dust.shader`, the light of the camera's
   opaque copy) and crumbs that bounce on the floor.
 - Paint, chalk and tape on a piece that is gone go with it (`SprayPaint.Erase`, `Marks.Erase`). An outlet or switch plate

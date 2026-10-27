@@ -249,10 +249,15 @@ namespace Backrooms.Tests
             for (int i = 0; i < board.pieces.Count; i++)
                 p.rubble.Add(new WallDamage.Rubble { part = Fallen.Part.Board, side = 0, index = i, position = Vector3.zero, rotation = Quaternion.identity });
             p.rubble.Add(new WallDamage.Rubble { part = Fallen.Part.Stud, index = 0, span = new Vector2(0.2f, 0.6f), position = Vector3.zero, rotation = Quaternion.identity });
+            float biggest = 0f; int big = -1;
+            for (int i = 0; i < board.pieces.Count; i++) if (board.pieces[i].area > biggest) { biggest = board.pieces[i].area; big = i; }
+            int bigger = 0;
+            for (int i = 0; i < board.pieces.Count; i++) if (board.pieces[i].area >= WallDamage.CrumbArea) bigger++;
             WallDamage.Tidy(p);
-            Assert.LessOrEqual(p.rubble.Count, WallDamage.KeepRubble);
+            Assert.AreEqual(Mathf.Min(WallDamage.KeepRubble, bigger + 1), p.rubble.Count, "only the few biggest stay");
             Assert.IsTrue(p.rubble.TrueForAll(r => r.part != Fallen.Part.Board || board.pieces[r.index].area >= WallDamage.CrumbArea), "no crumbs left");
-            Assert.IsTrue(p.rubble.Exists(r => r.part == Fallen.Part.Stud), "the stud's length stays");
+            Assert.IsTrue(p.rubble.Exists(r => r.part == Fallen.Part.Board && r.index == big), "the biggest piece stays");
+            Assert.IsFalse(WallDamage.Tidy(p), "nothing more to tidy");
         }
 
         [Test]

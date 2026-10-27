@@ -7,7 +7,8 @@ namespace Backrooms.Interaction
     /// <summary>
     /// An orange extension cord, <see cref="Length"/> long, with a plug at one end and a box of three sockets at the other.
     ///  - Coiled (as found), it is one bundle. Holding it, click a wall outlet (or another cord's box): the plug goes in and
-    ///    the cord pays out behind you as you carry the box.
+    ///    you keep the coil; the cord pays out of it as you walk away (lying on the floor behind you), until it is all out
+    ///    and you hold just the box at its end.
     ///  - The box's sockets have power when its plug does, so a lamp (or another cord) plugged into it works anywhere the
     ///    cord reaches. At most <see cref="MaxChain"/> cords in a row.
     ///  - Walk further than the cord and the plug pops out. Right mouse while holding it coils it back up (anything
@@ -22,6 +23,8 @@ namespace Backrooms.Interaction
         public static readonly Color Orange = new Color(0.95f, 0.38f, 0.05f);
         static readonly Vector3[] SocketFaces = { new Vector3(0f, 0.0362f, 0.0259f), new Vector3(0f, 0.0362f, 0.0034f), new Vector3(0f, 0.0362f, -0.0191f) };
         static readonly Vector3 CordEntry = new Vector3(0f, 0.0137f, -0.06f);
+        /// <summary>Where the cord leaves the coil while some is still wound (on the ring, away from the hand).</summary>
+        static readonly Vector3 CoilExit = new Vector3(-0.03f, 0.045f, -0.105f);
         static readonly Vector3 CoilSize = new Vector3(0.28f, 0.06f, 0.28f), BoxSize = new Vector3(0.045f, 0.036f, 0.075f);
         [Tooltip("Furthest outlet you can plug into from your eye (m).")] public float reach = 2.2f;
 
@@ -36,18 +39,27 @@ namespace Backrooms.Interaction
         public override Plug Plug => _plug;
         public IReadOnlyList<Socket> BoxSockets => _sockets;
         public bool Powered => !coiled && PluggedLive;
+        /// <summary>Plugged in (or laid out) with some of it still on the coil.</summary>
+        public bool Wound => !coiled && _cord && _cord.Feeding;
+        /// <summary>Metres of cord out of the coil.</summary>
+        public float PaidOut => coiled ? 0f : _cord ? _cord.length : Length;
+        /// <summary>Held and carried as a coil: all wound up, or still partly.</summary>
+        bool Bundle => coiled || Wound;
         public int Depth => 1 + (_plug && _plug.Socket != null ? _plug.Socket.Depth : 0);
-        public override bool PlaceOnDrop => !coiled;
-        public override Vector3 HoldOffset => coiled ? new Vector3(0.2f, -0.36f, 0.42f) : new Vector3(0.15f, -0.22f, 0.35f);
-        public override Vector3 GripLocal => coiled ? new Vector3(0.12f, 0.03f, 0f) : new Vector3(0.02f, 0.02f, 0f);
+        /// <summary>Let go of out of its coil, the box just falls from the hand (as its plug does).</summary>
+        public override bool DropsStraight => !coiled;
+        public override Vector3 HoldOffset => Bundle ? new Vector3(0.2f, -0.36f, 0.42f) : new Vector3(0.15f, -0.22f, 0.35f);
+        public override Vector3 GripLocal => Bundle ? new Vector3(0.12f, 0.03f, 0f) : new Vector3(0.02f, 0.02f, 0f);
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(-0.4f, -0.3f, 0.86f), Vector3.up);
         public override float GripCurl => 0.9f;
         /// <summary>Coiled: the ring of cord (the hand round one side of it); out: the box.</summary>
         public override float ContactDistance(Vector3 p) =>
-            coiled ? RingDistance(p, new Vector3(0f, 0.03f, 0f), Vector3.up, 0.085f, 0.14f, 0.03f) : base.ContactDistance(p);
-        public override float Amount { get => coiled ? 0f : 1f; set { } }
+            Bundle ? RingDistance(p, new Vector3(0f, 0.03f, 0f), Vector3.up, 0.085f, 0.14f, 0.03f) : base.ContactDistance(p);
+        /// <summary>Saved: 0 coiled, else the share of the cord that is out (old saves: 1, all of it).</summary>
+        public override float Amount { get => coiled ? 0f : Mathf.Max(0.02f, PaidOut / Length); set { } }
         public override string Status => coiled ? $"extension cord ({Length:0} m): click an outlet"
-                                                : (Powered ? "extension cord: live" : "extension cord: no power") + "  (right mouse: coil)";
+                                                : (Powered ? "extension cord: live" : "extension cord: no power")
+                                                  + (Wound ? $", {PaidOut:0.0} of {Length:0} m out" : "") + "  (right mouse: coil)";
 
         public static CordBox Create(Vector3 position, Quaternion rotation)
         {
@@ -66,6 +78,7 @@ namespace Backrooms.Interaction
             _col = GetComponent<BoxCollider>();
             var c = transform.Find("Coil");
             _coilModel = c ? c.gameObject : null;
+            if (c) _coilScale = c.localScale;
             var boxRoot = new GameObject("Box").transform;
             boxRoot.SetParent(transform, false);
             _boxModel = ItemModels.Attach(boxRoot, "CordSocket", BoxSize, "CordOrange");
@@ -84,12 +97,19 @@ namespace Backrooms.Interaction
             Shape();
         }
 
-        /// <summary>Coiled: the coil, with the box and the plug tucked beside it. Out: just the box.</summary>
+        bool _shapedBundle;
+        Vector3 _coilScale = Vector3.one;
+
+        /// <summary>Coiled: the coil, with the box and the plug tucked beside it. Out: just the box. Paying out: the coil with
+        /// the box tucked in, thinner as it empties, the cord running from it.</summary>
         void Shape()
         {
-            if (_coilModel) _coilModel.SetActive(coiled);
+            bool bundle = Bundle;
+            _shapedBundle = bundle;
+            if (_coilModel) _coilModel.SetActive(bundle);
             _bundlePlug.SetActive(coiled);
-            if (coiled)
+            if (_cord) _cord.bLocal = bundle ? CoilExit : CordEntry;
+            if (bundle)
             {
                 _boxModel.transform.localPosition = new Vector3(0.175f, 0f, 0.07f);
                 _boxModel.transform.localRotation = Quaternion.Euler(0f, 70f, 0f);
@@ -97,6 +117,7 @@ namespace Backrooms.Interaction
                 _bundlePlug.transform.localRotation = Quaternion.Euler(0f, 120f, 0f);
                 _col.size = CoilSize; _col.center = new Vector3(0f, 0.03f, 0f);
                 Body.mass = 1.4f;
+                Thin();
             }
             else
             {
@@ -106,6 +127,21 @@ namespace Backrooms.Interaction
                 Body.mass = 0.35f;
             }
             foreach (var s in _sockets) { if (coiled) Sockets.RemoveBox(s); else Sockets.AddBox(s); }
+        }
+
+        /// <summary>The coil as much as is left on it: thinner, and a little narrower, as the cord pays out.</summary>
+        void Thin()
+        {
+            float left = coiled ? 1f : Mathf.Clamp01(1f - PaidOut / Length);
+            if (_coilModel) _coilModel.transform.localScale = Vector3.Scale(_coilScale, new Vector3(Mathf.Lerp(0.82f, 1f, left), Mathf.Lerp(0.3f, 1f, left), Mathf.Lerp(0.82f, 1f, left)));
+            if (!coiled) Body.mass = Mathf.Lerp(0.35f, 1.4f, left);
+        }
+
+        void LateUpdate()
+        {
+            // Paid out to the end: the coil is gone, the box is in the hand (or on the floor).
+            if (!coiled && Bundle != _shapedBundle) Shape();
+            else if (Wound) Thin();
         }
 
         public override void WakeCord() { if (_cord) _cord.Wake(); }
@@ -119,17 +155,24 @@ namespace Backrooms.Interaction
             return _plug && !_plug.Plugged && _plug.CanUse(s) && Vector3.Distance(s.Position, transform.position) < Length * 0.95f;
         }
 
-        /// <summary>Out of its coil with the plug in a socket (from a save: plugged = null, the plug lies at plugPosition).</summary>
-        public void Deploy(Socket socket, Vector3? plugPosition = null)
+        /// <summary>
+        /// Out of its coil with the plug in a socket (from a save: plugged = null, the plug lies at plugPosition, paidOut
+        /// metres of it are out). Just plugged in, only enough comes off the coil to reach from the outlet to the coil; the
+        /// rest pays out as it is carried away (Cord.Feed).
+        /// </summary>
+        public void Deploy(Socket socket, Vector3? plugPosition = null, float paidOut = -1f)
         {
             if (!coiled) return;
             coiled = false;
-            Shape();
             Vector3 at = socket != null ? socket.Position : plugPosition ?? transform.position + Vector3.up * 0.05f;
             _plug = Plug.Create("cordplug", this, at, socket != null ? socket.PlugRotation : Quaternion.identity, Orange);
             if (socket != null) _plug.PlugInto(socket);
-            _cord = Cord.Create("ExtensionCordRope", _plug, Plug.CordPoint, this, CordEntry, Length, 0.0045f, ItemModels.Mat("CordOrange", Orange));
+            Vector3 exit = transform.TransformPoint(CoilExit);
+            float first = paidOut > 0f ? paidOut : Vector3.Distance(at, exit) + 0.3f;
+            _cord = Cord.Create("ExtensionCordRope", _plug, Plug.CordPoint, this, CoilExit, Mathf.Clamp(first, 0.5f, Length), 0.0045f,
+                                ItemModels.Mat("CordOrange", Orange), Length);
             _cord.onTaut = c => { if (_plug && _plug.Plugged) _plug.Unplug(true); };
+            Shape();
         }
 
         public override void ReelFromPlug(Plug plug, in HoldInput i)

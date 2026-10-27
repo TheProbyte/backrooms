@@ -47,6 +47,17 @@ A flat diffuser panel is Lambertian: its intensity falls off as cos(angle) from 
 halfway down instead of a fade from the top, and rooms were darker and patchier. A rectangular panel's form factor is
 already Lambertian, so there the profile now divides out.
 
+### What the panel looks like (2026-10-27)
+
+A square troffer's lens is a copy of the lit lens material with an emission map made at startup
+(`MaterialMaps.Troffers`, 512 px, no asset and no new shader variant: `_EmissionMap` under the `_EMISSION` the lens
+already had): three soft bands where its T8 tubes are (15 cm apart, spread about 3.5 cm by the diffuser, with a wide
+halo), the reflector's fill between them at about 60 % of the bands, darker at the tubes' ends and toward the frame,
+and a fine diagonal grid of prismatic pyramids that catch the light over the tubes. Each lens is mapped 0..1
+(`MaterialMaps.TrofferUV`). The emission is scaled by the map's mean, so a lens gives the same light as before. From
+across a room it is the same blown-out white; looked at up close, when the camcorder stops down for it, the tubes show
+through the diffuser instead of a flat white tile. Unlit troffers get the pyramids in their albedo.
+
 ### Light as it falls: bounce and AO (2026-10-27)
 
 - `multiBounce` 1 (was 0.7): every bounce passes on all of the light its surface reflects (the surfaces' albedo already

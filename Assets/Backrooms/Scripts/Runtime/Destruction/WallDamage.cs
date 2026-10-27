@@ -602,31 +602,42 @@ namespace Backrooms.Destruction
             return any;
         }
 
-        /// <summary>Board pieces smaller than this (m², about 7 x 8 cm) are crumbs: tidied away out of view (<see cref="Tidy"/>).</summary>
+        /// <summary>Board pieces smaller than this (m², about 7 x 8 cm) are crumbs: never kept when tidying (<see cref="Tidy"/>).</summary>
         public const float CrumbArea = 0.006f;
-        /// <summary>Most pieces of rubble a wall keeps once tidied (the biggest).</summary>
-        public const int KeepRubble = 150;
+        /// <summary>Pieces of rubble a wall keeps once tidied: the biggest few, so the floor still shows the wall was smashed.</summary>
+        public const int KeepRubble = 6;
         static readonly List<(float area, int i)> s_bySize = new List<(float, int)>();
 
+        /// <summary>The size of a piece of rubble (m², roughly what it covers of the floor): for keeping the biggest.</summary>
+        static float Size(WallPanelModel m, Rubble r)
+        {
+            switch (r.part)
+            {
+                case Fallen.Part.Board: return Fits(m, r) ? m.boards[r.side].pieces[r.index].area : 0f;
+                case Fallen.Part.Stud: return Mathf.Abs(r.span.y - r.span.x) * 0.09f;
+                case Fallen.Part.Baseboard: return 0.05f;
+                default: return 0f;
+            }
+        }
+
         /// <summary>
-        /// Sweeps a wall's rubble while it is out of sight (BrokenPanel, after a while unseen): its crumbs go, and beyond
-        /// <see cref="KeepRubble"/> pieces the smallest; the plates, studs and baseboards that show what happened stay.
-        /// Rubble costs little to draw (one mesh a wall); this keeps the floors, the saves and the rubble meshes from growing.
+        /// Sweeps a wall's rubble while it is out of sight (BrokenPanel, after <see cref="BrokenPanel.TidyAfter"/> seconds
+        /// unseen, or as its chunk unloads): all but the <see cref="KeepRubble"/> biggest pieces go, crumbs always. Rubble
+        /// costs little to draw (one mesh a wall); this keeps the floors, the saves and the rubble meshes from growing.
         /// </summary>
         public static bool Tidy(Panel p)
         {
             var m = p.model; int before = p.rubble.Count;
-            float Area(Rubble r) => r.part == Fallen.Part.Board && Fits(m, r) ? m.boards[r.side].pieces[r.index].area : 1f;
-            p.rubble.RemoveAll(r => Area(r) < CrumbArea);
+            p.rubble.RemoveAll(r => r.part == Fallen.Part.Board && Size(m, r) < CrumbArea);
             if (p.rubble.Count > KeepRubble)
             {
                 s_bySize.Clear();
-                for (int i = 0; i < p.rubble.Count; i++) s_bySize.Add((Area(p.rubble[i]), i));
-                s_bySize.Sort((a, b) => a.area.CompareTo(b.area));
-                var drop = new HashSet<int>();
-                for (int i = 0; i < p.rubble.Count - KeepRubble; i++) drop.Add(s_bySize[i].i);
+                for (int i = 0; i < p.rubble.Count; i++) s_bySize.Add((Size(m, p.rubble[i]), i));
+                s_bySize.Sort((a, b) => b.area.CompareTo(a.area));
+                var keep = new HashSet<int>();
+                for (int i = 0; i < KeepRubble; i++) keep.Add(s_bySize[i].i);
                 int at = 0;
-                p.rubble.RemoveAll(r => drop.Contains(at++));
+                p.rubble.RemoveAll(r => !keep.Contains(at++));
             }
             if (p.rubble.Count == before) return false;
             p.rubbleVersion++;

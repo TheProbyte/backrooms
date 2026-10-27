@@ -160,7 +160,7 @@ namespace Backrooms.Saves
         {
             var data = _data.items;
             for (int i = 0; i < data.Count && i < spawned.Count; i++)
-                if (spawned[i] is CordBox box && data[i].amount > 0.5f) box.Deploy(null, data[i].plugPosition);
+                if (spawned[i] is CordBox box && data[i].amount > 0.01f) box.Deploy(null, data[i].plugPosition, data[i].amount * CordBox.Length);
             for (int i = 0; i < data.Count && i < spawned.Count; i++)
             {
                 if (!(spawned[i] is PowerUser user) || !data[i].hasPlug) continue;

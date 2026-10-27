@@ -28,9 +28,12 @@ namespace Backrooms.Destruction
         static readonly List<int> s_ct = new List<int>();
         Mesh _boardMesh;
         MeshCollider _boardCollider;
-        float _unseenSince, _nextTidy;
-        /// <summary>Seconds the rubble must have been out of sight before its crumbs are tidied away (WallDamage.Tidy).</summary>
+        float _unseenSince, _nextTidy, _nextLook;
+        bool _seen = true;
+        /// <summary>Seconds the rubble must have been out of sight before it is tidied away (WallDamage.Tidy).</summary>
         public const float TidyAfter = 20f;
+        static readonly RaycastHit[] s_look = new RaycastHit[8];
+        static readonly Plane[] s_planes = new Plane[6];
         Material[] _slots, _shadowSlots;
 
         public static BrokenPanel Spawn(WallKey key, WallDamage.Panel p, Transform parent)
@@ -88,10 +91,63 @@ namespace Backrooms.Destruction
             // Scripts reloaded in Play Mode (the registry is gone): this copy is stale; the wall is made again as its chunk loads.
             if (Panel == null) { Destroy(gameObject); return; }
             if (Panel.state.version != _built) Rebuild();
-            // Out of sight a while: the crumbs are swept away (never where you are looking).
-            if (_rubbleR.isVisible || Panel.rubble.Count == 0) _unseenSince = Time.time;
-            else if (Time.time - _unseenSince > TidyAfter && Time.time > _nextTidy) { _nextTidy = Time.time + 10f; WallDamage.Tidy(Panel); }
+            // Out of sight a while: most of it is swept away (never where you are looking).
+            if (Panel.rubble.Count <= WallDamage.KeepRubble) _unseenSince = Time.time;
+            else
+            {
+                if (Time.time >= _nextLook) { _nextLook = Time.time + 0.5f + (Key.along & 3) * 0.05f; _seen = Seen(); }
+                if (_seen) _unseenSince = Time.time;
+                else if (Time.time - _unseenSince > TidyAfter && Time.time > _nextTidy) { _nextTidy = Time.time + 10f; WallDamage.Tidy(Panel); }
+            }
             if (Panel.rubbleVersion != _rubbleBuilt && Time.time >= _rubbleDue) { _rubbleDue = Time.time + 0.25f; RebuildRubble(); }
+        }
+
+        /// <summary>
+        /// Could the player see any of this wall's rubble? In the view and near enough, and a clear line from the eye to some
+        /// of it (walls, doors and furniture hide it; a renderer's own visibility only knows the view, not what is in the way,
+        /// and counts the editor's scene view too).
+        /// </summary>
+        bool Seen()
+        {
+            var cam = Camera.main;
+            if (!cam || !_rubble.sharedMesh) return false;
+            var b = _rubbleR.bounds;
+            Vector3 eye = cam.transform.position;
+            if ((b.ClosestPoint(eye) - eye).sqrMagnitude > 40f * 40f) return false;
+            GeometryUtility.CalculateFrustumPlanes(cam, s_planes);
+            if (!GeometryUtility.TestPlanesAABB(s_planes, b)) return false;
+            // The pieces themselves, a few of them: the biggest pile shows from somewhere.
+            var rubble = Panel.rubble;
+            int n = Mathf.Min(6, rubble.Count);
+            for (int k = 0; k < n; k++)
+            {
+                Vector3 p = rubble[(k * rubble.Count) / n].position + Vector3.up * 0.04f;
+                if (Clear(eye, p)) return true;
+            }
+            return Clear(eye, b.center + Vector3.up * 0.05f);
+        }
+
+        /// <summary>Nothing solid between the eye and a point (the player's own body and held things do not count).</summary>
+        bool Clear(Vector3 eye, Vector3 p)
+        {
+            Vector3 d = p - eye;
+            float len = d.magnitude - 0.08f;
+            if (len <= 0f) return true;
+            int hits = Physics.RaycastNonAlloc(eye, d.normalized, s_look, len, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < hits; i++)
+            {
+                var c = s_look[i].collider;
+                if (c is CharacterController || c.attachedRigidbody && !c.attachedRigidbody.isKinematic) continue;   // you, loose things
+                if (c.GetComponentInParent<Interaction.WorldItem>()) continue;
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>Its chunk is going (you have walked away): tidied now, unless you were looking at it a moment ago.</summary>
+        public void Unloading()
+        {
+            if (Panel != null && !_seen && Time.time - _unseenSince > 2f) WallDamage.Tidy(Panel);
         }
 
         /// <summary>Meshes and colliders from what is left.</summary>
@@ -132,6 +188,12 @@ namespace Backrooms.Destruction
             _boardCollider.sharedMesh = null;                                  // recooked with what is left
             _boardCollider.sharedMesh = s_ct.Count > 0 ? _boardMesh : null;
             _boardCollider.enabled = s_ct.Count > 0;
+
+            // A cord lying on or through it may have lost its support.
+            var p0 = Key.ToWorld(new Vector3(0f, 0f, -WallSpec.T), pitch);
+            var p1 = Key.ToWorld(new Vector3(WallSpec.C, Panel.model.height, WallSpec.T), pitch);
+            var around = new Bounds((p0 + p1) * 0.5f, Vector3.zero); around.Encapsulate(p0); around.Encapsulate(p1);
+            Interaction.Cord.WakeAround(around);
         }
 
         /// <summary>Everything that came to rest from this wall, as one mesh.</summary>

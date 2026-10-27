@@ -116,7 +116,7 @@ namespace Backrooms.Destruction
             {
                 // Its debris still falling comes to rest where it is.
                 foreach (var d in _debrisRoot.GetComponentsInChildren<WallDebris>()) if (d.key == k) d.Settle();
-                if (BrokenPanel.Live.TryGetValue(k, out var b) && b) Destroy(b.gameObject);
+                if (BrokenPanel.Live.TryGetValue(k, out var b) && b) { b.Unloading(); Destroy(b.gameObject); }
                 BrokenPanel.Live.Remove(k);
             }
         }

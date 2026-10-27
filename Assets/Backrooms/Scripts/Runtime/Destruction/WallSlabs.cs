@@ -14,28 +14,41 @@ namespace Backrooms.Destruction
     public static class WallSlabs
     {
         static readonly List<BrokenPanel> s_near = new List<BrokenPanel>();
+        static readonly List<(BrokenPanel bp, Bounds box)> s_boxes = new List<(BrokenPanel, Bounds)>();
+        static int s_boxesFrame = -1, s_boxesCount = -1;
 
         /// <summary>The broken panels whose slab (grown by r) a segment's bounds touch.</summary>
         public static List<BrokenPanel> Near(Vector3 a, Vector3 b, float r)
         {
             s_near.Clear();
             if (BrokenPanel.Live.Count == 0) return s_near;
+            Boxes();
             var seg = new Bounds((a + b) * 0.5f, Vector3.zero);
             seg.Encapsulate(a); seg.Encapsulate(b);
+            seg.Expand(r * 2f + 0.02f);
+            foreach (var (bp, box) in s_boxes)
+                if (box.Intersects(seg) && bp && bp.Panel != null) s_near.Add(bp);
+            return s_near;
+        }
+
+        /// <summary>Every broken panel's box (its whole thickness), once a frame: a cord asks for them many times.</summary>
+        static void Boxes()
+        {
+            if (s_boxesFrame == Time.frameCount && s_boxesCount == BrokenPanel.Live.Count) return;
+            s_boxesFrame = Time.frameCount; s_boxesCount = BrokenPanel.Live.Count;
+            s_boxes.Clear();
             float pitch = WallDamage.Pitch;
             foreach (var kv in BrokenPanel.Live)
             {
                 var bp = kv.Value;
                 if (!bp || bp.Panel == null) continue;
                 var k = bp.Key;
-                Vector3 p0 = k.ToWorld(new Vector3(0f, 0f, -WallSpec.T * 0.5f - r), pitch);
-                Vector3 p1 = k.ToWorld(new Vector3(WallSpec.C, bp.Panel.model.height, WallSpec.T * 0.5f + r), pitch);
+                Vector3 p0 = k.ToWorld(new Vector3(0f, 0f, -WallSpec.T * 0.5f), pitch);
+                Vector3 p1 = k.ToWorld(new Vector3(WallSpec.C, bp.Panel.model.height, WallSpec.T * 0.5f), pitch);
                 var box = new Bounds((p0 + p1) * 0.5f, Vector3.zero);
                 box.Encapsulate(p0); box.Encapsulate(p1);
-                box.Expand(r * 2f);
-                if (box.Intersects(seg)) s_near.Add(bp);
+                s_boxes.Add((bp, box));
             }
-            return s_near;
         }
 
         /// <summary>Is the wall solid at (u along, v up) through its thickness? Posts, the wall above the breakable part, the
@@ -56,7 +69,75 @@ namespace Backrooms.Destruction
         {
             var l = bp.Key.ToLocal(world, WallDamage.Pitch);
             if (l.x < 0f || l.x > WallSpec.C || l.y < 0f || Mathf.Abs(l.z) > WallSpec.T * 0.5f + r) return false;
-            return Solid(bp.Panel, l.x, l.y);
+            return Padded(bp.Panel, l.x, l.y, r);
+        }
+
+        /// <summary>Solid at (u, v), or within r below it: a cord lying on the edge of a hole rests on its skin, not its centre.</summary>
+        static bool Padded(WallDamage.Panel p, float u, float v, float r) => Solid(p, u, v) || Solid(p, u, v - r);
+
+        /// <summary>
+        /// The smallest move (wall frame: x along, y up, z across) that takes a point of a cord inside the wall's solid part
+        /// out of it: out of the nearer face, or (overFace false: the cord's ends are either side of the wall) through the
+        /// wall to the edge of the nearest opening, just clear of it. False if neither is possible.
+        /// </summary>
+        public static bool Escape(BrokenPanel bp, Vector3 local, float r, float skin, bool overFace, out Vector3 move)
+        {
+            bool f = Escapes(bp, local, r, skin, overFace, out var face, out bool o, out var open);
+            move = f && (!o || face.sqrMagnitude <= open.sqrMagnitude) ? face : open;
+            return f || o;
+        }
+
+        /// <summary>
+        /// How far above (u, v) the wall is open with room for a cord (its skin clear of the edge below): the height of the
+        /// sill under a cord there. False if it is solid all the way up within reach.
+        /// </summary>
+        public static bool OpenAbove(WallDamage.Panel p, float u, float v, float r, float reach, out float top)
+        {
+            top = v;
+            if (!Padded(p, u, v, r)) return true;
+            float lo = v, hi = -1f;
+            for (float y = v + 0.01f; y <= v + reach; y += 0.01f)
+            {
+                if (!Padded(p, u, y, r)) { hi = y; break; }
+                lo = y;
+            }
+            if (hi < 0f) return false;
+            for (int k = 0; k < 8; k++)
+            {
+                float mid = (lo + hi) * 0.5f;
+                if (Padded(p, u, mid, r)) lo = mid; else hi = mid;
+            }
+            top = hi;
+            return true;
+        }
+
+        /// <summary>Both ways out (see <see cref="Escape"/>): through the nearer face (if overFace), and to the nearest opening.</summary>
+        public static bool Escapes(BrokenPanel bp, Vector3 local, float r, float skin, bool overFace,
+                                   out Vector3 face, out bool hasOpen, out Vector3 inPlane)
+        {
+            float h = WallSpec.T * 0.5f + r;
+            face = Vector3.zero; inPlane = Vector3.zero; hasOpen = false;
+            if (overFace)
+            {
+                float side = local.z >= 0f ? 1f : -1f;
+                face = new Vector3(0f, 0f, side * (h + skin) - local.z);
+            }
+            if (NearestOpen(bp.Panel, local.x, local.y, 0.5f, out var open))
+            {
+                // From the open cell back toward the point, to the exact edge (the map is coarse: 2 cm).
+                var from = new Vector2(local.x, local.y);
+                Vector2 lo = from, hi = open;
+                for (int k = 0; k < 12; k++)
+                {
+                    var mid = (lo + hi) * 0.5f;
+                    if (Padded(bp.Panel, mid.x, mid.y, r)) lo = mid; else hi = mid;
+                }
+                var dir = open - from;
+                var to = hi + (dir.sqrMagnitude > 1e-10f ? dir.normalized : Vector2.up) * skin;
+                var d = to - from;
+                inPlane = new Vector3(d.x, d.y, 0f); hasOpen = true;
+            }
+            return overFace;
         }
 
         /// <summary>

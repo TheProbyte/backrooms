@@ -6,9 +6,11 @@ namespace Backrooms.Interaction
 {
     /// <summary>
     /// A flexible electrical cord between two items (a lamp and its plug; an extension cord's plug and its box): a chain of
-    /// particles every ~12 cm with gravity, length constraints and collisions with the world (verlet), drawn as a round
-    /// tube. A particle only ever moves by sweeping from its last free position, so the cord cannot pass through floors or
-    /// walls; a span that cuts through a corner pushes its particles back out. It has a fixed length:
+    /// particles every ~7 cm with gravity, length constraints, a little stiffness (no joint bends sharply, so it lies in
+    /// curves, not kinks) and collisions with the world (verlet), drawn as a smooth round tube. A particle only ever moves
+    /// by sweeping from its last free position, so the cord cannot pass through floors or walls; a span that cuts through
+    /// a corner pushes its particles back out. It has a length:
+    ///  - with <see cref="maxLength"/> longer, the rest is wound on a coil at end B and pays out as the ends draw apart;
     ///  - pulled taut with a plugged end, the plug pops out of its socket;
     ///  - pulled taut by a held end, the other end is dragged along (it is a physics object lying in the world).
     /// Sleeps (no simulation) once it has settled and its ends stay still.
@@ -19,12 +21,32 @@ namespace Backrooms.Interaction
         public Vector3 aLocal, bLocal;         // attach points in each end's own frame
         public float length = 1.8f;
         public float radius = 0.003f;
+        /// <summary>Longer than <see cref="length"/>: the rest is wound on a coil at B and pays out as needed (an extension cord).</summary>
+        public float maxLength;
+        /// <summary>Space between the particles (m): with the curve drawn through them, short enough to look like one cord.</summary>
+        public const float Spacing = 0.07f;
+        /// <summary>How straight each joint stays: its neighbours at least this share of two spans apart (about 50 degrees at most).</summary>
+        const float BendMin = 0.9f;
+        /// <summary>Share of a too-sharp bend put right each round of the solver.</summary>
+        const float BendK = 0.25f;
+        /// <summary>Speed kept each step (air and the cord's own give).</summary>
+        const float Damp = 0.985f;
+        /// <summary>Share of its speed a particle loses touching something (1: all).</summary>
+        const float Friction = 0.6f, Stick = 1f;
+        /// <summary>Settled (<see cref="Settle"/>): no particle further than this from where it was for this long.</summary>
+        const float SettleRange = 0.015f, SettleTime = 0.8f;
+        /// <summary>Fastest it pays out of its coil (m/s): it slides off, it does not appear.</summary>
+        const float FeedRate = 5f;
+        /// <summary>Paying out, so much more than the way from end to end along the floor (m).</summary>
+        const float FeedSlack = 0.25f;
+        /// <summary>Some of it is still wound on its coil.</summary>
+        public bool Feeding => maxLength > length + 1e-3f;
         public System.Action<Cord> onTaut;     // pulled past its length with neither end able to give (owner decides)
         /// <summary>Being reeled in: a plug that pops out does not jerk the hand.</summary>
         public bool reeling;
         public static readonly List<Cord> All = new List<Cord>();
 
-        Vector3[] _p, _prev, _valid;
+        Vector3[] _p, _prev, _valid, _before;
         int _n;
         float _seg, _sleepT;
         bool _asleep;
@@ -34,18 +56,19 @@ namespace Backrooms.Interaction
         readonly List<Vector3> _norms = new List<Vector3>();
         readonly List<int> _tris = new List<int>();
         readonly RaycastHit[] _hits = new RaycastHit[6];
-        const int Sides = 6;
+        const int Sides = 8;
+        readonly List<Vector3> _path = new List<Vector3>();
 
         public Vector3 A => endA ? endA.transform.TransformPoint(aLocal) : transform.position;
         public Vector3 B => endB ? endB.transform.TransformPoint(bLocal) : transform.position;
         /// <summary>Straight-line distance between the ends over the cord's length.</summary>
         public float Stretch => Vector3.Distance(A, B) / Mathf.Max(0.01f, length);
 
-        public static Cord Create(string name, WorldItem a, Vector3 aLocal, WorldItem b, Vector3 bLocal, float length, float radius, Material material)
+        public static Cord Create(string name, WorldItem a, Vector3 aLocal, WorldItem b, Vector3 bLocal, float length, float radius, Material material, float maxLength = 0f)
         {
             var go = new GameObject(name);
             var c = go.AddComponent<Cord>();
-            c.endA = a; c.aLocal = aLocal; c.endB = b; c.bLocal = bLocal; c.length = length; c.radius = radius;
+            c.endA = a; c.aLocal = aLocal; c.endB = b; c.bLocal = bLocal; c.length = length; c.radius = radius; c.maxLength = maxLength;
             go.AddComponent<MeshFilter>();
             var r = go.AddComponent<MeshRenderer>();
             r.sharedMaterial = material;
@@ -59,9 +82,10 @@ namespace Backrooms.Interaction
         /// <summary>Lays the cord out from A to B (slack sagging below the line).</summary>
         public void Lay()
         {
-            _n = Mathf.Max(4, Mathf.CeilToInt(length / 0.12f) + 1);
+            _n = Mathf.Max(4, Mathf.CeilToInt(length / Spacing) + 1);
             _seg = length / (_n - 1);
-            _p = new Vector3[_n]; _prev = new Vector3[_n]; _valid = new Vector3[_n];
+            int room = Mathf.Max(_n, Mathf.CeilToInt(maxLength / Spacing) + 1);     // room for what is still on the coil
+            _p = new Vector3[room]; _prev = new Vector3[room]; _valid = new Vector3[room]; _before = new Vector3[room]; _onFloor = null; _wrap = null;
             Vector3 a = A, b = B;
             float slack = Mathf.Max(0f, length - Vector3.Distance(a, b));
             for (int i = 0; i < _n; i++)
@@ -80,7 +104,44 @@ namespace Backrooms.Interaction
             Wake();
         }
 
-        public void Wake() { _asleep = false; _sleepT = 0f; }
+        public void Wake() { _asleep = false; _sleepT = 0f; _settleT = -1f; }
+
+        /// <summary>Wakes every cord lying in a box (a wall that changed under it: it may have to fall).</summary>
+        public static void WakeAround(Bounds b)
+        {
+            foreach (var c in All)
+            {
+                if (!c) continue;
+                var r = c.GetComponent<Renderer>();
+                if (r && r.bounds.Intersects(b)) { c.Wake(); if (c._onFloor != null) System.Array.Clear(c._onFloor, 0, c._onFloor.Length); }
+            }
+        }
+
+        Vector3[] _rest;
+        float _settleT = -1f;
+
+        /// <summary>
+        /// Lying over an edge (a hole's sill, the edge of a box) a cord never comes quite to rest: the particle on the edge
+        /// is put back on it, slips, is put back. With its ends still, once no particle has strayed more than
+        /// <see cref="SettleRange"/> from where it was for <see cref="SettleTime"/>, it is left lying where it is (asleep).
+        /// </summary>
+        void Settle(float dt)
+        {
+            if (_rest == null || _rest.Length < _p.Length) _rest = new Vector3[_p.Length];
+            float r2 = SettleRange * SettleRange;
+            bool still = _settleT >= 0f;
+            if (still)
+                for (int i = 1; i < _n - 1; i++)
+                    if ((_p[i] - _rest[i]).sqrMagnitude > r2) { still = false; break; }
+            if (!still) { System.Array.Copy(_p, _rest, _n); _settleT = 0f; return; }
+            _settleT += dt;
+            if (_settleT >= SettleTime)
+            {
+                // Rest exactly as it is now, without speed (it wakes when an end moves).
+                System.Array.Copy(_p, _prev, _n); System.Array.Copy(_p, _valid, _n);
+                _asleep = true;
+            }
+        }
 
         /// <summary>A new length (reeling in): the same particles, shorter spans.</summary>
         public void SetLength(float metres)
@@ -134,6 +195,7 @@ namespace Backrooms.Interaction
             if ((a - _lastA).sqrMagnitude > 1e-6f || (b - _lastB).sqrMagnitude > 1e-6f) Wake();
             _lastA = a; _lastB = b;
 
+            Feed(a, b);
             Taut(a, b);
             if (!_asleep)
             {
@@ -144,8 +206,40 @@ namespace Backrooms.Interaction
                 // Never left broken: anything not a number lays the cord out again.
                 if (float.IsNaN(move) || float.IsNaN(_p[_n / 2].x)) { Lay(); move = 1f; }
                 if (move < 0.0005f) { _sleepT += dt; if (_sleepT > 0.6f) _asleep = true; } else _sleepT = 0f;
+                if (!_asleep) Settle(dt);
                 Rebuild();
             }
+        }
+
+        /// <summary>
+        /// Still partly on its coil: pays out as much as the way from end to end needs (down to the floor, along it and up
+        /// again, with a little to spare), so it lies on the floor behind you as you walk off. New cord comes off the coil at
+        /// B: a particle is added there whenever the spans grow longer than <see cref="Spacing"/>.
+        /// </summary>
+        void Feed(Vector3 a, Vector3 b)
+        {
+            if (!Feeding || reeling || _p == null) return;
+            Vector3 mid = (a + b) * 0.5f;
+            float floor = Mathf.Min(a.y, b.y);
+            if (FirstHit(mid, Vector3.down, 3f, out var hit)) floor = Mathf.Min(floor, hit.point.y);
+            float flat = Vector3.Distance(new Vector3(a.x, 0f, a.z), new Vector3(b.x, 0f, b.z));
+            float want = Mathf.Max(Vector3.Distance(a, b), flat + (a.y - floor) + (b.y - floor)) + FeedSlack;
+            if (want <= length) return;
+            length = Mathf.Min(maxLength, Mathf.Min(want, length + FeedRate * Mathf.Max(Time.deltaTime, 1e-3f)));
+            while (_n < _p.Length && length / (_n - 1) > Spacing) AddAtB();
+            _seg = length / (_n - 1);
+            Wake();
+        }
+
+        /// <summary>A particle more, just before end B (cord coming off the coil), halfway along the last span.</summary>
+        void AddAtB()
+        {
+            int e = _n - 1;
+            _p[e + 1] = _p[e]; _prev[e + 1] = _prev[e]; _valid[e + 1] = _valid[e];
+            Vector3 q = Sweep(_valid[e - 1], Vector3.Lerp(_p[e - 1], _p[e], 0.5f), out _);
+            _p[e] = _prev[e] = _valid[e] = q;
+            _n++;
+            if (_onFloor != null) { _onFloor[e] = false; _onFloor[e + 1] = false; }
         }
 
         float _pull;            // seconds spent walking on against the taut cord
@@ -163,6 +257,7 @@ namespace Backrooms.Interaction
             float d = Vector3.Distance(a, b);
             bool aHeld = endA.Held, bHeld = endB.Held;
             var plugA = endA as Plug; var plugB = endB as Plug;
+            if (Feeding && !reeling) { _pull = 0f; _tugged = false; return; }     // there is more on the coil
             Plug wall = plugA && plugA.Plugged && !aHeld && bHeld ? plugA : plugB && plugB.Plugged && !bHeld && aHeld ? plugB : null;
             if (wall && !reeling)
             {
@@ -371,20 +466,33 @@ namespace Backrooms.Interaction
         }
 
         /// <summary>Every particle that moved: swept from its last free position (sliding on whatever stopped it).</summary>
+        bool[] _onFloor;
+
         void Collide()
         {
+            if (_onFloor == null || _onFloor.Length < _p.Length) _onFloor = new bool[_p.Length];
             for (int i = 1; i < _n - 1; i++)
             {
-                if ((_p[i] - _valid[i]).sqrMagnitude < 1e-12f) continue;
+                Vector3 d = _p[i] - _valid[i];
+                if (d.sqrMagnitude < 1e-12f) continue;
+                // Lying on the floor and only pressed down into it (gravity): it stays, no need to ask the physics.
+                if (_onFloor[i] && d.y <= 0f && d.x * d.x + d.z * d.z < 2e-4f * 2e-4f)
+                {
+                    _p[i] = _valid[i];
+                    _prev[i] = Vector3.Lerp(_prev[i], _valid[i], Friction);
+                    continue;
+                }
                 OutOfWalls(i);
                 Vector3 want = _p[i];
                 Vector3 got = Sweep(_valid[i], want, out _, out bool hit, out Vector3 normal);
+                _onFloor[i] = false;
                 if (got != want && hit)
                 {
                     // Slide along the surface with what is left of the move.
                     Vector3 rest = Vector3.ProjectOnPlane(want - got, normal);
-                    got = Sweep(got, got + rest, out _);
-                    _prev[i] = Vector3.Lerp(_prev[i], got, 0.6f);            // friction
+                    if (rest.sqrMagnitude > 1e-8f) got = Sweep(got, got + rest, out _);
+                    _prev[i] = Vector3.Lerp(_prev[i], got, Friction);            // friction
+                    _onFloor[i] = normal.y > 0.7f;
                 }
                 _p[i] = got; _valid[i] = got;
             }
@@ -408,50 +516,127 @@ namespace Backrooms.Interaction
         }
 
         /// <summary>
-        /// A span that cuts through the solid part of a broken wall goes through the wall's nearest opening instead: the
-        /// particle nearer the wall moves into the hole (its neighbours on either side of the wall), or onto the hole's rim
-        /// on its own side (a neighbour already in the hole), so the cord comes to lie over the edge of the drywall and
-        /// through the hole. A wall with no opening near: the particle goes back to its own side. True if it moved one.
+        /// A span that cuts through the solid part of a broken wall is moved out of it by as little as will do: over the
+        /// edge it is draped across (a hole's sill, the face of the wall), or (its ends either side of the wall) into the
+        /// nearest opening, just clear of its edge. Both particles share the move, the one nearer the cut more (a pinned end
+        /// none), so a cord lying through a hole comes to rest on the drywall and stays still. A wall with no opening near:
+        /// the nearer particle goes back to its own side. True if it moved one.
         /// </summary>
         bool ThroughWall(int i)
         {
             Vector3 a = _p[i], b = _p[i + 1];
             if (!SlabMarch(a, b, out _, out _, out var bp)) return false;
+            // The solid stretch of the span: from the first point inside, marching in from either end.
+            float t0 = FirstInside(bp, a, b), t1 = 1f - FirstInside(bp, b, a);
+            if (t0 < 0f) return false;
+            if (t1 < t0) t1 = t0;
+            float tm = (t0 + t1) * 0.5f;
             var k = bp.Key; float pitch = Destruction.WallDamage.Pitch;
             float h = Destruction.WallSpec.T * 0.5f + radius;
-            Vector3 la = k.ToLocal(a, pitch), lb = k.ToLocal(b, pitch);
-            bool aIn = Mathf.Abs(la.z) < h, bIn = Mathf.Abs(lb.z) < h;
-            bool Free(int j) => j > 0 && j < _n - 1;
-            int mover; Vector3 target;
-            if (aIn != bIn)
+            Vector3 la = k.ToLocal(a, pitch), lb = k.ToLocal(b, pitch), lm = k.ToLocal(Vector3.Lerp(a, b, tm), pitch);
+            bool across = Mathf.Abs(la.z) >= h && Mathf.Abs(lb.z) >= h && Mathf.Sign(la.z) != Mathf.Sign(lb.z);
+            bool aFree = i > 0, bFree = i + 1 < _n - 1;
+            if (!aFree && !bFree) return false;
+            Vector3 da = Vector3.zero, db = Vector3.zero;
+            // Over a sill (open just above the solid part, as along the bottom of a hole): lifted straight up, as a floor
+            // holds it, so gravity and the edge meet head on and it comes to rest; pushed out sideways (or up at a slant)
+            // it slid off, was put back and never stopped moving.
+            if (SillLift(bp, a, b, t0, t1, out float tl, out float lift))
             {
-                // One end in the hole, the other out, and solid wall between: the outer one onto the rim, at the open edge
-                // nearest where the span meets the wall's face (or, pinned, the inner one to there inside the hole).
-                int inner = aIn ? i : i + 1, outer = aIn ? i + 1 : i;
-                Vector3 li = aIn ? la : lb, lo = aIn ? lb : la;
-                float side = Mathf.Sign(lo.z);
-                Vector3 f = Vector3.Lerp(li, lo, Mathf.Clamp01((side * h - li.z) / (lo.z - li.z)));
-                if (!Destruction.WallSlabs.NearestOpen(bp.Panel, f.x, f.y, 0.5f, out var open)) return false;
-                mover = Free(outer) ? outer : inner;
-                if (!Free(mover)) return false;
-                // Just inside the face: it settles onto the drywall's edge and rests there.
-                target = k.ToWorld(new Vector3(open.x, open.y, mover == outer ? side * (h - 0.001f) : li.z), pitch);
+                if (!Share(Vector3.up * lift, tl, aFree, bFree, out da, out db)) return false;
+                bool m0 = da.sqrMagnitude > 1e-10f && Nudge(i, da);
+                bool m1 = db.sqrMagnitude > 1e-10f && Nudge(i + 1, db);
+                return m0 | m1;
             }
-            else if (!aIn && Mathf.Sign(la.z) != Mathf.Sign(lb.z))
+            bool hasFace = Destruction.WallSlabs.Escapes(bp, lm, radius, Skin * 2f, !across, out var face, out bool hasOpen, out var inPlane);
+            if (hasFace || hasOpen)
             {
-                // Either side of the wall: the nearer free one into the wall's nearest opening (or back to its own side).
-                mover = !Free(i) ? i + 1 : !Free(i + 1) ? i : (Mathf.Abs(la.z) <= Mathf.Abs(lb.z) ? i : i + 1);
-                if (!Free(mover)) return false;
-                Vector3 lm = mover == i ? la : lb;
-                Vector3 cross = Vector3.Lerp(la, lb, Mathf.Clamp01(la.z / (la.z - lb.z)));
-                target = Destruction.WallSlabs.NearestOpen(bp.Panel, cross.x, cross.y, 0.5f, out var open)
-                    ? k.ToWorld(new Vector3(open.x, open.y, 0f), pitch)
-                    : k.ToWorld(new Vector3(lm.x, lm.y, Mathf.Sign(lm.z) * (h + Skin * 2f)), pitch);
+                // Of the ways out, the one that leaves the whole span clear (over a sill's corner that is up, over it, not
+                // out along the face), the smaller if both do.
+                Vector3 fa = Vector3.zero, fb = Vector3.zero, oa = Vector3.zero, ob = Vector3.zero;
+                bool faceClear = hasFace && Share(k.DirToWorld(face), tm, aFree, bFree, out fa, out fb) && FirstInside(bp, a + fa, b + fb) < 0f;
+                bool openClear = hasOpen && Share(k.DirToWorld(inPlane), tm, aFree, bFree, out oa, out ob) && FirstInside(bp, a + oa, b + ob) < 0f;
+                bool useOpen;
+                if (faceClear && openClear) useOpen = inPlane.sqrMagnitude <= face.sqrMagnitude;
+                else if (openClear || faceClear) useOpen = openClear;
+                else useOpen = hasOpen && (!hasFace || inPlane.sqrMagnitude <= face.sqrMagnitude * 4f);   // neither yet: rather over the edge
+                if (useOpen) { da = oa; db = ob; } else { da = fa; db = fb; }
             }
-            else return false;                    // both in the hole (across a stud): left to the colliders' corner wrap
-            if ((target - _p[mover]).sqrMagnitude < 1e-8f) return false;
-            _p[mover] = _valid[mover] = target;
-            _prev[mover] = Vector3.Lerp(_prev[mover], target, 0.8f);
+            else
+            {
+                // Whole wall here: the nearer free particle back to its own side.
+                int j = !aFree ? i + 1 : !bFree ? i : (Mathf.Abs(la.z) <= Mathf.Abs(lb.z) ? i : i + 1);
+                Vector3 lj = j == i ? la : lb;
+                Vector3 to = k.ToWorld(new Vector3(lj.x, lj.y, (Mathf.Abs(lj.z) > 1e-3f ? Mathf.Sign(lj.z) : 1f) * (h + Skin * 2f)), pitch);
+                if (j == i) da = to - a; else db = to - b;
+            }
+            bool moved = false;
+            if (da.sqrMagnitude > 1e-10f) moved |= Nudge(i, da);
+            if (db.sqrMagnitude > 1e-10f) moved |= Nudge(i + 1, db);
+            return moved;
+        }
+
+        /// <summary>
+        /// The span's deepest point under a sill (the solid stretch t0..t1, 5 mm steps): where along it (tl) and how far it
+        /// must rise to clear the sill's edge. False if the wall is not open within 15 cm above it anywhere (not a sill).
+        /// </summary>
+        bool SillLift(Destruction.BrokenPanel bp, Vector3 a, Vector3 b, float t0, float t1, out float tl, out float lift)
+        {
+            tl = (t0 + t1) * 0.5f; lift = 0f;
+            var k = bp.Key; float pitch = Destruction.WallDamage.Pitch;
+            int steps = Mathf.Max(1, Mathf.CeilToInt((t1 - t0) * Vector3.Distance(a, b) / 0.005f));
+            bool any = false;
+            for (int s = 0; s <= steps; s++)
+            {
+                float t = Mathf.Lerp(t0, t1, s / (float)steps);
+                Vector3 q = Vector3.Lerp(a, b, t);
+                if (!Destruction.WallSlabs.Blocked(bp, q, radius)) continue;
+                var l = k.ToLocal(q, pitch);
+                if (!Destruction.WallSlabs.OpenAbove(bp.Panel, l.x, l.y, radius, 0.15f, out float top)) return false;
+                float need = top - l.y;
+                if (!any || need > lift) { lift = need; tl = t; any = true; }
+            }
+            if (!any) return false;
+            lift += Skin;
+            return true;
+        }
+
+        /// <summary>
+        /// A move m of the span's point at tm, shared between its particles so that point moves by m with the least motion
+        /// ((1 - tm) da + tm db = m); a pinned end takes none. False if neither can move.
+        /// </summary>
+        static bool Share(Vector3 m, float tm, bool aFree, bool bFree, out Vector3 da, out Vector3 db)
+        {
+            da = db = Vector3.zero;
+            if (!aFree && !bFree) return false;
+            float wa = aFree ? 1f - tm : 0f, wb = bFree ? tm : 0f;
+            float s = wa * wa + wb * wb;
+            if (s < 0.04f) { if (aFree) da = m * 2f; else db = m * 2f; }
+            else { da = m * (wa / s); db = m * (wb / s); }
+            return true;
+        }
+
+        /// <summary>Where along from-to (0..1, 5 mm steps) the cord first enters the wall's solid part; -1 if it does not.</summary>
+        float FirstInside(Destruction.BrokenPanel bp, Vector3 from, Vector3 to)
+        {
+            int steps = Mathf.Max(2, Mathf.CeilToInt(Vector3.Distance(from, to) / 0.005f));
+            for (int s = 0; s <= steps; s++)
+            {
+                float t = s / (float)steps;
+                if (Destruction.WallSlabs.Blocked(bp, Vector3.Lerp(from, to, t), radius)) return t;
+            }
+            return -1f;
+        }
+
+        /// <summary>Moves a particle by d (swept: never into anything), and takes most of its speed (it rests where it is put).</summary>
+        bool Nudge(int j, Vector3 d)
+        {
+            if (j <= 0 || j >= _n - 1) return false;
+            if (d.sqrMagnitude > 0.15f * 0.15f) d = d.normalized * 0.15f;
+            Vector3 got = Sweep(_valid[j], _p[j] + d, out _);
+            if ((got - _p[j]).sqrMagnitude < 1e-12f) return false;
+            _p[j] = _valid[j] = got;
+            _prev[j] = Vector3.Lerp(_prev[j], got, Stick);
             return true;
         }
 
@@ -462,15 +647,41 @@ namespace Backrooms.Interaction
         /// </summary>
         void Spans()
         {
+            if (_wrap == null || _wrap.Length < _p.Length) _wrap = new bool[_p.Length];
+            const float still = 0.0003f * 0.0003f;
             for (int pass = 0; pass < 2; pass++)
             for (int i = 0; i < _n - 1; i++)
             {
+                // Neither end moved this step and it was clear: it still is.
+                if (!_wrap[i] && (_p[i] - _before[i]).sqrMagnitude < still && (_p[i + 1] - _before[i + 1]).sqrMagnitude < still) continue;
+                bool moved = FixSpan(i);
+                _wrap[i] = pass == 0 ? moved : _wrap[i] | moved;
+            }
+        }
+
+        bool[] _wrap;
+
+        /// <summary>
+        /// Inside the solver, every few rounds: the spans that were lying over an edge last step are put right again, so
+        /// the cord's length and its edges agree before the step ends (done only after, the two undid each other every
+        /// step, and a cord over an edge never stopped moving).
+        /// </summary>
+        void Wraps()
+        {
+            if (_wrap == null) return;
+            for (int i = 0; i < _n - 1; i++) if (_wrap[i]) FixSpan(i);
+        }
+
+        /// <summary>One span through something: put round it (a broken wall: through its opening). True if it moved one.</summary>
+        bool FixSpan(int i)
+        {
+            {
                 Vector3 a = _p[i], b = _p[i + 1], d = b - a;
                 float len = d.magnitude;
-                if (len < 1e-4f) continue;
+                if (len < 1e-4f) return false;
                 Vector3 dir = d / len;
-                if (ThroughWall(i)) continue;
-                if (!FirstHit(a, dir, len, out var inHit)) continue;
+                if (ThroughWall(i)) return true;
+                if (!FirstHit(a, dir, len, out var inHit)) return false;
                 bool outFound = FirstHit(b, -dir, len, out var outHit);
                 Vector3 n1 = inHit.normal, n2 = outFound ? outHit.normal : n1;
                 // Straight through something thin (its two faces facing away from each other): no corner to wrap; the
@@ -500,10 +711,11 @@ namespace Backrooms.Interaction
                 // Move the free particle nearer the corner (both if neither end is pinned and they are equally near).
                 bool aFree = i > 0, bFree = i + 1 < _n - 1;
                 int k = !aFree ? i + 1 : !bFree ? i : ((a - corner).sqrMagnitude <= (b - corner).sqrMagnitude ? i : i + 1);
-                if (k == 0 || k == _n - 1) continue;
+                if (k == 0 || k == _n - 1) return false;
                 var got = Sweep(_valid[k], target, out _);
                 _p[k] = _valid[k] = got;
-                _prev[k] = Vector3.Lerp(_prev[k], got, 0.8f);                 // it sticks on the edge rather than bouncing off
+                _prev[k] = Vector3.Lerp(_prev[k], got, Stick);                // it sticks on the edge rather than bouncing off
+                return true;
             }
         }
 
@@ -524,12 +736,13 @@ namespace Backrooms.Interaction
         float Step(Vector3 a, Vector3 b, float dt)
         {
             Vector3 g = Physics.gravity * (dt * dt);
-            var before = new Vector3[_n];
+            var before = _before;
             float moved = 0f;
+            before[0] = _p[0]; before[_n - 1] = _p[_n - 1];
             for (int i = 1; i < _n - 1; i++)
             {
                 before[i] = _p[i];
-                Vector3 v = (_p[i] - _prev[i]) * 0.985f;
+                Vector3 v = (_p[i] - _prev[i]) * Damp;
                 _prev[i] = _p[i];
                 _p[i] += v + g;
             }
@@ -551,6 +764,8 @@ namespace Backrooms.Interaction
                     else if (pinB) _p[i] += d * diff;
                     else { _p[i] += d * (diff * 0.5f); _p[i + 1] -= d * (diff * 0.5f); }
                 }
+                Bend();
+                if (it % 4 == 3) Wraps();
             }
             Collide();
             Spans();
@@ -558,18 +773,44 @@ namespace Backrooms.Interaction
             return moved / Mathf.Max(dt, 1e-4f) * 0.016f;
         }
 
+        /// <summary>
+        /// A little stiffness: a particle's two neighbours are kept at least <see cref="BendMin"/> of two spans apart, so no
+        /// joint folds more than about 50 degrees. It lies in curves, drapes over edges in a bend, not a crease.
+        /// </summary>
+        void Bend()
+        {
+            float min = 2f * _seg * BendMin, min2 = min * min;
+            for (int i = 1; i < _n - 1; i++)
+            {
+                Vector3 d = _p[i + 1] - _p[i - 1];
+                float l2 = d.sqrMagnitude;
+                if (l2 >= min2 || l2 < 1e-12f) continue;
+                float l = Mathf.Sqrt(l2);
+                Vector3 c = d * ((min - l) / l * BendK);
+                bool pa = i - 1 == 0, pb = i + 1 == _n - 1;
+                if (pa && pb) continue;
+                if (pa) _p[i + 1] += c * 2f;
+                else if (pb) _p[i - 1] -= c * 2f;
+                else { _p[i - 1] -= c; _p[i + 1] += c; }
+            }
+        }
+
         void Rebuild()
         {
             if (!_mesh) { _mesh = new Mesh { name = "Cord" }; _mesh.MarkDynamic(); GetComponent<MeshFilter>().sharedMesh = _mesh; }
             transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
             _verts.Clear(); _norms.Clear(); _tris.Clear();
-            // A smooth path through the particles (Catmull-Rom, two points per span).
-            var path = new List<Vector3>(_n * 2);
+            // A smooth path through the particles (Catmull-Rom, three points per span).
+            var path = _path; path.Clear();
             for (int i = 0; i < _n - 1; i++)
             {
                 Vector3 p0 = _p[Mathf.Max(0, i - 1)], p1 = _p[i], p2 = _p[i + 1], p3 = _p[Mathf.Min(_n - 1, i + 2)];
                 path.Add(p1);
-                path.Add(0.5f * (2f * p1 + (-p0 + p2) * 0.5f + (2f * p0 - 5f * p1 + 4f * p2 - p3) * 0.25f + (-p0 + 3f * p1 - 3f * p2 + p3) * 0.125f));
+                for (int k = 1; k < 3; k++)
+                {
+                    float t = k / 3f, t2 = t * t, t3 = t2 * t;
+                    path.Add(0.5f * (2f * p1 + (-p0 + p2) * t + (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 + (-p0 + 3f * p1 - 3f * p2 + p3) * t3));
+                }
             }
             path.Add(_p[_n - 1]);
             Vector3 prevSide = Vector3.zero;
