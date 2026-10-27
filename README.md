@@ -110,18 +110,24 @@ per-sound overrides and preview. Details and limits: `Docs/Audio.md`.
 
 ## Camcorder look (F5)
 
-`CamcorderRig` applies `CamcorderSettings` (saved to PlayerPrefs) to the post-processing volume, auto-iris,
-handheld motion and a full-screen video shader (`Shaders/CamcorderVideo.shader`, added to `PC_Renderer` after
-post-processing). The panel has presets (Default, Hi8 '98, MiniDV '04, Low light gain, Clean) and these groups:
+`CamcorderRig` applies `CamcorderSettings` (saved to PlayerPrefs) to the lens (URP post-processing), the auto
+exposure (`CamcorderAutoExposure`), handheld motion and the camcorder picture (`CamcorderPipeline` with
+`Resources/Shaders/CamcorderPipeline.shader`): a model of a late-1990s camcorder in signal order, on a fixed 640 x 480
+recording raster. See `Docs/Camcorder.md`. Presets: Default (VHS-C SP), Hi8 '98, MiniDV '04, Low light gain, Clean,
+VHS '96, Found footage, Reference Match. Groups:
 
-- Lens: zoom, barrel distortion, chromatic aberration, vignette, bloom.
-- Focus: contrast autofocus with hunting driving depth of field, aperture.
-- Exposure / iris: auto exposure, bias, iris speed, max gain-up, fluorescent flicker beat.
-- Sensor noise: base noise, gain noise that grows with exposure gain, chroma blotches.
-- Image processing: softness, edge enhancement halos, chroma bleed and delay, highlight knee, black pedestal.
-- Colour: white balance temp and tint, saturation, contrast.
-- Handheld: shake, breathing sway, image stabilisation, motion blur.
-- Format: 4:3 pillarbox, viewfinder OSD (REC, counter, date), scanlines, tape tracking noise, frame-rate cap.
+- Lens: zoom, barrel distortion, lateral colour, vignette, lens glare, purple fringing.
+- Focus: contrast autofocus in diopters with hunting; real small-sensor depth of field from the widest aperture.
+- Exposure: iris, then gain, then low-lux slow shutter; bias, compensation, max gain, shutter speed, tube flicker.
+- White balance: auto (slow, limited) plus warmth and tint shifts.
+- Sensor: read noise, noise growth with gain, colour noise, vertical smear, fixed pattern and hot pixels, 3D noise
+  reduction.
+- Camera processing: recording lines, softness, edge enhancement, knee, white clip, setup, saturation, gamma.
+- Handheld: shake, breathing sway, stabilisation, look overshoot and jitter, roughness, shutter motion blur.
+- Format / tape: VHS-C SP, VHS-C EP, Hi8, MiniDV, with the format's colour, timebase wobble, tape noise, dropouts,
+  colour phase noise, cross-colour, head switching, tracking bar, DV compression; recording frame rate, interlaced
+  fields, line doubling, bottom-edge line.
+- Display: 4:3 frame (only that part is rendered), viewfinder OSD, CRT scanlines.
 
 ## Milestone 1 room
 

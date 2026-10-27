@@ -91,8 +91,8 @@ null) for subtler doors.
   - The held frame stays until the floor there is loaded (normally it already is), and a moment longer.
   - The picture then rolls back into frame and settles over about a second.
   - The world left behind unloads as the streamer follows the player, out of sight.
-- **The glitch** is part of the camcorder pass: `CamcorderRig.Glitch` / `GlitchRoll` go to `_CamVideo9` in
-  `CamcorderVideo.shader`. It gives:
+- **The glitch** is part of the camcorder picture: `CamcorderRig.Glitch` / `GlitchRoll` go to `_CamGlitch` in
+  `CamcorderPipeline.shader` (the recording's playback pass). It gives:
   - a vertical roll with the black blanking bar;
   - bands of lines torn sideways;
   - line jitter and wild tracking noise;

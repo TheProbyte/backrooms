@@ -222,84 +222,101 @@ namespace Backrooms.Camcorder
         {
             CamcorderSettings S() => rig.Settings;
 
-            Section("LENS", "Optics in front of the sensor.");
-            Slider("Field of view (zoom)", "How wide the lens sees. Consumer camcorders were around 45-55 degrees at their widest; lower values zoom in and flatten perspective.",
-                40f, 90f, "0", "°", () => S().fieldOfView, v => S().fieldOfView = v);
-            Slider("Lens distortion", "Bending of straight lines near the frame edges. Negative bows lines outward (barrel, wide lenses); positive pinches them inward (pincushion, zoomed lenses).",
-                -0.4f, 0.4f, "0.00", "", () => S().lensDistortion, v => S().lensDistortion = v);
-            Slider("Chromatic aberration", "Coloured fringes at high-contrast edges toward the frame corners, from cheap glass focusing red and blue slightly differently.",
-                0f, 0.6f, "0.00", "", () => S().chromaticAberration, v => S().chromaticAberration = v);
-            Slider("Vignette", "Darkening toward the corners from light falling off across the lens.",
-                0f, 0.6f, "0.00", "", () => S().vignette, v => S().vignette = v);
-            Slider("Bloom / halation", "Glow that spills around bright lights. Old camcorder optics and CCDs bloom heavily, which gives the hazy glow around fluorescent tubes.",
-                0f, 1.5f, "0.00", "", () => S().bloom, v => S().bloom = v);
-            Slider("Bloom spread", "How far the glow reaches. Low keeps it tight around the light; high washes it across walls and ceiling.",
-                0.2f, 0.95f, "0.00", "", () => S().bloomScatter, v => S().bloomScatter = v);
+            Toggle("Camcorder picture", "The whole camcorder signal chain: sensor, camera processing, recording format and playback. Off shows the plain rendered image (the Clean preset), for comparison.",
+                () => S().camcorderLook, v => S().camcorderLook = v);
 
-            Section("FOCUS", "Contrast autofocus drives depth of field from the centre of frame.");
-            Toggle("Autofocus + depth of field", "The camera measures what is in the centre of frame and drives the lens to it, blurring things much nearer or farther. Off keeps everything sharp.",
+            Section("LENS", "Optics in front of the sensor.");
+            Slider("Field of view (zoom)", "Vertical angle of view. A stock 1/4-inch camcorder sees about 36 degrees vertically (47 across) at its widest; higher values are like a wide-angle converter lens screwed on the front, which was very common.",
+                30f, 90f, "0", "°", () => S().fieldOfView, v => S().fieldOfView = v);
+            Slider("Lens distortion", "Bending of straight lines toward the frame edges. Positive bows them outward (barrel: wide lenses and converters, 1 to 5 % on a real camcorder); negative pinches them in (pincushion, which zoomed-in lenses show slightly). It turns toward pincushion as you zoom.",
+                -0.4f, 0.4f, "0.00", "", () => S().lensDistortion, v => S().lensDistortion = v);
+            Slider("Chromatic aberration", "Red and blue fringes on high-contrast edges toward the corners (lateral colour). On a consumer zoom about half to one recording pixel in the corners; a converter lens doubles it.",
+                0f, 0.3f, "0.00", "", () => S().chromaticAberration, v => S().chromaticAberration = v);
+            Slider("Vignette", "Light falling off toward the corners. Strongest with the iris wide open (in the dark), weaker once the iris closes down in bright light.",
+                0f, 0.6f, "0.00", "", () => S().vignette, v => S().vignette = v);
+            Slider("Lens glare", "Veiling glare: the zoom's many cheaply coated glass elements scatter a few percent of all the light into a wide haze, so bright tubes glow and lift the shadows around them. 1 is a typical camcorder. There is no threshold: it scales with exposure, like real glare.",
+                0f, 3f, "0.00", "x", () => S().bloom, v => S().bloom = v);
+            Slider("Glare spread", "How wide the glare spreads around bright lights.",
+                0f, 1f, "0.00", "", () => S().bloomScatter, v => S().bloomScatter = v);
+            Slider("Purple fringing", "Blue-violet edges hugging blown-out lights against dark surroundings (the lens and sensor focus violet slightly differently).",
+                0f, 1f, "0.00", "", () => S().purpleFringe, v => S().purpleFringe = v);
+
+            Section("FOCUS", "Contrast autofocus. On a small camcorder sensor almost everything is sharp; blur shows on close-ups, at full zoom and while the focus hunts in the dark.");
+            Toggle("Autofocus + depth of field", "The camera drives the lens to whatever is in the centre (or your hand, close in front of it). In the dark it has no contrast to lock on to and hunts near and far. Off keeps everything sharp.",
                 () => S().autofocus, v => S().autofocus = v);
-            Slider("Aperture (f-number)", "Size of the lens opening. Low numbers (f/1.4-2.8) give shallow, blurry backgrounds; high numbers (f/8-16) keep everything in focus.",
-                1.4f, 16f, "0.0", "", () => S().aperture, v => S().aperture = v);
-            Slider("Focus motor speed", "How fast the autofocus motor moves when the subject distance changes.",
+            Slider("Widest aperture (f-number)", "The lens's maximum aperture at the wide end (f/1.6-2 on 1990s camcorders). The iris closes from here in brighter light, deepening the focus; zooming in also narrows it.",
+                1.2f, 4f, "0.0", "", () => S().aperture, v => S().aperture = v);
+            Slider("Focus motor speed", "How fast the focus motor moves.",
                 0.2f, 3f, "0.00", "x", () => S().focusSpeed, v => S().focusSpeed = v);
-            Slider("Focus hunting", "How much the focus overshoots and settles back: the searching pulse you see when a camcorder refocuses.",
+            Slider("Focus hunting", "How readily the focus hunts in the dark and how far it overshoots when it refocuses.",
                 0f, 1f, "0.00", "", () => S().focusHunting, v => S().focusHunting = v);
 
-            Section("EXPOSURE / IRIS", "The auto-iris opens slowly in the dark and clamps down fast in bright light.");
-            Toggle("Auto exposure", "Automatic iris: the image brightens in dark areas and darkens under bright lights, with a lag. Off holds a fixed exposure.",
+            Section("EXPOSURE", "The camera meters its own picture. It closes or opens the iris first; once the iris is wide open it turns the gain up (noisier), and drops the gain first when the light comes back.");
+            Toggle("Auto exposure", "Automatic iris and gain. Off holds a fixed exposure (right for a lit corridor).",
                 () => S().autoExposure, v => S().autoExposure = v);
-            Slider("Exposure bias", "Overall brightness offset in stops (EV). Negative is darker and moodier, positive brighter.",
+            Slider("Exposure bias", "Shifts what the camera thinks is the right brightness, in stops (EV). This is not gain: it adds no noise unless it pushes the camera past its iris.",
                 -2f, 2f, "0.00", " EV", () => S().exposureBias, v => S().exposureBias = v);
-            Slider("Iris speed", "How quickly auto exposure reacts. Low values give the slow, lazy adaptation of cheap camcorders.",
-                0.1f, 3f, "0.00", "x", () => S().exposureSpeed, v => S().exposureSpeed = v);
-            Slider("Max gain-up", "How many stops the camera may electronically brighten dark scenes. More gain sees further into the dark but adds noise.",
-                0f, 2.5f, "0.00", " EV", () => S().maxGain, v => S().maxGain = v);
-            Slider("Fluorescent flicker beat", "Slow brightness pulsing caused by the camera shutter beating against 60 Hz fluorescent tubes.",
+            Slider("Compensation", "How fully the exposure corrects for the light: 1 corrects completely (as real camcorders do until they run out of gain); lower lets dark rooms stay darker and bright ones brighter.",
+                0.3f, 1f, "0.00", "", () => S().exposureCompensation, v => S().exposureCompensation = v);
+            Slider("Iris speed", "How quickly the iris reacts.", 0.2f, 3f, "0.00", "x", () => S().exposureSpeed, v => S().exposureSpeed = v);
+            Slider("Max gain", "How far the camera may turn its gain up in the dark, in stops (1 stop = 6 dB; 3 = +18 dB, typical). Every stop doubles the noise.",
+                0f, 4f, "0.0", " EV", () => S().maxGain, v => S().maxGain = v);
+            Choice("Shutter", "How long each picture is exposed. 1/60 s is the camcorder's normal (auto) shutter: smooth motion blur and no tube flicker. Faster shutters freeze motion (choppy, crisp) and show the tubes' 120 Hz flicker as a slow pulse.",
+                CamcorderSettings.ShutterNames, () => S().shutter, v => S().shutter = v);
+            Toggle("Low-lux slow shutter", "Once the gain is used up in the dark, the camera drops to 1/30 s: brighter, longer smears, and the picture only changes 30 times a second.",
+                () => S().slowShutter, v => S().slowShutter = v);
+            Slider("Tube flicker depth", "How much the fluorescent tubes flicker at 120 Hz. Invisible at a 1/60 shutter (it averages exactly two flickers); shows as a slow pulse at faster shutters.",
                 0f, 1f, "0.00", "", () => S().fluorescentFlicker, v => S().fluorescentFlicker = v);
 
-            Section("SENSOR NOISE", "Gain noise rises as the camera brightens dark scenes.");
-            Slider("Base noise", "Constant sensor grain, strongest in shadows like a real CCD. Generated fresh every frame with no repeating pattern.",
-                0f, 0.15f, "0.000", "", () => S().noise, v => S().noise = v);
-            Slider("Noise per EV of gain", "Extra grain added for every stop of gain the auto exposure applies, so dark rooms get noisier as the camera brightens them.",
-                0f, 0.25f, "0.000", "", () => S().gainNoise, v => S().gainNoise = v);
-            Slider("Chroma noise (colour blotches)", "Coarse, soft colour speckle in the shadows from the camera's low colour resolution.",
-                0f, 0.15f, "0.000", "", () => S().chromaNoise, v => S().chromaNoise = v);
-            Slider("Grain size", "Size of the grain relative to a 720-line sensor. Higher values give coarser, clumpier grain like older tape formats.",
-                0.5f, 3f, "0.00", "x", () => S().grainSize, v => S().grainSize = v);
-
-            Section("IMAGE PROCESSING", "Camcorder DSP: soft optics, edge enhancement, subsampled colour.");
-            Slider("Recording resolution (lines)", "Simulates the recorder's own picture size, independent of your display: the image is averaged down to this many lines and smoothly scaled back up. 0 turns it off. About 480 is a standard-definition recording.",
-                0f, 720f, "0", " lines", () => S().videoLines, v => S().videoLines = Mathf.RoundToInt(v / 10f) * 10, true);
-            Slider("Colour detail", "How much colour resolution the recording keeps compared with brightness detail (lower = softer, smoother colour, more at the sides than up and down).",
-                0.2f, 1f, "0.00", "", () => S().chromaDetail, v => S().chromaDetail = v);
-            Slider("Softness / resolution", "Optical and sensor blur. Consumer video resolves far less detail than a modern screen; raise this for an authentic soft image.",
-                0f, 3f, "0.00", " px", () => S().softness, v => S().softness = v);
-            Slider("Edge enhancement", "The camera's artificial sharpening, which draws light and dark halos along edges. High values give the crisp but fake video outline.",
-                0f, 4f, "0.00", "", () => S().sharpening, v => S().sharpening = v);
-            Slider("Chroma bleed", "Colour smears sideways past object edges, because video stores colour at much lower horizontal resolution than brightness.",
-                0f, 10f, "0.0", " px", () => S().chromaBleed, v => S().chromaBleed = v);
-            Slider("Chroma delay", "Colour shifted slightly left or right of the brightness image, from timing errors in the tape signal.",
-                -3f, 3f, "0.0", " px", () => S().chromaShift, v => S().chromaShift = v);
-            Slider("Highlight knee", "Where bright areas start to compress before clipping to white. Lower values flatten lights into soft, washed-out blobs.",
-                0.6f, 1f, "0.00", "", () => S().highlightKnee, v => S().highlightKnee = v);
-            Slider("Black pedestal", "Lifts the darkest blacks to a milky grey, like video that never quite reaches true black.",
-                0f, 0.1f, "0.000", "", () => S().pedestal, v => S().pedestal = v);
-
-            Section("COLOUR", "White balance and grading.");
-            Slider("White balance (temp)", "Warm (positive) or cool (negative) colour cast from a camera balanced for the wrong light.",
+            Section("WHITE BALANCE", "Auto white balance pulls the picture slowly toward grey, within limits and mostly along warm/cool, so a room full of yellow keeps much of its yellow.");
+            Toggle("Auto white balance", "Slowly corrects colour casts: walk from tube light into lamp light and the orange fades over a few seconds.",
+                () => S().autoWhiteBalance, v => S().autoWhiteBalance = v);
+            Slider("AWB strength", "How far the auto white balance pulls toward grey (1 = fully, which would neutralise the yellow rooms).",
+                0f, 1f, "0.00", "", () => S().awbStrength, v => S().awbStrength = v);
+            Slider("AWB speed", "How fast the white balance adapts.", 0.2f, 3f, "0.00", "x", () => S().awbSpeed, v => S().awbSpeed = v);
+            Slider("Warmth shift", "A warm (positive) or cool (negative) cast on top of the auto white balance.",
                 -50f, 50f, "0", "", () => S().whiteBalanceTemp, v => S().whiteBalanceTemp = v);
-            Slider("White balance (tint)", "Green (negative) or magenta (positive) cast. Fluorescent light reads green on camera; a little magenta corrects it.",
+            Slider("Tint shift", "Green (negative) or magenta (positive) cast on top of the auto white balance. Fluorescent light reads slightly green on camera.",
                 -50f, 50f, "0", "", () => S().whiteBalanceTint, v => S().whiteBalanceTint = v);
-            Slider("Saturation", "Colour intensity.", -60f, 40f, "0", "", () => S().saturation, v => S().saturation = v);
-            Slider("Contrast", "Separation between darks and brights.", -30f, 50f, "0", "", () => S().contrast, v => S().contrast = v);
+
+            Section("SENSOR", "A CCD's own noise and artefacts. 1 is what a late-1990s 1/4-inch CCD camcorder does.");
+            Slider("Read noise", "The sensor's noise floor, strongest in the shadows. Grows with the gain.",
+                0f, 3f, "0.00", "x", () => S().noise, v => S().noise = v);
+            Slider("Noise growth with gain", "How much the noise grows as the gain goes up (1 = doubles every 6 dB, as on a real camera).",
+                0f, 2f, "0.00", "x", () => S().gainNoise, v => S().gainNoise = v);
+            Slider("Colour noise", "How much of the noise differs between red, green and blue: coloured speckle that the low colour resolution smears into blotches.",
+                0f, 2f, "0.00", "x", () => S().chromaNoise, v => S().chromaNoise = v);
+            Slider("Vertical smear", "A CCD's vertical stripe through a very bright light: charge leaking while the picture is read out. Shows in the dark with the gain up and a tube in frame.",
+                0f, 3f, "0.00", "x", () => S().smear, v => S().smear = v);
+            Slider("Fixed pattern / hot pixels", "The sensor's own faint fixed pattern and a few hot pixels, which show as steady dots at high gain.",
+                0f, 3f, "0.00", "x", () => S().fixedPattern, v => S().fixedPattern = v);
+            Slider("Noise reduction (3D)", "Digital camcorders average each frame with the last one in low light: less noise, but moving things leave faint ghost trails. 0 = none (analog camcorders).",
+                0f, 1f, "0.00", "", () => S().noiseReduction, v => S().noiseReduction = v);
+
+            Section("CAMERA PROCESSING", "The camera's picture processing, on a fixed recording picture (independent of your display).");
+            Slider("Recording lines", "Height of the recorded picture: 480 lines for NTSC video (640 x 480 for a 4:3 frame). Everything after the lens happens at this size and is scaled to your screen at the end.",
+                240f, 1080f, "0", " lines", () => S().videoLines, v => S().videoLines = Mathf.RoundToInt(v / 8f) * 8, true);
+            Slider("Lens + sensor softness", "Blur from the optics and the sensor's anti-alias filter, in recording pixels.",
+                0f, 2f, "0.00", " px", () => S().softness, v => S().softness = v);
+            Slider("Edge enhancement", "The camera's (and VCR's) artificial sharpening: thin light and dark outlines along edges, reduced at high gain. 1 is typical for the format.",
+                0f, 3f, "0.00", "x", () => S().sharpening, v => S().sharpening = v);
+            Slider("Highlight knee", "Above this level the camera compresses bright light so tubes reach white gradually (lower = flatter, washed-out highlights). 1 = no knee, a hard clip.",
+                0.6f, 1f, "0.00", "", () => S().highlightKnee, v => S().highlightKnee = v);
+            Slider("White clip", "The brightest level the camera records (1 = 100 IRE). Everything above is flat white.",
+                0.9f, 1.1f, "0.00", "", () => S().whiteClip, v => S().whiteClip = v);
+            Slider("Black level (setup)", "Where black sits: 7.5 IRE (0.075) on analog NTSC tape, 0 on DV. Higher looks milky.",
+                0f, 0.12f, "0.000", "", () => S().pedestal, v => S().pedestal = v);
+            Slider("Saturation", "The camera's colour matrix. Colour also drops in the dark as the gain rises.",
+                -60f, 60f, "0", "", () => S().saturation, v => S().saturation = v);
+            Slider("Contrast (gamma)", "The camera's transfer curve: 0 is the video standard (gamma 0.45); higher gives darker mid-tones and more contrast.",
+                -50f, 50f, "0", "", () => S().contrast, v => S().contrast = v);
 
             Section("HANDHELD", "How the operator holds the camera.");
             Slider("Shake intensity", "Overall strength of handheld motion while walking and running.",
                 0f, 2f, "0.00", "x", () => S().shakeIntensity, v => S().shakeIntensity = v);
             Slider("Breathing sway", "The slow rise and fall of the operator's breathing while standing still.",
                 0f, 3f, "0.00", "x", () => S().breathing, v => S().breathing = v);
-            Slider("Image stabilisation", "Electronic stabilisation that removes much of the fast shake (running jolts) but keeps slow drift.",
+            Slider("Image stabilisation", "Removes much of the fast shake (running jolts) but keeps slow drift.",
                 0f, 1f, "0.00", "", () => S().stabilization, v => S().stabilization = v);
             Slider("Look overshoot", "When you stop turning, the camera carries on a fraction of a degree and settles back, like a hand-held camera. Adds no input delay. 0 = off.",
                 0f, 2f, "0.00", "x", () => S().lookOvershoot, v => S().lookOvershoot = v);
@@ -307,34 +324,65 @@ namespace Backrooms.Camcorder
                 0f, 2f, "0.00", "x", () => S().lookJitter, v => S().lookJitter = v);
             Slider("Handheld roughness", "Fast, irregular hand shake on top of the smooth walking bob, with a small jolt on each step: someone walking with the camera in one hand. 0 = off.",
                 0f, 3f, "0.00", "", () => S().handheldRoughness, v => S().handheldRoughness = v);
-            Slider("Sensor motion blur", "Streaking of the whole frame in the direction you turn, in proportion to how fast, as if the shutter stays open for a fraction of a second. Strong on quick pans.",
-                0f, 3f, "0.00", "x", () => S().sensorBlur, v => S().sensorBlur = v);
-            Slider("Motion blur (shutter)", "Smear when turning quickly, from the camera's shutter staying open for part of each frame.",
-                0f, 0.6f, "0.00", "", () => S().motionBlur, v => S().motionBlur = v);
+            Slider("Motion blur (shutter)", "Smear from movement while the shutter is open, in light (so lights streak bright), trailing behind the motion, the same at any frame rate. 1 = exactly what the shutter time gives.",
+                0f, 2f, "0.00", "x", () => S().motionBlur, v => S().motionBlur = v);
 
-            Section("FORMAT / TAPE", "Recording format and playback artefacts.");
-            Toggle("4:3 frame (pillarbox)", "Show the image in the 4:3 shape of standard-definition video, with black bars at the sides.",
-                () => S().aspect43, v => S().aspect43 = v);
-            Toggle("Viewfinder OSD (REC, date, counter)", "The camcorder's on-screen display: blinking REC, tape counter, battery and date stamp.",
-                () => S().showOSD, v => S().showOSD = v);
-            Slider("OSD lens curvature", "Bends the REC, time and counter overlay slightly, as if you are reading it through the viewfinder eyepiece. 0 keeps it flat.",
-                0f, 2f, "0.00", "", () => S().osdCurvature, v => S().osdCurvature = v);
-            Slider("Scanlines","The faint horizontal line structure of 480-line interlaced video. Filtered so it never shimmers or forms moire.",
-                0f, 0.3f, "0.00", "", () => S().scanlines, v => S().scanlines = v);
-            Slider("Head-switching band", "The flickering blue and magenta band of noise along the bottom edge of the frame that VHS tapes show.",
-                0f, 1f, "0.00", "", () => S().headSwitching, v => S().headSwitching = v);
-            Slider("Compression blotches", "Blotchy blocks of colour and brightness that hold for a few frames, like a low-bitrate recording.",
-                0f, 1f, "0.00", "", () => S().blockiness, v => S().blockiness = v);
-            Slider("Recording frame rate", "How often the recorded picture changes. The game still runs and responds at full speed; only the picture steps, like footage shot at 24 or 30 frames a second. 0 = every frame.",
-                0f, 60f, "0", " fps", () => S().recordFps, v => S().recordFps = v < 12f ? 0f : Mathf.Round(v), true);
-            Slider("Line doubling", "Each recorded line is shown twice instead of blended, giving the faint stair-steps on edges of standard-definition video. Needs a recording resolution.",
-                0f, 1f, "0.00", "", () => S().lineDoubling, v => S().lineDoubling = v);
-            Slider("Colour flicker (per frame)", "Every recorded frame gets its own tiny change in brightness and tint, like film or a tired sensor. 0 = none, about 0.15 is barely noticeable, 1 is plainly visible, 3 is a lot.",
-                0f, 3f, "0.00", "", () => S().colourFlicker, v => S().colourFlicker = v);
-            Slider("Bottom-edge line", "A thin, steady lilac line along the very bottom of the frame, as in the episode footage.",
-                0f, 1f, "0.00", "", () => S().bottomLine, v => S().bottomLine = v);
-            Slider("Tape tracking noise", "A soft band of wobble and brightening that drifts slowly up the frame, like a worn tape.",
+            Section("FORMAT / TAPE", "What the footage was recorded on and played back from. Each format brings its own resolution, colour and artefacts; the sliders below scale them (1 = typical).");
+            Choice("Format", "VHS-C SP: soft, smeared colour trailing to the right, tape noise, a slight wobble, head switching at the bottom. EP: the long-play speed, worse in every way. Hi8: sharper, the same colour-under. MiniDV: digital, crisp, no tape artefacts, 4:1:1 colour, faint compression in busy or noisy areas.",
+                CamcorderFormat.Names, () => S().format, v => { S().SetFormat(v); RefreshAll(); });
+            Slider("Colour resolution", "Colour detail compared with the format's own (lower = wider colour smear).",
+                0.3f, 2f, "0.00", "x", () => S().chromaDetail, v => S().chromaDetail = v);
+            Slider("Colour trailing", "How far analog colour smears to the right of edges.", 0f, 3f, "0.00", "x", () => S().chromaBleed, v => S().chromaBleed = v);
+            Slider("Colour delay", "Colour shifted to the right of the picture by the tape's timing.", 0f, 3f, "0.00", "x", () => S().chromaShift, v => S().chromaShift = v);
+            Slider("Timebase wobble", "Analog tape: each line starts a little early or late, so vertical edges wobble and the top of the picture bends.",
+                0f, 3f, "0.00", "x", () => S().timebaseJitter, v => S().timebaseJitter = v);
+            Slider("Tape noise", "Analog tape's own fine, streaky noise and colour noise.", 0f, 3f, "0.00", "x", () => S().tapeNoise, v => S().tapeNoise = v);
+            Slider("Dropouts", "Analog tape: brief white dashes where the oxide is damaged.", 0f, 5f, "0.00", "x", () => S().dropouts, v => S().dropouts = v);
+            Slider("Colour phase noise", "Analog colour-under: the hue wanders a little from line to line.", 0f, 3f, "0.00", "x", () => S().chromaPhaseNoise, v => S().chromaPhaseNoise = v);
+            Slider("Cross-colour", "Rainbow shimmer on fine stripes when analog video is captured through a composite cable.", 0f, 3f, "0.00", "x", () => S().crossColour, v => S().crossColour = v);
+            Slider("Head switching", "The bottom few lines of analog tape skew sideways with garbled colour where the video heads swap.",
+                0f, 3f, "0.00", "x", () => S().headSwitching, v => S().headSwitching = v);
+            Slider("Tracking noise bar", "A worn or mistracked tape: a band of noise and dropouts near the bottom of the picture. 0 = none.",
                 0f, 1f, "0.00", "", () => S().trackingNoise, v => S().trackingNoise = v);
+            Slider("DV compression", "MiniDV only: busy or noisy areas lose fine low-contrast detail in 8 x 8 blocks, with faint mosquito noise at sharp edges.",
+                0f, 3f, "0.00", "x", () => S().blockiness, v => S().blockiness = v);
+            Slider("Recording frame rate", "How often the recorded picture changes. The game still runs and responds at full speed; only the picture steps. 0 = every frame (a camcorder records 60 fields a second).",
+                0f, 60f, "0", " fps", () => S().recordFps, v => S().recordFps = v < 12f ? 0f : Mathf.Round(v), true);
+            Toggle("Interlaced fields", "Show the recording as fields, the way a TV or a simple capture shows 60i video: thin horizontal edges twitter up and down.",
+                () => S().interlace, v => S().interlace = v);
+            Slider("Line doubling", "Each recorded line is shown as a band instead of smoothly scaled, giving the stair-steps of standard-definition video on a big screen.",
+                0f, 1f, "0.00", "", () => S().lineDoubling, v => S().lineDoubling = v);
+            Slider("Bottom-edge line", "A thin, steady lilac line along the very bottom of the frame, as in the episode footage (a capture artefact).",
+                0f, 1f, "0.00", "", () => S().bottomLine, v => S().bottomLine = v);
+
+            Section("DISPLAY", "How the footage is shown (not part of the recording).");
+            Toggle("4:3 frame", "The 4:3 shape of standard-definition video. Only the 4:3 part of the screen is rendered, so it is also faster.",
+                () => S().aspect43, v => S().aspect43 = v);
+            Toggle("Viewfinder OSD (REC, date, counter)", "The camcorder's viewfinder display: blinking REC, tape counter, battery and date. Shown on top, not recorded.",
+                () => S().showOSD, v => S().showOSD = v);
+            Slider("OSD eyepiece curvature", "Bends the viewfinder display slightly, as if read through the eyepiece. 0 keeps it flat.",
+                0f, 2f, "0.00", "", () => S().osdCurvature, v => S().osdCurvature = v);
+            Slider("CRT scanlines", "Dark lines between the recorded lines, as when the footage is shown on (or filmed off) a TV. A recording itself has none.",
+                0f, 0.5f, "0.00", "", () => S().scanlines, v => S().scanlines = v);
+        }
+
+        /// <summary>A row of option buttons; the chosen one is highlighted.</summary>
+        void Choice(string label, string tip, string[] options, Func<int> get, Action<int> set)
+        {
+            var row = new VisualElement(); row.AddToClassList("cc-row");
+            var head = new VisualElement(); head.AddToClassList("cc-rowhead");
+            head.Add(Text(label.ToUpperInvariant(), null));
+            row.Add(head);
+            var buttons = BtnRow(row);
+            var list = new Button[options.Length];
+            for (int i = 0; i < options.Length; i++)
+            {
+                int idx = i;
+                list[i] = Button(buttons, options[i], () => { set(idx); for (int k = 0; k < list.Length; k++) list[k].EnableInClassList("cc-selected", k == idx); });
+            }
+            AttachTip(row, label, tip);
+            _list.Add(row);
+            _refreshers.Add(() => { int v = get(); for (int k = 0; k < list.Length; k++) list[k].EnableInClassList("cc-selected", k == v); });
         }
 
         void ApplyPreset(int i)

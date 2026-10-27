@@ -245,7 +245,7 @@ namespace Backrooms.Camcorder
         void LateUpdate()
         {
             if (!_canvas) return;
-            if (_uiCam) EnsureTarget();
+            if (_uiCam) { EnsureTarget(); _uiCam.enabled = visible; }   // nothing to draw while hidden
             var canvasRect = (RectTransform)_barCanvas.transform;
             float w = canvasRect.rect.width, h = canvasRect.rect.height;
             float bar = pillarbox ? Mathf.Max(0f, (w - h * 4f / 3f) * 0.5f) : 0f;

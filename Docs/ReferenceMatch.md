@@ -65,10 +65,16 @@ All of these have low smoothness and no environment reflections. The carpet and 
 
 ## Camera and camcorder (preset "Reference Match")
 
+Since the camcorder rebuild (2026-10-26, `Docs/Camcorder.md`) the preset is: MiniDV format (the footage's faint 8 × 8
+blocks are digital), 536 recording lines line-doubled, lens distortion **+0.12** (the old −0.08 was pincushion, not the
+barrel the footage shows: positive is barrel in URP), edge enhancement 0.7×, softness 0.8 px, DV compression 0.6×, read
+noise 0.4×, max gain 1 EV, exposure bias 0.25, white balance strength 0.15, autofocus off, bottom-edge line, handheld
+roughness 1.3. The table below records the original tuning, in the old units.
+
 | Setting | Value and reason |
 |---|---|
 | Field of view | 75° |
-| Lens distortion | −0.08 |
+| Lens distortion | −0.08 (wrong sign; now +0.12) |
 | Recording resolution | 536 lines, line-doubled. The picture is box-averaged down to a virtual 536-line recording. Brightness is shown with each line repeated rather than blended (*Line doubling* 1); colour is reconstructed smoothly. Softness 0.8 widens the averaging, because the footage resolves much less than its line count. |
 | Colour detail | 0.28. Colour is recorded at lower resolution than brightness, more so horizontally. |
 | Recording frame rate | 24 fps. The picture changes 24 times a second (a frame hold after the camcorder pass); the game itself still runs and takes input at full rate. |

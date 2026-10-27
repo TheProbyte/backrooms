@@ -15,6 +15,32 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 23:50  Claude Code  Camcorder rebuilt as a real signal chain (formats, AE iris/gain, smear, shutter blur, 4:3 viewport)
+- Reviewed every camcorder filter against real camcorder physics (Docs/Camcorder.md has the per-effect verdicts). Most
+  were redone: new `CamcorderPipeline` (ScriptableRenderPass enqueued from beginCameraRendering) with
+  `Resources/Shaders/CamcorderPipeline.shader` (6 passes, no keywords): integrate onto a 640 x 480 raster (exposure,
+  one 1/60 s shutter blur in linear light from depth reprojection, footprint), meter, CCD smear, camera head (shot/read
+  noise from real gain, FPN/hot pixels, AWB, gamma 0.45, per-channel knee, white clip, highlight/low-light chroma cut,
+  3D NR), encode (format luma/chroma bandwidth, detail with coring/limiter, VHS colour-under + comb or DV 4:1:1, DV DCT,
+  TBC wobble/flagging, head switching, tracking bar, dropouts, tape noise, phase noise, cross-colour, setup, glitch),
+  display (Catmull-Rom / line doubling / bob fields, OSD, CRT scanlines). Held frames only run the display pass.
+- `CamcorderAutoExposure` rewritten: meters the pipeline's 80x60 readback (no probe camera render), iris spring then
+  gain then optional slow shutter, flicker beat from shutter physics, limited AWB. `CamcorderRig` rewritten: 4:3 camera
+  viewport, HDR grading + no tonemap, lens glare (bloom thr 0, quarter), rounded iris-coupled vignette, zoom-aware
+  distortion/CA, physical depth of field gated on visible blur, AF in diopters. Old `CamcorderVideo` feature and
+  `CamcorderFrameHold` are switched off at runtime while the pipeline runs (PC_Renderer unchanged on disk).
+- `CamcorderSettings`: new fields and units (`lookVersion` 2), `CamcorderFormat` (VHS-C SP/EP, Hi8, MiniDV), presets
+  rebuilt (all barrel distortion now; the old negative values were pincushion), migration keeps FOV/frame/handheld/
+  audio and backs up the old JSON (`...v1.BeforeLook2`). Old-unit saved presets ignored; CamcorderPresets.json emptied.
+  F5 CAMERA tab rebuilt with correct explanations (Choice rows for shutter and format).
+- Checked: World 3 (fixed seed 424242) with `Debug/CamcorderProbe` (lit, tubes, 240 deg/s pan, lights out, every
+  preset): lit room iris -2.5 EV f/4.3 no gain; lights out: iris open then +0.6 EV gain at 7 s. Fixed during testing: a
+  stale serialized AE target (renamed field), AWB too strong (0.6 -> 0.3), pan blur ripple (footprint offsets now only
+  across the motion), comb filter now after tape colour noise. GPU A/B of the picture is within editor noise.
+  EditMode 81/81 (new CamcorderTests). D3D12 ran clean. World 3 erased.
+- Open: InfiniteWorldBuilder still creates the old CamcorderVideo feature (harmless; switched off at runtime). The
+  ceiling grid stays bright for ~1 s after lights go out (lighting, not camcorder).
+
 ## 2026-10-26 23:10  Claude Code  Dark-area bounce flicker fixed; bounce light through crawl holes
 - Flicker: the traced bounce blended fast on any big relative change, so in dark places (few of the 64 rays find light)
   its noise made soft light pop like a slow disco. Now it blends fast only when a change exceeds the rays' own standard

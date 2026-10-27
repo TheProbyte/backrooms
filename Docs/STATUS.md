@@ -6,6 +6,15 @@ Last updated 2026-10-26 (world version 13).
 
 ## Newest (2026-10-26)
 
+- **Camcorder rebuilt as a real camera** (F5 > CAMERA, Docs/Camcorder.md): every old filter was checked against how a
+  camcorder makes a picture; most were redone. Lens (barrel distortion sign fixed, lens glare, rounded vignette, real
+  small-sensor depth of field only when it shows), exposure metered from its own picture (iris, then gain, then low-lux
+  slow shutter; no extra probe render), auto white balance, a fixed 640 x 480 recording raster with the camera's
+  transfer curve, knee and clip, sensor noise from the real gain, CCD smear, one shutter motion blur in linear light,
+  and formats (VHS-C SP / EP, Hi8, MiniDV) with their own colour, tape wobble, dropouts, head switching and DV
+  compression. Only the 4:3 part of the screen is rendered. Old saves are converted (field of view, frame, handheld and
+  audio kept; the old values are backed up in PlayerPrefs).
+
 - **Lighting look and new light** (F5 > LIGHT): ready-made looks (STILL RECORDING, EVEN & PALE, DIM & MOODY, HARSH TUBES,
   WARM & OLD) plus "my look"; light colour (kelvin) and tube tint, panel glow, bounce strength, colour bleed and second
   bounce, shadow softness, contact shadows, haze, the camera's exposure and contrast, and the Poolrooms' sun, sky and

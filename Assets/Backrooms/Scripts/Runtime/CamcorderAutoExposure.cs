@@ -5,134 +5,206 @@ using UnityEngine.Rendering.Universal;
 namespace Backrooms
 {
     /// <summary>
-    /// Consumer-camcorder style auto exposure. A tiny probe camera renders the view a few
-    /// times per second without post-processing; its average luminance drives
-    /// ColorAdjustments.postExposure with a lagging, slightly overshooting response, so
-    /// turning into the dark side slowly "opens up" and turning back briefly blooms.
+    /// A camcorder's automatic exposure and white balance. The camera meters its own picture (an 80 x 60 average of the
+    /// exposed recording raster, read back from the GPU every other frame): an arithmetic, centre-weighted mean of the
+    /// clipped signal, the top of the frame (ceiling tubes) counting less. It corrects with the iris first (seven stops,
+    /// a damped spring with a small dead band), then once the iris is wide open with the AGC gain (about 6 dB a second up,
+    /// faster down, and down first when the light returns), and in low-lux mode with a slower 1/30 s shutter.
+    /// The white balance pulls slowly toward grey along the warm/cool axis, within limits, like a 1990s camcorder's.
+    /// <see cref="Backrooms.Camcorder.CamcorderRig"/> drives the settings and hands the result to the picture.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CamcorderAutoExposure : MonoBehaviour
     {
-        [Tooltip("Volume whose Color Adjustments post exposure is driven.")]
+        [Tooltip("Volume whose Color Adjustments post exposure is used when the camcorder picture is off.")]
         public Volume volume;
 
-        [Tooltip("Linear scene luminance the camera tries to reach (lower = darker overall image).")]
-        [Range(0.005f, 0.2f)] public float targetLuminance = 0.018f;
-        [Tooltip("Limits of the automatic exposure, in EV.")]
-        public float minEV = -1.0f, maxEV = 0.35f;
-        [Tooltip("How much of the brightness difference is compensated (1 = fully, 0 = off). Camcorders under-compensate.")]
-        [Range(0f, 1f)] public float compensation = 0.4f;
-        [Tooltip("EV per second when the image needs to get darker.")]
-        [Range(0.1f, 5f)] public float darkenSpeed = 1.6f;
-        [Tooltip("EV per second when the image needs to get brighter (slower: the iris opens lazily).")]
-        [Range(0.1f, 5f)] public float brightenSpeed = 0.55f;
-        [Tooltip("Base exposure offset applied on top of the automatic value.")]
-        public float exposureBias = 0f;
-        [Tooltip("Automatic iris on/off. Off holds the nominal exposure plus bias.")]
-        public bool autoExposure = true;
+        [Tooltip("Average exposed level the camera aims for (linear; 0.18 is about 45 IRE of video).")]
+        [Range(0.05f, 0.4f)] public float targetLevel = 0.18f;
+        [Tooltip("Exposure (linear multiplier) with the iris wide open and no gain. Calibrated so a lit corridor sits about two stops closed.")]
+        public float openExposure = 3.2f;
+        [Tooltip("Stops the iris (and its ND) can close.")]
+        public float irisRange = 7f;
+        [Tooltip("Exposure the camera would pick for a typical lit corridor (stops from wide open); partial compensation pulls toward it.")]
+        public float nominalEV = -2f;
+
+        // Driven by CamcorderRig from the settings.
+        [System.NonSerialized] public bool autoExposure = true;
+        [System.NonSerialized] public float exposureBias, speedScale = 1f, compensation = 0.85f, maxGainEV = 3f, flicker;
+        [System.NonSerialized] public float shutterTime = 1f / 60f;
+        [System.NonSerialized] public bool slowShutter;
+        [System.NonSerialized] public bool autoWhiteBalance = true;
+        [System.NonSerialized] public float awbSpeed = 1f, awbStrength = 0.35f;
         /// <summary>Jump straight to the target instead of easing (locked exposure for repeatable stills).</summary>
         [System.NonSerialized] public bool snap;
-        [Tooltip("Multiplier on both adaptation speeds.")]
-        [Range(0.1f, 3f)] public float speedScale = 1f;
-        [Tooltip("Subtle brightness beating from the camera shutter against fluorescent mains flicker.")]
-        [Range(0f, 1f)] public float flicker = 0f;
-        [Tooltip("Probe renders per second.")]
-        [Range(1f, 30f)] public float sampleRate = 6f;
-        [Tooltip("In near darkness for a while, a camcorder turns its gain up further (grainier): extra EV it may add.")]
-        [Range(0f, 3f)] public float lowLightBoost = 1.3f;
-        float _boost, _darkT;
-        /// <summary>The extra low-light gain being used now (EV).</summary>
-        public float LowLightBoost => _boost;
+        /// <summary>The meter to read (the camcorder picture's), its exposure, and the frame it was drawn in.</summary>
+        [System.NonSerialized] public Backrooms.Camcorder.CamcorderPipeline pipeline;
 
-        public float CurrentEV { get; private set; }
-        /// <summary>Geometric-mean scene luminance from the last probe sample (before exposure).</summary>
+        /// <summary>Iris position in stops from wide open (0 = open, negative = closed down).</summary>
+        public float IrisEV { get; private set; } = -2f;
+        /// <summary>AGC gain in stops (1 = +6 dB).</summary>
+        public float GainEV { get; private set; }
+        /// <summary>Extra stops from the slow shutter (0 or 1).</summary>
+        public float ShutterEV { get; private set; }
+        /// <summary>Total exposure in stops from wide open with no gain.</summary>
+        public float CurrentEV => IrisEV + GainEV + ShutterEV;
+        /// <summary>The gain in use (stops); the old name for it.</summary>
+        public float LowLightBoost => GainEV;
+        /// <summary>Exposure multiplier for the picture (iris, gain, shutter, tube flicker beat).</summary>
+        public float Exposure { get; private set; } = 0.8f;
+        /// <summary>The shutter time in use (seconds).</summary>
+        public float ShutterTimeNow => shutterTime * (ShutterEV > 0.5f ? 2f : 1f);
+        /// <summary>Scene luminance from the last meter reading (metered level divided by the exposure that produced it).</summary>
         public float MeasuredLuminance { get; private set; } = -1f;
+        /// <summary>The last metered level (exposed).</summary>
+        public float MeteredLevel { get; private set; } = -1f;
+        /// <summary>White balance gains (luma 1).</summary>
+        public Vector3 WhiteBalance { get; private set; } = Vector3.one;
         public int SampleCount { get; private set; }
 
-        Camera _main, _probe;
-        RenderTexture _rt;
         ColorAdjustments _color;
-        float _nextSample;
         bool _pending;
+        float _irisVel, _openShortT, _slowT, _fastT;
+        float _evUsedAtRequest;
+        Vector3 _awbTarget = Vector3.one;
+        float _flickerPhase;
 
         void Start()
         {
-            _main = GetComponent<Camera>();
-            // Volume.profile returns a runtime copy, so play mode never dirties the profile asset.
-            if (volume && volume.profile.TryGet(out _color))
-                _color.postExposure.overrideState = true;
-
-            _rt = new RenderTexture(64, 36, 16, RenderTextureFormat.ARGBHalf) { name = "ExposureProbe" };
-            var go = new GameObject("ExposureProbeCamera") { hideFlags = HideFlags.HideAndDontSave };
-            go.transform.SetParent(transform, false);
-            _probe = go.AddComponent<Camera>();
-            _probe.CopyFrom(_main);
-            _probe.enabled = false;
-            _probe.targetTexture = _rt;
-            var data = _probe.GetUniversalAdditionalCameraData();
-            data.renderPostProcessing = false;
-            data.renderShadows = true;
-            data.antialiasing = AntialiasingMode.None;
+            if (volume && volume.profile.TryGet(out _color)) _color.postExposure.overrideState = true;
+            _flickerPhase = Random.value * 6.2831853f;
         }
 
         void Update()
         {
-            if (_color == null) return;
+            float dt = Time.deltaTime;
+            RequestMeter();
 
-            if (!_pending && Time.unscaledTime >= _nextSample)
+            float target = 0f;
+            bool metered = MeteredLevel > 0f;
+            if (autoExposure && metered)
             {
-                _nextSample = Time.unscaledTime + 1f / sampleRate;
-                _probe.fieldOfView = _main.fieldOfView;
-                var request = new RenderPipeline.StandardRequest { destination = _rt };
-                if (RenderPipeline.SupportsRenderRequest(_probe, request))
+                // What the meter says the exposure should be, then partial compensation around the nominal exposure.
+                float full = _evUsedAtRequest + Mathf.Log(targetLevel / Mathf.Max(MeteredLevel, 1e-5f), 2f);
+                target = nominalEV + compensation * (full - nominalEV) + exposureBias;
+            }
+            else target = nominalEV + exposureBias;
+            float maxShutter = slowShutter ? 1f : 0f;
+            target = Mathf.Clamp(target, -irisRange, maxGainEV + maxShutter);
+
+            if (snap || !autoExposure)
+            {
+                ShutterEV = 0f;
+                GainEV = autoExposure ? Mathf.Clamp(target, 0f, maxGainEV) : 0f;
+                IrisEV = Mathf.Clamp(target - GainEV, -irisRange, 0f);
+                _irisVel = 0f;
+            }
+            else
+            {
+                float k = Mathf.Max(0.05f, speedScale);
+                float deficit = target - (GainEV + ShutterEV);          // what is missing with the iris wide open
+                // Gain: up only once the iris has been wide open and short for a moment; down at once, before the iris moves.
+                bool irisOpen = IrisEV > -0.05f;
+                _openShortT = irisOpen && deficit > 0.2f ? _openShortT + dt : 0f;
+                if (_openShortT > 0.4f) GainEV = Mathf.MoveTowards(GainEV, Mathf.Min(maxGainEV, GainEV + deficit), 1f * k * dt);
+                else if (deficit < -0.1f && GainEV > 0f) GainEV = Mathf.MoveTowards(GainEV, Mathf.Max(0f, GainEV + deficit), 2f * k * dt);
+                GainEV = Mathf.Clamp(GainEV, 0f, maxGainEV);
+                // Slow shutter: when the gain is all used and it is still too dark for a while; back off with hysteresis.
+                if (slowShutter)
                 {
-                    RenderPipeline.SubmitRenderRequest(_probe, request);
-                    _pending = true;
-                    AsyncGPUReadback.Request(_rt, 0, TextureFormat.RGBAHalf, OnReadback);
+                    _slowT = GainEV >= maxGainEV - 0.01f && deficit > 0.7f ? _slowT + dt : 0f;
+                    _fastT = ShutterEV > 0.5f && target < maxGainEV - 0.3f ? _fastT + dt : 0f;
+                    if (_slowT > 1.5f) ShutterEV = 1f;
+                    if (_fastT > 2f) ShutterEV = 0f;
                 }
+                else ShutterEV = 0f;
+                // Iris: a damped spring toward what the gain and shutter leave, held open while the gain is coming down.
+                float irisTarget = GainEV > 0.001f ? 0f : Mathf.Clamp(target - ShutterEV, -irisRange, 0f);
+                float err = irisTarget - IrisEV;
+                if (Mathf.Abs(err) > 0.12f || Mathf.Abs(_irisVel) > 0.05f)
+                {
+                    float w = 6.2831853f * 0.8f * k, zeta = 0.7f;
+                    _irisVel += (w * w * err - 2f * zeta * w * _irisVel) * dt;
+                    IrisEV += _irisVel * dt;
+                }
+                if (IrisEV > 0f) { IrisEV = 0f; _irisVel = Mathf.Min(_irisVel, 0f); }
+                if (IrisEV < -irisRange) { IrisEV = -irisRange; _irisVel = Mathf.Max(_irisVel, 0f); }
             }
 
-            // Lights out: the picture goes nearly black, then after a moment the camera winds its gain up, slowly and
-            // grainily, as far as it can; back in the light the extra gain drops at once.
-            bool dark = autoExposure && MeasuredLuminance > 0f && MeasuredLuminance < targetLuminance * 0.12f;
-            _darkT = dark ? _darkT + Time.deltaTime : 0f;
-            _boost = snap ? 0f : Mathf.MoveTowards(_boost, _darkT > 1.2f ? lowLightBoost : 0f, Time.deltaTime * (dark ? 0.22f : 1.5f));
-            float target = autoExposure && MeasuredLuminance > 0f
-                ? Mathf.Clamp(Mathf.Log(targetLuminance / Mathf.Max(MeasuredLuminance, 1e-4f), 2f) * Mathf.Lerp(compensation, 0.85f, _boost / Mathf.Max(0.01f, lowLightBoost)), minEV, maxEV + _boost)
-                : 0f;
-            float speed = (target < CurrentEV ? darkenSpeed : brightenSpeed) * speedScale;
-            CurrentEV = snap ? target : Mathf.MoveTowards(CurrentEV, target, speed * Time.deltaTime);
+            // Tubes flicker at 120 Hz; a 1/60 s shutter integrates exactly two cycles (no flicker). Faster shutters catch part
+            // of a cycle, which beats slowly against the 59.94 Hz field rate (0.12 Hz).
+            float T = ShutterTimeNow, x = Mathf.PI * 120f * T;
+            float response = Mathf.Abs(Mathf.Sin(x)) / x;
+            float beat = flicker * 0.35f * response * Mathf.Sin(6.2831853f * 0.12f * Time.time + _flickerPhase);
+            Exposure = openExposure * Mathf.Pow(2f, CurrentEV) * (1f + beat);
 
-            // Shutter beating against mains-driven tubes: a slow, slightly irregular brightness pulse.
-            float beat = flicker > 0f
-                ? (Mathf.Sin(Time.time * 6.2831853f * 0.9f) * 0.6f + Mathf.Sin(Time.time * 6.2831853f * 2.3f + 1.7f) * 0.4f) * 0.05f * flicker
-                : 0f;
-            _color.postExposure.value = CurrentEV + exposureBias + beat;
+            // White balance: ease toward the target from the meter.
+            if (!autoWhiteBalance) _awbTarget = Vector3.one;
+            float a = snap ? 1f : 1f - Mathf.Exp(-dt * Mathf.Max(0.05f, awbSpeed) / 1.5f);
+            WhiteBalance = Vector3.Lerp(WhiteBalance, _awbTarget, a);
+
+            // The camcorder picture applies the exposure itself; without it, URP does.
+            bool own = pipeline != null && !pipeline.meterOnly;
+            if (_color != null) _color.postExposure.value = own ? 0f : Mathf.Log(Mathf.Max(Exposure, 1e-4f), 2f);
         }
 
-        void OnReadback(AsyncGPUReadbackRequest req)
+        void RequestMeter()
+        {
+            if (_pending || pipeline == null || (Time.frameCount & 1) != 0) return;
+            var rt = pipeline.Meter;
+            if (!rt || pipeline.MeterFrame < 0) return;
+            _evUsedAtRequest = Mathf.Log(Mathf.Max(pipeline.MeterExposure, 1e-5f) / openExposure, 2f);
+            float eUsed = pipeline.MeterExposure;
+            _pending = true;
+            AsyncGPUReadback.Request(rt, 0, TextureFormat.RGBAHalf, r => OnReadback(r, eUsed));
+        }
+
+        void OnReadback(AsyncGPUReadbackRequest req, float eUsed)
         {
             _pending = false;
             if (req.hasError || this == null) return;
             var px = req.GetData<ushort>();
-            double logSum = 0; int n = 0;
-            for (int i = 0; i + 2 < px.Length; i += 4)
+            int W = Backrooms.Camcorder.CamcorderPipeline.MeterWidth, H = Backrooms.Camcorder.CamcorderPipeline.MeterHeight;
+            if (px.Length < W * H * 4) return;
+            double sum = 0, ws = 0;
+            double ar = 0, ag = 0, ab = 0, aw = 0;
+            for (int y = 0; y < H; y++)
             {
-                float r = Mathf.HalfToFloat(px[i]), g = Mathf.HalfToFloat(px[i + 1]), b = Mathf.HalfToFloat(px[i + 2]);
-                float lum = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-                logSum += Mathf.Log(Mathf.Max(lum, 1e-4f));
-                n++;
+                float vTop = 1f - (y + 0.5f) / H;
+                float vw = vTop < 0.33f ? 0.6f : 1f;
+                for (int x = 0; x < W; x++)
+                {
+                    int i = (y * W + x) * 4;
+                    float r = Mathf.HalfToFloat(px[i]), g = Mathf.HalfToFloat(px[i + 1]), b = Mathf.HalfToFloat(px[i + 2]);
+                    if (float.IsNaN(r) || float.IsNaN(g) || float.IsNaN(b)) continue;
+                    float u = (x + 0.5f) / W;
+                    float w = (0.25f + Mathf.Exp(-((u - 0.5f) * (u - 0.5f) / 0.09f + (vTop - 0.55f) * (vTop - 0.55f) / 0.07f))) * vw;
+                    float Y = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+                    sum += w * Mathf.Min(Y, 4f); ws += w;
+                    if (Y > 0.03f && Y < 0.85f) { ar += w * r; ag += w * g; ab += w * b; aw += w; }
+                }
             }
-            if (n == 0) return;
-            float avg = Mathf.Exp((float)(logSum / n));
-            MeasuredLuminance = avg;
+            if (ws <= 0) return;
+            MeteredLevel = (float)(sum / ws);
+            MeasuredLuminance = MeteredLevel / Mathf.Max(eUsed, 1e-5f);
             SampleCount++;
+            if (aw > 0 && autoWhiteBalance) _awbTarget = AwbGains(new Vector3((float)(ar / aw), (float)(ag / aw), (float)(ab / aw)), awbStrength);
         }
 
-        void OnDestroy()
+        /// <summary>
+        /// Gains that pull the average mid-tone toward grey along the warm/cool axis (limited, like the blackbody range of a
+        /// real AWB) and a little along green/magenta. Luma stays 1. The average is measured before white balance.
+        /// </summary>
+        public static Vector3 AwbGains(Vector3 avg, float strength)
         {
-            if (_probe) Destroy(_probe.gameObject);
-            if (_rt) { _rt.Release(); Destroy(_rt); }
+            avg = Vector3.Max(avg, new Vector3(1e-4f, 1e-4f, 1e-4f));
+            float warmCool = Mathf.Log(avg.z / avg.x);                    // < 0: warm (more red than blue)
+            float greenMag = Mathf.Log(avg.y / Mathf.Sqrt(avg.x * avg.z)); // > 0: green
+            float t = Mathf.Clamp(-strength * warmCool, -0.6f, 0.6f);
+            float gm = Mathf.Clamp(-strength * 0.3f * greenMag, -0.08f, 0.08f);
+            var g = new Vector3(Mathf.Exp(-t * 0.5f), Mathf.Exp(gm), Mathf.Exp(t * 0.5f));
+            float luma = 0.2126f * g.x + 0.7152f * g.y + 0.0722f * g.z;
+            return g / Mathf.Max(luma, 1e-3f);
         }
     }
 }

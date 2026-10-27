@@ -44,7 +44,10 @@ are never hidden. `ChunkVisibility.Enabled` turns it off.
 | Per-pixel distant light, every fixture exact everywhere | ~5 ms; with the 4.5 m near/far split ~1.5 ms |
 | Square-panel emitters (4 samples within 6 m) | ~2 ms |
 | Furniture contact occlusion | ~0.4 ms |
-| Indoor reflections, SMAA, camcorder video pass | < 0.5 ms each |
+| Indoor reflections, SMAA | < 0.5 ms each |
+| Camcorder picture (since 2026-10-26: all but the last pass at 640 x 480, whatever the screen) | below the editor's measurement noise at 1080p (an A/B of on vs off varied by more than the difference) |
+| 4:3 frame | the camera's viewport is the 4:3 part only: 25 % fewer pixels at 16:9, 62 % at 32:9 |
+| Removed with the camcorder rebuild | the exposure probe camera (a second scene render with shadows, 6 times a second), URP motion blur, always-on bokeh depth of field (now only when blur would show), HQ half-resolution bloom (now quarter, no HQ) |
 | A crawl-hole window | one extra camera, cropped to the window; shadows only for the one you are at |
 
 Defaults (graphics options version 2): 16 shadow lights, 18-20 m shadow distance, exact light radius 4.5 m, SSAO on.

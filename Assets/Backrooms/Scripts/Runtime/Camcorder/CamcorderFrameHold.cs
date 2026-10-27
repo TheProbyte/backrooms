@@ -23,6 +23,8 @@ namespace Backrooms.Camcorder
         public static int RecordedFrames;
         /// <summary>Dropped frames: while set, the last picture stays on screen (a noclip door's glitch), whatever the frame rate.</summary>
         public static bool Freeze;
+        /// <summary>Set while the camcorder picture (<see cref="CamcorderPipeline"/>) holds its own small recording instead.</summary>
+        public static bool Bypass;
 
         static double _next;
         static int _tickedFrame = -1;
@@ -83,7 +85,7 @@ namespace Backrooms.Camcorder
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
-            if (Fps > 0.01f || Freeze) renderer.EnqueuePass(_pass);
+            if (!Bypass && (Fps > 0.01f || Freeze)) renderer.EnqueuePass(_pass);
         }
 
         protected override void Dispose(bool disposing) { _pass?.Dispose(); }

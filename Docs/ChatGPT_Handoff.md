@@ -18,7 +18,7 @@ Good jobs, in order of value:
 5. **Write more edit-mode tests** for build mode helpers (`RoomVariant.Resize`, `CustomRoomStamp` turns).
    File: `Scripts/Editor/Tests/CustomRoomTests.cs`.
 
-Do **not** ask it to touch: the camcorder shader (`CamcorderVideo.shader`), the light grid (`LightGrid*`, `Shaders/`), the audio system,
+Do **not** ask it to touch: the camcorder picture (`CamcorderPipeline.shader`, `CamcorderPipeline.cs`, `CamcorderRig.cs`), the light grid (`LightGrid*`, `Shaders/`), the audio system,
 or the world generator's core (`DistrictGenerator`, `WorldGenerator`) without telling you first. Those are tuned and fragile.
 
 ## Message to send
