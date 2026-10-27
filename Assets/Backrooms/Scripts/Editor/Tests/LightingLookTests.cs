@@ -176,6 +176,8 @@ namespace Backrooms.Tests
                 }
                 shader.SetBuffer(kFace, "_Lights", lights); shader.SetBuffer(kFace, "_Tiles", tiles); shader.SetBuffer(kFace, "_TileLights", indices);
                 shader.SetBuffer(kFace, "_FaceLightOut", face); shader.SetBuffer(kTrace, "_FaceLightIn", face);
+                shader.SetInt("_HoleCount", 0); shader.SetTexture(kTrace, "_DuctMouthLight", Probe());   // no crawl holes here
+                shader.SetVector("_ProbeParams2", new Vector4(1, 0, 0, 0));
 
                 // Irradiance of a cell's low (slab 0) or high (slab 1) probe toward a normal, read back from the SH textures.
                 float Irradiance(RenderTexture[] sh, int x, int z, Vector3 normal, int slab = 0)
@@ -230,6 +232,23 @@ namespace Backrooms.Tests
                 var open = Run(0u);
                 float eastOpen = Irradiance(open, 3, 0, Vector3.left);
                 Assert.Greater(eastOpen, eastWalled + litUp * 0.05f, "bounce light goes through an opening into the next room");
+
+                // A crawl hole in the dark east room's far (east) wall, whose other end looks into a lit room: light comes out.
+                var mouth = new Texture2D(6, 1, TextureFormat.RGBAFloat, false, true);
+                try
+                {
+                    var bright = new Color[6]; bright[0] = new Color(2, 2, 2, 1);          // facing +x at the far mouth: lit
+                    mouth.SetPixels(bright); mouth.Apply();
+                    shader.SetTexture(kTrace, "_DuctMouthLight", mouth);
+                    shader.SetInt("_HoleCount", 1); shader.SetFloat("_HoleTransmission", 0.15f);
+                    shader.SetVectorArray("_HolePos", new[] { new Vector4(4.8f, 0.4f, 1.2f, 0.4f) });
+                    shader.SetVectorArray("_HoleNormal", new[] { new Vector4(-1, 0, 0, 0) });
+                    shader.SetVectorArray("_HolePartner", new[] { new Vector4(1, 0, 0, 0) });
+                    var holed = Run(LightGridMath.Wall);
+                    float eastHole = Irradiance(holed, 3, 0, Vector3.right);
+                    Assert.Greater(eastHole, eastWalled + 0.001f, "light from the room at a crawl hole's far end comes out of it");
+                }
+                finally { Object.DestroyImmediate(mouth); }
             }
             finally
             {

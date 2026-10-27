@@ -126,10 +126,23 @@ SAVE MY LOOK keeps one of your own (PlayerPrefs). Moving a control marks the loo
   fixtures, real or not, times the surface colour with the colour-bleed setting), refreshed a quarter of the cells per
   frame while anything changes. Each frame a quarter of the probes trace 64 rays through the layout (walls, shut doors,
   slabs, header beams, the nearby furniture boxes), read the face cache where they hit plus that surface's bounce from
-  last frame's probes (second bounce), and blend into their history (faster after a big change). Probes are keyed to
-  their cell, so the moving window never shows stale light. The shader keeps its sample on the room's own side of walls
-  and blends across open floor and openings. The far crawl-hole site grid has its own probes. Rays do not pass through
-  crawl holes; light through them is still the portal spill. Off: the older diffused floor-light field.
+  last frame's probes (second bounce), and blend into their history (hysteresis 0.95). An update blends in fast only
+  when it differs from the history by more than its own rays' spread explains (the standard error of the estimate from
+  the 64 rays' luminance): a light switched or a door opened shows within a few frames, while the noise of a few rays
+  finding light in a dark room does not (the first version blended fast on any big relative change, which made dark
+  places shimmer and pop like a slow disco; measured in a switched-off room: 1.75% -> 0.18% average change per frame,
+  worst 16-pixel block 6.6% -> 0.6%). The shaders read the probes after a small wall-aware smoothing pass (each with its
+  open neighbours; `ProbeFilter`), the traced history stays unsmoothed. Bounce and haze use each fixture's power smoothed
+  over ~0.35 s (`GridLight.padding.x`, `FixtureLightManager.smoothBounce`): a stuttering faulty tube's direct light keeps
+  its exact waveform, but its bounce (face cache in slices) and haze (redrawn in boxes) no longer pop in patches. Probes
+  are keyed to their cell, so the moving window never shows stale light. The shader keeps its sample on the room's own
+  side of walls and blends across open floor and openings. The far crawl-hole site grid has its own probes.
+  **Crawl holes**: a ray that goes into a crawl hole carries the light of the room at the duct's far end (the duct mouth
+  light CrawlPortalSystem samples each frame, `_DuctMouthLight`) times what a 1.9 m sheet-metal duct passes
+  (`LightGrid.holeTransmission`, 0.15): a lit room glows faintly out of a hole into a dark one. Holes whose duct is not
+  among the four lit ones are dark. Off: the older diffused floor-light field.
+  `Debug/FlickerProbe.cs` measures frame-to-frame light change in a dark place (the camcorder's sensor noise switched off
+  for its renders).
 - **Shadow softness** (`BackroomsSoftShadow`): for real spot-light fixtures, a blocker search in URP's own shadow atlas
   (linear depths recovered from the shadow matrix; the fitting's own body within 0.3 m is ignored), then a filter as wide
   as the penumbra a panel that size casts, with each sample's depth reference moved by the receiver's slope (otherwise a

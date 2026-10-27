@@ -323,6 +323,7 @@ namespace Backrooms.Interaction
             }
 
             bool sampled = _lit.Count > 0 && Sample();
+            ShareHolesWithBounce(sampled);
             foreach (var v in _litPrev) if (v && !(sampled && _lit.Contains(v))) v.SetDuctLight(-1);
             if (sampled) for (int i = 0; i < _lit.Count; i++) _lit[i].SetDuctLight(i);
             _litPrev.Clear(); _litPrev.AddRange(_lit);
@@ -372,6 +373,38 @@ namespace Backrooms.Interaction
             }
             Shader.SetGlobalTexture(IdMouthTex, _mouthTex);
             return true;
+        }
+
+        readonly Vector4[] _holePos = new Vector4[LightGrid.MaxHoles], _holeNormal = new Vector4[LightGrid.MaxHoles], _holePartner = new Vector4[LightGrid.MaxHoles];
+        readonly List<(CrawlPortalView v, float d)> _near = new List<(CrawlPortalView, float)>(32);
+
+        /// <summary>
+        /// The traced bounce (LightGrid.SetCrawlHoles): the holes near the player, each with the row of its far mouth's light
+        /// when that duct is one of the lit ones, so light from a lit room comes out of a hole into a dark one.
+        /// </summary>
+        void ShareHolesWithBounce(bool sampled)
+        {
+            var grid = MainGrid;
+            if (!grid || !_main) return;
+            var eye = _main.transform.position;
+            _near.Clear();
+            foreach (var v in CrawlPortalView.All)
+            {
+                if (!v) continue;
+                float d = (v.position - eye).sqrMagnitude;
+                if (d < 30f * 30f) _near.Add((v, d));
+            }
+            _near.Sort(ByDistance);
+            int count = Mathf.Min(_near.Count, LightGrid.MaxHoles);
+            for (int i = 0; i < count; i++)
+            {
+                var v = _near[i].v;
+                int lit = sampled ? _lit.IndexOf(v) : -1;
+                _holePos[i] = new Vector4(v.position.x, v.position.y, v.position.z, CrawlPortals.HoleHalf);
+                _holeNormal[i] = v.normal;
+                _holePartner[i] = new Vector4(v.partnerNormal.x, v.partnerNormal.y, v.partnerNormal.z, lit >= 0 ? 2 * lit + 1 : -1);
+            }
+            grid.SetCrawlHoles(_holePos, _holeNormal, _holePartner, count, _mouthTex);
         }
 
         // ---------------- Going in, along and out ----------------

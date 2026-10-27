@@ -15,6 +15,18 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 23:10  Claude Code  Dark-area bounce flicker fixed; bounce light through crawl holes
+- Flicker: the traced bounce blended fast on any big relative change, so in dark places (few of the 64 rays find light)
+  its noise made soft light pop like a slow disco. Now it blends fast only when a change exceeds the rays' own standard
+  error (`ProbeTrace`, `LightGrid.noiseAwareBlend`), hysteresis 0.95, and the shaders read probes after a wall-aware
+  neighbour smoothing pass (`ProbeFilter`, `LightGrid.probeFilter`). Faulty tubes' flicker no longer drives bounce and
+  haze (power smoothed over 0.35 s in `GridLight.padding.x`, `FixtureLightManager.smoothBounce`; direct light unchanged).
+- Crawl holes: bounce rays entering a hole carry the far room's light from the duct mouth samples
+  (`LightGrid.SetCrawlHoles` fed by `CrawlPortalSystem.ShareHolesWithBounce`, `holeTransmission` 0.15).
+- Checked: `Debug/FlickerProbe.cs` in a switched-off room, World 3: 1.75% -> 0.18% mean frame-to-frame change, worst block
+  6.6% -> 0.6%; lit areas 0.11% -> 0.04%. Hole light confirmed (floor in front of a hole brightens with transmission).
+  EditMode 75/75 (`TracedBounceGoesThroughOpeningsNotWalls` now also checks light out of a crawl hole). World 3 erased.
+
 ## 2026-10-26 20:50  Claude Code  Lighting look panel, rectangular panels, traced bounce, soft and contact shadows, haze; quick door
 - F5 > LIGHT rebuilt as the look panel (`CamcorderVisualMenu.Lighting.cs`): five built-in looks and "my look"
   (`GraphicsOptions.ApplyLook/SaveMyLook`, look fields marked `[Look]`), light colour (kelvin) and tint, panel glow, bounce

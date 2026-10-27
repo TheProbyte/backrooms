@@ -210,8 +210,10 @@ namespace Backrooms.Generation
                 lookup |= !l.pos.Equals(old.pos);
                 bool illumination = geometry || !l.dir.Equals(old.dir) || l.cosOuter != old.cosOuter || l.cosInner != old.cosInner || l.storey != old.storey || !l.halfSize.Equals(old.halfSize);
                 bins |= geometry;
-                bounce |= illumination || !l.colorAll.Equals(old.colorAll);
-                upload |= illumination || !l.color.Equals(old.color) || !l.colorAll.Equals(old.colorAll);
+                // Bounce: the light a fixture gives to bounce (power smoothed), with a small tolerance.
+                Vector3 bounceNew = l.colorAll * (1f + l.padding.x), bounceOld = old.colorAll * (1f + old.padding.x);
+                bounce |= illumination || (bounceNew - bounceOld).sqrMagnitude > 1e-4f * Mathf.Max(bounceNew.sqrMagnitude, bounceOld.sqrMagnitude) + 1e-10f;
+                upload |= illumination || !l.color.Equals(old.color) || !l.colorAll.Equals(old.colorAll) || !l.padding.Equals(old.padding);
             }
             _bounceDirty |= bounce;
             if (bounce) LightingRevision++;

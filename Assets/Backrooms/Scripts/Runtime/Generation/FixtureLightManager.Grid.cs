@@ -39,6 +39,8 @@ namespace Backrooms.Generation
         [Range(0, 120)] public int farRealLights = 56;
         [Tooltip("Fixtures within this distance feed the grid (the grid covers about 38 m around you).")]
         public float gridDistance = 40f;
+        [Tooltip("Bounce light and haze follow faulty tubes' power smoothed over ~0.35 s (their direct light still flickers exactly).")]
+        public bool smoothBounce = true;
 
         [Tooltip("How dark the shadows of real lights are (1 = black, lower lets some light through).")]
         [Range(0f, 1f)] public float shadowStrength = 1f;
@@ -54,6 +56,7 @@ namespace Backrooms.Generation
             public bool shadowed;           // its real light casts shadows (the nearest ones)
             public float w, target;         // real-light share now / wanted
             public float lastGrid = -1f;    // grid intensity last written (to detect changes)
+            public float smoothPower = -1f; // power smoothed over a fraction of a second (bounce and haze, see GridLight.padding)
             public int frame;
             public Slot slot;
         }
@@ -316,12 +319,17 @@ namespace Backrooms.Generation
                     sh.lastGrid = gridShare;
                 }
                 var lin = (Vector3)(Vector4)col.linear * intensity;
+                // Bounce and haze follow a stuttering tube's power smoothed (they update in slices and boxes, so following
+                // every stutter made soft light pop in patches in the dark); its direct light keeps the exact waveform.
+                sh.smoothPower = sh.smoothPower < 0f || !smoothBounce ? power : Mathf.Lerp(sh.smoothPower, power, 1f - Mathf.Exp(-dt / 0.35f));
+                float bounceRatio = power > 0.001f ? Mathf.Round((Mathf.Clamp(sh.smoothPower / power, 0f, 8f) - 1f) * 64f) / 64f : 0f;
                 _gridLights.Add(new LightGridMath.GridLight
                 {
                     pos = pos, range = range, dir = dir,
                     cosOuter = Mathf.Cos(outer * 0.5f * Mathf.Deg2Rad), cosInner = Mathf.Cos(inner * 0.5f * Mathf.Deg2Rad),
                     color = lin * gridShare, colorAll = lin * power, storey = c.chunk.y,
                     halfSize = c.isLamp ? Vector2.zero : (c.strip ? new Vector2(0.59f, 0.055f) : c.dome ? new Vector2(0.16f, 0.16f) : new Vector2(0.285f, 0.285f)) * emitterSize,
+                    padding = new Vector2(bounceRatio, 0f),
                 });
 
                 // Real light for the real share.

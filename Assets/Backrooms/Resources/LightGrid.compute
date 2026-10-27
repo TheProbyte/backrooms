@@ -17,9 +17,13 @@ struct GridLight
     float3 pos;      float range;
     float3 color;    float cosOuter;     // colour x intensity x the grid's share (0 while it is a real light)
     float3 dir;      float cosInner;     // spot axis, zero for samplePosition lights
-    float3 colorAll; float storey;       // full colour x intensity x power (for bounce)
-    float2 halfSize; float2 padding;
+    float3 colorAll; float storey;       // full colour x intensity x power
+    float2 halfSize; float2 padding;     // padding.x: bounce and haze use colorAll x (1 + x) (a faulty tube's smoothed power)
 };
+
+// The light a fixture gives to bounce and haze: its power smoothed over a fraction of a second, so a stuttering tube does
+// not make the bounce and haze (updated in slices and boxes) pop in patches. Its direct light still flickers exactly.
+float3 BounceColor(GridLight L) { return L.colorAll * (1.0 + L.padding.x); }
 
 RWTexture3D<float4> _GridA;          // rgb: irradiance facing the lights, a: luminance-weighted direction y
 RWTexture3D<float4> _GridB;          // x, y: luminance-weighted direction x and z; z: all light's luminance (haze), w: 0
@@ -176,7 +180,8 @@ void Direct(uint3 id : SV_DispatchThreadID)
         {
             GridLight L = _Lights[_TileLights[range.x + i]];
             // Haze sees every fixture's whole light (real lights too); the texture only this grid's share.
-            bool wantHaze = hazeOn && dot(L.colorAll, L.colorAll) > 0.0;
+            float3 hazeColor = BounceColor(L);
+            bool wantHaze = hazeOn && dot(hazeColor, hazeColor) > 0.0;
             if (dot(L.color, L.color) <= 0.0 && !wantHaze) continue;
             // Per-pixel mode with a near/far split: only the far part of each fixture's light is stored here
             // (the material shader adds the near part exactly; the weights match LGrid_NearWeight).
@@ -198,11 +203,11 @@ void Direct(uint3 id : SV_DispatchThreadID)
             if (far <= 0)
             {
                 // Haze only: one line of sight is enough (a few cm of erosion at corners does not show in the air).
-                if (Visible(L.pos, Q)) haze += dot(L.colorAll, LUM) * attSum * 0.125;
+                if (Visible(L.pos, Q)) haze += dot(hazeColor, LUM) * attSum * 0.125;
                 continue;
             }
             if (!VisibleSolid(L.pos, Q)) continue;
-            if (wantHaze) haze += dot(L.colorAll, LUM) * attSum * 0.125;
+            if (wantHaze) haze += dot(hazeColor, LUM) * attSum * 0.125;
             float att = attSum * 0.125 * far;
             dirSum *= far;
             float3 e = L.color * att;
@@ -225,12 +230,13 @@ float3 SurfaceLight(float3 Q, float3 normal, uint2 lights)
     [loop] for (uint i = 0; i < lights.y; i++)
     {
         GridLight L = _Lights[_TileLights[lights.x + i]];
-        if (dot(L.colorAll, L.colorAll) <= 0) continue;
+        float3 bounceColor = BounceColor(L);
+        if (dot(bounceColor, bounceColor) <= 0) continue;
         float3 direction;
         float att = Attenuation(L, Q, direction);
         float facing = saturate(dot(normal, direction));
         if (att * facing <= 1e-6 || !Visible(L.pos, Q)) continue;
-        sum += L.colorAll * att * facing * LocalLightVisibility(Q, normal, L.pos);
+        sum += bounceColor * att * facing * LocalLightVisibility(Q, normal, L.pos);
     }
     return sum;
 }
@@ -325,12 +331,49 @@ void BounceDiffuse(uint3 id : SV_DispatchThreadID)
 // sample on the room's own side of every wall when it interpolates (LGrid_ProbeIrradiance).
 
 float4 _ProbeParams;     // x: frame, y: hysteresis, z: second bounce (0..1), w: colour bleed (0..2)
+float4 _ProbeParams2;    // x: noise-aware blending (0/1)
 int4 _ProbeInfo;         // x: slice count, y: rays per thread, z: this frame's probe slice, w: this frame's face slice (-1 = all)
 RWStructuredBuffer<float4> _FaceLightOut;    // per cell and storey, 12 entries (see FaceSlot)
 StructuredBuffer<float4> _FaceLightIn;
 Texture2D<float4> _ProbePrevR, _ProbePrevG, _ProbePrevB;
 RWTexture2D<float4> _ProbeOutR, _ProbeOutG, _ProbeOutB;
+Texture2D<float4> _ProbeInR, _ProbeInG, _ProbeInB;            // ProbeFilter: the probes as traced
+RWTexture2D<float4> _ProbeSmoothR, _ProbeSmoothG, _ProbeSmoothB;   // ProbeFilter: what the shaders read
 RWStructuredBuffer<uint> _ProbeKey;
+
+// Crawl holes (CrawlPortalSystem): a ray going into one carries the light of the room at the duct's far end, from the light
+// sampled at the far mouth each frame (_DuctMouthLight: six axis irradiances per mouth), times how much a 1.9 m duct passes.
+#define MAX_HOLES 16
+float4 _HolePos[MAX_HOLES];        // xyz: centre of the opening, w: half size
+float4 _HoleNormal[MAX_HOLES];     // xyz: out of the hole into this room
+float4 _HolePartner[MAX_HOLES];    // xyz: out of the far hole into its room, w: that mouth's row in _DuctMouthLight (-1: none)
+int _HoleCount;
+float _HoleTransmission;
+Texture2D<float4> _DuctMouthLight;
+
+bool HoleRadiance(float3 X, float3 d, out float3 radiance)
+{
+    radiance = 0;
+    [loop] for (int i = 0; i < _HoleCount; i++)
+    {
+        float3 n = _HoleNormal[i].xyz, rel = X - _HolePos[i].xyz;
+        if (dot(d, n) >= 0 || abs(dot(rel, n)) > 0.3) continue;
+        float3 right = normalize(cross(float3(0, 1, 0), n));
+        float halfSize = _HolePos[i].w;
+        if (abs(dot(rel, right)) > halfSize || abs(rel.y) > halfSize) continue;
+        int row = (int)_HolePartner[i].w;
+        if (row >= 0)
+        {
+            // Light from the far room arriving at its mouth (on a surface facing out into that room).
+            float3 m = _HolePartner[i].xyz, w = m * m;
+            float3 E = _DuctMouthLight[int2(m.x >= 0 ? 0 : 1, row)].rgb * w.x + _DuctMouthLight[int2(m.y >= 0 ? 2 : 3, row)].rgb * w.y +
+                       _DuctMouthLight[int2(m.z >= 0 ? 4 : 5, row)].rgb * w.z;
+            radiance = E * _HoleTransmission;
+        }
+        return true;
+    }
+    return false;
+}
 
 // FaceLight entries: 0 floor, 1 ceiling, 2..5 walls low (west, east, south, north), 6..9 walls high, 10 floor irradiance.
 uint FaceIndex(int2 cell, uint storey)
@@ -531,6 +574,8 @@ float3 TraceRadiance(float3 P, float3 d, uint storey)
         float top = (stepX ? LG_WestTop(owner) : LG_SouthTop(owner)) + base;
         if (kind == LG_EDGE_WALL || y > top + 0.02)
         {
+            float3 holeLight;
+            if (_HoleCount > 0 && HoleRadiance(P + d * tExit, d, holeLight)) return holeLight;   // into a crawl hole
             int side = stepX ? (stp.x < 0 ? 0 : 1) : (stp.y < 0 ? 2 : 3);
             float rel = y - base, h = LG_Ceiling(o);
             float t = saturate((rel - 0.3 * h) / max(0.45 * h, 0.1));
@@ -567,6 +612,7 @@ float3x3 RandomRotation(uint seed)
 }
 
 groupshared float4 gsR[32], gsG[32], gsB[32];
+groupshared float2 gsLum[32];             // sum and sum of squares of the rays' luminance (how noisy this update is)
 
 [numthreads(32, 1, 1)]
 void ProbeTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex)
@@ -585,6 +631,7 @@ void ProbeTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex)
     uint2 texel = ProbeTexel(cell, slab);
     uint keyIndex = (slab * (uint)n + (texel.y - slab * n)) * (uint)n + texel.x;
     float4 r = 0, gg = 0, b = 0;
+    float2 lumStats = 0;
     bool loaded = LG_Loaded(o);
     if (loaded)
     {
@@ -598,13 +645,15 @@ void ProbeTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex)
             float3 L = TraceRadiance(P, d, storey);
             float4 basis = float4(0.282095, 0.488603 * d);
             r += L.r * basis; gg += L.g * basis; b += L.b * basis;
+            float lum = dot(L, LUM);
+            lumStats += float2(lum, lum * lum);
         }
     }
-    gsR[thread] = r; gsG[thread] = gg; gsB[thread] = b;
+    gsR[thread] = r; gsG[thread] = gg; gsB[thread] = b; gsLum[thread] = lumStats;
     GroupMemoryBarrierWithGroupSync();
     [unroll] for (uint s = 16; s > 0; s >>= 1)
     {
-        if (thread < s) { gsR[thread] += gsR[thread + s]; gsG[thread] += gsG[thread + s]; gsB[thread] += gsB[thread + s]; }
+        if (thread < s) { gsR[thread] += gsR[thread + s]; gsG[thread] += gsG[thread + s]; gsB[thread] += gsB[thread + s]; gsLum[thread] += gsLum[thread + s]; }
         GroupMemoryBarrierWithGroupSync();
     }
     if (thread != 0) return;
@@ -620,14 +669,58 @@ void ProbeTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex)
     if (_ProbeKey[keyIndex] != key) hysteresis = 0;
     else
     {
-        // A big change (a light switched, a door opened) blends in faster.
         float before = dot(float3(_ProbePrevR[texel].x, _ProbePrevG[texel].x, _ProbePrevB[texel].x), LUM);
         float now = dot(float3(nr.x, ng.x, nb.x), LUM);
-        float change = abs(now - before) / max(max(now, before), 1e-3);
-        hysteresis *= 1 - smoothstep(0.25, 0.8, change) * 0.6;
+        if (_ProbeParams2.x > 0.5)
+        {
+            // A real change (a light switched, a door opened) blends in fast; the noise of a few rays finding light does
+            // not. What the rays' own spread explains is noise: the standard error of this update's L00.
+            float count = 32.0 * _ProbeInfo.y;
+            float mean = gsLum[0].x / count;
+            float variance = max(gsLum[0].y / count - mean * mean, 0);
+            float standardError = 12.566371 * 0.282095 * sqrt(variance / count);
+            float change = abs(now - before);
+            hysteresis *= 1 - smoothstep(3.0, 6.0, change / max(standardError + 0.05 * before, 1e-5)) * 0.7;
+        }
+        else
+        {
+            float change = abs(now - before) / max(max(now, before), 1e-3);
+            hysteresis *= 1 - smoothstep(0.25, 0.8, change) * 0.6;
+        }
     }
     _ProbeOutR[texel] = lerp(nr, _ProbePrevR[texel], hysteresis);
     _ProbeOutG[texel] = lerp(ng, _ProbePrevG[texel], hysteresis);
     _ProbeOutB[texel] = lerp(nb, _ProbePrevB[texel], hysteresis);
     _ProbeKey[keyIndex] = key;
+}
+
+// Smooths the probes the shaders read: each probe with its four neighbours of the same height across open floor and
+// openings (never across a wall, never from an unloaded cell). Takes the edge off the noise of 64 rays in dark places,
+// where few rays find any light. The traced history itself stays unsmoothed (no blur building up over time).
+#pragma kernel ProbeFilter
+[numthreads(8, 8, 1)]
+void ProbeFilter(uint3 id : SV_DispatchThreadID)
+{
+    int n = _GridSize.w;
+    if ((int)id.x >= n || (int)id.y >= n || id.z > 3) return;
+    uint slab = id.z, storey = slab >> 1;
+    int2 cell = _CellMin.xy + (int2)id.xy;
+    uint2 texel = ProbeTexel(cell, slab);
+    uint o = Occ(cell, storey);
+    float4 r = _ProbeInR[texel] * 2, g = _ProbeInG[texel] * 2, b = _ProbeInB[texel] * 2;
+    float weight = 2;
+    if (LG_Loaded(o))
+    {
+        [unroll] for (int side = 0; side < 4; side++)
+        {
+            int2 offset = side == 0 ? int2(-1, 0) : side == 1 ? int2(1, 0) : side == 2 ? int2(0, -1) : int2(0, 1);
+            uint other = Occ(cell + offset, storey);
+            uint owner = side == 0 || side == 2 ? o : other;
+            uint kind = side < 2 ? LG_WestKind(owner) : LG_SouthKind(owner);
+            if (kind == LG_EDGE_WALL || !LG_Loaded(other)) continue;
+            uint2 t = ProbeTexel(cell + offset, slab);
+            r += _ProbeInR[t]; g += _ProbeInG[t]; b += _ProbeInB[t]; weight += 1;
+        }
+    }
+    _ProbeSmoothR[texel] = r / weight; _ProbeSmoothG[texel] = g / weight; _ProbeSmoothB[texel] = b / weight;
 }

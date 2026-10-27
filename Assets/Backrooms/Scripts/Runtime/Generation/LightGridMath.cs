@@ -24,7 +24,8 @@ namespace Backrooms.Generation
             public Vector3 color; public float cosOuter;      // colour x intensity x the grid's share
             public Vector3 dir; public float cosInner;        // spot axis, zero for point lights
             public Vector3 colorAll; public float storey;     // full colour x intensity x power (bounce)
-            public Vector2 halfSize; public Vector2 padding; // finite horizontal emitter; zero = point
+            public Vector2 halfSize; public Vector2 padding; // finite horizontal emitter; zero = point. padding.x: bounce and haze
+                                                             // use colorAll x (1 + x) (smoothed power of a faulty tube)
             public const int Stride = 80;
         }
 

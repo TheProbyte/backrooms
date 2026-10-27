@@ -54,9 +54,11 @@ namespace Backrooms.DebugTools
             bool autoExposure = _rig.Settings.autoExposure;
             _rt = new RenderTexture(960, 720, 24);
             _tex = new Texture2D(960, 720, TextureFormat.RGB24, false);
+            if (what == "hole") { yield return Hole(); goto restore; }
             yield return Lit();
             if (what == "all" || what == "dark") yield return Dark();
             if (what == "all" || what == "furniture") yield return Furniture();
+            restore:
             // Restore.
             JsonUtility.FromJsonOverwrite(saved, _o);
             _rig.Settings.autoExposure = autoExposure;
@@ -174,6 +176,36 @@ namespace Backrooms.DebugTools
             _pl.Teleport(from, yaw, pitch);
             yield return Wait(2f);
             yield return Variants("furniture", false);
+        }
+
+        /// <summary>In front of the nearest crawl hole: the light out of it with the duct passing none, the default and a lot.</summary>
+        IEnumerator Hole()
+        {
+            CrawlPortalView best = null; float bd = float.MaxValue;
+            foreach (var v in CrawlPortalView.All)
+            {
+                if (!v) continue;
+                float d = (v.position - _pl.transform.position).sqrMagnitude;
+                if (d < bd) { bd = d; best = v; }
+            }
+            var grid = FindAnyObjectByType<FixtureLightManager>()?.grid;
+            if (!best || !grid) { _log.AppendLine("hole: none"); yield break; }
+            Vector3 stand = best.position + best.normal * 2.2f; stand.y = best.position.y - CrawlPortals.HoleHalf + 0.05f;
+            Vector3 look = best.position - (stand + Vector3.up * _pl.standEye);
+            _pl.Teleport(stand, Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg, -Mathf.Atan2(look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg);
+            _o.ApplyLook(0);
+            _rig.Settings.autoExposure = true;
+            yield return Wait(3f);
+            _rig.Settings.autoExposure = false;
+            float keep = grid.holeTransmission;
+            foreach (var t in new[] { 0f, 0.15f, 0.5f })
+            {
+                grid.holeTransmission = t;
+                yield return Wait(2.5f);
+                _log.AppendLine($"hole transmission {t}: lit duct {best.name}");
+                Save($"hole_{t:0.00}.png");
+            }
+            grid.holeTransmission = keep;
         }
 
         static float OpenestYaw(Vector3 eye)
