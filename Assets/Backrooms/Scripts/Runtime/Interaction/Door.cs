@@ -244,6 +244,44 @@ namespace Backrooms.Interaction
             _vel = Mathf.Lerp(_vel, (Angle - before) / Mathf.Max(dt, 1e-4f), 1f - Mathf.Exp(-dt / 0.05f));
         }
 
+        /// <summary>Out of the face on that side (as the door stands now), toward whoever is there.</summary>
+        public Vector3 FaceNormal(int side) => Swing(Angle) * transform.forward * side;
+
+        /// <summary>
+        /// A quick shove or tug from the hand (right click). Shut, it opens (pushed from the far side it swings wide,
+        /// tugged from its own side part way); a latched door is unlatched on the way (the hand hits the lever). Already
+        /// open, it is shoved the way the player faces: wider, or toward shut.
+        /// </summary>
+        public void Shove(int side, Vector3 at, Vector3 facing, bool pull)
+        {
+            if (Held) return;
+            if (Latched)
+            {
+                Fx(SoundBank.DoorLatch, 0.6f);
+                Latched = false;
+                if (side > 0) _turnFront = 1f; else _turnBack = 1f;               // springs back up in Update
+                Pose();
+            }
+            float speed;
+            if (Angle < 3f) speed = pull ? 115f : 210f;
+            else
+            {
+                Vector3 r = Vector3.ProjectOnPlane(at - HingeWorld, transform.up);
+                Vector3 opening = Vector3.Cross(transform.up, r).normalized;
+                speed = Vector3.Dot(Vector3.ProjectOnPlane(facing, transform.up), opening) >= 0f ? 190f : -190f;
+            }
+            _vel = speed;
+            _moved = true;
+        }
+
+        /// <summary>Distance from a point to the slab (the palm flat on it).</summary>
+        public float SlabDistance(Vector3 p)
+        {
+            if (!_slab) return float.MaxValue;
+            Vector3 q = Physics.ClosestPoint(p, _slab, _slab.transform.position, _slab.transform.rotation);
+            return (q - p).sqrMagnitude < 1e-12f ? -0.001f : Vector3.Distance(q, p);
+        }
+
         /// <summary>The hand lets go: the lever springs up, the door keeps swinging with what it had.</summary>
         public void Release() { Held = false; }
 

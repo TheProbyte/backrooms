@@ -15,6 +15,35 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-26 20:50  Claude Code  Lighting look panel, rectangular panels, traced bounce, soft and contact shadows, haze; quick door
+- F5 > LIGHT rebuilt as the look panel (`CamcorderVisualMenu.Lighting.cs`): five built-in looks and "my look"
+  (`GraphicsOptions.ApplyLook/SaveMyLook`, look fields marked `[Look]`), light colour (kelvin) and tint, panel glow, bounce
+  strength/colour bleed/second bounce, shadow softness, contact shadows, haze, camera exposure/contrast, Poolrooms sun,
+  sky, bounce and warmth. `GraphicsController` applies them (fixture colours, `_BRLook`, `_BREmissionTint`, PoolWorld).
+- Backrooms/Lit: ceiling panels as rectangles (`Shaders/BackroomsAreaLight.hlsl`, `BackroomsRectFixture`; the old
+  4-point panel samples are gone, off = a point), contact-hardening soft shadows for real spot fixtures
+  (`BackroomsSoftShadow` in `Shaders/BackroomsLook.hlsl`), haze march (`BackroomsHaze`), contact-shadow lookup.
+- Traced bounce: `Generation/LightGrid.Probes.cs` + FaceLight/ProbeCopy/ProbeTrace kernels in `LightGrid.compute`, probe
+  sampling `LGrid_ProbeIrradiance`. Haze channel in the Direct kernel (`_LGridB.z`). LightGrid's own defaults for traced
+  bounce and haze are off; the options switch them on.
+- Contact shadows: `Generation/ContactShadows.cs` (render-graph pass after the prepass, declares the depth texture) +
+  `Resources/Shaders/ContactShadowMask.shader`.
+- Right click on a door: `Interaction/PropGrabber.QuickDoor.cs`, `Door.Shove/FaceNormal/SlabDistance` (latched doors: the
+  hand presses the lever first).
+- Editor: `Editor/LitShaderWarmup.cs` + `Shaders/BackroomsLitVariants.shadervariants` compile the lit shader's variants
+  in Edit Mode after a change and hold Play until done. Why: the editor crashed three times on Direct3D 12 ("failed to
+  wait for fence", device lost) during long synchronous compiles in Play Mode, even with the new features off; on
+  Direct3D 11 the stall survived; with the warm-up, Play on Direct3D 12 starts in ~9 s and ran clean. Variant compile
+  time 9 s before, 28 s at first, 13 s now (see RuntimeLighting.md).
+- Checked: EditMode 75/75 (new `LightingLookTests`: looks, colour shift, rectangle form factor vs brute force, traced
+  bounce through an opening but not a wall; `PerformanceLightingTests` covers haze/probe dispatch caching). World 3 on
+  Direct3D 11 and 12: `Debug/LightingProbe.cs` (each feature off/on, every look, three views) and
+  `HandShots.Run(folder, "quickdoor")` (push 0 -> 81 deg, tug 0 -> 32 deg, open shove hits the stop). All features
+  together: about 0.3-1.5 ms GPU (RTX 4070, editor). World 3 erased.
+- Open: rays do not pass through crawl holes (portal spill still carries that light); shadow maps are not cached (URP
+  has no supported way); the variant list needs re-recording when materials with new keyword sets appear; haze is
+  isotropic (no forward-scatter halos); exposure/contrast in LIGHT are the camera's own settings.
+
 ## 2026-10-26 17:17  Claude Code  Realism pass: doors block light and sound, Steam Audio walls, finger contact, feet, body, camcorder, living building
 - Doors: `Generation/DoorEdges.cs` registers shut doors (under 2.5 deg). `LightGridMath.Encode` turns a shut door's edge
   into a wall (LightGrid re-encodes the chunk on change), so bounce light and real lights stop at it. `AcousticField`

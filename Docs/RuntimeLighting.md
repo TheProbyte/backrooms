@@ -101,3 +101,62 @@ finite-emitter range/cone tests precede rays; layout-blocked real fixtures skip 
 run only for surviving distant fixtures. Source samples, shadows, bounce, materials and saved budgets are unchanged.
 World replacement cancels old probe captures; a time-sliced probe remains enabled until completion across distant moves.
 See FpsRecovery.md for verified same-view editor timings, GPU regressions and remaining standalone-player checks.
+
+
+## Look panel and the light it controls (2026-10-26)
+
+**F5 > LIGHT** is the look of the building's light. Every control lives in `Camcorder/GraphicsOptions.cs` (look fields
+carry `[Look]`: presets, "my look" and reset copy only those, never quality settings) and is applied each frame by
+`GraphicsController`. Built-in looks: STILL RECORDING (the defaults), EVEN & PALE, DIM & MOODY, HARSH TUBES, WARM & OLD;
+SAVE MY LOOK keeps one of your own (PlayerPrefs). Moving a control marks the look as changed.
+
+- **Colour**: light colour in kelvin (4500 = as built) and a green/magenta tube tint shift every fixture's colour
+  (tubes, strips and lamps together, brightness kept: `GraphicsOptions.ColourShift`); the fittings' own glow follows
+  (`_BREmissionTint`, also scaled by Panel glow).
+- **Rectangular panels** (`Shaders/BackroomsAreaLight.hlsl`, `BackroomsRectFixture` in the forward pass): a ceiling
+  panel's diffuse light is the exact form factor of its rectangle (edge integrals, Heitz & Hill's fitted arc term);
+  where a surface cuts through the panel its far corners are moved onto the surface's plane, which matches clipping
+  without branches. Specular uses the point of the panel nearest the mirror reflection with the lobe widened by the
+  panel's size (Karis), so glossy floors show long rectangular reflections. Far away (6-8 m) the panel shrinks to a
+  point, as before; with the toggle off every fixture is a point. Tested against brute-force integration
+  (`LightingLookTests.RectangularPanelMatchesNumericIntegral`).
+- **Traced bounce** (`LightGrid.Probes.cs`, kernels FaceLight / ProbeCopy / ProbeTrace in `Resources/LightGrid.compute`,
+  sampled by `LGrid_ProbeIrradiance`): two probes per 1.2 m layout cell and storey (low and high), each an L1 spherical
+  harmonic per colour. A face cache holds the direct light leaving every cell's floor, ceiling and walls (all powered
+  fixtures, real or not, times the surface colour with the colour-bleed setting), refreshed a quarter of the cells per
+  frame while anything changes. Each frame a quarter of the probes trace 64 rays through the layout (walls, shut doors,
+  slabs, header beams, the nearby furniture boxes), read the face cache where they hit plus that surface's bounce from
+  last frame's probes (second bounce), and blend into their history (faster after a big change). Probes are keyed to
+  their cell, so the moving window never shows stale light. The shader keeps its sample on the room's own side of walls
+  and blends across open floor and openings. The far crawl-hole site grid has its own probes. Rays do not pass through
+  crawl holes; light through them is still the portal spill. Off: the older diffused floor-light field.
+- **Shadow softness** (`BackroomsSoftShadow`): for real spot-light fixtures, a blocker search in URP's own shadow atlas
+  (linear depths recovered from the shadow matrix; the fitting's own body within 0.3 m is ignored), then a filter as wide
+  as the penumbra a panel that size casts, with each sample's depth reference moved by the receiver's slope (otherwise a
+  wall the light skims along shadows itself). Sharp at contact, soft farther away. Lamps (point-light shadows) keep URP's
+  filter. Shadow maps are not cached (URP redraws them every frame; there is no supported way to keep static ones).
+- **Contact shadows** (`Generation/ContactShadows.cs`, `Resources/Shaders/ContactShadowMask.shader`): a render pass of its
+  own on the player's camera, after the depth prepass, marches 8 steps toward the two strongest fixtures at each pixel
+  through the camera depth and writes a mask; Backrooms/Lit looks it up per light. The pass declares the depth texture
+  it reads, as the render graph requires: reading `_CameraDepthTexture` inside the opaque pass itself is not declared
+  there and is not safe. Portal views, probes and the scene view get none.
+- **Haze**: the direct-light pass also stores every fixture's whole light (luminance) in `_LGridB.z` (real lights too:
+  their power changes redraw their reach, flicker at most every 0.15 s); Backrooms/Lit marches it in 8 jittered steps
+  from the camera (`BackroomsHaze`). Isotropic, tinted by the fixtures' colour. 0.25 scatters about 2.5% per 10 m.
+- **Poolrooms**: sun, sky (and ambient), tile bounce and sun warmth scale `PoolWorld`'s own light.
+
+All of these are uniform branches (`_BRLook`, `_LGridGI`, `_LGridHaze`, `_BRContact`), never shader keywords; zero (what
+the fallbacks bind) is off. Measured together in the editor (RTX 4070, same views): about 0.3-1.5 ms of GPU time on
+Direct3D 12 (`Debug/LightingProbe.cs` captures each feature off/on and every look, with timings).
+
+### Shader compile times and the Direct3D 12 crash (2026-10-26)
+
+A Backrooms/Lit variant took 9 s to compile before this work and 28 s with the first version of it (a 4-step unrolled
+wall test inside the panel code, inlined twice, and a second copy of URP's shadow filter); now about 13 s. Cameras that
+render into textures (the exposure probe, portal views, reflection probes) compile shaders synchronously, so after a
+shader change Play Mode stalled for minutes mid-frame, and on Direct3D 12 the editor then lost its graphics device and
+crashed ("failed to wait for fence", "command lists ... corrupted"), even with every new feature switched off. On
+Direct3D 11 the same stall survived. `Editor/LitShaderWarmup.cs` compiles the variants a play session used
+(`Shaders/BackroomsLitVariants.shadervariants`) in Edit Mode whenever the shader changes, and holds Play until they are
+in the shader cache (Backrooms > Compile Lit Shader Variants runs it by hand). Re-record the list (Project Settings >
+Graphics > Save to asset, same path) after adding materials with new keyword sets.

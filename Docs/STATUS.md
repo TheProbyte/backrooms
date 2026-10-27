@@ -6,6 +6,17 @@ Last updated 2026-10-26 (world version 13).
 
 ## Newest (2026-10-26)
 
+- **Lighting look and new light** (F5 > LIGHT): ready-made looks (STILL RECORDING, EVEN & PALE, DIM & MOODY, HARSH TUBES,
+  WARM & OLD) plus "my look"; light colour (kelvin) and tube tint, panel glow, bounce strength, colour bleed and second
+  bounce, shadow softness, contact shadows, haze, the camera's exposure and contrast, and the Poolrooms' sun, sky and
+  bounce. Under it: ceiling panels lit as rectangles (rectangular reflections on glossy surfaces), bounce light traced
+  through the rooms by probes on the 1.2 m grid (spills through doorways, stopped by walls, shut doors and furniture),
+  shadows that are sharp where things touch and soft farther away, short contact shadows for small things, and thin
+  haze lit by the lights. All of it together costs about 0.3-1.5 ms of GPU time. See Docs/RuntimeLighting.md.
+- **Right click on a door**: the quick way through (shove it open, tug it toward you, shove an open one).
+- **Editor note**: after a change to the lit shader, the editor compiles its variants in the background (a few minutes;
+  Play waits for it). Without this, Play Mode stalled on them and Direct3D 12 crashed (see RuntimeLighting.md).
+
 - **Realism pass**: shut doors block light and sound (and a line of light shows under a door from a lit room); Steam
   Audio has the world's walls (items, doors and switches are occluded and muffled through them); fingers stop on what
   they hold; footsteps from the feet on carpet, wood, tile, water or duct metal, a scuff when stopping; lean round

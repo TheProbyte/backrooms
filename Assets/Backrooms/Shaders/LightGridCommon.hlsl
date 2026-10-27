@@ -24,6 +24,13 @@ float LG_SouthTop(uint o) { return (((o >> 10) & 63u) | (((o >> 28) & 1u) << 6))
 float LG_Ceiling(uint o) { return ((o >> 16) & 255u) * 0.1; }
 bool LG_Loaded(uint o) { return (o & LG_LOADED) != 0u; }
 
+// Traced bounce: heights of a cell's two probes above its storey's floor (low, high), shared by the tracer and the shader.
+float2 LG_ProbeHeights(uint o, float base)
+{
+    float ceiling = max(LG_Ceiling(o), 0.6);
+    return base + float2(min(0.85, 0.35 * ceiling), max(ceiling - 0.5, min(1.6, 0.8 * ceiling)));
+}
+
 // Energy-normalised 2x2 Gauss quadrature over the visible fitting (horizontal X/Z).
 // At distance its angular size is negligible, so one central sample avoids redundant work.
 float3 LG_EmitterPoint(float3 centre, float2 halfSize, int sampleIndex, bool quad)

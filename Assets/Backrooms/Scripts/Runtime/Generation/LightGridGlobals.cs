@@ -84,6 +84,9 @@ namespace Backrooms.Generation
             Shader.DisableKeyword("BACKROOMS_PORTAL_CLIP");
             Shader.SetGlobalTexture("_LGridWallBounce", s_tex2D);
             Shader.SetGlobalTexture("_LGridBounceDirection", s_tex2D);
+            Shader.SetGlobalTexture("_LGridProbeR", s_tex2D); Shader.SetGlobalTexture("_LGridProbeG", s_tex2D); Shader.SetGlobalTexture("_LGridProbeB", s_tex2D);
+            Shader.SetGlobalVector("_LGridGI", Vector4.zero);
+            Shader.SetGlobalVector("_LGridHaze", Vector4.zero);
             Shader.SetGlobalVector(GSize, new Vector4(LightGrid.GX, LightGrid.GY, LightGrid.GZ, LightGrid.OccN));
             Shader.SetGlobalVector(GParams, Vector4.zero);
         }

@@ -120,9 +120,10 @@ namespace Backrooms.Interaction
             {
                 case State.Idle:
                     if (_poke != PokePhase.None) break;
+                    if (QuickDooring) { UpdateQuickDoor(); break; }
                     if (OnDoor) { UpdateDoor(hold); break; }
                     if (pressed) { if (!TryHandUse() && !TryStartPoke() && !TryPickUp() && !TryStartDoor()) TryStart(); }
-                    else if (shovePressed) Push();
+                    else if (shovePressed) { if (!TryQuickDoor()) Push(); }
                     break;
                 case State.Reaching:
                     if (!hold || !_target) { Cancel(); break; }
@@ -136,7 +137,7 @@ namespace Backrooms.Interaction
             }
             if (_poke != PokePhase.None) UpdatePoke();
             UpdatePokeFingers();
-            UpdateTouch(!HeldItem && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking);
+            UpdateTouch(!HeldItem && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking && !QuickDooring);
             UpdateCarriedWeight();
             UpdateStoop();
             UpdateHandPose();
@@ -402,7 +403,7 @@ namespace Backrooms.Interaction
         MovableProp _contactProp;
 
         /// <summary>The hand holds or touches something its fingers should stop at.</summary>
-        public bool HasContact => HeldItem || (OnDoor && _door) || (_target && (Current == State.Holding || Current == State.Reaching)) || TouchingWall;
+        public bool HasContact => HeldItem || (OnDoor && _door) || (QuickDooring && _quickDoor) || (_target && (Current == State.Holding || Current == State.Reaching)) || TouchingWall;
 
         /// <summary>
         /// Distance from a point to the surface of what the hand holds (negative or zero inside it): a held item's own
@@ -412,6 +413,7 @@ namespace Backrooms.Interaction
         {
             if (HeldItem) return HeldItem.ContactDistanceWorld(p);
             if (OnDoor && _door) return _door.LeverDistance(_doorSide, _doorTurn, p);
+            if (QuickDooring && _quickDoor) return _quickLever ? _quickDoor.LeverDistance(_quickSide, 1f, p) : _quickDoor.SlabDistance(p);
             if (_target && (Current == State.Holding || Current == State.Reaching))
             {
                 if (_contactProp != _target) { _contactProp = _target; _targetColliders = _target.GetComponentsInChildren<Collider>(); }
@@ -440,12 +442,13 @@ namespace Backrooms.Interaction
 
         void UpdateHandPose()
         {
-            bool active = (Current != State.Idle && _target) || Poking || HeldItem || OnDoor || _touching;
+            bool active = (Current != State.Idle && _target) || Poking || HeldItem || OnDoor || _touching || QuickDooring;
             HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? 3.2f : 2.5f));
             if (HeldItem) { HandCurl = Mathf.MoveTowards(HandCurl, HeldItem.GripCurl, Time.deltaTime * 4f); return; }   // pose set in LateUpdate
             if (Poking) PokePose = true; else if (HandBlend <= 0.01f) PokePose = false;
             if (OnDoor && _door) { PokePose = false; DoorHandPose(); return; }
             if (_touching) { PokePose = false; TouchHandPose(); return; }
+            if (QuickDooring && _quickDoor) { PokePose = false; QuickDoorPose(); return; }
             if (!_target) { HandCurl = Mathf.MoveTowards(HandCurl, 0.25f, Time.deltaTime * 2f); return; }
             Vector3 grip = _target.transform.TransformPoint(_gripLocal);
             Vector3 n = _target.transform.TransformDirection(_normalLocal).normalized;

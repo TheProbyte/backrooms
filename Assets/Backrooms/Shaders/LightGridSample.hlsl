@@ -18,6 +18,10 @@ TEXTURE2D(_LGridBounce);
 SAMPLER(sampler_LGridBounce);
 TEXTURE2D(_LGridWallBounce);
 TEXTURE2D(_LGridBounceDirection);
+TEXTURE2D(_LGridProbeR);               // traced bounce: L1 SH of incoming light per colour channel, OccN x (OccN * 4)
+TEXTURE2D(_LGridProbeG);               // (slab = storey * 2 + low/high probe; see LightGrid.Probes.cs)
+TEXTURE2D(_LGridProbeB);
+float4 _LGridGI;                       // x: traced bounce on (0/1)
 StructuredBuffer<uint> _LGridOcc;      // [storey][z][x], toroidal
 
 // The grid's own light list, so surfaces can also evaluate its lights per pixel (no 0.6 m texels).
@@ -119,9 +123,9 @@ uint2 LGrid_TileRange(float3 P)
     return _LGridTiles[tz * tiles + tx];
 }
 
-bool LGrid_FindFixture(float3 position, float3 receiver, out LGridLight fixture)
+bool LGrid_FindFixtureIndex(float3 position, float3 receiver, out LGridLight fixture, out uint index)
 {
-    fixture = (LGridLight)0;
+    fixture = (LGridLight)0; index = 0;
     if (_LGridParams.x < 0.5 || any(receiver.xz < _LGridWindow.xy) || any(receiver.xz > _LGridWindow.zw)) return false;
     int3 cell = (int3)floor(position * 4.0);
     uint slot = ((uint)cell.x * 73856093u ^ (uint)cell.y * 83492791u ^ (uint)cell.z * 19349663u) & _LGridFixtureMask;
@@ -132,10 +136,16 @@ bool LGrid_FindFixture(float3 position, float3 receiver, out LGridLight fixture)
         if (entry == 0) return false;
         LGridLight f = _LGridLights[entry - 1];
         float3 d = f.pos - position;
-        if (dot(d, d) < 0.0001) { fixture = f; return true; }
+        if (dot(d, d) < 0.0001) { fixture = f; index = entry - 1; return true; }
         slot = (slot + 1) & _LGridFixtureMask;
     }
     return false;
+}
+
+bool LGrid_FindFixture(float3 position, float3 receiver, out LGridLight fixture)
+{
+    uint index;
+    return LGrid_FindFixtureIndex(position, receiver, fixture, index);
 }
 
 // Wrap a seam inside one atlas layer; texture objects stay explicit at the call site.
@@ -151,6 +161,60 @@ void LGrid_BounceCoordinates(float2 metresXZ, uint storey, out float2 uvA, out f
         uvA.y = (y0 + storey * n + 0.5) / (n * 2);
         uvB.y = (y1 + storey * n + 0.5) / (n * 2); blend = frac(row);
     }
+}
+
+// Traced bounce atlas: like the bounce field's, with four slabs (storey x low/high probe) stacked in v.
+void LGrid_ProbeCoordinates(float2 metresXZ, uint slab, out float2 uvA, out float2 uvB, out float blend)
+{
+    float n = _LGridSize.w;
+    float2 uv = frac(metresXZ / (LG_CELL * n));
+    uvA = float2(uv.x, (uv.y + slab) * 0.25); uvB = uvA; blend = 0;
+    if (uv.y < 0.5 / n || uv.y > 1 - 0.5 / n)
+    {
+        float row = uv.y * n - 0.5;
+        int y0 = ((int)floor(row)) & ((int)n - 1), y1 = (y0 + 1) & ((int)n - 1);
+        uvA.y = (y0 + slab * n + 0.5) / (n * 4);
+        uvB.y = (y1 + slab * n + 0.5) / (n * 4); blend = frac(row);
+    }
+}
+
+half3 LGrid_ProbeSlab(float2 q, uint slab, half3 N)
+{
+    float2 uvA, uvB; float blend;
+    LGrid_ProbeCoordinates(q, slab, uvA, uvB, blend);
+    float4 r = SAMPLE_TEXTURE2D_LOD(_LGridProbeR, sampler_LinearRepeat, uvA, 0);
+    float4 g = SAMPLE_TEXTURE2D_LOD(_LGridProbeG, sampler_LinearRepeat, uvA, 0);
+    float4 b = SAMPLE_TEXTURE2D_LOD(_LGridProbeB, sampler_LinearRepeat, uvA, 0);
+    [branch] if (blend > 0)
+    {
+        r = lerp(r, SAMPLE_TEXTURE2D_LOD(_LGridProbeR, sampler_LinearRepeat, uvB, 0), blend);
+        g = lerp(g, SAMPLE_TEXTURE2D_LOD(_LGridProbeG, sampler_LinearRepeat, uvB, 0), blend);
+        b = lerp(b, SAMPLE_TEXTURE2D_LOD(_LGridProbeB, sampler_LinearRepeat, uvB, 0), blend);
+    }
+    float4 basis = float4(0.282095, 0.325735 * (float3)N);   // irradiance from L1 radiance: Y00 and (2/3) Y1(n)
+    return (half3)max(float3(dot(r, basis), dot(g, basis), dot(b, basis)), 0);
+}
+
+// Traced bounce at a (clamped) sample point: the cell's low and high probes blended by height. Across walls the sample stays
+// at its own cell's probes; across open floor and openings it blends with the neighbours.
+half3 LGrid_ProbeIrradiance(float3 p, half3 N)
+{
+    float pitch = _LGridParams.w;
+    int2 cell = (int2)floor(p.xz / LG_CELL);
+    uint storey = p.y >= pitch ? 1u : 0u;
+    uint o = LGrid_Occ(cell, storey);
+    if (!LG_Loaded(o)) return 0;
+    uint oe = LGrid_Occ(cell + int2(1, 0), storey), on = LGrid_Occ(cell + int2(0, 1), storey);
+    float2 q = p.xz, mid = (cell + 0.5) * LG_CELL;
+    if (LG_WestKind(o) == LG_EDGE_WALL || !LG_Loaded(LGrid_Occ(cell - int2(1, 0), storey))) q.x = max(q.x, mid.x);
+    if (LG_WestKind(oe) == LG_EDGE_WALL || !LG_Loaded(oe)) q.x = min(q.x, mid.x);
+    if (LG_SouthKind(o) == LG_EDGE_WALL || !LG_Loaded(LGrid_Occ(cell - int2(0, 1), storey))) q.y = max(q.y, mid.y);
+    if (LG_SouthKind(on) == LG_EDGE_WALL || !LG_Loaded(on)) q.y = min(q.y, mid.y);
+    float2 h = LG_ProbeHeights(o, storey * pitch);
+    float t = saturate((p.y - h.x) / max(h.y - h.x, 0.1));
+    half3 low = LGrid_ProbeSlab(q, storey * 2u, N);
+    half3 high = LGrid_ProbeSlab(q, storey * 2u + 1u, N);
+    return lerp(low, high, (half)t);
 }
 
 half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
@@ -193,8 +257,15 @@ half3 BackroomsLightGrid(float3 positionWS, half3 normalWS)
 
     }
 
-    // Bounce: light that hit the floor nearby, mostly lighting ceilings and upper walls.
+    // Bounce: traced probes, or (the older field) light that hit the floor nearby, mostly lighting ceilings and upper walls.
     half3 bounce = 0;
+    [branch] if (_LGridGI.x > 0.5)
+    {
+        half3 lit = direct + LGrid_ProbeIrradiance(p, normalWS) * (half)_LGridParams.z;
+        half lumLit = max(dot(lit, half3(0.2126, 0.7152, 0.0722)), 1e-5);
+        lit *= pow(saturate(lumLit), _LGridShape.w * 1.2);
+        return lit * edge;
+    }
     int2 bcell = (int2)floor(p.xz / LG_CELL);
     uint bounceStorey = p.y >= pitch ? 1u : 0u;
     uint bocc = LGrid_Occ(bcell, bounceStorey);

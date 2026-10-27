@@ -63,6 +63,7 @@ namespace Backrooms.DebugTools
             if (what == "all" || what == "switch") yield return Switch();
             if (what == "all" || what == "door") yield return Doors();
             if (what == "all" || what == "tape") yield return Tape();
+            if (what == "all" || what == "quickdoor") yield return QuickDoors();
             Destroy(_rt); Destroy(_tex);
             Done = true;
         }
@@ -230,6 +231,54 @@ namespace Backrooms.DebugTools
                 _log.AppendLine($"{tag}: let go, angle {d.Angle:0.0}");
                 Eye($"door_{tag}_3_after.png", -1f);
             }
+        }
+
+        /// <summary>Right click on doors: a shut one shoved open from the far side, another tugged open from its swing side,
+        /// then the first shoved again while open.</summary>
+        IEnumerator QuickDoors()
+        {
+            var shut = new List<Door>();
+            foreach (var d in FindObjectsByType<Door>()) if (d.Angle < 0.5f) shut.Add(d);
+            shut.Sort((a, b) => (a.transform.position - _pl.transform.position).sqrMagnitude.CompareTo((b.transform.position - _pl.transform.position).sqrMagnitude));
+            _log.AppendLine($"quick: doors shut {shut.Count}");
+            for (int k = 0; k < Mathf.Min(2, shut.Count); k++)
+            {
+                var d = shut[k];
+                bool push = k == 0;
+                int side = push ? -1 : 1;
+                string tag = push ? "push" : "pull";
+                Aim(d, side);
+                yield return Wait(0.6f);
+                float before = d.Angle; bool latched = d.Latched;
+                Eye($"quick_{tag}_0.png", -1f);
+                _grab.botShove = true;
+                yield return Wait(0.18f);
+                Eye($"quick_{tag}_1_reach.png", -1f);
+                Side($"quick_{tag}_1_side.png", _grab.HandPosition, 0.5f);
+                yield return Wait(0.25f);
+                Eye($"quick_{tag}_2.png", -1f);
+                yield return Wait(1.3f);
+                _log.AppendLine($"quick {tag}: angle {before:0.0} -> {d.Angle:0.0}, latched {latched} -> {d.Latched}");
+                Eye($"quick_{tag}_3_after.png", -1f);
+                if (!push) continue;
+                // Open now: shoved again the way we face (it was pushed away from us, so further open).
+                Aim(d, side);
+                yield return Wait(0.5f);
+                before = d.Angle;
+                _grab.botShove = true;
+                yield return Wait(1.5f);
+                _log.AppendLine($"quick shove open door: angle {before:0.0} -> {d.Angle:0.0}");
+            }
+        }
+
+        /// <summary>Stands 0.8 m from a door's face on one side, looking at its lever.</summary>
+        void Aim(Door d, int side)
+        {
+            Vector3 handle = d.GripPoint(side, 0f);
+            Vector3 n = d.FaceNormal(side);
+            Vector3 stand = handle + n * 0.8f; stand.y = d.transform.position.y + 0.05f;
+            Vector3 look = handle - (stand + Vector3.up * _pl.standEye);
+            _pl.Teleport(stand, Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg, -Mathf.Atan2(look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg);
         }
 
         IEnumerator Tape()

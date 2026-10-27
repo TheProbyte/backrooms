@@ -74,6 +74,11 @@
   from one side, pull from the other), never swings through you, and walking into an unlatched door nudges it.
   Shut doors are latched until you use the lever. Doors remember where they were left (saved with the world). About
   4 in 10 such doorways in the Hallways, 3 in 10 in the Offices.
+  **Right click** on a door within reach is the quick way through (`PropGrabber.QuickDoor.cs`, `Door.Shove`): from the
+  side it opens away from, the hand presses the lever (a latched door) or slaps the door itself and shoves it, and it
+  swings wide (about 80 degrees); from its swing side the hand takes the lever and tugs it part way open (about 30
+  degrees, stopping at you); an open door is shoved the way you face (wider, against its stop, or toward shut). A latched
+  door is unlatched on the way. The slow way (hold left mouse and walk) is unchanged.
   A shut door (under 2.5 degrees open) is a wall to light and sound (`Generation/DoorEdges.cs`): the light grid encodes
   its edge as a wall, so neither the bounce field nor real lights pass it; the building audio's paths cannot go through
   it and the straight line through it costs about -9 dB and muffles (a wall: -18 dB); Steam Audio gets a wooden slab in
@@ -99,6 +104,7 @@
 | `MovablePropManager.cs` | The list of moved props (the "edits" on top of the generated world). A moved prop no longer belongs to its chunk; it is stored when the chunk it stands in unloads and rebuilt when that chunk loads. Records last for the session and reset with a new seed. |
 | `PropGrabber.cs` | The hand: grab, reach, stoop, hold (a strength-limited spring at the grip point), controls, shove. Exposes the hand pose for the body. Where the hand goes is worked out on the model (`MovableProp.PlaceHand`): the surface round the grip is sampled with rays onto the mesh's triangles, every way the fingers could point is tried, and the palm lies on the highest point under it (nothing inside padding), fingers hooking over an edge where the surface drops away, avoiding a rise under the fingers and fingers pointing back at the shoulder. |
 | `PropGrabber.Door.cs`, `Door.cs` | Doors: taking the lever, unlatching, the door following the hand, momentum, latching, the player blocking its swing, `DoorStates` (saved angles). |
+| `PropGrabber.QuickDoor.cs` | Right click on a door: the quick shove or tug (`Door.Shove`). |
 | `BodyPresence.cs` | The body as camera and mic feel it: exertion and breathing (deeper and faster after running, heard close to the mic; shallow when crouched still), clothes rustling, a shoulder brushing a wall (a rub and a small knock to the camera). Presentation only. |
 | `PropGrabber.Touch.cs` | The steadying hand on door jambs and wall ends. |
 | `LightSwitch.cs` | A wall switch's toggle (its own object, the plate is baked into the chunk) and what a flick does (`LightZones`). |

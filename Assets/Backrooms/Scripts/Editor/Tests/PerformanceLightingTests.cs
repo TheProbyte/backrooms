@@ -195,6 +195,8 @@ namespace Backrooms.Tests
             {
                 var grid = root.AddComponent<LightGrid>(); grid.compute = Resources.Load<ComputeShader>("LightGrid");
                 grid.exactDistance = 0f;   // exact per-pixel light everywhere: the texture is not used
+                grid.haze = 0f;            // haze reads the texture too (checked at the end)
+                grid.tracedBounce = false; // the older bounce field's caching (traced bounce: checked at the end)
                 root.SetActive(true); typeof(LightGrid).GetMethod("OnEnable", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(grid, null);
                 Assert.IsTrue(grid.Ready);
                 var lights = new List<LightGridMath.GridLight> { new LightGridMath.GridLight { pos = new Vector3(2f, 2.6f, 2f), range = 6f, dir = Vector3.down, color = Vector3.one, colorAll = Vector3.one, cosOuter = 0.1f, cosInner = 0.5f } };
@@ -217,6 +219,21 @@ namespace Backrooms.Tests
                 grid.exactDistance = 0f; grid.Tick(Vector3.zero, lights);
                 grid.perPixelDirect = false; grid.Tick(Vector3.zero, lights);
                 Assert.Greater(grid.DirtyTexelsLastFrame, 0, "fallback mode must refresh stale texture");
+                // Haze fills the texture's haze channel even when per-pixel light does not need the texture.
+                grid.perPixelDirect = true; grid.exactDistance = 0f;
+                for (int i = 0; i < 16 && grid.PendingTexels > 0; i++) grid.Tick(Vector3.zero, lights);
+                grid.Tick(Vector3.zero, lights); Assert.AreEqual(0, grid.DirtyTexelsLastFrame);
+                grid.haze = 0.3f; grid.Tick(Vector3.zero, lights);
+                Assert.Greater(grid.DirtyTexelsLastFrame, 0, "turning haze on fills the texture");
+                // Traced bounce: the face-light cache is drawn once (and again only when something changes); a slice of
+                // probes is traced every frame.
+                grid.haze = 0f; grid.tracedBounce = true; grid.Tick(Vector3.zero, lights);
+                Assert.AreEqual(3, grid.BounceDispatchesLastFrame, "face light + probe copy + probe trace");
+                grid.Tick(Vector3.zero, lights);
+                Assert.AreEqual(2, grid.BounceDispatchesLastFrame, "unchanged lights: only the probes");
+                l.colorAll *= 0.5f; lights[0] = l; grid.Tick(Vector3.zero, lights);
+                Assert.AreEqual(3, grid.BounceDispatchesLastFrame, "a changed light redraws a slice of the face cache");
+                Assert.Greater(grid.ProbeFrames, 2);
             }
             finally { var grid = root.GetComponent<LightGrid>(); if (grid && grid.Ready) typeof(LightGrid).GetMethod("OnDisable", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(grid, null); Object.DestroyImmediate(root); }
         }

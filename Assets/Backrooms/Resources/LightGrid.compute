@@ -5,6 +5,9 @@
 #pragma kernel Direct
 #pragma kernel BounceSource
 #pragma kernel BounceDiffuse
+#pragma kernel FaceLight
+#pragma kernel ProbeCopy
+#pragma kernel ProbeTrace
 
 #include "Assets/Backrooms/Shaders/LightGridCommon.hlsl"
 #include "Assets/Backrooms/Shaders/LightGridOcclusion.hlsl"
@@ -19,7 +22,7 @@ struct GridLight
 };
 
 RWTexture3D<float4> _GridA;          // rgb: irradiance facing the lights, a: luminance-weighted direction y
-RWTexture3D<float4> _GridB;          // x, y: luminance-weighted direction x and z
+RWTexture3D<float4> _GridB;          // x, y: luminance-weighted direction x and z; z: all light's luminance (haze), w: 0
 StructuredBuffer<uint> _Occ;         // layout occupancy: [storey][z][x], toroidal
 StructuredBuffer<GridLight> _Lights;
 StructuredBuffer<uint2> _Tiles;      // (first index, count) per tile
@@ -29,6 +32,7 @@ int4 _GridSize;          // texels x, y, z; occupancy size (cells)
 int4 _BoxMin, _BoxSize;  // absolute texel coordinates of the box to fill
 int4 _TileInfo;          // texels per tile, tiles per axis
 float4 _GridMisc;        // x: storey pitch, y: floor albedo (bounce), z: bounce spread, w: near/far split radius (0 = whole light)
+float4 _GridMisc2;       // x: haze on (0/1)
 int4 _CellMin;           // absolute cell of the bounce window's corner (x, z)
 
 struct SurfaceRecord { float4 floor; float4 wall; float4 ceiling; };
@@ -163,17 +167,22 @@ void Direct(uint3 id : SV_DispatchThreadID)
     uint st = StoreyAt(Q.y);
     uint o = Occ((int2)floor(Q.xz / LG_CELL), st);
     float rel = Q.y - st * _GridMisc.x;
+    bool hazeOn = _GridMisc2.x > 0.5;
+    float haze = 0;
     if (LG_Loaded(o) && rel <= LG_Ceiling(o))
     {
         uint2 range = _Tiles[TileIndex(t.xz)];
         for (uint i = 0; i < range.y; i++)
         {
             GridLight L = _Lights[_TileLights[range.x + i]];
-            if (dot(L.color, L.color) <= 0.0) continue;
+            // Haze sees every fixture's whole light (real lights too); the texture only this grid's share.
+            bool wantHaze = hazeOn && dot(L.colorAll, L.colorAll) > 0.0;
+            if (dot(L.color, L.color) <= 0.0 && !wantHaze) continue;
             // Per-pixel mode with a near/far split: only the far part of each fixture's light is stored here
             // (the material shader adds the near part exactly; the weights match LGrid_NearWeight).
             float far = _GridMisc.w > 0 ? smoothstep(_GridMisc.w - 1, _GridMisc.w + 1, distance(L.pos, Q)) : 1;
-            if (far <= 0) continue;
+            if (dot(L.color, L.color) <= 0.0) far = 0;
+            if (far <= 0 && !wantHaze) continue;
             // A fixture's pool is narrow and very bright near the light (a wall pool is only a texel or two wide at
             // its top), so a single sample per 0.6 m texel aliases into boxes. The falloff is averaged over eight
             // points inside the texel instead; line of sight is still tested once (conservative, at the centre).
@@ -185,7 +194,15 @@ void Direct(uint3 id : SV_DispatchThreadID)
                 float a = Attenuation(L, Q + off, tl);
                 attSum += a; dirSum += a * tl;
             }
-            if (attSum <= 8e-6 || !VisibleSolid(L.pos, Q)) continue;
+            if (attSum <= 8e-6) continue;
+            if (far <= 0)
+            {
+                // Haze only: one line of sight is enough (a few cm of erosion at corners does not show in the air).
+                if (Visible(L.pos, Q)) haze += dot(L.colorAll, LUM) * attSum * 0.125;
+                continue;
+            }
+            if (!VisibleSolid(L.pos, Q)) continue;
+            if (wantHaze) haze += dot(L.colorAll, LUM) * attSum * 0.125;
             float att = attSum * 0.125 * far;
             dirSum *= far;
             float3 e = L.color * att;
@@ -195,6 +212,7 @@ void Direct(uint3 id : SV_DispatchThreadID)
             B.xy += lum * dirSum.xz * 0.125;
         }
     }
+    B.z = haze;
     _GridA[w] = A;
     _GridB[w] = B;
 }
@@ -295,4 +313,321 @@ void BounceDiffuse(uint3 id : SV_DispatchThreadID)
     _BounceOut[wi] = float4(floorResult, 1);
     _WallOut[wi] = float4(wallResult, 1);
     _DirectionOut[wi] = lerp(ownDirection, directionAcc / count, _GridMisc.z);
+}
+
+// ================= Traced bounce (F5 > LIGHT > Traced bounce) =================
+// Two probes per 1.2 m layout cell and storey (low and high, see LG_ProbeHeights), each an L1 spherical harmonic of the
+// light arriving from every direction. Each frame a quarter of them cast 64 rays through the layout (walls, shut doors,
+// floors, ceilings, header beams, nearby furniture boxes) and read what each ray hits from a cache of the light on every
+// cell's floor, ceiling and walls (FaceLight: the fixtures' direct light times the surface's colour), plus that surface's own
+// bounce from last frame's probes (more bounces). New estimates blend with the old (temporal accumulation); a probe that
+// changes a lot blends faster. Walls lie between probes, so nothing traced leaks through them, and the shader keeps its
+// sample on the room's own side of every wall when it interpolates (LGrid_ProbeIrradiance).
+
+float4 _ProbeParams;     // x: frame, y: hysteresis, z: second bounce (0..1), w: colour bleed (0..2)
+int4 _ProbeInfo;         // x: slice count, y: rays per thread, z: this frame's probe slice, w: this frame's face slice (-1 = all)
+RWStructuredBuffer<float4> _FaceLightOut;    // per cell and storey, 12 entries (see FaceSlot)
+StructuredBuffer<float4> _FaceLightIn;
+Texture2D<float4> _ProbePrevR, _ProbePrevG, _ProbePrevB;
+RWTexture2D<float4> _ProbeOutR, _ProbeOutG, _ProbeOutB;
+RWStructuredBuffer<uint> _ProbeKey;
+
+// FaceLight entries: 0 floor, 1 ceiling, 2..5 walls low (west, east, south, north), 6..9 walls high, 10 floor irradiance.
+uint FaceIndex(int2 cell, uint storey)
+{
+    int n = _GridSize.w;
+    return ((storey * (uint)n + (uint)Wrap(cell.y, n)) * (uint)n + (uint)Wrap(cell.x, n)) * 12u;
+}
+
+uint ProbeKey(int2 cell, uint storey) { return (((uint)cell.x * 73856093u) ^ ((uint)cell.y * 19349663u) ^ (storey * 83492791u)) | 1u; }
+
+float3 Bleed(float3 albedo)
+{
+    float grey = dot(albedo, LUM);
+    return max(lerp(grey.xxx, albedo, _ProbeParams.w), 0);
+}
+
+bool HasFloor(int2 cell, uint storey, uint o) { return !(storey == 1u && (o & LG_NOFLOOR) != 0u && (Occ(cell, 0u) & LG_OPENABOVE) != 0u); }
+bool HasCeiling(uint storey, uint o) { return !(storey == 0u && (o & LG_OPENABOVE) != 0u); }
+
+[numthreads(8, 8, 1)]
+void FaceLight(uint3 id : SV_DispatchThreadID)
+{
+    int n = _GridSize.w;
+    if ((int)id.x >= n || (int)id.y >= n || id.z > 1) return;
+    if (_ProbeInfo.w >= 0 && (int)((id.x + id.y * 3u) & 3u) != _ProbeInfo.w) return;
+    uint storey = id.z;
+    int2 cell = _CellMin.xy + (int2)id.xy;
+    uint o = Occ(cell, storey);
+    uint index = FaceIndex(cell, storey);
+    float4 face[12];
+    [unroll] for (int k = 0; k < 12; k++) face[k] = 0;
+    if (LG_Loaded(o))
+    {
+        SurfaceRecord material = _Surfaces[index / 12u];
+        float3 floorAlbedo = Bleed(material.floor.rgb), wallAlbedo = Bleed(material.wall.rgb), ceilingAlbedo = Bleed(material.ceiling.rgb);
+        float base = storey * _GridMisc.x, ceiling = LG_Ceiling(o);
+        float3 centre = float3((cell.x + 0.5) * LG_CELL, base, (cell.y + 0.5) * LG_CELL);
+        uint2 lights = _Tiles[TileIndex(cell * 2)];
+        if (HasFloor(cell, storey, o))
+        {
+            float3 E = SurfaceLight(centre + float3(0, 0.05, 0), float3(0, 1, 0), lights);
+            face[0] = float4(E * floorAlbedo, 1); face[10] = float4(E, 1);
+        }
+        if (HasCeiling(storey, o))
+            face[1] = float4(SurfaceLight(centre + float3(0, ceiling - 0.05, 0), float3(0, -1, 0), lights) * ceilingAlbedo, 1);
+        [unroll] for (int side = 0; side < 4; side++)
+        {
+            int2 offset = side == 0 ? int2(-1, 0) : side == 1 ? int2(1, 0) : side == 2 ? int2(0, -1) : int2(0, 1);
+            uint owner = side == 0 || side == 2 ? o : Occ(cell + offset, storey);
+            uint kind = side < 2 ? LG_WestKind(owner) : LG_SouthKind(owner);
+            float top = side < 2 ? LG_WestTop(owner) : LG_SouthTop(owner);
+            float3 towardWall = float3(offset.x, 0, offset.y);
+            float lowY = ceiling * 0.3, highY = ceiling * 0.75;
+            if (kind != LG_EDGE_WALL)
+            {
+                // An opening: only the header above it is a surface.
+                if (kind == LG_EDGE_OPEN || top >= ceiling - 0.05) continue;
+                lowY = highY = 0.5 * (top + ceiling);
+            }
+            float3 at = centre + towardWall * (LG_CELL * 0.5 - 0.05);
+            float3 low = SurfaceLight(at + float3(0, lowY, 0), -towardWall, lights) * wallAlbedo;
+            float3 high = lowY == highY ? low : SurfaceLight(at + float3(0, highY, 0), -towardWall, lights) * wallAlbedo;
+            face[2 + side] = float4(low, 1); face[6 + side] = float4(high, 1);
+        }
+    }
+    [unroll] for (int j = 0; j < 12; j++) _FaceLightOut[index + j] = face[j];
+}
+
+uint ProbeSlab(uint storey, uint layer) { return storey * 2u + layer; }
+uint2 ProbeTexel(int2 cell, uint slab) { int n = _GridSize.w; return uint2(Wrap(cell.x, n), Wrap(cell.y, n) + slab * n); }
+
+[numthreads(8, 8, 1)]
+void ProbeCopy(uint3 id : SV_DispatchThreadID)
+{
+    int n = _GridSize.w;
+    if ((int)id.x >= n || (int)id.y >= n || id.z > 3) return;
+    uint slab = id.z, storey = slab >> 1;
+    int2 cell = _CellMin.xy + (int2)id.xy;
+    uint2 texel = ProbeTexel(cell, slab);
+    // A probe holds light only for the cell it was traced in (the window wraps): anything else is dark until traced.
+    bool valid = _ProbeKey[(slab * (uint)n + texel.y - slab * n) * (uint)n + texel.x] == ProbeKey(cell, storey) && LG_Loaded(Occ(cell, storey));
+    _ProbeOutR[texel] = valid ? _ProbePrevR[texel] : 0;
+    _ProbeOutG[texel] = valid ? _ProbePrevG[texel] : 0;
+    _ProbeOutB[texel] = valid ? _ProbePrevB[texel] : 0;
+}
+
+// Irradiance (URP units: what multiplies the albedo) from an L1 radiance SH per colour channel.
+float3 EvalSH(float4 r, float4 g, float4 b, float3 N)
+{
+    float4 basis = float4(0.282095, 0.325735 * N);   // Y00 and (2/3) Y1 n
+    return max(float3(dot(r, basis), dot(g, basis), dot(b, basis)), 0);
+}
+
+float3 PrevIrradiance(int2 cell, uint storey, float y, float3 N)
+{
+    uint o = Occ(cell, storey);
+    if (!LG_Loaded(o)) return 0;
+    float2 h = LG_ProbeHeights(o, storey * _GridMisc.x);
+    float t = saturate((y - h.x) / max(h.y - h.x, 0.1));
+    uint2 a = ProbeTexel(cell, ProbeSlab(storey, 0)), b = ProbeTexel(cell, ProbeSlab(storey, 1));
+    float3 e0 = EvalSH(_ProbePrevR[a], _ProbePrevG[a], _ProbePrevB[a], N);
+    float3 e1 = EvalSH(_ProbePrevR[b], _ProbePrevG[b], _ProbePrevB[b], N);
+    return lerp(e0, e1, t);
+}
+
+// Nearest furniture box along a ray (boxes binned for the probe's tile), ignoring a box the ray starts inside.
+bool FurnitureHit(float3 P, float3 d, float maxT, out float tHit, out float3 normal)
+{
+    tHit = maxT; normal = 0;
+    if (_LocalOccInfo.z < 0.5) return false;
+    uint2 range = LocalOccRange(P);
+    bool hit = false;
+    [loop] for (uint i = 0; i < range.y; i++)
+    {
+        LocalOccBox box = _LocalOccBoxes[_LocalOccIndices[range.x + i]];
+        float3 rel = box.centre.xyz - P;
+        float along = dot(rel, d);
+        if (along < -box.centre.w || along - box.centre.w > tHit || dot(rel, rel) - along * along > box.centre.w * box.centre.w) continue;
+        float2 span = LocalOccIntersection(P, d, box);
+        if (span.x <= 0.02 || span.y < span.x || span.x >= tHit) continue;
+        tHit = span.x; hit = true;
+        float3 local = LocalOccRotate(P + d * span.x - box.centre.xyz, box.inverseRotation) / max(box.halfSize.xyz, 1e-4);
+        float3 a = abs(local);
+        float3 n = a.x > a.y && a.x > a.z ? float3(sign(local.x), 0, 0) : a.y > a.z ? float3(0, sign(local.y), 0) : float3(0, 0, sign(local.z));
+        float4 q = box.inverseRotation; q.xyz = -q.xyz;              // back to world
+        normal = LocalOccRotate(n, q);
+    }
+    return hit;
+}
+
+// Walks a ray through the layout's cells from P (inside a loaded cell). Returns what it hit and the light leaving it.
+float3 TraceRadiance(float3 P, float3 d, uint storey)
+{
+    const float maxT = 18.0;
+    float pitch = _GridMisc.x;
+    int2 c = (int2)floor(P.xz / LG_CELL);
+    int2 stp = int2(d.x >= 0 ? 1 : -1, d.z >= 0 ? 1 : -1);
+    float2 dxz = float2(abs(d.x) > 1e-6 ? d.x : 1e-6 * stp.x, abs(d.z) > 1e-6 ? d.z : 1e-6 * stp.y);
+    float2 tDelta = LG_CELL / abs(dxz);
+    float2 tMax = ((float2(c) + float2(stp > 0)) * LG_CELL - P.xz) / dxz;
+    float furnitureT; float3 furnitureN;
+    bool furniture = FurnitureHit(P, d, 4.0, furnitureT, furnitureN);
+    float3 albedoFurniture = Bleed(float3(0.32, 0.3, 0.28));
+    [loop] for (int i = 0; i < 40; i++)
+    {
+        uint o = Occ(c, storey);
+        if (!LG_Loaded(o)) return 0;
+        float base = storey * pitch, ceiling = base + LG_Ceiling(o);
+        float tExit = min(tMax.x, tMax.y);
+        uint index = FaceIndex(c, storey);
+        // Furniture in front of everything in this cell.
+        if (furniture && furnitureT <= tExit)
+        {
+            float3 X = P + d * furnitureT;
+            float up = saturate(0.5 + 0.5 * furnitureN.y);
+            float3 direct = _FaceLightIn[index + 10].rgb * up * up * albedoFurniture;
+            return direct + albedoFurniture * PrevIrradiance(c, storey, X.y, furnitureN) * _ProbeParams.z;
+        }
+        // Floor or ceiling of this cell (or through it, to the other storey, at a well).
+        if (d.y < 0)
+        {
+            float tf = (base - P.y) / d.y;
+            if (tf <= tExit)
+            {
+                if (HasFloor(c, storey, o))
+                {
+                    if (tf > maxT) return 0;
+                    float3 albedo = Bleed(_Surfaces[index / 12u].floor.rgb);
+                    return _FaceLightIn[index].rgb + albedo * PrevIrradiance(c, storey, base + 0.05, float3(0, 1, 0)) * _ProbeParams.z;
+                }
+                storey = 0u; continue;
+            }
+        }
+        else if (d.y > 0)
+        {
+            float tc = ((HasCeiling(storey, o) ? ceiling : pitch) - P.y) / d.y;
+            if (tc <= tExit)
+            {
+                if (HasCeiling(storey, o))
+                {
+                    if (tc > maxT) return 0;
+                    float3 albedo = Bleed(_Surfaces[index / 12u].ceiling.rgb);
+                    return _FaceLightIn[index + 1].rgb + albedo * PrevIrradiance(c, storey, ceiling - 0.05, float3(0, -1, 0)) * _ProbeParams.z;
+                }
+                if (storey == 1u) return 0;
+                storey = 1u; continue;
+            }
+        }
+        if (tExit > maxT) return 0;
+        // Across a cell edge: a wall, a header above an opening, or on into the next cell.
+        bool stepX = tMax.x < tMax.y;
+        float y = P.y + d.y * tExit;
+        int2 next = c + (stepX ? int2(stp.x, 0) : int2(0, stp.y));
+        int2 ownerCell = stepX ? int2(max(c.x, next.x), c.y) : int2(c.x, max(c.y, next.y));
+        uint owner = Occ(ownerCell, storey);
+        if (!LG_Loaded(owner)) return 0;
+        uint kind = stepX ? LG_WestKind(owner) : LG_SouthKind(owner);
+        float top = (stepX ? LG_WestTop(owner) : LG_SouthTop(owner)) + base;
+        if (kind == LG_EDGE_WALL || y > top + 0.02)
+        {
+            int side = stepX ? (stp.x < 0 ? 0 : 1) : (stp.y < 0 ? 2 : 3);
+            float rel = y - base, h = LG_Ceiling(o);
+            float t = saturate((rel - 0.3 * h) / max(0.45 * h, 0.1));
+            float3 albedo = Bleed(_Surfaces[index / 12u].wall.rgb);
+            float3 wallN = stepX ? float3(-stp.x, 0, 0) : float3(0, 0, -stp.y);
+            return lerp(_FaceLightIn[index + 2 + side].rgb, _FaceLightIn[index + 6 + side].rgb, t)
+                 + albedo * PrevIrradiance(c, storey, y, wallN) * _ProbeParams.z;
+        }
+        c = next;
+        if (stepX) tMax.x += tDelta.x; else tMax.y += tDelta.y;
+    }
+    return 0;
+}
+
+float3 SphericalFibonacci(float i, float count)
+{
+    float phi = 6.2831853 * frac(i * 0.6180339887);
+    float cosTheta = 1.0 - (2.0 * i + 1.0) / count;
+    float sinTheta = sqrt(saturate(1.0 - cosTheta * cosTheta));
+    return float3(cos(phi) * sinTheta, cosTheta, sin(phi) * sinTheta);
+}
+
+uint Hash(uint x) { x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
+
+float3x3 RandomRotation(uint seed)
+{
+    float u1 = (Hash(seed) & 0xffffu) / 65535.0, u2 = (Hash(seed * 3u + 1u) & 0xffffu) / 65535.0, u3 = (Hash(seed * 7u + 2u) & 0xffffu) / 65535.0;
+    // Uniform random unit quaternion (Shoemake).
+    float4 q = float4(sqrt(1 - u1) * sin(6.2831853 * u2), sqrt(1 - u1) * cos(6.2831853 * u2), sqrt(u1) * sin(6.2831853 * u3), sqrt(u1) * cos(6.2831853 * u3));
+    float x = q.x, y = q.y, z = q.z, w = q.w;
+    return float3x3(1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y),
+                    2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x),
+                    2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y));
+}
+
+groupshared float4 gsR[32], gsG[32], gsB[32];
+
+[numthreads(32, 1, 1)]
+void ProbeTrace(uint3 group : SV_GroupID, uint thread : SV_GroupIndex)
+{
+    int n = _GridSize.w;
+    uint slices = (uint)_ProbeInfo.x;
+    uint perRow = (uint)n / slices;
+    // Group g updates one probe out of each run of 'slices' along x; the choice moves on every frame and differs per row.
+    uint g = group.x;
+    uint row = g / perRow;                               // over z and slabs
+    uint x = (g % perRow) * slices + ((uint)_ProbeInfo.z + row) % slices;
+    uint z = row % (uint)n, slab = row / (uint)n;
+    uint storey = slab >> 1, layer = slab & 1u;
+    int2 cell = _CellMin.xy + int2(x, z);
+    uint o = Occ(cell, storey);
+    uint2 texel = ProbeTexel(cell, slab);
+    uint keyIndex = (slab * (uint)n + (texel.y - slab * n)) * (uint)n + texel.x;
+    float4 r = 0, gg = 0, b = 0;
+    bool loaded = LG_Loaded(o);
+    if (loaded)
+    {
+        float2 h = LG_ProbeHeights(o, storey * _GridMisc.x);
+        float3 P = float3((cell.x + 0.5) * LG_CELL, layer == 0 ? h.x : h.y, (cell.y + 0.5) * LG_CELL);
+        float3x3 spin = RandomRotation(keyIndex * 9781u + (uint)_ProbeParams.x * 6271u);
+        uint rays = (uint)_ProbeInfo.y, count = rays * 32u;
+        for (uint k = 0; k < rays; k++)
+        {
+            float3 d = mul(spin, SphericalFibonacci(thread * rays + k, count));
+            float3 L = TraceRadiance(P, d, storey);
+            float4 basis = float4(0.282095, 0.488603 * d);
+            r += L.r * basis; gg += L.g * basis; b += L.b * basis;
+        }
+    }
+    gsR[thread] = r; gsG[thread] = gg; gsB[thread] = b;
+    GroupMemoryBarrierWithGroupSync();
+    [unroll] for (uint s = 16; s > 0; s >>= 1)
+    {
+        if (thread < s) { gsR[thread] += gsR[thread + s]; gsG[thread] += gsG[thread + s]; gsB[thread] += gsB[thread + s]; }
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if (thread != 0) return;
+    if (!loaded)
+    {
+        _ProbeOutR[texel] = 0; _ProbeOutG[texel] = 0; _ProbeOutB[texel] = 0; _ProbeKey[keyIndex] = 0;
+        return;
+    }
+    float scale = 12.566371 / (32.0 * _ProbeInfo.y);
+    float4 nr = gsR[0] * scale, ng = gsG[0] * scale, nb = gsB[0] * scale;
+    uint key = ProbeKey(cell, storey);
+    float hysteresis = _ProbeParams.y;
+    if (_ProbeKey[keyIndex] != key) hysteresis = 0;
+    else
+    {
+        // A big change (a light switched, a door opened) blends in faster.
+        float before = dot(float3(_ProbePrevR[texel].x, _ProbePrevG[texel].x, _ProbePrevB[texel].x), LUM);
+        float now = dot(float3(nr.x, ng.x, nb.x), LUM);
+        float change = abs(now - before) / max(max(now, before), 1e-3);
+        hysteresis *= 1 - smoothstep(0.25, 0.8, change) * 0.6;
+    }
+    _ProbeOutR[texel] = lerp(nr, _ProbePrevR[texel], hysteresis);
+    _ProbeOutG[texel] = lerp(ng, _ProbePrevG[texel], hysteresis);
+    _ProbeOutB[texel] = lerp(nb, _ProbePrevB[texel], hysteresis);
+    _ProbeKey[keyIndex] = key;
 }

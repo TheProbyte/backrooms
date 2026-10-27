@@ -157,6 +157,8 @@ namespace Backrooms.Generation
             to.contrast = from.contrast; to.roomFill = from.roomFill; to.perPixelDirect = from.perPixelDirect;
             to.exactDistance = from.exactDistance; to.normalOffset = from.normalOffset; to.contactOcclusion = from.contactOcclusion;
             to.texelBudget = from.texelBudget;
+            to.tracedBounce = from.tracedBounce; to.colourBleed = from.colourBleed; to.multiBounce = from.multiBounce;
+            to.raysPerThread = from.raysPerThread; to.hysteresis = from.hysteresis; to.haze = from.haze;
         }
 
         void MarkGridDirty(Vector3 p, float radius)

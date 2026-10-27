@@ -6,7 +6,11 @@ using Backrooms.Generation;
 
 namespace Backrooms.Camcorder
 {
-    /// <summary>Performance and quality options (F5 > GRAPHICS). Saved separately from the camcorder look.</summary>
+    /// <summary>Marks a lighting look field: copied by the LOOK presets, "my look" and reset (not quality or speed settings).</summary>
+    [AttributeUsage(AttributeTargets.Field)]
+    public class LookAttribute : Attribute { }
+
+    /// <summary>Performance and quality options (F5 > GRAPHICS) and the lighting look (F5 > LIGHT). Saved separately from the camcorder look.</summary>
     [Serializable]
     public class GraphicsOptions
     {
@@ -23,36 +27,124 @@ namespace Backrooms.Camcorder
         public bool antiAliasing = true;
 
         // F5 > LIGHTING (multipliers are relative to the scene's own light settings)
-        public float lightStrength = 1f;      // all fixtures
-        public float lightReach = 1f;         // how far each fixture's light travels
-        public float tallBoost = 0.15f;        // extra output for fixtures hung high above the floor
-        public float fillLight = 1f;          // soft bounced light from lit floors
-        public float softness = 0.15f;        // wrap: how far light bends round surfaces facing away
-        public float poolSmoothing = 0.5f;   // rounds off boxy light pools of far fixtures
-        public float darkSpots = 0.35f;       // makes weakly lit areas darker
-        public float shadowDarkness = 1f;     // real-light shadows
+        [Look] public float lightStrength = 1f;      // all fixtures
+        [Look] public float lightReach = 1f;         // how far each fixture's light travels
+        [Look] public float tallBoost = 0.15f;        // extra output for fixtures hung high above the floor
+        [Look] public float fillLight = 1f;          // soft bounced light from lit floors
+        [Look] public float softness = 0.15f;        // wrap: how far light bends round surfaces facing away
+        [Look] public float poolSmoothing = 0.5f;   // rounds off boxy light pools of far fixtures
+        [Look] public float darkSpots = 0.35f;       // makes weakly lit areas darker
+        [Look] public float shadowDarkness = 1f;     // real-light shadows
         public int farLights = 0;             // extra real (unshadowed) lights beyond the shadowed ones; 0 when per-pixel distant light is on
         public bool perPixelFar = true;       // distant fixtures are lit exactly per pixel (no visible grid texels)
         public float exactLightRadius = 4.5f; // ...on surfaces within this distance of each fixture; its weak far light comes from the grid. 0 = everywhere
         public int version;                   // settings format (see Load)
-        public float flicker = 0.35f;         // faulty tubes: how often and how deep they stutter (1 = the original amount)
-        public float roomFill = 0.6f;         // bounced light that evens out walls (a stand-in for global illumination)
-        public float fixtureSpread = 0.8f;    // how broadly ceiling fixtures throw light (0 = lamp-like cone, 1 = diffuse troffer)
-        public float contactOcclusion = 0.65f;
+        [Look] public float flicker = 0.35f;         // faulty tubes: how often and how deep they stutter (1 = the original amount)
+        [Look] public float roomFill = 0.6f;         // bounced light that evens out walls (the older bounce field only)
+        [Look] public float fixtureSpread = 0.8f;    // how broadly ceiling fixtures throw light (0 = lamp-like cone, 1 = diffuse troffer)
+        [Look] public float contactOcclusion = 0.65f;
         public bool indoorReflections = true;
-        public float panelSize = 1f;           // finite emitter size relative to the visible fitting
+        [Look] public float panelSize = 1f;           // finite emitter size relative to the visible fitting
+
+        // F5 > LIGHT, the look (2026-10-26)
+        [Look] public float colourTemp = 4500f;      // kelvin: every fixture's colour (lamps and strips shift with the tubes); 4500 = as built
+        [Look] public float colourTint = 0f;         // -1 magenta .. +1 green (tired fluorescent tubes run green)
+        [Look] public float panelGlow = 1f;          // brightness of the fittings themselves as you see them (not the light they throw)
+        [Look] public float colourBleed = 1f;        // how much surfaces tint the light they bounce (0 = grey bounce, 1 = their own colour)
+        [Look] public float multiBounce = 0.7f;      // traced bounce: how much of the bounced light bounces again
+        [Look] public float shadowSoftness = 1f;     // soft shadows that harden where things touch (0 = the plain soft filter)
+        [Look] public float contactShadows = 0.6f;   // short screen-space shadows where things touch (their own depth pass)
+        [Look] public float haze = 0.25f;            // thin haze in the air, lit by the lights (0 = clear)
+        [Look] public float poolSun = 1f, poolSky = 1f, poolBounce = 1f, poolWarmth = 0f;   // the Poolrooms (their own light)
+        public bool areaLights = true;               // ceiling panels lit as rectangles (a method, not part of a look)
+        public bool tracedBounce = true;             // bounce light traced through the rooms (off: the older bounce field)
+        public int lookPreset = 0;                   // the LOOK preset last applied (-1: changed since, -2: my look)
+
+        static System.Reflection.FieldInfo[] s_lookFields;
+        static System.Reflection.FieldInfo[] LookFields => s_lookFields ??= Array.FindAll(typeof(GraphicsOptions).GetFields(),
+            f => Attribute.IsDefined(f, typeof(LookAttribute)));
+
+        /// <summary>Copies every look field (not quality settings) from another set of options.</summary>
+        public void CopyLook(GraphicsOptions from) { foreach (var f in LookFields) f.SetValue(this, f.GetValue(from)); }
+
         public void ResetLighting()
         {
             var d = new GraphicsOptions();
-            lightStrength = d.lightStrength; lightReach = d.lightReach; tallBoost = d.tallBoost; fillLight = d.fillLight;
-            softness = d.softness; poolSmoothing = d.poolSmoothing; darkSpots = d.darkSpots; shadowDarkness = d.shadowDarkness;
-            contactOcclusion = d.contactOcclusion; indoorReflections = d.indoorReflections; panelSize = d.panelSize; farLights = d.farLights; flicker = d.flicker; fixtureSpread = d.fixtureSpread; roomFill = d.roomFill; exactLightRadius = d.exactLightRadius;
+            CopyLook(d);
+            indoorReflections = d.indoorReflections; farLights = d.farLights; exactLightRadius = d.exactLightRadius;
+            areaLights = d.areaLights; tracedBounce = d.tracedBounce; lookPreset = 0;
         }
         /// <summary>Evenly lit and pale, like the found-footage references: little contrast, a lot of fill, soft shadows.</summary>
-        public void ApplyEvenLighting()
+        public void ApplyEvenLighting() => ApplyLook(1);
+
+        public static readonly string[] LookNames = { "STILL RECORDING", "EVEN & PALE", "DIM & MOODY", "HARSH TUBES", "WARM & OLD" };
+        public static readonly string[] LookTips =
         {
-            lightStrength = 1.35f; lightReach = 1.3f; tallBoost = 0.3f; fillLight = 2f; softness = 0.6f;
-            poolSmoothing = 0.8f; darkSpots = 0f; shadowDarkness = 0.6f; fixtureSpread = 1f; roomFill = 1f;
+            "The game's own look: fluorescent panels, soft bounced light, deep corners, a touch of haze.",
+            "Evenly lit and pale, like the found-footage references: little contrast, a lot of fill, soft shadows.",
+            "Dimmer pools with dark gaps between them, heavier haze, warm-green old tubes.",
+            "Cold, hard, slightly green office light: tight bright pools, crisp shadows, little haze.",
+            "Warm and dusty: yellowed tubes, a lot of warm bounce off the carpet and walls, thick air.",
+        };
+
+        /// <summary>A built-in look: the defaults with a few changes.</summary>
+        public void ApplyLook(int i)
+        {
+            CopyLook(new GraphicsOptions());
+            switch (i)
+            {
+                case 1:
+                    lightStrength = 1.35f; lightReach = 1.3f; tallBoost = 0.3f; fillLight = 2f; softness = 0.6f;
+                    poolSmoothing = 0.8f; darkSpots = 0f; shadowDarkness = 0.6f; fixtureSpread = 1f; roomFill = 1f;
+                    multiBounce = 0.9f; shadowSoftness = 1.4f; contactShadows = 0.35f; haze = 0.15f; colourTemp = 4800f;
+                    break;
+                case 2:
+                    lightStrength = 0.75f; lightReach = 0.85f; darkSpots = 0.7f; fillLight = 0.75f; roomFill = 0.35f;
+                    shadowSoftness = 1.2f; contactShadows = 0.8f; haze = 0.55f; colourTemp = 3700f; colourTint = 0.2f; panelGlow = 0.85f;
+                    multiBounce = 0.55f;
+                    break;
+                case 3:
+                    lightStrength = 1.15f; fixtureSpread = 0.45f; darkSpots = 0.5f; fillLight = 0.8f; shadowSoftness = 0.45f;
+                    contactShadows = 0.85f; haze = 0.1f; colourTemp = 5600f; colourTint = 0.35f; panelGlow = 1.35f; softness = 0.05f;
+                    break;
+                case 4:
+                    lightStrength = 0.95f; fillLight = 1.3f; colourBleed = 1.25f; multiBounce = 0.85f; haze = 0.45f;
+                    colourTemp = 3500f; colourTint = 0.08f; darkSpots = 0.3f; roomFill = 0.75f; shadowSoftness = 1.3f;
+                    break;
+            }
+            lookPreset = i;
+        }
+
+        const string MyLookKey = "Backrooms.MyLook.v1";
+        public static bool HasMyLook => PlayerPrefs.HasKey(MyLookKey);
+        /// <summary>Keeps the current look (every look field) as "my look".</summary>
+        public void SaveMyLook() { PlayerPrefs.SetString(MyLookKey, JsonUtility.ToJson(this)); PlayerPrefs.Save(); }
+        /// <summary>Back to the look kept with <see cref="SaveMyLook"/> (quality settings are not touched).</summary>
+        public bool LoadMyLook()
+        {
+            var j = PlayerPrefs.GetString(MyLookKey, "");
+            if (string.IsNullOrEmpty(j)) return false;
+            try { CopyLook(JsonUtility.FromJson<GraphicsOptions>(j)); lookPreset = -2; return true; }
+            catch (Exception e) { Debug.LogWarning("[Backrooms] Could not load my look: " + e.Message); return false; }
+        }
+
+        /// <summary>Colour of a fixture after the look's colour temperature and tint, with its brightness kept.</summary>
+        public static Color ShiftColour(Color c, float kelvin, float tint)
+        {
+            var s = ColourShift(kelvin, tint);
+            return new Color(c.r * s.r, c.g * s.g, c.b * s.b, c.a);
+        }
+
+        /// <summary>The look's colour shift as a multiplier (luminance 1; white at 4500 K and no tint).</summary>
+        public static Color ColourShift(float kelvin, float tint)
+        {
+            var k = Mathf.CorrelatedColorTemperatureToRGB(Mathf.Clamp(kelvin, 1500f, 12000f));
+            var b = Mathf.CorrelatedColorTemperatureToRGB(4500f);
+            var s = new Color(k.r / b.r, k.g / b.g, k.b / b.b);
+            tint = Mathf.Clamp(tint, -1f, 1f);
+            s = new Color(s.r * (1f - 0.08f * tint), s.g * (1f + 0.12f * tint), s.b * (1f - 0.1f * tint));
+            float lum = 0.2126f * s.r + 0.7152f * s.g + 0.0722f * s.b;
+            return s * (1f / Mathf.Max(lum, 1e-3f));
         }
 
         const string Key = "Backrooms.Graphics.v1";
@@ -108,7 +200,12 @@ namespace Backrooms.Camcorder
         Camera _cam;
         float _origScale = -1f;
         float _baseTube, _baseLamp, _baseTubeRange, _baseLampRange;
+        Color _baseTubeColour, _baseLampColour, _baseStripColour;
         bool _haveBase;
+        PoolWorld _pool;
+        float _poolSun, _poolBounce, _poolSky; Color _poolSunColour, _poolAmbient;
+        Vector4 _poolApplied = new Vector4(-1, -1, -1, -1);
+        static readonly int LookId = Shader.PropertyToID("_BRLook"), EmissionTintId = Shader.PropertyToID("_BREmissionTint");
         // SSAO on every renderer: the player's and the crawl holes' views (so the view through a hole has the same AO
         // as the room has once you are through it).
         readonly System.Collections.Generic.List<(ScriptableRendererFeature f, bool orig)> _ssao = new System.Collections.Generic.List<(ScriptableRendererFeature, bool)>();
@@ -181,8 +278,14 @@ namespace Backrooms.Camcorder
                 if (!_haveBase)
                 {
                     _baseTube = _lights.tubeIntensity; _baseLamp = _lights.lampIntensity;
-                    _baseTubeRange = _lights.tubeRange; _baseLampRange = _lights.lampRange; _haveBase = true;
+                    _baseTubeRange = _lights.tubeRange; _baseLampRange = _lights.lampRange;
+                    _baseTubeColour = _lights.tubeColor; _baseLampColour = _lights.lampColor; _baseStripColour = _lights.stripColor;
+                    _haveBase = true;
                 }
+                // The look's colour temperature and tint shift every fixture together (brightness kept).
+                _lights.tubeColor = GraphicsOptions.ShiftColour(_baseTubeColour, o.colourTemp, o.colourTint);
+                _lights.lampColor = GraphicsOptions.ShiftColour(_baseLampColour, o.colourTemp, o.colourTint);
+                _lights.stripColor = GraphicsOptions.ShiftColour(_baseStripColour, o.colourTemp, o.colourTint);
                 _lights.tubeIntensity = _baseTube * o.lightStrength;
                 _lights.lampIntensity = _baseLamp * o.lightStrength;
                 _lights.tubeRange = _baseTubeRange * o.lightReach;
@@ -203,6 +306,10 @@ namespace Backrooms.Camcorder
                     _lights.grid.wrap = o.softness;
                     _lights.grid.smoothing = o.poolSmoothing;
                     _lights.grid.contrast = o.darkSpots;
+                    _lights.grid.tracedBounce = o.tracedBounce;
+                    _lights.grid.colourBleed = Mathf.Clamp(o.colourBleed, 0f, 2f);
+                    _lights.grid.multiBounce = Mathf.Clamp01(o.multiBounce);
+                    _lights.grid.haze = Mathf.Clamp01(o.haze);
                 }
                 _lights.bounceCount = Mathf.Clamp(o.bounceLights, 0, 48);   // ceiling + lamps + bounce stay under URP's 256 visible lights
                 // Applied when the option changes, so debug tools can switch modes for comparisons.
@@ -210,6 +317,31 @@ namespace Backrooms.Camcorder
                 {
                     _appliedGrid = o.lightGrid ? 1 : 0;
                     _lights.mode = o.lightGrid ? FixtureLightManager.LightingMode.LightGrid : FixtureLightManager.LightingMode.RoomLayers;
+                }
+            }
+
+            // Backrooms/Lit's look switches (uniforms, no shader variants). Zero, as bound when no controller runs, is "off".
+            // x: ceiling panels as rectangles, y: contact-hardening shadow softness, z: contact shadow strength, w: set.
+            Shader.SetGlobalVector(LookId, new Vector4(o.areaLights ? 1f : 0f, Mathf.Clamp(o.shadowSoftness, 0f, 2f), Mathf.Clamp01(o.contactShadows), 1f));
+            // Contact shadows have a render pass of their own on the player's camera (it reads the camera depth properly).
+            ContactShadows.Ensure().strength = Mathf.Clamp01(o.contactShadows);
+            var tint = GraphicsOptions.ColourShift(o.colourTemp, o.colourTint) * Mathf.Clamp(o.panelGlow, 0f, 3f);
+            Shader.SetGlobalVector(EmissionTintId, new Vector4(tint.r, tint.g, tint.b, 1f));
+
+            // The Poolrooms keep their own light (sun, sky, baked bounce): the look scales it.
+            if (!_pool) { _pool = PoolWorld.Instance; if (_pool) { _poolSun = _pool.sunIntensity; _poolBounce = _pool.bounceGain; _poolSky = _pool.skyIntensity; _poolSunColour = _pool.sunColor; _poolAmbient = _pool.ambient; _poolApplied = new Vector4(-1, -1, -1, -1); } }
+            if (_pool)
+            {
+                var want = new Vector4(o.poolSun, o.poolBounce, o.poolSky, o.poolWarmth);
+                if (want != _poolApplied)
+                {
+                    _poolApplied = want;
+                    _pool.sunIntensity = _poolSun * Mathf.Clamp(o.poolSun, 0f, 3f);
+                    _pool.bounceGain = _poolBounce * Mathf.Clamp(o.poolBounce, 0f, 3f);
+                    _pool.skyIntensity = _poolSky * Mathf.Clamp(o.poolSky, 0f, 3f);
+                    _pool.ambient = _poolAmbient * Mathf.Clamp(o.poolSky, 0f, 3f);
+                    _pool.sunColor = GraphicsOptions.ShiftColour(_poolSunColour, 4500f - 1500f * Mathf.Clamp(o.poolWarmth, -1f, 1f), 0f);
+                    _pool.ApplyLight();
                 }
             }
         }

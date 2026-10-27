@@ -6,6 +6,7 @@
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 #include "Assets/Backrooms/Shaders/LightGridSample.hlsl"   // Backrooms: light grid
 float4 _PortalClipPlane; // zero outside an explicit portal-camera render
+#include "Assets/Backrooms/Shaders/BackroomsLook.hlsl"     // Backrooms: rectangular panels, soft and contact shadows, haze
 
 #if defined(LOD_FADE_CROSSFADE)
     #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/LODCrossFade.hlsl"
@@ -187,47 +188,96 @@ float4 BackroomsRealLightPosition(uint lightIndex)
     return lp;
 }
 
-// Identical quadrature, attenuation, diffuse/specular BRDF and visibility in both tiers.
-// A central URP soft shadow map adds nearby furniture detail; it is not a true area shadow.
-half3 BackroomsFixturePBR(LGridLight f, half3 energy, half shadow, bool localContact, bool knownVisible, InputData data,
+// A ceiling panel as the rectangle it is (F5 > LIGHT > Rectangular panels): diffuse from the exact form factor of the
+// panel (clipped to the surface's horizon), specular toward the point of the panel a mirror reflection comes nearest to.
+// Same light as the point fixture far away: the panel's radiance is the fixture's intensity x pi / area, and its spread
+// (the spot cone) and range window are taken at the panel's centre.
+half3 BackroomsRectFixture(LGridLight f, half3 energy, half shadow, float sizeWeight, float distanceSquared, InputData data,
+                           BRDFData brdf, bool noSpecular)
+{
+    float2 h = f.halfSize * sizeWeight;
+    float area = max(4.0 * h.x * h.y, 1e-4);
+    float3 P = data.positionWS;
+    half3 N = data.normalWS;
+    float dC = sqrt(max(distanceSquared, 1e-6));
+    float3 dirC = (f.pos - P) / dC;
+    float cosE = dot(f.dir, -dirC);
+    float cone = LGrid_AngleAtten(cosE, f.cosOuter, f.cosInner);
+    float window = distanceSquared / (f.range * f.range);
+    window = saturate(1.0 - window * window); window *= window;
+    float formFactor = BR_RectFormFactor(P, N, f.pos, h);
+    float attenuation = formFactor * PI / area * cone / max(cosE, 0.02) * window;
+    if (attenuation < 1e-5) return 0;
+    // Close to the fitting a wall can cut through it: only the visible quarters count.
+    if (distanceSquared < 1.0)
+    {
+        float visible = 0;
+        [loop] for (int s = 0; s < 4; s++) visible += LGrid_LightVisible(P, N, LG_EmitterPoint(f.pos, h, s, true));
+        attenuation *= visible * 0.25;
+        if (attenuation < 1e-5) return 0;
+    }
+    // Contrast is based on full output, independent of the handover share (as for the point fixture).
+    float lum = max(dot(f.colorAll, float3(0.2126, 0.7152, 0.0722)) * attenuation, 1e-5);
+    float contrast = pow(saturate(lum), _LGridShape.w * 1.2);
+    half3 color = energy * _LGridParams.y * (half)(shadow * contrast);
+    half3 lit = brdf.diffuse * color * (half)attenuation;
+    // Optional artistic diffuse wrap, shared with the point fixture (taken toward the centre).
+    float noL = saturate(dot(N, dirC));
+    float wrapped = saturate((dot(N, dirC) + _LGridShape.x) / (1 + _LGridShape.x));
+    float pointAttenuation = LGrid_DistAtten(max(distanceSquared, 0.01), f.range) * cone;
+    lit += brdf.diffuse * color * (half)(pointAttenuation * max(0, wrapped - noL));
+    if (!noSpecular)
+    {
+        float3 R = reflect(-data.viewDirectionWS, N);
+        float3 toS = BR_RectSpecularPoint(P, R, f.pos, h) - P;
+        float dS = max(length(toS), 1e-3);
+        half3 Ls = (half3)(toS / dS);
+        if (dot(N, Ls) > 0)
+        {
+            // The lobe widened by the panel's size, energy kept (Karis 2013, with the panel as a disc of the same area).
+            float a = brdf.roughness;
+            float wide = saturate(a + 0.5 * sqrt(area / PI) / dS);
+            float keep = (a / wide) * (a / wide);
+            lit += brdf.specular * DirectBRDFSpecular(brdf, N, Ls, data.viewDirectionWS) * color * (half)(attenuation * keep);
+        }
+    }
+    return lit;
+}
+
+// Identical light model (rectangle or point), attenuation, diffuse/specular BRDF and visibility in both tiers.
+// The shadow map is the real light's own (contact-hardening when F5 > LIGHT > Shadow softness is on).
+half3 BackroomsFixturePBR(LGridLight f, uint lightId, half3 energy, half shadow, bool localContact, bool knownVisible, InputData data,
                          BRDFData brdf, BRDFData coat, SurfaceData surface, bool noSpecular)
 {
     float3 delta = f.pos - data.positionWS;
     float distanceSquared = dot(delta, delta);
     if (dot(energy, energy) < 1e-10 || shadow <= 0) return 0;
+    shadow *= BackroomsContact(lightId, data.normalizedScreenSpaceUV);
     if (!knownVisible && !LGrid_FixtureMayReach(f, data.positionWS)) return 0;
     float sizeWeight = 1.0 - smoothstep(36.0, 64.0, distanceSquared);
     if (!knownVisible && LGrid_LightVisible(data.positionWS, data.normalWS, f.pos) < 0.5) return 0;
     if (localContact) shadow *= LocalLightVisibility(data.positionWS, data.normalWS, f.pos);
-    bool quad = dot(f.halfSize, f.halfSize) > 0 && sizeWeight > 0;
-    int samples = quad ? 4 : 1;
-    half3 sum = 0;
-    [loop] for (int s = 0; s < samples; s++)
-    {
-        float3 samplePosition = LG_EmitterPoint(f.pos, f.halfSize * sizeWeight, s, quad);
-        float3 toL = samplePosition - data.positionWS;
-        float d2 = dot(toL, toL);
-        float3 dir = toL * rsqrt(max(d2, 1e-6));
-        float attenuation = LGrid_DistAtten(max(d2, 0.01), f.range);
-        if (dot(f.dir, f.dir) > 0.5) attenuation *= LGrid_AngleAtten(dot(f.dir, -dir), f.cosOuter, f.cosInner);
-        if (attenuation < 1e-5) continue;
-        if (distanceSquared < 1.0 && LGrid_LightVisible(data.positionWS, data.normalWS, samplePosition) < 0.5) continue;
-        // Contrast is based on full output, independent of the handover share.
-        float lum = max(dot(f.colorAll, float3(0.2126, 0.7152, 0.0722)) * attenuation, 1e-5);
-        attenuation *= pow(saturate(lum), _LGridShape.w * 1.2);
-        Light light = (Light)0;
-        light.color = energy * _LGridParams.y;
-        light.direction = dir;
-        light.distanceAttenuation = attenuation;
-        light.shadowAttenuation = shadow;
-        half3 lit = LightingPhysicallyBased(brdf, coat, light, data.normalWS, data.viewDirectionWS, surface.clearCoatMask, noSpecular);
-        // Optional artistic diffuse wrap is shared by both tiers; specular keeps the physical normal.
-        float noL = saturate(dot(data.normalWS, dir));
-        float wrapped = saturate((dot(data.normalWS, dir) + _LGridShape.x) / (1 + _LGridShape.x));
-        lit += brdf.diffuse * light.color * (half)(attenuation * shadow * max(0, wrapped - noL));
-        sum += lit;
-    }
-    return sum / samples;
+    // Ceiling panels as rectangles (F5 > LIGHT > Rectangular panels); otherwise, and for lamps and far fixtures, a point.
+    [branch] if (_BRLook.x > 0.5 && dot(f.halfSize, f.halfSize) > 0 && sizeWeight > 0 && f.dir.y < -0.99)
+        return BackroomsRectFixture(f, energy, shadow, sizeWeight, distanceSquared, data, brdf, noSpecular);
+    float3 dir = delta * rsqrt(max(distanceSquared, 1e-6));
+    float attenuation = LGrid_DistAtten(max(distanceSquared, 0.01), f.range);
+    if (dot(f.dir, f.dir) > 0.5) attenuation *= LGrid_AngleAtten(dot(f.dir, -dir), f.cosOuter, f.cosInner);
+    if (attenuation < 1e-5) return 0;
+    // Contrast is based on full output, independent of the handover share.
+    float lum = max(dot(f.colorAll, float3(0.2126, 0.7152, 0.0722)) * attenuation, 1e-5);
+    attenuation *= pow(saturate(lum), _LGridShape.w * 1.2);
+    Light light = (Light)0;
+    light.color = energy * _LGridParams.y;
+    light.direction = dir;
+    light.distanceAttenuation = attenuation;
+    light.shadowAttenuation = shadow;
+    half3 lit = LightingPhysicallyBased(brdf, coat, light, data.normalWS, data.viewDirectionWS, surface.clearCoatMask, noSpecular);
+    // Optional artistic diffuse wrap is shared by both tiers; specular keeps the physical normal.
+    float noL = saturate(dot(data.normalWS, dir));
+    float wrapped = saturate((dot(data.normalWS, dir) + _LGridShape.x) / (1 + _LGridShape.x));
+    lit += brdf.diffuse * light.color * (half)(attenuation * shadow * max(0, wrapped - noL));
+    return lit;
 }
 
 half3 BackroomsDistantPBR(InputData data, BRDFData brdf, BRDFData coat, SurfaceData surface, bool noSpecular, half ao)
@@ -240,12 +290,13 @@ half3 BackroomsDistantPBR(InputData data, BRDFData brdf, BRDFData coat, SurfaceD
     half3 sum = 0;
     [loop] for (uint i = 0; i < tile.y; i++)
     {
-        LGridLight f = _LGridLights[_LGridTileLights[tile.x + i]];
+        uint id = _LGridTileLights[tile.x + i];
+        LGridLight f = _LGridLights[id];
         if (dot(f.color, f.color) < 1e-10) continue;
         // Farther fixtures come from the grid texture (see LGrid_NearWeight): skip them before any visibility work.
         half nearWeight = LGrid_NearWeight(distance(f.pos, data.positionWS));
         if (nearWeight <= 0) continue;
-        sum += BackroomsFixturePBR(f, f.color * nearWeight, ao, true, false, data, brdf, coat, surface, noSpecular);
+        sum += BackroomsFixturePBR(f, id, f.color * nearWeight, ao, true, false, data, brdf, coat, surface, noSpecular);
     }
     return sum * edge;
 }
@@ -314,10 +365,12 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
     }
     #endif
 
+    float2 pixel = inputData.normalizedScreenSpaceUV * _ScreenParams.xy;
     LIGHT_LOOP_BEGIN(pixelLightCount)
         float4 source = BackroomsRealLightPosition(lightIndex);
         LGridLight fixture = (LGridLight)0;
-        bool isFixture = source.w > 0.5 && LGrid_FindFixture(source.xyz, inputData.positionWS, fixture);
+        uint fixtureId = 0;
+        bool isFixture = source.w > 0.5 && LGrid_FindFixtureIndex(source.xyz, inputData.positionWS, fixture, fixtureId);
         half3 energy = isFixture ? max(fixture.colorAll - fixture.color, 0) : 0;
         // Layout-blocked fixtures cannot contribute. Reject before URP samples their soft shadow maps.
         if (isFixture)
@@ -325,14 +378,28 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
             if (dot(energy, energy) < 1e-10 || !LGrid_FixtureMayReach(fixture, inputData.positionWS)) continue;
             if (LGrid_LightVisible(inputData.positionWS, inputData.normalWS, fixture.pos) < 0.5) continue;
         }
-        Light light = GetAdditionalLight(lightIndex, inputData, shadowMask, aoFactor);
+        Light light;
+#if USE_CLUSTER_LIGHT_LOOP
+        int realIndex = lightIndex;
+#else
+        int realIndex = GetPerObjectLightIndex(lightIndex);
+#endif
+        half4 shadowParams = GetAdditionalLightShadowParams(realIndex);
+        [branch] if (isFixture && _BRLook.y > 0 && shadowParams.z < 0.5)
+        {
+            // Contact-hardening soft shadow instead of URP's fixed filter (the fixture's colour comes from the grid light).
+            light = GetAdditionalPerObjectLight(realIndex, inputData.positionWS);
+            float size = max(2.0 * max(fixture.halfSize.x, fixture.halfSize.y), 0.3) * _BRLook.y;
+            light.shadowAttenuation = BackroomsSoftShadow(realIndex, shadowParams, inputData.positionWS, inputData.normalWS, light.direction, source.xyz, size, pixel);
+        }
+        else light = GetAdditionalLight(lightIndex, inputData, shadowMask, aoFactor);
 #ifdef _LIGHT_LAYERS
         if (IsMatchingLightLayer(light.layerMask, meshRenderingLayers))
 #endif
         {
             if (isFixture)
             {
-                lightingData.additionalLightsColor += BackroomsFixturePBR(fixture, energy, light.shadowAttenuation * aoFactor.directAmbientOcclusion, false, true,
+                lightingData.additionalLightsColor += BackroomsFixturePBR(fixture, fixtureId, energy, light.shadowAttenuation * aoFactor.directAmbientOcclusion, false, true,
                     inputData, brdfData, brdfDataClearCoat, surfaceData, specularHighlightsOff);
             }
             else
@@ -453,6 +520,7 @@ void LitPassFragment(
 
     SurfaceData surfaceData;
     InitializeStandardLitSurfaceData(input.uv, surfaceData);
+    if (_BREmissionTint.w > 0.5) surfaceData.emission *= _BREmissionTint.rgb;              // Backrooms: the look's light colour and panel glow
 
 #ifdef LOD_FADE_CROSSFADE
     LODFadeCrossFade(input.positionCS);
@@ -470,6 +538,7 @@ void LitPassFragment(
     inputData.bakedGI += BackroomsLightGrid(inputData.positionWS, inputData.normalWS);   // Backrooms: light grid
 
     half4 color = BackroomsFragmentPBR(inputData, surfaceData);                          // Backrooms: walls block real lights
+    color.rgb = BackroomsHaze(inputData.positionWS, color.rgb, inputData.normalizedScreenSpaceUV * _ScreenParams.xy);   // Backrooms: lit haze
     color.rgb = MixFog(color.rgb, inputData.fogCoord);
     color.a = OutputAlpha(color.a, IsSurfaceTypeTransparent(_Surface));
 

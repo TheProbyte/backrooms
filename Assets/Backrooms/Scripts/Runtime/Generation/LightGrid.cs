@@ -45,6 +45,9 @@ namespace Backrooms.Generation
         public float exactDistance = 4.5f;
         /// <summary>The 0.6 m direct-light texture is in use (texture mode, or the far part of each fixture in split mode).</summary>
         bool TextureDirect => !perPixelDirect || exactDistance > 0f;
+        /// <summary>The direct-light pass runs: for the texture, or for the haze channel.</summary>
+        bool DirectActive => TextureDirect || HazeOn;
+        bool _tracedApplied;
         float Split => perPixelDirect ? Mathf.Max(0f, exactDistance) : 0f;
         float _appliedSplit = -1f;
         [Tooltip("Sample point offset off the surface, metres (half a texel keeps samples on the room's side).")]
@@ -123,6 +126,7 @@ namespace Backrooms.Generation
             shader.SetVector("_LGridShape", new Vector4(wrap, normalOffset, smoothing, contrast));
             shader.SetVector("_LGridFar", new Vector4(perPixelDirect ? 1 : 0, TileTexels, Tiles, Split));
             shader.SetFloat("_LGridFillAmt", roomFill);
+            BindProbesTo(shader, kernel);
             return true;
         }
 
@@ -163,7 +167,7 @@ namespace Backrooms.Generation
             _occ?.Release(); _lights?.Release(); _tiles?.Release(); _tileLights?.Release(); _fixtureLookup?.Release();
             _occ = _lights = _tiles = _tileLights = _fixtureLookup = null;
             _encoded.Clear();
-            ReleaseSurfaces(); ReleaseOccluders();
+            ReleaseSurfaces(); ReleaseOccluders(); ReleaseProbes();
         }
 
         static RenderTexture Make3D(string name)
@@ -301,8 +305,10 @@ namespace Backrooms.Generation
             _pitch = streamer && streamer.Settings != null ? streamer.Settings.storeyPitch : 9f;
             var sw = System.Diagnostics.Stopwatch.StartNew();
             BufferUploadsLastFrame = BounceDispatchesLastFrame = 0;
-            if (!_wasTexture && TextureDirect) _full = true;      // the texture was not kept up to date
-            _wasTexture = TextureDirect;
+            if (!_wasTexture && DirectActive) _full = true;      // the texture was not kept up to date
+            _wasTexture = DirectActive;
+            if (HazeOn != _hazeApplied) { _full = true; _hazeApplied = HazeOn; }   // the haze channel is filled with the texture
+            if (tracedBounce != _tracedApplied) { _bounceDirty = true; _tracedApplied = tracedBounce; }
             if (TextureDirect && Split != _appliedSplit) _full = true;   // the texture holds a different share of each light
             _appliedSplit = Split;
 
@@ -325,6 +331,7 @@ namespace Backrooms.Generation
             }
             if (_occDirty) { RebuildOccupancy(); _bounceDirty = true; }
             SetLights(lights);
+            TrackHazeLights(lights);
             UpdateOccluders(viewer);
             var bounceParameters = new Vector4(floorAlbedo, bounceSpread, bounceSteps, _pitch);
             if (!_bounceParameters.Equals(bounceParameters)) { _bounceDirty = true; _bounceParameters = bounceParameters; }
@@ -333,13 +340,14 @@ namespace Backrooms.Generation
             compute.SetInts(IdGridSize, GX, GY, GZ, OccN);
             compute.SetInts(IdTileInfo, TileTexels, Tiles, 0, 0);
             compute.SetVector(IdMisc, new Vector4(_pitch, floorAlbedo, bounceSpread, Split));
+            compute.SetVector("_GridMisc2", new Vector4(HazeOn ? 1f : 0f, 0f, 0f, 0f));
             compute.SetInts(IdCellMin, cellMin.x, cellMin.y, 0, 0);
 
             // Direct light in the dirty boxes, clipped to the window. The work is queued and done within a texel budget
             // per frame: a full refresh (or a burst of changes while the world streams in) is spread over a few frames
             // instead of stalling the GPU in one.
             int texels = 0;
-            if (TextureDirect)
+            if (DirectActive)
             {
                 compute.SetTexture(_kDirect, IdA, _a); compute.SetTexture(_kDirect, IdB, _b); compute.SetBuffer(_kDirect, IdOcc, _occ);
                 compute.SetBuffer(_kDirect, IdLights, _lights); compute.SetBuffer(_kDirect, IdTiles, _tiles); compute.SetBuffer(_kDirect, IdTileLights, _tileLights);
@@ -373,8 +381,12 @@ namespace Backrooms.Generation
             _dirty.Clear();
             DirtyTexelsLastFrame = texels;
 
-            // Bounce: floor light from every powered fixture, then a few diffusion steps.
-            if (_bounceDirty && _lightCount > 0 && bounceGain > 0f)
+            // Bounce: traced probes, or (the older way) floor light from every powered fixture, then a few diffusion steps.
+            if (tracedBounce)
+            {
+                if (_lightCount > 0 && bounceGain > 0f) TickProbes();
+            }
+            else if (_bounceDirty && _lightCount > 0 && bounceGain > 0f)
             {
                 compute.SetBuffer(_kBounceSrc, IdOcc, _occ); compute.SetTexture(_kBounceSrc, IdBounceSrc, _bounceSrc);
                 compute.SetBuffer(_kBounceSrc, IdLights, _lights); compute.SetBuffer(_kBounceSrc, IdTiles, _tiles); compute.SetBuffer(_kBounceSrc, IdTileLights, _tileLights);
@@ -424,6 +436,7 @@ namespace Backrooms.Generation
             Shader.SetGlobalInt("_LGridFixtureMask", _fixtureLookup.count - 1);
             Shader.SetGlobalVector(GFar, new Vector4(perPixelDirect ? 1f : 0f, TileTexels, Tiles, Split));
             BindOccluderGlobals();
+            BindProbeGlobals();
         }
 
         /// <summary>Is a world point inside this grid's window (with a margin, metres)?</summary>
