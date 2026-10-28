@@ -166,7 +166,51 @@ namespace Backrooms.Interaction
             Orient(r.fore, r.foreAxis, r.foreBack, wristAt - elbow, foreBack);
             Orient(r.hand, r.handFingers, r.handBack, handRot * Vector3.forward, handBack);
             r.hand.position = wristAt;
-            foreach (var (t, rest, axis, w, _) in r.joints) t.localRotation = rest * Quaternion.AngleAxis(0.85f * 62f * w, axis);
+            CloseOnCamcorder(r, cam);
+        }
+
+        static readonly Vector3 CamBodyCentre = new Vector3(-0.004f, -0.022f, 0.075f), CamBodyHalf = new Vector3(0.036f, 0.041f, 0.095f);
+
+        /// <summary>
+        /// The camcorder hand's fingers round the camcorder's body (MakeCamcorder's box, at the camera) from under it: each
+        /// finger's joints bend together until a joint or its tip comes within half a finger (8 mm) of the body, at most a
+        /// loose fist. (All curled to 0.85 regardless, the shadow showed a fist closed on nothing under the camcorder.)
+        /// </summary>
+        void CloseOnCamcorder(ArmRig r, Transform cam)
+        {
+            var js = r.joints;
+            int i0 = 0;
+            while (i0 < js.Count)
+            {
+                int i1 = i0;
+                while (i1 + 1 < js.Count && js[i1 + 1].finger == js[i0].finger) i1++;
+                float done = 0f;
+                bool met = false;
+                for (int s = 1; s <= 12; s++)
+                {
+                    float k = s / 12f * 0.85f;
+                    for (int j = i0; j <= i1; j++) js[j].t.localRotation = js[j].rest * Quaternion.AngleAxis(k * 62f * js[j].weight, js[j].axis);
+                    float near = float.MaxValue;
+                    for (int j = i0; j <= i1; j++)
+                    {
+                        Vector3 p = js[j].t.position;
+                        near = Mathf.Min(near, WorldItem.BoxDistance(cam.InverseTransformPoint(p), CamBodyCentre, CamBodyHalf));
+                        if (j == i1)
+                        {
+                            Vector3 prev = j > i0 ? js[j - 1].t.position : js[j].t.parent.position;
+                            Vector3 tip = p + (p - prev) * 0.9f;
+                            near = Mathf.Min(near, WorldItem.BoxDistance(cam.InverseTransformPoint(tip), CamBodyCentre, CamBodyHalf));
+                        }
+                    }
+                    if (near < FingerRadius) { met = true; break; }
+                    done = k;
+                }
+                // A finger past the camcorder's side that meets nothing stays loosely curled (curled to 0.85 in the air, two
+                // fingers made a fist beside it).
+                if (!met) done = Mathf.Min(done, 0.45f);
+                for (int j = i0; j <= i1; j++) js[j].t.localRotation = js[j].rest * Quaternion.AngleAxis(done * 62f * js[j].weight, js[j].axis);
+                i0 = i1 + 1;
+            }
         }
 
         // ---------------- The right hand at rest: hanging, swinging, or on the world ----------------
@@ -216,13 +260,20 @@ namespace Backrooms.Interaction
             if (_touchRail)
             {
                 // Round the rail: palm on top, fingers over and under it (they stop on it: TouchDistance).
-                Vector3 fingers = Vector3.ProjectOnPlane(Vector3.Cross(Vector3.up, _touchAlong), Vector3.up).normalized;
-                if (Vector3.Dot(fingers, _touchPoint - shoulder) < 0f) fingers = -fingers;
-                tr = Quaternion.LookRotation(fingers, Vector3.up);
+                Vector3 across = Vector3.ProjectOnPlane(Vector3.Cross(Vector3.up, _touchAlong), Vector3.up).normalized;
+                if (Vector3.Dot(across, _touchPoint - shoulder) < 0f) across = -across;
                 // The palm on the top of the rail, over its middle (it was past the far edge, 3 cm off it).
-                Vector3 top = _touchPoint + fingers * Vector3.Dot(_touchRailCentre - _touchPoint, fingers);
+                Vector3 top = _touchPoint + across * Vector3.Dot(_touchRailCentre - _touchPoint, across);
+                // The rail across the palm on a slant, as a hand takes a handrail, turned as the arm holds it best (picked
+                // once per touch). (Square across it, the forearm was turned 93 degrees, its limit 95, and the wrist bent 27
+                // to the side, its limit 28.)
+                if (!_touchFingersSet) { _touchFingers = RailFingers(top, across); _touchFingersSet = true; }
+                Vector3 fingers = _touchFingers;
+                tr = Quaternion.LookRotation(fingers, Vector3.up);
                 tw = top + Vector3.up * 0.003f - tr * _wristToGrip;
-                tc = 0.95f;
+                // Enough to wrap the far edge; a finger past the rail that meets nothing stays relaxed (curled to a fist,
+                // the little finger hung in the air beside the rail).
+                tc = 0.75f;
             }
             else
             {
@@ -249,6 +300,50 @@ namespace Backrooms.Interaction
 
         Vector3 _touchRailCentre, _touchFingers;
         bool _touchFingersSet;
+        /// <summary>Tests: the rail hand's turn from square across the rail (degrees about the vertical) instead of the arm's choice.</summary>
+        public static float? TestRailTurn;
+
+        /// <summary>
+        /// The fingers' way across a rail (palm down on its top at palm): square across it or turned up to 40 degrees about
+        /// the vertical toward the way the body faces, where the arm holds it with the least strain (the solver's score, which
+        /// charges extra past 70% of a limit) and the forearm clear of the rail, a little in favour of square.
+        /// </summary>
+        Vector3 RailFingers(Vector3 palm, Vector3 across)
+        {
+            if (TestRailTurn.HasValue) return Quaternion.AngleAxis(TestRailTurn.Value, Vector3.up) * across;
+            Vector3 best = across; float bestS = float.MaxValue;
+            Vector3 shoulder = ShoulderNow;
+            Quaternion yaw = transform.rotation;
+            float side = _grab ? _grab.Side : 1f;
+            Vector3 fwd = transform.forward;
+            for (int a = -40; a <= 40; a += 10)
+            {
+                Vector3 f = Quaternion.AngleAxis(a, Vector3.up) * across;
+                // Only toward the way the body faces (turned back, the forearm was turned past its limit the other way and
+                // the index finger went into the rail), and no more than 40 degrees (past it, the forearm lay on the rail).
+                if (Vector3.Dot(f - across, fwd) < -1e-3f) continue;
+                Quaternion hand = Quaternion.LookRotation(f, Vector3.up);
+                Vector3 wrist = palm - hand * _wristToGrip;
+                Vector3 dir0 = (wrist - shoulder).normalized;
+                Vector3 pole0 = Vector3.ProjectOnPlane(yaw * new Vector3(0.8f * side, -1f, -0.25f), dir0).normalized;
+                float s = float.MaxValue; ArmPose bp = default;
+                for (int k = -8; k <= 10; k++)
+                {
+                    var p = SolveArm(shoulder, wrist, hand, pole0, k * 15f, side, yaw);
+                    if (p.score < s) { s = p.score; bp = p; }
+                }
+                s += Mathf.Max(0f, Mathf.Abs(bp.twist) - 0.7f * forearmTwist) * 0.03f + Mathf.Abs(a) * 0.002f;
+                // Not with the forearm lying on the rail (turned 60 degrees, it lay along the top, 6 mm into it): the
+                // forearm's underside (3 cm from its middle near the wrist) clear of it.
+                for (int t = 1; t <= 4; t++)
+                {
+                    Vector3 q = Vector3.Lerp(bp.wrist, bp.elbow, t * 0.1f);
+                    s += Mathf.Max(0f, 0.03f - TouchDistance(q)) * 30f;
+                }
+                if (s < bestS) { bestS = s; best = f; }
+            }
+            return best;
+        }
         readonly Collider[] _touchColArr = new Collider[1];
 
         /// <summary>

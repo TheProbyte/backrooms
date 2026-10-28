@@ -498,6 +498,48 @@ Open after round 5: the tape roll's little finger is still 7 mm in its core; the
 on a rail stands out straight; the wall lean's forearm is still turned 93 degrees and the middle of the palm 9-17 mm off
 the wall (one edge touches); the plug's last 7-10 mm into a socket is a snap (the wrist cannot square the plug exactly);
 the light switch, door pull, jamb and the camcorder hand were not re-measured.
+Round 6 (2026-10-28, reviewer 7.5/10):
+- **Fingers wrap.** All of a finger's joints now bend together in its own proportions (`WrapClose`). When a bone
+  touches, it and the joints before it stop and the joints beyond go on. Joint by joint from the knuckle out, the knuckle
+  took all the bend first: fingers lay with the middle joint near straight (lamp 59/45/36, can 42/2/42, hammer 32/29/48).
+  Now lamp 47/58/37, can 28/35/22, hammer index 31/39/48. The thumb closes the same way.
+- **Real skin.** Each finger bone keeps 12 points of its own skin on the palm's side (`MeasurePads`), carried with the
+  bone. Fingers stop on these, less 0.5 mm as skin gives. The old round about the bone stood 4-7 mm proud of the
+  thumb's wide pad.
+- **Thumb.** In a fist round a handle the thumb closes over the backs of the index and middle fingers (`FingersBack`). It
+  also prefers to lie on the handle and to bend about as much as the grip asks: it lay straight along a spray can. A thumb
+  that starts inside something tries its other turns first (on the rail it stayed straight and inside).
+- **Fingers together.** Holding something, the fingers come all the way in to the middle finger. At 0.85 of their fan
+  there were gaps on a can.
+- **Bending back.** A held item's fingers and a rail's straighten back at most 5 degrees (10, and 15 on the rail's index).
+- **Tape roll.** It is now held with the index, middle and ring fingers through the core, the roll resting on their backs,
+  and the thumb outside on its edge. The palm is 3 cm off the roll's side and the little finger curls beside it. Found by
+  trying 1,000 grips against the ring. The old grip had the little finger 7 mm and the palm 5.5 mm in the roll.
+- **Chalk.** It is held as a pencil is: pinched between the thumb and index pads and resting on the middle finger. It runs
+  from the web of the thumb out past the index tip, 35 degrees to the fingers, its tip 4 cm beyond. Found by trying 1,300
+  grips. Its contact is now the stick as drawn: the collider sits a radius higher, and fingers on it went 7.5 mm into the
+  stick seen.
+- **Limits.** The solver's extra cost past 70% of a limit doubled (0.025 to 0.05 a degree). A spray can's wrist went from
+  43 to 41 degrees bent back. The steadying hand's turn on a wall also pays for a forearm turned past 70% of its limit:
+  twist 93 to 75.
+- **Rail.** The hand may turn up to 40 degrees toward the way the body faces, never with the forearm on the rail, and the
+  palm is pushed straight up off the rail's top. Fingers that meet nothing stay at a relaxed curl (0.75).
+- **Plugs.** A plug the hand lets go short of its socket slides the rest of the way in over 0.1 s (`Plug.SeatTime`). It
+  jumped 8-9 mm in one frame.
+- **Camcorder hand.** The left fingers close on the camcorder's body from under it; those that meet nothing stay loose.
+  They used to make a fist on nothing.
+Measured (World 3, `GaitProbe.MeasureItems`, `TouchTest`, `PlugInRun`; round 4 -> round 6), finger skin nearest the
+item, negative in: tape little finger -7.2 (114 verts) -> outside it, palm -5.5 -> 0.0, no vertex over 2 mm in; chalk
+thumb 4.4 -> -0.8, index -1.0, middle -0.4, stick 35 degrees to the fingers, tip 4 cm past the index; lamp thumb tip
+20.7 -> 3.7 mm; hammer thumb tip 29 -> 14 mm (on the fingers, skin -0.4); all held items' fingers and thumbs 0.0 to
+-1.7 mm (most were 1-3.5 mm off); wall lean twist 93 -> 75, middle finger 5.1 -> -0.4 mm, palm -0.4; rail thumb straight
+and inside -> closed on it (-0.6 mm), index bent back 15 -> 5 degrees; plug seating 9 mm in a frame -> 2 mm a frame over
+5 frames; walking with a can, palm 2.0 mm. New tools: `GaitProbe.Settle`, `GripReport`, `TouchTurns`; test hooks
+`TapeRoll.TestGrip`, `Chalk.TestHold`, `FirstPersonBody.TestRailTurn`.
+Open after round 6: the rail beside the hip still needs the forearm turned 96 degrees with the wrist 26 to the side. Turned
+further toward the front, the forearm lay on the rail. Its little finger hangs 8 mm off and some forearm skin is 4 mm in.
+The hammer's follow-through is not planned against the limits. Door pull, quick door, jamb, chicken squeeze, hammer
+wind-up and tape laying were not re-measured, and the camcorder hand was not looked at (its arm draws only a shadow).
 
 Open: furniture's colliders are boxes that do not match the model everywhere (a sofa's rolled arm: the fingers close on
 the box, 15 cm under the visible top, so they stay as wanted); the thumb lies along a hammer's handle rather than round

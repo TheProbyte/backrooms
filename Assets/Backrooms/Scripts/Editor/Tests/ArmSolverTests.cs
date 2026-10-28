@@ -25,6 +25,41 @@ namespace Backrooms.Tests
             finally { Object.DestroyImmediate(go); }
         }
 
+        /// <summary>Round 6: chalk is held as a pencil is, running out past the fingertips at 30-45 degrees to the fingers
+        /// (it lay along them, under two fingertips).</summary>
+        [Test]
+        public void ChalkIsHeldAsAPencilIs()
+        {
+            var go = new GameObject("ChalkGripTest");
+            try
+            {
+                var c = go.AddComponent<Chalk>();
+                Vector3 fingers = c.GripRotationLocal * Vector3.forward;
+                Assert.That(Vector3.Angle(fingers, Vector3.forward), Is.InRange(30f, 45f));
+                Vector3 tip = new Vector3(0f, Chalk.Radius, Chalk.Length);
+                Assert.Greater(Vector3.Dot(tip - c.GripLocal, fingers), 0.06f, "the tip well out past the palm");
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        /// <summary>Round 6: a tape roll is held with the palm off its side and the fingers through the core (the palm was
+        /// 1.3 cm from the side and 5.5 mm into the roll).</summary>
+        [Test]
+        public void TapeRollsPalmIsOffItsSideAndTheFingersGoThroughTheCore()
+        {
+            var go = new GameObject("TapeGripTest");
+            try
+            {
+                var t = go.AddComponent<TapeRoll>();
+                Assert.Greater(t.ContactDistance(t.GripLocal), 0.025f, "palm clear of the roll");
+                Vector3 fingers = t.GripRotationLocal * Vector3.forward;
+                Vector3 inCore = t.GripLocal + fingers * (0.056f - 0.0f);    // as far along as the roll's middle
+                Vector2 radial = new Vector2(inCore.y - 0.0525f, inCore.z);
+                Assert.Less(radial.magnitude, 0.038f - 0.02f, "the fingers' line well inside the core");
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
         [Test]
         public void TouchIsKeptWhereItIsFound()
         {

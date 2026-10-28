@@ -27,19 +27,32 @@ namespace Backrooms.Interaction
 
         public override Vector3 HoldOffset => new Vector3(0.15f, -0.2f, 0.34f);
         public override Vector3 UseOffset => new Vector3(0.12f, -0.14f, 0.42f);
-        // A three-finger grip: the stick under the pads of the index and middle fingers, the thumb's pad pressed against it
-        // from the other side, ring and little finger tucked in; turned 18 degrees across the hand (from the fingertips back
-        // toward the web of the thumb, as a pencil lies), its tip 3-4 cm out past the fingertips.
-        // (Placed by trying the closing fingers against the stick, 144 ways: index, middle and thumb pads all within 1.5 mm
-        // of it. Under the index alone, the stick lay below the hand touched by the index and the thumb only, the middle
-        // finger 2.5 cm off: it looked loose.)
-        public override Vector3 GripLocal => TestGrip ?? new Vector3(0.028f, 0.064f, 0.015f);
-        public override Quaternion GripRotationLocal => Quaternion.Euler(0f, TestGrip.HasValue ? TestTurn.y : -18f, 0f) * Quaternion.LookRotation(new Vector3(0f, 0.05f, 1f), new Vector3(0f, 1f, -0.05f));
-        public override float GripCurl => 0.5f;
-        public float FingerCurl(int finger) => TestCurls != null ? TestCurls[finger] : finger == 0 ? 0.5f : finger == 1 ? 0.55f : finger == 2 ? 0.85f : 0.9f;
-        public float ThumbCurl => TestCurls != null ? TestCurls[4] : 0.45f;
-        public float ThumbOpposition => TestCurls != null ? TestCurls[5] : 0.6f;
-        /// <summary>Tests: a grip to try instead (the palm's point, the hand's turn about its back (y, degrees), finger curls 0-3, the thumb's curl and turn).</summary>
+        // A writing grip (a tripod, as a pencil is held): the stick pinched between the pads of the thumb and the index
+        // finger, resting on the middle finger's end, ring and little finger curled in. It runs from the web of the thumb out
+        // past the index fingertip (its tip 4 cm beyond), 35 degrees down from the fingers toward the palm and a little
+        // across. (Found by trying 1,300 ways against the stick: thumb, index and middle skin 0.9-1.5 mm into it (skin
+        // gives 1 mm), nothing else in it. The round-5 grip had the stick under the index and middle pads, nearly along
+        // the fingers: two fingertips pressing on a stick.)
+        public override Vector3 GripLocal => TestGrip ?? new Vector3(0.02544f, 0.01526f - Radius, 0f);
+        /// <summary>
+        /// The stick as it is drawn (its model's axis is the item's z, through the origin), worn down from the tip. (The
+        /// collider, for lying on the floor, sits a radius higher: fingers closed on it went 7.5 mm into the stick seen.)
+        /// </summary>
+        public override float ContactDistance(Vector3 p)
+        {
+            float h = Mathf.Max(0.02f, Length * left);
+            return SegmentDistance(p, new Vector3(0f, 0f, Mathf.Min(0.0085f, h * 0.5f)), new Vector3(0f, 0f, Mathf.Max(h - 0.0085f, h * 0.5f))) - 0.0085f;
+        }
+        public override Quaternion GripRotationLocal => TestGrip.HasValue ? Quaternion.Euler(TestTurn)
+            : Quaternion.LookRotation(new Vector3(-0.2756f, 0.5094f, 0.8152f), new Vector3(0f, 0.848f, -0.5299f));
+        public override Quaternion HoldTurn => TestHold.HasValue ? Quaternion.Euler(TestHold.Value) : Quaternion.identity;
+        /// <summary>Tests: how the stick is turned in the view (degrees) instead.</summary>
+        public static Vector3? TestHold;
+        public override float GripCurl => 0.85f;
+        public float FingerCurl(int finger) => TestCurls != null ? TestCurls[finger] : finger == 0 ? 0.85f : finger == 1 ? 0.9f : finger == 2 ? 0.95f : 1f;
+        public float ThumbCurl => TestCurls != null ? TestCurls[4] : 0.7f;
+        public float ThumbOpposition => TestCurls != null ? TestCurls[5] : 0.8f;
+        /// <summary>Tests: a grip to try instead (the palm's point; the hand's axes in the stick's frame as Euler angles; finger curls 0-3, the thumb's curl and turn).</summary>
         public static Vector3? TestGrip;
         public static Vector3 TestTurn;
         public static float[] TestCurls;

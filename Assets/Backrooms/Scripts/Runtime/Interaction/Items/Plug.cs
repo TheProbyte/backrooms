@@ -122,8 +122,22 @@ namespace Backrooms.Interaction
         void Pose()
         {
             if (Socket == null) return;
+            if (_seatT < 1f)
+            {
+                // The last few millimetres from where the hand left it, eased in over a few frames (it jumped 8-9 mm in
+                // one: the wrist cannot square a plug exactly).
+                _seatT = Mathf.Min(1f, _seatT + Time.deltaTime / SeatTime);
+                float e = Mathf.SmoothStep(0f, 1f, _seatT);
+                transform.SetPositionAndRotation(Vector3.Lerp(_seatFrom, Socket.Position, e), Quaternion.Slerp(_seatFromRot, Socket.PlugRotation, e));
+                return;
+            }
             transform.SetPositionAndRotation(Socket.Position, Socket.PlugRotation);
         }
+        float _seatT = 1f;
+        Vector3 _seatFrom;
+        Quaternion _seatFromRot;
+        /// <summary>How long a plug let go short of its socket takes to slide the rest of the way in (s).</summary>
+        public const float SeatTime = 0.1f;
 
         void Update()
         {
@@ -250,7 +264,15 @@ namespace Backrooms.Interaction
             float off = (transform.position - s.Position).magnitude;
             _settleT += i.dt;
             if (off > 0.004f && _settleT < 0.15f) return;
-            if (off < 0.03f) { _going = null; i.hand.LetGo(this); PlugInto(s); }
+            if (off < 0.03f)
+            {
+                _going = null;
+                Vector3 from = transform.position; Quaternion fromRot = transform.rotation;
+                i.hand.LetGo(this);
+                PlugInto(s);
+                _seatFrom = from; _seatFromRot = fromRot; _seatT = 0f;
+                transform.SetPositionAndRotation(from, fromRot);
+            }
             else if (++_tries >= 2) GiveUp();
             else { _pushT = -1f; _bestGap = float.MaxValue; _stuckT = 0f; _slowT = 0f; }
         }

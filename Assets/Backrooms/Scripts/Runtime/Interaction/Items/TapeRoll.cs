@@ -16,7 +16,7 @@ namespace Backrooms.Interaction
     ///    pulling: cancelled, the tape goes back on the roll.
     /// Up to <see cref="MaxStrip"/> a strip; the roll holds <see cref="RollMetres"/>. Model: Resources/Items/TapeRoll.fbx.
     /// </summary>
-    public class TapeRoll : WorldItem
+    public class TapeRoll : WorldItem, IHandGrip
     {
         public static float RollMetres = 40f;
         public const float MaxStrip = 2.4f, MinStrip = 0.03f;
@@ -47,10 +47,21 @@ namespace Backrooms.Interaction
         }
         public override Vector3 HoldOffset => new Vector3(0.15f, -0.25f, 0.4f);
         public override Vector3 UseOffset => new Vector3(0.12f, -0.16f, 0.42f);
-        // The palm just outside the roll's side, under the fingers that go through the core and carry it on their backs.
-        public override Vector3 GripLocal => new Vector3(-0.037f, 0.063f, 0f);
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(Vector3.right, Vector3.up);
+        // The index, middle and ring fingers through the core, the roll resting on their backs; the little finger, shorter,
+        // curled beside the roll; the thumb outside it, its pad on the roll's edge (the wall pinched between it and the
+        // fingers). The palm 3 cm off the roll's side, the hand rolled 6 degrees. (Found by trying 1,000 ways against the
+        // ring: index, middle, ring and thumb skin 0.7-1.3 mm into it (skin gives 1 mm), the palm clear. The round-5 grip had
+        // the palm 1.3 cm from the side with all four fingers in the core: the little finger 7 mm and the palm 5.5 mm in it.)
+        public override Vector3 GripLocal => TestGrip ?? new Vector3(-0.056f, 0.058f, 0f);
+        public override Quaternion GripRotationLocal => Quaternion.LookRotation(Vector3.right, Vector3.up) * Quaternion.Euler(TestGrip.HasValue ? TestTurn : new Vector3(0f, 0f, 6f));
         public override float GripCurl => 0.55f;
+        public float FingerCurl(int finger) => TestCurls != null ? TestCurls[finger] : 0.55f;
+        public float ThumbCurl => TestCurls != null ? TestCurls[4] : 0.8f;
+        public float ThumbOpposition => TestCurls != null ? TestCurls[5] : 0.8f;
+        /// <summary>Tests: a grip to try instead (the palm's point, the hand turned about its own axes (degrees), finger curls 0-3, the thumb's curl and turn).</summary>
+        public static Vector3? TestGrip;
+        public static Vector3 TestTurn;
+        public static float[] TestCurls;
         /// <summary>The roll: a ring of tape on its core, round its axis (x); the fingers inside the core stop on it.</summary>
         public override float ContactDistance(Vector3 p)
         {

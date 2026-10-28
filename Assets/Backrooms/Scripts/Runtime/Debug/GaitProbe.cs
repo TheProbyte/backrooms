@@ -933,7 +933,7 @@ namespace Backrooms.DebugTools
             sb.AppendLine("frame | t | held | plugged | gave up | hand->socket m | plug->socket mm | PalmError mm | elbow | stoop | curl | set-down item pos | its speed m/s | player");
             int frame = 0; float t0 = Time.time;
             var owner = target as PowerUser ?? (target is Plug pg ? pg.owner as PowerUser : null);
-            float maxErr = 0f, minElbow = 999f, maxSpeed = 0f, inAt = -1f, pressAt = -1f, maxStep = 0f; int pumps = 0; float lastElbow = -1f, lastDir = 0f;
+            float maxErr = 0f, minElbow = 999f, maxSpeed = 0f, inAt = -1f, pressAt = -1f, maxStep = 0f, maxStepAll = 0f; int pumps = 0, plugFrames = 0; float lastElbow = -1f, lastDir = 0f;
             Vector3 lastPlug = Vector3.zero, setAt = Vector3.zero; bool approach = false, setSeen = false;
             UnityEngine.Events.UnityAction act = null;
             act = () =>
@@ -962,10 +962,14 @@ namespace Backrooms.DebugTools
                     else if (Mathf.Abs(elbow - lastElbow) >= 5f) { float dir = Mathf.Sign(elbow - lastElbow); if (lastDir != 0f && dir != lastDir) pumps++; lastDir = dir; lastElbow = elbow; }
                     if (lastPlug != Vector3.zero) maxStep = Mathf.Max(maxStep, (plug.transform.position - lastPlug).magnitude);
                 }
+                // Every step of the plug from the click on, the last of the way in too (round 6: it snapped 8-9 mm in a frame
+                // when the hand let go).
+                if (plug && plugged && frame > 30 && lastPlug != Vector3.zero) maxStepAll = Mathf.Max(maxStepAll, (plug.transform.position - lastPlug).magnitude);
+                if (plugged) plugFrames++;
                 if (plug) lastPlug = plug.transform.position;
                 float speed = owner && owner.Body && !owner.Held ? owner.Body.linearVelocity.magnitude : 0f;
                 maxSpeed = Mathf.Max(maxSpeed, speed);
-                if (frame <= 3 || frame % 3 == 0)
+                if (frame <= 3 || frame % 3 == 0 || (plugFrames > 0 && plugFrames <= 10))
                     sb.AppendFormat("{0} | {1:0.00} | {2} | {3} | {4} | {5:0.000} | {6:0.0} | {7:0.0} | {8:0} | {9:0.00} | {10:0.00} | {11} | {12:0.00} | {13}\n", frame, Time.time - t0,
                         grab.HeldItem ? grab.HeldItem.name : "-", plugged, plug && plug.GaveUp, Vector3.Distance(grab.HandPosition, sock.Position),
                         plug ? NearestOf(pair, plug.transform.position) * 1000f : -1f, Mathf.Min(fpb.PalmError, 9.999f) * 1000f, elbow, pl.stoop, grab.HandCurl,
@@ -974,9 +978,9 @@ namespace Backrooms.DebugTools
                 {
                     Application.onBeforeRender -= act;
                     grab.botRmb = false; grab.botHold = null;
-                    sb.AppendFormat("summary: plugged in {0} s after the click; while carrying: PalmError max {1:0.0} mm, elbow min {2:0}, elbow reversals {3}, plug's biggest step {4:0.0} mm; set-down item fastest {5:0.00} m/s, moved {6:0.00} m, ends at {7}\n",
+                    sb.AppendFormat("summary: plugged in {0} s after the click; while carrying: PalmError max {1:0.0} mm, elbow min {2:0}, elbow reversals {3}, plug's biggest step {4:0.0} mm (in the socket, seating: {8:0.0}); set-down item fastest {5:0.00} m/s, moved {6:0.00} m, ends at {7}\n",
                         inAt >= 0f ? inAt.ToString("0.00") : "never", maxErr * 1000f, minElbow, pumps, maxStep * 1000f, maxSpeed,
-                        setSeen && !owner.Held ? Vector3.Distance(owner.transform.position, setAt) : 0f, owner ? owner.transform.position.ToString("F2") : "-");
+                        setSeen && !owner.Held ? Vector3.Distance(owner.transform.position, setAt) : 0f, owner ? owner.transform.position.ToString("F2") : "-", maxStepAll * 1000f);
                     File.WriteAllText(file, sb.ToString());
                 }
             };
@@ -1049,6 +1053,104 @@ namespace Backrooms.DebugTools
                 if (c < -0.002f) res[6 + g]++;
             }
             return res;
+        }
+
+        /// <summary>
+        /// For grip searches (round 6): the held item placed and the arm and fingers worked out again now, n times, the
+        /// fingers put straight onto where they close (not eased from the frame before).
+        /// </summary>
+        public static void Settle(int n)
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var grab = pl.GetComponent<PropGrabber>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            var lu = typeof(PropGrabber).GetMethod("LateUpdate", bf);
+            var ua = typeof(FirstPersonBody).GetMethod("UpdateArm", bf);
+            var fingers = (System.Collections.IList)typeof(FirstPersonBody).GetField("_fingers", bf).GetValue(fpb);
+            for (int k = 0; k < n; k++)
+            {
+                if (fingers != null) foreach (var f in fingers) f.GetType().GetField("placed").SetValue(f, false);
+                lu.Invoke(grab, null);
+                ua.Invoke(fpb, null);
+            }
+        }
+
+        /// <summary>
+        /// The hand on what it holds (round 6): each finger's end bone's pad clearance (mm; index, middle, ring, little,
+        /// thumb), then the index fingertip, the thumb's tip, the hand's fingers direction and the back of the hand (world).
+        /// </summary>
+        public static float[] GripReport()
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var grab = pl.GetComponent<PropGrabber>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            var T = typeof(FirstPersonBody);
+            var fingers = (System.Collections.IList)T.GetField("_fingers", bf).GetValue(fpb);
+            var hand = (Transform)T.GetField("_hand", bf).GetValue(fpb);
+            Vector3 handFL = (Vector3)T.GetField("_handFingers", bf).GetValue(fpb), handBL = (Vector3)T.GetField("_handBack", bf).GetValue(fpb);
+            var bone = T.GetMethod("BoneClearance", BindingFlags.NonPublic | BindingFlags.Static);
+            System.Func<Vector3, float> contact = grab.ContactDistance;
+            var res = new float[17];
+            foreach (var f in fingers)
+            {
+                var ft = f.GetType();
+                string name = (string)ft.GetField("name").GetValue(f);
+                var joints = (System.Collections.IList)ft.GetField("joints").GetValue(f);
+                int i = name == "Index" ? 0 : name == "Middle" ? 1 : name == "Ring" ? 2 : name == "Pinky" ? 3 : 4;
+                res[i] = (float)bone.Invoke(null, new object[] { f, joints.Count - 1, contact }) * 1000f;
+                var last = (Transform)joints[joints.Count - 1].GetType().GetField("Item1").GetValue(joints[joints.Count - 1]);
+                Vector3 tip = last.TransformPoint((Vector3)ft.GetField("tipLocal").GetValue(f));
+                if (i == 0) { res[5] = tip.x; res[6] = tip.y; res[7] = tip.z; }
+                if (i == 4) { res[14] = tip.x; res[15] = tip.y; res[16] = tip.z; }
+            }
+            Vector3 F = hand.TransformDirection(handFL).normalized, H = hand.TransformDirection(handBL).normalized;
+            res[8] = F.x; res[9] = F.y; res[10] = F.z; res[11] = H.x; res[12] = H.y; res[13] = H.z;
+            return res;
+        }
+
+        /// <summary>
+        /// The ways a palm can lie on a face (round 6): for fingers turned about the face's normal every 15 degrees from
+        /// prefer, the arm solver's best score over the elbow's swing and that pose's forearm twist, wrist bend (+ toward
+        /// the palm) and sideways bend (+ ulnar), and how far the hand misses its turn. For choosing touch turns.
+        /// </summary>
+        public static string TouchTurns(Vector3 point, Vector3 normal, Vector3 prefer)
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            var grab = pl.GetComponent<PropGrabber>();
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            var T = typeof(FirstPersonBody);
+            var solve = T.GetMethod("SolveArm", bf);
+            Vector3 w2g = (Vector3)T.GetField("_wristToGrip", bf).GetValue(fpb);
+            Vector3 shoulder = fpb.ShoulderNow; Quaternion yaw = pl.transform.rotation; float side = grab.Side;
+            Vector3 basis = Vector3.ProjectOnPlane(prefer, normal).normalized;
+            var sb = new StringBuilder();
+            for (int a = -180; a < 180; a += 15)
+            {
+                Vector3 f = Quaternion.AngleAxis(a, normal) * basis;
+                Quaternion hand = Quaternion.LookRotation(f, normal);
+                Vector3 wrist = point - hand * w2g;
+                Vector3 dir0 = (wrist - shoulder).normalized;
+                Vector3 pole0 = Vector3.ProjectOnPlane(yaw * new Vector3(0.8f * side, -1f, -0.25f), dir0).normalized;
+                float best = float.MaxValue; object bestP = null;
+                for (int k = -8; k <= 10; k++)
+                {
+                    object p = solve.Invoke(fpb, new object[] { shoulder, wrist, hand, pole0, k * 15f, side, yaw });
+                    float s = (float)p.GetType().GetField("score").GetValue(p);
+                    if (s < best) { best = s; bestP = p; }
+                }
+                var pt = bestP.GetType();
+                Vector3 el = (Vector3)pt.GetField("elbow").GetValue(bestP), wr = (Vector3)pt.GetField("wrist").GetValue(bestP), fb = (Vector3)pt.GetField("foreBack").GetValue(bestP);
+                Quaternion ph = (Quaternion)pt.GetField("hand").GetValue(bestP);
+                float tw = (float)pt.GetField("twist").GetValue(bestP);
+                Vector3 fo = (wr - el).normalized;
+                Vector3 Fl = Quaternion.Inverse(Quaternion.LookRotation(fo, fb)) * (hand * Vector3.forward);
+                float flex = Mathf.Asin(Mathf.Clamp(-Fl.y, -1f, 1f)) * Mathf.Rad2Deg, dev = Mathf.Atan2(Fl.x, Fl.z) * Mathf.Rad2Deg;
+                sb.AppendFormat("a {0,4} score {1:0.000} twist {2:0} flex {3:0} dev {4:0} miss {5:0.0} elbowFlex {6:0}\n", a, best, tw, flex, dev, Quaternion.Angle(ph, hand), Vector3.Angle(el - shoulder, wr - el));
+            }
+            return sb.ToString();
         }
 
         /// <summary>FingerSkinGaps as a line.</summary>
