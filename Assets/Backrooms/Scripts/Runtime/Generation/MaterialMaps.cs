@@ -59,6 +59,182 @@ namespace Backrooms.Generation
                 else if (v is GameObject[] gs) foreach (var x in gs) AddPrefab(x, Add);
             }
             Troffers(a);
+            Ceilings(a);
+        }
+
+        // ---------------- Ceiling tiles ----------------
+
+        /// <summary>
+        /// The acoustic ceiling's variants (OfficeChunkBuilder.Wear): two copies whose texture has a stain on every one of
+        /// its 16 tiles (water rings with tide lines, mould specks; the texture is 4 x 4 tiles, so a tile drawn with a copy
+        /// shows its own stain: 32 different ones), a yellowed copy, and the dark space above the tiles (the plenum, seen
+        /// where a tile is lifted, shifted or missing). Same shader keywords as the ceiling: no new variants. Null without
+        /// the ceiling material.
+        /// </summary>
+        public static Material CeilingStainedA, CeilingStainedB, CeilingYellowed, Plenum;
+        static Texture2D s_stainedA, s_stainedB;
+        static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
+
+        public static bool IsCeilingVariant(Material m) =>
+            m && (m == CeilingStainedA || m == CeilingStainedB || m == CeilingYellowed || m == Plenum);
+
+        static void Ceilings(OfficeBiomeAssets a)
+        {
+            CeilingStainedA = CeilingStainedB = CeilingYellowed = Plenum = null;
+            var src = a.ceilingTile;
+            if (!src || !src.HasProperty(BaseMap)) return;
+            var tex = src.GetTexture(BaseMap) as Texture2D;
+            if (tex)
+            {
+                if (!s_stainedA) s_stainedA = Stained(tex, 7);
+                if (!s_stainedB) s_stainedB = Stained(tex, 31);
+                CeilingStainedA = Copy(src, " (stained)", s_stainedA);
+                CeilingStainedB = Copy(src, " (stained B)", s_stainedB);
+            }
+            Color c = src.HasProperty(BaseColor) ? src.GetColor(BaseColor) : Color.white;
+            CeilingYellowed = Copy(src, " (yellowed)", null);
+            CeilingYellowed.SetColor(BaseColor, c * new Color(0.97f, 0.93f, 0.8f, 1f));
+            Plenum = Copy(src, " (plenum)", null);
+            Plenum.SetColor(BaseColor, new Color(0.016f, 0.015f, 0.014f, 1f));       // dark: the room's light barely gets in
+        }
+
+        static Material Copy(Material src, string suffix, Texture2D baseMap)
+        {
+            var m = new Material(src) { name = src.name + suffix, hideFlags = HideFlags.DontSave };
+            if (baseMap) m.SetTexture(BaseMap, baseMap);
+            return m;
+        }
+
+        /// <summary>The ceiling texture (read back from the GPU: it is not readable) with a stain painted into each tile.</summary>
+        static Texture2D Stained(Texture2D src, int seed)
+        {
+            int w = src.width, h = src.height;
+            var was = RenderTexture.active;
+            var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            Graphics.Blit(src, rt);
+            RenderTexture.active = rt;
+            var t = new Texture2D(w, h, TextureFormat.RGBA32, true, false)
+            {
+                name = src.name + " (stained)", wrapMode = TextureWrapMode.Repeat, filterMode = src.filterMode,
+                anisoLevel = src.anisoLevel, hideFlags = HideFlags.DontSave,
+            };
+            t.ReadPixels(new Rect(0, 0, w, h), 0, 0, false);
+            RenderTexture.active = was;
+            RenderTexture.ReleaseTemporary(rt);
+            var px = t.GetPixels32();
+            var rng = new System.Random(seed);
+            int tile = w / 4;
+            for (int ty = 0; ty < 4; ty++)
+            for (int tx = 0; tx < 4; tx++)
+            {
+                double kind = rng.NextDouble();
+                if (kind < 0.8) WaterStain(px, w, tx * tile, ty * tile, tile, rng);
+                if (kind > 0.55) Mould(px, w, tx * tile, ty * tile, tile, rng);
+            }
+            t.SetPixels32(px);
+            t.Apply(true, false);
+            t.Compress(true);
+            t.Apply(false, true);
+            return t;
+        }
+
+        static void Multiply(Color32[] px, int i, float r, float g, float b)
+        {
+            var c = px[i];
+            px[i] = new Color32((byte)Mathf.Clamp(c.r * r, 0f, 255f), (byte)Mathf.Clamp(c.g * g, 0f, 255f), (byte)Mathf.Clamp(c.b * b, 0f, 255f), c.a);
+        }
+
+        /// <summary>A dried water stain: a ragged blot, faintly tinted inside, with one to three darker brown tide lines.</summary>
+        static void WaterStain(Color32[] px, int w, int ox, int oy, int tile, System.Random rng)
+        {
+            int inset = tile / 24;
+            float R = tile * (0.12f + (float)rng.NextDouble() * 0.2f);
+            float cx = ox + inset + R * 0.5f + (float)rng.NextDouble() * (tile - 2 * inset - R);
+            float cy = oy + inset + R * 0.5f + (float)rng.NextDouble() * (tile - 2 * inset - R);
+            float p1 = (float)rng.NextDouble() * 6.3f, p2 = (float)rng.NextDouble() * 6.3f, p3 = (float)rng.NextDouble() * 6.3f;
+            float n0 = (float)rng.NextDouble() * 100f;
+            int rings = 1 + rng.Next(3);
+            float ringW = 0.035f + (float)rng.NextDouble() * 0.03f, dark = 0.55f + (float)rng.NextDouble() * 0.35f;
+            int x0 = Mathf.Max(ox + inset, (int)(cx - R * 1.5f)), x1 = Mathf.Min(ox + tile - inset, (int)(cx + R * 1.5f));
+            int y0 = Mathf.Max(oy + inset, (int)(cy - R * 1.5f)), y1 = Mathf.Min(oy + tile - inset, (int)(cy + R * 1.5f));
+            for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++)
+            {
+                float dx = x - cx, dy = y - cy;
+                float ang = Mathf.Atan2(dy, dx);
+                float r = R * (1f + 0.17f * Mathf.Sin(3f * ang + p1) + 0.09f * Mathf.Sin(5f * ang + p2) + 0.05f * Mathf.Sin(11f * ang + p3));
+                float d = Mathf.Sqrt(dx * dx + dy * dy) / r + (Fbm(x / 22f + n0, y / 22f) - 0.5f) * 0.42f
+                                                              + (Fbm(x / 6f, y / 6f + n0) - 0.5f) * 0.12f;
+                if (d > 1.15f) continue;
+                // The faint tint inside, stronger toward the rim (the water dried from the middle out).
+                float k = d < 1f ? (0.05f + 0.2f * d * d * d) * (0.55f + 0.45f * Fbm(x / 11f, y / 11f + n0)) : 0f;
+                float uneven = 0.45f + 0.75f * Fbm(x / 15f + 40f, y / 15f + n0);           // the tide line comes and goes
+                for (int j = 0; j < rings; j++)
+                {
+                    float rho = 1f - j * 0.19f;
+                    float e = (d - rho) / (ringW * (1f + j * 0.4f));
+                    k = Mathf.Max(k, Mathf.Exp(-e * e) * dark * uneven * (1f - j * 0.25f));
+                }
+                if (k <= 0.003f) continue;
+                Multiply(px, y * w + x, 1f - k * 0.3f, 1f - k * 0.42f, 1f - k * 0.6f);
+            }
+        }
+
+        /// <summary>A patch of mould: a grey haze and a cluster of dark, slightly green specks.</summary>
+        static void Mould(Color32[] px, int w, int ox, int oy, int tile, System.Random rng)
+        {
+            int inset = tile / 24;
+            float s = tile * (0.05f + (float)rng.NextDouble() * 0.1f);
+            float cx = ox + inset + s * 2f + (float)rng.NextDouble() * (tile - 2 * inset - s * 4f);
+            float cy = oy + inset + s * 2f + (float)rng.NextDouble() * (tile - 2 * inset - s * 4f);
+            int x0 = Mathf.Max(ox + inset, (int)(cx - s * 3f)), x1 = Mathf.Min(ox + tile - inset, (int)(cx + s * 3f));
+            int y0 = Mathf.Max(oy + inset, (int)(cy - s * 3f)), y1 = Mathf.Min(oy + tile - inset, (int)(cy + s * 3f));
+            for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++)
+            {
+                float dx = (x - cx) / (s * 1.6f), dy = (y - cy) / (s * 1.6f);
+                float k = Mathf.Exp(-(dx * dx + dy * dy)) * 0.26f * Fbm(x / 6f, y / 6f);
+                if (k > 0.003f) Multiply(px, y * w + x, 1f - k, 1f - k * 0.95f, 1f - k * 1.05f);
+            }
+            int specks = 150 + rng.Next(300);
+            for (int i = 0; i < specks; i++)
+            {
+                // Gaussian spread (Box-Muller), a few strays further out.
+                double u1 = 1.0 - rng.NextDouble(), u2 = rng.NextDouble();
+                double g = System.Math.Sqrt(-2.0 * System.Math.Log(u1));
+                float sx = cx + (float)(g * System.Math.Cos(6.2832 * u2)) * s, sy = cy + (float)(g * System.Math.Sin(6.2832 * u2)) * s;
+                float rad = 0.5f + (float)rng.NextDouble() * (rng.NextDouble() < 0.08 ? 1.8f : 0.9f);
+                float a = 0.15f + (float)rng.NextDouble() * 0.3f;
+                for (int y = (int)(sy - rad - 1); y <= (int)(sy + rad + 1); y++)
+                for (int x = (int)(sx - rad - 1); x <= (int)(sx + rad + 1); x++)
+                {
+                    if (x < ox + inset || x >= ox + tile - inset || y < oy + inset || y >= oy + tile - inset) continue;
+                    float d = Mathf.Sqrt((x - sx) * (x - sx) + (y - sy) * (y - sy));
+                    float k = a * Mathf.Clamp01(rad + 0.5f - d);
+                    if (k > 0.003f) Multiply(px, y * w + x, 1f - k * 0.62f, 1f - k * 0.58f, 1f - k * 0.66f);
+                }
+            }
+        }
+
+        static float Fbm(float x, float y) => ValueNoise(x, y) * 0.6f + ValueNoise(x * 2.3f + 17f, y * 2.3f) * 0.4f;
+
+        static float ValueNoise(float x, float y)
+        {
+            int ix = Mathf.FloorToInt(x), iy = Mathf.FloorToInt(y);
+            float fx = x - ix, fy = y - iy;
+            fx = fx * fx * (3f - 2f * fx); fy = fy * fy * (3f - 2f * fy);
+            float a = Hash01(ix, iy), b = Hash01(ix + 1, iy), c = Hash01(ix, iy + 1), d = Hash01(ix + 1, iy + 1);
+            return Mathf.Lerp(Mathf.Lerp(a, b, fx), Mathf.Lerp(c, d, fx), fy);
+        }
+
+        static float Hash01(int x, int y)
+        {
+            unchecked
+            {
+                uint h = (uint)x * 374761393u + (uint)y * 668265263u;
+                h = (h ^ (h >> 13)) * 1274126177u;
+                return ((h ^ (h >> 16)) & 0xFFFFFF) / 16777215f;
+            }
         }
 
         // ---------------- Square troffers ----------------

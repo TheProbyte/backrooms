@@ -28,7 +28,7 @@ namespace Backrooms.Generation
             r.renderingLayerMask = mask;
             if (mat == _a.lensOn || mat == MaterialMaps.TrofferOn || (_a.domeOn && mat == _a.domeOn) || (_a.stripOn && mat == _a.stripOn) || mat == _a.lampShadeOn) litLensRenderers.Add(r);
             bool architecture = mat == _a.wallpaper || mat == _a.paintedWall || mat == _a.referenceCream || mat == _a.referenceOlive || mat == _a.baseboard || mat == _a.halfWallCap;
-            bool caster = !architecture && mat != _a.lensOn && mat != _a.lensOff && !MaterialMaps.IsTroffer(mat) && mat != _a.ceilingGrid && mat != _a.carpet && mat != _a.ceilingTile && mat != _a.lampShadeOn
+            bool caster = !architecture && mat != _a.lensOn && mat != _a.lensOff && !MaterialMaps.IsTroffer(mat) && !MaterialMaps.IsCeilingVariant(mat) && mat != _a.ceilingGrid && mat != _a.carpet && mat != _a.ceilingTile && mat != _a.lampShadeOn
                           && mat != _a.domeOn && mat != _a.domeOff && mat != _a.ceilingPlaster && mat != _a.stripOn && mat != _a.stripOff
                           && mat != _a.referenceCarpet && mat != _a.cardboard && mat != _a.boxTape && mat != _a.boxPrint && mat != _a.rackUpright && mat != _a.rackBeam && mat != _a.pallet
                           && !WallPlateModels.IsPlate(mat);   // warehouse dressing: proxies cast the shadows

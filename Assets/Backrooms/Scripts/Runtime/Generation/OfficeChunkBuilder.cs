@@ -134,6 +134,7 @@ namespace Backrooms.Generation
             _fixtureCells.Clear();
             // Square panels sit inside a ceiling tile and need no gap in the grid; only round domes sit on a cross tee.
             foreach (var f in layout.fixtures) if (f.dome) _fixtureCells.Add(f.cell);
+            ClearWear();
 
             _cellMask = LightLayers.CellMasks(_L, Neighbour);
             if (Pool) { for (int x = 0; x < _L.N; x++) for (int z = 0; z < _L.N; z++) _cellMask[x, z] = 1u; }   // no fixture lights here
@@ -157,6 +158,7 @@ namespace Backrooms.Generation
             BuildPlates();
             BuildProps(lights);
             BuildAnnex();
+            BuildWear();
             BuildCeilingColliders();
         }
 
@@ -207,6 +209,7 @@ namespace Backrooms.Generation
                 MakeRenderer(root.transform, resources, mat, mask, kv.Value);
                 yield return root;
             }
+            MakeWear(root.transform, resources);
 
             foreach (var kv in _roomLenses)
             {
@@ -396,6 +399,7 @@ namespace Backrooms.Generation
                 }
                 if (_L.Has(x, z, CellFlags.OpenAbove)) continue;     // the storey above closes it
                 var ceil = r.Tall && _a.ceilingPlaster ? _a.ceilingPlaster : _a.ceilingTile;
+                if (DressCeiling(x, z, r, h, m, ceil)) continue;          // a stained, sagging, lifted or missing tile here
                 WMask(ceil, m).Quad(new Vector3(x0, h, z0), new Vector3(x1, h, z0), new Vector3(x1, h, z1), new Vector3(x0, h, z1), Vector3.down,
                     r.Tall ? (MeshWriter.UVProjector)MeshWriter.MetreUV : MeshWriter.CeilingUV);
             }
