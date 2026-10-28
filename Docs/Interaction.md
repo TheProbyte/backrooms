@@ -196,6 +196,51 @@ face, ears and short hair, eyes at about 1.62 m), drawn into the shadows only (t
 arm (`PlayerArm.fbx`) holds the camcorder to the eye, also shadow-only, with a simple camcorder of boxes. Rebuild the body
 alone with `--no-arm`.
 
+## The MakeHuman body (2026-10-27)
+
+The player's body is now a MakeHuman character (MPFB, the MakeHuman add-on for Blender; everything used is CC0), with the
+procedural one above kept as the fallback (`FirstPersonBody.useMakeHumanBody`, or the files missing).
+
+- **Source**: `Tools/Blender/mpfb/PlayerMPFB.blend`, the character as tuned by hand (a man of 25, 1.76 m, slim; a
+  striped shirt and jeans, worn sneakers, short hair). `Tools/Blender/make_player_mpfb.py` built the first version and
+  will not build over the file (`--force` to start again).
+- **Export** (after any change in Blender; it reads the saved file and never changes it):
+  ```
+  F:\Blender\blender.exe -b Tools/Blender/mpfb/PlayerMPFB.blend --python Tools/Blender/export_player_mpfb.py -- "F:/Users/kadej/My project/Assets/Backrooms/Resources/Player/MPFB"
+  ```
+  It bakes MPFB's masks and slider targets into a copy, splits every mesh by the bones that move it (`.Head`: head and
+  neck, hair, eyes, brows, lashes; `.ArmL` / `.ArmR`: each arm and its sleeve; the rest), and writes `PlayerMPFB.fbx`
+  and the textures (colour, and the clothes' normal maps) to `Textures/`. Unity imports it as Generic, no avatar.
+- **Changing clothes or the look**: open the .blend, MPFB tab, *Apply assets* (clothes, shoes, hair, skin: one click
+  each, fitted to the body and skeleton) or *Model* (sliders), save, run the export. No code changes: the game drives
+  bones, not meshes, and finds each material's texture by name (`Textures/<asset>_diffuse.png`, `_normal.png`).
+- **Rig** (`FirstPersonBody.Rig.cs`): MPFB's 53-bone game-engine skeleton. Pelvis, spine_01-03 (the torso's bend,
+  twist and lean spread 40/35/25 %), neck_01, head, thigh/calf/foot (ball: the toes), clavicle/upperarm/lowerarm/hand
+  and three bones a finger. The arm code is the same as for the separate arm (`ArmRig`: measured from the rest pose,
+  the back of the hand from across the knuckles); the body's shoulder is carried toward a reach by turning the
+  collarbone (at most 28 degrees). The working arm is the body's own; the other holds the camcorder to the eye. While
+  crawling (the body is hidden) the separate arm model takes a held thing as before.
+- **Drawn**: the body, clothes, shoes and the working arm; the head parts and the camcorder arm cast shadows only.
+  Materials are Backrooms/Lit with the textures (normal maps on the clothes: an existing shader variant).
+
+Fitting the legs to it: MakeHuman's legs are nearly straight at rest (hips 0.95 m, legs 0.87 m), so they run out of
+reach where the old body did not. A planted foot the leg cannot reach now lifts its heel, turning about the ball of the
+foot (the toes stay put), solved exactly and eased down; a step leaves the floor with that tilt. A trailing foot closing
+up behind a side-step stops 15 cm from the planted one (it came within 1 cm), side-steps are quicker and shorter and do
+not roll the heel. On stairs the feet alternate, one tread past the other foot (as people climb them; one tread past
+itself made both feet stop on every tread, half the walking speed, so the feet fell behind and the legs trailed: the
+"Octodad" look), stair steps are quicker (at most 0.27 s) and may start as the other foot lands, stairs are walked at
+0.8 of the flat's speed (`CamcorderPlayerController.stairSpeed`, `OnStairs`), the landing height always arrives by the
+end of a step (a short step down could land in the air), and no stride is longer than 1.45 m walking.
+
+Checked in play (World 3, erased after): outside views (filming pose, textures), first person looking down (shirt and
+shoe tips, nothing in the way), HandShots items (spray can, tape, desk lamp looked at: fingers round them, the sleeve
+with the arm), the right hand flat on a wall when leaning (palm 1-7 cm from its point). Movement test (look 25 degrees
+each way, turn 90, walk forward and back, strafe both ways, stop): no foot moved while looking, toes of planted feet
+moved at most 0.26 m/s (reversing; 0.03 turning), feet at least 0.10 m apart turning and 0.15 m strafing. Test
+staircase (4 up, landing, 4 down): every tread, feet alternating, every landing mid-tread (11-14 cm from the edges) and
+at the tread's height, the feet within 0.3 m of the body, the legs never hanging.
+
 ## Body and movement (2026-10-27)
 
 `Interaction/FirstPersonBody.Full.cs`, `Motion/Springs.cs`, `CamcorderPlayerController` (Momentum).
@@ -220,8 +265,8 @@ alone with `--no-arm`.
   step in a frame); the legs only let go of the floor and hang after 0.14 s off it or when rising (a jump), not each
   time the controller leaves a step's edge. Stepping down, the foot carries over the edge first and then lowers, landing
   toes first; stepping up, it rises first and then goes over the nosing; a small lift either way (it used to add the
-  whole step's height on top, throwing the knee up). On stairs a foot goes one tread at a time (`OneTread`: a landing
-  that would cross a second change of floor height is pulled back onto the tread between).
+  whole step's height on top, throwing the knee up). On stairs a foot goes at most one tread past the other foot
+  (`OneTread`; since the MakeHuman body the feet alternate, see above).
 - **Momentum**: speed follows the keys through a damper (half-lives: walk 0.05 s, run 0.08 s, stop or reverse 0.07 s,
   air 0.45 s): measured 95 % of walking speed in 0.17 s and a 12 cm slide over 0.32 s when you let go. The view rolls
   about 1 degree into a turn (`turnRoll`) and the torso leans with it. Coyote time 0.12 s, jump buffer 0.15 s (held, it

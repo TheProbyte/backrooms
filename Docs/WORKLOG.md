@@ -15,6 +15,14 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-27 21:20  Claude Code  MakeHuman player body: MPFB character in game on its own rig, legs fitted (strafe, heel, stairs)
+- Asked for: a better, realistic, free body and rig (MPFB, CC0) brought in exactly as the user tuned it in Blender, working smoothly with the movement system; and whether clothes are easy to change later (yes: MPFB Apply assets, save, rerun the export).
+- New: `Tools/Blender/mpfb/PlayerMPFB.blend` (the user's character: weight slider 0, refit, saved), `make_player_mpfb.py` (first build; will not overwrite the .blend), `export_player_mpfb.py` (bakes a copy, splits meshes into .Head/.ArmL/.ArmR by bone weight, writes Resources/Player/MPFB/PlayerMPFB.fbx and Textures/). MPFB 2.0.18 and the system asset pack are installed in the user's Blender.
+- New `Interaction/FirstPersonBody.Rig.cs`: bone map, spine chain, `ArmRig` (one arm measured from its rest pose: the separate model or the body's own), the shoulder carried by the collarbone, MPFB materials, shadow-only head and camcorder arm. `FirstPersonBody.cs`/`.Full.cs` use it; the separate arm is kept for holding things while crawling.
+- Legs fitted to MakeHuman's straight legs: the trailing foot keeps 15 cm from the planted one after a side-step (was 1 cm); side-steps shorter, no heel roll; an unreachable planted foot lifts its heel about the ball of the foot (solved, eased; was stepped and flickered); a step starts from that tilt; stairs alternate feet one tread past the other (was step-to: feet fell behind, legs trailed); quicker stair steps; stairs at 0.8 speed (`CamcorderPlayerController.stairSpeed`); landing height always arrives; stride cap 1.45 m.
+- Checked: EditMode 109/109. Play (World 3, erased after): renders outside and first person, HandShots items, wall touch, movement test (look, turn, walk, strafe, stop) and a test staircase; numbers in Docs/Interaction.md.
+- Open: untested by the user; the test staircase was built for the check (no real one near); the left (camcorder) arm's shirt seam shows only if that arm is ever drawn; a hoodie or flannel is not in the free pack.
+
 ## 2026-10-27 20:06  Claude Code  Fixes from play: exit signs on walls, softer movement sounds, no popping when turning, firm legs going down
 - Exit signs floated: they were also put over plain openings (open to the ceiling) and arches. Now only over a flat header with wall above (`OfficeChunkBuilder.Wear.cs`, `ViewOpening`). Render checked: flush on the wall over a headed doorway.
 - Sounds (the user found movement and scraping along walls harsh): the wall brush is a low fabric rub (was bright 1.1 and 3.1 kHz noise), a third of the level, only on real contact (was within 6 cm), eased in, a smaller knock; clothes rustle darker and at about half; footsteps a little quieter (running less of a stomp) and steps on the spot soft, without the handling thump.

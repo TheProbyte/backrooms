@@ -159,6 +159,22 @@ namespace Backrooms
         /// <summary>Walked into something hard enough to feel it: the shove (world, m/s) and where (the contact point).</summary>
         public event System.Action<Vector3, Vector3> Bumped;
 
+        [Tooltip("Walking speed on stairs, as a share of the flat's.")] public float stairSpeed = 0.8f;
+        float _onStairs, _stairY, _stairTimer;
+        /// <summary>0..1: walking a staircase (the floor stepping up or down under the feet in the last moment).</summary>
+        public float OnStairs => _onStairs;
+
+        void UpdateStairs(bool grounded)
+        {
+            // Stairs: the grounded height changing in steps (a ramp changes it smoothly too, but stairs are what this is
+            // for; a ramp's slow walk is no harm).
+            float y = transform.position.y;
+            if (!grounded) { _stairY = y; _stairTimer = 0f; }
+            else if (Mathf.Abs(y - _stairY) > 0.08f) { _stairY = y; _stairTimer = 0.6f; }
+            _stairTimer -= Time.deltaTime;
+            _onStairs = Mathf.MoveTowards(_onStairs, _stairTimer > 0f ? 1f : 0f, Time.deltaTime * 3f);
+        }
+
         /// <summary>A shove that moves the feet a little (never knocks you over): added to the walking speed, at most 1 m/s.</summary>
         public void Push(Vector3 v)
         {
@@ -360,6 +376,8 @@ namespace Backrooms
             IsRunning = !noRun && hasFocus && CurrentStance == Stance.Stand && keyboard.leftShiftKey.isPressed && input.y > 0.1f;
             float targetSpeed = CurrentStance == Stance.Crawl ? crawlSpeed : CurrentStance == Stance.Crouch ? crouchSpeed : IsRunning ? runSpeed : walkSpeed;
             targetSpeed *= moveScale;
+            // Stairs are walked a little slower than the flat (a step a tread at a time each foot, as people do).
+            targetSpeed *= Mathf.Lerp(1f, stairSpeed, _onStairs);
             Vector3 target = (transform.forward * input.y + transform.right * input.x) * targetSpeed;
 
             // Momentum: the speed follows the keys through a critically damped spring (it builds up and settles, keeps
@@ -430,6 +448,7 @@ namespace Backrooms
                 _eyeVel -= Mathf.Min(2.5f, -_airMinVy * 0.45f);
             }
             if (grounded) { _airMinVy = 0f; _lastGrounded = Time.time; }
+            UpdateStairs(grounded);
             _wasGrounded = grounded;
             _bumpCooldown -= Time.deltaTime;
         }

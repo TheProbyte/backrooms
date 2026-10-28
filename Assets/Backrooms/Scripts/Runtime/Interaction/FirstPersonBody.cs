@@ -35,7 +35,6 @@ namespace Backrooms.Interaction
         Vector3 _torsoBendAxis;
         float _walkAmount;
         float _hipsHeight = 0.93f;
-        Renderer[] _armRenderers;
 
         static readonly Dictionary<string, Color> Colors = new Dictionary<string, Color>
         {
@@ -67,34 +66,49 @@ namespace Backrooms.Interaction
             float side = _grab ? _grab.Side : 1f;
             var armPrefab = Resources.Load<GameObject>(side > 0f ? "Player/PlayerArmRight" : "Player/PlayerArm");
             if (!armPrefab) armPrefab = Resources.Load<GameObject>("Player/PlayerArm");
-            var bodyPrefab = Resources.Load<GameObject>("Player/PlayerBody");
+            var mpfbPrefab = useMakeHumanBody ? Resources.Load<GameObject>("Player/MPFB/PlayerMPFB") : null;
+            var bodyPrefab = mpfbPrefab ? mpfbPrefab : Resources.Load<GameObject>("Player/PlayerBody");
             if (armPrefab)
             {
-                _arm = Instantiate(armPrefab).transform;
-                _arm.name = "FirstPersonArm";
-                Setup(_arm.gameObject);
-                _upper = Find(_arm, "UpperArm"); _fore = Find(_arm, "Forearm"); _hand = Find(_arm, "Hand");
-                MeasureArm();
-                _armRenderers = _arm.GetComponentsInChildren<Renderer>();
-                Generation.PoolLitSwitch.Attach(_arm.gameObject);
+                // The separate arm: the only arm on the old body; on the MakeHuman body, the hand while crawling.
+                var arm = Instantiate(armPrefab).transform;
+                arm.name = "FirstPersonArm";
+                Setup(arm.gameObject, false);
+                var up = Find(arm, "UpperArm"); var fo = Find(arm, "Forearm"); var ha = Find(arm, "Hand");
+                if (up && fo && ha)
+                {
+                    _looseArm = MeasureArmRig(arm, null, up, fo, ha, null, true);
+                    _looseArm.renderers = arm.GetComponentsInChildren<Renderer>();
+                    Generation.PoolLitSwitch.Attach(arm.gameObject);
+                }
+                else Destroy(arm.gameObject);
             }
             if (bodyPrefab && showBody)
             {
+                _isMpfb = bodyPrefab == mpfbPrefab;
                 _body = Instantiate(bodyPrefab, transform, false).transform;
                 _body.name = "FirstPersonBody";
-                Setup(_body.gameObject);
-                _hips = Find(_body, "Hips"); _torso = Find(_body, "Torso");
-                _thighL = Find(_body, "ThighL"); _thighR = Find(_body, "ThighR"); _shinL = Find(_body, "ShinL"); _shinR = Find(_body, "ShinR");
+                Setup(_body.gameObject, _isMpfb);
+                _hips = Find(_body, Bone("Hips")); _torso = Find(_body, Bone("Torso"));
+                _thighL = Find(_body, Bone("ThighL")); _thighR = Find(_body, Bone("ThighR")); _shinL = Find(_body, Bone("ShinL")); _shinR = Find(_body, Bone("ShinR"));
                 MeasureBody();
+                if (_isMpfb)
+                {
+                    // The working arm is the body's own (right for a right-hander).
+                    string s = side > 0f ? "r" : "l";
+                    var up = Find(_body, "upperarm_" + s); var fo = Find(_body, "lowerarm_" + s); var ha = Find(_body, "hand_" + s);
+                    if (up && fo && ha) _bodyArm = MeasureArmRig(_body, Find(_body, "clavicle_" + s), up, fo, ha, s, false);
+                }
                 Generation.PoolLitSwitch.Attach(_body.gameObject);
             }
+            UseArm(_bodyArm ?? _looseArm);
             SetupFull();
         }
 
         void OnDestroy()
         {
             OnDestroyFull();
-            if (_arm) Destroy(_arm.gameObject);
+            if (_looseArm != null && _looseArm.root) Destroy(_looseArm.root.gameObject);
             foreach (var m in _mats.Values) Destroy(m);
         }
 
@@ -104,8 +118,11 @@ namespace Backrooms.Interaction
             return null;
         }
 
-        /// <summary>Backrooms/Lit materials (so the light grid lights the body too), one per FBX material name.</summary>
-        void Setup(GameObject go)
+        /// <summary>
+        /// Backrooms/Lit materials (so the light grid lights the body too), one per FBX material name: plain colours on the
+        /// old models, the textures on the MakeHuman body (whose head and camcorder arm only cast shadows).
+        /// </summary>
+        void Setup(GameObject go, bool mpfb)
         {
             var shader = Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit");
             foreach (var r in go.GetComponentsInChildren<Renderer>())
@@ -113,6 +130,7 @@ namespace Backrooms.Interaction
                 var mats = r.sharedMaterials;
                 for (int i = 0; i < mats.Length; i++)
                 {
+                    if (mpfb) { mats[i] = MpfbMaterial(mats[i], shader); continue; }
                     string key = mats[i] ? mats[i].name.Replace(" (Instance)", "") : "Skin";
                     if (!_mats.TryGetValue(key, out var m))
                     {
@@ -128,7 +146,8 @@ namespace Backrooms.Interaction
                     mats[i] = m;
                 }
                 r.sharedMaterials = mats;
-                r.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
+                r.shadowCastingMode = mpfb && ShadowOnlyPart(r.name) ? ShadowCastingMode.ShadowsOnly
+                                    : castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
                 // Skinned (Tools/Blender/make_player_rig.py): bounds follow the pose, or a reaching arm or a squat
                 // would be culled while on screen (its imported bounds fit only the rest pose).
                 if (r is SkinnedMeshRenderer sk) { sk.updateWhenOffscreen = true; sk.quality = SkinQuality.Bone4; }
@@ -138,69 +157,6 @@ namespace Backrooms.Interaction
         }
 
         // ---------------- Arm ----------------
-
-        void MeasureArm()
-        {
-            // Rest pose straight out of the model: axes from child positions.
-            _upperLen = Vector3.Distance(_upper.position, _fore.position);
-            _foreLen = Vector3.Distance(_fore.position, _hand.position);
-            Vector3 boneW = (_fore.position - _upper.position).normalized;
-            var watch = Find(_arm, "WatchCase");
-            Vector3 backW = watch ? Vector3.ProjectOnPlane(watch.position - _fore.position, boneW).normalized : Vector3.up;
-            _upperAxis = _upper.InverseTransformDirection(boneW);
-            _upperBack = _upper.InverseTransformDirection(backW);
-            _foreAxis = _fore.InverseTransformDirection((_hand.position - _fore.position).normalized);
-            _foreBack = _fore.InverseTransformDirection(backW);
-            var middle = Find(_arm, "Middle1");
-            Vector3 fingersW = middle ? (middle.position - _hand.position).normalized : boneW;
-            fingersW = Vector3.ProjectOnPlane(fingersW, backW).normalized;
-            _handFingers = _hand.InverseTransformDirection(fingersW);
-            _handBack = _hand.InverseTransformDirection(backW);
-            // Where the hand touches what it holds: under the knuckles, on the palm side.
-            float palmLen = middle ? Vector3.Dot(middle.position - _hand.position, fingersW) : 0.1f;
-            _wristToGrip = new Vector3(0f, -0.018f, palmLen * 0.78f);     // (side, back, fingers)
-
-            var ix2 = Find(_arm, "Index2"); var ix3 = Find(_arm, "Index3");
-            if (ix2 && ix3)
-            {
-                Vector3 tipW = ix3.position + (ix3.position - ix2.position).normalized * (Vector3.Distance(ix2.position, ix3.position) * 0.9f);
-                Vector3 d = tipW - _hand.position, sideRest = Vector3.Cross(backW, fingersW).normalized;
-                _wristToTip = new Vector3(Vector3.Dot(d, sideRest), Vector3.Dot(d, backW), Vector3.Dot(d, fingersW));
-            }
-
-            // Thumb rest pose: out to the side, forward, and down toward the palm (the exported model has it
-            // pointing up and out). Set here so it does not depend on the FBX axis conversion.
-            Vector3 sideW = Vector3.Cross(backW, fingersW).normalized;
-            var thumb1 = Find(_arm, "Thumb1"); var thumb2 = Find(_arm, "Thumb2");
-            if (thumb1 && thumb2)
-            {
-                if (Vector3.Dot(sideW, thumb1.position - _hand.position) < 0f) sideW = -sideW;      // toward the thumb
-                Vector3 now = (thumb2.position - thumb1.position).normalized;
-                Vector3 want = (sideW * 0.45f + fingersW * 0.75f - backW * 0.5f).normalized;
-                thumb1.rotation = Quaternion.FromToRotation(now, want) * thumb1.rotation;
-            }
-            // Finger joints bend toward the palm. (Checked numerically: rotating about back x fingers moves
-            // the fingertips to the palm side.)
-            Vector3 bendW = Vector3.Cross(backW, fingersW).normalized;
-            // The thumb folds across the palm (toward the index finger's base and the palm side), not about the
-            // fingers' axis: about that it would swing back toward the wrist in a fist.
-            Vector3 thumbBendW = bendW;
-            if (thumb1 && thumb2)
-            {
-                Vector3 thumbDir = (thumb2.position - thumb1.position).normalized;
-                Vector3 across = (-sideW * 0.75f - backW * 0.55f + fingersW * 0.25f).normalized;
-                Vector3 ax = Vector3.Cross(thumbDir, across);
-                if (ax.sqrMagnitude > 1e-6f) thumbBendW = ax.normalized;
-            }
-            foreach (var name in new[] { "Index", "Middle", "Ring", "Pinky", "Thumb" })
-                for (int i = 1; i <= 3; i++)
-                {
-                    var t = Find(_arm, name + i);
-                    if (!t) continue;
-                    float w = name == "Thumb" ? (i == 1 ? 0.2f : 0.5f) : i == 1 ? 1f : i == 2 ? 1.25f : 0.8f;
-                    _fingerJoints.Add((t, t.localRotation, t.InverseTransformDirection(name == "Thumb" ? thumbBendW : bendW), w, name));
-                }
-        }
 
         void LateUpdate()
         {
@@ -212,19 +168,34 @@ namespace Backrooms.Interaction
 
         void UpdateArm()
         {
-            if (!_arm) return;
-            float blend = _grab ? _grab.HandBlend : 0f;
-            // The arm is always there (the shadow has it) unless the body is not (crawling, flying) and nothing is held.
-            bool show = blend > 0.001f || FeetActive;
-            foreach (var r in _armRenderers) r.enabled = show;
-            if (!show) return;
+            // The body's own arm while the body is shown; the separate arm while crawling (the body is hidden then).
+            var armNow = _bodyArm != null && FeetActive ? _bodyArm : _looseArm;
+            if (armNow != _curArm) UseArm(armNow);
+            if (_curArm == null || !_grab) return;
+            float blend = _grab.HandBlend;
+            bool loose = _curArm.root != null;
+            if (_looseArm != null && _looseArm.renderers != null)
+            {
+                // The separate arm is always there (the shadow has it) unless the body is not and nothing is held.
+                bool showLoose = loose && (blend > 0.001f || FeetActive);
+                foreach (var r in _looseArm.renderers) if (r) r.enabled = showLoose;
+                if (loose && !showLoose) return;
+            }
 
             Vector3 shoulder = _grab.Shoulder;
             Quaternion yaw = transform.rotation;
             float side = _grab.Side;
+            // The body's arm hangs from its own shoulder (the collarbone at rest); reaching, the shoulder goes toward the
+            // reach (below).
+            Vector3 natural = shoulder;
+            if (!loose)
+            {
+                if (_curArm.clavicle) _curArm.clavicle.localRotation = _curArm.clavicleRest;
+                natural = _upper.position;
+            }
             // Resting (the Body and IK layers: hanging and swinging, or a hand on the world); reaching (the Override
             // layer, PropGrabber): palm on the grip.
-            RestPose(shoulder, yaw, side, out Vector3 restWrist, out Quaternion restHand, out float restCurl);
+            RestPose(natural, yaw, side, out Vector3 restWrist, out Quaternion restHand, out float restCurl);
             bool poke = _grab.PokePose;
             Quaternion gripHand = poke ? _grab.PokeRotation : _grab.HandRotation;
             Vector3 gripWrist = poke ? _grab.PokeTip - gripHand * _wristToTip
@@ -239,6 +210,8 @@ namespace Backrooms.Interaction
                 float over = toWrist.magnitude - (_upperLen + _foreLen) * 0.97f;
                 if (over > 0f) shoulder += toWrist.normalized * Mathf.Min(over, 0.09f);
             }
+            // The body's arm: its collarbone carries the shoulder toward the reach's (as far as a collarbone turns).
+            if (!loose) shoulder = CarryShoulder(_curArm.clavicle, _curArm.clavicleRest, _upper, Vector3.Lerp(natural, shoulder, s), 28f);
             // Where the hand touches (palm or fingertip): kept there whatever the wrist ends up doing.
             Vector3 touchOff = poke ? _wristToTip : _wristToGrip;
             Vector3 touch = wrist + handRot * touchOff;
@@ -267,8 +240,7 @@ namespace Backrooms.Interaction
             Vector3 elbow = pose.elbow, wristAt = pose.wrist;
             Vector3 poleDir = Vector3.ProjectOnPlane(elbow - shoulder, (wristAt - shoulder).normalized).normalized;
 
-            _arm.position = shoulder;
-            _arm.rotation = Quaternion.identity;
+            if (loose) { _arm.position = shoulder; _arm.rotation = Quaternion.identity; }
             Orient(_upper, _upperAxis, _upperBack, elbow - shoulder, Vector3.Lerp(-poleDir, pose.foreBack, 0.3f));
             Orient(_fore, _foreAxis, _foreBack, wristAt - elbow, pose.foreBack);
             Orient(_hand, _handFingers, _handBack, pose.hand * Vector3.forward, pose.hand * Vector3.up);
@@ -448,6 +420,10 @@ namespace Backrooms.Interaction
         {
             public Transform thigh, shin, foot;
             public float upper, lower, ankle, side;      // lengths, ankle height over the sole, hip offset to the side
+            public float toe = 0.11f;                    // ankle to the ball of the foot, along the foot
+            public float heel, heelVel;                  // the heel lifted (degrees) because the leg could not reach the floor
+            public float lastPitch, liftPitch;           // the foot's tilt last frame, and when this step left the floor
+            public Vector3 landAt;                       // where this step was planned to land
             public Vector3 thighAxis, thighFront, shinAxis, shinFront, footFwd, footUp;   // rest axes, local to each bone
             public Vector3 plant;                        // the sole on the ground (world), while not stepping
             public Vector3 plantFwd;                     // its heading on the ground
@@ -482,6 +458,12 @@ namespace Backrooms.Interaction
             g.shinFront = shin.InverseTransformDirection(fwd);
             g.footFwd = foot.InverseTransformDirection(fwd);
             g.footUp = foot.InverseTransformDirection(up);
+            // The ball of the foot (MakeHuman's toe bone), where the heel turns as it lifts.
+            if (foot != shin && foot.childCount > 0)
+            {
+                float toe = Vector3.Dot(foot.GetChild(0).position - foot.position, fwd);
+                if (toe > 0.05f && toe < 0.2f) g.toe = toe;
+            }
             return g;
         }
 
@@ -490,11 +472,12 @@ namespace Backrooms.Interaction
             _hipsHeight = Vector3.Dot(_hips.position - _body.position, transform.up);
             _hipsRestLocal = Quaternion.Inverse(_body.rotation) * _hips.rotation;
             _torsoRest = _torso.localRotation;
+            MeasureSpine();
             _torsoBendAxis = _torso.InverseTransformDirection(transform.right);
             _torsoUpAxis = _torso.InverseTransformDirection(transform.up);
             _torsoFwdAxis = _torso.InverseTransformDirection(transform.forward);
-            _legA = MeasureLeg(_thighL, _shinL, Find(_body, "FootL"));
-            _legB = MeasureLeg(_thighR, _shinR, Find(_body, "FootR"));
+            _legA = MeasureLeg(_thighL, _shinL, Find(_body, Bone("FootL")));
+            _legB = MeasureLeg(_thighR, _shinR, Find(_body, Bone("FootR")));
         }
 
         /// <summary>Where a foot stands when the body is still: under its hip (wider and a little forward in a squat).</summary>
