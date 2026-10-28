@@ -879,7 +879,8 @@ namespace Backrooms.DebugTools
             if (string.IsNullOrEmpty(id)) return "holding nothing";
             var t = pl.transform;
             var item = ItemFactory.Spawn(id, t.position + t.forward * 0.4f + Vector3.up * 1.0f, t.rotation);
-            grab.PickUp(item);
+            // (Straight into the hand: picked up by hand it would fall to the floor first and be reached for there.)
+            grab.PutInHand(item);
             return "holding " + id;
         }
 
@@ -918,7 +919,7 @@ namespace Backrooms.DebugTools
             {
                 Hold("", stand.x, stand.z, yaw, 0f);
                 var box = ItemFactory.Spawn("extensioncord", pl.transform.position + pl.transform.right * 0.5f + Vector3.up * 0.1f, pl.transform.rotation) as CordBox;
-                if (box) { box.Deploy(null, pl.transform.position + pl.transform.forward * 0.3f + Vector3.up * 0.9f); target = box.Plug; grab.PickUp(target); }
+                if (box) { box.Deploy(null, pl.transform.position + pl.transform.forward * 0.3f + Vector3.up * 0.9f); target = box.Plug; grab.PutInHand(target); }
             }
             else { Hold(id, stand.x, stand.z, yaw, 0f); target = grab.HeldItem; }
             Vector3 eye = pl.cameraPitchPivot ? pl.cameraPitchPivot.position : pl.transform.position + Vector3.up * 1.58f;
@@ -1320,6 +1321,151 @@ namespace Backrooms.DebugTools
             };
             Application.onBeforeRender += act;
             return "door run";
+        }
+
+        /// <summary>
+        /// Round-8 pick-up test (2026-10-28): id dropped at itemAt (turned itemYaw) and left to settle, the player at stand
+        /// facing yaw, then the view put on the item and a click (frame 40). Every frame into file: whether it was offered,
+        /// held, the lift, the item's distance from where it lay and its move this frame (mm), the palm to its grip (mm),
+        /// PalmError, blend, elbow, stoop, the player. Summary: offered, the time the item first moved and the time to the
+        /// carry, its move before the hand had it (must be 0), the palm to the grip then, the least elbow reaching, the
+        /// biggest move in one frame after. shots: frames after the click drawn (first person and from the side) into dir.
+        /// crawl: on all fours (under a table).
+        /// </summary>
+        public static string PickRun(string id, Vector3 itemAt, float itemYaw, Vector3 stand, float yaw, bool crawl, string file, int frames, string dir, string tag, string shots)
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var grab = pl.GetComponent<PropGrabber>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            if (grab.HeldItem) { var old = grab.HeldItem; grab.Drop(); Destroy(old.gameObject); }
+            foreach (var it in FindObjectsByType<WorldItem>(FindObjectsSortMode.None))
+                if (!it.Held && Vector3.Distance(it.transform.position, itemAt) < 3f) Destroy(it.gameObject);
+            grab.botHold = null; pl.botInput = null;
+            pl.SetStance(crawl ? CamcorderPlayerController.Stance.Crawl : CamcorderPlayerController.Stance.Stand);
+            pl.TeleportSafe(stand, yaw, 30f);
+            var item = ItemFactory.Spawn(id, itemAt, Quaternion.Euler(0f, itemYaw, 0f));
+            if (!item) return "no item " + id;
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            var fT = typeof(PropGrabber).GetField("_itemT", bf);
+            var look = typeof(PropGrabber).GetMethod("LookItem", bf);
+            var shotSet = new HashSet<int>();
+            foreach (var s in (shots ?? "").Split(',')) { int k; if (int.TryParse(s, out k)) shotSet.Add(k); }
+            System.Func<Vector3> gripOf = () => item.transform.TransformPoint(grab.Side > 0f ? item.GripLocal : new Vector3(-item.GripLocal.x, item.GripLocal.y, item.GripLocal.z));
+            const int Press = 40;
+            var sb = new StringBuilder();
+            sb.AppendFormat("{0} at {1} stand {2} yaw {3:0} crawl {4}\n", id, itemAt.ToString("F2"), stand.ToString("F2"), yaw, crawl);
+            sb.AppendLine("frame | t | held | lift | from rest mm | step mm | palm->grip mm | PE mm | blend | elbow | stoop | player | bot");
+            int frame = 0, grabF = -1, carryF = -1, takenF = -1;
+            float t0 = 0f, beforeMax = 0f, palmAtGrab = -1f, firstStep = 0f, minElbow = 999f, maxStepAfter = 0f, maxPalmLift = 0f, grabT = -1f, carryT = -1f;
+            int maxStepAt = -1; bool offered = false;
+            float shareAtGrab = 0f, leanAtGrab = 0f, maxSpeedAfter = 0f;
+            Vector3 rest = Vector3.zero, last = Vector3.zero, restGrip = Vector3.zero, lastPalm = Vector3.zero;
+            UnityEngine.Events.UnityAction act = null;
+            act = () =>
+            {
+                frame++;
+                if (!item) { Application.onBeforeRender -= act; File.WriteAllText(file, sb.ToString() + "item gone\n"); return; }
+                // Set down as it was turned (a can dropped in tipped over now and then).
+                if (frame < 25 && item.Body) { item.Body.rotation = Quaternion.Euler(0f, itemYaw, 0f); item.transform.rotation = item.Body.rotation; item.Body.angularVelocity = Vector3.zero; }
+                if (frame == Press - 8)
+                {
+                    // The view on it (as a player aims): the middle of its colliders (a lamp's renderers take in its cord).
+                    Vector3 eye = pl.cameraPitchPivot ? pl.cameraPitchPivot.position : pl.transform.position + Vector3.up * 1.58f;
+                    var b = new Bounds(gripOf(), Vector3.zero); bool any = false;
+                    foreach (var c in item.GetComponentsInChildren<Collider>()) { if (!any) b = c.bounds; else b.Encapsulate(c.bounds); any = true; }
+                    Vector3 to = b.center - eye;
+                    pl.TeleportSafe(pl.transform.position, Mathf.Atan2(to.x, to.z) * Mathf.Rad2Deg, Mathf.Atan2(-to.y, new Vector2(to.x, to.z).magnitude) * Mathf.Rad2Deg);
+                }
+                if (frame == Press - 1)
+                {
+                    var args = new object[] { grab.itemRange, null };
+                    offered = (bool)look.Invoke(grab, args) && (WorldItem)args[1] == item;
+                    rest = last = item.transform.position; restGrip = gripOf();
+                    sb.AppendFormat("offered {0} | grip {1} | eye to grip {2:0.00} m | shoulder to grip {3:0.00} m (reach {4:0.000})\n", offered, restGrip.ToString("F3"),
+                        Vector3.Distance(pl.cameraPitchPivot.position, restGrip), Vector3.Distance(grab.ReachShoulder, restGrip), grab.ArmReach);
+                }
+                if (frame == Press) { grab.botHold = true; t0 = Time.time; }
+                if (frame == Press + 2) grab.botHold = false;
+                if (frame == Press + 3) grab.botHold = null;
+                if (frame < Press) return;
+                float liftT = (float)fT.GetValue(grab);
+                bool held = grab.HeldItem == item;
+                if (held && takenF < 0) takenF = frame;
+                Vector3 pos = item.transform.position;
+                float step = (pos - last).magnitude, fromRest = (pos - rest).magnitude;
+                Vector3 palm = fpb.PalmNow;
+                float palmGrip = (palm - gripOf()).magnitude;
+                var a = ArmAngles();
+                bool lifting = held && liftT > 0f;
+                if (lifting && grabF < 0) { grabF = frame; grabT = Time.time - t0; palmAtGrab = (lastPalm - restGrip).magnitude; firstStep = step; shareAtGrab = (grab.ReachShoulder - restGrip).magnitude / grab.ArmReach; leanAtGrab = grab.ReachLean; }
+                if (grabF < 0) { beforeMax = Mathf.Max(beforeMax, fromRest); if (grab.HandBlend > 0.5f) minElbow = Mathf.Min(minElbow, a.x); }
+                else
+                {
+                    if (step > maxStepAfter) { maxStepAfter = step; maxStepAt = frame; }
+                    if (Time.deltaTime > 1e-4f) maxSpeedAfter = Mathf.Max(maxSpeedAfter, step / Time.deltaTime);
+                    if (carryF < 0) maxPalmLift = Mathf.Max(maxPalmLift, palmGrip);
+                }
+                if (held && liftT >= 1f && carryF < 0) { carryF = frame; carryT = Time.time - t0; }
+                string phase = held ? (liftT > 0f ? "lift" : "hand") : grab.Fetching == item ? "reach" : "-";
+                sb.AppendFormat("{0} | {1:0.000} | {2} | {3:0.00} | {4:0.0} | {5:0.0} | {6:0.0} | {7:0.0} | {8:0.00} | {9:0} | {10:0.00} | {11} | {12}\n", frame, Time.time - t0, phase, liftT,
+                    fromRest * 1000f, step * 1000f, palmGrip * 1000f, Mathf.Min(fpb.PalmError, 9.999f) * 1000f, grab.HandBlend, a.x, pl.stoop, pl.transform.position.ToString("F2"),
+                    (pl.botInput.HasValue ? pl.botInput.Value.ToString("F2") : "-") + string.Format(" | lean {0:0} | S-grip {1:0.000}", grab.ReachLean, (grab.ReachShoulder - gripOf()).magnitude));
+                if (shotSet.Contains(frame - Press) && !string.IsNullOrEmpty(dir))
+                {
+                    Snap(Path.Combine(dir, string.Format("{0}_{1:000}_fp.png", tag, frame - Press)), Vector3.zero, Vector3.zero);
+                    // From the side with more room, level with the hand.
+                    Vector3 sh = grab.ReachShoulder, mid = Vector3.Lerp(sh, restGrip, 0.5f);
+                    Vector3 side = pl.transform.right; RaycastHit h;
+                    float dR = Physics.Raycast(mid, side, out h, 2.4f, ~0, QueryTriggerInteraction.Ignore) ? h.distance : 2.4f;
+                    float dL = Physics.Raycast(mid, -side, out h, 2.4f, ~0, QueryTriggerInteraction.Ignore) ? h.distance : 2.4f;
+                    Vector3 dirSide = dR >= dL ? side : -side;
+                    Vector3 from = mid + dirSide * (Mathf.Max(dR, dL) - 0.15f) + Vector3.up * 0.25f - pl.transform.forward * 0.3f;
+                    Snap(Path.Combine(dir, string.Format("{0}_{1:000}_side.png", tag, frame - Press)), from, mid);
+                }
+                last = pos; lastPalm = palm;
+                if (frame >= Press + frames)
+                {
+                    Application.onBeforeRender -= act;
+                    grab.botHold = null; pl.botInput = null;
+                    sb.AppendFormat("SUMMARY {0} offered {1} | taken {2} | first move {3} s after the click | in the carry {4} s | item moved before the hand had it {5:0.0} mm | palm to grip when it first moved {6:0.0} mm (first step {7:0.0} mm) | least elbow reaching {8:0} | biggest frame move after {9:0.0} mm (frame {10}) | palm off the grip lifting max {11:0.0} mm | ends {12:0.000} m from where it lay, held {13}, gave up {14} | at the grab: shoulder to grip {15:0.00} of the reach, lean {16:0} | fastest after {17:0.00} m/s\n",
+                        id, offered, takenF > 0, grabT >= 0f ? grabT.ToString("0.00") : "never", carryT >= 0f ? carryT.ToString("0.00") : "never", beforeMax * 1000f, palmAtGrab * 1000f, firstStep * 1000f,
+                        minElbow, maxStepAfter * 1000f, maxStepAt - Press, maxPalmLift * 1000f, (item.transform.position - rest).magnitude, grab.HeldItem == item, grab.PickGaveUp, shareAtGrab, leanAtGrab, maxSpeedAfter);
+                    pl.SetStance(CamcorderPlayerController.Stance.Stand);
+                    File.WriteAllText(file, sb.ToString());
+                }
+            };
+            Application.onBeforeRender += act;
+            return "pick run " + id;
+        }
+
+        static Camera s_snapCam;
+        static RenderTexture s_snapRt;
+        static Texture2D s_snapTex;
+
+        /// <summary>A small picture (320x240): the player's view (from == at), or from a point toward another.</summary>
+        public static void Snap(string path, Vector3 from, Vector3 at)
+        {
+            var main = Camera.main;
+            if (!main) return;
+            if (!s_snapCam)
+            {
+                var go = new GameObject("ProbeSnapCam");
+                s_snapCam = go.AddComponent<Camera>();
+                s_snapCam.enabled = false;
+                s_snapRt = new RenderTexture(320, 240, 24);
+                s_snapTex = new Texture2D(320, 240, TextureFormat.RGB24, false);
+            }
+            s_snapCam.CopyFrom(main);
+            if ((from - at).sqrMagnitude < 1e-6f) s_snapCam.transform.SetPositionAndRotation(main.transform.position, main.transform.rotation);
+            else { s_snapCam.transform.SetPositionAndRotation(from, Quaternion.LookRotation(at - from)); s_snapCam.fieldOfView = 60f; s_snapCam.nearClipPlane = 0.05f; }
+            s_snapCam.targetTexture = s_snapRt;
+            var prev = RenderTexture.active;
+            s_snapCam.Render();
+            RenderTexture.active = s_snapRt;
+            s_snapTex.ReadPixels(new Rect(0, 0, 320, 240), 0, 0);
+            s_snapTex.Apply();
+            RenderTexture.active = prev;
+            File.WriteAllBytes(path, s_snapTex.EncodeToPNG());
         }
 
         /// <summary>

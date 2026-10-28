@@ -581,6 +581,43 @@ index lies flat, its palm 4 mm in; the lamp's thumb is 11 mm off; the reel's wri
 carry has a 3-frame palm error of 35 mm when it leaves the coil; the quick pull opens only 27 degrees; tape laying, the
 camcorder hand and a lean onto a door leaf were not re-measured in play.
 
+Round 8: pickups by hand (2026-10-28, `PropGrabber.Pickup.cs`):
+- **Nothing flies.** A clicked item is not touched until the palm is on its grip. It used to fly to the hand: at once from
+  further than the arm and 0.6 m (anything picked up 1.3-2.1 m away), or after waiting 0.9 s for a hand that was not there.
+- **The hand goes out first.** It reaches with the elbow bent (0.88 of the reach) while the body bends and steps in, as it
+  does for a plug. The step stops once the arm can reach from where the body will be (it used to walk on until the
+  shoulder was over a can on the floor). Then the arm goes on out.
+- **Lean.** With no step left (against a desk, a shelf) the torso leans out up to 26 degrees (`ReachLean`). The hips and the
+  view stay; the shoulder comes about 7 cm nearer.
+- **Hand turned to reach.** The hand may tilt about the palm, roll and pitch a little as the arm reaches best
+  (`ReachTurn`). A can on the floor held square wants the wrist 10 cm off the floor. The turn is taken back off as the
+  item comes up, about the palm, so the palm stays on the grip.
+- **Closing, then up.** The hand is open going out. On the grip the fingers close, then the item comes up with the hand at
+  a hand's pace (0.4-0.95 s). It is eased onto the palm over its first frames (`ItemOnPalm`).
+- **Only what the body can reach is offered.** The focus marks and the click use `BodyReaches`: the real shoulder as high as
+  it stands, as low as the body stoops (the shoulder stops at 0.65 m), a step of up to 0.55 m where the body has room, and
+  the lean. The arm's way must be clear (not through a shelf board). Further, nothing is marked; the player walks closer.
+- **Blocked.** No nearer for a second (or 5 s in all): the hand comes back and the item stays where it was. An item taken
+  by code (a reeled-in lamp, a loaded save) waits in the hand's place the same way and is left where it lay if the hand
+  cannot get there. Tests and tools put an item straight in the hand with `PutInHand`.
+- **Cord plug-in.** The plug is now made in the palm as the hand will hold it (`PlaceInHand`). The carry to the socket waits
+  until the hand has it. Before, the body bent for the socket while the plug still waited for the hand. The arm folded
+  up and the palm was 30-35 mm off for three frames.
+Measured (World 3, `GaitProbe.PickRun`; time to the carry, item move before the hand had it, palm to grip when it first
+moved, least elbow reaching): floor can 2.0 s, 0 mm, 0 mm, 29; floor tape 1.9 s, 0, 0.1, 27; floor chalk 2.1 s, 0, 0.4, 23;
+floor lamp 2.0 s, 0, 0, 28; desk can 1.7 s, desk tape 1.7 s, desk lamp 2.2 s (all 0 mm, 0-0.2 mm, 25-28); shelf 0.61 m
+can 2.2 s, tape 1.3 s, chalk 1.2 s; shelf 1.69 m can 1.4 s (all 0 mm, under 1 mm, 25-27). Fastest the item moves up:
+0.8-1.7 m/s, no jumps (frames of 60-70 mm are where a probe picture held up a frame). Before: a can 1.7 m away flew in
+0.02 s after the click with the palm 1.25 m off, 220 mm in a frame. Floor 1.3 m out, desk 0.7 m in, shelf bottom deck: not
+offered. A tape 0.7 m into a table taken by code: the hand came back after 2.6 s, the tape moved 0 mm. Cord plug-in palm
+error 35 -> 3.8 mm, in at 1.5 s. Doors (a new world 3): hold and walk in 88 degrees, quick push 88, hold pull 24 and
+quick pull 26 (a wall 1.0 m behind the pull side; the body cannot step back).
+Open after round 8: under a table there is nothing to reach: furniture colliders are solid boxes to the floor, and a
+body crawling stops at the table's edge. A flat item (tape, chalk) on a shelf above the shoulder is refused: the arm
+would pass through the board's edge. Items on a desk are reached only up to about 0.2 m in from its edge. Floor pickups
+end with the arm nearly straight down, as the body squats no lower than a 0.65 m shoulder. The item is pushed out of the
+palm's skin as it rises (up to 14-20 mm for a can). Furniture is still reached with a straight arm (elbow 3-4 degrees).
+
 Open: furniture's colliders are boxes that do not match the model everywhere (a sofa's rolled arm: the fingers close on
 the box, 15 cm under the visible top, so they stay as wanted); the thumb lies along a hammer's handle rather than round
 it; the jamb's touch still has the little-finger side 1 cm in for a moment (the forearm at its turn limit); fingers on

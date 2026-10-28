@@ -984,7 +984,9 @@ namespace Backrooms.Interaction
 
             // Torso: the stoop, a lean into a crouch, a lean into the walk and into turns, knocks; it takes back most of
             // the hips' lag (it turns with the view), and the stride's pelvis turn and drop (the shoulders stay level).
-            float leanWant = bend + Mathf.Clamp(_moveLocal.y, -1f, 3f) * 2.5f;
+            // (Leaning out for something beyond the arm, over a desk or a shelf: the torso alone, the hips and the view
+            // staying where they are, so the shoulder goes forward and down: PropGrabber.ReachLean.)
+            float leanWant = bend + (_grab ? _grab.ReachLean : 0f) + Mathf.Clamp(_moveLocal.y, -1f, 3f) * 2.5f;
             _leanS = Springs.Damper(_leanS, ref _leanSVel, leanWant, 0.06f, dt);
             PoseSpine(_leanS + _bumpTorso.x, _twist - _pelvisYaw - lag * 0.75f,
                       -_player.Lean * 11f - _player.TurnLean * 4f + _bumpTorso.y - _pelvisRoll * 0.85f);

@@ -20,10 +20,9 @@ namespace Backrooms.Interaction
         [Header("Items")]
         [Tooltip("Reach for picking up items (m).")] public float itemRange = 2.1f;
 
-        float _itemT;                    // 0..1 while the item travels from where it lay into the hand
-        float _itemWaitT;                // how long it has waited where it lay for the hand to get to it
+        float _itemT = 1f;               // 0..1 while the item comes up with the hand from where it lay
         float _switchT = 1f; Vector3 _switchPos; Quaternion _switchRot;   // the hand easing from one held item to the next
-        /// <summary>The item just taken still lies where it was, the hand on its way to it.</summary>
+        /// <summary>The item just taken still lies where it was (the hand on its way to it, or closing on it).</summary>
         public bool ItemWaitingForHand => HeldItem && _itemT <= 0f;
         bool _itemFromLow;               // it was picked up off the floor (the body bends down for it)
         bool _weighted;                  // the held item's weight is slowing the player
@@ -63,13 +62,16 @@ namespace Backrooms.Interaction
             }
             // A cord in front of whatever the view is on: its plug (you take the cord, not what it belongs to).
             var cord = Cord.Aimed(cam.position, cam.forward, Mathf.Min(best + 0.05f, range), out float along, out Vector3 onCord);
+            // (Only a plug the body can reach: round 8, the hand takes it where it lies; it flew in from 4.5 m.)
             if (cord && (!item || along < best - 0.02f) && cord.endA is Plug plug && !plug.Held && plug.gameObject.activeInHierarchy
-                && (plug.transform.position - cam.position).sqrMagnitude < cordGrabReach * cordGrabReach)
+                && (plug.transform.position - cam.position).sqrMagnitude < cordGrabReach * cordGrabReach && BodyReaches(plug))
             {
                 item = plug; AimedCordPoint = onCord;
                 return true;
             }
-            if (item && !item.Held) return true;
+            // The item the view is on: offered only if the body can get to it (with a lean or a short step); further, the
+            // player walks closer (round 8: it flew to the hand from up to 2.1 m).
+            if (item && !item.Held) { if (BodyReaches(item)) return true; item = null; return false; }
             item = null;
             // Looking straight at furniture: that is what the click is for.
             if (first && first.GetComponentInParent<MovableProp>()) return false;
@@ -90,7 +92,7 @@ namespace Backrooms.Interaction
                 if (angle > pickAssistAngle && off > 0.12f) continue;
                 if (angle > pickAssistAngle * 2f) continue;
                 float score = angle + dist * 3f;
-                if (score >= bestScore || !InSight(eye, c, it)) continue;
+                if (score >= bestScore || !InSight(eye, c, it) || !BodyReaches(it)) continue;
                 bestScore = score; item = it;
             }
             return item;
@@ -170,19 +172,36 @@ namespace Backrooms.Interaction
             return true;
         }
 
-        /// <summary>Takes an item into the hand (from wherever it is).</summary>
+        /// <summary>
+        /// Takes an item by hand: the hand goes out to it where it lies (the body bending and stepping in) and it is not
+        /// touched until the palm is on it (PropGrabber.Pickup). One already where the hand holds things (put there) is taken
+        /// at once, the hand closing on it where it is.
+        /// </summary>
         public void PickUp(WorldItem item)
         {
-            if (!item) return;
-            // Taking something with the hand already out (a reeled-in lamp, its plug just let go): the hand eases over to it
-            // (its target jumped there in one frame).
-            if (HandBlend > 0.5f) { _switchPos = HandPosition; _switchRot = HandRotation; _switchT = 0f; } else _switchT = 1f;
+            if (!item || item == HeldItem) return;
             if (HeldItem) Drop();
             if (Current != State.Idle) Release("picked up an item");
+            AimedItem = null; AimedCordPoint = null;
+            if (_fetch) EndFetch();
+            if (InHandsPlace(item, out bool palmOn)) { Take(item, palmOn); return; }
+            StartFetch(item);
+        }
+
+        /// <summary>
+        /// Into the hand where it lies: palmOn, the palm is on it (the fingers close, then it comes up with the hand); else
+        /// it waits there, held, until the palm gets to it (ReachFor), or is left there if the hand cannot.
+        /// </summary>
+        void Take(WorldItem item, bool palmOn)
+        {
+            // Taking something with the hand already out and off it (a reeled-in lamp, its plug just let go): the hand eases
+            // over to it (its target jumped there in one frame).
+            if (!palmOn && HandBlend > 0.5f) { _switchPos = HandPosition; _switchRot = HandRotation; _switchT = 0f; } else _switchT = 1f;
             HeldItem = item;
             AimedItem = null; AimedCordPoint = null;
             _itemFromPos = item.transform.position; _itemFromRot = item.transform.rotation;
-            _itemT = 0f; _itemWaitT = 0f;
+            _itemT = 0f; _graspOn = palmOn; _graspT = 0f;
+            if (!palmOn) BeginReachFor(item);
             _itemFromLow = item.transform.position.y < transform.position.y + 0.55f && Vector3.Distance(item.transform.position, transform.position) < 2.5f;
             MicThump();
             _swayInit = false; _qDown = -1f; ThrowCharge = 0f;
@@ -630,25 +649,55 @@ namespace Backrooms.Interaction
             float w = item.UsePose(out var usePos, out var useRot);
             EaseForArm(item, ref pos, ref rot, w, dt);
             if (w > 0f) { pos = Vector3.Lerp(pos, usePos, w); rot = Quaternion.Slerp(rot, useRot, w); }
+            bool reaching = false;
+            float tiltLeft = 0f;
+            Vector3 reachGrip = Vector3.zero;
             if (_itemT < 1f)
             {
-                // It stays where it lay until the hand is on it (bending and stepping in for it), then comes up with the hand
-                // (a reeled-in coil flew a metre into the hand); a moment, if the hand cannot get there.
-                bool wait = _itemT <= 0f && _itemWaitT < 0.9f && !(HandBlend > 0.9f && _switchT >= 1f && _itemWaitT > 0.03f && PalmError < 0.03f)
-                            && (_itemFromPos - ReachShoulder).magnitude < ArmReach + 0.6f;
-                if (wait) { _itemWaitT += Time.deltaTime; ReachToward(HandPosition); }
-                // Off the floor takes longer: the body bends down for it first.
-                else _itemT = Mathf.Min(1f, _itemT + Time.deltaTime / (_itemFromLow ? 0.55f : 0.28f));
+                // It stays where it lay until the palm is on it (the body bending and stepping in for it), the fingers close
+                // on it, then it comes up with the hand. Never without the hand: it flew a metre into the hand from a
+                // reeled-in coil, then after waiting 0.9 s for a hand that had not got there (round 8). If the hand cannot
+                // get there it is left where it lay.
+                if (_itemT <= 0f)
+                {
+                    Vector3 gripAt = _itemFromPos + _itemFromRot * Mirror(item.GripLocal);
+                    if (!_graspOn)
+                    {
+                        int r = ReachFor(gripAt, item, dt);
+                        if (r < 0) { LeaveWhereItLies(item); return; }
+                        if (r > 0) { _graspOn = true; _graspT = 0f; }
+                        else { reaching = true; reachGrip = gripAt; }
+                    }
+                    else
+                    {
+                        // The palm on it: the body stays bent over it while the fingers close.
+                        ReachToward(gripAt, false, 0f, _pickAbove);
+                        _graspT += dt;
+                        if ((HandCurl >= item.GripCurl - 0.05f || _graspT >= 0.25f) && HandBlend > 0.9f)
+                        {
+                            // Up with the hand at a hand's pace (it rose 1.1 m in 0.28 s, 22 cm in one frame).
+                            _liftTime = Mathf.Clamp(0.3f + 0.55f * Vector3.Distance(_itemFromPos, pos), 0.4f, 0.95f);
+                            _itemT = 1e-4f;
+                        }
+                    }
+                }
+                else _itemT = Mathf.Min(1f, _itemT + dt / _liftTime);
                 float s = Mathf.SmoothStep(0f, 1f, _itemT);
                 pos = Vector3.Lerp(_itemFromPos, pos, s);
                 rot = Quaternion.Slerp(_itemFromRot, rot, s);
+                // The hand's turn about the palm reaching for it (fingers down along a can on the floor) goes back off as it
+                // comes up: about the palm's normal, so the palm stays on its grip.
+                tiltLeft = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_itemT * 1.4f));
             }
+            else _pickTurn = Quaternion.identity;
             item.transform.SetPositionAndRotation(pos, rot);
 
             Quaternion grip = item.GripRotationLocal;
             Vector3 f = Mirror(grip * Vector3.forward), u = Mirror(grip * Vector3.up);
-            HandPosition = item.transform.TransformPoint(Mirror(item.GripLocal));
+            HandPosition = reaching ? _pickHandAt : item.transform.TransformPoint(Mirror(item.GripLocal));
             HandRotation = item.transform.rotation * Quaternion.LookRotation(f, u);
+            if (reaching) HandRotation = ReachTurn(HandRotation, reachGrip);
+            else if (tiltLeft > 0.001f) HandRotation = WithReachTurn(HandRotation, tiltLeft);
             if (_switchT < 1f)
             {
                 _switchT = Mathf.Min(1f, _switchT + Time.deltaTime / 0.3f);

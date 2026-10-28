@@ -261,6 +261,9 @@ namespace Backrooms.Interaction
         {
             var s = _going;
             if (s == null || !CanUse(s) || s.occupant != null) { GiveUp(); return; }
+            // Not until the hand has it (the fingers closed on it where it was): bending for the socket with the plug still
+            // waiting for the hand folded the arm up, the palm 30-35 mm off it (round 8).
+            if (i.hand && i.hand.ItemWaitingForHand) return;
             _goT += i.dt;
             _goPose = Mathf.MoveTowards(_goPose, 1f, i.dt * 1.4f);
             Vector3 outward = -(s.PlugRotation * Vector3.forward);

@@ -86,10 +86,16 @@ namespace Backrooms.Interaction
         /// wherever the palm is (an item that keeps its own target within reach, a plug: the palm is always there, so
         /// "until the palm gets there" would never step).
         /// </summary>
-        public void ReachToward(Vector3 p, bool step, float stepWithin) { _itemReachAt = p; _itemReachUntil = Time.time + 0.1f; _itemMayStep = step; _itemStepWithin = stepWithin; }
+        public void ReachToward(Vector3 p, bool step, float stepWithin) => ReachToward(p, step, stepWithin, 0.22f);
+
+        /// <summary>As above; the body bends until the shoulder is about this far above p (m).</summary>
+        public void ReachToward(Vector3 p, bool step, float stepWithin, float above)
+        {
+            _itemReachAt = p; _itemReachUntil = Time.time + 0.1f; _itemMayStep = step; _itemStepWithin = stepWithin; _itemReachAbove = above;
+        }
         bool _itemMayStep;
-        float _itemStepWithin;
-        bool ItemReaching => HeldItem && Time.time < _itemReachUntil;
+        float _itemStepWithin, _itemReachAbove = 0.22f;
+        bool ItemReaching => (HeldItem || _fetch) && Time.time < _itemReachUntil;
         /// <summary>0..1: the held item's grip opened (the hand going back out hand over hand along a cord).</summary>
         public float GripOpen { get; private set; }
         Vector3 _reelDir;
@@ -153,7 +159,7 @@ namespace Backrooms.Interaction
             _shake = FindAnyObjectByType<HandheldCameraShake>();
         }
 
-        void OnDisable() { Release(); if (HeldItem) Drop(); }
+        void OnDisable() { Release(); if (HeldItem) Drop(); if (_fetch) EndFetch(); }
 
         void Update()
         {
@@ -168,7 +174,7 @@ namespace Backrooms.Interaction
             botShove = false;
             Vector2 md = botHold.HasValue ? botMouse : focus && mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
 
-            bool free = !HeldItem && Current == State.Idle && _poke == PokePhase.None && !OnDoor && focus;
+            bool free = !HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && focus;
             AimedPoke = free ? LookPoke() : null;
             AimedItem = AimedPoke == null && free && LookItem(itemRange, out var aimed) ? aimed : null;
             AimedDoorGrip = null;
@@ -181,6 +187,7 @@ namespace Backrooms.Interaction
             else switch (Current)
             {
                 case State.Idle:
+                    if (_fetch) { UpdateFetch(); break; }
                     if (_poke != PokePhase.None) break;
                     if (QuickDooring) { UpdateQuickDoor(); break; }
                     if (OnDoor) { UpdateDoor(hold); break; }
@@ -199,10 +206,11 @@ namespace Backrooms.Interaction
             }
             if (_poke != PokePhase.None) UpdatePoke();
             UpdatePokeFingers();
-            UpdateTouch(!HeldItem && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking && !QuickDooring);
+            UpdateTouch(!HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking && !QuickDooring);
             UpdateCarriedWeight();
             UpdatePassing();
             UpdateStoop();
+            UpdateReachLean();
             UpdateHandPose();
 
             // Camcorder hand: dips while the other hand works, trembles with effort.
@@ -234,7 +242,7 @@ namespace Backrooms.Interaction
             if (ItemReaching)
             {
                 // (The shoulder down to 0.22 m above it: 0.3 left a socket 0.28 m up out of reach, the arm straight.)
-                want = Mathf.Max(want, Mathf.Clamp(StandShoulder.y - (_itemReachAt.y + 0.22f), 0f, 0.85f));
+                want = Mathf.Max(want, Mathf.Clamp(StandShoulder.y - (_itemReachAt.y + _itemReachAbove), 0f, 0.85f));
                 Vector3 to = _itemReachAt - ReachShoulder;
                 Vector3 local = transform.InverseTransformDirection(to); local.y = 0f;
                 var flat = new Vector2(local.x, local.z);
@@ -504,7 +512,7 @@ namespace Backrooms.Interaction
         MovableProp _contactProp;
 
         /// <summary>The hand holds or touches something its fingers should stop at.</summary>
-        public bool HasContact => HeldItem || (OnDoor && _door) || (QuickDooring && _quickDoor) || (_target && (Current == State.Holding || Current == State.Reaching)) || TouchingWall;
+        public bool HasContact => HeldItem || _fetch || (OnDoor && _door) || (QuickDooring && _quickDoor) || (_target && (Current == State.Holding || Current == State.Reaching)) || TouchingWall;
 
         /// <summary>
         /// Distance from a point to the surface of what the hand holds (negative or zero inside it): a held item's own
@@ -513,6 +521,7 @@ namespace Backrooms.Interaction
         public float ContactDistance(Vector3 p)
         {
             if (HeldItem) return HeldItem.ContactDistanceWorld(p);
+            if (_fetch) return _fetch.ContactDistanceWorld(p);
             if (OnDoor && _door) return _door.LeverDistance(_doorSide, _doorTurn, p);
             if (QuickDooring && _quickDoor) return _quickLever ? _quickDoor.LeverDistance(_quickSide, 1f, p) : _quickDoor.SlabDistance(p);
             if (_target && (Current == State.Holding || Current == State.Reaching))
@@ -556,10 +565,17 @@ namespace Backrooms.Interaction
 
         void UpdateHandPose()
         {
-            bool active = (Current != State.Idle && _target) || Poking || HeldItem || OnDoor || _touching || QuickDooring;
+            bool active = (Current != State.Idle && _target) || Poking || HeldItem || _fetch || OnDoor || _touching || QuickDooring;
             HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? 3.2f : 2.5f));
-            // (Hand over hand on a cord: the grip opens going out and closes on the pull, as the fingers do.)
-            if (HeldItem) { HandCurl = Mathf.MoveTowards(HandCurl, HeldItem.GripCurl * (1f - 0.6f * GripOpen), Time.deltaTime * 6f); return; }   // pose set in LateUpdate
+            // (Hand over hand on a cord: the grip opens going out and closes on the pull, as the fingers do. Going out to an
+            // item it waits for, the hand is open; it closes once the palm is on it.)
+            if (HeldItem)
+            {
+                float want = ItemWaitingForHand && !_graspOn ? PickOpenCurl : HeldItem.GripCurl * (1f - 0.6f * GripOpen);
+                HandCurl = Mathf.MoveTowards(HandCurl, want, Time.deltaTime * 6f);
+                return;                                                                                           // pose set in LateUpdate
+            }
+            if (_fetch) { FetchHandPose(); return; }
             if (Poking) PokePose = true; else if (HandBlend <= 0.01f) PokePose = false;
             if (OnDoor && _door) { PokePose = false; DoorHandPose(); return; }
             if (_touching) { PokePose = false; TouchHandPose(); return; }

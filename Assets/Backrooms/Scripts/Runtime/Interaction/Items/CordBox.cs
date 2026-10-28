@@ -238,6 +238,10 @@ namespace Backrooms.Interaction
                     var hand = i.hand;
                     if (!hand.SpotBeside(s.Position, new Vector3(0.12f, 0.07f, 0.12f), null, out var spot, out var turn)) return;
                     Deploy(null, hand.HandPosition);
+                    // The plug where the palm is, as the hand will hold it (round 8: it was made square to the world at the
+                    // palm, so the hand turned and moved over to it while the body bent for the socket, the arm folded up and
+                    // the palm 30-35 mm off it for three frames as it left the coil).
+                    if (_plug) hand.PlaceInHand(_plug);
                     hand.SetDownBeside(this, spot, turn);
                     if (_plug) { var p = _plug; hand.PickUp(p); p.BeginPlugIn(s); return; }
                 }

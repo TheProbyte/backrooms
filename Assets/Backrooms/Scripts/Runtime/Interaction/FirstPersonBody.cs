@@ -181,6 +181,8 @@ namespace Backrooms.Interaction
         /// otherwise. PropGrabber takes hold only once it is there.
         /// </summary>
         public float PalmError { get; private set; } = 1f;
+        /// <summary>Where the solved palm (or fingertip) is this frame, however far the hand is blended out.</summary>
+        public Vector3 PalmNow { get; private set; }
         /// <summary>The body has an arm to measure (otherwise PropGrabber falls back on its own numbers).</summary>
         public bool HasArm => _curArm != null;
 
@@ -330,6 +332,7 @@ namespace Backrooms.Interaction
             }
             Vector3 wanted = poke ? _grab.PokeTip : _grab.HandPosition;
             Vector3 palmNow = pose.wrist + pose.hand * touchOff;
+            PalmNow = palmNow;
             PalmError = blend > 0.97f ? Vector3.Distance(palmNow, wanted) : 1f;
             // A held item goes with the hand: where the arm cannot quite put the palm on its grip (at full reach, a wrist
             // at its limit), the item is turned and moved onto the palm instead of floating off it (a sledgehammer's
@@ -341,7 +344,9 @@ namespace Backrooms.Interaction
                 // (All the way onto the hand: items plan poses the arm can reach (FirstPersonBody.ArmStrain), so this is a
                 // few degrees. Capped at 20 instead, a sledgehammer's handle was 74 degrees off the palm after a blow.)
                 Quaternion turn = pose.hand * Quaternion.Inverse(gripHand);
-                it.SetPositionAndRotation(palmNow + turn * (it.position - wanted), turn * it.rotation);
+                // (Eased in as it leaves where it lay: PropGrabber.ItemOnPalm.)
+                float onPalm = _grab.ItemOnPalm;
+                it.SetPositionAndRotation(Vector3.Lerp(it.position, palmNow + turn * (it.position - wanted), onPalm), Quaternion.Slerp(it.rotation, turn * it.rotation, onPalm));
                 // No part of the palm in it: the item is pushed out from the deepest of the palm's skin inside it (twice: a
                 // push can bring another part in). The fingers and thumb close on it themselves. Only for what the palm
                 // holds (a stick of chalk held in the fingers was pushed off the web of the thumb, the thumb 3 mm further).
@@ -356,7 +361,7 @@ namespace Backrooms.Interaction
                     Vector3 off = -(pose.hand * Vector3.up);
                     Vector3 move = nOut.sqrMagnitude > 0.25f ? -nOut.normalized : off;
                     if (Vector3.Dot(move, off) < -0.3f) move = off;
-                    it.position += move * Mathf.Min(-worstIn - 0.001f, 0.02f);
+                    it.position += move * Mathf.Min(-worstIn - 0.001f, 0.02f) * onPalm;
                 }
             }
 
@@ -364,7 +369,8 @@ namespace Backrooms.Interaction
             // and turning across the palm toward the fingers (opposition).
             float curl = Mathf.Lerp(restCurl, _grab.HandCurl, s);
             var shape = blend > 0.01f ? _grab.HeldItem as IHandGrip : null;
-            var posed = blend > 0.01f && !_grab.ItemWaitingForHand ? _grab.HeldItem as IHandPose : null;
+            // (Set by the item once the palm is on it: closing on it where it lies too, not only once it is up.)
+            var posed = blend > 0.01f && _grab.ItemInGrasp ? _grab.HeldItem as IHandPose : null;
             float pointing = _grab.PokeIndex;
             if (_fingers == null) GroupFingers();
             bool closeOn = contact != null && pointing < 0.5f && (blend > 0.6f || (_touchW > 0.5f && blend < 0.05f));
