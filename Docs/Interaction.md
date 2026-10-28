@@ -618,6 +618,50 @@ would pass through the board's edge. Items on a desk are reached only up to abou
 end with the arm nearly straight down, as the body squats no lower than a 0.65 m shoulder. The item is pushed out of the
 palm's skin as it rises (up to 14-20 mm for a can). Furniture is still reached with a straight arm (elbow 3-4 degrees).
 
+Round 9: the body's way to an item (2026-10-28, reviewer 7.5/10, pickups 6.5):
+- **One plan for what is offered and what the body does.** At the click the body plans its reach (`PropGrabber.PlanReach`):
+  how far to step (one step, up to 0.65 m), how far to squat and how far to bend forward from the hips. A step costs most,
+  then the bend; a squat is cheap only for a grip lower than 0.42 m above the feet. Waist-high, the knees stay nearly
+  straight. The grip should end within 0.95 of the arm's reach, so the elbow is bent. The focus marks use the same plan
+  with the arm straight (1.0). Standing closer can no longer lose an item.
+- **Bending at the hips** (`FirstPersonBody.HingeShoulder`, `HingeHead`, `ReachHinge`). The pelvis tips forward over the
+  thighs (65 % of the bend), the spine takes the rest and turns the reaching shoulder forward up to 20 degrees, and the
+  hips stay. The feet come up to 0.1 m forward under the view. At 60 degrees the shoulder goes about 0.45 m forward and
+  0.25 m down. The view goes with the head (`ApplyHingeView`), else it would sit over the body's own back. The moves are
+  measured on the rig for a spine already bent by a squat (bent over already, a bend at the hips takes the shoulder down,
+  not forward). The head must be clear of walls and boards, and the arm's line is checked from the bent shoulder; the
+  edge of what the item stands on is left out.
+- **Alongside, not before.** The step, the squat and the bend run while the arm goes out. Once the grip is within 0.95 of
+  the reach from the real shoulder, the body goes no lower. The step stops short of the item (the body pushed a can 4 cm).
+- **The grip it took is held.** The item stays in the hand as the hand took it until the lift is a third done. The change
+  to the carry grip then runs on 0.3 s past the lift (`HoldAsTaken`). Before, the item was put onto the palm and out of its
+  skin from the first frame and slid 2-3.5 cm. `Mathf.SmoothStep(a, b, t)` returns a value between a and b, not a ramp
+  from a to b; it was used that way and read 0.5 at the start of a lift (`Ease` now).
+- **Desk aim.** Looking at furniture, an item on it within 0.1 m of the view's line is offered (chalk on a desk never was).
+- **Furniture** is reached with the same plan, so the elbow is bent when the hand gets there (it was 3-4 degrees).
+- **Quick pull.** The hand keeps the lever and pulls the door round while the body steps back and to the latch side (up to
+  0.9 s, the arm no further than 0.97 of its reach). The door rests on the body and follows it out (`Door.Tug`). A hand
+  that lets go fades out at once, kept where it was from the shoulder.
+- **Lever wrist.** A hand on a lever is turned a little about the forearm's back so the wrist bends no more than 20 degrees
+  to the side (`WithWristSide`, from `FirstPersonBody.WristSide`). A held door's hand lets go once the palm is 3 cm off the
+  lever for two frames (it was 5 cm for 0.12 s, the arm out straight). A tug steps to the latch side first, then back.
+- **Grips.** Rubber chicken: the thumb closes fully (curl 1, was 0.8), and squeezing gives 11 mm (4.5 closed the fist 3-4
+  degrees; now 11-19 degrees a joint). Chalk: the index's end joint bends 16 degrees. Reeling: the wrist tips 11 degrees
+  each way with the stroke and rolls 8 (60 and 18 flapped the wrist -37..+31; not re-measured).
+Measured (World 3, my own desk 0.75 m, boards 0.8 and 1.6 m; `GaitProbe.PickRun` now logs the torso and knee, the hinge,
+the shoulder, and the grip's slide and turn in the hand): every desk stand 0.25-0.8 m takes a can 0.2-0.45 m in (0.75 m in
+is not offered), grab 0.50-0.67 s, carry 0.96-1.14 s, torso 32-53 degrees with the knees 9-36, elbow at the grab 28-54
+(least on the way 27-40); boards 0.8 m and 1.6 m (from 0.45 and 0.65 m) taken in 0.55-0.61 s; floor 0.6-0.9 m ahead taken
+in 0.85-0.92 s, carry 1.30-1.38 s, a squat (knee 122-140) with the torso 73-78; 1.3 m out not offered. The item moved 0 mm
+before the hand had it in every run, and 0 mm and 0 degrees in the hand through the first third of the lift. Doors: quick
+pull 24 -> 42-46 degrees in the open (49-87 with a wall 1 m behind), held pull 75 degrees with the wrist at most 22 to the
+side (was 26-31), push 57-88, quick push 88.
+Open after round 9: the change from the grip taken to the carry's is 15-50 degrees in the hand over the end of the lift; the
+quick pull's hand still lets go within a few frames in the open (the door then follows the body out); the chicken's thumb
+is on the neck in some runs and 15 mm off in others, and 9-17 mm off while squeezing; the lamp's wrap, the tape's hook, the
+rail, the plug pinch's wrist and the hammer carry's thumb are unchanged; side views draw no torso, so the bend shows only
+through the arm and the legs.
+
 Open: furniture's colliders are boxes that do not match the model everywhere (a sofa's rolled arm: the fingers close on
 the box, 15 cm under the visible top, so they stay as wanted); the thumb lies along a hammer's handle rather than round
 it; the jamb's touch still has the little-finger side 1 cm in for a moment (the forearm at its turn limit); fingers on

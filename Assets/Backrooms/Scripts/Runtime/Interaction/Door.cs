@@ -284,7 +284,22 @@ namespace Backrooms.Interaction
             _moved = true;
             _shovedAt = Time.time;
         }
-        float _shovedAt = -1f;
+        float _shovedAt = -1f, _tuggedAt = -1f;
+
+        /// <summary>
+        /// The hand on the lever tugging the door on open toward you (a quick pull, round 9): it swings at least this fast
+        /// (degrees a second) while the hand pulls, resting against the body if the body is still in its way, and keeps
+        /// pressing on gently for a moment after so it opens as the body steps back. (Left to its own swing it stopped at
+        /// the body at 24 degrees, a gap of 0.38 m.)
+        /// </summary>
+        public void Tug(float speed)
+        {
+            if (Held) return;
+            if (Latched) { Latched = false; }
+            if (_vel < speed) _vel = speed;
+            _moved = true;
+            _shovedAt = _tuggedAt = Time.time;
+        }
 
         /// <summary>Distance from a point to the slab (the palm flat on it).</summary>
         public float SlabDistance(Vector3 p)
@@ -346,7 +361,8 @@ namespace Backrooms.Interaction
                 // Swinging open into the player (pulled toward you), it rests against you and goes on as you step back; it
                 // used to bounce back and latch (a quick pull opened it 6 degrees and it shut again). Swinging shut into you,
                 // it bounces off.
-                if (!TryMove(next)) _vel = _vel > 0f ? Mathf.Min(_vel * 0.9f, 40f) : -_vel * 0.1f;
+                // (Just tugged, it keeps pressing on at 30 a second: it opens as the body steps out of its way.)
+                if (!TryMove(next)) _vel = _vel > 0f ? Mathf.Max(Mathf.Min(_vel * 0.9f, 40f), Time.time - _tuggedAt < 0.9f ? 30f : 0f) : -_vel * 0.1f;
                 if (Mathf.Abs(_vel) < 1.5f) _vel = 0f;
             }
             else if (posed) Pose();

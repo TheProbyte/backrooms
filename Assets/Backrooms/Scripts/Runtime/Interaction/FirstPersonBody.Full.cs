@@ -646,12 +646,15 @@ namespace Backrooms.Interaction
                                             : TorsoLength * (1f - Mathf.Cos(Mathf.Min(bend, 80f) * Mathf.Deg2Rad));
             float drop = Mathf.Clamp(_player.standEye - eye - torsoDrop, 0f, 0.5f);
             float squat = drop / 0.5f;
+            // Bending forward from the hips over a desk or a board (PropGrabber.ReachHinge): the hips stay and the body comes
+            // a little forward under the view, so the shoulder and the head go out over it.
+            float hinge = _grab ? Mathf.Clamp(_grab.ReachHinge, 0f, 80f) : 0f;
             // The body stands behind the eye along the torso's heading (between the view's and the legs'), at a height
             // eased over steps: going down stairs the hips sink smoothly instead of dropping a whole step at a time.
             {
                 // (Measured on the rig, the shoulder keeps its place under the eye however far the torso bends; the
                 // squat's hips go back over the heels, below, and the body comes forward as much.)
-                float backBy = bodyBack + (_bendMeasured ? BendTable(_bendAhead, Mathf.Min(bend, 80f)) - squat * 0.12f
+                float backBy = bodyBack - HingeShift(hinge) + (_bendMeasured ? BendTable(_bendAhead, Mathf.Min(bend, 80f)) - squat * 0.12f
                                                          : TorsoLength * 0.9f * Mathf.Sin(Mathf.Min(bend, 80f) * Mathf.Deg2Rad));
                 Vector3 local = Quaternion.Euler(0f, 0.25f * lag, 0f) * new Vector3(0f, 0f, -backBy);
                 Vector3 world = _body.parent ? _body.parent.TransformPoint(local) : local;
@@ -980,15 +983,15 @@ namespace Backrooms.Interaction
             }
             _pelvisDrop = Springs.Damper(_pelvisDrop, ref _pelvisDropVel, Mathf.Min(needDrop, 0.25f), 0.05f, dt);
             _hips.position = hipsBase - up * _pelvisDrop;
-            _hips.rotation = Quaternion.AngleAxis(_pelvisRoll, fwd) * Quaternion.AngleAxis(lag + _pelvisYaw, up) * _body.rotation * _hipsRestLocal;
+            _hips.rotation = Quaternion.AngleAxis(hinge * HingePelvis, right) * Quaternion.AngleAxis(_pelvisRoll, fwd) *Quaternion.AngleAxis(lag + _pelvisYaw, up) * _body.rotation * _hipsRestLocal;
 
             // Torso: the stoop, a lean into a crouch, a lean into the walk and into turns, knocks; it takes back most of
             // the hips' lag (it turns with the view), and the stride's pelvis turn and drop (the shoulders stay level).
-            // (Leaning out for something beyond the arm, over a desk or a shelf: the torso alone, the hips and the view
-            // staying where they are, so the shoulder goes forward and down: PropGrabber.ReachLean.)
-            float leanWant = bend + (_grab ? _grab.ReachLean : 0f) + Mathf.Clamp(_moveLocal.y, -1f, 3f) * 2.5f;
+            // (Hinging at the hips for something over a desk or a board: the spine takes its share of the hinge, not
+            // through the spring: the view moves with it this frame, PropGrabber.ApplyHingeView.)
+            float leanWant = bend + Mathf.Clamp(_moveLocal.y, -1f, 3f) * 2.5f;
             _leanS = Springs.Damper(_leanS, ref _leanSVel, leanWant, 0.06f, dt);
-            PoseSpine(_leanS + _bumpTorso.x, _twist - _pelvisYaw - lag * 0.75f,
+            PoseSpine(_leanS + hinge * (1f - HingePelvis) + _bumpTorso.x, _twist - _pelvisYaw - lag * 0.75f + HingeTwistAt(hinge) * _hingeTwistSign * Mathf.Sign(_grab ? _grab.Side : 1f),
                       -_player.Lean * 11f - _player.TurnLean * 4f + _bumpTorso.y - _pelvisRoll * 0.85f);
 
             for (int i = 0; i < 2; i++)

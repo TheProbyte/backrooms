@@ -183,10 +183,18 @@ namespace Backrooms.Interaction
         public float PalmError { get; private set; } = 1f;
         /// <summary>Where the solved palm (or fingertip) is this frame, however far the hand is blended out.</summary>
         public Vector3 PalmNow { get; private set; }
+        /// <summary>How far the wrist is bent to the side as the arm was solved this frame (degrees), and the forearm's back (the
+        /// axis that bend turns the hand about), for holds that keep it small (a door's lever).</summary>
+        public float WristSide { get; private set; }
+        public Vector3 WristSideAxis { get; private set; }
         /// <summary>The body has an arm to measure (otherwise PropGrabber falls back on its own numbers).</summary>
         public bool HasArm => _curArm != null;
 
         System.Func<Vector3, float> _grabContact, _touchContact;
+        // An item just taken where it lay, and where it was in the hand (from the palm, in the hand's frame) as the hand took it.
+        WorldItem _takenItem;
+        Vector3 _takenPos;
+        Quaternion _takenRot;
 
         void UpdateArm()
         {
@@ -333,6 +341,7 @@ namespace Backrooms.Interaction
             Vector3 wanted = poke ? _grab.PokeTip : _grab.HandPosition;
             Vector3 palmNow = pose.wrist + pose.hand * touchOff;
             PalmNow = palmNow;
+            WristSide = pose.dev; WristSideAxis = pose.foreBack;
             PalmError = blend > 0.97f ? Vector3.Distance(palmNow, wanted) : 1f;
             // A held item goes with the hand: where the arm cannot quite put the palm on its grip (at full reach, a wrist
             // at its limit), the item is turned and moved onto the palm instead of floating off it (a sledgehammer's
@@ -341,11 +350,22 @@ namespace Backrooms.Interaction
             {
                 var held = _grab.HeldItem;
                 var it = held.transform;
+                // Just taken where it lay: held as the hand took it (in the solved hand's frame) until the lift is half done,
+                // then eased to the carry (PropGrabber.HoldAsTaken). Put onto the palm and out of its skin from the first
+                // frame, a can slid 2-3.5 cm in the palm as it started up.
+                float asTaken = _grab.HoldAsTaken;
+                if (asTaken <= 0f) _takenItem = null;
+                else if (_takenItem != held)
+                {
+                    _takenItem = held;
+                    Quaternion inv = Quaternion.Inverse(pose.hand);
+                    _takenPos = inv * (it.position - palmNow); _takenRot = inv * it.rotation;
+                }
                 // (All the way onto the hand: items plan poses the arm can reach (FirstPersonBody.ArmStrain), so this is a
                 // few degrees. Capped at 20 instead, a sledgehammer's handle was 74 degrees off the palm after a blow.)
                 Quaternion turn = pose.hand * Quaternion.Inverse(gripHand);
                 // (Eased in as it leaves where it lay: PropGrabber.ItemOnPalm.)
-                float onPalm = _grab.ItemOnPalm;
+                float onPalm = _grab.ItemOnPalm * (1f - asTaken);
                 it.SetPositionAndRotation(Vector3.Lerp(it.position, palmNow + turn * (it.position - wanted), onPalm), Quaternion.Slerp(it.rotation, turn * it.rotation, onPalm));
                 // No part of the palm in it: the item is pushed out from the deepest of the palm's skin inside it (twice: a
                 // push can bring another part in). The fingers and thumb close on it themselves. Only for what the palm
@@ -363,6 +383,8 @@ namespace Backrooms.Interaction
                     if (Vector3.Dot(move, off) < -0.3f) move = off;
                     it.position += move * Mathf.Min(-worstIn - 0.001f, 0.02f) * onPalm;
                 }
+                if (_takenItem == held && asTaken > 0f)
+                    it.SetPositionAndRotation(Vector3.Lerp(it.position, palmNow + pose.hand * _takenPos, asTaken), Quaternion.Slerp(it.rotation, pose.hand * _takenRot, asTaken));
             }
 
             // Fingers: one curl for all, or a held item's own shape (IHandGrip: a pinch, a pencil grip), the thumb flexing
@@ -1149,7 +1171,7 @@ namespace Backrooms.Interaction
                  "elbow end is under the sleeve).")]
         [Range(0f, 1f)] public float forearmTwistShare = 0.9f;
 
-        struct ArmPose { public Vector3 elbow, wrist, foreBack, back0; public Quaternion hand; public float score, twist; }
+        struct ArmPose { public Vector3 elbow, wrist, foreBack, back0; public Quaternion hand; public float score, twist, dev; }
         struct ArmLimits { public float flex, extend, side, twist; }
 
         /// <summary>
@@ -1199,9 +1221,12 @@ namespace Backrooms.Interaction
         /// poses with it (a sledgehammer's blow was planned with the hand turned 94 degrees past what a wrist does: the
         /// head swept sideways, or the handle left the palm).
         /// </summary>
-        public float ArmStrain(Vector3 palm, Quaternion hand, out float overDeg)
+        public float ArmStrain(Vector3 palm, Quaternion hand, out float overDeg) => ArmStrain(palm, hand, out overDeg, out _);
+
+        /// <summary>As above, and how far the wrist bends to the side in the best pose (degrees).</summary>
+        public float ArmStrain(Vector3 palm, Quaternion hand, out float overDeg, out float sideDeg)
         {
-            overDeg = 0f;
+            overDeg = 0f; sideDeg = 0f;
             if (_curArm == null || !_grab) return 0f;
             Vector3 shoulder = ShoulderNow;
             Quaternion yaw = transform.rotation;
@@ -1213,7 +1238,7 @@ namespace Backrooms.Interaction
             for (int k = -4; k <= 5; k++)
             {
                 var p = SolveArm(shoulder, wrist, hand, pole0, k * 30f, side, yaw);
-                if (p.score < best) { best = p.score; overDeg = Quaternion.Angle(p.hand, hand); }
+                if (p.score < best) { best = p.score; overDeg = Quaternion.Angle(p.hand, hand); sideDeg = p.dev; }
             }
             float far = (wrist - shoulder).magnitude - (_upperLen + _foreLen) * 0.97f;
             return best + Mathf.Max(0f, far) * 40f;
@@ -1256,6 +1281,7 @@ namespace Backrooms.Interaction
             float flex = Mathf.Asin(Mathf.Clamp(-Fl.y, -1f, 1f)) * Mathf.Rad2Deg;     // + toward the palm
             float dev = Mathf.Atan2(Fl.x, Fl.z) * Mathf.Rad2Deg;
             float flexC = Mathf.Clamp(flex, -lim.extend, lim.flex), devC = Mathf.Clamp(dev, -lim.side, lim.side);
+            p.dev = devC;
             p.hand = fore * Quaternion.Euler(0f, devC, 0f) * Quaternion.Euler(flexC, 0f, 0f);
             float over = Mathf.Abs(twist - tw) + Mathf.Abs(flex - flexC) + Mathf.Abs(dev - devC);
             float s = over * 0.08f + Mathf.Abs(tw) * 0.004f + (Mathf.Abs(flexC) + Mathf.Abs(devC)) * 0.004f;
@@ -1406,6 +1432,7 @@ namespace Backrooms.Interaction
             _torsoRest = _torso.localRotation;
             MeasureSpine();
             MeasureBend();
+            MeasureHinge();
             _torsoBendAxis = _torso.InverseTransformDirection(transform.right);
             _torsoUpAxis = _torso.InverseTransformDirection(transform.up);
             _torsoFwdAxis = _torso.InverseTransformDirection(transform.forward);

@@ -210,7 +210,7 @@ namespace Backrooms.Interaction
             UpdateCarriedWeight();
             UpdatePassing();
             UpdateStoop();
-            UpdateReachLean();
+            UpdateReachHinge();
             UpdateHandPose();
 
             // Camcorder hand: dips while the other hand works, trembles with effort.
@@ -231,12 +231,10 @@ namespace Backrooms.Interaction
                 float handY = Current == State.Holding ? (StandShoulder + transform.rotation * _offset).y : _target.transform.TransformPoint(_gripLocal).y;
                 want = Mathf.Clamp(StandShoulder.y - (handY + 0.35f), 0f, 0.8f);
             }
-            // Picking something up off the floor: bend down to it, and straighten as it comes up.
-            if (HeldItem && _itemT < 1f && _itemFromLow)
-            {
-                float down = Mathf.Clamp(StandShoulder.y - (_itemFromPos.y + 0.4f), 0f, 0.8f);
-                want = Mathf.Max(want, down * (1f - Mathf.SmoothStep(0.35f, 1f, _itemT)));
-            }
+            // Picking something up: the squat the body planned for it (PlanReach: only for something low), held while the
+            // hand goes out and closes on it, and straightened as it comes up.
+            bool picking = _planned && (_fetch || (HeldItem && _itemT < 1f) || (_target && Current != State.Idle));
+            if (picking) want = Mathf.Max(want, _pickStoop * (HeldItem && _itemT > 0f ? 1f - Ease(0.15f, 0.9f, _itemT) : 1f));
             // A held item taking the hand somewhere (a plug to a socket, an item off the floor): bend down for it and step
             // in when it is out of the arm's reach.
             if (ItemReaching)
@@ -256,7 +254,8 @@ namespace Backrooms.Interaction
             // Further down while the palm cannot get there (ComeCloser).
             if (Current == State.Idle && !OnDoor && !QuickDooring) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0f, Time.deltaTime * 0.5f);
             want = Mathf.Min(0.85f, want + _stoopExtra);
-            _player.stoop = Mathf.MoveTowards(_player.stoop, want, Time.deltaTime * (want > _player.stoop ? 1.6f : 1.0f));
+            // (Going down for an item, alongside the arm: 1.9 a second.)
+            _player.stoop = Mathf.MoveTowards(_player.stoop, want, Time.deltaTime * (want > _player.stoop ? (picking ? 1.9f : 1.6f) : picking ? 1.6f : 1.0f));
         }
 
         // ---------------- Grab ----------------
@@ -300,13 +299,31 @@ namespace Backrooms.Interaction
             _edgeLocal = prop.transform.InverseTransformDirection(edge);
             _reachT = 0f; _blockedT = 0f;
             Current = State.Reaching;
+            // Round 9: the body's way to it planned as for an item (a step, a squat for something low, a bend at the hips),
+            // so the elbow is bent when the hand gets there (it reached with the arm straight, the elbow 3-4 degrees).
+            ClearPlan();
+            if (_body && _body.HasArm)
+            {
+                _reachOwn = prop.GetComponentsInChildren<Collider>();
+                if (PlanFor(grip, null, _reachOwn, PickPlanShare, out _plan, out _) || PlanFor(grip, null, _reachOwn, PickReachShare + 0.04f, out _plan, out _))
+                    BeginPlannedReach(grip);
+                else ClearPlan();
+            }
         }
+        Collider[] _reachOwn;
 
         void UpdateReach()
         {
             Vector3 grip = _target.transform.TransformPoint(_gripLocal);
             Vector3 toGrip = grip - ReachShoulder;
             _reachT += Time.deltaTime;
+            if (_planned)
+            {
+                int r = ReachFor(grip, null, Time.deltaTime, _reachOwn);
+                if (r > 0) { StopPickStep(); Attach(); }
+                else if (r < 0) { StopPickStep(); Cancel(); }
+                return;
+            }
             // Taken only once the palm is on it (it used to be taken from up to 0.37 m away, held from a distance). The
             // solved palm decides; the reach (a little short of what the shoulder's carry adds) only says when to step in.
             if (HandBlend > 0.85f && HandArrived && toGrip.magnitude <= ArmReach + 0.15f) { _player.botInput = null; Attach(); return; }
@@ -355,6 +372,8 @@ namespace Backrooms.Interaction
 
         void Cancel()
         {
+            ClearPlan();
+            StopPickStep();
             _notThereT = 0f;
             _player.botInput = null;
             _target = null;
@@ -370,6 +389,7 @@ namespace Backrooms.Interaction
         {
             if (Current == State.Holding) MicThump();
             if (Current == State.Holding) LastRelease = reason;
+            if (_target && Current != State.Idle) { ClearPlan(); StopPickStep(); }
             if (Held)
             {
                 Held.held = false;
@@ -565,8 +585,12 @@ namespace Backrooms.Interaction
 
         void UpdateHandPose()
         {
-            bool active = (Current != State.Idle && _target) || Poking || HeldItem || _fetch || OnDoor || _touching || QuickDooring;
-            HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? 3.2f : 2.5f));
+            // (A quick door's hand once it has let go fades out quickly: it was at full blend 0.15 s with the palm off the lever.)
+            bool letGo = _quick == QuickPhase.Back || Time.time < _letGoUntil;
+            bool active = (Current != State.Idle && _target) || Poking || HeldItem || _fetch || OnDoor || _touching || (QuickDooring && !letGo);
+            // (Going out for an item, a little slower: it was there in 0.3 s, and the grab at 0.43 s looked snatched.)
+            bool goingFor = _fetch || (HeldItem && _itemT <= 0f) || (_planned && Current == State.Reaching);
+            HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? (goingFor ? 2.2f : 3.2f) : letGo ? 5f : 2.5f));
             // (Hand over hand on a cord: the grip opens going out and closes on the pull, as the fingers do. Going out to an
             // item it waits for, the hand is open; it closes once the palm is on it.)
             if (HeldItem)
@@ -580,6 +604,9 @@ namespace Backrooms.Interaction
             if (OnDoor && _door) { PokePose = false; DoorHandPose(); return; }
             if (_touching) { PokePose = false; TouchHandPose(); return; }
             if (QuickDooring && _quickDoor) { PokePose = false; QuickDoorPose(); return; }
+            // A door's lever just let go: the hand stays where it was from the shoulder while it fades (left at the lever, the
+            // arm went out straight after it as the body walked on).
+            if (!active && Time.time < _letGoUntil) { HandPosition = ReachShoulder + _letGoOff; HandCurl = Mathf.MoveTowards(HandCurl, 0.3f, Time.deltaTime * 4f); return; }
             if (!_target) { HandCurl = Mathf.MoveTowards(HandCurl, 0.25f, Time.deltaTime * 2f); return; }
             Vector3 grip = _target.transform.TransformPoint(_gripLocal);
             Vector3 n = _target.transform.TransformDirection(_normalLocal).normalized;
@@ -598,7 +625,8 @@ namespace Backrooms.Interaction
             }
             else fingers = Vector3.ProjectOnPlane(grip - Shoulder, n).normalized;
             if (fingers.sqrMagnitude < 0.01f) fingers = transform.forward;
-            HandPosition = grip;
+            // (Reaching with a plan: bent while the body comes, then on it: PropGrabber.ReachFor.)
+            HandPosition = Current == State.Reaching && _planned ? _pickHandAt : grip;
             HandRotation = Quaternion.LookRotation(fingers, n);
             // Fingers hook over an edge only where they reach past the outside of the prop; resting across
             // its top (the near edge) they lie nearly flat instead of sinking into it.

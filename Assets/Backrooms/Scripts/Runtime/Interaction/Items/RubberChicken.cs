@@ -32,9 +32,11 @@ namespace Backrooms.Interaction
         public override float GripCurl => 0.85f + 0.12f * _squeeze;      // the fist closes as it squeezes
         // Squeezed, the fist closes 10-15 degrees further and the pads sink 2-4 mm into the rubber (ContactDistance). (The
         // fingers stayed as in the plain hold, stopped on the neck.)
-        public float FingerCurl(int finger) => 0.9f + 0.3f * _squeeze;
-        public float ThumbCurl => 0.8f;
-        public float ThumbOpposition => 0.75f;
+        public float FingerCurl(int finger) => 0.9f + 0.45f * _squeeze;
+        // (0.8: it stopped short of the neck, 12-18 mm off, run to run. Closing further on a squeeze, 1.5, hooked the end
+        // joint to 91 degrees over the top and still stood 9 mm off.)
+        public float ThumbCurl => 1f;
+        public float ThumbOpposition => 0.85f;
         const float NeckR = 0.014f;
 
         /// <summary>The model's shape, roughly: the body, the neck and the head (the fingers close on the neck).</summary>
@@ -47,7 +49,7 @@ namespace Backrooms.Interaction
             return Mathf.Min(neck, Mathf.Min(head, body)) + SqueezeGive * _squeeze;
         }
         /// <summary>How far the pads sink into the rubber squeezed (m).</summary>
-        public const float SqueezeGive = 0.0045f;
+        public const float SqueezeGive = 0.011f;     // (4.5 mm closed the fist only 3-4 degrees)
         public override float UseBlend => _squeeze;
         public override string Status => "rubber chicken (hold to squeeze)";
 

@@ -99,6 +99,85 @@ namespace Backrooms.Interaction
             _bendMeasured = _bendAhead[9] > 0.05f;
         }
 
+        // ---------------- Hinging at the hips (round 9) ----------------
+        // Reaching over a desk or a board the body bends forward from the hips, the knees nearly straight: the pelvis tips
+        // forward over the thighs (HingePelvis of the angle), the spine bends the rest and turns the reaching shoulder a
+        // little forward, and the hips stay where they are (a stoop puts them back so the shoulder stays under the eye). The
+        // shoulder and the head go forward and down; the view goes with the head (PropGrabber.ApplyHingeView). Before, the
+        // body squatted for a desk with the arm straight and reached about 0.2 m in from its edge.
+
+        /// <summary>How far forward and down the shoulder and the head go hinging 0, 10 .. 80 degrees (m, measured on the rig),
+        /// for a spine already bent 0, 11 .. 44 degrees by a squat (HingeBends): bent over already, a hinge takes the shoulder
+        /// mostly down, not forward (one table for upright put a floor reach's shoulder 15 cm too far forward).</summary>
+        readonly Vector2[,] _hingeShoulder = new Vector2[HingeBends, 9], _hingeHead = new Vector2[HingeBends, 9];
+        const int HingeBends = 5;
+        const float HingeBendStep = 11f;
+        bool _hingeMeasured;
+        float _hingeTwistSign = 1f;
+        /// <summary>The share of a hinge the pelvis takes (tipping forward over the thighs); the spine bends the rest.</summary>
+        public const float HingePelvis = 0.65f;
+        /// <summary>The spine's turn bringing the reaching shoulder forward, at a 60-degree hinge (degrees).</summary>
+        public const float HingeTwist = 20f;
+        /// <summary>The feet and hips come this far forward under the view at a full hinge (m): up to the desk's edge.</summary>
+        public const float HingeShiftMax = 0.1f;
+
+        static float HingeTwistAt(float h) => HingeTwist * Mathf.Clamp01(h / 60f);
+        /// <summary>How far the body comes forward under the view for a hinge (m).</summary>
+        public static float HingeShift(float h) => HingeShiftMax * Mathf.Clamp01(h / 60f);
+
+        void MeasureHinge()
+        {
+            _hingeMeasured = false;
+            Transform s = Find(_body, "upperarm_r"), hd = Find(_body, Bone("Head"));
+            if (!s || !hd || !_hips || _spine.Count == 0) return;
+            Quaternion rest = _hips.rotation;
+            Vector3 right = _body.right;
+            // Which way the spine's turn brings the right shoulder forward.
+            PoseSpine(0f, 15f, 0f);
+            float plus = _body.InverseTransformPoint(s.position).z;
+            PoseSpine(0f, -15f, 0f);
+            _hingeTwistSign = plus >= _body.InverseTransformPoint(s.position).z ? 1f : -1f;
+            for (int b = 0; b < HingeBends; b++)
+            {
+                Vector3 s0 = Vector3.zero, h0 = Vector3.zero;
+                for (int i = 0; i < 9; i++)
+                {
+                    float h = i * 10f;
+                    _hips.rotation = Quaternion.AngleAxis(h * HingePelvis, right) * rest;
+                    PoseSpine(b * HingeBendStep + h * (1f - HingePelvis), HingeTwistAt(h) * _hingeTwistSign, 0f);
+                    Vector3 p = _body.InverseTransformPoint(s.position), q = _body.InverseTransformPoint(hd.position);
+                    if (i == 0) { s0 = p; h0 = q; }
+                    _hingeShoulder[b, i] = new Vector2(p.z - s0.z, s0.y - p.y);
+                    _hingeHead[b, i] = new Vector2(q.z - h0.z, h0.y - q.y);
+                }
+            }
+            _hips.rotation = rest;
+            PoseSpine(0f, 0f, 0f);
+            _hingeMeasured = _hingeShoulder[0, 6].x > 0.1f;
+        }
+
+        Vector2 HingeTable(Vector2[,] t, float h, float bend, float lever)
+        {
+            if (!_hingeMeasured)
+            {
+                float a0 = Mathf.Clamp(bend, 0f, 80f) * Mathf.Deg2Rad, a = Mathf.Clamp(bend + h, 0f, 120f) * Mathf.Deg2Rad;
+                return new Vector2(Mathf.Sin(a) - Mathf.Sin(a0), Mathf.Cos(a0) - Mathf.Cos(a)) * lever;
+            }
+            float x = Mathf.Clamp(h, 0f, 80f) / 10f, y = Mathf.Clamp(bend, 0f, HingeBendStep * (HingeBends - 1)) / HingeBendStep;
+            int i = Mathf.Min((int)x, 7), j = Mathf.Min((int)y, HingeBends - 2);
+            Vector2 lo = Vector2.Lerp(t[j, i], t[j, i + 1], x - i), hi = Vector2.Lerp(t[j + 1, i], t[j + 1, i + 1], x - i);
+            return Vector2.Lerp(lo, hi, y - j);
+        }
+
+        /// <summary>The spine's bend for a stoop (the eye down this far, m), as UpdateBody makes it standing.</summary>
+        public static float StoopBend(float stoop) => Mathf.Clamp(stoop, 0f, 0.8f) * 55f;
+
+        /// <summary>The working shoulder's move for a hinge of h degrees (forward, down; m) on top of a stoop (the eye down that
+        /// far, m), the body's shift forward included.</summary>
+        public Vector2 HingeShoulder(float h, float stoop = 0f) => HingeTable(_hingeShoulder, h, StoopBend(stoop), 0.47f) + new Vector2(HingeShift(h), 0f);
+        /// <summary>The head's (the view's) move for a hinge of h degrees (forward, down; m) on top of a stoop, the shift included.</summary>
+        public Vector2 HingeHead(float h, float stoop = 0f) => HingeTable(_hingeHead, h, StoopBend(stoop), 0.66f) + new Vector2(HingeShift(h), 0f);
+
         static float BendTable(float[] t, float bend)
         {
             float x = Mathf.Clamp(bend, 0f, 90f) / 10f;

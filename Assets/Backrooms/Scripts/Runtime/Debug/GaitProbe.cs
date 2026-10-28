@@ -1309,8 +1309,8 @@ namespace Backrooms.DebugTools
                 if (grab.HandBlend > 0.97f && ph != "None") { minPE = Mathf.Min(minPE, fpb.PalmError); maxDev = Mathf.Max(maxDev, Mathf.Abs(a.z)); }
                 if (ph == "Reach" && grab.HandBlend > 0.5f) minElbowReach = Mathf.Min(minElbowReach, a.x);
                 if (frame % 2 == 0)
-                    sb.AppendFormat("{0} | {1} | angle {2:0.0} latched {3} | blend {4:0.00} PE {5:0.0} | elbow {6:0} flex {7:0} dev {8:0} twist {9:0} | bot {10}\n", frame, ph, door.Angle, door.Latched,
-                                    grab.HandBlend, fpb.PalmError * 1000f, a.x, a.y, a.z, a.w, pl.botInput.HasValue ? pl.botInput.Value.ToString("F2") : "-");
+                    sb.AppendFormat("{0} | {1} | angle {2:0.0} latched {3} | blend {4:0.00} PE {5:0.0} | elbow {6:0} flex {7:0} dev {8:0} twist {9:0} | bot {10} | solver side {11:0}\n", frame, ph, door.Angle, door.Latched,
+                                    grab.HandBlend, fpb.PalmError * 1000f, a.x, a.y, a.z, a.w, pl.botInput.HasValue ? pl.botInput.Value.ToString("F2") : "-", fpb.WristSide);
                 if (frame >= (quick ? 150 : 260) || (!quick && heldAt < 0 && frame > 200))
                 {
                     Application.onBeforeRender -= act;
@@ -1359,6 +1359,19 @@ namespace Backrooms.DebugTools
             float t0 = 0f, beforeMax = 0f, palmAtGrab = -1f, firstStep = 0f, minElbow = 999f, maxStepAfter = 0f, maxPalmLift = 0f, grabT = -1f, carryT = -1f;
             int maxStepAt = -1; bool offered = false;
             float shareAtGrab = 0f, leanAtGrab = 0f, maxSpeedAfter = 0f;
+            // Round 9: the torso's bend from upright (hips to neck), the knee's bend, the elbow at the grab, and how far the item
+            // moves in the hand (in the hand bone's frame) through the lift: in its first half and in all.
+            var bfI = BindingFlags.NonPublic | BindingFlags.Instance;
+            System.Func<string, Transform> B = n => (Transform)typeof(FirstPersonBody).GetField(n, bfI).GetValue(fpb);
+            Transform hipsB = B("_hips"), thighB = B("_thighR"), shinB = B("_shinR"), handB = B("_hand"), neckB = B("_neck");
+            Transform footB = null;
+            if (shinB) foreach (Transform c in shinB) if (c.name.ToLower().Contains("foot")) { footB = c; break; }
+            System.Func<float> torsoBend = () => hipsB && neckB ? Vector3.Angle(neckB.position - hipsB.position, Vector3.up) : -1f;
+            System.Func<float> kneeBend = () => thighB && shinB && footB ? Vector3.Angle(shinB.position - thighB.position, footB.position - shinB.position) : -1f;
+            float torsoAtGrab = 0f, kneeAtGrab = 0f, hingeAtGrab = 0f, stoopAtGrab = 0f, elbowAtGrab = 0f, slideHalf = 0f, slideAll = 0f;
+            Vector3 inHand0 = Vector3.zero;
+            Quaternion turnInHand0 = Quaternion.identity;
+            float turnHalf = 0f, turnAll = 0f;
             Vector3 rest = Vector3.zero, last = Vector3.zero, restGrip = Vector3.zero, lastPalm = Vector3.zero;
             UnityEngine.Events.UnityAction act = null;
             act = () =>
@@ -1397,7 +1410,21 @@ namespace Backrooms.DebugTools
                 float palmGrip = (palm - gripOf()).magnitude;
                 var a = ArmAngles();
                 bool lifting = held && liftT > 0f;
-                if (lifting && grabF < 0) { grabF = frame; grabT = Time.time - t0; palmAtGrab = (lastPalm - restGrip).magnitude; firstStep = step; shareAtGrab = (grab.ReachShoulder - restGrip).magnitude / grab.ArmReach; leanAtGrab = grab.ReachLean; }
+                if (lifting && grabF < 0)
+                {
+                    grabF = frame; grabT = Time.time - t0; palmAtGrab = (lastPalm - restGrip).magnitude; firstStep = step; shareAtGrab = (grab.ReachShoulder - restGrip).magnitude / grab.ArmReach; leanAtGrab = grab.ReachHinge;
+                    torsoAtGrab = torsoBend(); kneeAtGrab = kneeBend(); hingeAtGrab = grab.ReachHinge; stoopAtGrab = pl.stoop; elbowAtGrab = a.x;
+                    // (Where its grip was from the palm, in the hand's frame, and its turn in the hand, as the lift starts.)
+                    inHand0 = handB ? Quaternion.Inverse(handB.rotation) * (gripOf() - palm) : Vector3.zero;
+                    turnInHand0 = handB ? Quaternion.Inverse(handB.rotation) * item.transform.rotation : Quaternion.identity;
+                }
+                if (grabF > 0 && carryF < 0 && handB)
+                {
+                    float sl = (Quaternion.Inverse(handB.rotation) * (gripOf() - palm) - inHand0).magnitude;
+                    float tn = Quaternion.Angle(Quaternion.Inverse(handB.rotation) * item.transform.rotation, turnInHand0);
+                    slideAll = Mathf.Max(slideAll, sl); turnAll = Mathf.Max(turnAll, tn);
+                    if (liftT < 0.5f) { slideHalf = Mathf.Max(slideHalf, sl); turnHalf = Mathf.Max(turnHalf, tn); }
+                }
                 if (grabF < 0) { beforeMax = Mathf.Max(beforeMax, fromRest); if (grab.HandBlend > 0.5f) minElbow = Mathf.Min(minElbow, a.x); }
                 else
                 {
@@ -1409,7 +1436,7 @@ namespace Backrooms.DebugTools
                 string phase = held ? (liftT > 0f ? "lift" : "hand") : grab.Fetching == item ? "reach" : "-";
                 sb.AppendFormat("{0} | {1:0.000} | {2} | {3:0.00} | {4:0.0} | {5:0.0} | {6:0.0} | {7:0.0} | {8:0.00} | {9:0} | {10:0.00} | {11} | {12}\n", frame, Time.time - t0, phase, liftT,
                     fromRest * 1000f, step * 1000f, palmGrip * 1000f, Mathf.Min(fpb.PalmError, 9.999f) * 1000f, grab.HandBlend, a.x, pl.stoop, pl.transform.position.ToString("F2"),
-                    (pl.botInput.HasValue ? pl.botInput.Value.ToString("F2") : "-") + string.Format(" | lean {0:0} | S-grip {1:0.000}", grab.ReachLean, (grab.ReachShoulder - gripOf()).magnitude));
+                    (pl.botInput.HasValue ? pl.botInput.Value.ToString("F2") : "-") + string.Format(" | hinge {0:0} torso {2:0} knee {3:0} | S-grip {1:0.000} | S local {4}", grab.ReachHinge, (grab.ReachShoulder - gripOf()).magnitude, torsoBend(), kneeBend(), pl.transform.InverseTransformPoint(grab.ReachShoulder).ToString("F2")));
                 if (shotSet.Contains(frame - Press) && !string.IsNullOrEmpty(dir))
                 {
                     Snap(Path.Combine(dir, string.Format("{0}_{1:000}_fp.png", tag, frame - Press)), Vector3.zero, Vector3.zero);
@@ -1430,6 +1457,8 @@ namespace Backrooms.DebugTools
                     sb.AppendFormat("SUMMARY {0} offered {1} | taken {2} | first move {3} s after the click | in the carry {4} s | item moved before the hand had it {5:0.0} mm | palm to grip when it first moved {6:0.0} mm (first step {7:0.0} mm) | least elbow reaching {8:0} | biggest frame move after {9:0.0} mm (frame {10}) | palm off the grip lifting max {11:0.0} mm | ends {12:0.000} m from where it lay, held {13}, gave up {14} | at the grab: shoulder to grip {15:0.00} of the reach, lean {16:0} | fastest after {17:0.00} m/s\n",
                         id, offered, takenF > 0, grabT >= 0f ? grabT.ToString("0.00") : "never", carryT >= 0f ? carryT.ToString("0.00") : "never", beforeMax * 1000f, palmAtGrab * 1000f, firstStep * 1000f,
                         minElbow, maxStepAfter * 1000f, maxStepAt - Press, maxPalmLift * 1000f, (item.transform.position - rest).magnitude, grab.HeldItem == item, grab.PickGaveUp, shareAtGrab, leanAtGrab, maxSpeedAfter);
+                    sb.AppendFormat("GRAB elbow {0:0} | torso {1:0} knee {2:0} | hinge {3:0} stoop {4:0.00} | grip slide on the palm: first half {5:0.0} mm, whole lift {6:0.0} mm | turn in the hand {7:0.0} / {8:0.0} deg\n",
+                        elbowAtGrab, torsoAtGrab, kneeAtGrab, hingeAtGrab, stoopAtGrab, slideHalf * 1000f, slideAll * 1000f, turnHalf, turnAll);
                     pl.SetStance(CamcorderPlayerController.Stance.Stand);
                     File.WriteAllText(file, sb.ToString());
                 }

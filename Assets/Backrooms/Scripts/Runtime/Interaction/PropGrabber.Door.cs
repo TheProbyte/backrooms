@@ -113,19 +113,46 @@ namespace Backrooms.Interaction
             Quaternion r0 = d.GripRotation(side, turn);
             Vector3 bar = d.GripPoint(side, turn);
             Quaternion best = Quaternion.identity; float bestS = float.MaxValue;
-            for (int y = -30; y <= 30; y += 10)
-                for (int a = -28; a <= 28; a += 14)
+            // (Round 9: a little wider, and the wrist bent to the side past 18 degrees costs more: pulling, it was 26-31, its
+            // limit about 30, through the whole hold.)
+            for (int y = -40; y <= 40; y += 10)
+                for (int a = -42; a <= 42; a += 14)
                 {
                     Quaternion t = Quaternion.AngleAxis(a, r0 * Vector3.right) * Quaternion.AngleAxis(y, r0 * Vector3.up);
                     Quaternion r = t * r0;
-                    float sc = _body.ArmStrain(bar + r * Vector3.up * 0.012f, r, out float over) + over * 0.02f + (Mathf.Abs(a) + Mathf.Abs(y)) * 0.002f;
+                    float sc = _body.ArmStrain(bar + r * Vector3.up * 0.012f, r, out float over, out float dev) + over * 0.02f + (Mathf.Abs(a) + Mathf.Abs(y)) * 0.002f
+                               + Mathf.Max(0f, Mathf.Abs(dev) - 18f) * 0.03f;
                     if (sc < bestS) { bestS = sc; best = t; }
                 }
             return best;
         }
 
+        /// <summary>A door's lever let go: until then the fading hand keeps this place from the shoulder (UpdateHandPose).</summary>
+        float _letGoUntil = -1f;
+        Vector3 _letGoOff;
+        // The hand turned about its palm's normal to keep the wrist's bend to the side within WristSideMax (WithWristSide).
+        float _sideFix;
+        const float WristSideMax = 20f;
+
+        /// <summary>
+        /// The hand on a lever turned a little about the forearm's back so the wrist bends no more than WristSideMax to the side
+        /// (the bar a little more on the slant across the palm), from how the arm was solved last frame. Pulling, the wrist was
+        /// bent 26-31 degrees to the side through the whole hold (its limit about 30).
+        /// </summary>
+        Quaternion WithWristSide(Quaternion r)
+        {
+            if (!_body || !_body.HasArm || HandBlend < 0.9f) return r;
+            float d = _body.WristSide, excess = d - Mathf.Clamp(d, -WristSideMax, WristSideMax);
+            if (excess != 0f) _sideFix = Mathf.Clamp(_sideFix + excess * 0.35f, -30f, 30f);
+            else if (Mathf.Abs(d) < WristSideMax - 4f) _sideFix = Mathf.MoveTowards(_sideFix, 0f, Time.deltaTime * 8f);
+            Vector3 axis = _body.WristSideAxis;
+            return axis.sqrMagnitude > 0.5f ? Quaternion.AngleAxis(-_sideFix, axis) * r : r;
+        }
+
         void EndDoor()
         {
+            if (_door && HandBlend > 0.3f) { _letGoUntil = Time.time + 0.45f; _letGoOff = HandPosition - ReachShoulder; }
+            _sideFix = 0f;
             _doorSlipT = 0f; _notThereT = 0f; _doorPushing = false;
             if (_door) _door.Release();
             _door = null;
@@ -215,8 +242,10 @@ namespace Backrooms.Interaction
                     if (_doorPushing && ((lever - RS).magnitude > ArmReach || PalmError > 0.02f)) { EndDoor(); break; }
                     // It could not follow (the hand would have to let go).
                     // The hand lets go when the lever leaves it (it used to stay "holding" with the palm up to 23 cm off).
-                    _doorSlipT = Vector3.Distance(lever, RS) > ArmReach + 0.2f || PalmError > 0.05f ? _doorSlipT + dt : 0f;
-                    if (_doorSlipT > 0.12f) EndDoor();
+                    // (Round 9: sooner, 3 cm off for two frames: at 5 cm for 0.12 s the arm stood out straight, the palm up to
+                    // 14 cm off the lever at full blend.)
+                    _doorSlipT = Vector3.Distance(lever, RS) > ArmReach + 0.2f || PalmError > 0.03f ? _doorSlipT + dt : 0f;
+                    if (_doorSlipT > 0.03f) EndDoor();
                     break;
                 }
             }
@@ -226,8 +255,8 @@ namespace Backrooms.Interaction
         void DoorHandPose()
         {
             Quaternion r0 = _door.GripRotation(_doorSide, _doorTurn);
-            // Rolled about the bar as the arm holds it best (LeverRoll).
-            HandRotation = _doorTurnQ * r0;
+            // Rolled about the bar as the arm holds it best (LeverRoll), the wrist not bent far to the side.
+            HandRotation = _doorPhase == DoorPhase.Reach ? _doorTurnQ * r0 : WithWristSide(_doorTurnQ * r0);
             // The palm on top of the lever's bar (its radius and a little), not at its middle.
             Vector3 p = _door.GripPoint(_doorSide, _doorTurn) + HandRotation * Vector3.up * 0.012f;
             // Reaching, no further than the bent arm goes (the body steps in for the rest).

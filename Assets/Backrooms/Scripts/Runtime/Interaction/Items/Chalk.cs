@@ -65,7 +65,7 @@ namespace Backrooms.Interaction
         // in a fist: a cigarette's hold.)
         static readonly float[][] Tripod =
         {
-            new[] { 18f, 45f, 0f, 0f }, new[] { 22f, 52f, 8f, 0f }, new[] { 38f, 40f, 22f, 0f }, new[] { 40f, 40f, 22f, 0f },
+            new[] { 18f, 45f, 16f, 0f }, new[] { 22f, 52f, 8f, 0f }, new[] { 38f, 40f, 22f, 0f }, new[] { 40f, 40f, 22f, 0f },
             new[] { 0f, 10f, 25f, 20f },
         };
         public bool FingerPose(int finger, float[] angles)
