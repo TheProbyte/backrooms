@@ -26,14 +26,16 @@ namespace Backrooms.Generation
         readonly Dictionary<Vector2Int, int> _fixtureKinds = new Dictionary<Vector2Int, int>();
         /// <summary>Missing tiles (centre, chunk-local), to lay one on the floor below if there is room.</summary>
         readonly List<(Vector3 c, int x, int z)> _missingTiles = new List<(Vector3, int, int)>();
+        /// <summary>Gaps in the ceiling (a tile missing, slid or pushed up): centre (chunk-local, at the ceiling), height, mask, room.</summary>
+        readonly List<(Vector3 c, float h, uint m, Room r)> _gaps = new List<(Vector3, float, uint, Room)>();
         static Material s_wearMat;
 
-        const float TileSize = 0.6f, TileThick = 0.014f, PlenumDepth = 0.22f;
+        const float TileSize = 0.6f, TileThick = 0.014f;
 
         void ClearWear()
         {
             _wearV.Clear(); _wearC.Clear(); _wearUV.Clear(); _wearIn.Clear(); _wearI.Clear();
-            _missingTiles.Clear();
+            _missingTiles.Clear(); _gaps.Clear();
             _fixtureKinds.Clear();
             foreach (var f in _L.fixtures) _fixtureKinds[f.cell] = f.strip ? 2 : f.dome ? 1 : 0;
         }
@@ -129,15 +131,15 @@ namespace Backrooms.Generation
                         SagTile(WMask(Dice(gx, gz, 130 + i) < 0.7f ? stained : ceil, m), tx0, zm0, h, 0.012f + 0.02f * Dice(gx, gz, 140 + i));
                         break;
                     case TileKind.Tilted:
-                        PlenumBox(m, tx0, zm0, tx1, zm1, h);
+                        _gaps.Add((centre, h, m, r));
                         TiltTile(WMask(Dice(gx, gz, 130 + i) < 0.4f ? stained : ceil, m), centre, h, Dice(gx, gz, 150 + i), 4f + 6f * Dice(gx, gz, 160 + i));
                         break;
                     case TileKind.Shifted:
-                        PlenumBox(m, tx0, zm0, tx1, zm1, h);
+                        _gaps.Add((centre, h, m, r));
                         ShiftTile(WMask(ceil, m), centre, h, Dice(gx, gz, 150 + i), Dice(gx, gz, 160 + i), Dice(gx, gz, 170 + i));
                         break;
                     case TileKind.Missing:
-                        PlenumBox(m, tx0, zm0, tx1, zm1, h);
+                        _gaps.Add((centre, h, m, r));
                         if (Dice(gx, gz, 180 + i) < 0.6f) _missingTiles.Add((new Vector3(centre.x, 0f, centre.z), x, z));
                         break;
                 }
@@ -148,17 +150,151 @@ namespace Backrooms.Generation
         static void CeilQuad(MeshWriter w, float ax0, float az0, float ax1, float az1, float h) =>
             w.Quad(new Vector3(ax0, h, az0), new Vector3(ax1, h, az0), new Vector3(ax1, h, az1), new Vector3(ax0, h, az1), Vector3.down, MeshWriter.CeilingUV);
 
-        /// <summary>The dark space above the ceiling over a tile (a little wider: seen past a lifted or shifted tile's edge).</summary>
-        void PlenumBox(uint m, float tx0, float tz0, float tx1, float tz1, float h)
+        // ---------------- Above the ceiling ----------------
+
+        const float PlenumDepth = 0.6f, JoistDepth = 0.235f, JoistWidth = 0.045f, JoistSpacing = 0.4f;
+
+        /// <summary>
+        /// The space above the ceiling, built only round its gaps (gaps of one room near each other share one): the backs of
+        /// the tiles round the gap, hanger wires down to the grid, old joists every 40 cm under the boards of the floor above,
+        /// dusty fibreglass in some of the bays, often a pipe or conduit across the joists, sometimes a sagging foil duct, a
+        /// cable or two; closed by dark walls past where it can be seen. Everything is placed in world coordinates, so two
+        /// gaps a few tiles apart look into the same structure. Lit by the world's light as the ceiling is: dark and dim,
+        /// not black.
+        /// </summary>
+        void BuildPlenums()
         {
-            var w = WMask(MaterialMaps.Plenum, m);
-            const float pad = 0.05f;
-            float a0 = tx0 - pad, a1 = tx1 + pad, b0 = tz0 - pad, b1 = tz1 + pad, top = h + PlenumDepth;
-            w.Quad(new Vector3(a0, top, b0), new Vector3(a1, top, b0), new Vector3(a1, top, b1), new Vector3(a0, top, b1), Vector3.down, MeshWriter.MetreUV);
-            w.Quad(new Vector3(a0, h, b0), new Vector3(a0, top, b0), new Vector3(a0, top, b1), new Vector3(a0, h, b1), Vector3.right, MeshWriter.MetreUV);
-            w.Quad(new Vector3(a1, h, b0), new Vector3(a1, top, b0), new Vector3(a1, top, b1), new Vector3(a1, h, b1), Vector3.left, MeshWriter.MetreUV);
-            w.Quad(new Vector3(a0, h, b0), new Vector3(a1, h, b0), new Vector3(a1, top, b0), new Vector3(a0, top, b0), Vector3.forward, MeshWriter.MetreUV);
-            w.Quad(new Vector3(a0, h, b1), new Vector3(a1, h, b1), new Vector3(a1, top, b1), new Vector3(a0, top, b1), Vector3.back, MeshWriter.MetreUV);
+            if (_gaps.Count == 0 || !MaterialMaps.PlenumWood) return;
+            var done = new bool[_gaps.Count];
+            var holes = new List<Vector3>();
+            for (int i = 0; i < _gaps.Count; i++)
+            {
+                if (done[i]) continue;
+                var (c0, h, m, r) = _gaps[i];
+                holes.Clear(); holes.Add(c0); done[i] = true;
+                for (int j = i + 1; j < _gaps.Count; j++)
+                    if (!done[j] && _gaps[j].r == r && Mathf.Abs(_gaps[j].h - h) < 0.01f && (_gaps[j].c - c0).sqrMagnitude < 2.4f * 2.4f)
+                    { holes.Add(_gaps[j].c); done[j] = true; }
+                float x0 = float.MaxValue, x1 = float.MinValue, z0 = float.MaxValue, z1 = float.MinValue;
+                foreach (var c in holes) { x0 = Mathf.Min(x0, c.x); x1 = Mathf.Max(x1, c.x); z0 = Mathf.Min(z0, c.z); z1 = Mathf.Max(z1, c.z); }
+                const float reach = 0.3f + 0.9f;
+                x0 = Mathf.Max(x0 - reach, r.rect.xMin * C + T * 0.5f); x1 = Mathf.Min(x1 + reach, r.rect.xMax * C - T * 0.5f);
+                z0 = Mathf.Max(z0 - reach, r.rect.yMin * C + T * 0.5f); z1 = Mathf.Min(z1 + reach, r.rect.yMax * C - T * 0.5f);
+                if (x1 - x0 < 0.6f || z1 - z0 < 0.6f) continue;
+                PlenumSpace(holes, x0, x1, z0, z1, Mathf.Min(h + PlenumDepth, _L.storeyPitch - 0.3f), h, m);
+            }
+        }
+
+        void PlenumSpace(List<Vector3> holes, float x0, float x1, float z0, float z1, float top, float h, uint m)
+        {
+            var w0 = _origin + holes[0];
+            int sx = Mathf.FloorToInt(w0.x / 2.4f), sz = Mathf.FloorToInt(w0.z / 2.4f);
+            float D(int salt) => Dice(sx, sz, salt);
+            float jb = top - JoistDepth;                                   // the joists' undersides
+            var dark = WMask(MaterialMaps.Plenum, m);
+            var wood = WMask(MaterialMaps.PlenumWood, m);
+            var metal = WMask(MaterialMaps.PlenumMetal, m);
+            var MU = (MeshWriter.UVProjector)MeshWriter.MetreUV;
+
+            // Closed past where it can be seen, and the boards of the floor above.
+            dark.Quad(new Vector3(x0, h, z0), new Vector3(x0, top, z0), new Vector3(x0, top, z1), new Vector3(x0, h, z1), Vector3.right, MU);
+            dark.Quad(new Vector3(x1, h, z0), new Vector3(x1, top, z0), new Vector3(x1, top, z1), new Vector3(x1, h, z1), Vector3.left, MU);
+            dark.Quad(new Vector3(x0, h, z0), new Vector3(x1, h, z0), new Vector3(x1, top, z0), new Vector3(x0, top, z0), Vector3.forward, MU);
+            dark.Quad(new Vector3(x0, h, z1), new Vector3(x1, h, z1), new Vector3(x1, top, z1), new Vector3(x0, top, z1), Vector3.back, MU);
+            WMask(MaterialMaps.PlenumDeck, m).Quad(new Vector3(x0, top, z0), new Vector3(x1, top, z0), new Vector3(x1, top, z1), new Vector3(x0, top, z1), Vector3.down, MU);
+
+            // Joists, world-aligned; along x or z.
+            bool alongX = D(600) < 0.5f;
+            float a0 = alongX ? z0 : x0, a1 = alongX ? z1 : x1;           // across the joists
+            float l0 = alongX ? x0 : z0, l1 = alongX ? x1 : z1;           // along them
+            float off = alongX ? _origin.z : _origin.x;
+            Vector3 P(float across, float y, float along) => alongX ? new Vector3(along, y, across) : new Vector3(across, y, along);
+            Vector3 S(float across, float y, float along) => alongX ? new Vector3(along, y, across) : new Vector3(across, y, along);
+            float first = Mathf.Ceil((a0 + off) / JoistSpacing) * JoistSpacing - off;
+            for (float j = first; j <= a1; j += JoistSpacing)
+                wood.Box(P(j, jb + JoistDepth * 0.5f, (l0 + l1) * 0.5f), S(JoistWidth, JoistDepth, l1 - l0), 1 | 2 | 4 | 16 | 32, MU);
+
+            // Fibreglass in some bays, lumpy, here and there sagging below the joists.
+            var batt = WMask(MaterialMaps.PlenumBatt, m);
+            for (float j = first - JoistSpacing; j <= a1; j += JoistSpacing)
+            {
+                float b0 = Mathf.Max(a0, j + JoistWidth * 0.5f + 0.004f), b1 = Mathf.Min(a1, j + JoistSpacing - JoistWidth * 0.5f - 0.004f);
+                if (b1 - b0 < 0.05f) continue;
+                int bay = Mathf.RoundToInt((j + off) / JoistSpacing);
+                if (Dice(bay, alongX ? 1 : 2, 610 + sx * 7 + sz) > 0.6f) continue;
+                int k = 0;
+                for (float t = l0; t < l1 - 0.05f; k++)
+                {
+                    float len = 0.4f + 0.4f * Dice(bay, k, 620), thick = 0.1f + 0.06f * Dice(bay, k, 621);
+                    float sag = Dice(bay, k, 622) < 0.3f ? 0.02f + 0.05f * Dice(bay, k, 623) : 0.01f * Dice(bay, k, 623);
+                    float t1 = Mathf.Min(l1, t + len);
+                    float bottom = jb + 0.02f - sag;
+                    batt.Box(P((b0 + b1) * 0.5f, bottom + thick * 0.5f, (t + t1) * 0.5f), S(b1 - b0, thick, t1 - t - 0.01f), 1 | 2 | 4 | 16 | 32, MU);
+                    t = t1;
+                }
+            }
+
+            // A pipe or conduit hung across the joists.
+            if (D(630) < 0.75f)
+            {
+                float rad = D(631) < 0.5f ? 0.012f : 0.022f + 0.012f * D(632);
+                float at = Mathf.Lerp(l0, l1, 0.25f + 0.5f * D(633));
+                float y = jb - 0.04f - rad;
+                Tube(metal, P(a0, y, at), P(a1, y, at), rad, 8, 0f);
+            }
+            // A foil flex duct along the joists, sagging between hangers.
+            if (D(640) < 0.35f)
+            {
+                float at = Mathf.Lerp(a0, a1, 0.2f + 0.6f * D(641));
+                Tube(WMask(MaterialMaps.PlenumDuct, m), P(at, jb - 0.12f, l0), P(at, jb - 0.12f, l1), 0.1f, 12, 0.04f);
+            }
+            // A cable or two, loose.
+            int cables = D(650) < 0.5f ? 1 : 2;
+            for (int c = 0; c < cables; c++)
+            {
+                float u0 = Mathf.Lerp(l0, l1, D(651 + c)), u1 = Mathf.Lerp(l0, l1, D(653 + c));
+                Tube(metal, P(a0, jb - 0.015f, u0), P(a1, jb - 0.015f, u1), 0.005f, 5, 0.05f);
+            }
+            // Hanger wires from the joists to the grid's main runners (every 1.2 m along them).
+            float runner0 = Mathf.Ceil((z0 + _origin.z - OfficeBiome.TileGridOffset) / 1.2f) * 1.2f + OfficeBiome.TileGridOffset - _origin.z;
+            for (float wz = runner0; wz <= z1; wz += 1.2f)
+            for (float wx = Mathf.Ceil((x0 + _origin.x) / 1.2f) * 1.2f - _origin.x + 0.6f; wx <= x1; wx += 1.2f)
+                metal.Box(new Vector3(wx, (h + jb) * 0.5f, wz), new Vector3(0.003f, jb - h, 0.003f), 1 | 2 | 16 | 32, MU);
+
+            // The backs of the tiles round the gaps.
+            var back = WMask(MaterialMaps.TileBack, m);
+            float ty = h + TileThick;
+            for (float tx = Mathf.Floor((x0 + _origin.x) / TileSize) * TileSize - _origin.x; tx < x1; tx += TileSize)
+            for (float tz = Mathf.Floor((z0 + _origin.z - OfficeBiome.TileGridOffset) / TileSize) * TileSize + OfficeBiome.TileGridOffset - _origin.z; tz < z1; tz += TileSize)
+            {
+                float cx = tx + TileSize * 0.5f, cz = tz + TileSize * 0.5f;
+                bool gap = false;
+                foreach (var hc in holes) if (Mathf.Abs(hc.x - cx) < 0.29f && Mathf.Abs(hc.z - cz) < 0.29f) { gap = true; break; }
+                if (gap) continue;
+                float qx0 = Mathf.Max(tx, x0), qx1 = Mathf.Min(tx + TileSize, x1), qz0 = Mathf.Max(tz, z0), qz1 = Mathf.Min(tz + TileSize, z1);
+                if (qx1 - qx0 < 0.01f || qz1 - qz0 < 0.01f) continue;
+                back.Quad(new Vector3(qx0, ty, qz0), new Vector3(qx1, ty, qz0), new Vector3(qx1, ty, qz1), new Vector3(qx0, ty, qz1), Vector3.up, MU);
+            }
+        }
+
+        /// <summary>A round tube from a to b (sagging by sag in the middle: five pieces), its sides only.</summary>
+        static void Tube(MeshWriter w, Vector3 a, Vector3 b, float r, int sides, float sag)
+        {
+            int pieces = sag > 0f ? 5 : 1;
+            for (int p = 0; p < pieces; p++)
+            {
+                float t0 = p / (float)pieces, t1 = (p + 1) / (float)pieces;
+                Vector3 p0 = Vector3.Lerp(a, b, t0) + Vector3.down * sag * 4f * t0 * (1f - t0);
+                Vector3 p1 = Vector3.Lerp(a, b, t1) + Vector3.down * sag * 4f * t1 * (1f - t1);
+                Vector3 dir = (p1 - p0).normalized;
+                Vector3 u = Vector3.Cross(dir, Mathf.Abs(dir.y) > 0.9f ? Vector3.right : Vector3.up).normalized, v = Vector3.Cross(dir, u);
+                for (int k = 0; k < sides; k++)
+                {
+                    float a0 = k * Mathf.PI * 2f / sides, a1 = (k + 1) * Mathf.PI * 2f / sides, am = (a0 + a1) * 0.5f;
+                    Vector3 o0 = (u * Mathf.Cos(a0) + v * Mathf.Sin(a0)) * r, o1 = (u * Mathf.Cos(a1) + v * Mathf.Sin(a1)) * r;
+                    w.Quad(p0 + o0, p1 + o0, p1 + o1, p0 + o1, u * Mathf.Cos(am) + v * Mathf.Sin(am), MeshWriter.MetreUV);
+                }
+            }
         }
 
         /// <summary>A tile sagging in the middle (wet, or old): its edges on the grid, its centre a couple of centimetres down.</summary>
@@ -211,6 +347,7 @@ namespace Backrooms.Generation
         void BuildWear()
         {
             if (Pool) return;
+            BuildPlenums();
             FallenTiles();
             var exits = new Dictionary<int, List<Vector3>>();
             int N = _L.N;
@@ -233,7 +370,9 @@ namespace Backrooms.Generation
                     if (OfficeLayout.IsSolid(e))
                     {
                         WallGrime(x, z, side, edge, outDir, along, r);
-                        if (Dice(GX(x), GZ(z), 300 + side) < 0.035f) Ripple(x, z, side, edge, outDir, along, r, m);
+                        float loose = Dice(GX(x), GZ(z), 300 + side);
+                        if (loose < 0.06f) WallLift(x, z, side, edge, outDir, along, r, m);
+                        else if (loose < 0.095f) Ripple(x, z, side, edge, outDir, along, r, m);
                         continue;
                     }
                     bool otherRoom = inChunk ? _L.RoomAt(nx, nz) != r : e != EdgeKind.Open;
@@ -267,32 +406,35 @@ namespace Backrooms.Generation
             WearQuad(w0 - along * (C * 0.5f), w0 + along * (C * 0.5f), -outDir, 0.24f, col, new Vector2(0.6f, 0f), u0, u1, 0f, 1f);
         }
 
-        /// <summary>A doorway: a dark seam on the line, a trodden patch either side, and now and then a lifted, frayed edge.</summary>
+        /// <summary>A doorway: a trodden patch just inside (feet turn and stop here). No line across it: one at every doorway
+        /// read as the edge of something (a chunk), not of carpet.</summary>
         void Doorway(int x, int z, int side, EdgeKind e, Vector3 edge, Vector3 outDir, Vector3 along, Room r, uint m)
         {
-            // Seam: a thin dark line (each side draws its half).
-            WearQuad(edge - along * (C * 0.5f - T * 0.5f), edge + along * (C * 0.5f - T * 0.5f), -outDir, 0.012f,
-                     new Color32(120, 108, 96, 200), new Vector2(0.92f, 0f), -1f, 1f, 0f, 1f);
-            // Worn just inside: feet turn and stop here.
             Vector3 c = edge - outDir * 0.3f;
             WearQuad(c - along * 0.55f, c + along * 0.55f, -outDir, 0.42f, new Color32(214, 206, 194, 190), new Vector2(0.35f, 0.3f), -1f, 1f, -1f, 1f);
-
-            // The same dice from both rooms: the edge's own cell coordinates (its lower-left cell) and orientation.
-            bool vertical = side < 2;
-            int ex = GX(side == 1 ? x + 1 : x), ez = GZ(side == 3 ? z + 1 : z);
-            if (Dice(ex, ez, vertical ? 400 : 401) > 0.35f) return;
-            bool liftHere = (Dice(ex, ez, vertical ? 402 : 403) < 0.5f) == (side == 0 || side == 2);
-            if (!liftHere) return;
-            float half = e == EdgeKind.Door ? 0.4f : C * 0.5f - T * 0.5f - 0.05f;
-            float a = Dice(ex, ez, 404), b = Dice(ex, ez, 405);
-            float s0 = -half + a * half * 0.6f, s1 = half - b * half * 0.6f;
-            float lift = e == EdgeKind.Door ? 0.003f + 0.003f * Dice(ex, ez, 406) : 0.005f + 0.005f * Dice(ex, ez, 406);
-            CarpetLip(WMask(_a.FloorMaterial(r), m), edge, outDir, along, s0, s1, lift, ex * 31 + ez);
         }
 
         /// <summary>
-        /// The carpet's edge come up at a seam: a wedge rising to the lip, the cut edge, and a fringe of loose threads
-        /// lying over the line.
+        /// Carpet come away from the wall (off its tack strip): along part of a wall its edge has lifted a few millimetres a
+        /// centimetre or two short of the baseboard, threads hanging into the dark gap it left.
+        /// </summary>
+        void WallLift(int x, int z, int side, Vector3 edge, Vector3 outDir, Vector3 along, Room r, uint m)
+        {
+            int gx = GX(x), gz = GZ(z);
+            float len = 0.3f + 0.6f * Dice(gx, gz, 360 + side);
+            float s0 = -C * 0.5f + 0.08f + (C - 0.16f - len) * Dice(gx, gz, 361 + side), s1 = s0 + len;
+            float face = T * 0.5f + (NoBaseboard ? 0f : BD), gap = 0.008f + 0.017f * Dice(gx, gz, 362 + side);
+            float lift = 0.005f + 0.007f * Dice(gx, gz, 363 + side);
+            Vector3 lip = edge - outDir * (face + gap);
+            CarpetLip(WMask(_a.FloorMaterial(r), m), lip, outDir, along, s0, s1, lift, gx * 131 + gz * 7 + side);
+            // The gap: the bare floor and the tack strip, dark.
+            Vector3 g = edge - outDir * face;
+            WearQuad(g + along * s0, g + along * s1, -outDir, gap + 0.004f, new Color32(92, 84, 76, 235), new Vector2(0.8f, 0.7f), -1f, 1f, 0f, 1f);
+        }
+
+        /// <summary>
+        /// The carpet's edge come up: a wedge rising to the lip, the cut edge, and a fringe of loose threads hanging off it
+        /// (outDir: the way the edge faces).
         /// </summary>
         static void CarpetLip(MeshWriter w, Vector3 edge, Vector3 outDir, Vector3 along, float s0, float s1, float lift, int seed)
         {

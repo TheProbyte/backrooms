@@ -75,8 +75,19 @@ namespace Backrooms.Generation
         static Texture2D s_stainedA, s_stainedB;
         static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
+        public static Material PlenumWood, PlenumDeck, PlenumBatt, PlenumMetal, PlenumDuct, TileBack;
+
         public static bool IsCeilingVariant(Material m) =>
-            m && (m == CeilingStainedA || m == CeilingStainedB || m == CeilingYellowed || m == Plenum);
+            m && (m == CeilingStainedA || m == CeilingStainedB || m == CeilingYellowed || m == Plenum || m == PlenumWood || m == PlenumDeck
+                  || m == PlenumBatt || m == PlenumMetal || m == PlenumDuct || m == TileBack);
+
+        static Material Tinted(Material src, string suffix, Color tint)
+        {
+            if (!src) return null;
+            var m = new Material(src) { name = src.name + suffix, hideFlags = HideFlags.DontSave };
+            m.SetColor(BaseColor, tint);
+            return m;
+        }
 
         static void Ceilings(OfficeBiomeAssets a)
         {
@@ -96,6 +107,16 @@ namespace Backrooms.Generation
             CeilingYellowed.SetColor(BaseColor, c * new Color(0.97f, 0.93f, 0.8f, 1f));
             Plenum = Copy(src, " (plenum)", null);
             Plenum.SetColor(BaseColor, new Color(0.016f, 0.015f, 0.014f, 1f));       // dark: the room's light barely gets in
+            // What is up there (seen past a missing or slid tile): old joists and the boards they carry, dusty fibreglass,
+            // grey metal (pipe, hanger wire, cable), a foil flex duct, and the tiles' own fibrous backs. The broken walls'
+            // materials, aged, dusty and dark: the world's light reaches up there as it does the room, so they are dimmed
+            // to a little over half (what little comes up through a gap: dark, but the shapes show). Same shader and keywords.
+            PlenumWood = Tinted(Destruction.DemolitionMaterials.Wood, " (old joist)", new Color(0.24f, 0.18f, 0.12f));
+            PlenumDeck = Tinted(Destruction.DemolitionMaterials.Wood, " (deck)", new Color(0.16f, 0.125f, 0.09f));
+            PlenumBatt = Tinted(Destruction.DemolitionMaterials.BattYellow, " (dusty)", new Color(0.37f, 0.31f, 0.17f));
+            PlenumMetal = Tinted(Destruction.DemolitionMaterials.Steel, " (dusty)", new Color(0.24f, 0.245f, 0.25f));
+            PlenumDuct = Tinted(Destruction.DemolitionMaterials.Steel, " (foil duct)", new Color(0.33f, 0.33f, 0.32f));
+            TileBack = Tinted(Destruction.DemolitionMaterials.BackPaper, " (tile back)", new Color(0.28f, 0.27f, 0.25f));
         }
 
         static Material Copy(Material src, string suffix, Texture2D baseMap)

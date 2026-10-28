@@ -100,19 +100,27 @@ the same from either chunk), and costs almost nothing: a few hundred triangles a
 - **Ceiling tiles**: of the two whole tiles in a cell's middle row (tiles run 0.3 m off the cell edges in z), now and
   then one is stained (about 3.5 %, more where a slow noise says the building leaks), yellowed (3 %), sagging (1-3 cm,
   often stained), pushed up at one edge (1.2 %), slid 2-4 cm off its grid (1 %), or missing (0.5 %; then 60 % of the
-  time it lies on the floor below, if no furniture is there). A lifted, slid or missing tile shows the dark plenum
-  above (a box 22 cm deep, albedo 0.016). Never in a cell with a dome or batten, nor in a square panel's own tile, nor
+  time it lies on the floor below, if no furniture is there). A lifted, slid or missing tile shows the space above
+  (`BuildPlenums`): built only round the gaps (gaps of one room within 2.4 m share one), about 2.4 m across, clipped to
+  the room, 60 cm deep: the fibrous backs of the tiles round the gap, hanger wires to the grid's main runners every
+  1.2 m, old joists every 40 cm under the boards of the floor above, dusty fibreglass in some bays (lumpy, some sagging),
+  often a pipe or conduit across the joists, sometimes a sagging foil duct, a cable or two; dark walls close it past
+  where it can be seen. All world-aligned (two gaps look into the same structure). The materials are the broken walls'
+  (`DemolitionMaterials`) aged and dimmed to a little over half, because the world's light reaches up there as it does
+  the room: through a gap it reads as dark and dim, the shapes just showing (measured: about a third of the tiles'
+  brightness on screen). Never in a cell with a dome or batten, nor in a square panel's own tile, nor
   under a crawl space. The stained tiles use two copies of the ceiling material whose texture (4 x 4 tiles) has a
   stain painted into every tile at startup (`MaterialMaps.Ceilings`: ragged water stains with uneven tide lines, darker
   toward the rim, and mould hazes with fine specks; about 0.3 s each in the editor), so a stained tile shows one of 32.
   Same shader keywords as the ceiling: no new variants.
 - **Carpet** (carpeted rooms only): a multiplied overlay (`Resources/Shaders/FloorWear.shader`, its own tiny unlit
   shader, one mesh a chunk, broken up by world-space blotches) darkens the carpet along the bottoms of the walls (fading
-  where a wall run ends), draws a thin seam across each doorway and a trodden patch either side of it, and faint worn
-  paths between a room's doorways (two: one path; more: each to their middle). About a third of the doorways have the
-  carpet edge come up on one side (3-10 mm, part of the width) with a fringe of loose threads over the seam; now and
-  then the carpet has come loose near a wall in a low ripple (8-16 mm, 35-80 cm long). These are carpet geometry with
-  the floor's own material and world UVs, no colliders.
+  where a wall run ends), a trodden patch either side of each doorway, and faint worn paths between a room's doorways
+  (two: one path; more: each to their middle). No line across doorways: one at every doorway, and lifted edges there,
+  read as chunk seams (removed 2026-10-27). Along walls, 6 % of wall lengths have the carpet come away from its tack
+  strip (`WallLift`: the edge lifted 5-12 mm, 1-2.5 cm short of the baseboard, loose threads hanging into the dark gap)
+  and 3.5 % a low ripple (8-16 mm, 35-80 cm long). Carpet geometry with the floor's own material and world UVs, no
+  colliders.
 
 ### Chunks and storeys
 A chunk is cut from its district: clipped room rectangles with the district room id (`globalId`),

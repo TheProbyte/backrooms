@@ -15,6 +15,12 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-27 18:26  Claude Code  The space above the ceiling at gaps; loose carpet moved from doorways to walls
+- `OfficeChunkBuilder.Wear.cs`: `BuildPlenums`/`PlenumSpace` replace the flat dark box over a missing, slid or lifted tile with a local plenum (tile backs, hanger wires, joists and deck boards, fibreglass, pipe, flex duct, cables, dark closing walls), world-aligned, after the user's reference photos. `MaterialMaps`: PlenumWood/Deck/Batt/Metal/Duct and TileBack (DemolitionMaterials, tinted down).
+- Doorways: no seam line and no lifted lip any more (they read as chunk seams); the trodden patch stays. New `WallLift`: carpet come off its tack strip along walls (6 % of wall lengths), with a dark gap and threads; ripples 3.5 %.
+- Checked: EditMode 105/105. Fresh world in World 3 (the user's World 2 is now in the Poolrooms; World 3 erased after): 167 gaps in view of the start; looking up through a missing tile the joists, boards and a hanger wire show, dark (brightness tuned over three tries: 51 too bright, 13 black, now about 30 of 255 against tiles at 77). No raised carpet left on any doorway line (0 vertices), 66k on walls.
+- Open: untested by the user; insulation, pipe and duct vary by gap and were not all in the one gap screenshotted.
+
 ## 2026-10-27 17:45  Claude Code  Wear and neglect: stained, sagging, lifted and missing ceiling tiles; carpet grime, seams, worn paths, frayed lips, ripples
 - New `Generation/OfficeChunkBuilder.Wear.cs`: per-tile ceiling variety in `DressCeiling` (called from `BuildFloorAndCeiling`), and after the props `BuildWear` (fallen tiles, wall-base grime, doorway seams and patches, worn paths, lifted carpet lips with fringes, ripples). All seeded by world seed + cell.
 - `MaterialMaps.Ceilings`: two stained copies of the ceiling material (stains painted into a GPU read-back of its texture, compressed), a yellowed copy and the dark plenum. `IsCeilingVariant` keeps them out of the shadow casters.
