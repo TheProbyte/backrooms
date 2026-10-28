@@ -84,6 +84,7 @@ namespace Backrooms.Camcorder
         public float lookOvershoot = 0.5f;
         public float lookJitter = 0.5f;
         public float handheldRoughness = 0f;
+        public bool recordedWalk = true;        // walking plays the phone recording of a carried camera (HandheldCameraShake)
 
         // Format and playback
         public int format = 0;                  // CamcorderFormat.Names
@@ -165,6 +166,7 @@ namespace Backrooms.Camcorder
             n.autoExposure = old.autoExposure;
             n.shakeIntensity = old.shakeIntensity; n.breathing = old.breathing; n.stabilization = old.stabilization;
             n.lookOvershoot = old.lookOvershoot; n.lookJitter = old.lookJitter; n.handheldRoughness = old.handheldRoughness;
+            n.recordedWalk = old.recordedWalk;
             n.recordFps = old.recordFps; n.lineDoubling = old.lineDoubling; n.bottomLine = old.bottomLine;
             if (old.videoLines > 0) n.videoLines = old.videoLines;
             n.CopyAudioFrom(old);

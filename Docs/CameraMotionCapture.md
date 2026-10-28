@@ -1,8 +1,17 @@
-# Recording real camcorder motion with a phone (idea 1, for later)
+# Recording real camcorder motion with a phone
 
 Big studios drive handheld cameras with motion captured from a real camera instead of generated noise. A phone's gyroscope
 records the same thing: how a camera held in a hand turns and bobs. Record it once; the game then plays it back in layers,
 matched to what the player is doing.
+
+## Status
+
+- **Walking forward: in the game (2026-10-28).** Two takes (`Tools/CameraMotion/Recordings/walk_normal_1.zip`, `_2.zip`;
+  a Pixel 10 Pro XL in Sensor Logger 1.68, rubber-banded to a 0.98 kg Bible: about 1.2 kg in the hand, like a camcorder).
+  98 steps a minute; four straight stretches, 34 strides (42 s) once the pick-up, the turn-around and the set-down are cut
+  out. Camera menu > HANDHELD > Recorded walk (on; off is the generated bob). See Camcorder.md, "Recorded walk".
+- Everything else (standing, looking, running, crouching, stairs, strafing, backing up, a startle) still uses the generated
+  shake; the takes below are what would replace it.
 
 ## What you need
 
@@ -51,6 +60,12 @@ Two takes of each is better than one; any subset helps (start with `idle_breathi
 
 Put the exported files in `Tools/CameraMotion/Recordings/` with the names above (e.g. `walk_normal_1.csv`, or the zip
 renamed `walk_normal_1.zip`) and tell me. Also say which phone and app you used, and roughly how heavy the setup was.
+A turn-around in the middle of a take is fine (it is found and cut out); no trimming is needed. With one phone the double
+tap is not needed for syncing (all its sensors share one clock), but it does no harm.
+
+Rebuilding the walk from the recordings (Python with numpy and scipy):
+
+    python Tools/CameraMotion/build_camera_motion.py "Tools/CameraMotion/Recordings/walk_normal_*.zip" --report --out Assets/Backrooms/Resources/CameraMotion/Walk.json
 
 ## What I'll do with it
 

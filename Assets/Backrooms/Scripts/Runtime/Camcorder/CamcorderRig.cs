@@ -236,6 +236,7 @@ namespace Backrooms.Camcorder
                 shake.lookOvershoot = s.lookOvershoot;
                 shake.lookJitter = s.lookJitter;
                 shake.roughness = s.handheldRoughness;
+                shake.recordedWalk = s.recordedWalk;
             }
 
             // Recording cadence: the recording frame rate, 30 pictures a second while the slow shutter is on, or 59.94 fields a

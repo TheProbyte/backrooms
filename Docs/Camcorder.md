@@ -119,3 +119,32 @@ presets, the migration, the white balance limits and that the shader compiles wi
 - DV blocks grow with the noise: the codec's bit budget per frame is fixed, so with the gain up in low light every block is
   coarser (x 1 to 2.2 with the gain). Not with motion: that is MPEG (DVD and HDV camcorders, later); DV is intra-frame.
 - Not added: rolling shutter. 1990s camcorders used CCD sensors, which expose the whole frame at once (CMOS phones skew).
+
+## Recorded walk (2026-10-28)
+
+Walking moves the camera the way a real camera carried in the hand did: a phone held like the camcorder (landscape, eye
+level, weighted to about 1.2 kg) and recorded with its gyroscope and accelerometer (Docs/CameraMotionCapture.md).
+`Tools/CameraMotion/build_camera_motion.py` turns the takes into `Resources/CameraMotion/Walk.json`:
+
+- Only straight walking is kept: the phone held (gravity along its long edge), stepping (the up-down rhythm), not turning
+  (the turn-around and a second either side cut out), less the first and last steps of each stretch.
+- The look direction is the player's mouse, so it is filtered out: rotation below 0.4 Hz and movement below 0.5 Hz go.
+  What is left is the hand's own motion: the sway, the bob of each step and the tremor (up to 15 Hz). Movement is the
+  accelerometer, turned into the walking direction's frame with the phone's orientation and integrated twice in the
+  frequency domain.
+- The heel strikes are the upward push as a foot takes the weight; which foot is the side the body sways to (it moves
+  over the standing leg), decided over each unbroken run of steps since the feet alternate. Cut at the left heel strikes
+  into strides, 64 samples each; where the strides do not follow one another (between stretches, and at the loop's end)
+  the end of one is eased onto the start of the next.
+- Result (two takes, 98 steps a minute): 34 strides, 42 s. The camera is lowest as each foot lands and highest over the
+  standing leg, about 5-7 cm up and down; it sways toward the standing foot (about 1.2 cm each way) and turns about 2
+  degrees left and right with the stride; rotation rms pitch 0.75, yaw 1.6, roll 1.1 degrees. (The generated walk
+  bobbed about 1.2 cm with 0.45 degrees of sway.)
+
+Playback (`CameraMotionClip`, `HandheldCameraShake`): the recording runs by stride, not by time. Each time a foot lands
+(`FirstPersonBody.FootLanded`) it is drawn toward that foot's landing in the recording (the left at the start of a stride,
+the right about half way), eased in over about a tenth of a second, never backward and at most three times the pace; the
+pace is the time between the last two steps. It takes the place of the generated walking bob and sway, and of the
+roughness's walking part (the recording has the hand's own shake in it); it is weighted by walking speed like the bob
+was, and running, standing and breathing are unchanged. Shake intensity and image stabilisation apply to it.
+Camera menu > HANDHELD > Recorded walk (on by default; off is the generated bob). `CameraMotionTests` (EditMode).

@@ -6,7 +6,8 @@ namespace Backrooms
     /// Handheld camcorder motion, applied as a local offset on the camera transform.
     /// Three layers: slow irregular "breathing" sway at rest, a gentle footstep-driven
     /// bob while walking, and heavier, rougher shake while running. Mouse look lives on
-    /// the parent pivot, so shake never fights or delays aim.
+    /// the parent pivot, so shake never fights or delays aim. Walking plays a real recording of a
+    /// camera carried in the hand when one is loaded (CameraMotionClip, recordedWalk), in step with the feet.
     /// </summary>
     public class HandheldCameraShake : MonoBehaviour
     {
@@ -59,6 +60,11 @@ namespace Backrooms
                  "walking with the camera in one hand rather than a steady glide. 0 = off. In degrees at 1.")]
         [Range(0f, 3f)] public float roughness = 0f;
 
+        [Header("Recorded walk")]
+        [Tooltip("While walking, the camera moves the way a phone held like the camcorder did (Resources/CameraMotion/Walk, " +
+                 "built by Tools/CameraMotion), in step with the feet, instead of the generated bob and sway.")]
+        public bool recordedWalk = true;
+
         /// <summary>Physical effort from moving something (0..1, set each frame by PropGrabber): adds a strained tremble.</summary>
         [System.NonSerialized] public float effort;
         /// <summary>How far the camcorder hand dips while the other hand works (0..1, set by PropGrabber).</summary>
@@ -70,6 +76,16 @@ namespace Backrooms
         float _effort, _dip;
 
         float _walkBlend, _runBlend, _stepPhase, _breathPhase;
+        // The recorded walk: where along it (strides), its pace (strides a second, from the feet), a correction still to
+        // ease in, and when a foot last landed.
+        static CameraMotionClip s_walk;
+        static bool s_walkTried;
+        Interaction.FirstPersonBody _body;
+        float _bodyLook = -10f, _strideT, _strideRate, _strideFix, _lastFoot = -10f;
+        /// <summary>Where along the recorded walk the camera is (strides; the left foot lands at whole numbers).</summary>
+        public float WalkStride => _strideT;
+        /// <summary>Whether walking plays the recording (it is on and loaded).</summary>
+        public bool PlaysRecordedWalk => recordedWalk && Walk != null;
         Vector2 _lookVel, _lookOff, _lookOffVel;
         float _lookRoll;
         Vector3 _seed;
@@ -106,6 +122,15 @@ namespace Backrooms
             Vector3 walkPos = new Vector3(Mathf.Sin(step * 0.5f) * 0.4f, bob, 0f) * walkBobHeight;
             Vector3 walkRot = new Vector3(bob * 0.6f, Mathf.Sin(step * 0.5f) * 0.3f, Mathf.Sin(step * 0.5f) * 0.5f) * walkSwayDegrees
                             + Noise3(t * 0.9f + 57f) * walkSwayDegrees * 0.4f;
+            // Recorded: the phone recording's sway, step bob and tremor, at the feet's own pace. It already has the hand's
+            // own shake in it, so the generated idle wander and the roughness's walking part give way to it.
+            bool rec = PlaysRecordedWalk;
+            if (rec)
+            {
+                UpdateStride(dt, speed);
+                Walk.Sample(_strideT, out walkRot, out walkPos);
+            }
+            float gen = rec ? 0f : 1f;
 
             // Run: heavier bob plus higher-frequency rough shake.
             Vector3 runPos = new Vector3(Mathf.Sin(step * 0.5f) * 0.5f, bob, 0f) * runBobHeight;
@@ -126,7 +151,7 @@ namespace Backrooms
             float stab = 1f - stabilization;
             Vector3 pos = breathPos * (1f - stabilization * 0.5f) + (walkPos * walkOnly + runPos * _runBlend) * Mathf.Lerp(1f, 0.45f, stabilization);
             Vector3 rot = breathRot * (1f - stabilization * 0.5f)
-                        + idleRot * Mathf.Lerp(1f, 0.6f, _walkBlend) * Mathf.Lerp(1f, 0.4f, stabilization)
+                        + idleRot * Mathf.Lerp(1f, rec ? 0.25f : 0.6f, _walkBlend) * Mathf.Lerp(1f, 0.4f, stabilization)
                         + walkRot * walkOnly * Mathf.Lerp(1f, 0.35f, stabilization)
                         + runRot * _runBlend * Mathf.Lerp(1f, 0.25f, stabilization) * (0.5f + 0.5f * stab);
 
@@ -136,11 +161,11 @@ namespace Backrooms
             // and each footstep lands with a small extra jolt.
             if (roughness > 0f)
             {
-                float active = 0.35f + 0.65f * _walkBlend;
+                float active = 0.35f + 0.65f * _walkBlend * gen;
                 Vector3 r = Noise3(t * 2.3f + 401f) * 0.6f + Noise3(t * 5.9f + 433f) * 0.3f + Noise3(t * 12.7f + 467f) * 0.05f;
                 r.y += (Mathf.PerlinNoise(t * 6.7f, _seed.y + 17f) * 2f - 1f) * 0.25f;          // a little extra fast yaw: the wrist
                 float jolt = Mathf.Pow(1f - Mathf.Abs(Mathf.Sin(step)), 3f) * _walkBlend;    // the heel strike
-                r += new Vector3(bob * 0.9f * _walkBlend + jolt * 0.25f, 0f, jolt * 0.1f * Mathf.Sign(Mathf.Sin(step * 0.5f)));
+                r += new Vector3(bob * 0.9f * _walkBlend + jolt * 0.25f, 0f, jolt * 0.1f * Mathf.Sign(Mathf.Sin(step * 0.5f))) * gen;
                 rot += r * roughness * active * Mathf.Lerp(1f, 0.3f, stabilization);
             }
 
@@ -164,6 +189,60 @@ namespace Backrooms
 
         /// <summary>A sudden knock to the camera (degrees per second of pitch, yaw, roll), which springs back.</summary>
         public void Jolt(Vector3 kick) { _joltVel += kick; }
+
+        // ---------------- Recorded walk ----------------
+
+        static CameraMotionClip Walk
+        {
+            get
+            {
+                if (!s_walkTried) { s_walkTried = true; s_walk = CameraMotionClip.Load("CameraMotion/Walk"); }
+                return s_walk;
+            }
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() { s_walk = null; s_walkTried = false; }
+
+        /// <summary>
+        /// Moves along the recorded walk at the feet's pace: each time a foot lands (FirstPersonBody.FootLanded) the
+        /// recording is drawn toward that foot's landing in it (the left at the start of a stride, the right part-way), eased
+        /// in, never backward and at most three times the pace; the pace comes from the time between the last two steps.
+        /// With no body, or standing, the recorded pace scaled by the walking speed.
+        /// </summary>
+        void UpdateStride(float dt, float speed)
+        {
+            if (!_body && Time.unscaledTime > _bodyLook)
+            {
+                _bodyLook = Time.unscaledTime + 1f;
+                _body = FindAnyObjectByType<Interaction.FirstPersonBody>();
+                if (_body) _body.FootLanded += OnFootLanded;
+            }
+            var clip = Walk;
+            bool paced = _strideRate > 0f && Time.time - _lastFoot < 1.2f;
+            float advance = (paced ? _strideRate : Mathf.Clamp(speed, 0.5f, 1.4f) / clip.StrideSeconds) * dt;
+            float fix = Mathf.Clamp(_strideFix * (1f - Mathf.Exp(-dt / 0.1f)), -0.8f * advance, 2f * advance);
+            _strideFix -= fix;
+            _strideT = Mathf.Repeat(_strideT + advance + fix, clip.Strides);
+        }
+
+        void OnFootLanded(Vector3 at, float speed)
+        {
+            var clip = Walk;
+            if (clip == null || !player || !recordedWalk) return;
+            float now = Time.time, gap = now - _lastFoot;
+            _lastFoot = now;
+            if (gap > 0.25f && gap < 1.2f) _strideRate = _strideRate > 0f ? Mathf.Lerp(_strideRate, 0.5f / gap, 0.5f) : 0.5f / gap;
+            Transform root = player.transform;
+            bool right = Vector3.Dot(at - root.position, root.right) > 0f;
+            float phase = _strideT - Mathf.Floor(_strideT);
+            float err = Mathf.Repeat((right ? clip.RightFootPhase : 0f) - phase + 0.5f, 1f) - 0.5f;
+            // Not walking yet (the layer is off): straight there.
+            if (_walkBlend < 0.05f) { _strideT = Mathf.Repeat(_strideT + err, clip.Strides); _strideFix = 0f; }
+            else _strideFix = err;
+        }
+
+        void OnDestroy() { if (_body) _body.FootLanded -= OnFootLanded; }
 
         /// <summary>
         /// Secondary motion from turning, added on top of the (instant) mouse look, so there is no input

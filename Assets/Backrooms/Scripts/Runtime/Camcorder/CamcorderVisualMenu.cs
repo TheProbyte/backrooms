@@ -328,6 +328,8 @@ namespace Backrooms.Camcorder
                 0f, 2f, "0.00", "x", () => S().lookJitter, v => S().lookJitter = v);
             Slider("Handheld roughness", "Fast, irregular hand shake on top of the smooth walking bob, with a small jolt on each step: someone walking with the camera in one hand. 0 = off.",
                 0f, 3f, "0.00", "", () => S().handheldRoughness, v => S().handheldRoughness = v);
+            Toggle("Recorded walk", "Walking moves the camera the way a real camera carried in the hand did: a phone recording (the sway, the bob of each step, the hand's tremor) kept in step with your feet. Off uses the generated walking bob. Shake intensity scales it.",
+                () => S().recordedWalk, v => S().recordedWalk = v);
             Slider("Motion blur (shutter)", "Smear from movement while the shutter is open, in light (so lights streak bright), trailing behind the motion, the same at any frame rate. 1 = exactly what the shutter time gives.",
                 0f, 2f, "0.00", "x", () => S().motionBlur, v => S().motionBlur = v);
 
