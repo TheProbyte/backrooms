@@ -75,6 +75,19 @@ namespace Backrooms.Interaction
         /// <summary>How far the solved palm is from where it is wanted (m), or 0 with no body.</summary>
         public float PalmError => _body && _body.HasArm ? _body.PalmError : 0f;
         float _notThereT, _stoopExtra;
+        bool _botHeld, _itemStepping;
+        Vector3 _itemReachAt;
+        float _itemReachUntil = -1f;
+        /// <summary>The held item wants the hand at a point this frame (a plug going to a socket): the body bends and steps toward it.</summary>
+        public void ReachToward(Vector3 p, bool step = true) { _itemReachAt = p; _itemReachUntil = Time.time + 0.1f; _itemMayStep = step; }
+        bool _itemMayStep;
+        bool ItemReaching => HeldItem && Time.time < _itemReachUntil;
+        /// <summary>0..1: the held item's grip opened (the hand going back out hand over hand along a cord).</summary>
+        public float GripOpen { get; private set; }
+        Vector3 _reelDir;
+        float _reelUntil = -1f, _reelPhase, _reelW;
+        /// <summary>Reeling a cord in this frame, the far end that way: the hand pulls hand over hand.</summary>
+        public void ReelStroke(Vector3 towardFarEnd) { _reelDir = towardFarEnd; _reelUntil = Time.time + 0.1f; }
 
         /// <summary>
         /// Out with the arm but the palm not there (the IK cannot get it there): after a moment step in toward it and bend
@@ -134,7 +147,10 @@ namespace Backrooms.Interaction
             var mouse = Mouse.current;
             bool focus = _player.HasFocus || botHold.HasValue;
             bool hold = botHold ?? (focus && mouse != null && mouse.leftButton.isPressed);
-            bool pressed = botHold.HasValue ? hold && Current == State.Idle : focus && mouse != null && mouse.leftButton.wasPressedThisFrame;
+            // (A bot's press is the moment its hold starts, as a mouse's: held on, it took again and again what it could
+            // not reach, and took a door's lever again mid-pull after letting go.)
+            bool pressed = botHold.HasValue ? hold && !_botHeld && Current == State.Idle : focus && mouse != null && mouse.leftButton.wasPressedThisFrame;
+            _botHeld = botHold.HasValue && hold;
             bool shovePressed = botShove || (focus && mouse != null && mouse.rightButton.wasPressedThisFrame);
             botShove = false;
             Vector2 md = botHold.HasValue ? botMouse : focus && mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
@@ -199,6 +215,19 @@ namespace Backrooms.Interaction
                 float down = Mathf.Clamp(StandShoulder.y - (_itemFromPos.y + 0.4f), 0f, 0.8f);
                 want = Mathf.Max(want, down * (1f - Mathf.SmoothStep(0.35f, 1f, _itemT)));
             }
+            // A held item taking the hand somewhere (a plug to a socket, an item off the floor): bend down for it and step
+            // in when it is out of the arm's reach.
+            if (ItemReaching)
+            {
+                want = Mathf.Max(want, Mathf.Clamp(StandShoulder.y - (_itemReachAt.y + 0.3f), 0f, 0.85f));
+                Vector3 to = _itemReachAt - ReachShoulder;
+                Vector3 local = transform.InverseTransformDirection(to); local.y = 0f;
+                var flat = new Vector2(local.x, local.z);
+                // (Only while the palm is not there yet: stepping on through a plug's push left it 8 cm short.)
+                if (_itemMayStep && PalmError > 0.03f && to.magnitude > ArmReach * 0.9f && flat.magnitude > 0.3f) { _player.botInput = flat.normalized * 0.45f; _itemStepping = true; }
+                else if (_itemStepping) { _player.botInput = null; _itemStepping = false; }
+            }
+            else if (_itemStepping) { _player.botInput = null; _itemStepping = false; }
             // Further down while the palm cannot get there (ComeCloser).
             if (Current == State.Idle && !OnDoor) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0f, Time.deltaTime * 0.5f);
             want = Mathf.Min(0.85f, want + _stoopExtra);
@@ -478,7 +507,7 @@ namespace Backrooms.Interaction
             return float.MaxValue;
         }
 
-        static float CollidersDistance(Collider[] cols, Vector3 p)
+        internal static float CollidersDistance(Collider[] cols, Vector3 p)
         {
             float best = float.MaxValue;
             if (cols == null) return best;

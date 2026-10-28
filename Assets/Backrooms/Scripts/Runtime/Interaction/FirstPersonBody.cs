@@ -285,6 +285,20 @@ namespace Backrooms.Interaction
                     Vector3 k = f.joints[0].t.position;
                     float d = contact(k) - FingerRadius;
                     if (d < worst) { worst = d; at = k; }
+                    // The finger as straight as it goes (straight, or bent back as far as it bends): if even that is in
+                    // the wall, the hand comes out that far (a jamb's fingertips were 11.7 mm in).
+                    int nj = f.joints.Count;
+                    for (int ji = 0; ji < nj; ji++) _closeSaved[ji] = f.a[ji];
+                    float bestF = float.MinValue;
+                    for (int ee = 0; ee <= 1; ee++)
+                    {
+                        for (int ji = 0; ji < nj; ji++) f.a[ji] = ee == 0 ? 0f : -Extend[Mathf.Min(ji, Extend.Length - 1)];
+                        Pose(f);
+                        bestF = Mathf.Max(bestF, ClearanceFrom(f, 0, contact));
+                    }
+                    for (int ji = 0; ji < nj; ji++) f.a[ji] = _closeSaved[ji];
+                    Pose(f);
+                    if (bestF < worst) { worst = bestF; at = k; }
                 }
                 Vector3 n = worst < -0.002f ? ContactNormal(contact, at) : Vector3.zero;
                 if (n.sqrMagnitude > 0.25f)
@@ -299,11 +313,30 @@ namespace Backrooms.Interaction
             // A held item goes with the hand: where the arm cannot quite put the palm on its grip (at full reach, a wrist
             // at its limit), the item is turned and moved onto the palm instead of floating off it (a sledgehammer's
             // swing left the hand by up to 186 mm, then 46).
-            if (!poke && !loose && _grab.HeldItem && blend > 0.97f)
+            if (!poke && !loose && _grab.HeldItem && blend > 0.97f && !_grab.ItemWaitingForHand)
             {
-                var it = _grab.HeldItem.transform;
+                var held = _grab.HeldItem;
+                var it = held.transform;
                 Quaternion turn = pose.hand * Quaternion.Inverse(gripHand);
                 it.SetPositionAndRotation(palmNow + turn * (it.position - wanted), turn * it.rotation);
+                // No part of the palm in it: the item is pushed out along its surface where the palm (its middle, heel and
+                // the base of the fingers, either side) is inside (a sledgehammer's handle sat 10.6 mm in the palm, a tape
+                // roll 7.2).
+                Vector3 hf = pose.hand * Vector3.forward, hr = pose.hand * Vector3.right, hu = pose.hand * Vector3.up;
+                float worstIn = 0f; Vector3 deepAt = palmNow;
+                for (int a = -1; a <= 1; a++)
+                    for (int b = -1; b <= 1; b += 2)
+                    {
+                        // (Either side the palm bulges: the ball of the thumb and the little finger's side, 5 mm proud.)
+                        Vector3 q = palmNow + hf * (a * 0.035f) + hr * (b * 0.03f) - hu * 0.005f;
+                        float d = held.ContactDistanceWorld(q);
+                        if (d < worstIn) { worstIn = d; deepAt = q; }
+                    }
+                if (worstIn < -0.002f)
+                {
+                    Vector3 nOut = ContactNormal(held.ContactDistanceWorld, deepAt);
+                    if (nOut.sqrMagnitude > 0.25f) it.position -= nOut.normalized * Mathf.Min(-worstIn - 0.001f, 0.02f);
+                }
             }
 
             // Fingers: one curl for all, or a held item's own shape (IHandGrip: a pinch, a pencil grip), the thumb flexing
@@ -321,8 +354,15 @@ namespace Backrooms.Interaction
                 float opp = thumb ? (shape != null ? Mathf.Lerp(0f, shape.ThumbOpposition, s) : Mathf.Clamp01((curl - 0.2f) * 1.1f)) : 0f;
                 // Pointing: the index finger straight out, the other fingers and the thumb curled in.
                 if (f.name == "Index") want = Mathf.Lerp(want, -0.05f, pointing);
-                else if (thumb) { want = Mathf.Lerp(want, 0.6f, pointing); opp = Mathf.Lerp(opp, 0.5f, pointing); }
+                else if (thumb) { want = Mathf.Lerp(want, 0.9f, pointing); opp = Mathf.Lerp(opp, 0.85f, pointing); }   // tucked over the curled fingers (it stuck down: a finger gun)
                 else want = Mathf.Lerp(want, 1.2f, pointing);
+                // Hand over hand on a cord: the fingers open as the hand goes back out.
+                if (!thumb && _grab.HeldItem) want *= 1f - 0.6f * _grab.GripOpen;
+                // Drawn in toward the middle finger as it curls (most of the way by half a fist).
+                f.adduct = thumb ? 0f : -f.spread * Mathf.Clamp01(want * 1.6f) * 0.85f;
+                // A held item's fingers straighten back no more than 10 degrees (30 at the knuckle bent the little finger
+                // straight back on a lamp's base and a tape roll).
+                _extScale = _grab.HeldItem ? 0.34f : 1f;
                 // Holding or touching something: each joint no further than it can go before what is beyond it touches.
                 Close(f, want, opp, closeOn ? contact : null, _goal, out float goalOpp);
                 float sum = 0f, of = 0f;
@@ -410,6 +450,8 @@ namespace Backrooms.Interaction
             public float curl, opp;           // how far it is closed (for tests), and the thumb's wanted opposition
             public readonly float[] a = new float[4];      // each joint's bend now (degrees)
             public float oppDeg;              // the thumb's base turned across the palm now (degrees; negative: opened out)
+            public Vector3 abdAxis;           // the knuckle turns about this (local) to fan the finger in or out
+            public float spread, adduct;      // its fan out from the middle finger at rest, and how far it is drawn in now (degrees)
             public bool placed;
         }
         readonly float[] _goal = new float[4];
@@ -445,6 +487,21 @@ namespace Backrooms.Interaction
                 f.tipLocal = last.InverseTransformPoint(tip);
                 if (f.name == "Thumb") f.oppAxis = _thumbOppAxis;
             }
+            // How far each finger fans out from the middle one at rest: it is drawn in toward it as it curls (fingers close
+            // together round a handle; the rig's fan left gaps between them on a can, a lamp's rod, a lever).
+            var mid = _fingers.Find(x => x.name == "Middle");
+            Vector3 N = _hand ? _hand.TransformDirection(_handBack).normalized : Vector3.up;
+            if (mid != null && mid.joints.Count > 1 && N.sqrMagnitude > 0.5f)
+            {
+                Vector3 dm = Vector3.ProjectOnPlane(mid.joints[1].t.position - mid.joints[0].t.position, N);
+                foreach (var f in _fingers)
+                {
+                    if (f == mid || f.name == "Thumb" || f.joints.Count < 2) continue;
+                    Vector3 df = Vector3.ProjectOnPlane(f.joints[1].t.position - f.joints[0].t.position, N);
+                    f.spread = Vector3.SignedAngle(dm, df, N);
+                    f.abdAxis = f.joints[0].t.InverseTransformDirection(N);
+                }
+            }
         }
 
         static void Pose(Finger f)
@@ -453,6 +510,7 @@ namespace Backrooms.Interaction
             {
                 var j = f.joints[i];
                 Quaternion turn = i == 0 && f.oppDeg != 0f && f.oppAxis.sqrMagnitude > 0.5f ? Quaternion.AngleAxis(f.oppDeg, f.oppAxis) : Quaternion.identity;
+                if (i == 0 && f.adduct != 0f && f.abdAxis.sqrMagnitude > 0.5f) turn *= Quaternion.AngleAxis(f.adduct, f.abdAxis);
                 j.t.localRotation = j.rest * turn * Quaternion.AngleAxis(f.a[i], j.axis);
             }
         }
@@ -491,15 +549,21 @@ namespace Backrooms.Interaction
                 for (int s = thumb ? 0 : -4; s <= 4; s++)
                 {
                     float k = s / 4f;
-                    for (int i = 0; i < n; i++) f.a[i] = k >= 0f ? goal[i] * k : k * Extend[Mathf.Min(i, Extend.Length - 1)];
+                    for (int i = 0; i < n; i++) f.a[i] = k >= 0f ? goal[i] * k : k * _extScale * Extend[Mathf.Min(i, Extend.Length - 1)];
                     f.oppDeg = Mathf.Lerp(open, goalOpp, Mathf.Max(k, 0f));
                     Pose(f);
                     float c = ClearanceFrom(f, 0, contact);
                     if (c >= 0f) { clear = true; bestK = k; bestC = c; }
                     else if (!clear && c > bestC + 0.0005f) { bestC = c; bestK = k; }
                 }
-                for (int i = 0; i < n; i++) goal[i] = bestK >= 0f ? goal[i] * bestK : bestK * Extend[Mathf.Min(i, Extend.Length - 1)];
+                for (int i = 0; i < n; i++) goal[i] = bestK >= 0f ? goal[i] * bestK : bestK * _extScale * Extend[Mathf.Min(i, Extend.Length - 1)];
                 goalOpp = Mathf.Lerp(open, goalOpp, Mathf.Max(bestK, 0f));
+                f.oppDeg = savedOpp;
+                for (int i = 0; i < n; i++) f.a[i] = _closeSaved[i];
+                return;
+            }
+            if (thumb && CloseThumb(f, want, oppT, open, contact, goal, out goalOpp))
+            {
                 f.oppDeg = savedOpp;
                 for (int i = 0; i < n; i++) f.a[i] = _closeSaved[i];
                 return;
@@ -537,6 +601,67 @@ namespace Backrooms.Interaction
             for (int i = 0; i < n; i++) f.a[i] = _closeSaved[i];
         }
         readonly float[] _closeSaved = new float[4];
+        readonly float[] _thumbTry = new float[4];
+        float _extScale = 1f;
+
+        /// <summary>
+        /// The thumb round what the hand holds: for turns across the palm from opened out to well across, each joint bends in
+        /// turn until what lies beyond it touches (further than the wanted curl if need be), and the turn whose tip ends
+        /// nearest the surface is taken, the nearest the grip's own turn (<see cref="IHandGrip.ThumbOpposition"/>) among
+        /// equals. (Opened out and swept back with the curl, it stopped at its first touch: tips 12-23 mm off a can, a
+        /// chicken's neck, a stick of chalk; straight along a hammer's handle and a lamp's rod.) False if it starts inside
+        /// whatever the turn.
+        /// </summary>
+        bool CloseThumb(Finger f, float want, float oppT, float open, System.Func<Vector3, float> contact, float[] goal, out float goalOpp)
+        {
+            int n = f.joints.Count;
+            goalOpp = oppT;
+            float bestScore = float.MaxValue;
+            bool found = false;
+            float far = Mathf.Max(oppT, 25f) + 20f;
+            const int Steps = 8;
+            for (int c = 0; c <= 6; c++)
+            {
+                float o = Mathf.Lerp(open, far, c / 6f);
+                f.oppDeg = o;
+                for (int i = 0; i < n; i++) f.a[i] = 0f;
+                Pose(f);
+                if (ClearanceFrom(f, 0, contact) < 0f) continue;
+                for (int i = 0; i < n; i++)
+                {
+                    float target = Mathf.Max(want, 1f) * 62f * f.joints[i].w * 1.3f, done = 0f;
+                    for (int s = 1; s <= Steps; s++)
+                    {
+                        float k = (float)s / Steps;
+                        f.a[i] = target * k;
+                        Pose(f);
+                        if (ClearanceFrom(f, i, contact) < 0f)
+                        {
+                            float half = (done + k) * 0.5f;
+                            f.a[i] = target * half;
+                            Pose(f);
+                            if (ClearanceFrom(f, i, contact) >= 0f) done = half;
+                            break;
+                        }
+                        done = k;
+                    }
+                    f.a[i] = target * done;
+                    Pose(f);
+                }
+                var last = f.joints[n - 1].t;
+                float gap = contact(last.TransformPoint(f.tipLocal)) - FingerRadius;
+                // Nearest the surface (in mm), then nearest the grip's turn (10 degrees count as 2 mm).
+                float score = Mathf.Max(gap, 0f) + Mathf.Abs(o - oppT) * 0.0002f;
+                if (score < bestScore)
+                {
+                    bestScore = score; found = true; goalOpp = o;
+                    for (int i = 0; i < n; i++) _thumbTry[i] = f.a[i];
+                }
+            }
+            if (!found) return false;
+            for (int i = 0; i < n; i++) goal[i] = _thumbTry[i];
+            return true;
+        }
 
         /// <summary>
         /// The clearance of the part of a finger beyond joint 'from' (m; negative inside): over its phalanges (each joint

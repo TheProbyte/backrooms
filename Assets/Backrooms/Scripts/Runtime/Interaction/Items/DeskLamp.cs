@@ -51,7 +51,8 @@ namespace Backrooms.Interaction
         // rod leans from there to the shade's pivot at (0, 0.38, 0.05). (The grip and the contact used to be a stem 3-5 cm
         // in front of the real rod: ring and pinky closed on nothing.)
         static readonly Vector3 RodLow = new Vector3(0f, 0.035f, -0.035f), RodKnuckle = new Vector3(0f, 0.165f, -0.035f), RodTop = new Vector3(0f, 0.37f, 0.05f);
-        public override Vector3 GripLocal => new Vector3(0.0115f, 0.1f, -0.035f);
+        // (1.8 cm up the rod from where it was: the little finger came down onto the base and was bent straight back.)
+        public override Vector3 GripLocal => new Vector3(0.0115f, 0.118f, -0.035f);
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0f, 0f, 1f), Vector3.right);
         public override float GripCurl => 0.95f;
         public float FingerCurl(int finger) => 0.95f;
@@ -167,7 +168,7 @@ namespace Backrooms.Interaction
         public override void ReelFromPlug(Plug plug, in HoldInput i)
         {
             if (_bundled || plug != _plug) return;
-            if (!ReelUpdate(_cord, _plug, i.reel, i.dt)) return;
+            if (!ReelUpdate(_cord, _plug, i.reel, i.dt, i.hand)) return;
             var hand = i.hand;
             Bundle();                     // lets go of the plug: the cord is wound up behind the base
             if (hand) hand.PickUp(this);
@@ -189,7 +190,7 @@ namespace Backrooms.Interaction
         public override void HoldUpdate(in HoldInput i)
         {
             if (i.secondary) { Bundle(); return; }
-            if (!_bundled && ReelUpdate(_cord, _plug, i.reel, i.dt)) { if (_plug && _plug.Plugged) _plug.Unplug(false); Bundle(); return; }
+            if (!_bundled && ReelUpdate(_cord, _plug, i.reel, i.dt, i.hand)) { if (_plug && _plug.Plugged) _plug.Unplug(false); Bundle(); return; }
             if (!i.pressed) return;
             if (_plug && !_plug.Plugged)
             {
@@ -197,7 +198,7 @@ namespace Backrooms.Interaction
                 if (s == null && i.hit && i.hitInfo.distance <= reach) s = Sockets.Nearest(i.hitInfo.point, 0.1f);
                 if (s != null && _plug.CanUse(s))
                 {
-                    if (Vector3.Distance(s.Position, transform.TransformPoint(CordExit)) < CordLength * 0.92f) { Unbundle(); _plug.PlugInto(s); return; }
+                    if (Vector3.Distance(s.Position, transform.TransformPoint(CordExit)) < CordLength * 0.92f) { Unbundle(); if (i.hand && _plug) { var p = _plug; i.hand.PickUp(p); p.BeginPlugIn(s); } else _plug.PlugInto(s); return; }
                 }
             }
             Toggle();

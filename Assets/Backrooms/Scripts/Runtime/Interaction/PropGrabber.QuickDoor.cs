@@ -68,7 +68,7 @@ namespace Backrooms.Interaction
                     if (_quickLever) _quickPoint = _quickDoor.GripPoint(_quickSide, 0f);
                     // The door goes when the hand is on it (it used to go after 0.3 s wherever the hand was); out of reach,
                     // a step in first; never there: nothing.
-                    if (!(HandBlend > 0.8f && HandArrived))
+                    if (!(HandBlend > 0.8f && PalmError < 0.015f))
                     {
                         float far = (_quickPoint - ReachShoulder).magnitude - (ArmReach + 0.05f);
                         if (far > 0f)
@@ -103,7 +103,7 @@ namespace Backrooms.Interaction
                     // The hand goes with the door a moment (on the pressed lever when it took the lever), then lets go.
                     // (A tug keeps the lever; a shove lets the door swing off the hand, which follows through a little: the
                     // hand chasing a lever swinging away at 200 degrees a second was left up to 0.4 m behind it.)
-                    if (_quickLever && _quickPull) _quickPoint = _quickDoor.GripPoint(_quickSide, 1f);
+                    if (_quickLever && (_quickPull || _quickT < 0.12f)) _quickPoint = _quickDoor.GripPoint(_quickSide, 1f);
                     else _quickPoint += transform.forward * Time.deltaTime * 0.6f;
                     if (_quickT > (_quickLever ? 0.22f : 0.12f)) { _quick = QuickPhase.Back; _quickT = 0f; }
                     break;

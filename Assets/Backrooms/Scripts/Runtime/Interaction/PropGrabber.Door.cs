@@ -105,7 +105,9 @@ namespace Backrooms.Interaction
                     // The hand stays in front of the body where it took the lever, within the arm's reach of the shoulder
                     // as it is now; the door follows it.
                     Vector3 target = StandShoulder + transform.rotation * _doorOffset, RS = ReachShoulder;
-                    target = RS + Vector3.ClampMagnitude(target - RS, ArmReach + 0.06f);
+                    // (Within 0.9 of the reach, the elbow a little bent: at full stretch the palm fell 4 cm behind the
+                    // lever pulling and the hand let go and took it again.)
+                    target = RS + Vector3.ClampMagnitude(target - RS, ArmReach * 0.9f);
                     _door.Drive(target, dt);
                     _player.lookScale = 0.75f;
                     // It could not follow (the hand would have to let go).

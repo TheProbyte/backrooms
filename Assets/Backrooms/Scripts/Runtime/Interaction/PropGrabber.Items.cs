@@ -20,6 +20,10 @@ namespace Backrooms.Interaction
         [Tooltip("Reach for picking up items (m).")] public float itemRange = 2.1f;
 
         float _itemT;                    // 0..1 while the item travels from where it lay into the hand
+        float _itemWaitT;                // how long it has waited where it lay for the hand to get to it
+        float _switchT = 1f; Vector3 _switchPos; Quaternion _switchRot;   // the hand easing from one held item to the next
+        /// <summary>The item just taken still lies where it was, the hand on its way to it.</summary>
+        public bool ItemWaitingForHand => HeldItem && _itemT <= 0f;
         bool _itemFromLow;               // it was picked up off the floor (the body bends down for it)
         bool _weighted;                  // the held item's weight is slowing the player
         Vector3 _itemFromPos;
@@ -169,12 +173,15 @@ namespace Backrooms.Interaction
         public void PickUp(WorldItem item)
         {
             if (!item) return;
+            // Taking something with the hand already out (a reeled-in lamp, its plug just let go): the hand eases over to it
+            // (its target jumped there in one frame).
+            if (HandBlend > 0.5f) { _switchPos = HandPosition; _switchRot = HandRotation; _switchT = 0f; } else _switchT = 1f;
             if (HeldItem) Drop();
             if (Current != State.Idle) Release("picked up an item");
             HeldItem = item;
             AimedItem = null; AimedCordPoint = null;
             _itemFromPos = item.transform.position; _itemFromRot = item.transform.rotation;
-            _itemT = 0f;
+            _itemT = 0f; _itemWaitT = 0f;
             _itemFromLow = item.transform.position.y < transform.position.y + 0.55f && Vector3.Distance(item.transform.position, transform.position) < 2.5f;
             MicThump();
             _swayInit = false; _qDown = -1f; ThrowCharge = 0f;
@@ -438,14 +445,30 @@ namespace Backrooms.Interaction
             // Winding up a throw: back and up over the shoulder.
             offset += new Vector3(0.04f * Side, 0.1f, -0.16f) * ThrowCharge;
             Vector3 pos = _swayPos + view * offset;
+            // Reeling a cord in: hand over hand, out along the cord and a 25 cm pull back (the grip closed), 1.5 a second,
+            // then out again with the fingers open.
+            bool reeling = Time.time < _reelUntil;
+            _reelW = Mathf.MoveTowards(_reelW, reeling ? 1f : 0f, dt * 5f);
+            if (reeling) _reelPhase += dt * 1.5f;
+            {
+                float ph = _reelPhase - Mathf.Floor(_reelPhase);
+                float outAmt = ph < 0.6f ? 1f - ph / 0.6f : (ph - 0.6f) / 0.4f;
+                pos += _reelDir * ((outAmt - 0.5f) * 0.25f * _reelW);
+                GripOpen = (ph < 0.6f ? 0f : Mathf.Sin(Mathf.PI * (ph - 0.6f) / 0.4f)) * _reelW;
+            }
             // Upright in the view, turned a little in toward the middle, tipped forward while in use.
             Quaternion rot = view * Quaternion.Euler(-8f * item.UseBlend - 25f * ThrowCharge, -10f * Side, 4f * Side) * item.HoldTurn;
             float w = item.UsePose(out var usePos, out var useRot);
             if (w > 0f) { pos = Vector3.Lerp(pos, usePos, w); rot = Quaternion.Slerp(rot, useRot, w); }
             if (_itemT < 1f)
             {
+                // It stays where it lay until the hand is on it (bending and stepping in for it), then comes up with the hand
+                // (a reeled-in coil flew a metre into the hand); a moment, if the hand cannot get there.
+                bool wait = _itemT <= 0f && _itemWaitT < 0.9f && !(HandBlend > 0.9f && _switchT >= 1f && _itemWaitT > 0.03f && PalmError < 0.03f)
+                            && (_itemFromPos - ReachShoulder).magnitude < ArmReach + 0.6f;
+                if (wait) { _itemWaitT += Time.deltaTime; ReachToward(HandPosition); }
                 // Off the floor takes longer: the body bends down for it first.
-                _itemT = Mathf.Min(1f, _itemT + Time.deltaTime / (_itemFromLow ? 0.55f : 0.28f));
+                else _itemT = Mathf.Min(1f, _itemT + Time.deltaTime / (_itemFromLow ? 0.55f : 0.28f));
                 float s = Mathf.SmoothStep(0f, 1f, _itemT);
                 pos = Vector3.Lerp(_itemFromPos, pos, s);
                 rot = Quaternion.Slerp(_itemFromRot, rot, s);
@@ -456,6 +479,13 @@ namespace Backrooms.Interaction
             Vector3 f = Mirror(grip * Vector3.forward), u = Mirror(grip * Vector3.up);
             HandPosition = item.transform.TransformPoint(Mirror(item.GripLocal));
             HandRotation = item.transform.rotation * Quaternion.LookRotation(f, u);
+            if (_switchT < 1f)
+            {
+                _switchT = Mathf.Min(1f, _switchT + Time.deltaTime / 0.3f);
+                float e = Mathf.SmoothStep(0f, 1f, _switchT);
+                HandPosition = Vector3.Lerp(_switchPos, HandPosition, e);
+                HandRotation = Quaternion.Slerp(_switchRot, HandRotation, e);
+            }
         }
     }
 }

@@ -401,6 +401,34 @@ palm 2 mm, hand 0.6 degrees off, 72 vertices (6.4 mm); plug inside the fist -> i
 hand 74 degrees off -> fingers on it (tips 10-15 mm), 6 degrees off, 1080 -> 141 vertices in; jamb 104 degrees off ->
 15, palm 7 mm; rail no contact, 435 vertices in -> palm 3 mm, fingers round it, 78; upper arm roll 61-71 -> 0 degrees.
 Walking and running with an item the palm stays within 2 mm; crawling (the separate arm) 0 mm; a throw's wind-up 1 mm.
+Round 3 (2026-10-28, reviewer 6/10):
+- **Touch layer**: one reach for finding and keeping a touch (`TouchReachOf`: 0.95 of upper arm + forearm, kept 4 cm
+  past it, `ArmSolverTests.TouchIsKeptWhereItIsFound`); a wall lean found at 0.543 m and dropped past 0.532 m flickered
+  eight times a second and never arrived (now steady, touch weight 1.0, standing 0.35-0.65 m from the wall). A box rail is
+  closed on by its own shape; a steadying hand that cannot lie flat comes out as far as its straightest fingers need.
+- **Plugging in** (`Plug.BeginPlugIn`): the hand carries the plug to the socket, square to it 5 cm out (bending and
+  stepping in: `PropGrabber.ReachToward`), pushes it in along the socket's axis over 0.18 s and lets go; out of reach it
+  gives up after 3 s. With the lamp in hand the hand takes its plug first (the lamp is put down). It jumped 1.14 m in one
+  frame; now in at 1.7 s from 0.95 m off a socket 0.28 m up, at most 69 mm a frame.
+- **Reeling**: hand over hand (25 cm along the cord, 1.5 a second, the fingers opening on the way out: `ReelStroke`,
+  `GripOpen`). An item taken with the hand already out (the reeled-in lamp) waits where it lies until the palm is on it
+  (the hand eases over in 0.3 s, the body bending and stepping in), then comes up with the hand: it flew a metre.
+- **Fingers**: drawn in toward the middle finger as they curl (no gaps); a held item's fingers bend back at most 10
+  degrees (a lamp's and a tape roll's little finger were bent back 30); the thumb tries turns across the palm and bends
+  until it touches (`CloseThumb`); pointing tucks the thumb. The palm's middle, heel and both sides push a held item out.
+- **Doors**: the hold keeps the lever within 0.9 of the reach (the elbow bends); a bot's hold presses once (it took the
+  lever again mid-pull and re-grabbed an out-of-reach sofa forever); a quick door goes when the palm is within 1.5 cm and
+  the hand stays on a pushed lever 0.12 s.
+Measured (reviewer's probe `GaitProbe.MeasureR2`): quick door push closest 44 -> 2.8 mm; door hold mean 8.6 mm, 13
+frames over 20 mm (was 31), no re-grab, elbow 4-43 degrees; thumb tips chicken 23 -> 11 mm, lamp 13 -> 9, plug 9, coil
+12, tape 9, spray can 12-15, chalk 16, sledgehammer 18; lamp little finger -30 -> 44 degrees at the knuckle; rail 777 ->
+86 skin vertices inside; walking, running, crawling and a throw's wind-up with an item: palm within 2 mm.
+Open after round 3: the sledgehammer's swing is not re-planned (the item may still turn up to ~90 degrees onto the
+palm mid-swing) and its carry twist is -104 (limit 95), palm still 10 mm in at the ring finger's base; the chicken's
+twist 97; the coil's contact ring is fatter than its strands; the extension cord's coil still plugs in from the hand
+without the hand going to the socket; the steadying hand at a jamb was not re-measured (no wall end found in the
+test world); tape laying holds the roll with the palm up to 9 cm off its grip while raised (the roll follows the hand).
+
 Open: furniture's colliders are boxes that do not match the model everywhere (a sofa's rolled arm: the fingers close on
 the box, 15 cm under the visible top, so they stay as wanted); the thumb lies along a hammer's handle rather than round
 it; the jamb's touch still has the little-finger side 1 cm in for a moment (the forearm at its turn limit); fingers on

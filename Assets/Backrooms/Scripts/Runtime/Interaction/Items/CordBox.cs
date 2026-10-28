@@ -194,7 +194,7 @@ namespace Backrooms.Interaction
         public override void ReelFromPlug(Plug plug, in HoldInput i)
         {
             if (coiled || plug != _plug) return;
-            if (!ReelUpdate(_cord, _plug, i.reel, i.dt)) return;
+            if (!ReelUpdate(_cord, _plug, i.reel, i.dt, i.hand)) return;
             var hand = i.hand;
             Coil();                       // lets go of the plug (it is part of the coil again)
             if (hand) hand.PickUp(this);
@@ -217,7 +217,7 @@ namespace Backrooms.Interaction
         public override void HoldUpdate(in HoldInput i)
         {
             if (i.secondary) { Coil(); return; }
-            if (!coiled && ReelUpdate(_cord, _plug, i.reel, i.dt)) { StopReel(_cord); Coil(); return; }
+            if (!coiled && ReelUpdate(_cord, _plug, i.reel, i.dt, i.hand)) { StopReel(_cord); Coil(); return; }
             if (!i.pressed) return;
             var s = i.socket;
             if (s == null && i.hit && i.hitInfo.distance <= reach) s = Sockets.Nearest(i.hitInfo.point, 0.1f, this);

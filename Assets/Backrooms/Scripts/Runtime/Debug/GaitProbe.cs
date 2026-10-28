@@ -729,6 +729,125 @@ namespace Backrooms.DebugTools
         /// held, skin vertices inside it; renders (eye and six close views) into dir when render; then drops the held item
         /// and picks up next ("" keeps it, "none" holds nothing).
         /// </summary>
+        /// <summary>
+        /// The hand reviewer's round-2 probe (scratchpad tools/measure_r2.cs, the same numbers): MeasureHand's plus each
+        /// finger joint's angle and the thumb's turn, the shoulder-to-palm distance, and skin vertices inside the held
+        /// item's visible mesh (an odd-even ray test). Renders into dir when render.
+        /// </summary>
+        public static string MeasureR2(string dir, string tag, bool render)
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var grab = pl.GetComponent<PropGrabber>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            System.Func<string, object> G = n => typeof(FirstPersonBody).GetField(n, bf).GetValue(fpb);
+            var upper = (Transform)G("_upper"); var fore = (Transform)G("_fore"); var hand = (Transform)G("_hand");
+            Vector3 foreBackL = (Vector3)G("_foreBack"), handFL = (Vector3)G("_handFingers"), handBL = (Vector3)G("_handBack"), upperBackL = (Vector3)G("_upperBack"), w2g = (Vector3)G("_wristToGrip");
+            var sb = new StringBuilder();
+            var held = grab.HeldItem;
+            sb.AppendFormat("[{0}] held={1} pitch={2:0} state={3} onDoor={4}\n", tag, held ? held.name : "-", pl.Pitch, grab.Current, grab.OnDoor);
+            Vector3 S = upper.position, E = fore.position, W = hand.position;
+            Vector3 u = (E - S).normalized, A = (W - E).normalized;
+            float elbowFlex = Vector3.Angle(u, A);
+            Vector3 Bk = Vector3.ProjectOnPlane(fore.TransformDirection(foreBackL), A).normalized;
+            Vector3 F = hand.TransformDirection(handFL).normalized, H = hand.TransformDirection(handBL).normalized;
+            float flex = Mathf.Asin(Mathf.Clamp(-Vector3.Dot(F, Bk), -1f, 1f)) * Mathf.Rad2Deg;
+            float dev = Mathf.Atan2(Vector3.Dot(F, Vector3.Cross(Bk, A)), Vector3.Dot(F, A)) * Mathf.Rad2Deg;
+            float wristWring = Vector3.SignedAngle(Bk, Vector3.ProjectOnPlane(H, A), A);
+            Vector3 b0 = -Vector3.Cross(u, A).normalized;
+            float foreTwist = Vector3.SignedAngle(b0, Bk, A);
+            float totalTwist = Vector3.SignedAngle(b0, Vector3.ProjectOnPlane(H, A), A);
+            Vector3 Ub = Vector3.ProjectOnPlane(upper.TransformDirection(upperBackL), u).normalized;
+            float upperRoll = Vector3.SignedAngle(Vector3.ProjectOnPlane(b0, u).normalized, Ub, u);
+            Quaternion hf = Quaternion.LookRotation(F, H);
+            Vector3 gripW = W + hf * w2g;
+            sb.AppendFormat("elbowFlex {0:0} | wrist flex(+palm) {1:0} dev(+ulnar) {2:0} | twist total {3:0} fore {4:0} wristWring {5:0} | upperRoll vs hinge {6:0} | elbow-shoulder dy {7:0.00}m | shoulder->palm {8:0.000}\n", elbowFlex, flex, dev, totalTwist, foreTwist, wristWring, upperRoll, E.y - S.y, (gripW - S).magnitude);
+            sb.AppendFormat("blend {0:0.00} curl {1:0.00} contact {2} | palm pt to surface {3:0.0}mm | palm pt off wanted {4:0.0}mm | hand angle off wanted {5:0.0}deg | body PalmError {6:0.0}mm\n", grab.HandBlend, grab.HandCurl, grab.HasContact, grab.ContactDistance(gripW) * 1000f, (grab.HandPosition - gripW).magnitude * 1000f, Quaternion.Angle(hf, grab.HandRotation), fpb.PalmError * 1000f);
+            var fingers = (System.Collections.IList)G("_fingers");
+            foreach (var f in fingers)
+            {
+                var ft = f.GetType();
+                string name = (string)ft.GetField("name").GetValue(f);
+                var joints = (System.Collections.IList)ft.GetField("joints").GetValue(f);
+                Vector3 tipLocal = (Vector3)ft.GetField("tipLocal").GetValue(f);
+                float c = (float)ft.GetField("curl").GetValue(f);
+                var aa = (float[])ft.GetField("a").GetValue(f);
+                float od = (float)ft.GetField("oppDeg").GetValue(f);
+                sb.AppendFormat("{0,-6} curl {1:0.00} deg({2:0},{3:0},{4:0}) opp {5:0} joints(mm): ", name, c, aa[0], aa[1], aa[2], od);
+                Transform last = null;
+                foreach (var j in joints) { var t = (Transform)j.GetType().GetField("Item1").GetValue(j); last = t; sb.AppendFormat("{0:0.0} ", grab.ContactDistance(t.position) * 1000f); }
+                Vector3 tip = last.TransformPoint(tipLocal);
+                sb.AppendFormat("tip {0:0.0}\n", grab.ContactDistance(tip) * 1000f);
+            }
+            SkinnedMeshRenderer armR = null;
+            foreach (var r in fpb.GetComponentsInChildren<SkinnedMeshRenderer>()) if (r.name.EndsWith(".ArmR") && !r.name.Contains("suit")) armR = r;
+            var skin = new List<Vector3>();
+            if (armR) { var mesh = new Mesh(); armR.BakeMesh(mesh, true); foreach (var lv in mesh.vertices) { Vector3 w = armR.transform.position + armR.transform.rotation * lv; if ((w - W).sqrMagnitude < 0.25f * 0.25f) skin.Add(w); } Destroy(mesh); }
+            {
+                int inside = 0, inside5 = 0, near = 0; float minD = 1e9f;
+                foreach (var w in skin) { float d = grab.ContactDistance(w); if (d < minD) minD = d; if (d < -0.002f) inside++; if (d < -0.005f) inside5++; if (d < 0.003f) near++; }
+                sb.AppendFormat("skin vs contact shape: inside>2mm {0}, >5mm {1}, touching<3mm {2}, deepest {3:0.0}mm\n", inside, inside5, near, minD * 1000f);
+            }
+            if (held)
+            {
+                int layer = -1; for (int L = 31; L > 8; L--) if (string.IsNullOrEmpty(LayerMask.LayerToName(L))) { layer = L; break; }
+                var tmp = new GameObject("CritVis"); var made = new List<Mesh>();
+                foreach (var mr in held.GetComponentsInChildren<Renderer>())
+                {
+                    if (!mr.enabled || mr is ParticleSystemRenderer) continue;
+                    Mesh m = null; Matrix4x4 mtx;
+                    if (mr is SkinnedMeshRenderer smr) { m = new Mesh(); smr.BakeMesh(m, true); made.Add(m); mtx = Matrix4x4.TRS(mr.transform.position, mr.transform.rotation, Vector3.one); }
+                    else { var mf = mr.GetComponent<MeshFilter>(); if (!mf || !mf.sharedMesh) continue; m = mf.sharedMesh; mtx = mr.transform.localToWorldMatrix; }
+                    var go = new GameObject("v"); go.transform.SetParent(tmp.transform, false);
+                    var mc = go.AddComponent<MeshCollider>();
+                    var copy = Instantiate(m); var vs = copy.vertices; for (int i = 0; i < vs.Length; i++) vs[i] = mtx.MultiplyPoint3x4(vs[i]); copy.vertices = vs; copy.RecalculateBounds(); made.Add(copy);
+                    mc.sharedMesh = copy; go.layer = layer;
+                }
+                Physics.SyncTransforms();
+                bool oldBack = Physics.queriesHitBackfaces; Physics.queriesHitBackfaces = true;
+                int mask = 1 << layer; int inV = 0; float deepest = 0f; var hits = new RaycastHit[32];
+                foreach (var w in skin)
+                {
+                    int n = Physics.RaycastNonAlloc(w, new Vector3(0.577f, 0.577f, 0.577f), hits, 2f, mask, QueryTriggerInteraction.Collide);
+                    if ((n & 1) == 0) continue;
+                    int n2 = Physics.RaycastNonAlloc(w, new Vector3(-0.6f, 0.3f, -0.74f).normalized, hits, 2f, mask, QueryTriggerInteraction.Collide);
+                    if ((n2 & 1) == 0) continue;
+                    inV++;
+                    float dmin = 1f;
+                    foreach (var dd in new[] { Vector3.right, Vector3.left, Vector3.up, Vector3.down, Vector3.forward, Vector3.back }) if (Physics.Raycast(w, dd, out var h, 0.2f, mask, QueryTriggerInteraction.Collide)) dmin = Mathf.Min(dmin, h.distance);
+                    if (dmin < 1f) deepest = Mathf.Max(deepest, dmin);
+                }
+                Physics.queriesHitBackfaces = oldBack;
+                int vis = 0, outside5 = 0, insideShape10 = 0;
+                foreach (var mc in tmp.GetComponentsInChildren<MeshCollider>()) foreach (var v in mc.sharedMesh.vertices) { if ((v - gripW).sqrMagnitude > 0.07f * 0.07f) continue; vis++; float d = grab.ContactDistance(v); if (d > 0.005f) outside5++; if (d < -0.010f) insideShape10++; }
+                sb.AppendFormat("skin inside VISIBLE item mesh: {0} verts, deepest ~{1:0.0}mm | item mesh verts within 7cm of palm: {2}, >5mm outside contact shape {3}, >10mm inside it {4}\n", inV, deepest * 1000f, vis, outside5, insideShape10);
+                DestroyImmediate(tmp); foreach (var m in made) Destroy(m);
+            }
+            if (render)
+            {
+                Directory.CreateDirectory(dir);
+                var main = Camera.main;
+                var go = new GameObject("CritCam"); var cam = go.AddComponent<Camera>(); cam.enabled = false;
+                var lg = new GameObject("CritFill"); lg.transform.SetParent(go.transform, false); var fill = lg.AddComponent<Light>(); fill.type = LightType.Point; fill.range = 3f; fill.intensity = 0.25f; fill.shadows = LightShadows.None; fill.renderingLayerMask = -1;
+                var rt = new RenderTexture(960, 720, 24); var tex = new Texture2D(960, 720, TextureFormat.RGB24, false);
+                var t = pl.transform; Vector3 at = grab.HandBlend > 0.5f ? gripW : W; Vector3 mid = (fore.position + hand.position) * 0.5f;
+                var names = new[] { "eyeHD", "right", "left", "front", "top", "below", "arm" };
+                var froms = new[] { main.transform.position, at + t.right * 0.3f + Vector3.up * 0.05f, at - t.right * 0.3f + Vector3.up * 0.05f + t.forward * 0.05f, at + t.forward * 0.3f + Vector3.up * 0.04f, at + Vector3.up * 0.3f + t.forward * 0.02f, at - Vector3.up * 0.26f + t.forward * 0.1f + t.right * 0.05f, mid + t.right * 0.6f + Vector3.up * 0.15f + t.forward * 0.1f };
+                var ats = new[] { Vector3.zero, at, at, at, at, at, mid };
+                for (int k = 0; k < names.Length; k++)
+                {
+                    cam.CopyFrom(main);
+                    if (k == 0) { fill.enabled = false; cam.transform.SetPositionAndRotation(main.transform.position, main.transform.rotation); }
+                    else { cam.fieldOfView = k == 6 ? 45f : 40f; cam.nearClipPlane = 0.02f; fill.enabled = true; cam.transform.position = froms[k]; cam.transform.LookAt(ats[k]); }
+                    cam.targetTexture = rt; cam.Render(); cam.targetTexture = null;
+                    var old = RenderTexture.active; RenderTexture.active = rt; tex.ReadPixels(new Rect(0, 0, 960, 720), 0, 0); tex.Apply(); RenderTexture.active = old;
+                    File.WriteAllBytes(Path.Combine(dir, tag + "_" + names[k] + ".png"), tex.EncodeToPNG());
+                }
+                Destroy(go); Destroy(rt); Destroy(tex);
+            }
+            return sb.ToString();
+        }
+
         public static string MeasureHand(string dir, string tag, string next, bool render)
         {
             var pl = FindAnyObjectByType<CamcorderPlayerController>();

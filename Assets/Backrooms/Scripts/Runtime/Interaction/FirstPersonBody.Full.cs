@@ -243,6 +243,16 @@ namespace Backrooms.Interaction
         }
 
         Vector3 _touchRailCentre;
+        readonly Collider[] _touchColArr = new Collider[1];
+
+        /// <summary>
+        /// The touch layer's one reach (m, shoulder to palm): a touch is found within it and kept within it and a little
+        /// more. (Found up to 0.543 m away and dropped past 0.532, a wall lean was dropped and found again every 0.12 s and
+        /// the hand never got there.)
+        /// </summary>
+        public static float TouchReachOf(float upperLen, float foreLen) => (upperLen + foreLen) * 0.95f;
+        public const float TouchKeepMargin = 0.04f;
+        public static bool TouchKept(float dist, float reach) => dist <= reach + TouchKeepMargin;
         float _touchRailR = 0.02f;
 
         /// <summary>
@@ -262,7 +272,7 @@ namespace Backrooms.Interaction
             t.Normalize();
             float along = Mathf.Max(Vector3.Dot(P - foot, t), dWall * 0.95f + 0.06f);
             float y = Mathf.Clamp(P.y, shoulder.y - 0.45f, shoulder.y - 0.12f);
-            float reachTo = ArmReach * 0.9f;
+            float reachTo = TouchReachOf(_upperLen, _foreLen);
             Vector3 Q = foot + t * along; Q.y = y;
             for (int k = 0; k < 6 && (Q - shoulder).magnitude > reachTo; k++) { along *= 0.85f; Q = foot + t * along; Q.y = y; }
             // The wall must be there (not past its end or round a corner).
@@ -275,6 +285,8 @@ namespace Backrooms.Interaction
         /// <summary>The surface the body's touch layer rests the hand on (the wall's plane, or round the rail), for the fingers.</summary>
         float TouchDistance(Vector3 p)
         {
+            // A rail that is a box: its own shape (a round one stood in for it: the fingers went down inside its far face).
+            if (_touchRail && _touchColArr[0] is BoxCollider) return PropGrabber.CollidersDistance(_touchColArr, p);
             if (_touchRail)
             {
                 Vector3 a = _touchAlong.normalized, d = p - _touchRailCentre;
@@ -294,7 +306,7 @@ namespace Backrooms.Interaction
             if (_touching)
             {
                 Vector3 to = _touchPoint - shoulder;
-                bool keep = allowed && to.magnitude < (_upperLen + _foreLen) * 1.02f && Vector3.Dot(to, fwd) > -0.12f
+                bool keep = allowed && TouchKept(to.magnitude, TouchReachOf(_upperLen, _foreLen)) && Vector3.Dot(to, fwd) > -0.12f
                             && (Time.time < _touchUntil || Mathf.Abs(_player.Lean) > 0.2f || _vel.magnitude < 0.3f);
                 if (!keep) _touching = false;
                 return;
@@ -328,6 +340,8 @@ namespace Backrooms.Interaction
                 if (!rail && Mathf.Abs(hit.normal.y) > 0.35f) continue;
                 // Beside a wall: now and then (a few seconds on, a few off); leaning round a corner: yes.
                 if (!leaning && Mathf.PerlinNoise(Time.time * 0.13f, side) < (trailing ? 0.6f : 0.65f)) return;
+                if (rail && (new Vector3(hit.point.x, bounds.max.y, hit.point.z) - shoulder).magnitude > TouchReachOf(_upperLen, _foreLen)) continue;
+                _touchColArr[0] = hit.collider;
                 _touching = true; _touchRail = rail;
                 _touchPoint = rail ? new Vector3(hit.point.x, bounds.max.y, hit.point.z) : hit.point;
                 _touchNormal = hit.normal;
