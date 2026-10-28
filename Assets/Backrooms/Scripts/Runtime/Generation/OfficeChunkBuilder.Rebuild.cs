@@ -85,6 +85,8 @@ namespace Backrooms.Generation
                 if (WallWriter(r.sharedMaterial)) Object.Destroy(kv.Value.gameObject);
             }
 
+            ReplaceWallWear(root, resources);                    // marks on a wall now broken go with it
+
             // Colliders: keep the ones that are the same, swap the rest.
             var have = root.GetComponent<ChunkBoxes>();
             if (!have) return;

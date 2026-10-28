@@ -97,6 +97,7 @@ namespace Backrooms.Generation
                 var model = DoorModels.Make(go.transform, d.mask);
                 if (!model) { Object.Destroy(go); continue; }
                 go.AddComponent<Interaction.Door>().Init(model, d.angle, d.key, d.edge, d.roomFront, d.roomBack);
+                DoorMarks(model, d, root.GetComponent<GeneratedChunkResources>());
             }
         }
     }

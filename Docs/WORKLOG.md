@@ -15,6 +15,11 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-27 19:00  Claude Code  Office details: vents, sprinklers, detectors, exit signs, old lights, cracked and crumbled tiles, wall and door wear, spills, thresholds
+- New `Generation/OfficeChunkBuilder.Details.cs` (see WorldGeneration.md, Office details). `MaterialMaps`: aging troffer lenses (one tube out, pink, bugs), a cracked ceiling texture, the exit sign (generated EXIT face and glow), an indicator light, aluminium. `LightSource.dim` and `PowerLevel` dim old fixtures. The FloorWear shader gained a round mode (spots, nail holes, a dried rim) and works on walls and doors too; overlays are a small `Overlay` class (floor, walls, each door). `ReplaceWalls` rebuilds the wall marks.
+- Checked: EditMode 105/105. Fresh world in World 3 (erased after): counts in view (49 exit signs, 78 cracked tiles, 68 detector lights, 164 old-light groups, 68 worn doors); screenshots of the diffusers and a sprinkler, an exit sign (first white: a bright red glow goes white in the camcorder's highlights; now red letters in the face and a deep red glow), a picture's ghost with its nail hole. Door marks were 1 cm proud of the front face (the slab's flat face is at 0, not its mouldings): fixed.
+- Open: untested by the user; no threshold strip was in view (all carpet there).
+
 ## 2026-10-27 18:26  Claude Code  The space above the ceiling at gaps; loose carpet moved from doorways to walls
 - `OfficeChunkBuilder.Wear.cs`: `BuildPlenums`/`PlenumSpace` replace the flat dark box over a missing, slid or lifted tile with a local plenum (tile backs, hanger wires, joists and deck boards, fibreglass, pipe, flex duct, cables, dark closing walls), world-aligned, after the user's reference photos. `MaterialMaps`: PlenumWood/Deck/Batt/Metal/Duct and TileBack (DemolitionMaterials, tinted down).
 - Doorways: no seam line and no lifted lip any more (they read as chunk seams); the trodden patch stays. New `WallLift`: carpet come off its tack strip along walls (6 % of wall lengths), with a dark gap and threads; ripples 3.5 %.

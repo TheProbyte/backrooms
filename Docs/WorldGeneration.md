@@ -122,6 +122,30 @@ the same from either chunk), and costs almost nothing: a few hundred triangles a
   and 3.5 % a low ripple (8-16 mm, 35-80 cm long). Carpet geometry with the floor's own material and world UVs, no
   colliders.
 
+### Office details (2026-10-27)
+
+`Generation/OfficeChunkBuilder.Details.cs`, seeded like the wear:
+
+- **Ceiling**: square supply diffusers (3 % of tiles: frame, four stepped louvre rings, centre plaque, dark behind) and
+  louvred return grilles (1.8 %); sprinkler heads on a world grid (every fifth tile across, every third cell row, 90 %
+  present); a smoke detector on about 1 % of tiles, its red light glowing (`MaterialMaps.LedRed`); cracked tiles (1 %:
+  a third ceiling texture with a wandering crack painted in each tile, `MaterialMaps.CeilingCracked`, slightly sagging)
+  and tiles with a corner crumbled away (0.6 %: a ragged edge with the fibre showing, the space above through the gap,
+  crumbs on the floor below).
+- **Old lights**: 5 % of square panels have one tube out (its band dark, a third less light), 5 % old tubes gone pink
+  and dim (a fifth less), 7 % dead bugs collected along the lens's low edge. `LightSource.dim` lowers the fixture's power
+  for the lights, the light grid and the hum (`FixtureLightManager.PowerLevel`).
+- **Walls** (every room): scuffs at hip and chair height (40 % of hallway wall cells, 12 % elsewhere), nail holes (6 %),
+  the paler ghost of something that hung there (3.5 %: a faint frame of dirt round it and its nail hole), wallpaper
+  peeling at a seam by the ceiling or the baseboard (3 % in wallpapered rooms: a curled triangle, its paper back, the
+  painted board under it), and an exit sign over 6 % of doorways (one side; red letters on a white face, glowing,
+  never switched off). Marks are a `WallWear` overlay, rebuilt with the walls when one is broken; the peel is part of
+  the wall's own mesh.
+- **Doors**: 35 % have black kick marks low on one face, 45 % grime round the handle and along the free edge, as a small
+  overlay on the leaf (it swings with it).
+- **Carpet**: coffee spills (1.8 % of cells: a round stain with a darker dried rim, sometimes drips) and an aluminium
+  threshold strip across any opening where the floor changes (drawn once per edge).
+
 ### Chunks and storeys
 A chunk is cut from its district: clipped room rectangles with the district room id (`globalId`),
 edges, arch flags, cell flags, and every fixture/prop/pillar/plate whose anchor lies in it. The builder

@@ -685,6 +685,7 @@ namespace Backrooms.Generation
             if (cp.stop >= 0f) level *= ShutdownCurve(now - cp.stop - seed * powerFlickerTime * 0.4f, seed);
             if (src.faultyId >= 0) level *= FaultyCurve(now, seed);
             if (src.room >= 0) level *= LightZones.Level(src.chunk, src.room, now, seed);     // the room's wall switch
+            level *= 1f - src.dim;                                                           // an old fixture (a tube out)
             return level;
         }
 

@@ -9,19 +9,16 @@ namespace Backrooms.Generation
     ///  - Ceiling tiles: here and there one is stained (water rings, mould: MaterialMaps' stained copies), yellowed,
     ///    sagging, pushed up at one edge, slid off its grid, or missing (the dark space above shows; a missing one may lie
     ///    on the floor below). Stains cluster where the building leaks. Only whole tiles in plain cells, never by a light.
-    ///  - Carpet: darker along the bottoms of the walls, a seam and a trodden patch at each doorway, worn paths between a
-    ///    room's doorways (Backrooms/FloorWear, a multiplied overlay, one mesh a chunk), a few doorways where the carpet
-    ///    edge has come up with a frayed lip, and ripples near walls where it has come loose.
+    ///  - Carpet: darker along the bottoms of the walls, a trodden patch at each doorway, worn paths between a room's
+    ///    doorways (Backrooms/FloorWear, a multiplied overlay, one mesh a chunk), the edge come off its tack strip along
+    ///    some walls (a frayed lip), and ripples near walls where it has come loose.
+    /// The smaller things (ceiling devices, damaged tiles, wall and door marks, spills, thresholds) are in .Details.cs.
     /// Costs almost nothing: some hundreds of triangles a chunk and one cheap overlay pass on the floor.
     /// </summary>
     public partial class OfficeChunkBuilder
     {
-        enum TileKind { Plain, Stained, Yellowed, Sag, Tilted, Shifted, Missing }
+        enum TileKind { Plain, Stained, Yellowed, Sag, Tilted, Shifted, Missing, Cracked, Crumbled, Supply, Return }
 
-        readonly List<Vector3> _wearV = new List<Vector3>();
-        readonly List<Color32> _wearC = new List<Color32>();
-        readonly List<Vector2> _wearUV = new List<Vector2>(), _wearIn = new List<Vector2>();
-        readonly List<int> _wearI = new List<int>();
         /// <summary>Kind of fixture in each cell that has one (0 square, 1 dome, 2 strip): tiles there are left alone.</summary>
         readonly Dictionary<Vector2Int, int> _fixtureKinds = new Dictionary<Vector2Int, int>();
         /// <summary>Missing tiles (centre, chunk-local), to lay one on the floor below if there is room.</summary>
@@ -34,7 +31,7 @@ namespace Backrooms.Generation
 
         void ClearWear()
         {
-            _wearV.Clear(); _wearC.Clear(); _wearUV.Clear(); _wearIn.Clear(); _wearI.Clear();
+            _floorWear.Clear(); _wallWear.Clear(); _crumbs.Clear();
             _missingTiles.Clear(); _gaps.Clear();
             _fixtureKinds.Clear();
             foreach (var f in _L.fixtures) _fixtureKinds[f.cell] = f.strip ? 2 : f.dome ? 1 : 0;
@@ -103,11 +100,21 @@ namespace Backrooms.Generation
                 if (u < (t += 0.005f)) k = TileKind.Missing;
                 else if (u < (t += 0.012f)) k = TileKind.Tilted;
                 else if (u < (t += 0.01f)) k = TileKind.Shifted;
+                else if (u < (t += 0.006f)) k = TileKind.Crumbled;
+                else if (u < (t += 0.01f)) k = TileKind.Cracked;
                 else if (u < (t += 0.012f * wet)) k = TileKind.Sag;
                 else if (u < (t += 0.035f * wet)) k = TileKind.Stained;
                 else if (u < (t += 0.03f)) k = TileKind.Yellowed;
+                else if (u < (t += 0.03f)) k = TileKind.Supply;
+                else if (u < (t += 0.018f)) k = TileKind.Return;
                 kinds[i] = k;
                 any |= k != TileKind.Plain;
+            }
+            {
+                float dx0 = x * C, dz0 = z * C + OfficeBiome.TileGridOffset;
+                for (int i = 0; i < 2; i++)
+                    if (!(lit && i == 0) && (kinds[i] == TileKind.Plain || kinds[i] == TileKind.Stained || kinds[i] == TileKind.Yellowed || kinds[i] == TileKind.Cracked))
+                        CeilingDevices(x, z, kinds[i] == TileKind.Cracked ? h - 0.006f : h, m, dx0 + i * TileSize, dz0, i);
             }
             if (!any) return false;
 
@@ -142,6 +149,21 @@ namespace Backrooms.Generation
                         _gaps.Add((centre, h, m, r));
                         if (Dice(gx, gz, 180 + i) < 0.6f) _missingTiles.Add((new Vector3(centre.x, 0f, centre.z), x, z));
                         break;
+                    case TileKind.Cracked:
+                        SagTile(WMask(MaterialMaps.CeilingCracked ? MaterialMaps.CeilingCracked : ceil, m), tx0, zm0, h, 0.003f + 0.006f * Dice(gx, gz, 140 + i));
+                        break;
+                    case TileKind.Crumbled:
+                    {
+                        _gaps.Add((centre, h, m, r));
+                        int corner = (int)(Dice(gx, gz, 190 + i) * 4f) & 3;
+                        float a = 0.08f + 0.14f * Dice(gx, gz, 191 + i), b = 0.08f + 0.14f * Dice(gx, gz, 192 + i);
+                        CrumbledTile(WMask(ceil, m), WMask(MaterialMaps.TileBack ? MaterialMaps.TileBack : ceil, m), tx0, zm0, h, corner, a, b, gx * 977 + gz * 131 + i);
+                        var k = new Vector3(corner == 1 || corner == 2 ? tx1 : tx0, 0f, corner >= 2 ? zm1 : zm0);
+                        _crumbs.Add((Vector3.Lerp(k, new Vector3(centre.x, 0f, centre.z), 0.25f), x, z));
+                        break;
+                    }
+                    case TileKind.Supply: SupplyDiffuser(m, tx0, zm0, h); break;
+                    case TileKind.Return: ReturnGrille(m, tx0, zm0, h, Dice(gx, gz, 195 + i)); break;
                 }
             }
             return true;
@@ -349,6 +371,7 @@ namespace Backrooms.Generation
             if (Pool) return;
             BuildPlenums();
             FallenTiles();
+            Crumbs();
             var exits = new Dictionary<int, List<Vector3>>();
             int N = _L.N;
             for (int x = 0; x < N; x++)
@@ -356,8 +379,10 @@ namespace Backrooms.Generation
             {
                 if (_L.Has(x, z, CellFlags.NoFloor)) continue;
                 var r = _L.RoomAt(x, z);
-                if (r.kind == RoomKind.Crawl || !Carpeted(r)) continue;
+                if (r.kind == RoomKind.Crawl) continue;
+                bool carpet = Carpeted(r);
                 uint m = CellMask(x, z);
+                if (carpet) CoffeeSpots(x, z);
                 var centre = new Vector3((x + 0.5f) * C, 0f, (z + 0.5f) * C);
                 for (int side = 0; side < 4; side++)
                 {
@@ -367,14 +392,28 @@ namespace Backrooms.Generation
                     Vector3 edge = centre + outDir * (C * 0.5f);
                     int nx = x + (side == 0 ? -1 : side == 1 ? 1 : 0), nz = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
                     bool inChunk = _L.InChunk(nx, nz);
+                    EdgeOfSide(x, z, side, out bool vert, out int line, out int alongI);
                     if (OfficeLayout.IsSolid(e))
                     {
+                        if (!Broken(vert, line, alongI, out _) && !HoleAt(vert, line, alongI, out _))
+                            WallDetails(x, z, side, edge - outDir * (T * 0.5f), along, -outDir, r, m, _L.WallTop(r));
+                        if (!carpet) continue;
                         WallGrime(x, z, side, edge, outDir, along, r);
                         float loose = Dice(GX(x), GZ(z), 300 + side);
                         if (loose < 0.06f) WallLift(x, z, side, edge, outDir, along, r, m);
                         else if (loose < 0.095f) Ripple(x, z, side, edge, outDir, along, r, m);
                         continue;
                     }
+                    Threshold(x, z, side, edge, along, r);
+                    bool doorway = e == EdgeKind.Door || e == EdgeKind.DoorHeader;
+                    if (doorway && _L.WallTop(r) > OfficeBiome.DoorHeaderHeight + 0.35f)
+                    {
+                        // The odd exit sign over a doorway, on one side (the same dice from both rooms).
+                        int ex = GX(side == 1 ? x + 1 : x), ez = GZ(side == 3 ? z + 1 : z);
+                        if (Dice(ex, ez, vert ? 720 : 721) < 0.06f && (Dice(ex, ez, vert ? 722 : 723) < 0.5f) == (side == 0 || side == 2))
+                            ExitSign(edge, outDir, m);
+                    }
+                    if (!carpet) continue;
                     bool otherRoom = inChunk ? _L.RoomAt(nx, nz) != r : e != EdgeKind.Open;
                     if (!otherRoom) continue;
                     // A doorway (not an open run between parts of one open plan) gets its seam and its worn patch.
@@ -520,11 +559,7 @@ namespace Backrooms.Generation
             Vector3 p0, p1, p2, p3;
             if (across == Vector3.zero) { p0 = a - s * w; p1 = a + s * w; p2 = b + s * w; p3 = b - s * w; }
             else { p0 = a; p1 = a + s * w; p2 = b + s * w; p3 = b; }
-            int i = _wearV.Count;
-            _wearV.Add(p0); _wearV.Add(p1); _wearV.Add(p2); _wearV.Add(p3);
-            _wearUV.Add(new Vector2(u0, v0)); _wearUV.Add(new Vector2(u0, v1)); _wearUV.Add(new Vector2(u1, v1)); _wearUV.Add(new Vector2(u1, v0));
-            for (int k = 0; k < 4; k++) { _wearC.Add(col); _wearIn.Add(inner); }
-            _wearI.Add(i); _wearI.Add(i + 1); _wearI.Add(i + 2); _wearI.Add(i); _wearI.Add(i + 2); _wearI.Add(i + 3);
+            _floorWear.Quad(p0, p1, p2, p3, new Vector2(u0, v0), new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0), col, inner);
         }
 
         /// <summary>A missing tile lying on the floor under its gap, if nothing stands there.</summary>
@@ -562,28 +597,11 @@ namespace Backrooms.Generation
             return true;
         }
 
-        /// <summary>The overlay as one mesh (main thread).</summary>
+        /// <summary>The overlays as meshes (main thread): the floor's, the walls'.</summary>
         void MakeWear(Transform root, GeneratedChunkResources resources)
         {
-            if (_wearI.Count == 0) return;
-            if (!s_wearMat)
-            {
-                var sh = Shader.Find("Backrooms/FloorWear");
-                if (!sh) return;
-                s_wearMat = new Material(sh) { name = "Floor wear", hideFlags = HideFlags.DontSave };
-            }
-            var mesh = new Mesh { name = "FloorWear" };
-            mesh.SetVertices(_wearV); mesh.SetColors(_wearC); mesh.SetUVs(0, _wearUV); mesh.SetUVs(1, _wearIn);
-            mesh.SetTriangles(_wearI, 0, true);
-            resources.Own(mesh);
-            var go = new GameObject("FloorWear");
-            go.transform.SetParent(root, false);
-            go.AddComponent<MeshFilter>().sharedMesh = mesh;
-            var r = go.AddComponent<MeshRenderer>();
-            r.sharedMaterial = s_wearMat;
-            r.shadowCastingMode = ShadowCastingMode.Off; r.receiveShadows = false;
-            r.lightProbeUsage = LightProbeUsage.Off; r.reflectionProbeUsage = ReflectionProbeUsage.Off;
-            r.renderingLayerMask = 0xFFFFFFFFu;
+            MakeOverlay(root, resources, _floorWear, "FloorWear");
+            MakeOverlay(root, resources, _wallWear, "WallWear");
         }
     }
 }

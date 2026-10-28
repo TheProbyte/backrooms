@@ -76,10 +76,17 @@ namespace Backrooms.Generation
         static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
         public static Material PlenumWood, PlenumDeck, PlenumBatt, PlenumMetal, PlenumDuct, TileBack;
+        /// <summary>A tile with a crack across it (each of the 16 in its texture a different one).</summary>
+        public static Material CeilingCracked;
+        /// <summary>Small things on the ceiling and floor: an exit sign's glowing face, a smoke detector's red light, aluminium (threshold strips).</summary>
+        public static Material ExitSign, LedRed, Aluminium;
+        static Texture2D s_cracked, s_exit, s_exitFace;
 
+        /// <summary>One of the world's dressing copies (none of them casts a shadow-map shadow).</summary>
         public static bool IsCeilingVariant(Material m) =>
             m && (m == CeilingStainedA || m == CeilingStainedB || m == CeilingYellowed || m == Plenum || m == PlenumWood || m == PlenumDeck
-                  || m == PlenumBatt || m == PlenumMetal || m == PlenumDuct || m == TileBack);
+                  || m == PlenumBatt || m == PlenumMetal || m == PlenumDuct || m == TileBack || m == CeilingCracked || m == ExitSign
+                  || m == LedRed || m == Aluminium);
 
         static Material Tinted(Material src, string suffix, Color tint)
         {
@@ -101,6 +108,8 @@ namespace Backrooms.Generation
                 if (!s_stainedB) s_stainedB = Stained(tex, 31);
                 CeilingStainedA = Copy(src, " (stained)", s_stainedA);
                 CeilingStainedB = Copy(src, " (stained B)", s_stainedB);
+                if (!s_cracked) s_cracked = Cracked(tex, 53);
+                CeilingCracked = Copy(src, " (cracked)", s_cracked);
             }
             Color c = src.HasProperty(BaseColor) ? src.GetColor(BaseColor) : Color.white;
             CeilingYellowed = Copy(src, " (yellowed)", null);
@@ -117,6 +126,155 @@ namespace Backrooms.Generation
             PlenumMetal = Tinted(Destruction.DemolitionMaterials.Steel, " (dusty)", new Color(0.24f, 0.245f, 0.25f));
             PlenumDuct = Tinted(Destruction.DemolitionMaterials.Steel, " (foil duct)", new Color(0.33f, 0.33f, 0.32f));
             TileBack = Tinted(Destruction.DemolitionMaterials.BackPaper, " (tile back)", new Color(0.28f, 0.27f, 0.25f));
+            Aluminium = Tinted(Destruction.DemolitionMaterials.Steel, " (aluminium)", new Color(0.7f, 0.7f, 0.68f));
+            Small(a);
+        }
+
+        /// <summary>The exit sign's face (red letters that glow, on emergency power: never switched) and the detector's light.</summary>
+        static void Small(OfficeBiomeAssets a)
+        {
+            ExitSign = LedRed = null;
+            if (!a.lensOn || !a.lensOn.HasProperty(EmissionMap)) return;
+            if (!s_exit) s_exit = ExitTexture(false);
+            if (!s_exitFace) s_exitFace = ExitTexture(true);
+            // Red letters on a white face, lit from inside: the letters red in the face too, and a deep red glow (a bright
+            // one goes white in the camcorder's highlights).
+            ExitSign = new Material(a.lensOn) { name = "Exit sign", hideFlags = HideFlags.DontSave };
+            ExitSign.SetTexture(BaseMap, s_exitFace);
+            ExitSign.SetColor(BaseColor, Color.white);
+            ExitSign.SetTexture(EmissionMap, s_exit);
+            ExitSign.SetColor(EmissionColor, new Color(2.2f, 0.07f, 0.045f));
+            LedRed = new Material(a.lensOn) { name = "Indicator light", hideFlags = HideFlags.DontSave };
+            LedRed.SetTexture(BaseMap, Texture2D.whiteTexture);
+            LedRed.SetColor(BaseColor, new Color(0.5f, 0.05f, 0.04f));
+            LedRed.SetTexture(EmissionMap, Texture2D.whiteTexture);
+            LedRed.SetColor(EmissionColor, new Color(3f, 0.12f, 0.06f));
+        }
+
+        /// <summary>EXIT in block letters, 256 x 128: the emission (letters bright, the panel faintly lit) or the face (red on white).</summary>
+        static Texture2D ExitTexture(bool face)
+        {
+            const int W = 256, Hh = 128;
+            var v = new float[W * Hh];
+            for (int i = 0; i < v.Length; i++) v[i] = 0.05f;
+            void Rect(float x0, float y0, float x1, float y1)
+            {
+                for (int y = Mathf.Max(0, (int)y0); y < Mathf.Min(Hh, (int)y1); y++)
+                for (int x = Mathf.Max(0, (int)x0); x < Mathf.Min(W, (int)x1); x++) v[y * W + x] = 1f;
+            }
+            void Line(float x0, float y0, float x1, float y1, float th)
+            {
+                Vector2 a0 = new Vector2(x0, y0), d = new Vector2(x1 - x0, y1 - y0);
+                float l2 = d.sqrMagnitude;
+                for (int y = 0; y < Hh; y++)
+                for (int x = 0; x < W; x++)
+                {
+                    var p = new Vector2(x + 0.5f, y + 0.5f) - a0;
+                    float t = Mathf.Clamp01(Vector2.Dot(p, d) / l2);
+                    if ((p - d * t).magnitude < th * 0.5f) v[y * W + x] = 1f;
+                }
+            }
+            const float lw = 44f, gap = 12f, st = 11f, y0 = 28f, y1 = 100f;
+            float x = (W - (4 * lw + 3 * gap)) * 0.5f;
+            // E
+            Rect(x, y0, x + st, y1); Rect(x, y1 - st, x + lw, y1); Rect(x, (y0 + y1 - st) * 0.5f, x + lw * 0.82f, (y0 + y1 + st) * 0.5f); Rect(x, y0, x + lw, y0 + st);
+            x += lw + gap;
+            // X
+            Line(x + st * 0.5f, y0 + st * 0.4f, x + lw - st * 0.5f, y1 - st * 0.4f, st); Line(x + st * 0.5f, y1 - st * 0.4f, x + lw - st * 0.5f, y0 + st * 0.4f, st);
+            x += lw + gap;
+            // I
+            Rect(x + (lw - st) * 0.5f, y0, x + (lw + st) * 0.5f, y1);
+            x += lw + gap;
+            // T
+            Rect(x, y1 - st, x + lw, y1); Rect(x + (lw - st) * 0.5f, y0, x + (lw + st) * 0.5f, y1);
+            var px = new Color[v.Length];
+            var white = new Color(0.86f, 0.86f, 0.84f, 1f); var red = new Color(0.75f, 0.04f, 0.03f, 1f);
+            for (int i = 0; i < v.Length; i++)
+            {
+                if (face) { var c = Color.Lerp(white, red, Mathf.InverseLerp(0.05f, 1f, v[i])); px[i] = new Color(Mathf.LinearToGammaSpace(c.r), Mathf.LinearToGammaSpace(c.g), Mathf.LinearToGammaSpace(c.b), 1f); }
+                else { float g = Mathf.LinearToGammaSpace(v[i]); px[i] = new Color(g, g, g, 1f); }
+            }
+            var tex = new Texture2D(W, Hh, TextureFormat.RGBA32, true, false) { name = face ? "ExitSignFace" : "ExitSign", wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.DontSave };
+            tex.SetPixels(px);
+            tex.Apply(true, true);
+            return tex;
+        }
+
+        /// <summary>The ceiling texture with a crack across each tile: a dark wandering line, sometimes branching.</summary>
+        static Texture2D Cracked(Texture2D src, int seed)
+        {
+            var t = Readable(src, " (cracked)", out var px);
+            int w = t.width, tile = w / 4;
+            var rng = new System.Random(seed);
+            for (int ty = 0; ty < 4; ty++)
+            for (int tx = 0; tx < 4; tx++)
+            {
+                int ox = tx * tile, oy = ty * tile, inset = tile / 20;
+                // From a point on one edge, heading across, wandering.
+                int e = rng.Next(4);
+                float a = (float)(inset + rng.NextDouble() * (tile - 2 * inset));
+                Vector2 p = e == 0 ? new Vector2(inset, a) : e == 1 ? new Vector2(tile - inset, a) : e == 2 ? new Vector2(a, inset) : new Vector2(a, tile - inset);
+                float head = e == 0 ? 0f : e == 1 ? Mathf.PI : e == 2 ? Mathf.PI * 0.5f : -Mathf.PI * 0.5f;
+                head += ((float)rng.NextDouble() - 0.5f) * 0.9f;
+                float len = tile * (0.45f + 0.6f * (float)rng.NextDouble());
+                CrackLine(px, w, ox, oy, tile, inset, p, head, len, 1.3f + (float)rng.NextDouble() * 0.6f, rng, true);
+            }
+            return Finish(t, px);
+        }
+
+        static void CrackLine(Color32[] px, int w, int ox, int oy, int tile, int inset, Vector2 p, float head, float len, float width, System.Random rng, bool branch)
+        {
+            float walked = 0f;
+            while (walked < len)
+            {
+                head += ((float)rng.NextDouble() - 0.5f) * 0.5f;
+                p += new Vector2(Mathf.Cos(head), Mathf.Sin(head)) * 1.5f;
+                walked += 1.5f;
+                if (p.x < inset || p.y < inset || p.x > tile - inset || p.y > tile - inset) break;
+                int r = Mathf.CeilToInt(width + 1f);
+                for (int dy = -r; dy <= r; dy++)
+                for (int dx = -r; dx <= r; dx++)
+                {
+                    int X = ox + (int)p.x + dx, Y = oy + (int)p.y + dy;
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    float k = Mathf.Clamp01(width + 0.5f - d) * 0.55f;
+                    if (k > 0.01f) Multiply(px, Y * w + X, 1f - k, 1f - k * 1.02f, 1f - k * 1.05f);
+                }
+                if (branch && walked > len * 0.35f && rng.NextDouble() < 0.012)
+                {
+                    CrackLine(px, w, ox, oy, tile, inset, p, head + (rng.NextDouble() < 0.5 ? 0.9f : -0.9f), len * 0.3f, width * 0.7f, rng, false);
+                    branch = false;
+                }
+            }
+        }
+
+        /// <summary>A CPU copy of a texture that is not readable (through the GPU), and its pixels.</summary>
+        static Texture2D Readable(Texture2D src, string suffix, out Color32[] px)
+        {
+            int w = src.width, h = src.height;
+            var was = RenderTexture.active;
+            var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            Graphics.Blit(src, rt);
+            RenderTexture.active = rt;
+            var t = new Texture2D(w, h, TextureFormat.RGBA32, true, false)
+            {
+                name = src.name + suffix, wrapMode = TextureWrapMode.Repeat, filterMode = src.filterMode,
+                anisoLevel = src.anisoLevel, hideFlags = HideFlags.DontSave,
+            };
+            t.ReadPixels(new Rect(0, 0, w, h), 0, 0, false);
+            RenderTexture.active = was;
+            RenderTexture.ReleaseTemporary(rt);
+            px = t.GetPixels32();
+            return t;
+        }
+
+        static Texture2D Finish(Texture2D t, Color32[] px)
+        {
+            t.SetPixels32(px);
+            t.Apply(true, false);
+            t.Compress(true);
+            t.Apply(false, true);
+            return t;
         }
 
         static Material Copy(Material src, string suffix, Texture2D baseMap)
@@ -129,20 +287,8 @@ namespace Backrooms.Generation
         /// <summary>The ceiling texture (read back from the GPU: it is not readable) with a stain painted into each tile.</summary>
         static Texture2D Stained(Texture2D src, int seed)
         {
-            int w = src.width, h = src.height;
-            var was = RenderTexture.active;
-            var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
-            Graphics.Blit(src, rt);
-            RenderTexture.active = rt;
-            var t = new Texture2D(w, h, TextureFormat.RGBA32, true, false)
-            {
-                name = src.name + " (stained)", wrapMode = TextureWrapMode.Repeat, filterMode = src.filterMode,
-                anisoLevel = src.anisoLevel, hideFlags = HideFlags.DontSave,
-            };
-            t.ReadPixels(new Rect(0, 0, w, h), 0, 0, false);
-            RenderTexture.active = was;
-            RenderTexture.ReleaseTemporary(rt);
-            var px = t.GetPixels32();
+            var t = Readable(src, " (stained)", out var px);
+            int w = t.width;
             var rng = new System.Random(seed);
             int tile = w / 4;
             for (int ty = 0; ty < 4; ty++)
@@ -152,11 +298,7 @@ namespace Backrooms.Generation
                 if (kind < 0.8) WaterStain(px, w, tx * tile, ty * tile, tile, rng);
                 if (kind > 0.55) Mould(px, w, tx * tile, ty * tile, tile, rng);
             }
-            t.SetPixels32(px);
-            t.Apply(true, false);
-            t.Compress(true);
-            t.Apply(false, true);
-            return t;
+            return Finish(t, px);
         }
 
         static void Multiply(Color32[] px, int i, float r, float g, float b)
@@ -268,12 +410,17 @@ namespace Backrooms.Generation
         /// with <see cref="TrofferUV"/> (0..1 across each lens). Null without the biome's lens materials.
         /// </summary>
         public static Material TrofferOn, TrofferOff;
-        static Texture2D s_glow, s_prism;
+        /// <summary>
+        /// Old troffers: one tube out (its band dark, a third less light), old tubes gone pink and dim, dead bugs collected in
+        /// the lens (dark specks along its low edge). Chosen per fixture in OfficeChunkBuilder.BuildFixtures.
+        /// </summary>
+        public static Material TrofferDead, TrofferPink, TrofferBugs;
+        static Texture2D s_glow, s_prism, s_glowDead, s_glowBugs;
         static readonly int EmissionMap = Shader.PropertyToID("_EmissionMap"), EmissionColor = Shader.PropertyToID("_EmissionColor"),
                             BaseMap = Shader.PropertyToID("_BaseMap");
 
         /// <summary>Is this one of the troffer lens copies?</summary>
-        public static bool IsTroffer(Material m) => m && (m == TrofferOn || m == TrofferOff);
+        public static bool IsTroffer(Material m) => m && (m == TrofferOn || m == TrofferOff || m == TrofferDead || m == TrofferPink || m == TrofferBugs);
 
         static void Troffers(OfficeBiomeAssets a)
         {
@@ -289,6 +436,14 @@ namespace Backrooms.Generation
             TrofferOff = new Material(a.lensOff) { name = a.lensOff.name + " (troffer)", hideFlags = HideFlags.DontSave };
             TrofferOff.SetTexture(BaseMap, s_prism);
             TrofferOff.SetTextureScale(BaseMap, Vector2.one); TrofferOff.SetTextureOffset(BaseMap, Vector2.zero);
+            if (!s_glowDead) s_glowDead = TrofferGlow(512, out _, 0);
+            if (!s_glowBugs) s_glowBugs = TrofferGlow(512, out _, -1, 17);
+            TrofferDead = new Material(TrofferOn) { name = a.lensOn.name + " (one tube out)", hideFlags = HideFlags.DontSave };
+            TrofferDead.SetTexture(EmissionMap, s_glowDead);
+            TrofferPink = new Material(TrofferOn) { name = a.lensOn.name + " (old tubes)", hideFlags = HideFlags.DontSave };
+            TrofferPink.SetColor(EmissionColor, TrofferOn.GetColor(EmissionColor) * new Color(0.84f, 0.66f, 0.72f, 1f));
+            TrofferBugs = new Material(TrofferOn) { name = a.lensOn.name + " (bugs)", hideFlags = HideFlags.DontSave };
+            TrofferBugs.SetTexture(EmissionMap, s_glowBugs);
         }
 
         static float s_glowMean = 1f;
@@ -308,7 +463,7 @@ namespace Backrooms.Generation
         /// wide halo), the reflector's fill between them (about 60 % of the bands: from across a room it is all white), darker at the tubes' ends (lampholders) and toward the frame,
         /// all broken up by the lens's little pyramids, which sparkle most over the tubes. Mean returned for scaling.
         /// </summary>
-        static Texture2D TrofferGlow(int size, out float mean)
+        static Texture2D TrofferGlow(int size, out float mean, int deadTube = -1, int bugs = 0)
         {
             var px = new Color[size * size];
             var lin = new float[size * size];
@@ -317,20 +472,25 @@ namespace Backrooms.Generation
             for (int x = 0; x < size; x++)
             {
                 float u = (x + 0.5f) / size, v = (y + 0.5f) / size;
-                float tube = 0f;
-                foreach (float t in Tubes)
+                float tube = 0f, lit = 0f;
+                for (int k = 0; k < Tubes.Length; k++)
                 {
-                    float d = u - t;
-                    tube += Mathf.Exp(-d * d / (2f * 0.06f * 0.06f)) + 0.3f * Mathf.Exp(-d * d / (2f * 0.16f * 0.16f));
+                    float d = u - Tubes[k];
+                    float b = Mathf.Exp(-d * d / (2f * 0.06f * 0.06f)) + 0.3f * Mathf.Exp(-d * d / (2f * 0.16f * 0.16f));
+                    tube += b;
+                    if (k != deadTube) lit += b;
                 }
                 float ends = Mathf.Lerp(0.55f, 1f, Smooth(0.02f, 0.12f, v) * Smooth(0.02f, 0.12f, 1f - v));
                 float edge = Mathf.Min(Mathf.Min(u, 1f - u), Mathf.Min(v, 1f - v));
                 float rim = Mathf.Lerp(0.5f, 1f, Smooth(0f, 0.07f, edge));
-                float g = (0.55f + tube * ends) * rim;
-                g *= 1f + 0.16f * Mathf.Clamp01(tube) * Pyramids(u, v);
-                lin[y * size + x] = g;
-                if (g > max) max = g;
+                float sparkle = 1f + 0.16f * Mathf.Clamp01(tube) * Pyramids(u, v);
+                float full = (0.55f + tube * ends) * rim * sparkle;
+                // Peak from all three tubes (so a dead tube's lens is dimmer, not stretched back to full).
+                float fill = deadTube >= 0 ? 0.55f * 0.78f : 0.55f;
+                lin[y * size + x] = (fill + lit * ends) * rim * (1f + 0.16f * Mathf.Clamp01(lit) * Pyramids(u, v));
+                if (full > max) max = full;
             }
+            if (bugs != 0) Bugs(lin, size, bugs);
             float sum = 0f;
             for (int i = 0; i < lin.Length; i++)
             {
@@ -344,6 +504,36 @@ namespace Backrooms.Generation
             tex.SetPixels(px);
             tex.Apply(true, true);
             return tex;
+        }
+
+        /// <summary>
+        /// Dead insects in the lens: most lie along its lowest edge (where they fell and slid), a few scattered; each a dark
+        /// elongated speck, 5-15 mm, against the glow.
+        /// </summary>
+        static void Bugs(float[] lin, int size, int seed)
+        {
+            var rng = new System.Random(seed);
+            int edge = rng.Next(4), n = 22 + rng.Next(16);
+            for (int i = 0; i < n; i++)
+            {
+                float along = 0.06f + 0.88f * (float)rng.NextDouble();
+                float across = i < n * 0.75f ? 0.035f + 0.14f * (float)(rng.NextDouble() * rng.NextDouble()) : 0.1f + 0.8f * (float)rng.NextDouble();
+                float u = edge == 0 ? across : edge == 1 ? 1f - across : along, v = edge < 2 ? along : edge == 2 ? across : 1f - across;
+                float cx = u * size, cy = v * size;
+                float len = 4.5f + 8f * (float)rng.NextDouble(), wid = 1.4f + 1.8f * (float)rng.NextDouble();
+                float ang = (float)rng.NextDouble() * Mathf.PI, ca = Mathf.Cos(ang), sa = Mathf.Sin(ang);
+                float dark = 0.55f + 0.4f * (float)rng.NextDouble();
+                int r = Mathf.CeilToInt(len + 1f);
+                for (int y = Mathf.Max(0, (int)cy - r); y < Mathf.Min(size, (int)cy + r); y++)
+                for (int x = Mathf.Max(0, (int)cx - r); x < Mathf.Min(size, (int)cx + r); x++)
+                {
+                    float dx = x - cx, dy = y - cy;
+                    float lx = (dx * ca + dy * sa) / len, ly = (-dx * sa + dy * ca) / wid;
+                    float d = lx * lx + ly * ly;
+                    if (d >= 1f) continue;
+                    lin[y * size + x] *= 1f - dark * Smooth(1f, 0.35f, d);
+                }
+            }
         }
 
         /// <summary>The unlit lens: pale acrylic with its pyramids catching the room's light.</summary>

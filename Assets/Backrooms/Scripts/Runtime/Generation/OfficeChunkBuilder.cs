@@ -24,6 +24,7 @@ namespace Backrooms.Generation
         public bool strip;           // hanging cool-white warehouse strip
         public float ceiling;        // ceiling height at the fixture
         public int faultyId;         // index of this tube's own lens renderer when it stutters, else -1
+        public float dim;            // share of its light lost to age (a tube out, old pink tubes, bugs in the lens): 0 = full
         public int room;             // the room it is in (index in its chunk's layout; LightZones), -1 for lamps
         public Vector3Int chunk;     // owning chunk (x, storey, z), set by the streamer
     }
@@ -1011,16 +1012,26 @@ namespace Backrooms.Generation
                 // mesh per room, so the room's switch can put them out.
                 int room = _L.roomOf[f.cell.x, f.cell.y];
                 MeshWriter lens;
+                // Some square panels have aged (seeded by the cell): one tube out, old tubes gone pink and dim, bugs in the lens.
+                int age = 0; float dim = 0f;
+                if (!f.strip && !f.dome && !f.faulty && f.on && MaterialMaps.TrofferDead)
+                {
+                    float u = Dice(GX(f.cell.x), GZ(f.cell.y), 710);
+                    age = u < 0.05f ? 1 : u < 0.1f ? 2 : u < 0.17f ? 3 : 0;
+                    dim = age == 1 ? 0.33f : age == 2 ? 0.2f : age == 3 ? 0.06f : 0f;
+                }
                 if (f.faulty) { lens = new MeshWriter { worldOffset = _origin }; faultyLenses.Add((lens, f.dome, room)); }
                 else if (f.on)
                 {
                     int kind = f.strip ? 2 : f.dome ? 1 : 0;
-                    var on = f.strip ? _a.stripOn ?? _a.lensOn : f.dome ? _a.domeOn ?? _a.lensOn : TrofferLens(true);
+                    var on = f.strip ? _a.stripOn ?? _a.lensOn : f.dome ? _a.domeOn ?? _a.lensOn
+                           : age == 1 ? MaterialMaps.TrofferDead : age == 2 ? MaterialMaps.TrofferPink : age == 3 ? MaterialMaps.TrofferBugs : TrofferLens(true);
                     var off = f.strip ? _a.stripOff ?? _a.lensOff : f.dome ? _a.domeOff ?? _a.lensOff : TrofferLens(false);
-                    if (!_roomLenses.TryGetValue(room * 4 + kind, out var rl))
+                    int key = room * 16 + age * 4 + kind;
+                    if (!_roomLenses.TryGetValue(key, out var rl))
                     {
                         rl = (new MeshWriter { worldOffset = _origin }, on, off, LayerBit(f.roomColor), room);
-                        _roomLenses[room * 4 + kind] = rl;
+                        _roomLenses[key] = rl;
                     }
                     lens = rl.w;
                 }
@@ -1064,7 +1075,7 @@ namespace Backrooms.Generation
                     {
                         position = _origin + c + (f.dome ? Vector3.down * 0.07f : f.strip ? Vector3.down * 0.03f : SquareFixtureShift),
                         isLamp = false, dome = f.dome, strip = f.strip, ceiling = h, roomLayer = LayerBit(f.roomColor),
-                        faultyId = f.faulty ? faultyLenses.Count - 1 : -1, room = room,
+                        faultyId = f.faulty ? faultyLenses.Count - 1 : -1, room = room, dim = dim,
                     });
             }
         }
