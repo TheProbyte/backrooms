@@ -79,6 +79,7 @@ namespace Backrooms.Interaction
                 {
                     _looseArm = MeasureArmRig(arm, null, up, fo, ha, null, true);
                     _looseArm.renderers = arm.GetComponentsInChildren<Renderer>();
+                    FindHandSkin(_looseArm, arm, null);
                     Generation.PoolLitSwitch.Attach(arm.gameObject);
                 }
                 else Destroy(arm.gameObject);
@@ -97,7 +98,7 @@ namespace Backrooms.Interaction
                     // The working arm is the body's own (right for a right-hander).
                     string s = side > 0f ? "r" : "l";
                     var up = Find(_body, "upperarm_" + s); var fo = Find(_body, "lowerarm_" + s); var ha = Find(_body, "hand_" + s);
-                    if (up && fo && ha) _bodyArm = MeasureArmRig(_body, Find(_body, "clavicle_" + s), up, fo, ha, s, false);
+                    if (up && fo && ha) { _bodyArm = MeasureArmRig(_body, Find(_body, "clavicle_" + s), up, fo, ha, s, false); FindHandSkin(_bodyArm, _body, s); }
                 }
                 Generation.PoolLitSwitch.Attach(_body.gameObject);
             }
@@ -225,8 +226,16 @@ namespace Backrooms.Interaction
             Vector3 gripWrist = poke ? _grab.PokeTip - gripHand * _wristToTip
                                      : _grab.HandPosition - gripHand * new Vector3(_wristToGrip.x, _wristToGrip.y, _wristToGrip.z);
             float s = Mathf.SmoothStep(0f, 1f, blend);
+            float sTurn = s;
+            if (_grab.TouchingWall && !poke)
+            {
+                // Reaching out to steady on a wall: the hand turns flat to it first and comes in from off it (turned with
+                // the reach, it swept the fingers through a jamb: up to 37 mm in on the way).
+                sTurn = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(blend * 1.7f));
+                gripWrist += gripHand * Vector3.up * (0.06f * (1f - s));
+            }
             Vector3 wrist = Vector3.Lerp(restWrist, gripWrist, s);
-            Quaternion handRot = Quaternion.Slerp(restHand, gripHand, s);
+            Quaternion handRot = Quaternion.Slerp(restHand, gripHand, sTurn);
             Vector3 touchOff = poke ? _wristToTip : _wristToGrip;
 
             // What the fingers (and palm) close on: what PropGrabber holds or touches, or the wall or rail the body's own
@@ -300,6 +309,9 @@ namespace Backrooms.Interaction
                     Pose(f);
                     if (bestF < worst) { worst = bestF; at = k; }
                 }
+                // And the palm's own skin (the heel of the hand on the little finger's side was 8 mm in a jamb).
+                float skin = DeepestPalmSkin(contact, pose, pose.wrist + pose.hand * touchOff, true, out Vector3 skinAt);
+                if (skin < worst) { worst = skin; at = skinAt; }
                 Vector3 n = worst < -0.002f ? ContactNormal(contact, at) : Vector3.zero;
                 if (n.sqrMagnitude > 0.25f)
                 {
@@ -317,35 +329,25 @@ namespace Backrooms.Interaction
             {
                 var held = _grab.HeldItem;
                 var it = held.transform;
-                // (Turned at most 20 degrees onto the hand: a sledgehammer's head swept sideways up to 94 mid-swing.)
-                Quaternion turn = Quaternion.RotateTowards(Quaternion.identity, pose.hand * Quaternion.Inverse(gripHand), 20f);
+                // (All the way onto the hand: items plan poses the arm can reach (FirstPersonBody.ArmStrain), so this is a
+                // few degrees. Capped at 20 instead, a sledgehammer's handle was 74 degrees off the palm after a blow.)
+                Quaternion turn = pose.hand * Quaternion.Inverse(gripHand);
                 it.SetPositionAndRotation(palmNow + turn * (it.position - wanted), turn * it.rotation);
-                // No part of the palm in it: the item is pushed out along its surface where the palm (its middle, heel and
-                // the base of the fingers, either side) is inside (a sledgehammer's handle sat 10.6 mm in the palm, a tape
-                // roll 7.2).
-                Vector3 hf = pose.hand * Vector3.forward, hr = pose.hand * Vector3.right, hu = pose.hand * Vector3.up;
-                float worstIn = 0f; Vector3 deepAt = palmNow;
-                for (int a = -1; a <= 1; a++)
-                    for (int b = -1; b <= 1; b += 2)
-                    {
-                        // (Either side the palm bulges: the ball of the thumb and the little finger's side, 5 mm proud.)
-                        Vector3 q = palmNow + hf * (a * 0.035f) + hr * (b * 0.03f) - hu * 0.005f;
-                        float d = held.ContactDistanceWorld(q);
-                        if (d < worstIn) { worstIn = d; deepAt = q; }
-                    }
-                // And the bases of the fingers, on the palm's side (a hammer's handle was 10.6 mm in at the ring finger's).
-                if (_fingers != null)
-                    foreach (var fg in _fingers)
-                    {
-                        if (fg.name == "Thumb" || fg.joints.Count == 0) continue;
-                        Vector3 q = fg.joints[0].t.position - hu * 0.012f;
-                        float d = held.ContactDistanceWorld(q);
-                        if (d < worstIn) { worstIn = d; deepAt = q; }
-                    }
-                if (worstIn < -0.002f)
+                // No part of the palm in it: the item is pushed out from the deepest of the palm's skin inside it (twice: a
+                // push can bring another part in). The fingers and thumb close on it themselves. Only for what the palm
+                // holds (a stick of chalk held in the fingers was pushed off the web of the thumb, the thumb 3 mm further).
+                for (int pass = 0; pass < 2 && held.ContactDistanceWorld(palmNow) < 0.02f; pass++)
                 {
+                    float worstIn = DeepestPalmSkin(held.ContactDistanceWorld, pose, palmNow, pass == 0, out Vector3 deepAt);
+                    if (worstIn >= -0.002f) break;
+                    // Out the shortest way, unless that is into the palm (the skin past the middle of a handle) or not
+                    // defined: then straight off the palm. (Always off the palm, a tape roll on the fingers was pushed
+                    // 2 cm along them.)
                     Vector3 nOut = ContactNormal(held.ContactDistanceWorld, deepAt);
-                    if (nOut.sqrMagnitude > 0.25f) it.position -= nOut.normalized * Mathf.Min(-worstIn - 0.001f, 0.02f);
+                    Vector3 off = -(pose.hand * Vector3.up);
+                    Vector3 move = nOut.sqrMagnitude > 0.25f ? -nOut.normalized : off;
+                    if (Vector3.Dot(move, off) < -0.3f) move = off;
+                    it.position += move * Mathf.Min(-worstIn - 0.001f, 0.02f);
                 }
             }
 
@@ -386,10 +388,70 @@ namespace Backrooms.Interaction
                 f.opp = opp;
                 f.placed = true;
                 Pose(f);
+                // Eased into what it touches (the hand coming in fast): straight to where it stops instead (fingers swept
+                // 12-21 mm into a jamb as the hand reached it).
+                if (closeOn && ClearanceFrom(f, 0, contact) < -0.002f)
+                {
+                    for (int i = 0; i < f.joints.Count; i++) f.a[i] = _goal[i];
+                    f.oppDeg = goalOpp;
+                    Pose(f);
+                }
             }
         }
 
         static int FingerIndex(string name) => name == "Index" ? 0 : name == "Middle" ? 1 : name == "Ring" ? 2 : name == "Pinky" ? 3 : 4;
+
+        Mesh _skinBake;
+        readonly List<Vector3> _skinVerts = new List<Vector3>();
+
+        /// <summary>
+        /// How deep a surface (a held item's contact shape, a wall) goes into the palm's skin (m, negative inside; 0 if not at all) and where:
+        /// the arm's own mesh as it is drawn (baked when bake), its palm, heel and the pads at the base of the fingers.
+        /// (A few points on the palm missed the pad at the ring finger's base: a sledgehammer's handle sat 10.6 mm in the
+        /// skin there, a tape roll 7.2.) Without the mesh, points on the palm and the finger bases.
+        /// </summary>
+        float DeepestPalmSkin(System.Func<Vector3, float> distance, in ArmPose pose, Vector3 palmNow, bool bake, out Vector3 at)
+        {
+            at = palmNow;
+            float worst = 0f;
+            var sk = _curArm.skin;
+            if (sk && _curArm.handVerts != null)
+            {
+                if (bake || _skinVerts.Count == 0)
+                {
+                    if (!_skinBake) _skinBake = new Mesh();
+                    sk.BakeMesh(_skinBake, true);
+                    _skinBake.GetVertices(_skinVerts);
+                }
+                Vector3 sp = sk.transform.position;
+                Quaternion sr = sk.transform.rotation;
+                foreach (int vi in _curArm.handVerts)
+                {
+                    if (vi >= _skinVerts.Count) continue;
+                    Vector3 q = sp + sr * _skinVerts[vi];
+                    float d = distance(q);
+                    if (d < worst) { worst = d; at = q; }
+                }
+                return worst;
+            }
+            Vector3 hf = pose.hand * Vector3.forward, hr = pose.hand * Vector3.right, hu = pose.hand * Vector3.up;
+            for (int a = -1; a <= 1; a++)
+                for (int b = -1; b <= 1; b += 2)
+                {
+                    Vector3 q = palmNow + hf * (a * 0.035f) + hr * (b * 0.03f) - hu * 0.005f;
+                    float d = distance(q);
+                    if (d < worst) { worst = d; at = q; }
+                }
+            if (_fingers != null)
+                foreach (var fg in _fingers)
+                {
+                    if (fg.name == "Thumb" || fg.joints.Count == 0) continue;
+                    Vector3 q = fg.joints[0].t.position - hu * 0.012f;
+                    float d = distance(q);
+                    if (d < worst) { worst = d; at = q; }
+                }
+            return worst;
+        }
 
         /// <summary>The way out of a surface at p (the gradient of the distance), or zero where it is not defined.</summary>
         static Vector3 ContactNormal(System.Func<Vector3, float> distance, Vector3 p)
@@ -568,6 +630,27 @@ namespace Backrooms.Interaction
                 }
                 for (int i = 0; i < n; i++) goal[i] = bestK >= 0f ? goal[i] * bestK : bestK * _extScale * Extend[Mathf.Min(i, Extend.Length - 1)];
                 goalOpp = Mathf.Lerp(open, goalOpp, Mathf.Max(bestK, 0f));
+                // What lies beyond a joint and is clear still closes, joint by joint: a little finger whose first bone
+                // lies on a rail's top curls over its edge (it stayed straight and bent back, the tip 38 mm off the rail).
+                if (!thumb)
+                {
+                    for (int i = 0; i < n; i++) f.a[i] = goal[i];
+                    Pose(f);
+                    for (int i = 1; i < n; i++)
+                    {
+                        if (ClearanceFrom(f, i, contact) < 0f) break;
+                        float from = f.a[i], target = want * 62f * f.joints[i].w, done = from;
+                        for (int st = 1; st <= 8 && target > from; st++)
+                        {
+                            f.a[i] = Mathf.Lerp(from, target, st / 8f);
+                            Pose(f);
+                            if (ClearanceFrom(f, i, contact) < 0f) break;
+                            done = f.a[i];
+                        }
+                        f.a[i] = done; Pose(f);
+                        goal[i] = done;
+                    }
+                }
                 f.oppDeg = savedOpp;
                 for (int i = 0; i < n; i++) f.a[i] = _closeSaved[i];
                 return;
@@ -742,6 +825,33 @@ namespace Backrooms.Interaction
                 if (s < bestScore) { bestScore = s; best = f; }
             }
             return best;
+        }
+
+        /// <summary>
+        /// How hard it is for the working arm to put the palm on <paramref name="palm"/> with the hand turned so: the solver's
+        /// score for the best way round for the elbow (lower is easier; out of reach counts heavily), and in overDeg how far
+        /// the hand would end up from that turn (degrees; about 0 when the wrist and forearm can do it). Items plan their
+        /// poses with it (a sledgehammer's blow was planned with the hand turned 94 degrees past what a wrist does: the
+        /// head swept sideways, or the handle left the palm).
+        /// </summary>
+        public float ArmStrain(Vector3 palm, Quaternion hand, out float overDeg)
+        {
+            overDeg = 0f;
+            if (_curArm == null || !_grab) return 0f;
+            Vector3 shoulder = ShoulderNow;
+            Quaternion yaw = transform.rotation;
+            float side = _grab.Side;
+            Vector3 wrist = palm - hand * _wristToGrip;
+            Vector3 dir0 = (wrist - shoulder).normalized;
+            Vector3 pole0 = Vector3.ProjectOnPlane(yaw * new Vector3(0.8f * side, -1f, -0.25f), dir0).normalized;
+            float best = float.MaxValue;
+            for (int k = -4; k <= 5; k++)
+            {
+                var p = SolveArm(shoulder, wrist, hand, pole0, k * 30f, side, yaw);
+                if (p.score < best) { best = p.score; overDeg = Quaternion.Angle(p.hand, hand); }
+            }
+            float far = (wrist - shoulder).magnitude - (_upperLen + _foreLen) * 0.97f;
+            return best + Mathf.Max(0f, far) * 40f;
         }
 
         ArmPose SolveArm(Vector3 shoulder, Vector3 wrist, Quaternion hand, Vector3 pole0, float swivel, float side, Quaternion yaw)

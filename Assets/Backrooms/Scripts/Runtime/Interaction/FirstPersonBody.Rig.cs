@@ -129,8 +129,49 @@ namespace Backrooms.Interaction
                 new List<(Transform, Quaternion, Vector3, float, string)>();
             public List<Finger> fingers;
             public Renderer[] renderers;
+            public SkinnedMeshRenderer skin;               // the mesh with the hand's skin (held things are kept out of it)
+            public int[] handVerts;                        // its vertices on the palm side of the hand (palm, heel, finger-base pads)
         }
         ArmRig _bodyArm, _looseArm, _curArm;
+
+        /// <summary>
+        /// The arm's skinned mesh with the hand's skin, and which of its vertices are the palm's (picked in the rest pose: the
+        /// palm, its heel and the pads at the base of the fingers, not the fingers or the thumb past its base): a held item
+        /// is kept out of the skin itself (a few points on the palm missed the pad at the ring finger's base, where a
+        /// hammer's handle sat 10.6 mm in; picked where they were each frame, curled fingertips under the palm counted and
+        /// pushed the handle 20 mm off the palm). side: "r" or "l" for the body's arm (its .ArmR / .ArmL part), null for a
+        /// separate arm. Call with the arm at rest.
+        /// </summary>
+        static void FindHandSkin(ArmRig r, Transform root, string side)
+        {
+            var baked = new Mesh();
+            var vs = new List<Vector3>();
+            var near = new List<int>();
+            int bestN = 0;
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                string n = smr.name;
+                if (n.Contains("suit") || (side != null && !n.EndsWith(side == "r" ? ".ArmR" : ".ArmL"))) continue;
+                smr.BakeMesh(baked, true);
+                baked.GetVertices(vs);
+                near.Clear();
+                Vector3 w = r.hand.position, p = smr.transform.position;
+                Quaternion q = smr.transform.rotation;
+                Quaternion inv = Quaternion.Inverse(Quaternion.LookRotation(r.hand.TransformDirection(r.handFingers), r.hand.TransformDirection(r.handBack)));
+                // Which way the thumb is (the hand's frame is not mirrored for a left hand).
+                float thumbSide = -1f;
+                foreach (var j in r.joints) if (j.finger == "Thumb") { thumbSide = Mathf.Sign((inv * (j.t.position - w)).x); break; }
+                for (int i = 0; i < vs.Count; i++)
+                {
+                    Vector3 l = inv * (p + q * vs[i] - w);
+                    if (l.y > 0.004f || l.y < -0.04f || l.z < -0.01f || l.z > 0.12f || Mathf.Abs(l.x) > 0.055f) continue;
+                    if (l.x * thumbSide > 0.035f && l.z > 0.05f) continue;           // the thumb past its base
+                    near.Add(i);
+                }
+                if (near.Count > bestN) { bestN = near.Count; r.skin = smr; r.handVerts = near.ToArray(); }
+            }
+            if (Application.isPlaying) Object.Destroy(baked); else Object.DestroyImmediate(baked);
+        }
 
         static readonly string[] FingerNames = { "Index", "Middle", "Ring", "Pinky", "Thumb" };
 

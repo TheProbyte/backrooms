@@ -52,24 +52,29 @@ namespace Backrooms.Interaction
         // rim, a little to the right: the palm on top of the strands, the fingers forward over them and curled under, the
         // forearm coming straight from behind (held by the outer rim, fingers outward, the hand was 60 degrees past what a
         // wrist turns). (The grip used to be inside a ring fatter than the strands: two fingers through it, two on nothing.)
+        // The bundle's section (fitted to the model's strands by the grip, 2026-10-28): an oval 36 mm across and 28 mm high,
+        // leaning in at the top (a round section 35 mm across stood 10 mm proud of the strands on the far side: the fingers
+        // stopped short of them).
         static readonly Vector3 Rim = new Vector3(0.26f, 0f, -0.966f);
-        const float CoilR = 0.1175f, StrandR = 0.0175f, CoilY = 0.018f;
+        const float CoilR = 0.118f, CoilY = 0.017f, BundleHalfR = 0.018f, BundleHalfY = 0.014f, BundleLean = 0.2f;
         public override Vector3 HoldOffset => Bundle ? new Vector3(0.17f, -0.37f, 0.4f) : new Vector3(0.15f, -0.22f, 0.35f);
-        public override Vector3 GripLocal => Bundle ? Rim * CoilR + Vector3.up * (CoilY + StrandR + 0.002f) : new Vector3(0.02f, 0.02f, 0f);
+        public override Vector3 GripLocal => Bundle ? Rim * (CoilR - BundleLean * BundleHalfY) + Vector3.up * (CoilY + BundleHalfY + 0.002f)
+                                                    : new Vector3(0.02f, 0.02f, 0f);
         public override Quaternion GripRotationLocal => Bundle ? Quaternion.LookRotation(new Vector3(-0.26f, 0f, 0.966f), Vector3.up)
                                                                 : Quaternion.LookRotation(new Vector3(-0.4f, -0.3f, 0.86f), Vector3.up);
         public override float GripCurl => 0.9f;
         public float FingerCurl(int finger) => 0.92f;
         public float ThumbCurl => Bundle ? 0.8f : 0.7f;
         public float ThumbOpposition => 0.75f;
-        /// <summary>Coiled: the ring of cord (the hand round one side of it); out: the box.</summary>
-        /// <summary>The coil as a ring of round section (the strands), or the box.</summary>
+        /// <summary>Coiled: the ring of cord, of the bundle's oval section (the hand round one side of it); out: the box.</summary>
         public override float ContactDistance(Vector3 p)
         {
             if (!Bundle) return base.ContactDistance(p);
-            Vector3 d = p - new Vector3(0f, CoilY, 0f);
-            float r = new Vector2(d.x, d.z).magnitude;
-            return new Vector2(r - CoilR, d.y).magnitude - StrandR;
+            float y = p.y - CoilY;
+            float u = (new Vector2(p.x, p.z).magnitude - (CoilR - BundleLean * y)) / BundleHalfR, v = y / BundleHalfY;
+            // An oval's distance (Quilez's approximation).
+            float k0 = Mathf.Sqrt(u * u + v * v), k1 = Mathf.Sqrt(u * u / (BundleHalfR * BundleHalfR) + v * v / (BundleHalfY * BundleHalfY));
+            return k1 > 1e-6f ? k0 * (k0 - 1f) / k1 : -BundleHalfY;
         }
         /// <summary>Saved: 0 coiled, else the share of the cord that is out (old saves: 1, all of it).</summary>
         public override float Amount { get => coiled ? 0f : Mathf.Max(0.02f, PaidOut / Length); set { } }
@@ -225,6 +230,13 @@ namespace Backrooms.Interaction
             if (coiled)
             {
                 if (s.Depth + 1 > MaxChain) return;
+                // The hand takes the plug off the coil and carries it to the socket (the coil is put down), as a lamp's
+                // plug goes in (Plug.BeginPlugIn). (It went in from the coil in the hand, the hand never moving.)
+                if (i.hand)
+                {
+                    Deploy(null, i.hand.HandPosition);
+                    if (_plug) { var p = _plug; i.hand.PickUp(p); p.BeginPlugIn(s); return; }
+                }
                 Deploy(s);
             }
             else if (_plug && !_plug.Plugged && _plug.CanUse(s) && Vector3.Distance(s.Position, transform.position) < Length * 0.95f) _plug.PlugInto(s);

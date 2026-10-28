@@ -432,6 +432,38 @@ palm mid-swing) and its carry twist is -104 (limit 95), palm still 10 mm in at t
 twist 97; the coil's contact ring is fatter than its strands; the extension cord's coil still plugs in from the hand
 without the hand going to the socket; the steadying hand at a jamb was not re-measured (no wall end found in the
 test world); tape laying holds the roll with the palm up to 9 cm off its grip while raised (the roll follows the hand).
+Round 4 (2026-10-28):
+- **Poses the arm can hold** (`FirstPersonBody.ArmStrain`: the solver's strain and how far the hand would miss, for a
+  palm point and hand turn). The 20-degree cap on turning a held item onto the hand is gone: it left the hammer's handle
+  74 degrees off the palm after a blow. The item goes fully onto the hand again, and items plan poses the arm can reach.
+- **Sledgehammer.** The blow is searched over the handle's tip toward the wall and its lean about the blow's line, for the
+  least strain at the strike and at the full wind-up, the arm well out (planned a few times a second, afresh on release;
+  about half a millisecond). The follow-through turns the whole arm on round the shoulder instead of the hammer about the
+  hand. The carry is turned about its handle as the arm best holds it (searched on pick-up, then kept up to date). The
+  grip is 18 degrees across the palm about the palm's normal only (26.5 about a tilted axis lifted the handle 6 mm into
+  the heel of the hand and put it under the index knuckle). The fingers close on the handle the model draws: oval, with
+  its knob (`SledgehammerModel.HandleScale`).
+- **Palm skin.** A held item is pushed out of the palm's real skin: the arm mesh baked each frame, its palm, heel and
+  finger-base pads (picked once in the rest pose; `FindHandSkin`). Only for what the palm holds (not chalk in the
+  fingers). The steadying hand on a wall uses the same skin.
+- **Steadying hand.** It turns flat to the wall before it arrives and comes in from 6 cm off it; fingers eased into a
+  surface go straight to where they stop. Fingers swept up to 37 mm into a jamb on the way in; now 1 mm.
+- **Fingers.** A finger whose base lies on something still curls over its edge, joint by joint (the rail's little finger).
+- **Coil.** Its contact is the bundle's real section (an oval 36 by 28 mm, leaning in at the top). Clicking an outlet with
+  the coil in hand: the hand takes the plug and carries it in (`Plug.BeginPlugIn`).
+- **Tape.** The raised roll stays within the arm's reach from the shoulder; the body bends toward a low spot.
+- **Rubber chicken.** Rolled 8 degrees in the view.
+Measured (reviewer's probe, World 3; before -> after): hammer swing hand off its planned turn 94 -> 15 degrees at most
+(1.4 through the swing), handle off the palm after a blow 74 -> 0, elbow at the blow 62 -> 28-39; hammer carry forearm
+twist -104 -> -59, skin in the handle 10.6 -> 9.3 mm (the palm itself under 2 mm; the rest is finger skin); wind-up
+little finger 39 -> 22 mm and no handle mesh outside the contact; jamb skin 542 -> 0 vertices over 2 mm, tips 1 mm at
+most on the way in, twist 89; rail little finger tip 38 -> 15 mm; tape raised: palm off grip 93 -> 7.5 mm, no frame over
+20 mm; coil mesh 109 -> 51 vertices deep in the contact; coil plug-in carried 1.34 m by hand in 1.45 s; chalk thumb
+13 -> 10.4 mm; chicken twist 97 -> 95. Walking 0.9 mm, running 4.1 mm, throw wind-up 1.1 mm; wall lean steady.
+Open after round 4: the hammer's thumb lies 14 mm off the handle and its index finger barely wraps; finger pads still
+sink 6-9 mm into held items (the fingers stop at a joint's 8.5 mm, the pads are thicker); the chicken's twist is at the
+95 limit; the tape roll counts more skin in its core (165 -> 149-260 vertices, 7.2 mm deep); a door push, the light
+switch and reeling were not re-measured.
 
 Open: furniture's colliders are boxes that do not match the model everywhere (a sofa's rolled arm: the fingers close on
 the box, 15 cm under the visible top, so they stay as wanted); the thumb lies along a hammer's handle rather than round

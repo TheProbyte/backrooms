@@ -56,13 +56,17 @@ namespace Backrooms.Interaction
         float _quietUntil;
 
         public override Vector3 HoldOffset => new Vector3(0.22f, -0.36f, 0.42f);
-        public override Vector3 GripLocal => new Vector3(SledgehammerModel.HandleA * 0.95f, _now.g > 0f ? _now.g : GripCarry, 0f);
+        public override Vector3 GripLocal => GripAt(_now.g > 0f ? _now.g : GripCarry);
+        /// <summary>The palm's point on the handle, g along it (on the handle's face).</summary>
+        static Vector3 GripAt(float g) => new Vector3(SledgehammerModel.HandleA * SledgehammerModel.HandleScale(g) * 0.95f, g, 0f);
+        static readonly Quaternion GripTurn = Quaternion.LookRotation(Vector3.forward, Vector3.right)
+                                              * Quaternion.AngleAxis(18f, Vector3.down);
         // Fingers round the handle toward the striking face (+z), the back of the hand outward (+x); the handle across the
         // palm on the slant a hand holds a handle at (from the heel of the hand to the base of the index finger, the head
-        // toward the thumb), 26 degrees round from square across it. (Square across, the wrist could not turn the hand to it:
-        // the carried hammer hung 26 degrees off its pose.)
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(Vector3.forward, Vector3.right)
-                                                         * Quaternion.AngleAxis(26.5f, new Vector3(-0.12f, -0.93f, -0.36f));
+        // toward the thumb), 18 degrees round from square across it, turned about the palm's normal only. (At 26.5 about a
+        // tilted axis, the handle rose 6 mm into the heel of the hand and lay under the index finger's knuckle: the finger
+        // lay straight across it.)
+        public override Quaternion GripRotationLocal => GripTurn;
         public override float GripCurl => 0.97f;
         public override bool DropsStraight => false;
         public override string Status => _phase == Phase.WindUp ? $"sledgehammer: winding up {Mathf.RoundToInt(_charge * 100f)} %" : "sledgehammer (hold to wind up, release to swing)";
@@ -106,7 +110,7 @@ namespace Backrooms.Interaction
 
         protected override void OnPickedUp()
         {
-            _phase = Phase.Carry; _charge = 0f; _viewInit = false; _poseValid = false;
+            _phase = Phase.Carry; _charge = 0f; _viewInit = false; _poseValid = false; _carryRollSet = false; _solveT = -1f;
             _fx.PlayOneShot(SoundBank.WoodStudHit(1), 0.25f);
         }
 
@@ -186,7 +190,7 @@ namespace Backrooms.Interaction
         {
             StopStepping();
             _energy = Mathf.Lerp(0.32f, 1f, _charge);
-            _impact = Solve(_aimPoint, _aimDir, out _axis, out _reachable);
+            _impact = Solve(_aimPoint, _aimDir, out _axis, out _reachable, true);
             var cam = Camera.main;
             _strikeFrom = cam ? cam.transform.position : Shoulder;
             _swingTime = Mathf.Lerp(swingTime * 0.6f, swingTime, _charge);
@@ -232,44 +236,145 @@ namespace Backrooms.Interaction
         Vector3 Shoulder => _hand ? _hand.ReachShoulder : transform.position;
         float Reach => _hand ? Mathf.Min(armReach, _hand.ArmReach * 0.97f) : armReach;
 
-        /// <summary>The handle round (the collider is a little fatter) and the head: what the fingers close on.</summary>
-        public override float ContactDistance(Vector3 p) =>
-            Mathf.Min(SegmentDistance(p, new Vector3(0f, 0.02f, 0f), new Vector3(0f, 0.38f, 0f)) - SledgehammerModel.HandleA,
-                      BoxDistance(p, new Vector3(0f, 0.4f, 0f), new Vector3(0.0245f, 0.0275f, 0.06f)));
+        /// <summary>
+        /// The handle as the model is (oval, 13.5 mm across and 17.5 in the swing, swelling to a knob at the butt; a round
+        /// 13.5 mm from 2 cm up, the fingers closed 4 mm into its sides and the little finger missed the knob) and the head:
+        /// what the fingers close on.
+        /// </summary>
+        public override float ContactDistance(Vector3 p)
+        {
+            float y = Mathf.Clamp(p.y, 0f, 0.38f), k = SledgehammerModel.HandleScale(y);
+            float A = SledgehammerModel.HandleA * k, B = SledgehammerModel.HandleB * k;
+            float handle;
+            {
+                // An oval's distance (Quilez's approximation), then along the handle past its ends.
+                float k0 = Mathf.Sqrt(p.x * p.x / (A * A) + p.z * p.z / (B * B));
+                float k1 = Mathf.Sqrt(p.x * p.x / (A * A * A * A) + p.z * p.z / (B * B * B * B));
+                float across = k1 > 1e-6f ? k0 * (k0 - 1f) / k1 : -A;
+                float along = Mathf.Abs(p.y - y);
+                handle = along > 0f && across > 0f ? Mathf.Sqrt(across * across + along * along) : Mathf.Max(across, along > 0f ? along : across);
+            }
+            return Mathf.Min(handle, BoxDistance(p, new Vector3(0f, 0.4f, 0f), new Vector3(0.0245f, 0.0275f, 0.06f)));
+        }
+
+        // ---------------- Planning what the arm can do ----------------
+        //
+        // Every pose the hammer is put in is one the arm can hold it in: the hand's turn on the handle is fixed by the grip,
+        // so the hammer's own turn is chosen (FirstPersonBody.ArmStrain) so that the wrist and forearm stay inside what they
+        // do. (The blow was planned from the hammer alone: the hand had to turn 94 degrees past the wrist's limits, so the
+        // head swept sideways, or with the item's turn capped the handle ended 74 degrees off the palm; carried, the forearm
+        // was turned palm-up 104 degrees, past the 95 a forearm turns.)
+
+        FirstPersonBody _arm;
+        FirstPersonBody Arm => _arm ? _arm : (_hand ? _arm = _hand.GetComponent<FirstPersonBody>() : null);
+
+        /// <summary>The hand's turn holding the hammer turned so (the grip's, mirrored for a left hand).</summary>
+        Quaternion HandOf(Quaternion r)
+        {
+            Quaternion g = GripRotationLocal;
+            Vector3 f = g * Vector3.forward, u = g * Vector3.up;
+            if (_hand && _hand.Side < 0f) { f.x = -f.x; u.x = -u.x; }
+            return r * Quaternion.LookRotation(f, u);
+        }
+
+        /// <summary>The arm's strain holding the hammer so (0 without a body to ask); over: degrees the hand would miss by.</summary>
+        float Strain(in Pose p, out float over)
+        {
+            over = 0f;
+            var arm = Arm;
+            return arm && arm.HasArm ? arm.ArmStrain(p.h, HandOf(p.r), out over) : 0f;
+        }
+
+        Vector3 _solveX, _solveF, _solveAxis; float _solveT = -1f; bool _solveOk; Pose _solved;
 
         /// <summary>
         /// The pose that puts the face of the head on a point, moving along a direction: the handle across the blow (hand
-        /// below and to the right of the head), tipped toward the wall as far as it needs (up to 60 degrees) for the hand to
-        /// be within reach. axis: what the swing turns about.
+        /// below the head), tipped toward the wall (up to 60 degrees) and leaned about the blow's line (up to 45 either way)
+        /// as the arm can best hold it, the hand within reach and the arm well out (the elbow straightens into a blow; it
+        /// stayed bent 62 degrees), the wind-up over the shoulder it comes from also within the wrist's limits.
+        /// axis: what the swing turns about. ok: within reach. (Planned for the aim a few times a second, and afresh for the
+        /// blow.)
         /// </summary>
-        Pose Solve(Vector3 x, Vector3 f, out Vector3 axis, out bool ok)
+        Pose Solve(Vector3 x, Vector3 f, out Vector3 axis, out bool ok, bool fresh = false)
         {
             f.Normalize();
+            // (A plan costs about half a millisecond: kept while the aim stays put, and made at most ten times a second.)
+            if (!fresh && _solveT >= 0f && ((Time.time - _solveT < 0.25f && (x - _solveX).sqrMagnitude < 0.02f * 0.02f && Vector3.Angle(f, _solveF) < 2f)
+                                            || Time.time - _solveT < 0.1f))
+            {
+                axis = _solveAxis; ok = _solveOk; return _solved;
+            }
             Vector3 up = _view * Vector3.up, right = _view * Vector3.right;
             Vector3 u0 = Vector3.ProjectOnPlane(up * 0.85f - right * 0.35f, f).normalized;
             if (u0.sqrMagnitude < 0.5f) u0 = Vector3.ProjectOnPlane(-right, f).normalized;
             Vector3 s = Shoulder;
+            float reach = Reach;
             Pose best = default; ok = false; axis = Vector3.Cross(u0, f).normalized;
-            for (int k = 0; k <= 12; k++)
+            float bestScore = float.MaxValue;
+            for (int lean = -2; lean <= 2; lean++)
             {
-                float a = k * 5f * Mathf.Deg2Rad;
-                Vector3 d = u0 * Mathf.Cos(a) + f * Mathf.Sin(a);
-                Vector3 face = f * Mathf.Cos(a) - u0 * Mathf.Sin(a);
-                Vector3 centre = x - face * HeadHalf;
-                Vector3 h = centre - d * (HeadY - GripEnd);
-                best = new Pose { h = h, r = Quaternion.LookRotation(face, d), g = GripEnd };
-                axis = Vector3.Cross(d, face).normalized;
-                if ((h - s).magnitude <= Reach) { ok = true; break; }
+                Vector3 ul = Quaternion.AngleAxis(lean * 20f, f) * u0;
+                for (int k = 0; k <= 6; k++)
+                {
+                    float a = k * 10f * Mathf.Deg2Rad;
+                    Vector3 d = ul * Mathf.Cos(a) + f * Mathf.Sin(a);
+                    Vector3 face = f * Mathf.Cos(a) - ul * Mathf.Sin(a);
+                    Vector3 centre = x - face * HeadHalf;
+                    Vector3 h = centre - d * (HeadY - GripEnd);
+                    var p = new Pose { h = h, r = Quaternion.LookRotation(face, d), g = GripEnd };
+                    Vector3 ax = Vector3.Cross(d, face).normalized;
+                    float dist = (h - s).magnitude;
+                    // Out of reach (swinging at the air, or a wall a step away): the hand as far as it goes, any pose in
+                    // reach first.
+                    bool inReach = dist <= reach;
+                    if (!inReach) p.h = s + (h - s) * (reach / dist);
+                    float score = Strain(p, out float over) + over * 0.05f;
+                    score += inReach ? Mathf.Max(0f, reach * 0.92f - dist) * 3f               // the arm out through the blow
+                                     : 20f + (dist - reach) * 20f;
+                    score += Mathf.Abs(lean) * 0.04f + k * 0.008f;                       // nearest the plain blow among equals
+                    if (score >= bestScore) continue;
+                    // The wind-up it is swung from (fully wound) within the wrist's limits too.
+                    score += Strain(Raised(p, ax, 1f), out float overUp) * 0.5f + overUp * 0.03f;
+                    if (score < bestScore) { bestScore = score; best = p; axis = ax; ok = inReach; }
+                }
             }
-            if (!ok) best.h = s + Vector3.ClampMagnitude(best.h - s, Reach);
+            _solveX = x; _solveF = f; _solveT = Time.time; _solveAxis = axis; _solveOk = ok; _solved = best;
             return best;
         }
 
+        float _carryRoll; bool _carryRollSet;
+
+        /// <summary>
+        /// Carried choked up, the head forward and up at the lower right of the view; turned about its handle as the arm best
+        /// holds it (searched when picked up, then kept up to date a step at a time as the view tips).
+        /// </summary>
         Pose Carry()
         {
             Vector3 h = _viewPos + _view * new Vector3(0.24f, -0.37f, 0.42f);
             Vector3 d = _view * new Vector3(-0.15f, 0.55f, 0.82f).normalized;
-            Vector3 face = Vector3.ProjectOnPlane(_view * new Vector3(-0.55f, -0.1f, 1f), d).normalized;
+            Vector3 face0 = Vector3.ProjectOnPlane(_view * new Vector3(-0.55f, -0.1f, 1f), d).normalized;
+            if (Arm && Arm.HasArm)
+            {
+                float bestRoll = _carryRoll, bestS = float.MaxValue;
+                if (!_carryRollSet)
+                    for (int k = -12; k <= 12; k++) TryRoll(k * 10f);
+                else
+                {
+                    TryRoll(_carryRoll);
+                    bestS -= 0.005f;                                                         // (no dithering between near-equals)
+                    TryRoll(_carryRoll - 4f); TryRoll(_carryRoll + 4f);
+                }
+                _carryRoll = bestRoll; _carryRollSet = true;
+
+                void TryRoll(float roll)
+                {
+                    Vector3 fr = Quaternion.AngleAxis(roll, d) * face0;
+                    float sc = Strain(new Pose { h = h, r = Quaternion.LookRotation(fr, d), g = GripCarry }, out float over) + over * 0.05f
+                               + Mathf.Abs(roll) * 0.0015f;
+                    if (sc < bestS) { bestS = sc; bestRoll = roll; }
+                }
+            }
+            Vector3 face = Quaternion.AngleAxis(_carryRoll, d) * face0;
             return new Pose { h = h, r = Quaternion.LookRotation(face, d), g = GripCarry };
         }
 
@@ -345,12 +450,15 @@ namespace Backrooms.Interaction
                 }
                 case Phase.Follow:
                 {
-                    // On through (a hole, or nothing at all), slowing.
+                    // On through (a hole, or nothing at all), slowing: the whole arm goes on round the shoulder with the
+                    // hammer (it went on turning about the hand, 55 degrees past what a wrist bends: the handle left the palm).
                     float k = Mathf.Clamp01(_t / 0.18f);
-                    float on = (_result.hit ? 22f * _give : 55f) * (1f - (1f - k) * (1f - k));
+                    float on = (_result.hit ? 22f * _give : 50f) * (1f - (1f - k) * (1f - k));
+                    var q = Quaternion.AngleAxis(on, _axis);
+                    Vector3 sh = Shoulder;
                     _now = _impact;
-                    _now.r = Quaternion.AngleAxis(on, _axis) * _impact.r;
-                    _now.h = _impact.h + (_aimDir * 0.12f + Vector3.down * 0.1f) * (1f - (1f - k) * (1f - k)) * (_result.hit ? _give : 1f);
+                    _now.r = q * _impact.r;
+                    _now.h = sh + q * (_impact.h - sh);
                     break;
                 }
                 case Phase.Recover:
@@ -367,7 +475,7 @@ namespace Backrooms.Interaction
                 _now.h = s + Vector3.ClampMagnitude(_now.h - s, Reach);
             }
             rotation = _now.r;
-            position = _now.h - rotation * new Vector3(SledgehammerModel.HandleA * 0.95f, _now.g, 0f);
+            position = _now.h - rotation * GripAt(_now.g);
             return 1f;
         }
 

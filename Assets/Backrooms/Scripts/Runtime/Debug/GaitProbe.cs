@@ -734,12 +734,17 @@ namespace Backrooms.DebugTools
         /// finger joint's angle and the thumb's turn, the shoulder-to-palm distance, and skin vertices inside the held
         /// item's visible mesh (an odd-even ray test). Renders into dir when render.
         /// </summary>
-        public static string MeasureR2(string dir, string tag, bool render)
+        public static string MeasureR2(string dir, string tag, bool render) => MeasureR2(dir, tag, render, false);
+
+        /// <summary>As above; bodyTouch: against the body's own touch layer (a wall lean, a rail) instead of PropGrabber's.</summary>
+        public static string MeasureR2(string dir, string tag, bool render, bool bodyTouch)
         {
             var pl = FindAnyObjectByType<CamcorderPlayerController>();
-            var grab = pl.GetComponent<PropGrabber>();
+            var grab0 = pl.GetComponent<PropGrabber>();
             var fpb = pl.GetComponent<FirstPersonBody>();
             var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            var grab = new ContactOf(grab0, bodyTouch ? (System.Func<Vector3, float>)System.Delegate.CreateDelegate(typeof(System.Func<Vector3, float>), fpb,
+                                         typeof(FirstPersonBody).GetMethod("TouchDistance", bf)) : null);
             System.Func<string, object> G = n => typeof(FirstPersonBody).GetField(n, bf).GetValue(fpb);
             var upper = (Transform)G("_upper"); var fore = (Transform)G("_fore"); var hand = (Transform)G("_hand");
             Vector3 foreBackL = (Vector3)G("_foreBack"), handFL = (Vector3)G("_handFingers"), handBL = (Vector3)G("_handBack"), upperBackL = (Vector3)G("_upperBack"), w2g = (Vector3)G("_wristToGrip");
@@ -846,6 +851,36 @@ namespace Backrooms.DebugTools
                 Destroy(go); Destroy(rt); Destroy(tex);
             }
             return sb.ToString();
+        }
+
+        /// <summary>PropGrabber's numbers, its contact (or another surface) for the measure.</summary>
+        sealed class ContactOf
+        {
+            readonly PropGrabber _g; readonly System.Func<Vector3, float> _c;
+            public ContactOf(PropGrabber g, System.Func<Vector3, float> c) { _g = g; _c = c; }
+            public float ContactDistance(Vector3 p) => _c != null ? _c(p) : _g.ContactDistance(p);
+            public WorldItem HeldItem => _g.HeldItem;
+            public PropGrabber.State Current => _g.Current;
+            public bool OnDoor => _g.OnDoor;
+            public float HandBlend => _g.HandBlend;
+            public float HandCurl => _g.HandCurl;
+            public bool HasContact => _g.HasContact;
+            public Vector3 HandPosition => _g.HandPosition;
+            public Quaternion HandRotation => _g.HandRotation;
+        }
+
+        /// <summary>For hand tests: the held item put away, the player at (x, z) facing yaw and pitch, holding a new id ("" none).</summary>
+        public static string Hold(string id, float x, float z, float yaw, float pitch)
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var grab = pl.GetComponent<PropGrabber>();
+            if (grab.HeldItem) { var old = grab.HeldItem; grab.Drop(); Destroy(old.gameObject); }
+            pl.TeleportSafe(new Vector3(x, pl.transform.position.y + 0.05f, z), yaw, pitch);
+            if (string.IsNullOrEmpty(id)) return "holding nothing";
+            var t = pl.transform;
+            var item = ItemFactory.Spawn(id, t.position + t.forward * 0.4f + Vector3.up * 1.0f, t.rotation);
+            grab.PickUp(item);
+            return "holding " + id;
         }
 
         public static string MeasureHand(string dir, string tag, string next, bool render)

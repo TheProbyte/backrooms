@@ -25,6 +25,22 @@ namespace Backrooms.Interaction
             Destruction.DemolitionMaterials.HammerHandle, Destruction.DemolitionMaterials.HammerHead, Destruction.DemolitionMaterials.HammerFace,
         };
 
+        /// <summary>The handle's shape along it: (height, size times HandleA / HandleB).</summary>
+        static readonly (float y, float k)[] Profile =
+        {
+            (0f, 0.62f), (0.004f, 1.02f), (0.012f, 1.2f), (0.026f, 1.18f), (0.05f, 1.05f), (0.09f, 0.95f), (0.2f, 0.9f),
+            (0.3f, 0.95f), (0.35f, 1.04f), (HeadY - HeadHalfY - 0.002f, 1.08f), (HeadY - HeadHalfY, 0.9f), (HeadY + HeadHalfY + 0.003f, 0.9f),
+        };
+
+        /// <summary>How thick the handle is at a height (times HandleA / HandleB): the knob at the butt, the waist, the swell.</summary>
+        public static float HandleScale(float y)
+        {
+            if (y <= Profile[0].y) return Profile[0].k;
+            for (int i = 1; i < Profile.Length; i++)
+                if (y <= Profile[i].y) return Mathf.Lerp(Profile[i - 1].k, Profile[i].k, (y - Profile[i - 1].y) / Mathf.Max(1e-5f, Profile[i].y - Profile[i - 1].y));
+            return Profile[Profile.Length - 1].k;
+        }
+
         static Mesh Build()
         {
             var v = new List<Vector3>(); var n = new List<Vector3>(); var uv = new List<Vector2>();
@@ -33,11 +49,7 @@ namespace Backrooms.Interaction
 
             // ---- Handle: rings of an oval along y, smooth. (height, size)
             float top = HeadY + HeadHalfY + 0.003f;
-            (float y, float k)[] profile =
-            {
-                (0f, 0.62f), (0.004f, 1.02f), (0.012f, 1.2f), (0.026f, 1.18f), (0.05f, 1.05f), (0.09f, 0.95f), (0.2f, 0.9f),
-                (0.3f, 0.95f), (0.35f, 1.04f), (HeadY - HeadHalfY - 0.002f, 1.08f), (HeadY - HeadHalfY, 0.9f), (top, 0.9f),
-            };
+            var profile = Profile;
             const int seg = 20;
             int ring0 = v.Count;
             for (int r = 0; r < profile.Length; r++)

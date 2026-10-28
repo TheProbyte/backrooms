@@ -24,7 +24,8 @@ namespace Backrooms.Interaction
         // toward the head. (The grip used to be inside the body: the hand in it, fingertips out of its belly.)
         public override Vector3 HoldOffset => new Vector3(0.19f, -0.36f, 0.29f);
         public override Vector3 UseOffset => new Vector3(0.17f, -0.33f, 0.29f);
-        public override Quaternion HoldTurn => Quaternion.Euler(-70f, 0f, 0f);
+        // Rolled 8 degrees outward in the view: held square, the forearm was turned palm-down 97 degrees (a forearm turns 95).
+        public override Quaternion HoldTurn => Quaternion.Euler(0f, 0f, -8f) * Quaternion.Euler(-70f, 0f, 0f);
         static readonly Vector3 NeckBack = new Vector3(0.6f, 0.8f, 0f);
         public override Vector3 GripLocal => new Vector3(0f, 0.008f, 0.15f) + NeckBack * (NeckR + 0.002f);
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0.8f, -0.6f, 0f), NeckBack);

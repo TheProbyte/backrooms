@@ -189,7 +189,17 @@ namespace Backrooms.Interaction
                 }
             }
             _pose = Mathf.MoveTowards(_pose, _pulling || (_aiming && _aimValid) ? 1f : 0f, i.dt * 5f);
+            _holder = i.hand;
+            // Out of the arm's reach (low on a wall, the floor): the body bends toward it.
+            if (_pose > 0.3f && i.hand)
+            {
+                UseTarget(out Vector3 p, out Quaternion r);
+                Vector3 palm = p + r * GripLocal;
+                if ((palm - i.hand.ReachShoulder).magnitude > i.hand.ArmReach * 0.92f) i.hand.ReachToward(palm, false);
+            }
         }
+
+        PropGrabber _holder;
 
         /// <summary>Which way the little tab shown before sticking lies: across the view on a wall, along it on the floor.</summary>
         static Vector3 Tab(Vector3 n, Vector3 view)
@@ -338,8 +348,24 @@ namespace Backrooms.Interaction
             return _aiming && _aimValid;
         }
 
-        /// <summary>Aiming or pulling, the roll is held against the surface at the start or the free end (as far as the arm reaches).</summary>
+        /// <summary>
+        /// Aiming or pulling, the roll is held against the surface at the start or the free end, as far as the arm reaches
+        /// from the shoulder. (It was let go out to 0.62 m from the eye: past the arm's reach, the palm was up to 93 mm off
+        /// the roll, the roll going with the hand.)
+        /// </summary>
         public override float UsePose(out Vector3 position, out Quaternion rotation)
+        {
+            UseTarget(out position, out rotation);
+            if (_holder)
+            {
+                Vector3 s = _holder.ReachShoulder, palm = position + rotation * GripLocal;
+                Vector3 clamped = s + Vector3.ClampMagnitude(palm - s, _holder.ArmReach * 0.95f);
+                position += clamped - palm;
+            }
+            return _pose * 0.8f;
+        }
+
+        void UseTarget(out Vector3 position, out Quaternion rotation)
         {
             var eye = Camera.main ? Camera.main.transform.position : transform.position;
             Vector3 at, n, fwd;
@@ -354,7 +380,6 @@ namespace Backrooms.Interaction
             Vector3 p = at + n * 0.06f;
             position = eye + Vector3.ClampMagnitude(p - eye, 0.62f);
             rotation = Quaternion.LookRotation(fwd.normalized, n);
-            return _pose * 0.8f;
         }
 
         protected override void OnDropped() { Stop(); _aiming = false; _pose = 0f; }

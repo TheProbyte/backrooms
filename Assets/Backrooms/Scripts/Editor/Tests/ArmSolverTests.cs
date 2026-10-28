@@ -37,5 +37,25 @@ namespace Backrooms.Tests
             Assert.That(FirstPersonBody.TouchKept(reach + 0.03f, reach), Is.True, "swayed a little further");
             Assert.That(FirstPersonBody.TouchKept(reach + 0.06f, reach), Is.False, "well past it");
         }
+
+        [Test]
+        public void TheHammersHandleIsWhereTheModelIs()
+        {
+            // The fingers close on the handle the model draws: oval (13.5 by 17.5 mm), swelling to a knob at the butt
+            // (a round 13.5 mm handle from 2 cm up let the fingers 4 mm into its sides and the little finger off the knob).
+            var go = new GameObject("Sledge");
+            try
+            {
+                var s = go.AddComponent<Sledgehammer>();
+                float k = SledgehammerModel.HandleScale(0.27f);
+                Assert.That(SledgehammerModel.HandleScale(0.015f), Is.GreaterThan(1.15f), "the knob");
+                Assert.That(k, Is.InRange(0.88f, 0.96f), "the waist");
+                Assert.That(Mathf.Abs(s.ContactDistance(new Vector3(SledgehammerModel.HandleA * k, 0.27f, 0f))), Is.LessThan(0.0005f), "across");
+                Assert.That(Mathf.Abs(s.ContactDistance(new Vector3(0f, 0.27f, SledgehammerModel.HandleB * k))), Is.LessThan(0.0005f), "in the swing");
+                Assert.That(s.ContactDistance(new Vector3(0f, 0.27f, 0f)), Is.LessThan(-0.01f), "inside");
+                Assert.That(s.ContactDistance(new Vector3(0.03f, 0.27f, 0f)), Is.InRange(0.016f, 0.019f), "off it");
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
     }
 }
