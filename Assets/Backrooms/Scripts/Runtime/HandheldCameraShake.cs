@@ -155,7 +155,8 @@ namespace Backrooms
             // Jolts (a cord yanked out of the hand): a damped spring, felt even with the shake turned off.
             _joltVel += (-_jolt * 260f - _joltVel * 22f) * dt;
             _jolt += _joltVel * dt;
-            transform.localPosition = pos * shakeIntensity;
+            // Held a little out in front of the eye (CamcorderPlayerController.CamcorderHold), the shake on top.
+            transform.localPosition = (player ? player.CamcorderHold : Vector3.zero) + pos * shakeIntensity;
             transform.localRotation = Quaternion.Euler(rot * shakeIntensity + _jolt);
         }
 

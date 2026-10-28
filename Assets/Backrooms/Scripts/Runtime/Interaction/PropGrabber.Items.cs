@@ -412,7 +412,11 @@ namespace Backrooms.Interaction
             // The item is in the hand, not glued to the lens: it trails the view's turns and the body's moves a little and
             // bobs with the steps, and the hand (which grips it) goes with it.
             float dt = Time.deltaTime;
-            if (!_swayInit) { _swayRot = pivot.rotation; _swayPos = pivot.position; _swayVel = Vector3.zero; _swayInit = true; }
+            // Half as far out as the camcorder is held (CamcorderPlayerController.CamcorderHold, a little in front of the
+            // eye): a held thing sits in the picture nearly as it did with the camera at the eye, and the arm stays bent
+            // (all the way out, it was nearly straight).
+            Vector3 anchor = pivot.position + pivot.rotation * (_player.CamcorderHold * 0.5f);
+            if (!_swayInit) { _swayRot = pivot.rotation; _swayPos = anchor; _swayVel = Vector3.zero; _swayInit = true; }
             // Heavier things lag the view's turns more.
             float lag = 0.075f * (1f + Mathf.Clamp(item.Body ? item.Body.mass : 0.3f, 0f, 2f) * 0.6f);
             _swayRot = Quaternion.Slerp(_swayRot, pivot.rotation, 1f - Mathf.Exp(-dt / lag));
@@ -420,10 +424,10 @@ namespace Backrooms.Interaction
             // The load swings on the arm as on a pendulum (an under-damped spring): it trails a start, swings past a stop
             // and settles; heavier things swing slower and further.
             float mass = Mathf.Clamp(item.Body ? item.Body.mass : 0.3f, 0.05f, 3f);
-            _swayPos = Springs.Oscillator(_swayPos, ref _swayVel, pivot.position, Mathf.Lerp(4.2f, 2.6f, mass / 3f), Mathf.Lerp(0.55f, 0.38f, mass / 3f), dt);
-            if ((_swayPos - pivot.position).sqrMagnitude > 0.07f * 0.07f)
+            _swayPos = Springs.Oscillator(_swayPos, ref _swayVel, anchor, Mathf.Lerp(4.2f, 2.6f, mass / 3f), Mathf.Lerp(0.55f, 0.38f, mass / 3f), dt);
+            if ((_swayPos - anchor).sqrMagnitude > 0.07f * 0.07f)
             {
-                _swayPos = pivot.position + Vector3.ClampMagnitude(_swayPos - pivot.position, 0.07f);
+                _swayPos = anchor + Vector3.ClampMagnitude(_swayPos - anchor, 0.07f);
                 _swayVel *= 0.5f;
             }
             float speed = _player.PlanarVelocity.magnitude;

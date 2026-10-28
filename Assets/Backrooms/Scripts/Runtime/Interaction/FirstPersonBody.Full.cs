@@ -98,15 +98,21 @@ namespace Backrooms.Interaction
             return root;
         }
 
-        /// <summary>After the body: the head and neck to the view, the left arm and the camcorder to the eye.</summary>
+        Transform _camT;
+
+        /// <summary>
+        /// After the body: the head and neck to the view, the camcorder where the camera is (held a little out in front of
+        /// the eye: CamcorderPlayerController.CamcorderHold), the left hand under it.
+        /// </summary>
         void UpdateFull()
         {
             var pivot = _player.cameraPitchPivot ? _player.cameraPitchPivot : transform;
+            if (!_camT) { var c = pivot.GetComponentInChildren<Camera>(); _camT = c ? c.transform : pivot; }
             bool show = !_player.noclip && _player.Eye > HideBelowEye * 0.6f;
             if (_camcorder)
             {
                 _camcorder.gameObject.SetActive(show);
-                _camcorder.SetPositionAndRotation(pivot.position, pivot.rotation);
+                _camcorder.SetPositionAndRotation(_camT.position, _camT.rotation);
             }
             if (_body && _body.gameObject.activeSelf && _neck && _headBone)
             {
@@ -119,23 +125,28 @@ namespace Backrooms.Interaction
             }
             if (_leftArm) _leftArm.gameObject.SetActive(show);
             bool onBody = _lRig != null && !_leftArm;
-            if (_lRig != null && show && (!onBody || (_body && _body.gameObject.activeSelf))) UpdateLeftArm(pivot);
+            if (_lRig != null && show && (!onBody || (_body && _body.gameObject.activeSelf))) UpdateLeftArm(pivot, _camT);
         }
 
-        /// <summary>The left hand under the camcorder, palm up, holding it to the eye; the elbow down in front of the chest.</summary>
-        void UpdateLeftArm(Transform cam)
+        /// <summary>
+        /// The left hand under the camcorder, palm up, holding it a little out in front of the face; the elbow down in front
+        /// of the chest. The shoulder is the body's (from the eye), the grip the camcorder's (the camera, with its shake).
+        /// </summary>
+        void UpdateLeftArm(Transform eye, Transform cam)
         {
             var r = _lRig;
             float side = _grab ? -_grab.Side : -1f;
             Quaternion yaw = transform.rotation;
-            Vector3 shoulder = cam.position + yaw * new Vector3(0.2f * side, -0.28f, -0.08f);
+            Vector3 shoulder = eye.position + yaw * new Vector3(0.2f * side, -0.28f, -0.08f);
             // The body's arm: its own shoulder, the collarbone bringing it up and forward toward the camcorder a little.
             if (!r.root && !_leftArm) shoulder = CarryShoulder(r.clavicle, r.clavicleRest, r.upper, shoulder, 20f);
             Quaternion handRot = Quaternion.LookRotation(cam.forward * 0.85f - cam.right * side * 0.35f, -cam.up * 0.9f + cam.right * side * 0.3f);
             Vector3 grip = cam.position + cam.rotation * new Vector3(0.0f, -0.075f, 0.08f);
             Vector3 wrist = grip - handRot * new Vector3(0f, -0.02f, 0.065f);
             Vector3 d = wrist - shoulder;
-            float a = r.upperLen, b = r.foreLen, len = Mathf.Clamp(d.magnitude, Mathf.Abs(a - b) + 0.02f, (a + b) * 0.999f);
+            // (Soft IK: going up stairs the body's height trails the eye's and the arm comes near straight; eased, it
+            // does not snap.)
+            float a = r.upperLen, b = r.foreLen, len = Mathf.Clamp(Gait.SoftReach(d.magnitude, a + b, (a + b) * 0.03f), Mathf.Abs(a - b) + 0.02f, (a + b) * 0.999f);
             Vector3 dir = d.normalized;
             Vector3 pole = Vector3.ProjectOnPlane(yaw * new Vector3(0.3f * side, -1f, 0.35f), dir).normalized;
             float cosA = Mathf.Clamp((a * a + len * len - b * b) / (2f * a * len), -1f, 1f);
@@ -144,7 +155,13 @@ namespace Backrooms.Interaction
             if (_leftArm) _leftArm.SetPositionAndRotation(shoulder, Quaternion.identity);
             Vector3 handBack = handRot * Vector3.up;
             Orient(r.upper, r.upperAxis, r.upperBack, elbow - shoulder, -pole);
-            Orient(r.fore, r.foreAxis, r.foreBack, wristAt - elbow, handBack);
+            // The forearm's roll from where the thumb points (across the forearm, always well defined), not from the back
+            // of the hand: palm up under the camcorder the back of the hand lies nearly along the forearm, and its roll
+            // flipped (the arm's bones turned up to 2400 degrees a second).
+            Vector3 f = (wristAt - elbow).normalized;
+            Vector3 thumb = Vector3.ProjectOnPlane(side * Vector3.Cross(handRot * Vector3.forward, handBack), f);
+            Vector3 foreBack = thumb.sqrMagnitude > 1e-6f ? side * Vector3.Cross(thumb.normalized, f) : handBack;
+            Orient(r.fore, r.foreAxis, r.foreBack, wristAt - elbow, foreBack);
             Orient(r.hand, r.handFingers, r.handBack, handRot * Vector3.forward, handBack);
             r.hand.position = wristAt;
             foreach (var (t, rest, axis, w, _) in r.joints) t.localRotation = rest * Quaternion.AngleAxis(0.85f * 62f * w, axis);
@@ -173,16 +190,26 @@ namespace Backrooms.Interaction
             {
                 var same = Mathf.Sign(_legA.side) == Mathf.Sign(side * _sideSign) ? _legA : _legB;
                 var other = same == _legA ? _legB : _legA;
-                lead = Vector3.Dot(FootAt(other) - FootAt(same), fwd) * 0.45f;
+                lead = Vector3.Dot(FootAt(other) - FootAt(same), fwd) * 0.32f;
             }
-            Vector3 want = fwd * Mathf.Clamp(lead, -0.2f, 0.2f) * _walkAmount - _vel * 0.015f;
-            _armSwing = Springs.Oscillator(_armSwing, ref _armSwingVel, want, 1.7f, 0.45f, dt);
-            Vector3 hang = shoulder + yaw * new Vector3(0.065f * side, -0.55f, 0.03f) + _armSwing;
-            Quaternion hangRot = Quaternion.LookRotation(Vector3.down * 0.95f + fwd * 0.12f + _armSwing * 0.6f, right * side);
+            // Running the arms are held bent (elbows near 90 degrees) and swing further.
+            float runArms = Mathf.InverseLerp(1.9f, 3.2f, _vel.magnitude);
+            // (About 30 cm front to back walking, as measured on people; the arms bend running rather than swing wider.)
+            Vector3 want = fwd * Mathf.Clamp(lead, -0.17f, 0.17f) * _walkAmount - _vel * 0.015f;
+            _armSwing = Springs.Oscillator(_armSwing, ref _armSwingVel, want, Mathf.Lerp(1.7f, 2.4f, runArms), 0.45f, dt);
+            // The elbow bends as the arm swings forward (about 30 degrees across a walking swing, from gait data) and
+            // straightens behind.
+            float ahead = Vector3.Dot(_armSwing, fwd);
+            Vector3 hangLocal = Vector3.Lerp(new Vector3(0.065f * side, -0.55f, 0.03f), new Vector3(0.1f * side, -0.38f, 0.17f), runArms);
+            hangLocal.y += Mathf.Max(0f, ahead) * 0.32f;
+            Vector3 hang = shoulder + yaw * hangLocal + _armSwing;
+            Quaternion hangRot = Quaternion.LookRotation(Vector3.Lerp(Vector3.down * 0.95f + fwd * 0.12f, fwd * 0.7f + Vector3.down * 0.55f - right * side * 0.2f, runArms)
+                                                         + _armSwing * 0.6f, right * side);
+            float hangCurl = Mathf.Lerp(0.25f, 0.75f, runArms);
 
             UpdateTouch(shoulder, yaw, side);
             _touchW = Springs.Damper(_touchW, ref _touchWVel, _touching ? 1f : 0f, 0.09f, dt);
-            if (_touchW < 0.002f && !_touching) { wrist = hang; hand = hangRot; curl = 0.25f; return; }
+            if (_touchW < 0.002f && !_touching) { wrist = hang; hand = hangRot; curl = hangCurl; return; }
             Vector3 tw; Quaternion tr; float tc;
             if (_touchRail)
             {
@@ -204,7 +231,7 @@ namespace Backrooms.Interaction
             float s = Mathf.SmoothStep(0f, 1f, _touchW);
             wrist = Vector3.Lerp(hang, tw, s);
             hand = Quaternion.Slerp(hangRot, tr, s);
-            curl = Mathf.Lerp(0.25f, tc, s);
+            curl = Mathf.Lerp(hangCurl, tc, s);
         }
 
         float _sideSign = 1f;
@@ -313,17 +340,29 @@ namespace Backrooms.Interaction
         /// The ground where a foot should land near t: a stair tread is found (where the floor steps up or down within a
         /// tread's depth) and the foot put on it whole, heel and toe clear of its edges, instead of half over the nosing.
         /// </summary>
+        // How far the shoe reaches behind and ahead of the ankle (measured on the shoes, MeasureHeels), for stair treads.
+        float _treadBack = 0.1f, _treadFront = 0.12f;
+
         Vector3 OnTread(Vector3 t, Vector3 dir, float fallback)
         {
             float y0 = GroundY(t, fallback);
-            float yA = GroundY(t + dir * 0.11f, fallback), yB = GroundY(t - dir * 0.11f, fallback);
+            float yA = GroundY(t + dir * _treadFront, fallback), yB = GroundY(t - dir * _treadBack, fallback);
             t.y = y0;
             if (Mathf.Abs(yA - y0) < 0.025f && Mathf.Abs(yB - y0) < 0.025f) return t;
             float back = 0f, front = 0f;
             for (int k = 1; k <= 14; k++) { if (Mathf.Abs(GroundY(t - dir * (k * 0.025f), fallback) - y0) > 0.025f) break; back = k * 0.025f; }
             for (int k = 1; k <= 14; k++) { if (Mathf.Abs(GroundY(t + dir * (k * 0.025f), fallback) - y0) > 0.025f) break; front = k * 0.025f; }
             float depth = back + front;
-            float shift = depth < 0.24f ? (front - back) * 0.5f : Mathf.Clamp(0f, 0.1f - back, front - 0.12f);
+            // The whole shoe on the tread, heel clear of the nosing behind and the toe clear of the riser ahead. A tread
+            // shorter than the shoe: going up, the toe clear of the riser and the heel over the nosing behind; going down,
+            // the heel on the tread and the toes over the nosing (as people do: never the toe into the riser).
+            float shift;
+            if (depth >= _treadBack + _treadFront) shift = Mathf.Clamp(0f, _treadBack - back, front - _treadFront);
+            else
+            {
+                bool up = GroundY(t + dir * (front + 0.05f), fallback) > y0 + 0.025f;
+                shift = up ? front - _treadFront : _treadBack - back;
+            }
             return t + dir * shift;
         }
 
@@ -421,17 +460,29 @@ namespace Backrooms.Interaction
                 _body.position = world;
             }
 
-            // A gait for the direction: steps shorter sideways and backward, the stance a little wider sideways.
+            // A gait for the speed from human gait data (Motion/Gait.cs): steps a second rise with speed (about 113 a minute
+            // walking at 1.35 m/s, steps of 0.72 m; 165 running at 3.6 m/s, steps of 1.3 m), a foot is on the ground 60 %
+            // of the cycle walking and under 40 % running. For the direction: side-steps short and quick (a leg reaches
+            // little sideways: about 4 a second, 0.35 m, at walking speed), backward steps shorter, the stance a little
+            // wider sideways; shorter, quicker steps crouched. The step's length is always the speed over the cadence.
             float sideways = speed > 0.05f ? Mathf.Abs(_moveLocal.x) / speed : 0f;
             float backward = speed > 0.05f ? Mathf.Clamp01(-_moveLocal.y / speed) : 0f;
-            float step = Mathf.Clamp(0.3f + 0.22f * speed, 0.3f, 1.1f) * Mathf.Lerp(1f, 0.6f, sideways) * Mathf.Lerp(1f, 0.75f, backward);
-            float run = Mathf.InverseLerp(1.6f, 3.6f, speed);
-            float stanceShare = Mathf.Lerp(0.62f, 0.38f, run);
-            float cycle = speed > 0.05f ? 2f * step / speed : 1f;
-            float swingTime = Mathf.Clamp((1f - stanceShare) * cycle, 0.2f, 0.42f) * Mathf.Lerp(1f, 0.8f, sideways);
-            float reachOut = Mathf.Min(stanceShare * step, 0.42f) * Mathf.SmoothStep(0f, 1f, speed / 0.7f) * Mathf.Lerp(1f, 0.55f, sideways);
+            float run = Gait.RunAmount(speed);
+            float cadence = Gait.Cadence(speed, run) * Mathf.Lerp(1f, 2.1f, sideways) * Mathf.Lerp(1f, 1.25f, backward) * (1f + 0.15f * squat);
+            float step = speed > 0.05f ? Mathf.Clamp(speed / cadence, 0.15f, 1.45f) : 0.3f;
+            float stanceShare = Gait.StanceShare(speed, run);
+            float cycle = 2f / cadence;
+            float swingTime = Mathf.Clamp((1f - stanceShare) * cycle, 0.2f, 0.48f) * Mathf.Lerp(1f, 0.85f, sideways);
+            // Where a foot lands ahead of the hip: a little short of half the stance's travel (a heel far out in front made
+            // the hips drop 9 cm at every step; people's hips rise and fall about 4-5 cm).
+            float reachOut = Mathf.Min(stanceShare * step * 0.88f, 0.5f) * Mathf.SmoothStep(0f, 1f, speed / 0.7f) * Mathf.Lerp(1f, 0.55f, sideways);
             Vector3 vdir = speed > 0.05f ? _vel / speed : fwd;
             float wide = 0.025f * sideways;
+            // The foot's tilt at toe-off, heel up, rolling about the ball of the foot (steeper running), and at a heel
+            // strike, toes up, about the heel (Perry's rockers); how long the landing's tilt takes to roll out.
+            float toeOffPitch = Mathf.Lerp(38f, 50f, run) * (1f - sideways) * (1f - backward);
+            float heelStrike = Mathf.Lerp(-14f, -8f, run);
+            float rollOut = Mathf.Lerp(0.11f, 0.06f, run);
 
             Vector3 HomeOf(Leg g) => Home(g, squat) + right * (Mathf.Sign(g.side) * wide);
 
@@ -439,7 +490,11 @@ namespace Backrooms.Interaction
             {
                 if (g == null) continue;
                 var home = HomeOf(g);
-                if (!g.placed || (g.plant - home).sqrMagnitude > 2.5f * 2.5f)
+                // Far from where it should be (a teleport, a respawn): put it there. A swinging foot is judged by where it
+                // left from (its old plant falls far behind during a running stride, and resetting it then dropped the
+                // step: a foot jumping forward, and steps missed).
+                bool far = g.swinging ? (g.from - home).sqrMagnitude > 3.5f * 3.5f : (g.plant - home).sqrMagnitude > 2.5f * 2.5f;
+                if (!g.placed || far)
                 {
                     g.plant = home; g.plant.y = GroundY(home, _body.position.y);
                     g.plantFwd = fwd; g.swinging = false; g.placed = true;
@@ -473,6 +528,12 @@ namespace Backrooms.Interaction
                 if (g == crowded) need = Mathf.Max(need, 0.05f);
                 if (_stumble > 0f) need = Mathf.Max(need, off.magnitude);
                 if (airborne) need = -1f;
+                // Steps evenly spaced at the cadence: not before most of a step's time since the other foot left (people's
+                // steps alternate evenly; stepping only when left behind let one foot leave the moment the other landed
+                // while the other waited: a limp, 0.43 s and 0.60 s steps). A foot far behind goes anyway.
+                // (Side-steps lead and close up, unevenly: not for them.)
+                if (speed > 0.4f && sideways < 0.5f && other != null && !_turnInPlace && !stairs && _stumble <= 0f && need < Mathf.Lerp(0.12f, 0.3f, run)
+                    && Time.time - other.liftedAt < Mathf.Lerp(0.95f, 0.9f, run) / cadence) continue;
                 if (need > worst) { worst = need; next = g; }
             }
             if (next != null)
@@ -489,18 +550,22 @@ namespace Backrooms.Interaction
                 Vector3 flatSpan = land - next.plant; flatSpan.y = 0f;
                 next.reachCap = capRef < float.MaxValue ? flatSpan.magnitude + 0.02f : float.MaxValue;
                 float dist = Vector3.Distance(new Vector3(next.plant.x, 0f, next.plant.z), new Vector3(land.x, 0f, land.z));
-                float maxFoot = Mathf.Lerp(4.5f, 9f, run);
+                // A swinging foot's fastest (m/s): about 5-6 walking (it covers the stride in the swing), 10 running.
+                float maxFoot = Mathf.Lerp(5.5f, 10f, run);
+                next.liftedAt = Time.time;
                 next.swinging = true; next.t = 0f; next.duration = Mathf.Clamp(Mathf.Max(swingTime, dist * 1.5f / maxFoot), 0.2f, 0.55f);
                 next.from = next.plant; next.fromFwd = next.plantFwd; next.landY = land.y; next.liftPitch = Mathf.Max(0f, next.lastPitch);
                 next.landAt = land;
                 if (_turnInPlace && speed < 0.2f) next.duration = Mathf.Min(next.duration, 0.28f);
-                if (next.reachCap < float.MaxValue) next.duration = Mathf.Clamp(dist * 1.6f / maxFoot, 0.2f, Mathf.Min(next.duration, 0.27f));
+                if (next.reachCap < float.MaxValue) next.duration = Mathf.Clamp(dist * 1.6f / 4.5f, 0.2f, Mathf.Min(next.duration, 0.27f));
                 if (_stumble > 0f) { next.duration = Mathf.Min(next.duration, 0.22f); _stumble = 0f; }
             }
 
             // Hips: they lag the view's turns a little (the torso and head follow it more), go down with the squat, bob
             // over the stride and sway over the standing foot, all through springs.
-            float bobWant = (_swingUp - 0.45f) * 0.03f * _walkAmount;
+            // (Walking the hips sit a little lower, the knees softer, and rise a centimetre as a foot passes the other: most
+            // of the rise and fall comes from the legs' reach, below.)
+            float bobWant = (_swingUp * 0.01f - 0.015f) * _walkAmount;
             _bob = Springs.Damper(_bob, ref _bobVel, bobWant, 0.04f, dt);
             float swayWant = 0f;
             if (_legA != null && _legB != null)
@@ -509,9 +574,23 @@ namespace Backrooms.Interaction
                 else if (_legB.swinging && !_legA.swinging) swayWant = Mathf.Sign(_legA.side);
             }
             _sway = Springs.Damper(_sway, ref _swayVel, swayWant * 0.014f * _walkAmount, 0.08f, dt);
-            float lead = 0f;
-            if (_legA != null && _legB != null) lead = Vector3.Dot(FootAt(_legA) - FootAt(_legB), fwd) * Mathf.Sign(_legA.side);
-            _twist = Springs.Damper(_twist, ref _twistVel, Mathf.Clamp(lead * 9f, -5f, 5f), 0.07f, dt);
+            // The pelvis turns with the stride, the hip of the leg in front going forward with it (gait data: about 4
+            // degrees each way walking, more running); the thorax turns the other way with the opposite arm (about 3); the
+            // spine takes the difference. Little of it sideways.
+            float leadR = 0f;           // the right foot ahead (+1) or behind (-1), in steps
+            if (_legA != null && _legB != null)
+                leadR = Mathf.Clamp(Vector3.Dot(FootAt(_legA) - FootAt(_legB), fwd) * Mathf.Sign(_legA.side) / Mathf.Max(0.3f, step), -1f, 1f);
+            float gaitW = _walkAmount * (1f - 0.7f * sideways);
+            _pelvisYaw = Springs.Damper(_pelvisYaw, ref _pelvisYawVel, -Mathf.Lerp(4f, 6f, run) * leadR * gaitW, 0.05f, dt);
+            _twist = Springs.Damper(_twist, ref _twistVel, Mathf.Lerp(3f, 6f, run) * leadR * gaitW, 0.06f, dt);
+            // Obliquity: while one foot carries the body the other side of the pelvis drops a few degrees.
+            float obl = 0f;
+            if (_legA != null && _legB != null)
+            {
+                if (_legA.swinging && !_legB.swinging) obl = -Mathf.Sign(_legA.side);
+                else if (_legB.swinging && !_legA.swinging) obl = -Mathf.Sign(_legB.side);
+            }
+            _pelvisRoll = Springs.Damper(_pelvisRoll, ref _pelvisRollVel, obl * Mathf.Lerp(4f, 5f, run) * _walkAmount * Mathf.Clamp01(speed / 0.6f), 0.06f, dt);
             _hipsYOff = Springs.Damper(_hipsYOff, ref _hipsYVel, -drop + _bob, 0.04f, dt);
 
             Vector3 hipsBase = _body.position + up * (_hipsHeight + _hipsYOff) + right * _sway - fwd * (squat * 0.12f) + _bumpHips;
@@ -519,7 +598,7 @@ namespace Backrooms.Interaction
             // Feet: where each sole is this frame.
             var soles = new Vector3[2]; var fwds = new Vector3[2]; var pitches = new float[2];
             var legs = new[] { _legA, _legB };
-            float liftH = Mathf.Lerp(0.06f, 0.13f, run) * Mathf.Lerp(0.6f, 1f, Mathf.Clamp01(speed / 0.8f));
+            float liftH = Mathf.Lerp(0.065f, 0.15f, run) * Mathf.Lerp(0.6f, 1f, Mathf.Clamp01(speed / 0.8f));
             float swingUp = 0f;
             for (int i = 0; i < 2; i++)
             {
@@ -543,7 +622,7 @@ namespace Backrooms.Interaction
                         if (apart < SideGap) target += right * (Mathf.Sign(g.side) * (SideGap - apart));
                     }
                     {
-                        float cap = Mathf.Min(g.reachCap, Mathf.Lerp(1.45f, 2.2f, run));
+                        float cap = Mathf.Min(g.reachCap, Mathf.Max(1.45f, 2.1f * step));
                         Vector3 span = target - g.from; span.y = 0f;
                         if (span.magnitude > cap) target = g.from + span.normalized * cap + Vector3.up * target.y;
                     }
@@ -561,17 +640,25 @@ namespace Backrooms.Interaction
                     float vy = dy < -0.03f ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.3f, 1f, g.t))
                              : dy > 0.03f ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.65f, g.t)) : s;
                     sole.y = g.from.y + dy * vy;
-                    float arc = Mathf.Sin(g.t * Mathf.PI);
+                    // The lift is highest early in the swing (the knee folds, the heel comes up behind), the toes skimming
+                    // lower as the foot passes the other one.
+                    float arc = Gait.SwingLift(g.t);
                     sole += up * (arc * (Mathf.Abs(dy) > 0.03f ? Mathf.Max(liftH, 0.05f) : liftH));
                     footFwd = Vector3.Slerp(g.fromFwd, fwd, s);
-                    // Forward: toes leave last and the heel lands first; backward or down a step: the toes land first.
+                    // Forward: toes leave last and the heel lands first, toes up; backward or down a step: the toes land first.
                     float down = Mathf.InverseLerp(-0.04f, -0.12f, dy);
-                    float landPitch = Mathf.Lerp(-10f, 12f, Mathf.Max(backward, down));
-                    // From the tilt the foot had as it left the floor (its heel up), to the landing's.
+                    float landPitch = Mathf.Lerp(heelStrike * (1f - sideways), 12f, Mathf.Max(backward, down));
+                    // From exactly the tilt the foot had as it left the floor (heel up: no jump at lift-off), levelling,
+                    // to the landing's.
                     float k = Mathf.Max(Mathf.Clamp01(speed / 0.6f), down);
-                    pitch = Mathf.Lerp(Mathf.Max(18f * k, g.liftPitch), landPitch * k, Mathf.SmoothStep(0f, 1f, g.t));
-                    swingUp = Mathf.Max(swingUp, arc);
-                    if (g.t >= 1f) { g.swinging = false; g.plant = target; g.plantFwd = fwd; StepsLanded++; FootLanded?.Invoke(target, speed); }
+                    pitch = Gait.SwingPitch(g.t, g.liftPitch, landPitch * k);
+                    g.pitchS = pitch; g.pitchVel = 0f;
+                    swingUp = Mathf.Max(swingUp, Mathf.Sin(g.t * Mathf.PI));
+                    if (g.t >= 1f)
+                    {
+                        g.swinging = false; g.plant = target; g.plantFwd = fwd; g.since = 0f; g.landPitch = pitch;
+                        StepsLanded++; FootLanded?.Invoke(target, speed);
+                    }
                 }
                 else
                 {
@@ -579,8 +666,17 @@ namespace Backrooms.Interaction
                     footFwd = g.plantFwd;
                     Vector3 off = g.plant - HomeOf(g); off.y = 0f;
                     float behind = -Vector3.Dot(off, vdir);
-                    pitch = 22f * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(reachOut * 0.3f, reachOut * 0.95f + 0.02f, behind)) * Mathf.Clamp01(speed / 0.3f)
-                            * (1f - sideways);
+                    // The heel rises about the ball of the foot from a little behind the hip to toe-off (the forefoot rocker).
+                    // (Over at least 20 cm: starting or stopping, reachOut passes through nothing and the share jumped.)
+                    float rise = Gait.HeelRise(behind / Mathf.Max(reachOut, 0.2f), toeOffPitch) * Mathf.Clamp01(speed / 0.3f);
+                    // Just landed: the heel strike's tilt rolls out about the heel (toes come down), or a toes-first landing's
+                    // about the ball (the heel comes down), eased: it used to switch to flat in one frame.
+                    g.since += dt;
+                    float roll = g.since < rollOut ? 1f - Mathf.SmoothStep(0f, 1f, g.since / rollOut) : 0f;
+                    // Through a fast spring (inertialized): the tilt a planted foot wants can change in a frame (a start, a
+                    // stop, a turn), the foot's roll about its heel or ball does not.
+                    g.pitchS = Springs.Damper(g.pitchS, ref g.pitchVel, Mathf.Lerp(rise, g.landPitch, roll), 0.03f, dt);
+                    pitch = g.pitchS;
                 }
                 soles[i] = sole; fwds[i] = footFwd; pitches[i] = pitch;
             }
@@ -623,14 +719,25 @@ namespace Backrooms.Interaction
                 Vector3 flatFwd = Vector3.ProjectOnPlane(fwds[i], up).normalized;
                 if (flatFwd.sqrMagnitude < 0.5f) flatFwd = fwd;
                 Vector3 footRight = Vector3.Cross(up, flatFwd);
-                float reach = (g.upper + g.lower) * 0.985f;
+                float legLen = g.upper + g.lower;
+                // How straight a leg on the floor may be before the hips come down for it: nearly straight standing (knee
+                // about 9 degrees; it was 20, a slight squat), a little more bent walking (about 16: the knee's give after
+                // the heel strike), bent running (about 30: a runner's knee never straightens on the ground).
+                float reach = legLen * Mathf.Lerp(Mathf.Lerp(0.997f, 0.99f, _walkAmount), 0.965f, run);
                 ankles[i] = AnkleAt(g, sole, flatFwd, footRight, up, pitches[i]);
+                // The gait's ankle, before any heel lift for reach: the hips come down for that first. (Using the lifted
+                // ankle fed back: a lifted heel let the hips stay up, which kept the heel lifted: the body stood on tiptoe
+                // after a spawn or a teleport until its next step.)
+                Vector3 gaitAnkle = ankles[i];
                 // A planted foot the leg can no longer reach (left behind at the end of a stride) lifts its heel, as a real
                 // one does, rather than being dragged along the floor by a straight leg.
                 // (Solved exactly, not stepped: stepping fed back through the hips and made the heel flicker.)
                 Vector3 hipNow = hip - up * _pelvisDrop;      // where the hip is with the drop it has now
                 float heelNeed = 0f;
-                if (!g.swinging && _air < 0.5f && (ankles[i] - hipNow).magnitude > reach)
+                // (Only a foot behind: a foot ahead out of reach, as at a heel strike, is reached by the hips coming down;
+                // lifting its heel snapped it 35 degrees in a frame.)
+                Vector3 travel = speed > 0.1f ? vdir : fwd;
+                if (!g.swinging && _air < 0.5f && Vector3.Dot(sole - hipNow, travel) < 0f && (ankles[i] - hipNow).magnitude > reach)
                 {
                     float lo = Mathf.Max(0f, pitches[i]), hi = Mathf.Lerp(35f, 22f, sideways);
                     if ((AnkleAt(g, sole, flatFwd, footRight, up, hi) - hipNow).magnitude > reach) lo = hi;
@@ -641,33 +748,44 @@ namespace Backrooms.Interaction
                     }
                     heelNeed = lo;
                 }
-                // Up at once as far as the leg needs; down again eased (the heel settles, it does not drop).
-                g.heel = heelNeed >= g.heel ? heelNeed : Springs.Damper(g.heel, ref g.heelVel, heelNeed, 0.05f, dt);
-                if (heelNeed >= g.heel) g.heelVel = 0f;
+                // Up as fast as a heel rises at toe-off (500 degrees a second: at once, it jumped 35 degrees in a frame when
+                // the body rose a stair); down again eased (the heel settles, it does not drop).
+                if (heelNeed >= g.heel) { g.heel = Mathf.MoveTowards(g.heel, heelNeed, Mathf.Lerp(500f, 1200f, run) * dt); g.heelVel = 0f; }
+                else g.heel = Springs.Damper(g.heel, ref g.heelVel, heelNeed, 0.05f, dt);
                 if (g.swinging) { g.heel = 0f; g.heelVel = 0f; }
-                if (g.heel > pitches[i]) { pitches[i] = g.heel; ankles[i] = AnkleAt(g, sole, flatFwd, footRight, up, pitches[i]); }
+                if (g.heel > 0f && g.heel > pitches[i]) { pitches[i] = g.heel; ankles[i] = AnkleAt(g, sole, flatFwd, footRight, up, pitches[i]); }
                 g.lastPitch = pitches[i];
+                // Heel up, the toes bend at the ball of the foot and stay on the floor (they used to turn with the foot,
+                // into the floor); relaxed while the legs hang.
+                g.toeBend = Mathf.Clamp(pitches[i], 0f, 60f) * (1f - _air);
                 pitched[i] = Quaternion.AngleAxis(pitches[i], footRight) * flatFwd;
                 Vector3 kneeTo = fwd + flatFwd;
                 fronts[i] = kneeTo.sqrMagnitude > 0.05f ? kneeTo.normalized : fwd;
-                Vector3 dd = ankles[i] - hip;
-                if (dd.magnitude > reach)
+                // Soft IK: a swinging leg eases into straight (no snap before the heel strike), a planted one only over the
+                // last few millimetres.
+                g.soft = Springs.Damper(g.soft, ref g.softVel, (g.swinging ? 0.03f : Mathf.Lerp(0.004f, 0.02f, run)) * legLen, 0.06f, dt);
+                // A swinging leg late in its swing counts too, so the hips are down for the heel strike when it lands.
+                // (Early in its swing a foot is free: one just lifted far behind pulled the hips 20 cm down running.)
+                float r = g.swinging ? Mathf.Lerp(legLen * 0.999f, reach, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.5f, 1f, g.t))) : reach;
+                Vector3 dd = gaitAnkle - hip;
+                if ((!g.swinging || g.t > 0.5f) && dd.magnitude > r)
                 {
                     // How far down the hip must go for this ankle to be in reach.
-                    float h2 = reach * reach - (dd.x * dd.x + dd.z * dd.z);
-                    float wantY = h2 > 0f ? ankles[i].y + Mathf.Sqrt(h2) : ankles[i].y + reach * 0.5f;
+                    float h2 = r * r - (dd.x * dd.x + dd.z * dd.z);
+                    float wantY = h2 > 0f ? gaitAnkle.y + Mathf.Sqrt(h2) : gaitAnkle.y + r * 0.5f;
                     needDrop = Mathf.Max(needDrop, hip.y - wantY);
                 }
             }
             _pelvisDrop = Springs.Damper(_pelvisDrop, ref _pelvisDropVel, Mathf.Min(needDrop, 0.25f), 0.05f, dt);
             _hips.position = hipsBase - up * _pelvisDrop;
-            _hips.rotation = Quaternion.AngleAxis(lag, up) * _body.rotation * _hipsRestLocal;
+            _hips.rotation = Quaternion.AngleAxis(_pelvisRoll, fwd) * Quaternion.AngleAxis(lag + _pelvisYaw, up) * _body.rotation * _hipsRestLocal;
 
             // Torso: the stoop, a lean into a crouch, a lean into the walk and into turns, knocks; it takes back most of
-            // the hips' lag (it turns with the view).
+            // the hips' lag (it turns with the view), and the stride's pelvis turn and drop (the shoulders stay level).
             float leanWant = bend + Mathf.Clamp(_moveLocal.y, -1f, 3f) * 2.5f;
             _leanS = Springs.Damper(_leanS, ref _leanSVel, leanWant, 0.06f, dt);
-            PoseSpine(_leanS + _bumpTorso.x, _twist - lag * 0.75f, -_player.Lean * 11f - _player.TurnLean * 4f + _bumpTorso.y);
+            PoseSpine(_leanS + _bumpTorso.x, _twist - _pelvisYaw - lag * 0.75f,
+                      -_player.Lean * 11f - _player.TurnLean * 4f + _bumpTorso.y - _pelvisRoll * 0.85f);
 
             for (int i = 0; i < 2; i++)
             {
@@ -680,16 +798,20 @@ namespace Backrooms.Interaction
         /// <summary>
         /// The ankle for a foot whose sole is at 'sole' (under the ankle when flat), pitched by 'pitch' degrees: heel up
         /// (positive) it turns about the ball of the foot, so the toes stay where they are on the floor while the heel
-        /// peels off; toes up (negative) it turns about the heel.
+        /// peels off; toes up (negative) it turns about the back of the heel, which stays on the floor (a heel strike).
         /// </summary>
         static Vector3 AnkleAt(Leg g, Vector3 sole, Vector3 flatFwd, Vector3 footRight, Vector3 up, float pitch)
         {
-            if (pitch <= 0f) return sole + up * g.ankle;
-            Vector3 ball = sole + flatFwd * g.toe;
-            return ball + Quaternion.AngleAxis(pitch, footRight) * (up * g.ankle - flatFwd * g.toe);
+            if (pitch >= 0f)
+            {
+                Vector3 ball = sole + flatFwd * g.toe;
+                return ball + Quaternion.AngleAxis(pitch, footRight) * (up * g.ankle - flatFwd * g.toe);
+            }
+            Vector3 heel = sole - flatFwd * g.heelBack;
+            return heel + Quaternion.AngleAxis(pitch, footRight) * (up * g.ankle + flatFwd * g.heelBack);
         }
 
-        float _pelvisDrop, _pelvisDropVel, _bobVel, _swayVel, _twistVel;
+        float _pelvisDrop, _pelvisDropVel, _bobVel, _swayVel, _twistVel, _pelvisYaw, _pelvisYawVel, _pelvisRoll, _pelvisRollVel;
         /// <summary>The least the feet are apart across the body when one lands (centre to centre), metres.</summary>
         const float SideGap = 0.15f;
         Vector3 _velVel;

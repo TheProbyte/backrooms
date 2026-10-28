@@ -1,0 +1,724 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Text;
+using Backrooms.Generation;
+using Backrooms.Interaction;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+namespace Backrooms.DebugTools
+{
+    /// <summary>
+    /// Measures the first-person body's gait (2026-10-28). On a flat test floor high above the world (no walls; numbers
+    /// only, nothing is lit up there) the bot stands, walks, runs, stops, strafes, backs up, turns on the spot,
+    /// crouch-walks, and climbs and descends a test staircase. Per phase it logs: cadence and step length, stance share,
+    /// the fastest a planted foot's pivot (heel or ball) moved, the deepest a heel, ball or toe went into the floor, the
+    /// fastest any body bone turned and the biggest one-frame spike (pops), the knee's range, its swing peak and fastest
+    /// change, the closest the feet came across the body, pelvis rotation / obliquity / tilt, its vertical and lateral
+    /// motion, the thorax's rotation against the pelvis, the arm swing and its phase against the legs, the toe bend, the
+    /// foot's angle at heel strike and toe-off. <c>GaitProbe.Run(folder)</c> in Play; <see cref="Done"/>, <see cref="Report"/>.
+    /// <c>GaitProbe.Film(folder)</c>: side and front frames of a walk cycle in the office (shadow-only parts drawn).
+    /// <c>GaitProbe.View(folder)</c>: first-person frames at pitch 0/45/max/70 standing and walking, and how much of each
+    /// frame is the body.
+    /// </summary>
+    public class GaitProbe : MonoBehaviour
+    {
+        public string folder;
+        public string mode = "gait";
+        public bool Done { get; private set; }
+        public string Report => _log.ToString();
+        readonly StringBuilder _log = new StringBuilder();
+
+        public static GaitProbe Run(string folder) => Make(folder, "gait");
+        public static GaitProbe Film(string folder) => Make(folder, "film");
+        public static GaitProbe View(string folder) => Make(folder, "view");
+
+        static GaitProbe Make(string folder, string mode)
+        {
+            var go = new GameObject("GaitProbe");
+            go.SetActive(false);
+            var p = go.AddComponent<GaitProbe>();
+            p.folder = folder; p.mode = mode;
+            go.SetActive(true);
+            return p;
+        }
+
+        CamcorderPlayerController _pl;
+        FirstPersonBody _body;
+        Transform _root;
+        FieldInfo _fLegA, _fLegB, _fSwinging, _fAir, _fLegRight, _fLegFwd;
+        Transform _pelvis, _spine3;
+        readonly Transform[] _thigh = new Transform[2], _calf = new Transform[2], _foot = new Transform[2], _ball = new Transform[2];
+        Transform _upperR, _lowerR, _handR;
+        readonly List<Transform> _bones = new List<Transform>();
+        // Contact points measured on the shoes at rest: the heel (in the foot's frame), the ball and the toe tip (in the
+        // ball's frame).
+        readonly Vector3[] _heelL = new Vector3[2], _ballL = new Vector3[2], _toeL = new Vector3[2];
+        Quaternion _pelvisRest, _spineRest;
+        Vector3 _pelvisFwdL, _pelvisRightL, _spineFwdL;
+        readonly Quaternion[] _toeRest = new Quaternion[2];
+
+        IEnumerator Start()
+        {
+            if (!string.IsNullOrEmpty(folder)) Directory.CreateDirectory(folder);
+            var ws = WorldStreamer.Current;
+            _pl = ws && ws.player ? ws.player.GetComponent<CamcorderPlayerController>() : FindAnyObjectByType<CamcorderPlayerController>();
+            _body = _pl ? _pl.GetComponent<FirstPersonBody>() : null;
+            if (!_body) { _log.AppendLine("no player body"); Done = true; yield break; }
+            _root = _pl.transform;
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            _fLegA = typeof(FirstPersonBody).GetField("_legA", bf); _fLegB = typeof(FirstPersonBody).GetField("_legB", bf);
+            _fAir = typeof(FirstPersonBody).GetField("_air", bf);
+            _fLegRight = typeof(FirstPersonBody).GetField("_legRight", bf); _fLegFwd = typeof(FirstPersonBody).GetField("_legFwd", bf);
+            if (mode == "film") { yield return FilmRoutine(); Done = true; yield break; }
+            if (mode == "view") { yield return ViewRoutine(); Done = true; yield break; }
+            yield return GaitRoutine();
+            Done = true;
+        }
+
+        void OnDestroy()
+        {
+            if (_pl) { _pl.botInput = null; _pl.moveScale = 1f; }
+            if (_platform) Destroy(_platform);
+            if (_shoeMesh) Destroy(_shoeMesh);
+        }
+
+        // ---------------- Bones ----------------
+
+        bool FindBones()
+        {
+            var all = _root.GetComponentsInChildren<Transform>(true);
+            Transform F(string n) { foreach (var t in all) if (t.name == n) return t; return null; }
+            _pelvis = F("pelvis"); _spine3 = F("spine_03");
+            string[] s = { "l", "r" };
+            for (int i = 0; i < 2; i++) { _thigh[i] = F("thigh_" + s[i]); _calf[i] = F("calf_" + s[i]); _foot[i] = F("foot_" + s[i]); _ball[i] = F("ball_" + s[i]); }
+            _upperR = F("upperarm_r"); _lowerR = F("lowerarm_r"); _handR = F("hand_r");
+            _bones.Clear();
+            foreach (var n in new[] { "pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "thigh_l", "calf_l", "foot_l", "ball_l", "thigh_r", "calf_r",
+                                      "foot_r", "ball_r", "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r", "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l" })
+            { var t = F(n); if (t) _bones.Add(t); }
+            return _pelvis && _thigh[0] && _thigh[1] && _calf[0] && _calf[1] && _foot[0] && _foot[1] && _ball[0] && _ball[1];
+        }
+
+        SkinnedMeshRenderer _shoes;
+        Mesh _shoeMesh;
+        readonly Vector3[] _footFwdL = new Vector3[2];
+
+        /// <summary>
+        /// The shoes' heel, ball and toe tip on the sole, from the skinned shoe mesh in its bind pose (MakeHuman's, standing
+        /// level), relative to the foot and toe bones: independent of the pose the feet happen to be in; and the foot's
+        /// forward in its bone's frame, for its tilt. Also how far the shoes are into the floor standing now.
+        /// </summary>
+        void MeasureFeet(float floorY)
+        {
+            foreach (var r in _root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) if (r.name.Contains("shoes")) _shoes = r;
+            if (!_shoes) { _log.AppendLine("no shoes"); return; }
+            _shoeMesh = new Mesh();
+            var mesh = _shoes.sharedMesh;
+            // (The mesh is not readable: the vertices come from a bake, mapped into each bone's frame below.)
+            _shoes.BakeMesh(_shoeMesh, true);
+            var baked = _shoeMesh.vertices;
+            var bw = mesh.boneWeights; var bp = mesh.bindposes; var bones = _shoes.bones;
+            Vector3 fwdM = _shoes.transform.InverseTransformDirection(_root.forward), upM = _shoes.transform.InverseTransformDirection(_root.up);
+            float W(BoneWeight w, int b) => (w.boneIndex0 == b ? w.weight0 : 0f) + (w.boneIndex1 == b ? w.weight1 : 0f) + (w.boneIndex2 == b ? w.weight2 : 0f) + (w.boneIndex3 == b ? w.weight3 : 0f);
+            for (int i = 0; i < 2; i++)
+            {
+                int fb = System.Array.IndexOf(bones, _foot[i]), bb = System.Array.IndexOf(bones, _ball[i]);
+                if (fb < 0 || bb < 0) { _log.AppendLine($"foot {i}: bones not in the shoes"); continue; }
+                Vector3 fwdF = bp[fb].MultiplyVector(fwdM).normalized, upF = bp[fb].MultiplyVector(upM).normalized;
+                Vector3 fwdB = bp[bb].MultiplyVector(fwdM).normalized, upB = bp[bb].MultiplyVector(upM).normalized;
+                float minF = 0f, minU = 0f, minUB = 0f, maxFB = 0f;
+                for (int v = 0; v < baked.Length && v < bw.Length; v++)
+                {
+                    float wf = W(bw[v], fb), wb = W(bw[v], bb);
+                    if (wf < 0.85f && wb < 0.85f) continue;           // riding (almost) rigidly on one of the two
+                    Vector3 w = _shoes.transform.position + _shoes.transform.rotation * baked[v];
+                    if (wf >= 0.85f)
+                    {
+                        Vector3 pf = _foot[i].InverseTransformPoint(w);
+                        minU = Mathf.Min(minU, Vector3.Dot(pf, upF)); minF = Mathf.Min(minF, Vector3.Dot(pf, fwdF));
+                    }
+                    else
+                    {
+                        Vector3 pb = _ball[i].InverseTransformPoint(w);
+                        minUB = Mathf.Min(minUB, Vector3.Dot(pb, upB)); maxFB = Mathf.Max(maxFB, Vector3.Dot(pb, fwdB));
+                        Vector3 pf = _foot[i].InverseTransformPoint(w);
+                        minU = Mathf.Min(minU, Vector3.Dot(pf, upF));
+                    }
+                }
+                _heelL[i] = fwdF * (minF + 0.01f) + upF * minU;
+                _ballL[i] = upB * minUB;
+                _toeL[i] = fwdB * (maxFB - 0.012f) + upB * minUB;
+                _footFwdL[i] = fwdF;
+                _toeRest[i] = Quaternion.Inverse(bp[fb].inverse.rotation) * bp[bb].inverse.rotation;
+                Vector3 ballInFoot = bp[fb].MultiplyPoint3x4(bp[bb].inverse.MultiplyPoint3x4(Vector3.zero));
+                _log.AppendLine($"foot {i} (bind pose): heel {minF:0.000} m from the ankle, ball {Vector3.Dot(ballInFoot, fwdF):0.000}, toe tip {Vector3.Dot(ballInFoot, fwdF) + maxFB:0.000}, ankle {-minU:0.000} over the sole");
+            }
+            // Standing now: the shoes' lowest point against the floor.
+            _shoes.BakeMesh(_shoeMesh, true);
+            float low = float.MaxValue;
+            foreach (var lv in _shoeMesh.vertices) low = Mathf.Min(low, (_shoes.transform.position + _shoes.transform.rotation * lv).y);
+            _log.AppendLine($"standing now: the shoes' lowest point {(low - floorY) * 100f:0.0} cm off the floor");
+            Vector3 fwd = LegFwd, right = LegRight;
+            _pelvisRest = _pelvis.rotation;
+            _pelvisFwdL = _pelvis.InverseTransformDirection(fwd); _pelvisRightL = _pelvis.InverseTransformDirection(right);
+            if (_spine3) _spineFwdL = _spine3.InverseTransformDirection(fwd);
+        }
+
+        // The test floor's pieces (the platform and the stairs): the surface height under a point, exactly.
+        readonly List<Bounds> _boxes = new List<Bounds>();
+
+        float SurfaceAt(Vector3 p)
+        {
+            float y = _groundY;
+            foreach (var b in _boxes)
+                if (p.x >= b.min.x && p.x <= b.max.x && p.z >= b.min.z && p.z <= b.max.z) y = Mathf.Max(y, b.max.y);
+            return y;
+        }
+
+        /// <summary>How far a point inside a raised box is from that box's nearest side, across (m).</summary>
+        float Inside(Vector3 p)
+        {
+            float best = float.MaxValue;
+            foreach (var b in _boxes)
+            {
+                if (b.max.y <= _groundY + 0.01f || p.y >= b.max.y || p.x < b.min.x || p.x > b.max.x || p.z < b.min.z || p.z > b.max.z) continue;
+                best = Mathf.Min(best, Mathf.Min(Mathf.Min(p.x - b.min.x, b.max.x - p.x), Mathf.Min(p.z - b.min.z, b.max.z - p.z)));
+            }
+            return best == float.MaxValue ? 0f : best;
+        }
+
+        /// <summary>How far each shoe's mesh is into the floor or a step at most (m: depth under a floor, or how far into
+        /// a step from its side).</summary>
+        void ShoeDepth(out float left, out float right)
+        {
+            left = right = -1f;
+            if (!_shoes) return;
+            _shoes.BakeMesh(_shoeMesh, true);
+            var v = _shoeMesh.vertices;
+            Vector3 r = LegRight, o = _root.position;
+            Vector3 pos = _shoes.transform.position; Quaternion rot = _shoes.transform.rotation;
+            for (int i = 0; i < v.Length; i++)
+            {
+                Vector3 w = pos + rot * v[i];
+                float depth = SurfaceAt(w) - w.y;
+                // Inside a step (more than 2 cm under its top): how far in from its side, across (a toe into a riser).
+                if (depth > 0.02f) depth = Mathf.Min(depth, Inside(w));
+                if (Vector3.Dot(w - o, r) < 0f) left = Mathf.Max(left, depth); else right = Mathf.Max(right, depth);
+            }
+        }
+
+        Vector3 LegFwd => _fLegFwd != null ? (Vector3)_fLegFwd.GetValue(_body) : _root.forward;
+        Vector3 LegRight => _fLegRight != null ? (Vector3)_fLegRight.GetValue(_body) : _root.right;
+        float Air => _fAir != null ? (float)_fAir.GetValue(_body) : 0f;
+
+        bool Swinging(int i)
+        {
+            var leg = (i == 0 ? _fLegA : _fLegB)?.GetValue(_body);
+            if (leg == null) return false;
+            if (_fSwinging == null) _fSwinging = leg.GetType().GetField("swinging", BindingFlags.Public | BindingFlags.Instance);
+            return (bool)_fSwinging.GetValue(leg);
+        }
+
+        Vector3 Heel(int i) => _foot[i].TransformPoint(_heelL[i]);
+        Vector3 Ball(int i) => _ball[i].TransformPoint(_ballL[i]);
+        Vector3 Toe(int i) => _ball[i].TransformPoint(_toeL[i]);
+
+        // ---------------- One phase's numbers ----------------
+
+        class Stats
+        {
+            public string name;
+            public int frames, steps0, steps1;
+            public float time, dist;
+            public float slipMax, slipSum; public int slipN;
+            public float floorMin = 0f, floorMinPlanted = 0f;
+            public float angMax; public string angBone = "";
+            public float spikeMax; public string spikeBone = "";
+            public float footSpeedMax;
+            public float kneeMin = 999f, kneeMax, kneeRateMax, kneeSwingPeakSum; public int kneeSwingN;
+            public float kneeLandSum; public int kneeLandN;
+            public float gapMin = 999f; public int crossings;
+            public int planted0, planted1;
+            public readonly List<float> pYaw = new List<float>(), pRoll = new List<float>(), pTilt = new List<float>(), pY = new List<float>(), pX = new List<float>(),
+                tYaw = new List<float>(), tRel = new List<float>(), arm = new List<float>(), lead = new List<float>();
+            public float toeMax, landPitchSum, liftPitchSum; public int landN, liftN;
+            public float treadBadMax; public int treadLandings, treadOff;
+            public readonly List<float> lands = new List<float>();
+            public float airMax; public int ungrounded;
+        }
+
+        Stats _st;
+        bool _measure;
+        readonly float[] _swingKneePeak = new float[2];
+        readonly bool[] _wasSwinging = new bool[2];
+        Quaternion[] _prevRot;
+        float[] _prevW, _prevW2;
+        Vector3[] _prevHeel = new Vector3[2], _prevBall = new Vector3[2], _prevAnkle = new Vector3[2];
+        float[] _prevKnee = new float[2];
+        bool _prevSet;
+        float _groundY;
+        StringBuilder _csv;
+
+        float Knee(int i) => Vector3.Angle(_calf[i].position - _thigh[i].position, _foot[i].position - _calf[i].position);
+
+        /// <summary>The foot's tilt, toes up positive (the foot bone's forward as it stood level).</summary>
+        float FootPitch(int i) => Mathf.Asin(Mathf.Clamp(_foot[i].TransformDirection(_footFwdL[i]).y, -1f, 1f)) * Mathf.Rad2Deg;
+
+        float _poseDt = 1f / 60f;
+
+        void Sample(float frameDt)
+        {
+            // The pose sampled now was made in the last frame's LateUpdate (the probe runs before it): rates over that
+            // frame's time (a long frame then a short one otherwise reads as a jump).
+            float dt = _poseDt;
+            _poseDt = frameDt;
+            int nb = _bones.Count;
+            if (_prevRot == null || _prevRot.Length != nb) { _prevRot = new Quaternion[nb]; _prevW = new float[nb]; _prevW2 = new float[nb]; _prevSet = false; }
+            Quaternion inv = Quaternion.Inverse(_root.rotation);
+            var st = _st;
+            for (int b = 0; b < nb; b++)
+            {
+                Quaternion q = inv * _bones[b].rotation;
+                if (_prevSet)
+                {
+                    float w = Quaternion.Angle(_prevRot[b], q) / dt;
+                    if (_measure && st != null)
+                    {
+                        if (w > st.angMax) { st.angMax = w; st.angBone = _bones[b].name; }
+                        // A pop: the previous frame was much faster than both of its neighbours.
+                        float spike = _prevW[b] - Mathf.Max(_prevW2[b], w);
+                        if (spike > st.spikeMax) { st.spikeMax = spike; st.spikeBone = _bones[b].name; }
+                    }
+                    _prevW2[b] = _prevW[b]; _prevW[b] = w;
+                }
+                _prevRot[b] = q;
+            }
+            Vector3 fwd = LegFwd, right = LegRight, up = Vector3.up;
+            bool grounded = _pl.IsGrounded && Air < 0.5f;
+            float depthL = -1f, depthR = -1f;
+            if (_measure && st != null) ShoeDepth(out depthL, out depthR);
+            float pelvisYaw = Vector3.SignedAngle(Vector3.ProjectOnPlane(_pelvis.TransformDirection(_pelvisFwdL), up), fwd, up) * -1f;
+            for (int i = 0; i < 2; i++)
+            {
+                bool sw = Swinging(i);
+                Vector3 heel = Heel(i), ball = Ball(i), toe = Toe(i), ankle = _foot[i].position;
+                float knee = Knee(i);
+                if (_prevSet && _measure && st != null)
+                {
+                    Vector3 dh = heel - _prevHeel[i], db = ball - _prevBall[i];
+                    dh.y = 0f; db.y = 0f;
+                    float fs = (ankle - _prevAnkle[i]).magnitude / dt;
+                    st.footSpeedMax = Mathf.Max(st.footSpeedMax, fs);
+                    if (!sw && !_wasSwinging[i] && grounded)
+                    {
+                        float slip = Mathf.Min(dh.magnitude, db.magnitude) / dt;
+                        st.slipMax = Mathf.Max(st.slipMax, slip); st.slipSum += slip; st.slipN++;
+                        if (i == 0) st.planted0++; else st.planted1++;
+                    }
+                    // The shoe mesh into the floor (or a stair) under it, as drawn.
+                    float under = -(i == 0 ? depthL : depthR);
+                    st.floorMin = Mathf.Min(st.floorMin, under);
+                    if (!sw) st.floorMinPlanted = Mathf.Min(st.floorMinPlanted, under);
+                    st.kneeMin = Mathf.Min(st.kneeMin, knee); st.kneeMax = Mathf.Max(st.kneeMax, knee);
+                    st.kneeRateMax = Mathf.Max(st.kneeRateMax, Mathf.Abs(knee - _prevKnee[i]) / dt);
+                    Quaternion rel = Quaternion.Inverse(_foot[i].rotation) * _ball[i].rotation;
+                    st.toeMax = Mathf.Max(st.toeMax, Quaternion.Angle(_toeRest[i], rel));
+                    if (sw) _swingKneePeak[i] = Mathf.Max(_swingKneePeak[i], knee);
+                    if (sw && !_wasSwinging[i]) { st.liftPitchSum += -FootPitch(i); st.liftN++; _swingKneePeak[i] = knee; }
+                    if (!sw && _wasSwinging[i])
+                    {
+                        st.lands.Add(Time.time);
+                        st.landPitchSum += FootPitch(i); st.landN++;
+                        st.kneeSwingPeakSum += _swingKneePeak[i]; st.kneeSwingN++;
+                        st.kneeLandSum += knee; st.kneeLandN++;
+                        // On a stair tread whole: the heel and the toe on the same surface height.
+                        float hs = SurfaceAt(heel), ts = SurfaceAt(toe);
+                        if (Mathf.Abs(hs - _groundY) > 0.02f || Mathf.Abs(ts - _groundY) > 0.02f)
+                        {
+                            st.treadLandings++;
+                            if (Mathf.Abs(hs - ts) > 0.02f) st.treadOff++;
+                        }
+                    }
+                }
+                _prevHeel[i] = heel; _prevBall[i] = ball; _prevAnkle[i] = ankle; _prevKnee[i] = knee;
+                _wasSwinging[i] = sw;
+            }
+            if (_measure && st != null)
+            {
+                Vector3 l = _foot[0].position, r = _foot[1].position;
+                float gap = Vector3.Dot(r - l, right);
+                st.gapMin = Mathf.Min(st.gapMin, gap);
+                if (gap < 0f) st.crossings++;
+                st.frames++;
+                st.airMax = Mathf.Max(st.airMax, Air);
+                if (!_pl.IsGrounded) st.ungrounded++;
+                float roll = Mathf.Asin(Mathf.Clamp(_pelvis.TransformDirection(_pelvisRightL).y, -1f, 1f)) * Mathf.Rad2Deg;
+                float tilt = Mathf.Asin(Mathf.Clamp(-_pelvis.TransformDirection(_pelvisFwdL).y, -1f, 1f)) * Mathf.Rad2Deg;
+                st.pYaw.Add(pelvisYaw); st.pRoll.Add(roll); st.pTilt.Add(tilt);
+                st.pY.Add(_pelvis.position.y - _root.position.y);
+                st.pX.Add(Vector3.Dot(_pelvis.position - _root.position, right));
+                if (_spine3)
+                {
+                    float ty = -Vector3.SignedAngle(Vector3.ProjectOnPlane(_spine3.TransformDirection(_spineFwdL), up), fwd, up);
+                    st.tYaw.Add(ty); st.tRel.Add(Mathf.DeltaAngle(pelvisYaw, ty));
+                }
+                if (_handR && _upperR) st.arm.Add(Vector3.Dot(_handR.position - _upperR.position, fwd));
+                st.lead.Add(Vector3.Dot(r - l, fwd));
+                _csv?.AppendLine($"{st.name},{Time.time:0.000},{depthL * 100f:0.0},{depthR * 100f:0.0},{Knee(0):0.0},{Knee(1):0.0},{(Swinging(0) ? 1 : 0)},{(Swinging(1) ? 1 : 0)},{pelvisYaw:0.00},{st.pRoll[st.pRoll.Count - 1]:0.00},{st.pY[st.pY.Count - 1]:0.000},{st.pX[st.pX.Count - 1]:0.000},{FootPitch(0):0.0},{FootPitch(1):0.0},{_foot[0].position.y - _groundY:0.000},{_foot[1].position.y - _groundY:0.000},{(st.arm.Count > 0 ? st.arm[st.arm.Count - 1] : 0f):0.000}");
+            }
+            _prevSet = true;
+        }
+
+        static float Amp(List<float> v) { if (v.Count == 0) return 0f; float a = float.MaxValue, b = float.MinValue; foreach (var x in v) { a = Mathf.Min(a, x); b = Mathf.Max(b, x); } return b - a; }
+
+        static float Corr(List<float> a, List<float> b)
+        {
+            int n = Mathf.Min(a.Count, b.Count);
+            if (n < 3) return 0f;
+            double ma = 0, mb = 0; for (int i = 0; i < n; i++) { ma += a[i]; mb += b[i]; }
+            ma /= n; mb /= n;
+            double sab = 0, saa = 0, sbb = 0;
+            for (int i = 0; i < n; i++) { double da = a[i] - ma, db = b[i] - mb; sab += da * db; saa += da * da; sbb += db * db; }
+            return saa > 1e-9 && sbb > 1e-9 ? (float)(sab / System.Math.Sqrt(saa * sbb)) : 0f;
+        }
+
+        void Write(Stats s)
+        {
+            int steps = s.steps1 - s.steps0;
+            float spm = s.time > 0f ? steps / s.time * 60f : 0f;
+            float stepLen = steps > 0 ? s.dist / steps : 0f;
+            float speed = s.time > 0f ? s.dist / s.time : 0f;
+            float stance = s.frames > 0 ? (s.planted0 + s.planted1) * 0.5f / s.frames : 0f;
+            _log.AppendLine($"[{s.name}] speed {speed:0.00} m/s, {steps} steps in {s.time:0.0} s = {spm:0} steps/min, step {stepLen:0.00} m, stance share {stance:0.00}");
+            if (s.lands.Count >= 3)
+            {
+                float mean = (s.lands[s.lands.Count - 1] - s.lands[0]) / (s.lands.Count - 1), lo = 99f, hi = 0f;
+                for (int k = 1; k < s.lands.Count; k++) { float d = s.lands[k] - s.lands[k - 1]; lo = Mathf.Min(lo, d); hi = Mathf.Max(hi, d); }
+                _log.AppendLine($"   from landing intervals: {60f / mean:0} steps/min, step {speed * mean:0.00} m; step times {lo:0.00}-{hi:0.00} s");
+            }
+            if (s.airMax > 0.01f || s.ungrounded > 0) _log.AppendLine($"   legs hanging up to {s.airMax:0.00}, frames not grounded {s.ungrounded} of {s.frames}");
+            _log.AppendLine($"   planted pivot slip max {s.slipMax:0.000} m/s (mean {(s.slipN > 0 ? s.slipSum / s.slipN : 0f):0.0000}); heel/ball/toe under the floor at most {-s.floorMin * 100f:0.0} cm (planted {-s.floorMinPlanted * 100f:0.0} cm); fastest foot {s.footSpeedMax:0.0} m/s");
+            _log.AppendLine($"   fastest bone {s.angMax:0} deg/s ({s.angBone}); biggest one-frame spike {s.spikeMax:0} deg/s ({s.spikeBone})");
+            _log.AppendLine($"   knee {s.kneeMin:0}-{s.kneeMax:0} deg, swing peak {(s.kneeSwingN > 0 ? s.kneeSwingPeakSum / s.kneeSwingN : 0f):0} deg, at landing {(s.kneeLandN > 0 ? s.kneeLandSum / s.kneeLandN : 0f):0} deg, fastest {s.kneeRateMax:0} deg/s");
+            _log.AppendLine($"   feet apart at least {s.gapMin * 100f:0.0} cm across (frames crossed {s.crossings}); toe bend max {s.toeMax:0} deg; foot at heel strike {(s.landN > 0 ? s.landPitchSum / s.landN : 0f):0.0} deg toes-up, at toe-off {(s.liftN > 0 ? s.liftPitchSum / s.liftN : 0f):0.0} deg heel-up");
+            _log.AppendLine($"   pelvis: rotation range {Amp(s.pYaw):0.0} deg, obliquity range {Amp(s.pRoll):0.0} deg, tilt range {Amp(s.pTilt):0.0} deg, vertical {Amp(s.pY) * 100f:0.0} cm p-p, lateral {Amp(s.pX) * 100f:0.0} cm p-p");
+            _log.AppendLine($"   thorax: rotation range {Amp(s.tYaw):0.0} deg (corr. with pelvis {Corr(s.tYaw, s.pYaw):0.00}), against the pelvis {Amp(s.tRel):0.0} deg; right hand swing {Amp(s.arm) * 100f:0.0} cm p-p (corr. with right foot lead {Corr(s.arm, s.lead):0.00})");
+            if (s.treadLandings > 0) _log.AppendLine($"   stair landings {s.treadLandings}, heel and toe on different treads {s.treadOff}");
+        }
+
+        IEnumerator Phase(string name, float time, float warm, System.Action begin, System.Action<float> each = null)
+        {
+            begin?.Invoke();
+            var st = new Stats { name = name };
+            _st = st;
+            float t = 0f;
+            Vector3 start = Vector3.zero;
+            while (t < time)
+            {
+                yield return null;
+                float dt = Mathf.Max(Time.deltaTime, 1e-4f);
+                t += dt;
+                each?.Invoke(t);
+                if (!_measure && t >= warm) { _measure = true; st.steps0 = _body.StepsLanded; start = _root.position; }
+                Sample(dt);
+                if (_measure) st.time += dt;
+            }
+            Vector3 d = _root.position - start; d.y = 0f;
+            st.dist = d.magnitude; st.steps1 = _body.StepsLanded;
+            _measure = false;
+            Write(st);
+        }
+
+        // ---------------- The gait run ----------------
+
+        GameObject _platform;
+
+        IEnumerator GaitRoutine()
+        {
+            if (!FindBones()) { _log.AppendLine("bones not found (not the MakeHuman body?)"); yield break; }
+            _csv = new StringBuilder("phase,t,depthL,depthR,kneeL,kneeR,swingL,swingR,pelvisYaw,pelvisRoll,pelvisY,pelvisX,pitchL,pitchR,footLy,footRy,arm\n");
+            // The feet measured standing still where the player is (on the office floor, settled and level).
+            _pl.botInput = Vector2.zero;
+            _pl.SetStance(CamcorderPlayerController.Stance.Stand);
+            yield return Wait(1.5f);
+            float floorHere = Physics.Raycast(_root.position + Vector3.up * 0.5f, Vector3.down, out var fh, 2f, ~0, QueryTriggerInteraction.Ignore) ? fh.point.y : _root.position.y;
+            MeasureFeet(floorHere);
+            // A flat floor 60 m above where the player is, 80 x 80 m, and a staircase on it.
+            Vector3 c = _root.position + Vector3.up * 60f;
+            _platform = new GameObject("GaitProbeFloor");
+            var floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            floor.transform.SetParent(_platform.transform, false);
+            floor.transform.position = c - Vector3.up * 0.5f; floor.transform.localScale = new Vector3(80f, 1f, 80f);
+            _groundY = c.y;
+            float yaw = 0f;
+            // Stairs along +x from x = 6: six steps of 17 x 28 cm up, a 1.6 m landing, six down.
+            Vector3 sx = new Vector3(1f, 0f, 0f);
+            Vector3 s0 = c + new Vector3(0f, 0f, 20f);
+            for (int k = 0; k < 6; k++)
+            {
+                var st = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                st.transform.SetParent(_platform.transform, false);
+                float h = 0.17f * (k + 1);
+                st.transform.position = s0 + sx * (0.28f * k + 0.14f) + Vector3.up * (h * 0.5f);
+                st.transform.localScale = new Vector3(0.28f, h, 1.4f);
+            }
+            {
+                var top = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                top.transform.SetParent(_platform.transform, false);
+                top.transform.position = s0 + sx * (0.28f * 6 + 0.8f) + Vector3.up * (1.02f * 0.5f);
+                top.transform.localScale = new Vector3(1.6f, 1.02f, 1.4f);
+            }
+            for (int k = 0; k < 6; k++)
+            {
+                var st = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                st.transform.SetParent(_platform.transform, false);
+                float h = 0.17f * (5 - k);
+                if (h <= 0f) continue;
+                st.transform.position = s0 + sx * (0.28f * 6 + 1.6f + 0.28f * k + 0.14f) + Vector3.up * (h * 0.5f);
+                st.transform.localScale = new Vector3(0.28f, h, 1.4f);
+            }
+            foreach (var r in _platform.GetComponentsInChildren<Renderer>()) r.shadowCastingMode = ShadowCastingMode.Off;
+            Physics.SyncTransforms();          // (or the feet are placed before the new floor is in the physics scene)
+            _boxes.Clear();
+            foreach (var col in _platform.GetComponentsInChildren<Collider>()) _boxes.Add(col.bounds);
+
+            _pl.Teleport(c + Vector3.up * 0.05f, yaw, 0f);
+            _pl.botInput = Vector2.zero;
+            yield return Wait(2f);
+            _log.AppendLine($"after the teleport: grounded {_pl.IsGrounded}, eye {_pl.Eye:0.00}, feet active {_body.FeetActive}, legs hanging {Air:0.00}, pelvis {_pelvis.position.y - _root.position.y:0.000} over the root, left ankle {_foot[0].position.y - _groundY:0.000} over the floor");
+            _prevSet = false;
+
+            yield return Phase("still", 1.0f, 0.2f, () => _pl.botInput = Vector2.zero);
+            yield return Phase("start walk", 1.2f, 0f, () => _pl.botInput = new Vector2(0, 1));
+            yield return Phase("walk", 4f, 0.2f, null);
+            yield return Phase("stop", 1.5f, 0f, () => _pl.botInput = Vector2.zero);
+            _pl.Teleport(c + Vector3.up * 0.05f + new Vector3(0, 0, -25f), yaw, 0f); _prevSet = false;
+            yield return Wait(0.8f);
+            yield return Phase("start run", 1.2f, 0f, () => { _pl.moveScale = _pl.runSpeed / _pl.walkSpeed; _pl.botInput = new Vector2(0, 1); });
+            yield return Phase("run", 3.5f, 0.2f, null);
+            yield return Phase("stop from run", 1.5f, 0f, () => { _pl.botInput = Vector2.zero; });
+            _pl.moveScale = 1f;
+            _pl.Teleport(c + Vector3.up * 0.05f + new Vector3(-10f, 0, -10f), yaw, 0f); _prevSet = false;
+            yield return Wait(0.8f);
+            yield return Phase("slow walk", 3f, 1f, () => { _pl.moveScale = 0.55f; _pl.botInput = new Vector2(0, 1); });
+            _pl.moveScale = 1f;
+            yield return Phase("strafe right", 3f, 0.8f, () => _pl.botInput = new Vector2(1, 0));
+            yield return Phase("strafe left", 3f, 0.8f, () => _pl.botInput = new Vector2(-1, 0));
+            yield return Phase("backward", 3f, 0.8f, () => _pl.botInput = new Vector2(0, -1));
+            yield return Phase("diagonal fwd-left", 2.5f, 0.6f, () => _pl.botInput = new Vector2(-0.7f, 0.7f));
+            yield return Phase("stop 2", 1.2f, 0f, () => _pl.botInput = Vector2.zero);
+            float y0 = _root.eulerAngles.y;
+            yield return Phase("turn in place 90", 2.2f, 0f, () => _pl.botInput = Vector2.zero, t => _pl.SetYaw(y0 + 90f * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / 0.6f))));
+            float y1 = _root.eulerAngles.y;
+            yield return Phase("look 25 each way", 2.4f, 0f, null, t => _pl.SetYaw(y1 + 25f * Mathf.Sin(t / 2.4f * Mathf.PI * 2f)));
+            yield return Phase("crouch", 1.2f, 0f, () => _pl.SetStance(CamcorderPlayerController.Stance.Crouch));
+            yield return Phase("crouch walk", 3f, 0.8f, () => _pl.botInput = new Vector2(0, 1));
+            yield return Phase("stand up", 1.2f, 0f, () => { _pl.botInput = Vector2.zero; _pl.SetStance(CamcorderPlayerController.Stance.Stand); });
+            // Stairs: from 2 m before the first step, up, over the landing, down, and on.
+            _pl.Teleport(s0 + Vector3.up * 0.05f - sx * 2.2f, 90f, 0f); _prevSet = false;
+            yield return Wait(1f);
+            yield return Phase("stairs up+down", 6.5f, 0.9f, () => _pl.botInput = new Vector2(0, 1));
+            _pl.botInput = Vector2.zero;
+            yield return Wait(0.5f);
+            if (!string.IsNullOrEmpty(folder)) File.WriteAllText(Path.Combine(folder, "gait.csv"), _csv.ToString());
+            _pl.botInput = null;
+            _pl.Teleport(c - Vector3.up * 60f + Vector3.up * 0.05f, yaw, 0f);
+            yield return Wait(0.5f);
+            Destroy(_platform);
+            if (!string.IsNullOrEmpty(folder)) File.WriteAllText(Path.Combine(folder, "gait.txt"), _log.ToString());
+        }
+
+        static IEnumerator Wait(float s) { float t = 0f; while (t < s) { yield return null; t += Time.deltaTime; } }
+
+        // ---------------- Filmstrip ----------------
+
+        Vector3 FindOpen()
+        {
+            Vector3 origin = _root.position;
+            for (int ring = 0; ring < 16; ring++)
+                for (int k = 0; k < 16; k++)
+                {
+                    float a = k * Mathf.PI / 8f;
+                    Vector3 cc = origin + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * ring * 1.2f;
+                    if (!Physics.Raycast(cc + Vector3.up * 1f, Vector3.down, out var fl, 1.5f) || fl.normal.y < 0.9f) continue;
+                    if (Physics.CheckBox(fl.point + Vector3.up * 1f, new Vector3(2.2f, 0.55f, 2.2f), Quaternion.identity, ~0, QueryTriggerInteraction.Ignore)) continue;
+                    return fl.point;
+                }
+            return origin;
+        }
+
+        readonly List<(Renderer r, ShadowCastingMode m)> _shadowOnly = new List<(Renderer, ShadowCastingMode)>();
+
+        void ShowAll(bool on)
+        {
+            if (on)
+            {
+                _shadowOnly.Clear();
+                foreach (var r in _root.GetComponentsInChildren<Renderer>(true))
+                    if (r.shadowCastingMode == ShadowCastingMode.ShadowsOnly) { _shadowOnly.Add((r, r.shadowCastingMode)); r.shadowCastingMode = ShadowCastingMode.On; }
+                var cc = GameObject.Find("CamcorderShadow");
+                if (cc)
+                    foreach (var r in cc.GetComponentsInChildren<Renderer>(true))
+                        if (r.shadowCastingMode == ShadowCastingMode.ShadowsOnly) { _shadowOnly.Add((r, r.shadowCastingMode)); r.shadowCastingMode = ShadowCastingMode.On; }
+            }
+            else
+            {
+                foreach (var (r, m) in _shadowOnly) if (r) r.shadowCastingMode = m;
+                _shadowOnly.Clear();
+            }
+        }
+
+        void Save(Camera cam, RenderTexture rt, Texture2D tex, string file)
+        {
+            var prev = RenderTexture.active;
+            cam.targetTexture = rt;
+            cam.Render();
+            RenderTexture.active = rt;
+            tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+            tex.Apply();
+            RenderTexture.active = prev;
+            File.WriteAllBytes(Path.Combine(folder, file), tex.EncodeToPNG());
+        }
+
+        IEnumerator FilmRoutine()
+        {
+            if (!FindBones()) { _log.AppendLine("no bones"); yield break; }
+            Vector3 p = FindOpen();
+            float yaw = _root.eulerAngles.y;
+            _pl.Teleport(p + Vector3.up * 0.05f, yaw, 0f);
+            _pl.botInput = Vector2.zero;
+            yield return Wait(1f);
+            var go = new GameObject("GaitProbeCam");
+            var cam = go.AddComponent<Camera>();
+            cam.CopyFrom(Camera.main); cam.fieldOfView = 34f; cam.nearClipPlane = 0.05f; cam.enabled = false;
+            // A fill light on the camera (the body is often in its own shadow under the ceiling lights).
+            var fillGo = new GameObject("GaitProbeFill");
+            fillGo.transform.SetParent(go.transform, false);
+            var fill = fillGo.AddComponent<Light>();
+            fill.type = LightType.Point; fill.range = 6f; fill.intensity = 2.2f; fill.shadows = LightShadows.None; fill.renderingLayerMask = -1;
+            var rt = new RenderTexture(360, 480, 24);
+            var tex = new Texture2D(360, 480, TextureFormat.RGB24, false);
+            var modes = new (string name, Vector2 input, float scale)[] { ("walk", new Vector2(0, 1), 1f), ("run", new Vector2(0, 1), 2.667f), ("strafe", new Vector2(1, 0), 1f), ("back", new Vector2(0, -1), 1f) };
+            foreach (var m in modes)
+            {
+                _pl.Teleport(p + Vector3.up * 0.05f - _root.forward * (m.name == "run" ? 0f : 0f), yaw, 0f);
+                _pl.botInput = Vector2.zero; _pl.moveScale = 1f;
+                yield return Wait(0.6f);
+                _pl.moveScale = m.scale; _pl.botInput = m.input;
+                // Into the stride, then one cycle (two steps) at 8 frames, timed by the steps landed.
+                yield return Wait(m.name == "run" ? 0.6f : 0.9f);
+                int s0 = _body.StepsLanded;
+                while (_body.StepsLanded == s0) yield return null;
+                float t0 = Time.time;
+                int s1 = _body.StepsLanded;
+                while (_body.StepsLanded < s1 + 2) yield return null;
+                float cycle = Time.time - t0;
+                _pl.Teleport(p + Vector3.up * 0.05f, yaw, 0f);
+                yield return Wait(m.name == "run" ? 0.6f : 0.9f);
+                s0 = _body.StepsLanded;
+                while (_body.StepsLanded == s0) yield return null;
+                t0 = Time.time;
+                for (int f = 0; f < 8; f++)
+                {
+                    while (Time.time < t0 + cycle * f / 8f) yield return null;
+                    ShowAll(true);
+                    var t = _root;
+                    Vector3 fwd = LegFwd, right = LegRight;
+                    Vector3 travel = m.name == "strafe" ? right : fwd;
+                    Vector3 side = Vector3.Cross(Vector3.up, travel).normalized;      // to the right of the travel direction
+                    Vector3 sideAt = t.position - side * 3.4f + Vector3.up * 0.95f;
+                    foreach (float sd in new[] { 3.4f, 2.8f, 2.2f, -3.4f, -2.8f })
+                    {
+                        Vector3 c = t.position - side * sd + Vector3.up * 0.95f;
+                        if (!Physics.Linecast(t.position + Vector3.up * 0.85f, c, ~0, QueryTriggerInteraction.Ignore)) { sideAt = c; break; }
+                    }
+                    cam.transform.position = sideAt;
+                    cam.transform.LookAt(t.position + Vector3.up * 0.85f);
+                    Save(cam, rt, tex, $"film_{m.name}_side_{f}.png");
+                    // From the front (a little to the side), at the first distance with nothing in the way (pillars).
+                    Vector3 look = t.position + Vector3.up * 0.85f;
+                    Vector3 at = t.position + travel * 2.4f + Vector3.up * 1.0f;
+                    foreach (float ang in new[] { 20f, -20f, 40f, -40f, 0f })
+                        foreach (float dist in new[] { 3.2f, 2.6f, 2.0f })
+                        {
+                            Vector3 c = t.position + Quaternion.AngleAxis(ang, Vector3.up) * travel * dist + Vector3.up * 1.0f;
+                            if (!Physics.Linecast(look, c, ~0, QueryTriggerInteraction.Ignore)) { at = c; goto placed; }
+                        }
+                    placed:
+                    cam.transform.position = at;
+                    cam.transform.LookAt(look);
+                    Save(cam, rt, tex, $"film_{m.name}_front_{f}.png");
+                    ShowAll(false);
+                }
+                _log.AppendLine($"{m.name}: cycle {cycle:0.00} s");
+                _pl.botInput = Vector2.zero; _pl.moveScale = 1f;
+            }
+            _pl.botInput = null;
+            Destroy(rt); Destroy(tex); Destroy(go);
+            File.WriteAllText(Path.Combine(folder, "film.txt"), _log.ToString());
+        }
+
+        // ---------------- First-person view ----------------
+
+        IEnumerator ViewRoutine()
+        {
+            FindBones();
+            Vector3 p = FindOpen();
+            float yaw = _root.eulerAngles.y;
+            _pl.Teleport(p + Vector3.up * 0.05f, yaw, 0f);
+            _pl.botInput = Vector2.zero;
+            yield return Wait(1f);
+            var go = new GameObject("GaitProbeEye");
+            var cam = go.AddComponent<Camera>();
+            cam.enabled = false;
+            var rt = new RenderTexture(640, 360, 24);
+            var tex = new Texture2D(640, 360, TextureFormat.RGB24, false);
+            var tex2 = new Texture2D(640, 360, TextureFormat.RGB24, false);
+            var pitchField = typeof(CamcorderPlayerController).GetField("_pitch", BindingFlags.NonPublic | BindingFlags.Instance);
+            float limit = _pl.pitchLimitDown;
+            _log.AppendLine($"pitch limit down {limit:0}");
+            foreach (bool walking in new[] { false, true })
+                foreach (float pitch in new[] { 0f, 45f, limit, 70f })
+                {
+                    _pl.Teleport(p + Vector3.up * 0.05f, yaw, 0f);
+                    _pl.pitchLimitDown = Mathf.Max(limit, pitch);
+                    pitchField.SetValue(_pl, pitch);
+                    _pl.botInput = walking ? new Vector2(0, 1) : Vector2.zero;
+                    yield return Wait(walking ? 0.9f : 0.6f);
+                    var main = Camera.main;
+                    cam.CopyFrom(main);
+                    cam.transform.SetPositionAndRotation(main.transform.position, main.transform.rotation);
+                    string name = $"fp_{(walking ? "walk" : "stand")}_{pitch:0}";
+                    cam.targetTexture = rt;
+                    var prev = RenderTexture.active;
+                    cam.Render();
+                    RenderTexture.active = rt; tex.ReadPixels(new Rect(0, 0, 640, 360), 0, 0); tex.Apply();
+                    // The same frame without the body (its parts set to shadows only, so the shadow stays): the difference is the body.
+                    var hidden = new List<Renderer>();
+                    foreach (var r in _root.GetComponentsInChildren<Renderer>(true))
+                        if (r.enabled && r.gameObject.activeInHierarchy && r.shadowCastingMode != ShadowCastingMode.ShadowsOnly && !(r is ParticleSystemRenderer)) { hidden.Add(r); r.shadowCastingMode = ShadowCastingMode.ShadowsOnly; }
+                    cam.Render();
+                    tex2.ReadPixels(new Rect(0, 0, 640, 360), 0, 0); tex2.Apply();
+                    foreach (var r in hidden) r.shadowCastingMode = ShadowCastingMode.On;
+                    RenderTexture.active = prev;
+                    var a = tex.GetPixels32(); var b = tex2.GetPixels32();
+                    int body = 0, bottomRow = -1;
+                    for (int i = 0; i < a.Length; i++)
+                    {
+                        int d = Mathf.Abs(a[i].r - b[i].r) + Mathf.Abs(a[i].g - b[i].g) + Mathf.Abs(a[i].b - b[i].b);
+                        if (d > 12) { body++; bottomRow = Mathf.Max(bottomRow, i / 640); }
+                    }
+                    File.WriteAllBytes(Path.Combine(folder, name + ".png"), tex.EncodeToPNG());
+                    _log.AppendLine($"{name}: body {100f * body / a.Length:0.0} % of the frame, reaching {(bottomRow >= 0 ? 100f * (bottomRow + 1) / 360f : 0f):0} % up from the bottom; camera {Vector3.Dot(main.transform.position - _pl.cameraPitchPivot.position, _root.forward) * 100f:0.0} cm ahead of the eye, {(main.transform.position.y - _pl.cameraPitchPivot.position.y) * 100f:0.0} cm up");
+                }
+            _pl.pitchLimitDown = limit;
+            pitchField.SetValue(_pl, 0f);
+            _pl.botInput = null;
+            Destroy(rt); Destroy(tex); Destroy(tex2); Destroy(go);
+            File.WriteAllText(Path.Combine(folder, "view.txt"), _log.ToString());
+        }
+    }
+}

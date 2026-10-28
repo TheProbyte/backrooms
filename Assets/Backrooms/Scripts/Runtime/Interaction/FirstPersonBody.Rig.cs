@@ -251,12 +251,46 @@ namespace Backrooms.Interaction
             return m;
         }
 
-        /// <summary>A part of the MakeHuman body drawn into the shadows only: the head, and the arm holding the camcorder.</summary>
+        [Tooltip("First person shows little of the body: the trunk (chest, belly, shirt) only in the shadows, the working arm " +
+                 "only while it reaches, holds, points or touches. Looking down shows the legs and shoes.")]
+        public bool firstPersonTrim = true;
+
+        /// <summary>
+        /// A part of the MakeHuman body drawn into the shadows only: the head, the trunk (with firstPersonTrim), and the arm
+        /// holding the camcorder. The shadow keeps the whole body.
+        /// </summary>
         bool ShadowOnlyPart(string rendererName)
         {
             if (rendererName.EndsWith(".Head")) return true;
+            if (firstPersonTrim && rendererName.EndsWith(".Torso")) return true;
             float side = _grab ? _grab.Side : 1f;
             return rendererName.EndsWith(side > 0f ? ".ArmL" : ".ArmR");
         }
+
+        /// <summary>The working arm's parts (the hand that holds things), drawn only while in use (SetWorkingArmShown).</summary>
+        bool WorkingArmPart(string rendererName)
+        {
+            float side = _grab ? _grab.Side : 1f;
+            return rendererName.EndsWith(side > 0f ? ".ArmR" : ".ArmL");
+        }
+
+        readonly List<Renderer> _workArm = new List<Renderer>();
+        bool _workArmShown = true;
+
+        /// <summary>
+        /// The working arm drawn (reaching, holding, pointing, a hand on the world) or in the shadows only (hanging at the
+        /// side, where it is out of view anyway: it never pops in or out on screen).
+        /// </summary>
+        void SetWorkingArmShown(bool on)
+        {
+            if (!firstPersonTrim) on = true;
+            if (on == _workArmShown) return;
+            _workArmShown = on;
+            var mode = on ? (castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off) : ShadowCastingMode.ShadowsOnly;
+            foreach (var r in _workArm) if (r) r.shadowCastingMode = mode;
+        }
+
+        /// <summary>The working arm is drawn now (for tests).</summary>
+        public bool WorkingArmShown => _workArmShown;
     }
 }

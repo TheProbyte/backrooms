@@ -148,6 +148,7 @@ namespace Backrooms.Interaction
                 r.sharedMaterials = mats;
                 r.shadowCastingMode = mpfb && ShadowOnlyPart(r.name) ? ShadowCastingMode.ShadowsOnly
                                     : castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
+                if (mpfb && WorkingArmPart(r.name)) _workArm.Add(r);
                 // Skinned (Tools/Blender/make_player_rig.py): bounds follow the pose, or a reaching arm or a squat
                 // would be culled while on screen (its imported bounds fit only the rest pose).
                 if (r is SkinnedMeshRenderer sk) { sk.updateWhenOffscreen = true; sk.quality = SkinQuality.Bone4; }
@@ -197,6 +198,8 @@ namespace Backrooms.Interaction
             // layer, PropGrabber): palm on the grip.
             RestPose(natural, yaw, side, out Vector3 restWrist, out Quaternion restHand, out float restCurl);
             bool poke = _grab.PokePose;
+            // First person: the working arm is drawn while it does something; hanging at the side, only its shadow.
+            if (!loose) SetWorkingArmShown(blend > 0.001f || poke || _touching || _touchW > 0.004f);
             Quaternion gripHand = poke ? _grab.PokeRotation : _grab.HandRotation;
             Vector3 gripWrist = poke ? _grab.PokeTip - gripHand * _wristToTip
                                      : _grab.HandPosition - gripHand * new Vector3(_wristToGrip.x, _wristToGrip.y, _wristToGrip.z);
@@ -241,8 +244,10 @@ namespace Backrooms.Interaction
             Vector3 poleDir = Vector3.ProjectOnPlane(elbow - shoulder, (wristAt - shoulder).normalized).normalized;
 
             if (loose) { _arm.position = shoulder; _arm.rotation = Quaternion.identity; }
-            Orient(_upper, _upperAxis, _upperBack, elbow - shoulder, Vector3.Lerp(-poleDir, pose.foreBack, 0.3f));
-            Orient(_fore, _foreAxis, _foreBack, wristAt - elbow, pose.foreBack);
+            // The forearm bone takes part of the turn (forearmTwistShare), the hand all of it.
+            Vector3 foreBack = Quaternion.AngleAxis(pose.twist * forearmTwistShare, (wristAt - elbow).normalized) * pose.back0;
+            Orient(_upper, _upperAxis, _upperBack, elbow - shoulder, Vector3.Lerp(-poleDir, foreBack, 0.3f));
+            Orient(_fore, _foreAxis, _foreBack, wristAt - elbow, foreBack);
             Orient(_hand, _handFingers, _handBack, pose.hand * Vector3.forward, pose.hand * Vector3.up);
             // The model's own segment offsets put the hand at the wrist; nudge it onto the solved point.
             _hand.position = wristAt;
@@ -350,7 +355,11 @@ namespace Backrooms.Interaction
         float _swivel;
         bool _swivelSet;
 
-        struct ArmPose { public Vector3 elbow, wrist, foreBack; public Quaternion hand; public float score; }
+        [Tooltip("How much of the forearm's turn (palm up or down) its bone takes; the hand takes all of it. The rig has no " +
+                 "twist bones, so the skin from elbow to wrist shares the turn instead of all of it wringing at the elbow.")]
+        [Range(0f, 1f)] public float forearmTwistShare = 0.55f;
+
+        struct ArmPose { public Vector3 elbow, wrist, foreBack, back0; public Quaternion hand; public float score, twist; }
 
         /// <summary>
         /// One arm pose for an elbow swing (degrees about the shoulder-wrist line from the default down-and-out): the elbow,
@@ -378,6 +387,7 @@ namespace Backrooms.Interaction
             float twist = want.sqrMagnitude > 1e-6f ? Vector3.SignedAngle(b0, want, f) : 0f;
             float tw = Mathf.Clamp(twist, -forearmTwist, forearmTwist);
             p.foreBack = Quaternion.AngleAxis(tw, f) * b0;
+            p.back0 = b0; p.twist = tw;
             // The wrist: what is left of the hand's angle, as a bend toward the palm or back and a bend to the side.
             var fore = Quaternion.LookRotation(f, p.foreBack);
             Vector3 Fl = Quaternion.Inverse(fore) * F;
@@ -421,6 +431,15 @@ namespace Backrooms.Interaction
             public Transform thigh, shin, foot;
             public float upper, lower, ankle, side;      // lengths, ankle height over the sole, hip offset to the side
             public float toe = 0.11f;                    // ankle to the ball of the foot, along the foot
+            public float heelBack = 0.06f;               // ankle to the back of the heel, along the foot (the heel strike's pivot)
+            public Transform ball;                       // the toes (MakeHuman's ball bone): bent so they stay on the floor as the heel rises
+            public Quaternion ballRest;
+            public Vector3 ballAxis;                     // its bend axis, local; positive lifts the toes (extension at the ball of the foot)
+            public float toeBend;                        // degrees this frame
+            public float since = 1f, landPitch;          // time since this foot landed, and its tilt then (rolled out after: the heel rocker)
+            public float soft, softVel;                  // soft IK: how far short of straight the knee starts easing (m)
+            public float liftedAt = -10f;                // when this foot last left the floor (Time.time)
+            public float pitchS, pitchVel;               // a planted foot's tilt, through a spring
             public float heel, heelVel;                  // the heel lifted (degrees) because the leg could not reach the floor
             public float lastPitch, liftPitch;           // the foot's tilt last frame, and when this step left the floor
             public Vector3 landAt;                       // where this step was planned to land
@@ -458,13 +477,60 @@ namespace Backrooms.Interaction
             g.shinFront = shin.InverseTransformDirection(fwd);
             g.footFwd = foot.InverseTransformDirection(fwd);
             g.footUp = foot.InverseTransformDirection(up);
-            // The ball of the foot (MakeHuman's toe bone), where the heel turns as it lifts.
+            // The ball of the foot (MakeHuman's toe bone), where the heel turns as it lifts; the toes bend there.
             if (foot != shin && foot.childCount > 0)
             {
-                float toe = Vector3.Dot(foot.GetChild(0).position - foot.position, fwd);
-                if (toe > 0.05f && toe < 0.2f) g.toe = toe;
+                var ball = foot.GetChild(0);
+                float toe = Vector3.Dot(ball.position - foot.position, fwd);
+                if (toe > 0.05f && toe < 0.2f)
+                {
+                    g.toe = toe;
+                    g.ball = ball; g.ballRest = ball.localRotation;
+                    // The bend axis across the foot, signed so a positive bend lifts the toe tip.
+                    g.ballAxis = ball.InverseTransformDirection(transform.right);
+                    Vector3 tipL = ball.InverseTransformPoint(ball.position + fwd * 0.05f);
+                    float y0 = ball.TransformPoint(tipL).y;
+                    ball.localRotation = g.ballRest * Quaternion.AngleAxis(20f, g.ballAxis);
+                    if (ball.TransformPoint(tipL).y < y0) g.ballAxis = -g.ballAxis;
+                    ball.localRotation = g.ballRest;
+                }
             }
             return g;
+        }
+
+        /// <summary>
+        /// The shoes as they stand (MakeHuman's skinned shoes, in the rest pose): the back of each heel, the pivot of the heel
+        /// strike (a foot landing toes-up rolls down about its heel, not about the ankle), and the ankle's height over the
+        /// sole. MakeHuman's shoe soles reach below the model's ground, so the ankle measured from the model's origin put the
+        /// shoes 2-3 cm into the floor.
+        /// </summary>
+        void MeasureHeels()
+        {
+            SkinnedMeshRenderer shoes = null;
+            foreach (var r in _body.GetComponentsInChildren<SkinnedMeshRenderer>(true)) if (r.name.Contains("shoes")) { shoes = r; break; }
+            if (!shoes) return;
+            var mesh = new Mesh();
+            shoes.BakeMesh(mesh, true);
+            var verts = mesh.vertices;
+            Vector3 fwd = transform.forward, right = transform.right, up = transform.up;
+            foreach (var g in new[] { _legA, _legB })
+            {
+                if (g == null || g.foot == g.shin) continue;
+                float back = 0f, below = 0f, front = 0f;
+                foreach (var lv in verts)
+                {
+                    Vector3 w = shoes.transform.position + shoes.transform.rotation * lv;
+                    Vector3 d = w - g.foot.position;
+                    if (Mathf.Abs(Vector3.Dot(d, right)) > 0.08f || Vector3.Dot(w - _body.position, right) * g.side < 0f) continue;
+                    back = Mathf.Max(back, -Vector3.Dot(d, fwd));
+                    below = Mathf.Max(below, -Vector3.Dot(d, up));
+                    front = Mathf.Max(front, Vector3.Dot(d, fwd));
+                }
+                if (back > 0.03f && back < 0.14f) { g.heelBack = back; _treadBack = back + 0.015f; }
+                if (below > 0.03f && below < 0.18f) g.ankle = below;
+                if (front > 0.1f && front < 0.25f) _treadFront = front + 0.005f;
+            }
+            Destroy(mesh);
         }
 
         void MeasureBody()
@@ -478,6 +544,7 @@ namespace Backrooms.Interaction
             _torsoFwdAxis = _torso.InverseTransformDirection(transform.forward);
             _legA = MeasureLeg(_thighL, _shinL, Find(_body, Bone("FootL")));
             _legB = MeasureLeg(_thighR, _shinR, Find(_body, Bone("FootR")));
+            MeasureHeels();
         }
 
         /// <summary>Where a foot stands when the body is still: under its hip (wider and a little forward in a squat).</summary>
@@ -513,7 +580,7 @@ namespace Backrooms.Interaction
         {
             Vector3 d = ankleTarget - hip;
             float a = g.upper, b = g.lower;
-            float len = Mathf.Clamp(d.magnitude, Mathf.Abs(a - b) + 0.05f, (a + b) * 0.999f);
+            float len = Mathf.Clamp(Gait.SoftReach(d.magnitude, a + b, g.soft), Mathf.Abs(a - b) + 0.05f, (a + b) * 0.999f);
             Vector3 dirn = d.sqrMagnitude > 1e-8f ? d.normalized : -up;
             Vector3 pole = Vector3.ProjectOnPlane(front, dirn);
             pole = pole.sqrMagnitude > 1e-6f ? pole.normalized : Vector3.ProjectOnPlane(up, dirn).normalized;
@@ -525,6 +592,8 @@ namespace Backrooms.Interaction
                 Orient(g.shin, g.shinAxis, g.shinFront, ankle - knee, Vector3.ProjectOnPlane(front, ankle - knee));
             if (g.foot && g.foot != g.shin)
                 Orient(g.foot, g.footFwd, g.footUp, footFwd, Vector3.ProjectOnPlane(up, footFwd));
+            // The toes bend at the ball of the foot (as the heel rises they stay on the floor).
+            if (g.ball) g.ball.localRotation = g.ballRest * Quaternion.AngleAxis(g.toeBend, g.ballAxis);
         }
     }
 }

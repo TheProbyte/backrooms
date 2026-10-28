@@ -209,7 +209,8 @@ procedural one above kept as the fallback (`FirstPersonBody.useMakeHumanBody`, o
   F:\Blender\blender.exe -b Tools/Blender/mpfb/PlayerMPFB.blend --python Tools/Blender/export_player_mpfb.py -- "F:/Users/kadej/My project/Assets/Backrooms/Resources/Player/MPFB"
   ```
   It bakes MPFB's masks and slider targets into a copy, splits every mesh by the bones that move it (`.Head`: head and
-  neck, hair, eyes, brows, lashes; `.ArmL` / `.ArmR`: each arm and its sleeve; the rest), and writes `PlayerMPFB.fbx`
+  neck, hair, eyes, brows, lashes; `.ArmL` / `.ArmR`: each arm and its sleeve; `.Torso` (since 2026-10-28): hips, spine
+  and collarbones, so the shirt and the top of the jeans; the rest: legs and feet), and writes `PlayerMPFB.fbx`
   and the textures (colour, and the clothes' normal maps) to `Textures/`. Unity imports it as Generic, no avatar.
 - **Changing clothes or the look**: open the .blend, MPFB tab, *Apply assets* (clothes, shoes, hair, skin: one click
   each, fitted to the body and skeleton) or *Model* (sliders), save, run the export. No code changes: the game drives
@@ -220,8 +221,9 @@ procedural one above kept as the fallback (`FirstPersonBody.useMakeHumanBody`, o
   the back of the hand from across the knuckles); the body's shoulder is carried toward a reach by turning the
   collarbone (at most 28 degrees). The working arm is the body's own; the other holds the camcorder to the eye. While
   crawling (the body is hidden) the separate arm model takes a held thing as before.
-- **Drawn**: the body, clothes, shoes and the working arm; the head parts and the camcorder arm cast shadows only.
-  Materials are Backrooms/Lit with the textures (normal maps on the clothes: an existing shader variant).
+- **Drawn**: the legs and shoes; the working arm only while it reaches, holds, points or touches (since 2026-10-28,
+  `firstPersonTrim`); the head parts, the trunk (`.Torso`) and the camcorder arm cast shadows only (the shadow is the
+  whole body). Materials are Backrooms/Lit with the textures (normal maps on the clothes: an existing shader variant).
 
 Fitting the legs to it: MakeHuman's legs are nearly straight at rest (hips 0.95 m, legs 0.87 m), so they run out of
 reach where the old body did not. A planted foot the leg cannot reach now lifts its heel, turning about the ball of the
@@ -286,7 +288,76 @@ turn on the spot took two steps; strafing back and forth with the view swaying, 
 down a test staircase (three 17 cm steps) the controller stayed grounded, the legs never went to hanging, and the feet
 landed on 0.68, 0.34, 0.51, 0.34, 0.17, 0.17, 0 (the first step off the top still skipped a tread).
 
+## Gait and the first-person view (2026-10-28)
+
+Research (what studios use, and what fits a body with no animation clips): motion matching (Ubisoft For Honor, The Last
+of Us Part II, Unreal 5 Pose Search) needs a mocap database; what carries over is driving the gait from the planned
+motion with timing from data. Inertialization (Bollo, Gears of War, GDC 2018; Holden's springs and dead blending) is
+already the basis (`Springs.Damper`). Procedural IK rigs (Bereznyak, Ubisoft, GDC 2016; Rosen, Overgrowth, GDC 2014),
+foot locking, soft IK and first-person bodies drawn split (the parts at the camera in the shadows only) were applied
+with published adult gait data: cadence and step length by speed, stance and swing shares, Perry's three rockers (heel,
+ankle, forefoot), knee angles, pelvis rotation and obliquity, centre-of-mass motion, arm swing.
+
+- **Gait numbers** (`Motion/Gait.cs`, tested in `GaitTests`): steps a second from speed (walking 1.25 + 0.47 v, running
+  2.35 + 0.11 v, blended over 1.9-3.2 m/s); a step is the speed over that; a foot is down 63 % of the cycle walking
+  slowly, 58 % fast, 38 % running. Side-steps are quicker (x2.1) and shorter, backward steps x1.25, crouched x1.15.
+- **Even steps**: walking forward or back, a foot leaves no sooner than 0.95 of a step's time after the other one left
+  (0.9 running) unless it is far behind. Stepping only when left behind made a limp: steps of 0.43 and 0.60 s.
+- **Foot roll**: the heel strikes toes up (14 degrees walking, 8 running) and rolls flat about the back of the heel
+  (`AnkleAt` turns about the heel for toes-up, measured on the shoe: 7 cm behind the ankle); the heel rises about the
+  ball from a little behind the hip to toe-off (`Gait.HeelRise`, 38 degrees walking, 50 running); the toes (MakeHuman's
+  ball bone) bend so they stay flat on the floor; the swing leaves at the toe-off tilt, levels, and lifts highest early
+  (`Gait.SwingLift`, `SwingPitch`). A planted foot's tilt goes through a fast spring (it switched in a frame at landing,
+  starting and stopping). A reach-limited heel lift (a foot left behind) is only for a foot behind the hip, at most
+  500 degrees a second (1200 running).
+- **Shoes on the floor**: MakeHuman's shoe soles reach below the model's ground; the ankle height is now measured on the
+  shoe (9 cm over the sole). They stood 2-3 cm in the floor.
+- **Knees**: legs on the floor are kept about 9 degrees bent standing (it was 20: a slight squat), 16 walking, 30
+  running, by the hips coming down; soft IK (`Gait.SoftReach`, after Andy Nicholas) eases the last 3 % before straight
+  for a swinging leg (and the camcorder arm), so a knee never snaps straight. The hips come down for the gait's ankle,
+  not the heel-lifted one: a lifted heel let the hips stay up, which kept the heel lifted (standing on tiptoe after a
+  spawn). A leg early in its swing no longer pulls the hips down (a foot just lifted far behind dropped them 20 cm
+  running).
+- **Pelvis and thorax**: the pelvis turns with the stride (the leading leg's hip forward, 4 degrees each way walking,
+  6 running) and drops on the swing side (obliquity 4-5 degrees); the thorax turns the other way (3-6); the spine takes
+  the difference and keeps the shoulders level. The hips sit 1.5 cm lower walking and rise 1 cm as the feet pass; a foot
+  lands at 0.88 of half the stance's travel ahead (it was further: the hips dropped 9 cm a step).
+- **Arms**: the free arm swings opposite its leg about 40 cm front to back (it was 46), the elbow bending as it comes
+  forward; running the arms are held bent. The forearm bone takes 55 % of the hand's turn (`forearmTwistShare`: no
+  twist bones, so elbow and wrist share it). The camcorder arm's forearm roll comes from the thumb (well defined) instead
+  of the back of the hand, which lay along the forearm and flipped (2400 degrees a second).
+- **Fixes**: a swinging foot was reset to its home when its old plant fell 2.5 m behind (running: a foot jumped and a
+  step was lost: 72 steps a minute); a toes-up heel strike was flattened to level by the heel-lift check; side-steps land
+  flat; stair landings fit the measured shoe (toe clear of the riser going up, heel on the tread going down).
+- **First person**: the camcorder is held a little out in front of the eye (`CamcorderPlayerController.holdOut` 9 cm,
+  2 cm down; 11 and 4 looking fully down), in the body's frame, pulled in when something is right in front (a sphere
+  cast); `HandheldCameraShake` adds the shake on top of `CamcorderHold`. The eye (the pitch pivot) stays the head: reach
+  and aim work from it. The camcorder model and the left hand are at the camera. Held items sit half as far out (their
+  framing nearly as before, the arm still bent). The trunk is in the shadows only; the working arm is drawn while it
+  reaches, holds, points or touches (`SetWorkingArmShown`), hanging only its shadow.
+
+Measured (`Debug/GaitProbe.cs`, World 3, a flat test floor; before -> after): walking at 1.34 m/s 125 -> 117 steps a
+minute (data ~113), steps 0.64 -> 0.69 m (data 0.72), step times 0.40-0.64 -> 0.48-0.52 s, double support 17 -> 20 %
+(data ~20); running at 3.58 m/s 202 -> 173 steps a minute (data ~165), steps 1.06 -> 1.24 m (data ~1.3), flight 30 %;
+slow walk (0.74 m/s) 97 a minute. Walking: shoes into the floor 2.8-4.6 -> 0.5 cm; planted foot pivot slip max 4.3 ->
+0.27 m/s (mean 0.12 -> 0.05); biggest one-frame spike of any bone 2040 -> 47 degrees/s; fastest knee 1270 -> 470
+degrees/s; knee in swing 54 -> 60 degrees (data ~60), at heel strike 20 -> 16; foot at heel strike level -> 14 degrees
+toes up (data 15-20), at toe-off 1-20 -> 38 heel up; toes bend 0 -> 38; pelvis rotation 0 -> 7 and obliquity 0 -> 8
+degrees (ranges; data ~9 and ~8), the thorax against the pelvis (correlation -0.99); hips up and down 8.8 -> 4.2 cm
+(data 4-5), side to side 2.8 cm. Standing knee 20 -> 9 degrees. Strafing: hips 6.3 cm. Stairs: a shoe at most 5 cm into
+a riser. First person (pitch 0 / 45 / 62, the game's limit / 70; share of the frame that is body): standing 0 / 0 /
+4.5 / 9.6 % -> 0 / 0 / 0.8 (two shoe tips) / 1.8 %; walking 0 / 0.4 / 5.5 / 10.1 % -> 0 / 0.2 / 1.8 / 2.8 %. Held items:
+the hand and sleeve as before in the eye view. Open: at 70 degrees (past the game's limit) the cut top of the jeans can
+show; running, a planted foot sometimes slips (mean 0.25 m/s, as before); stairs checked only on the test staircase.
+
 ## Testing
+`Debug/GaitProbe.cs` (2026-10-28): `GaitProbe.Run(folder)` measures the body's gait on a flat test floor 60 m above the
+player with a test staircase (stand, walk, stop, run, slow walk, strafe, back up, diagonal, turn on the spot, look
+round, crouch, crouch-walk, stand up, stairs): cadence and step times, stance share, planted-foot slip, shoes into the
+floor, bone spikes, knee angles, pelvis and thorax, arm swing, foot roll (`gait.txt`, `gait.csv`). `Film(folder)`: side
+and front frames of a walk, run, strafe and backward cycle in the office (shadow-only parts drawn). `View(folder)`:
+first-person frames at pitch 0, 45, the limit and 70, standing and walking, with how much of each is the body.
+
 `Debug/GrabProbe.cs`: in play mode, add it and call `Run()`. For each kind it finds a prop (travelling to
 one if needed), grabs, lifts, drags, swings and shoves it with screenshots, then walks away until the
 chunk unloads and checks the prop comes back where it was left.

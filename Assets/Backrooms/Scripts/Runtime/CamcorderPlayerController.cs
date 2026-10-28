@@ -567,6 +567,51 @@ namespace Backrooms
             var lp = cameraPitchPivot.localPosition;
             // Leaning: the head goes to the side and a little down.
             cameraPitchPivot.localPosition = new Vector3(_leanAmount * leanDistance, _eye - Mathf.Abs(_leanAmount) * 0.045f, lp.z);
+            UpdateHold(dt);
+        }
+
+        // ---------------- The camcorder held out ----------------
+        [Header("Camcorder held out")]
+        [Tooltip("How far in front of the eye the camcorder (the camera) is held, looking ahead and looking fully down (m).")]
+        public float holdOut = 0.09f, holdOutDown = 0.11f;
+        [Tooltip("How far below the eye it is held, looking ahead and looking fully down (m).")]
+        public float holdDrop = 0.02f, holdDropDown = 0.04f;
+        float _holdIn = 1f, _holdInVel;
+        readonly RaycastHit[] _holdHits = new RaycastHit[6];
+
+        /// <summary>
+        /// The camcorder (the camera) relative to the eye, in the pitch pivot's frame. It is held a little out in front of
+        /// the face, in the body's frame (looking down tilts it there rather than swinging it round the eye), so looking
+        /// down shows the shoe tips, not the chest; it comes in toward the face when something is right in front. The eye
+        /// (the pivot) stays where the head is: the hands, the body and the reach work from it.
+        /// </summary>
+        public Vector3 CamcorderHold { get; private set; }
+
+        void UpdateHold(float dt)
+        {
+            float down = Mathf.Clamp01(_pitch / Mathf.Max(1f, pitchLimitDown));
+            Vector3 want = new Vector3(0f, -Mathf.Lerp(holdDrop, holdDropDown, down), Mathf.Lerp(holdOut, holdOutDown, down));
+            if (noclip) want = Vector3.zero;
+            // Not into a wall: shorter when something is in front of the face (a sphere the size of the camcorder's front,
+            // plus the near clip).
+            float len = want.magnitude, room = len;
+            if (len > 1e-3f)
+            {
+                Vector3 dir = transform.rotation * want / len;
+                int n = Physics.SphereCastNonAlloc(cameraPitchPivot.position, 0.07f, dir, _holdHits, len + 0.05f, ~0, QueryTriggerInteraction.Ignore);
+                for (int i = 0; i < n; i++)
+                {
+                    var h = _holdHits[i];
+                    if (h.distance <= 0f || h.collider.transform.IsChildOf(transform) || h.rigidbody) continue;
+                    room = Mathf.Min(room, Mathf.Max(0f, h.distance - 0.05f));
+                }
+            }
+            float k = len > 1e-3f ? room / len : 1f;
+            // In at once (no clipping), back out gently.
+            _holdIn = k < _holdIn ? Mathf.Min(_holdIn, Mathf.Max(k, _holdIn - dt * 6f)) : Springs.Damper(_holdIn, ref _holdInVel, k, 0.15f, dt);
+            if (k < _holdIn) _holdInVel = 0f;
+            _holdIn = Mathf.Clamp01(_holdIn);
+            CamcorderHold = Quaternion.Inverse(cameraPitchPivot.localRotation) * (want * _holdIn);
         }
 
         // ---------------- Jump ----------------

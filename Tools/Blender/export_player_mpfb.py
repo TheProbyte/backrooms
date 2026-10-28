@@ -9,7 +9,8 @@ parts into the shadows only:
   <mesh>.Head   the head and neck (hair, eyes, brows and lashes whole): the camera is inside it
   <mesh>.ArmL   the left arm from the shoulder (the hand that holds the camcorder to the eye, for a right-hander)
   <mesh>.ArmR   the right arm
-  <mesh>        the rest
+  <mesh>.Torso  the hips, spine and shoulders (the shirt, the top of the jeans): shadow-only in first person
+  <mesh>        the rest: the legs and feet
 Writes <out_dir>/PlayerMPFB.fbx and its textures (and the clothes' normal maps) into <out_dir>/Textures.
 """
 import os
@@ -76,7 +77,11 @@ def arm_bones(s):
     return names
 
 
-SETS = [("Head", HEAD), ("ArmL", arm_bones("l")), ("ArmR", arm_bones("r"))]
+# The trunk (hips, spine, shoulders): drawn into the shadows only in first person, so looking down shows the legs and
+# shoes but not the chest, belly or shirt (and no cut edge where an arm was split off). The legs are what is left.
+TORSO = {"pelvis", "spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r"}
+
+SETS = [("Head", HEAD), ("ArmL", arm_bones("l")), ("ArmR", arm_bones("r")), ("Torso", TORSO)]
 
 
 def split(obj):
