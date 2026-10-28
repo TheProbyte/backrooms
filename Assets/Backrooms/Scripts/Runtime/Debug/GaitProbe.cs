@@ -883,6 +883,265 @@ namespace Backrooms.DebugTools
             return "holding " + id;
         }
 
+        /// <summary>
+        /// Round-5 hand test of plugging in (2026-10-28): holding id ("desklamp", the coil "extensioncord", or "cordplug": an
+        /// extension cord's plug), the player dist m out from the free wall socket nearest (x, z), facing and aimed at it;
+        /// clicks at frame 30 and logs every third frame for frames frames into file (hand and plug to the socket, PalmError,
+        /// elbow, stoop, what is held, the item set down and how fast it moves, the player), then a summary. reelFrames: then
+        /// holds the right mouse that many frames holding what is in the hand (reeling a cord in).
+        /// </summary>
+        public static string PlugInRun(string id, float x, float z, float dist, string file, int frames, int reelFrames)
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var grab = pl.GetComponent<PropGrabber>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            Socket sock = null; float bestD = float.MaxValue;
+            foreach (var s in Sockets.Around(new Vector3(x, 0f, z)))
+            {
+                if (!s.IsWall || s.occupant != null || s.dead) continue;
+                float d = Vector3.Distance(new Vector3(s.Position.x, 0f, s.Position.z), new Vector3(x, 0f, z));
+                if (d < bestD) { bestD = d; sock = s; }
+            }
+            if (sock == null) return "no socket";
+            // (An outlet has two: the plug goes into the one the view picks.)
+            var pair = new List<Vector3>();
+            foreach (var s in Sockets.Around(sock.Position)) if ((s.Position - sock.Position).magnitude < 0.06f) pair.Add(s.Position);
+            Vector3 n = sock.Normal; n.y = 0f; n.Normalize();
+            float yaw = Quaternion.LookRotation(-n).eulerAngles.y;
+            Vector3 stand = sock.Position + n * dist;
+            WorldItem target = null;
+            // Nothing left lying about from an earlier run (a lamp under the feet held the body 15 cm up).
+            if (grab.HeldItem) { var old = grab.HeldItem; grab.Drop(); Destroy(old.gameObject); }
+            foreach (var it in FindObjectsByType<WorldItem>(FindObjectsSortMode.None))
+                if (!it.Held && Vector3.Distance(it.transform.position, stand) < 4f) Destroy(it.gameObject);
+            if (id == "cordplug")
+            {
+                Hold("", stand.x, stand.z, yaw, 0f);
+                var box = ItemFactory.Spawn("extensioncord", pl.transform.position + pl.transform.right * 0.5f + Vector3.up * 0.1f, pl.transform.rotation) as CordBox;
+                if (box) { box.Deploy(null, pl.transform.position + pl.transform.forward * 0.3f + Vector3.up * 0.9f); target = box.Plug; grab.PickUp(target); }
+            }
+            else { Hold(id, stand.x, stand.z, yaw, 0f); target = grab.HeldItem; }
+            Vector3 eye = pl.cameraPitchPivot ? pl.cameraPitchPivot.position : pl.transform.position + Vector3.up * 1.58f;
+            Vector3 to = sock.Position - eye;
+            pl.TeleportSafe(pl.transform.position, yaw, Mathf.Atan2(-to.y, new Vector2(to.x, to.z).magnitude) * Mathf.Rad2Deg);
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            var upper = (Transform)typeof(FirstPersonBody).GetField("_upper", bf).GetValue(fpb);
+            var fore = (Transform)typeof(FirstPersonBody).GetField("_fore", bf).GetValue(fpb);
+            var hand = (Transform)typeof(FirstPersonBody).GetField("_hand", bf).GetValue(fpb);
+            var sb = new StringBuilder();
+            sb.AppendFormat("{0}: socket {1} normal {2}, standing {3:0.00} m out\n", id, sock.Position.ToString("F2"), sock.Normal.ToString("F1"), dist);
+            sb.AppendLine("frame | t | held | plugged | gave up | hand->socket m | plug->socket mm | PalmError mm | elbow | stoop | curl | set-down item pos | its speed m/s | player");
+            int frame = 0; float t0 = Time.time;
+            var owner = target as PowerUser ?? (target is Plug pg ? pg.owner as PowerUser : null);
+            float maxErr = 0f, minElbow = 999f, maxSpeed = 0f, inAt = -1f, pressAt = -1f, maxStep = 0f; int pumps = 0; float lastElbow = -1f, lastDir = 0f;
+            Vector3 lastPlug = Vector3.zero, setAt = Vector3.zero; bool approach = false, setSeen = false;
+            UnityEngine.Events.UnityAction act = null;
+            act = () =>
+            {
+                frame++;
+                if (frame == 30) { grab.botHold = true; pressAt = Time.time; }
+                if (frame == 32) grab.botHold = false;
+                if (frame == 33) grab.botHold = null;
+                // Reeling from the far end: the hand takes the item (a lamp) and pulls its cord in.
+                if (reelFrames > 0 && frame == frames && owner && !owner.Held) grab.PickUp(owner);
+                bool reeling = frame > frames + 20 && frame <= frames + reelFrames;
+                if (owner && !owner.Held && !setSeen) { setSeen = true; setAt = owner.transform.position; }
+                grab.botRmb = reeling;
+                var plug = owner ? owner.Plug : target as Plug;
+                Vector3 S = upper.position, E = fore.position, W = hand.position;
+                float elbow = Vector3.Angle(E - S, W - E);
+                bool plugged = plug && plug.Plugged;
+                if (plugged && inAt < 0f) inAt = Time.time - pressAt;
+                approach = frame > 30 && plug && plug.GoingInto;
+                if (approach)
+                {
+                    maxErr = Mathf.Max(maxErr, fpb.PalmError);
+                    minElbow = Mathf.Min(minElbow, elbow);
+                    // A pump: the elbow bending back the other way by 5 degrees or more.
+                    if (lastElbow < 0f) lastElbow = elbow;
+                    else if (Mathf.Abs(elbow - lastElbow) >= 5f) { float dir = Mathf.Sign(elbow - lastElbow); if (lastDir != 0f && dir != lastDir) pumps++; lastDir = dir; lastElbow = elbow; }
+                    if (lastPlug != Vector3.zero) maxStep = Mathf.Max(maxStep, (plug.transform.position - lastPlug).magnitude);
+                }
+                if (plug) lastPlug = plug.transform.position;
+                float speed = owner && owner.Body && !owner.Held ? owner.Body.linearVelocity.magnitude : 0f;
+                maxSpeed = Mathf.Max(maxSpeed, speed);
+                if (frame <= 3 || frame % 3 == 0)
+                    sb.AppendFormat("{0} | {1:0.00} | {2} | {3} | {4} | {5:0.000} | {6:0.0} | {7:0.0} | {8:0} | {9:0.00} | {10:0.00} | {11} | {12:0.00} | {13}\n", frame, Time.time - t0,
+                        grab.HeldItem ? grab.HeldItem.name : "-", plugged, plug && plug.GaveUp, Vector3.Distance(grab.HandPosition, sock.Position),
+                        plug ? NearestOf(pair, plug.transform.position) * 1000f : -1f, Mathf.Min(fpb.PalmError, 9.999f) * 1000f, elbow, pl.stoop, grab.HandCurl,
+                        owner ? owner.transform.position.ToString("F2") : "-", speed, pl.transform.position.ToString("F2"));
+                if (frame >= frames + reelFrames)
+                {
+                    Application.onBeforeRender -= act;
+                    grab.botRmb = false; grab.botHold = null;
+                    sb.AppendFormat("summary: plugged in {0} s after the click; while carrying: PalmError max {1:0.0} mm, elbow min {2:0}, elbow reversals {3}, plug's biggest step {4:0.0} mm; set-down item fastest {5:0.00} m/s, moved {6:0.00} m, ends at {7}\n",
+                        inAt >= 0f ? inAt.ToString("0.00") : "never", maxErr * 1000f, minElbow, pumps, maxStep * 1000f, maxSpeed,
+                        setSeen && !owner.Held ? Vector3.Distance(owner.transform.position, setAt) : 0f, owner ? owner.transform.position.ToString("F2") : "-");
+                    File.WriteAllText(file, sb.ToString());
+                }
+            };
+            Application.onBeforeRender += act;
+            return "running: socket " + sock.Position.ToString("F2");
+        }
+
+        static float NearestOf(List<Vector3> ps, Vector3 p)
+        {
+            float best = float.MaxValue;
+            foreach (var q in ps) best = Mathf.Min(best, Vector3.Distance(p, q));
+            return best;
+        }
+
+        /// <summary>
+        /// The skin of each finger against what the hand holds (or the body's touch: a wall, a rail): for the index, middle,
+        /// ring, little finger, thumb and the rest of the hand (palm), the nearest its skin comes (mm, negative inside) and
+        /// how many of its vertices are more than 2 mm in. Twelve numbers: six nearest, six counts. The arm's mesh as drawn,
+        /// each vertex to the finger bone it lies round (within 16.5 mm; the base of the finger is the palm's).
+        /// </summary>
+        public static float[] FingerSkinGaps(bool bodyTouch)
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var grab = pl.GetComponent<PropGrabber>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            System.Func<Vector3, float> contact = bodyTouch
+                ? (System.Func<Vector3, float>)System.Delegate.CreateDelegate(typeof(System.Func<Vector3, float>), fpb, typeof(FirstPersonBody).GetMethod("TouchDistance", bf))
+                : grab.ContactDistance;
+            var hand = (Transform)typeof(FirstPersonBody).GetField("_hand", bf).GetValue(fpb);
+            var fingers = (System.Collections.IList)typeof(FirstPersonBody).GetField("_fingers", bf).GetValue(fpb);
+            var res = new float[12];
+            for (int k = 0; k < 6; k++) res[k] = 1000f;
+            if (fingers == null) return res;
+            var pts = new List<Vector3[]>(); var idx = new List<int>();
+            foreach (var f in fingers)
+            {
+                var ft = f.GetType();
+                string name = (string)ft.GetField("name").GetValue(f);
+                var joints = (System.Collections.IList)ft.GetField("joints").GetValue(f);
+                Vector3 tipLocal = (Vector3)ft.GetField("tipLocal").GetValue(f);
+                var p = new Vector3[joints.Count + 1];
+                Transform last = null;
+                for (int j = 0; j < joints.Count; j++) { last = (Transform)joints[j].GetType().GetField("Item1").GetValue(joints[j]); p[j] = last.position; }
+                p[joints.Count] = last.TransformPoint(tipLocal);
+                pts.Add(p);
+                idx.Add(name == "Index" ? 0 : name == "Middle" ? 1 : name == "Ring" ? 2 : name == "Pinky" ? 3 : 4);
+            }
+            SkinnedMeshRenderer armR = null;
+            foreach (var r in fpb.GetComponentsInChildren<SkinnedMeshRenderer>()) if (r.name.EndsWith(".ArmR") && !r.name.Contains("suit")) armR = r;
+            if (!armR) return res;
+            var mesh = new Mesh(); armR.BakeMesh(mesh, true);
+            var vs = mesh.vertices; Destroy(mesh);
+            Vector3 sp = armR.transform.position; Quaternion sr = armR.transform.rotation;
+            foreach (var lv in vs)
+            {
+                Vector3 w = sp + sr * lv;
+                if ((w - hand.position).sqrMagnitude > 0.2f * 0.2f) continue;
+                float bestD = 0.0165f; int g = 5;
+                for (int fi = 0; fi < pts.Count; fi++)
+                    for (int sgi = 0; sgi + 1 < pts[fi].Length; sgi++)
+                    {
+                        Vector3 a = pts[fi][sgi], ab = pts[fi][sgi + 1] - a;
+                        float t = Mathf.Clamp01(Vector3.Dot(w - a, ab) / Mathf.Max(ab.sqrMagnitude, 1e-8f));
+                        float d = (w - (a + ab * t)).magnitude;
+                        if (d < bestD && !(sgi == 0 && t < 0.35f)) { bestD = d; g = idx[fi]; }
+                    }
+                float c = contact(w);
+                res[g] = Mathf.Min(res[g], c * 1000f);
+                if (c < -0.002f) res[6 + g]++;
+            }
+            return res;
+        }
+
+        /// <summary>FingerSkinGaps as a line.</summary>
+        public static string FingerSkin(bool bodyTouch)
+        {
+            var g = FingerSkinGaps(bodyTouch);
+            return string.Format("finger skin nearest mm (verts >2 mm in): index {0:0.0} ({6}), middle {1:0.0} ({7}), ring {2:0.0} ({8}), little {3:0.0} ({9}), thumb {4:0.0} ({10}), palm {5:0.0} ({11})",
+                                 g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7], g[8], g[9], g[10], g[11]);
+        }
+
+        /// <summary>
+        /// Holds each of ids (comma separated) in turn at (x, z) facing yaw and pitch, and after 75 frames writes MeasureR2's
+        /// numbers and FingerSkin's into file (renders into dir if render).
+        /// </summary>
+        public static string MeasureItems(string ids, float x, float z, float yaw, float pitch, string dir, string file, bool render)
+        {
+            var list = ids.Split(',');
+            var sb = new StringBuilder();
+            int frame = 0;
+            UnityEngine.Events.UnityAction act = null;
+            act = () =>
+            {
+                int k = frame / 90, f = frame % 90;
+                frame++;
+                if (k >= list.Length) { Application.onBeforeRender -= act; File.WriteAllText(file, sb.ToString()); return; }
+                if (f == 0) Hold(list[k].Trim(), x, z, yaw, pitch);
+                if (f == 75) { sb.Append(MeasureR2(dir, "r5_" + list[k].Trim(), render)); sb.AppendLine(FingerSkin(false)); sb.AppendLine(); }
+            };
+            Application.onBeforeRender += act;
+            return "measuring " + list.Length;
+        }
+
+        /// <summary>
+        /// The steadying hand on a test rail (a box 5 by 5 cm, 1 m long, at hip height, 0.38 m to the hand's side) or a test
+        /// wall (0.5 m to the side): the player at (x, z) facing yaw with nothing held, the touch put on it as the body's touch
+        /// layer would, then after 70 frames MeasureR2 against the touch (renders into dir if render) and FingerSkin, into file.
+        /// </summary>
+        public static string TouchTest(bool rail, float x, float z, float yaw, string dir, string tag, string file, bool render)
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            var grab = pl.GetComponent<PropGrabber>();
+            Hold("", x, z, yaw, 0f);
+            var t = pl.transform;
+            float side = grab.Side;
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = rail ? "TestRail" : "TestWall";
+            cube.transform.rotation = t.rotation;
+            if (rail) { cube.transform.localScale = new Vector3(0.05f, 0.05f, 1f); cube.transform.position = t.position + t.right * side * 0.36f + t.forward * 0.2f + Vector3.up * 1.0f; }
+            else { cube.transform.localScale = new Vector3(0.1f, 2.2f, 2f); cube.transform.position = t.position + t.right * side * 0.55f + Vector3.up * 1.1f; }
+            Physics.SyncTransforms();
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            var T = typeof(FirstPersonBody);
+            int frame = 0;
+            UnityEngine.Events.UnityAction act = null;
+            act = () =>
+            {
+                frame++;
+                if (frame == 5)
+                {
+                    // As UpdateTouch would find it.
+                    Vector3 shoulder = fpb.ShoulderNow - Vector3.up * 0.18f;
+                    var col = cube.GetComponent<Collider>();
+                    Vector3 dir = rail ? (cube.transform.position - fpb.ShoulderNow).normalized : t.right * side;
+                    if (rail) shoulder = fpb.ShoulderNow;
+                    if (!col.Raycast(new Ray(shoulder, dir), out var hit, 1.5f)) { Application.onBeforeRender -= act; Destroy(cube); return; }
+                    T.GetField("_touchFingersSet", bf).SetValue(fpb, false);
+                    var b = col.bounds;
+                    T.GetField("_touching", bf).SetValue(fpb, true);
+                    T.GetField("_touchRail", bf).SetValue(fpb, rail);
+                    Vector3 point = rail ? new Vector3(hit.point.x, b.max.y, hit.point.z) : hit.point;
+                    if (!rail) point = (Vector3)T.GetMethod("ComfortableTouch", bf | BindingFlags.Static).Invoke(fpb, new object[] { hit, fpb.ShoulderNow, t.forward, t.right * side });
+                    T.GetField("_touchPoint", bf).SetValue(fpb, point);
+                    T.GetField("_touchNormal", bf).SetValue(fpb, hit.normal);
+                    T.GetField("_touchAlong", bf).SetValue(fpb, b.size.x > b.size.z ? Vector3.right : Vector3.forward);
+                    T.GetField("_touchRailCentre", bf).SetValue(fpb, b.center);
+                    T.GetField("_touchRailR", bf).SetValue(fpb, Mathf.Max(0.008f, Mathf.Min(Mathf.Min(b.size.x, b.size.z), b.size.y) * 0.5f));
+                    ((Collider[])T.GetField("_touchColArr", bf).GetValue(fpb))[0] = col;
+                    T.GetField("_touchUntil", bf).SetValue(fpb, Time.time + 100f);
+                }
+                if (frame == 75)
+                {
+                    Application.onBeforeRender -= act;
+                    string r = MeasureR2(dir, tag, render, true) + FingerSkin(true) + "\n";
+                    File.AppendAllText(file, r + "\n");
+                    T.GetField("_touchUntil", bf).SetValue(fpb, Time.time);
+                    Destroy(cube);
+                }
+            };
+            Application.onBeforeRender += act;
+            return "touch test " + tag;
+        }
+
         public static string MeasureHand(string dir, string tag, string next, bool render)
         {
             var pl = FindAnyObjectByType<CamcorderPlayerController>();

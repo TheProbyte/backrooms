@@ -342,39 +342,52 @@ namespace Backrooms.Interaction
             return best;
         }
 
-        float _carryRoll; bool _carryRollSet;
+        float _carryRoll, _carryTilt; bool _carryRollSet;
 
         /// <summary>
-        /// Carried choked up, the head forward and up at the lower right of the view; turned about its handle as the arm best
-        /// holds it (searched when picked up, then kept up to date a step at a time as the view tips).
+        /// Carried choked up, the head forward and up at the lower right of the view; turned about its handle, and its head
+        /// tipped back or forward a little, as the arm best holds it (searched when picked up, then kept up to date a step at a
+        /// time as the view tips). (Turned about the handle only, the wrist was bent 29 degrees toward the little finger, past
+        /// its 28.)
         /// </summary>
         Pose Carry()
         {
             Vector3 h = _viewPos + _view * new Vector3(0.24f, -0.37f, 0.42f);
-            Vector3 d = _view * new Vector3(-0.15f, 0.55f, 0.82f).normalized;
-            Vector3 face0 = Vector3.ProjectOnPlane(_view * new Vector3(-0.55f, -0.1f, 1f), d).normalized;
+            Vector3 dBase = new Vector3(-0.15f, 0.55f, 0.82f).normalized;
             if (Arm && Arm.HasArm)
             {
-                float bestRoll = _carryRoll, bestS = float.MaxValue;
+                float bestRoll = _carryRoll, bestTilt = _carryTilt, bestS = float.MaxValue;
                 if (!_carryRollSet)
-                    for (int k = -12; k <= 12; k++) TryRoll(k * 10f);
+                {
+                    for (int t = -2; t <= 1; t++)
+                        for (int k = -12; k <= 12; k++) Try(k * 10f, t * 10f);
+                }
                 else
                 {
-                    TryRoll(_carryRoll);
+                    Try(_carryRoll, _carryTilt);
                     bestS -= 0.005f;                                                         // (no dithering between near-equals)
-                    TryRoll(_carryRoll - 4f); TryRoll(_carryRoll + 4f);
+                    Try(_carryRoll - 4f, _carryTilt); Try(_carryRoll + 4f, _carryTilt);
+                    if (_carryTilt > -20f) Try(_carryRoll, _carryTilt - 4f);
+                    if (_carryTilt < 10f) Try(_carryRoll, _carryTilt + 4f);
                 }
-                _carryRoll = bestRoll; _carryRollSet = true;
+                _carryRoll = bestRoll; _carryTilt = bestTilt; _carryRollSet = true;
 
-                void TryRoll(float roll)
+                void Try(float roll, float tilt)
                 {
-                    Vector3 fr = Quaternion.AngleAxis(roll, d) * face0;
-                    float sc = Strain(new Pose { h = h, r = Quaternion.LookRotation(fr, d), g = GripCarry }, out float over) + over * 0.05f
-                               + Mathf.Abs(roll) * 0.0015f;
-                    if (sc < bestS) { bestS = sc; bestRoll = roll; }
+                    var p = CarryPose(h, dBase, roll, tilt);
+                    float sc = Strain(p, out float over) + over * 0.05f + Mathf.Abs(roll) * 0.0015f + Mathf.Abs(tilt) * 0.002f;
+                    if (sc < bestS) { bestS = sc; bestRoll = roll; bestTilt = tilt; }
                 }
             }
-            Vector3 face = Quaternion.AngleAxis(_carryRoll, d) * face0;
+            return CarryPose(h, dBase, _carryRoll, _carryTilt);
+        }
+
+        /// <summary>The carry with the handle turned roll about itself and its head tipped tilt (about the view's right; back: less).</summary>
+        Pose CarryPose(Vector3 h, Vector3 dBase, float roll, float tilt)
+        {
+            Vector3 d = _view * (Quaternion.AngleAxis(tilt, Vector3.right) * dBase);
+            Vector3 face0 = Vector3.ProjectOnPlane(_view * new Vector3(-0.55f, -0.1f, 1f), d).normalized;
+            Vector3 face = Quaternion.AngleAxis(roll, d) * face0;
             return new Pose { h = h, r = Quaternion.LookRotation(face, d), g = GripCarry };
         }
 

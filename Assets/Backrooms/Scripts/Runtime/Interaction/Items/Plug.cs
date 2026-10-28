@@ -139,7 +139,7 @@ namespace Backrooms.Interaction
         void LateUpdate() { if (Socket != null && !Held) Pose(); }
 
         protected override void OnPickedUp() { if (Plugged) Unplug(false); }
-        protected override void OnDropped() { _going = null; _goPose = 0f; if (owner is PowerUser user) user.StopReeling(); }
+        protected override void OnDropped() { _going = null; _pushT = -1f; _goPose = 0f; if (owner is PowerUser user) user.StopReeling(); }
 
         /// <summary>Put down, a plug just falls from the hand.</summary>
         public override bool DropsStraight => true;
@@ -169,37 +169,90 @@ namespace Backrooms.Interaction
         // The hand carries the plug to the socket, square to it 5 cm out, pushes it in along the socket's axis and lets go
         // (bending and stepping in for a low or far socket). It used to jump from the hand into the socket, up to 1.1 m, in
         // one frame.
+        // The hand's target is kept within a comfortable reach of the shoulder as it is now, on the way to the socket: it
+        // moves on as the body bends and steps in, so the arm stays bent and the palm keeps up with it. (Sent straight to a
+        // socket out of reach, the arm locked straight for a second with the palm up to 47 cm behind its target, and pumped
+        // at the end.) No headway for a second (something in the way): it gives up and the hand comes back.
         Socket _going;
-        float _goT, _goPose, _pushT = -1f;
+        float _goT, _goPose, _pushT = -1f, _stuckT, _slowT, _stretch, _bestGap, _settleT;
+        int _tries;
         Vector3 _goPos; Quaternion _goRot = Quaternion.identity;
-        const float Approach = 0.05f, PushTime = 0.18f;
+        const float Approach = 0.05f, PushTime = 0.24f;
+        /// <summary>The hand's target is kept this far from the shoulder (of the arm's reach): bent, not locked straight.</summary>
+        public const float ComfortReach = 0.86f;
+        /// <summary>Seconds without getting nearer before it gives up (the hand comes back, the plug stays in it).</summary>
+        public const float GiveUpAfter = 1f;
+        /// <summary>Is it on its way into a socket (for tests)?</summary>
+        public bool GoingInto => _going != null;
+        /// <summary>The last plug-in gave up (for tests).</summary>
+        public bool GaveUp { get; private set; }
 
         /// <summary>Plug in to this socket, the hand taking it there (it must be in the hand).</summary>
-        public void BeginPlugIn(Socket s) { _going = s; _goT = 0f; _pushT = -1f; }
+        public void BeginPlugIn(Socket s) { _going = s; _goT = 0f; _pushT = -1f; _stuckT = 0f; _slowT = 0f; _stretch = 0f; _bestGap = float.MaxValue; _tries = 0; _settleT = 0f; GaveUp = false; }
+
+        void GiveUp() { _going = null; _pushT = -1f; GaveUp = true; }
+
+        /// <summary>
+        /// Where the plug may go this frame on its way to goal: goal itself if the palm can be there with the arm bent
+        /// (<see cref="ComfortReach"/> of the reach from the shoulder), or else as far along the way from the shoulder to it as
+        /// that allows. Pure, for tests.
+        /// </summary>
+        public static Vector3 WithinComfort(Vector3 goal, Vector3 palmOffset, Vector3 shoulder, float reach, out bool clamped) =>
+            WithinComfort(goal, palmOffset, shoulder, reach, ComfortReach, out clamped);
+
+        /// <summary>As above, within this much of the reach.</summary>
+        public static Vector3 WithinComfort(Vector3 goal, Vector3 palmOffset, Vector3 shoulder, float reach, float within, out bool clamped)
+        {
+            Vector3 palm = goal + palmOffset, to = palm - shoulder;
+            float r = reach * within;
+            clamped = to.sqrMagnitude > r * r;
+            if (!clamped) return goal;
+            return shoulder + to.normalized * r - palmOffset;
+        }
 
         void GoingIn(in HoldInput i)
         {
             var s = _going;
-            if (s == null || !CanUse(s) || s.occupant != null) { _going = null; return; }
+            if (s == null || !CanUse(s) || s.occupant != null) { GiveUp(); return; }
             _goT += i.dt;
-            _goPose = Mathf.MoveTowards(_goPose, 1f, i.dt * 1.6f);
+            _goPose = Mathf.MoveTowards(_goPose, 1f, i.dt * 1.4f);
             Vector3 outward = -(s.PlugRotation * Vector3.forward);
-            float d = _pushT < 0f ? Approach : Approach * (1f - Mathf.Clamp01(_pushT / PushTime));
-            _goPos = s.Position + outward * d; _goRot = s.PlugRotation;
-            i.hand.ReachToward(_goPos, _pushT < 0f);
+            float d = _pushT < 0f ? Approach : Approach * (1f - Mathf.SmoothStep(0f, 1f, _pushT / PushTime));
+            Vector3 goal = s.Position + outward * d;
+            _goRot = s.PlugRotation;
+            Vector3 palmOff = _goRot * GripLocal;
+            Vector3 shoulder = i.hand.ReachShoulder;
+            float reach = i.hand.ArmReach;
+            // Bent while the body can still come closer; once it cannot (a low socket, the body bent as far as it goes, or
+            // against the wall), the arm reaches on out as far as it goes (a socket 0.3 m up is reached nearly straight; the
+            // collarbone carries the shoulder on a little past the reach measured from where it rests).
+            float within = Mathf.Lerp(ComfortReach, 1.2f, _stretch);
+            _goPos = WithinComfort(goal, palmOff, shoulder, reach, within, out bool clamped);
+            // The body steps in and bends until the socket itself (where the push ends) is within the comfortable reach.
+            i.hand.ReachToward(s.Position + palmOff, _pushT < 0f, ComfortReach - 0.06f);
             if (_pushT < 0f)
             {
-                // Square in front of it, the hand there: push. Never getting there (out of reach): the hand comes back.
-                bool there = _goPose >= 1f && (transform.position - _goPos).magnitude < 0.015f && i.hand.PalmError < 0.02f;
-                if (there) _pushT = 0f;
-                else if (_goT > 3f) _going = null;
+                // Square in front of it, the hand there and the socket within reach: push. No headway for a second (out of
+                // reach, held back): give up, the hand comes back.
+                float gap = (transform.position - goal).magnitude;
+                WithinComfort(s.Position, palmOff, shoulder, reach, within, out bool socketFar);
+                bool there = _goPose >= 1f && !clamped && !socketFar && gap < 0.015f && i.hand.PalmError < 0.02f;
+                if (there) { _pushT = 0f; _settleT = 0f; return; }
+                if (gap < _bestGap - 0.01f) { _bestGap = gap; _stuckT = 0f; _slowT = 0f; }
+                else if (_goPose >= 1f) { _stuckT += i.dt; _slowT += i.dt; }
+                if (_slowT > 0.2f) _stretch = Mathf.MoveTowards(_stretch, 1f, i.dt * 1.5f);
+                if (_stuckT > GiveUpAfter || _goT > 5f) GiveUp();
                 return;
             }
+            // Pushing in, once, smoothly; then a moment for the hand to catch up before it lets go (it snapped the last 3 cm).
             _pushT += i.dt;
             if (_pushT < PushTime) return;
-            // In: let go. Short of it (the body moved): back out and again.
-            if ((transform.position - s.Position).magnitude < 0.03f) { _going = null; i.hand.LetGo(this); PlugInto(s); }
-            else _pushT = -1f;
+            float off = (transform.position - s.Position).magnitude;
+            _settleT += i.dt;
+            if (off > 0.004f && _settleT < 0.15f) return;
+            if (off < 0.03f) { _going = null; i.hand.LetGo(this); PlugInto(s); }
+            else if (++_tries >= 2) GiveUp();
+            else { _pushT = -1f; _bestGap = float.MaxValue; _stuckT = 0f; _slowT = 0f; }
         }
 
         public override float UsePose(out Vector3 position, out Quaternion rotation)

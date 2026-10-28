@@ -79,8 +79,16 @@ namespace Backrooms.Interaction
         Vector3 _itemReachAt;
         float _itemReachUntil = -1f;
         /// <summary>The held item wants the hand at a point this frame (a plug going to a socket): the body bends and steps toward it.</summary>
-        public void ReachToward(Vector3 p, bool step = true) { _itemReachAt = p; _itemReachUntil = Time.time + 0.1f; _itemMayStep = step; }
+        public void ReachToward(Vector3 p, bool step = true) => ReachToward(p, step, 0f);
+
+        /// <summary>
+        /// As above; stepWithin above 0: the body steps in until p is within that much of the arm's reach from the shoulder,
+        /// wherever the palm is (an item that keeps its own target within reach, a plug: the palm is always there, so
+        /// "until the palm gets there" would never step).
+        /// </summary>
+        public void ReachToward(Vector3 p, bool step, float stepWithin) { _itemReachAt = p; _itemReachUntil = Time.time + 0.1f; _itemMayStep = step; _itemStepWithin = stepWithin; }
         bool _itemMayStep;
+        float _itemStepWithin;
         bool ItemReaching => HeldItem && Time.time < _itemReachUntil;
         /// <summary>0..1: the held item's grip opened (the hand going back out hand over hand along a cord).</summary>
         public float GripOpen { get; private set; }
@@ -188,6 +196,7 @@ namespace Backrooms.Interaction
             UpdatePokeFingers();
             UpdateTouch(!HeldItem && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking && !QuickDooring);
             UpdateCarriedWeight();
+            UpdatePassing();
             UpdateStoop();
             UpdateHandPose();
 
@@ -219,12 +228,15 @@ namespace Backrooms.Interaction
             // in when it is out of the arm's reach.
             if (ItemReaching)
             {
-                want = Mathf.Max(want, Mathf.Clamp(StandShoulder.y - (_itemReachAt.y + 0.3f), 0f, 0.85f));
+                // (The shoulder down to 0.22 m above it: 0.3 left a socket 0.28 m up out of reach, the arm straight.)
+                want = Mathf.Max(want, Mathf.Clamp(StandShoulder.y - (_itemReachAt.y + 0.22f), 0f, 0.85f));
                 Vector3 to = _itemReachAt - ReachShoulder;
                 Vector3 local = transform.InverseTransformDirection(to); local.y = 0f;
                 var flat = new Vector2(local.x, local.z);
                 // (Only while the palm is not there yet: stepping on through a plug's push left it 8 cm short.)
-                if (_itemMayStep && PalmError > 0.03f && to.magnitude > ArmReach * 0.9f && flat.magnitude > 0.3f) { _player.botInput = flat.normalized * 0.45f; _itemStepping = true; }
+                bool far = _itemStepWithin > 0f ? to.magnitude > ArmReach * _itemStepWithin && flat.magnitude > 0.2f
+                                                : PalmError > 0.03f && to.magnitude > ArmReach * 0.9f && flat.magnitude > 0.3f;
+                if (_itemMayStep && far) { _player.botInput = flat.normalized * 0.45f; _itemStepping = true; }
                 else if (_itemStepping) { _player.botInput = null; _itemStepping = false; }
             }
             else if (_itemStepping) { _player.botInput = null; _itemStepping = false; }
@@ -541,7 +553,8 @@ namespace Backrooms.Interaction
         {
             bool active = (Current != State.Idle && _target) || Poking || HeldItem || OnDoor || _touching || QuickDooring;
             HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? 3.2f : 2.5f));
-            if (HeldItem) { HandCurl = Mathf.MoveTowards(HandCurl, HeldItem.GripCurl, Time.deltaTime * 4f); return; }   // pose set in LateUpdate
+            // (Hand over hand on a cord: the grip opens going out and closes on the pull, as the fingers do.)
+            if (HeldItem) { HandCurl = Mathf.MoveTowards(HandCurl, HeldItem.GripCurl * (1f - 0.6f * GripOpen), Time.deltaTime * 6f); return; }   // pose set in LateUpdate
             if (Poking) PokePose = true; else if (HandBlend <= 0.01f) PokePose = false;
             if (OnDoor && _door) { PokePose = false; DoorHandPose(); return; }
             if (_touching) { PokePose = false; TouchHandPose(); return; }

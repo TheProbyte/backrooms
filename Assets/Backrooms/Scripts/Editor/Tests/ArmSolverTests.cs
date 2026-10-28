@@ -57,5 +57,49 @@ namespace Backrooms.Tests
             }
             finally { Object.DestroyImmediate(go); }
         }
+
+        [Test]
+        public void APlugsTargetStaysWithinABentArmsReach()
+        {
+            // The hand takes a plug toward a socket out of reach only as far as a bent arm reaches; the body steps in for the
+            // rest (sent straight there, the arm locked straight for a second, the palm 47 cm behind its target). Held back,
+            // it gives up within about a second.
+            Vector3 shoulder = new Vector3(0f, 1.4f, 0f), socket = new Vector3(0f, 0.3f, 1f), palmOff = new Vector3(0f, 0.05f, -0.05f);
+            const float reach = 0.63f;
+            Vector3 p = Plug.WithinComfort(socket, palmOff, shoulder, reach, out bool clamped);
+            Assert.That(clamped, Is.True);
+            Assert.That((p + palmOff - shoulder).magnitude, Is.EqualTo(reach * Plug.ComfortReach).Within(1e-4f));
+            Assert.That(Vector3.Dot(p - shoulder, (socket - shoulder).normalized), Is.GreaterThan(0.3f), "on the way to it");
+            Vector3 near = new Vector3(0f, 1.1f, 0.3f);
+            Assert.That(Plug.WithinComfort(near, palmOff, shoulder, reach, out clamped), Is.EqualTo(near));
+            Assert.That(clamped, Is.False);
+            Assert.That(Plug.GiveUpAfter, Is.LessThanOrEqualTo(1.2f));
+        }
+
+        [Test]
+        public void ALampIsSetDownBesideTheFeetOffTheWayToTheOutlet()
+        {
+            // Plugging in a lamp held in the hand, it is set down beside the feet, off the way to the outlet (set down under
+            // the outlet, the body stepping in climbed onto it and the plug stopped 15 cm short), never into a wall.
+            var floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var player = new GameObject("Player");
+            try
+            {
+                Vector3 o = new Vector3(3000f, 900f, 3000f);                                         // away from anything else
+                floor.transform.localScale = new Vector3(10f, 0.2f, 10f); floor.transform.position = o + new Vector3(0f, -0.1f, 0f);
+                wall.transform.localScale = new Vector3(0.2f, 2f, 4f); wall.transform.position = o + new Vector3(0.5f, 1f, 0f);   // on the hand's side
+                player.transform.position = o;
+                var grab = player.AddComponent<PropGrabber>();
+                Physics.SyncTransforms();
+                Vector3 outlet = o + new Vector3(0f, 0.3f, 1.2f);
+                Assert.That(grab.SpotBeside(outlet, new Vector3(0.09f, 0.2f, 0.09f), null, out var at, out _), Is.True);
+                at -= o;
+                Assert.That(Mathf.Abs(at.x), Is.GreaterThan(0.3f), "off the way to the outlet");
+                Assert.That(at.x, Is.LessThan(0f), "the other side, not in the wall");
+                Assert.That(at.y, Is.EqualTo(0f).Within(0.01f), "on the floor");
+            }
+            finally { Object.DestroyImmediate(floor); Object.DestroyImmediate(wall); Object.DestroyImmediate(player); }
+        }
     }
 }

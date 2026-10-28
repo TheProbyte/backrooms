@@ -464,6 +464,40 @@ Open after round 4: the hammer's thumb lies 14 mm off the handle and its index f
 sink 6-9 mm into held items (the fingers stop at a joint's 8.5 mm, the pads are thicker); the chicken's twist is at the
 95 limit; the tape roll counts more skin in its core (165 -> 149-260 vertices, 7.2 mm deep); a door push, the light
 switch and reeling were not re-measured.
+Round 5 (2026-10-28, reviewer 7/10):
+- **Lamp plug-in.** Clicking an outlet with the lamp in hand set the lamp down where the view met the floor, under the
+  outlet. The body stepped onto it, the plug stopped 15 cm short, and the lamp was later launched. Now the lamp is set down
+  beside the feet, off the way to the outlet and near enough for its cord (`PropGrabber.SpotBeside`, `SetDownBeside`), and
+  the body passes through it until it has stepped away. The plug starts in the hand (`PlaceInHand`), not at the lamp's
+  back. A coiled cord is set down the same way (it was tossed toward the wall).
+- **Carrying a plug in.** The hand's target is kept within 0.86 of the arm's reach from the shoulder on the way to the
+  socket (`Plug.WithinComfort`), so it moves on as the body bends and steps in and the arm stays bent. Once the body can
+  get no closer, the arm reaches on out. The push is one eased stroke, and the hand waits up to 0.15 s for the plug to
+  arrive before letting go. With no headway for 1 s it gives up and the hand comes back (`Plug.GaveUp`). The body bends
+  down to 0.22 m above the socket (0.3 left a low socket out of reach).
+- **Finger pads.** Each finger bone's skin is measured once on the arm's mesh (`MeasurePads`): a round about the bone,
+  moved toward the palm, that holds the skin (less 1 mm, as skin gives). The bones lie near the back of the finger, so
+  the pads reach 12-16 mm toward the palm. Fingers stop on that round, tested at a third, two thirds and the end of each
+  bone, the stop found by halving three times. The thumb's turn is refined about the best one (12-degree steps missed a
+  stick of chalk).
+- **Wrist and forearm.** The arm solver charges extra past 70% of a limit. A held item is turned about the palm (up to 24
+  degrees, about the back of the hand and the fingers) to where the arm holds it best (`PropGrabber.EaseForArm`), except
+  the sledgehammer, which now also tips its head when it picks its carry. Holding an item, the fingers stay drawn together.
+- **Chalk.** A three-finger grip, found by trying 336 grips against the stick: under the index and middle pads, turned 18
+  degrees across the hand, the tip 3-4 cm past the fingertips, the thumb beside it (4 mm off).
+- **Reeling.** The hand's curl follows the grip opening on the way out (0.45 -> 0.19 -> 0.45 each stroke).
+- **Wall lean.** The hand's turn on the wall is picked once per touch by `ReachableFingers`.
+Measured (World 3, `GaitProbe.PlugInRun`, `MeasureItems`, `FingerSkin`, `TouchTest`; round 3 -> round 5): lamp plug-in
+never -> in at 1.5 s, palm error max 23 mm, elbow never below 51, lamp moved 0 m; cord plug-in palm error 472 -> 15 mm,
+elbow min 4 -> 57, final snap 30 -> 8 mm; deepest skin in a held item: hammer 9.4 -> 1.0 mm, chicken 7.5 -> 1.3, lamp 6.8
+-> 1.1, spray can 6.3 -> 1.0, finger skin 0.2-2.8 mm off what it holds; rail 169 skin vertices inside -> 0, middle joints
+0-18 -> 34-74 degrees; chalk middle finger 25 -> 1.5 mm, index 0.9; wrist to the side: hammer carry 29 -> 12, plug pinch
+27 ulnar -> 16 radial, chicken twist 95 -> 45; hammer swing elbow 114 -> 19, hand within 12 degrees of its plan, palm 0.4
+mm; walking with the lamp palm 0.0 mm.
+Open after round 5: the tape roll's little finger is still 7 mm in its core; the chalk's thumb is 4 mm off and the thumb
+on a rail stands out straight; the wall lean's forearm is still turned 93 degrees and the middle of the palm 9-17 mm off
+the wall (one edge touches); the plug's last 7-10 mm into a socket is a snap (the wrist cannot square the plug exactly);
+the light switch, door pull, jamb and the camcorder hand were not re-measured.
 
 Open: furniture's colliders are boxes that do not match the model everywhere (a sofa's rolled arm: the fingers close on
 the box, 15 cm under the visible top, so they stay as wanted); the thumb lies along a hammer's handle rather than round

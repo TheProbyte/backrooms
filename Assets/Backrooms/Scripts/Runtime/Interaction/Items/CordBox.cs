@@ -232,10 +232,14 @@ namespace Backrooms.Interaction
                 if (s.Depth + 1 > MaxChain) return;
                 // The hand takes the plug off the coil and carries it to the socket (the coil is put down), as a lamp's
                 // plug goes in (Plug.BeginPlugIn). (It went in from the coil in the hand, the hand never moving.)
+                // The coil is set down beside the feet first (PropGrabber.SetDownBeside: it was tossed toward the wall, in the way).
                 if (i.hand)
                 {
-                    Deploy(null, i.hand.HandPosition);
-                    if (_plug) { var p = _plug; i.hand.PickUp(p); p.BeginPlugIn(s); return; }
+                    var hand = i.hand;
+                    if (!hand.SpotBeside(s.Position, new Vector3(0.12f, 0.07f, 0.12f), null, out var spot, out var turn)) return;
+                    Deploy(null, hand.HandPosition);
+                    hand.SetDownBeside(this, spot, turn);
+                    if (_plug) { var p = _plug; hand.PickUp(p); p.BeginPlugIn(s); return; }
                 }
                 Deploy(s);
             }

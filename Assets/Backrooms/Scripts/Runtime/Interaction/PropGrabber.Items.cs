@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -185,6 +186,7 @@ namespace Backrooms.Interaction
             _itemFromLow = item.transform.position.y < transform.position.y + 0.55f && Vector3.Distance(item.transform.position, transform.position) < 2.5f;
             MicThump();
             _swayInit = false; _qDown = -1f; ThrowCharge = 0f;
+            _easeLocal = _easeWant = Quaternion.identity; _easeNext = 0f;
             item.SetHeld(true);
         }
 
@@ -194,6 +196,120 @@ namespace Backrooms.Interaction
             if (!item || HeldItem != item) return;
             HeldItem = null;
             item.SetHeld(false);
+        }
+
+        // ---------------- Set down beside the feet ----------------
+        // To plug in a lamp or a coiled cord held in the hand, the hand puts it down beside the feet, off the way to the outlet
+        // and near enough for its cord, then takes the plug to the outlet. (A lamp was set down where the view met the floor,
+        // under the outlet: the body stepping in climbed onto it, the plug stopped 15 cm short, and the lamp was launched 46 m
+        // when the body came off it; a coil was tossed toward the wall.) The body passes through it until it has stepped away.
+
+        /// <summary>Where it may stand, beside the feet (x: toward the hand's side, z: forward; m), most wanted first.</summary>
+        static readonly Vector2[] BesideSpots =
+        {
+            new Vector2(0.38f, 0.1f), new Vector2(0.38f, -0.12f), new Vector2(0.42f, 0.32f), new Vector2(-0.38f, 0.1f),
+            new Vector2(-0.38f, -0.12f), new Vector2(0.15f, -0.4f), new Vector2(-0.15f, -0.4f), new Vector2(-0.42f, 0.32f),
+        };
+        static readonly RaycastHit[] s_downHits = new RaycastHit[12];
+        static readonly Collider[] s_over = new Collider[12];
+        readonly List<WorldItem> _passing = new List<WorldItem>();
+
+        /// <summary>
+        /// A spot on the floor beside the feet for the held item (a box of halfSize standing on it), clear of everything, at
+        /// least 0.35 m off the way from the feet to toward, where fits(at, rotation) says it will do (its cord reaches);
+        /// turned to face you. False if there is none.
+        /// </summary>
+        public bool SpotBeside(Vector3 toward, Vector3 halfSize, System.Func<Vector3, Quaternion, bool> fits, out Vector3 at, out Quaternion rot)
+        {
+            at = Vector3.zero;
+            rot = Quaternion.Euler(0f, transform.eulerAngles.y + 180f, 0f);
+            Vector3 fwd = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized, right = Vector3.Cross(Vector3.up, fwd);
+            Vector3 feet = transform.position, to = toward; to.y = feet.y;
+            Vector3 path = to - feet;
+            float best = float.MaxValue;
+            for (int k = 0; k < BesideSpots.Length; k++)
+            {
+                Vector3 p = feet + right * (BesideSpots[k].x * Side) + fwd * BesideSpots[k].y;
+                if (!FloorBeside(p, out Vector3 floor)) continue;
+                Vector3 q = floor; q.y = feet.y;
+                float t = path.sqrMagnitude > 1e-4f ? Mathf.Clamp01(Vector3.Dot(q - feet, path) / path.sqrMagnitude) : 0f;
+                if ((q - (feet + path * t)).magnitude < 0.35f) continue;
+                if (fits != null && !fits(floor, rot)) continue;
+                int n = Physics.OverlapBoxNonAlloc(floor + Vector3.up * (halfSize.y + 0.02f), halfSize, s_over, rot, ~0, QueryTriggerInteraction.Ignore);
+                bool clear = true;
+                for (int c = 0; c < n && clear; c++)
+                {
+                    var tr = s_over[c].transform;
+                    clear = tr.IsChildOf(transform) || (HeldItem && tr.IsChildOf(HeldItem.transform));
+                }
+                if (!clear) continue;
+                float score = k * 0.1f + Vector3.Distance(floor, toward) * 0.3f;
+                if (score < best) { best = score; at = floor; }
+            }
+            return best < float.MaxValue;
+        }
+
+        /// <summary>The floor under p near the feet' height (not the player's own body, not the held item).</summary>
+        bool FloorBeside(Vector3 p, out Vector3 floor)
+        {
+            floor = p;
+            int n = Physics.RaycastNonAlloc(p + Vector3.up * 0.7f, Vector3.down, s_downHits, 1.4f, ~0, QueryTriggerInteraction.Ignore);
+            float bestD = float.MaxValue; bool ok = false;
+            for (int i = 0; i < n; i++)
+            {
+                var tr = s_downHits[i].collider.transform;
+                if (tr.IsChildOf(transform) || (HeldItem && tr.IsChildOf(HeldItem.transform)) || s_downHits[i].distance >= bestD) continue;
+                bestD = s_downHits[i].distance; floor = s_downHits[i].point; ok = s_downHits[i].normal.y > 0.8f;
+            }
+            return ok && Mathf.Abs(floor.y - transform.position.y) < 0.25f;
+        }
+
+        /// <summary>Puts an item where the hand is now, as the hand would grip it (a plug let out of a lamp in the hand: it
+        /// appeared at the lamp's back, low by the body, and the arm folded up to fetch it).</summary>
+        public void PlaceInHand(WorldItem item)
+        {
+            if (!item) return;
+            Quaternion grip = item.GripRotationLocal;
+            Quaternion rot = HandRotation * Quaternion.Inverse(Quaternion.LookRotation(Mirror(grip * Vector3.forward), Mirror(grip * Vector3.up)));
+            Vector3 pos = HandPosition - rot * Mirror(item.GripLocal);
+            if (item.Body) { item.Body.position = pos; item.Body.rotation = rot; item.Body.linearVelocity = Vector3.zero; }
+            item.transform.SetPositionAndRotation(pos, rot);
+        }
+
+        /// <summary>Sets the held item down there, upright and still; the body passes through it until it has stepped away.</summary>
+        public void SetDownBeside(WorldItem item, Vector3 at, Quaternion rot)
+        {
+            if (!item || HeldItem != item) return;
+            HeldItem = null;
+            AimedSocket = null;
+            item.SetHeld(false);
+            item.Body.position = at; item.Body.rotation = rot;
+            item.transform.SetPositionAndRotation(at, rot);
+            item.Body.linearVelocity = Vector3.zero; item.Body.angularVelocity = Vector3.zero;
+            item.OnPlaced();
+            var cc = GetComponent<CharacterController>();
+            if (!cc) return;
+            foreach (var c in item.GetComponentsInChildren<Collider>(true)) if (c && c.enabled) Physics.IgnoreCollision(cc, c, true);
+            if (!_passing.Contains(item)) _passing.Add(item);
+        }
+
+        /// <summary>Items set down at the feet become solid to the body again once it has stepped away from them.</summary>
+        void UpdatePassing()
+        {
+            if (_passing.Count == 0) return;
+            var cc = GetComponent<CharacterController>();
+            for (int i = _passing.Count - 1; i >= 0; i--)
+            {
+                var it = _passing[i];
+                if (!it) { _passing.RemoveAt(i); continue; }
+                if (it.Held) continue;
+                Vector3 d = transform.position - it.transform.position; d.y = 0f;
+                if (cc && d.magnitude < cc.radius + 0.45f) continue;
+                // (Light things never stop the body: WorldItem keeps them out of its way.)
+                if (cc && it.Body && it.Body.mass > 0.5f)
+                    foreach (var c in it.GetComponentsInChildren<Collider>(true)) if (c && c.enabled) Physics.IgnoreCollision(cc, c, false);
+                _passing.RemoveAt(i);
+            }
         }
 
         /// <summary>The held item is gone (used up): the hand is free.</summary>
@@ -376,6 +492,43 @@ namespace Backrooms.Interaction
             if (_shake) { _shake.dip = 0.12f + 0.1f * HeldItem.UseBlend; _shake.effort = HeldItem.Effort; }
         }
 
+        // ---------------- Held as the arm holds it best ----------------
+        Quaternion _easeLocal = Quaternion.identity, _easeWant = Quaternion.identity;
+        float _easeNext;
+        static readonly float[] EaseAngles = { -24f, -12f, 0f, 12f, 24f };
+
+        /// <summary>
+        /// The held item turned about the palm (at most 24 degrees about the back of the hand and about the fingers) to where
+        /// the arm holds it with the wrist and forearm well inside their limits (FirstPersonBody.ArmStrain), looked for a few
+        /// times a second and eased to. (A spray can and a rubber chicken were held with the wrist 25-26 degrees to the side,
+        /// its limit 28, and the chicken's forearm turned 95, its limit.) Not for the sledgehammer (it plans its own poses)
+        /// or while an item is in use (a plug going in, chalk on a wall).
+        /// </summary>
+        void EaseForArm(WorldItem item, ref Vector3 pos, ref Quaternion rot, float useW, float dt)
+        {
+            bool on = _body && _body.HasArm && !(item is Sledgehammer) && useW <= 0f && ThrowCharge <= 0f && _itemT >= 1f && HandBlend > 0.9f;
+            Quaternion grip = item.GripRotationLocal;
+            Quaternion hand = rot * Quaternion.LookRotation(Mirror(grip * Vector3.forward), Mirror(grip * Vector3.up));
+            Vector3 palm = pos + rot * Mirror(item.GripLocal);
+            if (on && Time.time >= _easeNext)
+            {
+                _easeNext = Time.time + 0.15f;
+                float best = float.MaxValue;
+                foreach (float a in EaseAngles)
+                    foreach (float b in EaseAngles)
+                    {
+                        Quaternion local = Quaternion.AngleAxis(a, Vector3.up) * Quaternion.AngleAxis(b, Vector3.forward);
+                        float s = _body.ArmStrain(palm, hand * local, out _) + (Mathf.Abs(a) + Mathf.Abs(b)) * 0.003f;
+                        if (s < best - 1e-4f) { best = s; _easeWant = local; }
+                    }
+            }
+            if (!on) _easeWant = Quaternion.identity;
+            _easeLocal = Quaternion.Slerp(_easeLocal, _easeWant, 1f - Mathf.Exp(-dt / 0.3f));
+            Quaternion turn = hand * _easeLocal * Quaternion.Inverse(hand);
+            rot = turn * rot;
+            pos = palm + turn * (pos - palm);
+        }
+
         /// <summary>The nearest thing the centre of the view is on, within 6 m (not the player or the held item).</summary>
         bool AimHit(out RaycastHit hit)
         {
@@ -459,6 +612,7 @@ namespace Backrooms.Interaction
             // Upright in the view, turned a little in toward the middle, tipped forward while in use.
             Quaternion rot = view * Quaternion.Euler(-8f * item.UseBlend - 25f * ThrowCharge, -10f * Side, 4f * Side) * item.HoldTurn;
             float w = item.UsePose(out var usePos, out var useRot);
+            EaseForArm(item, ref pos, ref rot, w, dt);
             if (w > 0f) { pos = Vector3.Lerp(pos, usePos, w); rot = Quaternion.Slerp(rot, useRot, w); }
             if (_itemT < 1f)
             {

@@ -232,6 +232,11 @@ namespace Backrooms.Interaction
                 Vector3 along = Vector3.ProjectOnPlane(_touchPoint - shoulder, _touchNormal);
                 if (along.sqrMagnitude < 1e-4f) along = Vector3.ProjectOnPlane(fwd, _touchNormal);
                 Vector3 fingers = Vector3.ProjectOnPlane(along.normalized + Vector3.up * 0.35f, _touchNormal).normalized;
+                // Turned round the wall's normal as the arm lays a hand flat best (picked once per touch: ReachableFingers).
+                // (Along the reach and a little up, the forearm was turned 96 degrees, past its 95: the hand could not lie
+                // flat, one edge touched and the middle of the palm stood 17 mm off the wall.)
+                if (_touchFingersSet) fingers = _touchFingers;
+                else { _touchFingers = fingers = ReachableFingers(_touchPoint, _touchNormal, fingers); _touchFingersSet = true; }
                 tr = Quaternion.LookRotation(fingers, _touchNormal);
                 tw = _touchPoint + _touchNormal * 0.02f - fingers * 0.055f;
                 tc = 0.12f;
@@ -242,7 +247,8 @@ namespace Backrooms.Interaction
             curl = Mathf.Lerp(hangCurl, tc, s);
         }
 
-        Vector3 _touchRailCentre;
+        Vector3 _touchRailCentre, _touchFingers;
+        bool _touchFingersSet;
         readonly Collider[] _touchColArr = new Collider[1];
 
         /// <summary>
@@ -350,6 +356,7 @@ namespace Backrooms.Interaction
                 _touchRailR = Mathf.Max(0.008f, Mathf.Min(Mathf.Min(bounds.size.x, bounds.size.z), bounds.size.y) * 0.5f);
                 if (!rail) _touchPoint = ComfortableTouch(hit, shoulder, fwd, right * side);
                 _touchUntil = Time.time + 0.8f + Random.value * 1.5f;
+                _touchFingersSet = false;
                 return;
             }
         }

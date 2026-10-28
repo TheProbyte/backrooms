@@ -187,6 +187,11 @@ namespace Backrooms.Interaction
             if (_cord) Destroy(_cord.gameObject);
         }
 
+        // Clicking an outlet with the lamp in hand: it is set down beside the feet, off the way to the outlet and near enough
+        // for its cord (PropGrabber.SetDownBeside), and the hand takes its plug there. (It was set down where the view met the
+        // floor: under the outlet, in the way. The body stepping in climbed onto it, the plug stopped 15 cm short, and the lamp
+        // was launched 46 m when the body came off it.)
+
         public override void HoldUpdate(in HoldInput i)
         {
             if (i.secondary) { Bundle(); return; }
@@ -198,7 +203,22 @@ namespace Backrooms.Interaction
                 if (s == null && i.hit && i.hitInfo.distance <= reach) s = Sockets.Nearest(i.hitInfo.point, 0.1f);
                 if (s != null && _plug.CanUse(s))
                 {
-                    if (Vector3.Distance(s.Position, transform.TransformPoint(CordExit)) < CordLength * 0.92f) { Unbundle(); if (i.hand && _plug) { var p = _plug; i.hand.PickUp(p); p.BeginPlugIn(s); } else _plug.PlugInto(s); return; }
+                    if (Vector3.Distance(s.Position, transform.TransformPoint(CordExit)) < CordLength * 0.92f)
+                    {
+                        if (!i.hand) { Unbundle(); _plug.PlugInto(s); return; }
+                        // Set down beside the feet, then the hand takes the plug to the outlet. Nowhere to set it down: nothing.
+                        var hand = i.hand;
+                        var socket = s;
+                        if (!hand.SpotBeside(s.Position, new Vector3(0.09f, 0.2f, 0.09f),
+                                             (at, rot) => Vector3.Distance(at + rot * CordExit, socket.Position) < CordLength * 0.8f,
+                                             out var spot, out var turn)) return;
+                        Unbundle();
+                        var p = _plug;
+                        hand.PlaceInHand(p);               // the hand keeps the plug as it lets the cord out
+                        hand.SetDownBeside(this, spot, turn);
+                        if (p) { hand.PickUp(p); p.BeginPlugIn(s); }
+                        return;
+                    }
                 }
             }
             Toggle();

@@ -27,20 +27,22 @@ namespace Backrooms.Interaction
 
         public override Vector3 HoldOffset => new Vector3(0.15f, -0.2f, 0.34f);
         public override Vector3 UseOffset => new Vector3(0.12f, -0.14f, 0.42f);
-        // A finger-pad grip: the stick along under the index and middle fingers toward the tip (+z), pressed by their pads,
-        // the thumb opposed under it from the side, ring and pinky tucked in; the palm clear above the butt. (A fist used to
-        // close on nothing: fingertips 32-69 mm away, the thumb pointing forward.)
-        // (The palm's centre is 3.7 cm to the little-finger side of the index: the stick lies under the index pad. The fingers
-        // point along the forearm's line, the pads curling down onto the stick.)
-        // (Placed by trying the closing fingers against the stick: under the index's line, 4.5 cm below the palm's centre,
-        // its butt 3.5 cm behind it, the index pad on top and the thumb's pad against its side, both touching. Between the
-        // index and middle fingers, as before, neither touched it: 2-3 cm off.)
-        public override Vector3 GripLocal => new Vector3(0.035f, 0.053f, 0.035f);
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0f, 0.05f, 1f), new Vector3(0f, 1f, -0.05f));
+        // A three-finger grip: the stick under the pads of the index and middle fingers, the thumb's pad pressed against it
+        // from the other side, ring and little finger tucked in; turned 18 degrees across the hand (from the fingertips back
+        // toward the web of the thumb, as a pencil lies), its tip 3-4 cm out past the fingertips.
+        // (Placed by trying the closing fingers against the stick, 144 ways: index, middle and thumb pads all within 1.5 mm
+        // of it. Under the index alone, the stick lay below the hand touched by the index and the thumb only, the middle
+        // finger 2.5 cm off: it looked loose.)
+        public override Vector3 GripLocal => TestGrip ?? new Vector3(0.028f, 0.064f, 0.015f);
+        public override Quaternion GripRotationLocal => Quaternion.Euler(0f, TestGrip.HasValue ? TestTurn.y : -18f, 0f) * Quaternion.LookRotation(new Vector3(0f, 0.05f, 1f), new Vector3(0f, 1f, -0.05f));
         public override float GripCurl => 0.5f;
-        public float FingerCurl(int finger) => finger == 0 ? 0.5f : finger == 1 ? 0.7f : finger == 2 ? 0.9f : 0.95f;
-        public float ThumbCurl => 0.45f;
-        public float ThumbOpposition => 0.55f;
+        public float FingerCurl(int finger) => TestCurls != null ? TestCurls[finger] : finger == 0 ? 0.5f : finger == 1 ? 0.55f : finger == 2 ? 0.85f : 0.9f;
+        public float ThumbCurl => TestCurls != null ? TestCurls[4] : 0.45f;
+        public float ThumbOpposition => TestCurls != null ? TestCurls[5] : 0.6f;
+        /// <summary>Tests: a grip to try instead (the palm's point, the hand's turn about its back (y, degrees), finger curls 0-3, the thumb's curl and turn).</summary>
+        public static Vector3? TestGrip;
+        public static Vector3 TestTurn;
+        public static float[] TestCurls;
         public override string Status => $"chalk {Mathf.CeilToInt(left * 100f)} %";
         public override float Amount { get => left; set { left = Mathf.Clamp01(value); Shape(); } }
 
