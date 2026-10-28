@@ -16,7 +16,7 @@ namespace Backrooms.Interaction
     /// The cord is a physics rope (<see cref="Cord"/>): it lies on the floor, drapes over things and catches on corners.
     /// Models: Resources/Items/CordCoil.fbx, CordSocket.fbx, Plug.fbx.
     /// </summary>
-    public class CordBox : PowerUser, IHandGrip
+    public class CordBox : PowerUser, IHandGrip, IGripRound
     {
         public const float Length = 8f;
         public const int MaxChain = 3;
@@ -62,6 +62,8 @@ namespace Backrooms.Interaction
                                                     : new Vector3(0.02f, 0.02f, 0f);
         public override Quaternion GripRotationLocal => Bundle ? Quaternion.LookRotation(new Vector3(-0.26f, 0f, 0.966f), Vector3.up)
                                                                 : Quaternion.LookRotation(new Vector3(-0.4f, -0.3f, 0.86f), Vector3.up);
+        /// <summary>Round 10: the coil taken by its rim on whichever side (IGripRound): round its middle.</summary>
+        public void GripAxis(out Vector3 point, out Vector3 axis) { point = Vector3.zero; axis = Vector3.up; }
         public override float GripCurl => 0.9f;
         public float FingerCurl(int finger) => 0.92f;
         public float ThumbCurl => Bundle ? 0.8f : 0.7f;

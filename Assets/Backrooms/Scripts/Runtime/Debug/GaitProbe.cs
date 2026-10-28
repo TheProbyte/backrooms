@@ -74,6 +74,7 @@ namespace Backrooms.DebugTools
             _fLegRight = typeof(FirstPersonBody).GetField("_legRight", bf); _fLegFwd = typeof(FirstPersonBody).GetField("_legFwd", bf);
             if (mode == "film") { yield return FilmRoutine(); Done = true; yield break; }
             if (mode == "view") { yield return ViewRoutine(); Done = true; yield break; }
+            if (mode == "sweep") { yield return SweepRoutine(); Done = true; yield break; }
             yield return GaitRoutine();
             Done = true;
         }
@@ -946,7 +947,9 @@ namespace Backrooms.DebugTools
                 // Reeling from the far end: the hand takes the item (a lamp) and pulls its cord in.
                 if (reelFrames > 0 && frame == frames && owner && !owner.Held) grab.PickUp(owner);
                 bool reeling = frame > frames + 20 && frame <= frames + reelFrames;
-                if (owner && !owner.Held && !setSeen) { setSeen = true; setAt = owner.transform.position; }
+                // (Round 10: from the click on. The "cordplug" box is spawned 0.1 m up beside the player and settles in the
+                // first 0.3 s; counted from frame 1, that fall read as the plug-in dragging it 0.2 m at 1.4 m/s.)
+                if (frame >= 30 && owner && !owner.Held && !setSeen) { setSeen = true; setAt = owner.transform.position; }
                 grab.botRmb = reeling;
                 var plug = owner ? owner.Plug : target as Plug;
                 Vector3 S = upper.position, E = fore.position, W = hand.position;
@@ -968,7 +971,7 @@ namespace Backrooms.DebugTools
                 if (plug && plugged && frame > 30 && lastPlug != Vector3.zero) maxStepAll = Mathf.Max(maxStepAll, (plug.transform.position - lastPlug).magnitude);
                 if (plugged) plugFrames++;
                 if (plug) lastPlug = plug.transform.position;
-                float speed = owner && owner.Body && !owner.Held ? owner.Body.linearVelocity.magnitude : 0f;
+                float speed = frame >= 30 && owner && owner.Body && !owner.Held ? owner.Body.linearVelocity.magnitude : 0f;
                 maxSpeed = Mathf.Max(maxSpeed, speed);
                 if (frame <= 3 || frame % 3 == 0 || (plugFrames > 0 && plugFrames <= 10))
                     sb.AppendFormat("{0} | {1:0.00} | {2} | {3} | {4} | {5:0.000} | {6:0.0} | {7:0.0} | {8:0} | {9:0.00} | {10:0.00} | {11} | {12:0.00} | {13}\n", frame, Time.time - t0,
@@ -1332,6 +1335,65 @@ namespace Backrooms.DebugTools
         /// biggest move in one frame after. shots: frames after the click drawn (first person and from the side) into dir.
         /// crawl: on all fours (under a table).
         /// </summary>
+        /// <summary>Round 10: PickRun sets its item down turned so on top of its yaw (on its side: a dropped item lands any way up).</summary>
+        public static Quaternion PickTilt = Quaternion.identity;
+        /// <summary>Round 10: PickRun's side pictures draw the body's shadow-only parts (the torso), put back after each picture.</summary>
+        public static bool PickShowBody;
+
+        /// <summary>
+        /// Round 10: every case of a floor sweep in turn (PickRun each): cases "id,stand distance,item yaw,tilt x,tilt z" split by
+        /// ';', the item at <paramref name="at"/> and the player that far along +z from it, facing it. One line per case in
+        /// sweep.txt in the folder (offered, taken, times, the item's move before the grab, the least elbow, palm to grip
+        /// lifting, knee and torso at the grab, the side taken). shotTags: case indices (comma) to take pictures of.
+        /// </summary>
+        public static GaitProbe FloorSweep(string folder, string cases, Vector3 at, int frames, string shotCases)
+        {
+            var p = Make(folder, "sweep");
+            p._sweepCases = cases; p._sweepAt = at; p._sweepFrames = frames; p._sweepShots = shotCases ?? "";
+            return p;
+        }
+        string _sweepCases, _sweepShots;
+        Vector3 _sweepAt;
+        int _sweepFrames;
+
+        IEnumerator SweepRoutine()
+        {
+            var sum = new StringBuilder();
+            string[] cs = _sweepCases.Split(';');
+            var shots = new HashSet<string>(_sweepShots.Split(','));
+            for (int k = 0; k < cs.Length; k++)
+            {
+                string[] f = cs[k].Split(',');
+                if (f.Length < 5) continue;
+                string id = f[0];
+                float dist = float.Parse(f[1], System.Globalization.CultureInfo.InvariantCulture);
+                float iy = float.Parse(f[2], System.Globalization.CultureInfo.InvariantCulture);
+                float tx = float.Parse(f[3], System.Globalization.CultureInfo.InvariantCulture);
+                float tz = float.Parse(f[4], System.Globalization.CultureInfo.InvariantCulture);
+                string tag = string.Format("{0}_{1:000}_y{2:0}_x{3:0}_z{4:0}", id, dist * 100f, iy, tx, tz);
+                string file = Path.Combine(folder, tag + ".txt");
+                if (File.Exists(file)) File.Delete(file);
+                PickTilt = Quaternion.Euler(tx, 0f, tz);
+                bool shoot = shots.Contains(k.ToString());
+                PickShowBody = shoot;
+                Vector3 itemAt = _sweepAt + Vector3.up * (tx != 0f || tz != 0f ? 0.12f : 0f);
+                PickRun(id, itemAt, iy, _sweepAt + Vector3.forward * dist + Vector3.up * 0.1f, 180f, false, file, _sweepFrames, shoot ? folder : null, tag, shoot ? "0,10,20,30,40,50,60,70,80,95,110" : null);
+                float t0 = Time.realtimeSinceStartup;
+                while (!File.Exists(file) && Time.realtimeSinceStartup - t0 < 60f) yield return null;
+                yield return null;
+                PickShowBody = false;
+                PickTilt = Quaternion.identity;
+                string txt = File.Exists(file) ? File.ReadAllText(file) : "";
+                string s1 = "", s2 = "";
+                foreach (var line in txt.Split('\n')) { if (line.StartsWith("SUMMARY")) s1 = line; if (line.StartsWith("GRAB")) s2 = line; }
+                sum.AppendLine(tag + " || " + s1 + " || " + s2);
+                File.WriteAllText(Path.Combine(folder, "sweep.txt"), sum.ToString());
+                yield return Wait(0.3f);
+            }
+            sum.AppendLine("SWEEP DONE");
+            File.WriteAllText(Path.Combine(folder, "sweep.txt"), sum.ToString());
+        }
+
         public static string PickRun(string id, Vector3 itemAt, float itemYaw, Vector3 stand, float yaw, bool crawl, string file, int frames, string dir, string tag, string shots)
         {
             var pl = FindAnyObjectByType<CamcorderPlayerController>();
@@ -1343,14 +1405,19 @@ namespace Backrooms.DebugTools
             grab.botHold = null; pl.botInput = null;
             pl.SetStance(crawl ? CamcorderPlayerController.Stance.Crawl : CamcorderPlayerController.Stance.Stand);
             pl.TeleportSafe(stand, yaw, 30f);
-            var item = ItemFactory.Spawn(id, itemAt, Quaternion.Euler(0f, itemYaw, 0f));
+            Quaternion itemRot = Quaternion.Euler(0f, itemYaw, 0f) * PickTilt;
+            bool tilted = Quaternion.Angle(PickTilt, Quaternion.identity) > 1f;
+            var item = ItemFactory.Spawn(id, itemAt, itemRot);
             if (!item) return "no item " + id;
             var bf = BindingFlags.NonPublic | BindingFlags.Instance;
             var fT = typeof(PropGrabber).GetField("_itemT", bf);
             var look = typeof(PropGrabber).GetMethod("LookItem", bf);
             var shotSet = new HashSet<int>();
             foreach (var s in (shots ?? "").Split(',')) { int k; if (int.TryParse(s, out k)) shotSet.Add(k); }
-            System.Func<Vector3> gripOf = () => item.transform.TransformPoint(grab.Side > 0f ? item.GripLocal : new Vector3(-item.GripLocal.x, item.GripLocal.y, item.GripLocal.z));
+            // (Round 10: the grip as the hand takes it: on the side chosen (IGripRound), eased to the carry's over the lift.)
+            var gripM = typeof(PropGrabber).GetMethod("GripOf", bf);
+            var fAlt = typeof(PropGrabber).GetField("_altAngle", bf);
+            System.Func<Vector3> gripOf = () => (Vector3)gripM.Invoke(grab, new object[] { item });
             const int Press = 40;
             var sb = new StringBuilder();
             sb.AppendFormat("{0} at {1} stand {2} yaw {3:0} crawl {4}\n", id, itemAt.ToString("F2"), stand.ToString("F2"), yaw, crawl);
@@ -1368,7 +1435,7 @@ namespace Backrooms.DebugTools
             if (shinB) foreach (Transform c in shinB) if (c.name.ToLower().Contains("foot")) { footB = c; break; }
             System.Func<float> torsoBend = () => hipsB && neckB ? Vector3.Angle(neckB.position - hipsB.position, Vector3.up) : -1f;
             System.Func<float> kneeBend = () => thighB && shinB && footB ? Vector3.Angle(shinB.position - thighB.position, footB.position - shinB.position) : -1f;
-            float torsoAtGrab = 0f, kneeAtGrab = 0f, hingeAtGrab = 0f, stoopAtGrab = 0f, elbowAtGrab = 0f, slideHalf = 0f, slideAll = 0f;
+            float torsoAtGrab = 0f, kneeAtGrab = 0f, hingeAtGrab = 0f, stoopAtGrab = 0f, elbowAtGrab = 0f, slideHalf = 0f, slideAll = 0f, altAtGrab = 0f, gripToFeet = -1f, kneeMax = 0f, torsoMax = 0f;
             Vector3 inHand0 = Vector3.zero;
             Quaternion turnInHand0 = Quaternion.identity;
             float turnHalf = 0f, turnAll = 0f;
@@ -1379,7 +1446,7 @@ namespace Backrooms.DebugTools
                 frame++;
                 if (!item) { Application.onBeforeRender -= act; File.WriteAllText(file, sb.ToString() + "item gone\n"); return; }
                 // Set down as it was turned (a can dropped in tipped over now and then).
-                if (frame < 25 && item.Body) { item.Body.rotation = Quaternion.Euler(0f, itemYaw, 0f); item.transform.rotation = item.Body.rotation; item.Body.angularVelocity = Vector3.zero; }
+                if (frame < (tilted ? Press - 6 : 25) && item.Body) { item.Body.rotation = itemRot; item.transform.rotation = item.Body.rotation; item.Body.angularVelocity = Vector3.zero; if (tilted) item.Body.linearVelocity = new Vector3(0f, item.Body.linearVelocity.y, 0f); }
                 if (frame == Press - 8)
                 {
                     // The view on it (as a player aims): the middle of its colliders (a lamp's renderers take in its cord).
@@ -1412,7 +1479,7 @@ namespace Backrooms.DebugTools
                 bool lifting = held && liftT > 0f;
                 if (lifting && grabF < 0)
                 {
-                    grabF = frame; grabT = Time.time - t0; palmAtGrab = (lastPalm - restGrip).magnitude; firstStep = step; shareAtGrab = (grab.ReachShoulder - restGrip).magnitude / grab.ArmReach; leanAtGrab = grab.ReachHinge;
+                    grabF = frame; grabT = Time.time - t0; palmAtGrab = (lastPalm - gripOf()).magnitude; altAtGrab = (float)fAlt.GetValue(grab); firstStep = step; shareAtGrab = (grab.ReachShoulder - restGrip).magnitude / grab.ArmReach; leanAtGrab = grab.ReachHinge;
                     torsoAtGrab = torsoBend(); kneeAtGrab = kneeBend(); hingeAtGrab = grab.ReachHinge; stoopAtGrab = pl.stoop; elbowAtGrab = a.x;
                     // (Where its grip was from the palm, in the hand's frame, and its turn in the hand, as the lift starts.)
                     inHand0 = handB ? Quaternion.Inverse(handB.rotation) * (gripOf() - palm) : Vector3.zero;
@@ -1425,7 +1492,8 @@ namespace Backrooms.DebugTools
                     slideAll = Mathf.Max(slideAll, sl); turnAll = Mathf.Max(turnAll, tn);
                     if (liftT < 0.5f) { slideHalf = Mathf.Max(slideHalf, sl); turnHalf = Mathf.Max(turnHalf, tn); }
                 }
-                if (grabF < 0) { beforeMax = Mathf.Max(beforeMax, fromRest); if (grab.HandBlend > 0.5f) minElbow = Mathf.Min(minElbow, a.x); }
+                if (grabF == frame) { Vector3 fl = gripOf() - pl.transform.position; fl.y = 0f; gripToFeet = Vector3.Dot(fl, pl.transform.forward); }
+                if (grabF < 0) { beforeMax = Mathf.Max(beforeMax, fromRest); if (grab.HandBlend > 0.5f) minElbow = Mathf.Min(minElbow, a.x); kneeMax = Mathf.Max(kneeMax, kneeBend()); torsoMax = Mathf.Max(torsoMax, torsoBend()); }
                 else
                 {
                     if (step > maxStepAfter) { maxStepAfter = step; maxStepAt = frame; }
@@ -1447,7 +1515,13 @@ namespace Backrooms.DebugTools
                     float dL = Physics.Raycast(mid, -side, out h, 2.4f, ~0, QueryTriggerInteraction.Ignore) ? h.distance : 2.4f;
                     Vector3 dirSide = dR >= dL ? side : -side;
                     Vector3 from = mid + dirSide * (Mathf.Max(dR, dL) - 0.15f) + Vector3.up * 0.25f - pl.transform.forward * 0.3f;
+                    // (Round 10: the body's shadow-only parts drawn for this picture only, so the torso shows.)
+                    var shown = new List<Renderer>();
+                    if (PickShowBody)
+                        foreach (var r in pl.GetComponentsInChildren<Renderer>(true))
+                            if (r.shadowCastingMode == ShadowCastingMode.ShadowsOnly) { shown.Add(r); r.shadowCastingMode = ShadowCastingMode.On; }
                     Snap(Path.Combine(dir, string.Format("{0}_{1:000}_side.png", tag, frame - Press)), from, mid);
+                    foreach (var r in shown) if (r) r.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
                 }
                 last = pos; lastPalm = palm;
                 if (frame >= Press + frames)
@@ -1457,8 +1531,8 @@ namespace Backrooms.DebugTools
                     sb.AppendFormat("SUMMARY {0} offered {1} | taken {2} | first move {3} s after the click | in the carry {4} s | item moved before the hand had it {5:0.0} mm | palm to grip when it first moved {6:0.0} mm (first step {7:0.0} mm) | least elbow reaching {8:0} | biggest frame move after {9:0.0} mm (frame {10}) | palm off the grip lifting max {11:0.0} mm | ends {12:0.000} m from where it lay, held {13}, gave up {14} | at the grab: shoulder to grip {15:0.00} of the reach, lean {16:0} | fastest after {17:0.00} m/s\n",
                         id, offered, takenF > 0, grabT >= 0f ? grabT.ToString("0.00") : "never", carryT >= 0f ? carryT.ToString("0.00") : "never", beforeMax * 1000f, palmAtGrab * 1000f, firstStep * 1000f,
                         minElbow, maxStepAfter * 1000f, maxStepAt - Press, maxPalmLift * 1000f, (item.transform.position - rest).magnitude, grab.HeldItem == item, grab.PickGaveUp, shareAtGrab, leanAtGrab, maxSpeedAfter);
-                    sb.AppendFormat("GRAB elbow {0:0} | torso {1:0} knee {2:0} | hinge {3:0} stoop {4:0.00} | grip slide on the palm: first half {5:0.0} mm, whole lift {6:0.0} mm | turn in the hand {7:0.0} / {8:0.0} deg\n",
-                        elbowAtGrab, torsoAtGrab, kneeAtGrab, hingeAtGrab, stoopAtGrab, slideHalf * 1000f, slideAll * 1000f, turnHalf, turnAll);
+                    sb.AppendFormat("GRAB elbow {0:0} | torso {1:0} knee {2:0} | hinge {3:0} stoop {4:0.00} | grip slide on the palm: first half {5:0.0} mm, whole lift {6:0.0} mm | turn in the hand {7:0.0} / {8:0.0} deg | side {9:0} | grip ahead of the view {10:0.00} m | most knee {11:0} torso {12:0} reaching\n",
+                        elbowAtGrab, torsoAtGrab, kneeAtGrab, hingeAtGrab, stoopAtGrab, slideHalf * 1000f, slideAll * 1000f, turnHalf, turnAll, altAtGrab, gripToFeet, kneeMax, torsoMax);
                     pl.SetStance(CamcorderPlayerController.Stance.Stand);
                     File.WriteAllText(file, sb.ToString());
                 }

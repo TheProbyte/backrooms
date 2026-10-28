@@ -10,7 +10,7 @@ namespace Backrooms.Interaction
     /// (<see cref="LineMetres"/> of line in a stick) and is gone when used up.
     /// Model: Resources/Items/Chalk.fbx (origin at the butt, tip forward).
     /// </summary>
-    public class Chalk : WorldItem, IHandGrip, IHandPose
+    public class Chalk : WorldItem, IHandGrip, IHandPose, IGripRound
     {
         /// <summary>Metres of line a whole stick draws.</summary>
         public static float LineMetres = 30f;
@@ -43,6 +43,8 @@ namespace Backrooms.Interaction
             return SegmentDistance(p, new Vector3(0f, 0f, Mathf.Min(0.0085f, h * 0.5f)), new Vector3(0f, 0f, Mathf.Max(h - 0.0085f, h * 0.5f))) - 0.0085f;
         }
         public override Quaternion GripRotationLocal => TestGrip.HasValue ? Quaternion.Euler(TestTurn) : TripodTurn;
+        /// <summary>Round 10: the stick taken from above however it has rolled (IGripRound): round its own line.</summary>
+        public void GripAxis(out Vector3 point, out Vector3 axis) { point = new Vector3(0f, Radius, 0f); axis = Vector3.forward; }
         static readonly Quaternion TripodTurn = Quaternion.LookRotation(new Vector3(-0.7494f, 0.1717f, 0.6395f), new Vector3(0f, 0.9658f, -0.2593f));
         // Held in the view with the hand as the round-6 grip held it (the stick turned to suit the new grip).
         static readonly Quaternion HoldNew = Quaternion.LookRotation(new Vector3(-0.2756f, 0.5094f, 0.8152f), new Vector3(0f, 0.848f, -0.5299f)) * Quaternion.Inverse(TripodTurn);

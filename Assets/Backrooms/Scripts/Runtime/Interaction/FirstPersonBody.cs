@@ -366,7 +366,15 @@ namespace Backrooms.Interaction
                 Quaternion turn = pose.hand * Quaternion.Inverse(gripHand);
                 // (Eased in as it leaves where it lay: PropGrabber.ItemOnPalm.)
                 float onPalm = _grab.ItemOnPalm * (1f - asTaken);
-                it.SetPositionAndRotation(Vector3.Lerp(it.position, palmNow + turn * (it.position - wanted), onPalm), Quaternion.Slerp(it.rotation, turn * it.rotation, onPalm));
+                // (Round 10: part way, blended about its grip, not its middle: the grip goes from where it is toward the palm
+                // and the item turns about it. Its middle lerped while it turned, the grip of a chicken taken by its neck
+                // swung up to 56 mm off the palm over the lift.)
+                Vector3 gl = _grab.HeldGripLocal;
+                {
+                    Vector3 g0 = it.position + it.rotation * gl, g1 = palmNow + turn * (g0 - wanted);
+                    Quaternion r = Quaternion.Slerp(it.rotation, turn * it.rotation, onPalm);
+                    it.SetPositionAndRotation(Vector3.Lerp(g0, g1, onPalm) - r * gl, r);
+                }
                 // No part of the palm in it: the item is pushed out from the deepest of the palm's skin inside it (twice: a
                 // push can bring another part in). The fingers and thumb close on it themselves. Only for what the palm
                 // holds (a stick of chalk held in the fingers was pushed off the web of the thumb, the thumb 3 mm further).
@@ -384,7 +392,16 @@ namespace Backrooms.Interaction
                     it.position += move * Mathf.Min(-worstIn - 0.001f, 0.02f) * onPalm;
                 }
                 if (_takenItem == held && asTaken > 0f)
-                    it.SetPositionAndRotation(Vector3.Lerp(it.position, palmNow + pose.hand * _takenPos, asTaken), Quaternion.Slerp(it.rotation, pose.hand * _takenRot, asTaken));
+                {
+                    Vector3 tp = palmNow + pose.hand * _takenPos;
+                    Quaternion tr = pose.hand * _takenRot;
+                    // (Round 10: taken from another side round its axis (IGripRound), it turns about that axis in the hand
+                    // toward the carry's grip as the lift goes on, the palm staying on its surface.)
+                    if (_grab.TakenRegrip(out Vector3 rp, out Quaternion rq)) { tp += tr * rp - tr * (rq * rp); tr *= rq; }
+                    Vector3 ga = it.position + it.rotation * gl, gb = tp + tr * gl;
+                    Quaternion r = Quaternion.Slerp(it.rotation, tr, asTaken);
+                    it.SetPositionAndRotation(Vector3.Lerp(ga, gb, asTaken) - r * gl, r);
+                }
             }
 
             // Fingers: one curl for all, or a held item's own shape (IHandGrip: a pinch, a pencil grip), the thumb flexing
@@ -1242,6 +1259,42 @@ namespace Backrooms.Interaction
             }
             float far = (wrist - shoulder).magnitude - (_upperLen + _foreLen) * 0.97f;
             return best + Mathf.Max(0f, far) * 40f;
+        }
+
+        /// <summary>
+        /// Round 10: the arm solved as each frame solves it, from a shoulder where the body will be (a reach's plan), for a
+        /// palm point and hand turn: the solver's score, how far the hand stays off that turn (overDeg: what the wrist and
+        /// forearm cannot do), and how far the wrist then is from the shoulder (wristShare, of upper arm + forearm) once it is
+        /// moved so the palm is on its point. (Offered by the shoulder-to-grip distance alone, a sledgehammer on the floor was
+        /// reached for and never taken: its hand's turn put the wrist 6-10 cm out of reach.)
+        /// </summary>
+        public float ArmStrainFrom(Vector3 shoulder, Vector3 palm, Quaternion hand, out float overDeg, out float wristShare)
+            => ArmStrainFrom(shoulder, palm, hand, out overDeg, out wristShare, out _);
+
+        /// <summary>As above, and how far the palm still misses its point once the wrist is moved for it, as the arm is solved
+        /// each frame (m). (With the hand 20-25 degrees off its turn, a lamp lying down was reached for and the palm stayed
+        /// 28 mm off its rod.)</summary>
+        public float ArmStrainFrom(Vector3 shoulder, Vector3 palm, Quaternion hand, out float overDeg, out float wristShare, out float miss)
+        {
+            overDeg = 0f; wristShare = 0f; miss = 0f;
+            if (_curArm == null || !_grab) return 0f;
+            Quaternion yaw = transform.rotation;
+            float side = _grab.Side;
+            Vector3 wrist = palm - hand * _wristToGrip;
+            Vector3 dir0 = (wrist - shoulder).normalized;
+            Vector3 pole0 = Vector3.ProjectOnPlane(yaw * new Vector3(0.8f * side, -1f, -0.25f), dir0).normalized;
+            float best = float.MaxValue, swivel = 0f;
+            Quaternion got = hand;
+            for (int k = -4; k <= 5; k++)
+            {
+                var p = SolveArm(shoulder, wrist, hand, pole0, k * 30f, side, yaw);
+                if (p.score < best) { best = p.score; got = p.hand; swivel = k * 30f; }
+            }
+            var p2 = SolveArm(shoulder, palm - got * _wristToGrip, hand, pole0, swivel, side, yaw);
+            overDeg = Quaternion.Angle(p2.hand, hand);
+            wristShare = (palm - got * _wristToGrip - shoulder).magnitude / Mathf.Max(0.1f, _upperLen + _foreLen);
+            miss = (p2.wrist + p2.hand * _wristToGrip - palm).magnitude;
+            return best;
         }
 
         ArmPose SolveArm(Vector3 shoulder, Vector3 wrist, Quaternion hand, Vector3 pole0, float swivel, float side, Quaternion yaw)

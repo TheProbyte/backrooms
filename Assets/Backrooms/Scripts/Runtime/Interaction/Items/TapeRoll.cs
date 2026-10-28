@@ -16,7 +16,7 @@ namespace Backrooms.Interaction
     ///    pulling: cancelled, the tape goes back on the roll.
     /// Up to <see cref="MaxStrip"/> a strip; the roll holds <see cref="RollMetres"/>. Model: Resources/Items/TapeRoll.fbx.
     /// </summary>
-    public class TapeRoll : WorldItem, IHandGrip, IHandPose
+    public class TapeRoll : WorldItem, IHandGrip, IHandPose, IGripRound
     {
         public static float RollMetres = 40f;
         public const float MaxStrip = 2.4f, MinStrip = 0.03f;
@@ -54,6 +54,8 @@ namespace Backrooms.Interaction
         // the palm 1.3 cm from the side with all four fingers in the core: the little finger 7 mm and the palm 5.5 mm in it.)
         public override Vector3 GripLocal => TestGrip ?? new Vector3(-0.056f, 0.058f, 0f);
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(Vector3.right, Vector3.up) * Quaternion.Euler(TestGrip.HasValue ? TestTurn : new Vector3(0f, 0f, 6f));
+        /// <summary>Round 10: taken by whichever side of the roll is nearest (IGripRound): round its middle.</summary>
+        public void GripAxis(out Vector3 point, out Vector3 axis) { point = Vector3.zero; axis = Vector3.up; }
         public override float GripCurl => 0.55f;
         public float FingerCurl(int finger) => TestCurls != null ? TestCurls[finger] : 0.55f;
         public float ThumbCurl => TestCurls != null ? TestCurls[4] : 0.8f;

@@ -15,7 +15,7 @@ namespace Backrooms.Interaction
     /// Thrown hard at a wall, it breaks that too. Its settings (how wide and how hard it breaks, the wind-up) are tuned in
     /// game with F2 (ItemTuningMenu).
     /// </summary>
-    public class Sledgehammer : WorldItem, IHandPose
+    public class Sledgehammer : WorldItem, IHandPose, IGripRound
     {
         const float HeadY = SledgehammerModel.HeadY, HeadHalf = SledgehammerModel.HeadHalfZ;
         const float GripEnd = 0.05f, GripCarry = 0.27f;
@@ -67,6 +67,8 @@ namespace Backrooms.Interaction
         // tilted axis, the handle rose 6 mm into the heel of the hand and lay under the index finger's knuckle: the finger
         // lay straight across it.)
         public override Quaternion GripRotationLocal => GripTurn;
+        /// <summary>Round 10: the handle taken from any side (IGripRound).</summary>
+        public void GripAxis(out Vector3 point, out Vector3 axis) { point = Vector3.zero; axis = Vector3.up; }
         public override float GripCurl => 0.97f;
         public override bool DropsStraight => false;
         public override string Status => _phase == Phase.WindUp ? $"sledgehammer: winding up {Mathf.RoundToInt(_charge * 100f)} %" : "sledgehammer (hold to wind up, release to swing)";

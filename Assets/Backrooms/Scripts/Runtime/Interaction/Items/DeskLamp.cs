@@ -14,7 +14,7 @@ namespace Backrooms.Interaction
     /// It lights (a warm, shadowed spot out of its shade) when switched on and its plug is in a socket with power.
     /// Model: Resources/Items/DeskLamp.fbx.
     /// </summary>
-    public class DeskLamp : PowerUser, IHandGrip
+    public class DeskLamp : PowerUser, IHandGrip, IGripRound
     {
         public const float CordLength = 1.8f;
         static readonly Vector3 Bulb = new Vector3(0f, 0.3231f, 0.1032f);
@@ -54,6 +54,8 @@ namespace Backrooms.Interaction
         // (1.8 cm up the rod from where it was: the little finger came down onto the base and was bent straight back.)
         public override Vector3 GripLocal => new Vector3(0.0115f, 0.118f, -0.035f);
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0f, 0f, 1f), Vector3.right);
+        /// <summary>Round 10: taken from any side round the lower rod (IGripRound).</summary>
+        public void GripAxis(out Vector3 point, out Vector3 axis) { point = RodLow; axis = Vector3.up; }
         public override float GripCurl => 0.95f;
         // A thin rod: past a fist's curl, so the middle and end joints go on wrapping it until they touch (at a fist's curl
         // they stopped short: a loose C round the rod, knuckles 34-52 and middle joints 42-65 degrees).

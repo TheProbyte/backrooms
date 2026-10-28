@@ -33,4 +33,16 @@ namespace Backrooms.Interaction
         /// </summary>
         bool FingerPose(int finger, float[] angles);
     }
+
+    /// <summary>
+    /// An item whose grip is as good turned about an axis (round 10): a can's side, a lamp's rod, a hammer's handle, a coil's
+    /// rim. Picking it up, the hand may take it from any side round that axis: from above when it lies on its side, from the
+    /// near side when its grip faces away (a coil was reached for across itself, a hammer lying down had its grip under it).
+    /// The item turns back to its carry grip in the hand as it comes up.
+    /// </summary>
+    public interface IGripRound
+    {
+        /// <summary>The axis in the item's own space: a point on it and its direction.</summary>
+        void GripAxis(out UnityEngine.Vector3 point, out UnityEngine.Vector3 axis);
+    }
 }

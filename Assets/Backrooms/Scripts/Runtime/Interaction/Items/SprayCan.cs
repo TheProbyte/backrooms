@@ -12,7 +12,7 @@ namespace Backrooms.Interaction
     /// close, a wider, fainter one from further back. Lingering on one spot builds the paint up until it runs.
     /// The can holds <see cref="Lifespan"/> seconds of spraying; it sputters near the end and then only hisses.
     /// </summary>
-    public class SprayCan : WorldItem, IHandGrip
+    public class SprayCan : WorldItem, IHandGrip, IGripRound
     {
         /// <summary>Seconds of spraying in a full can (a 400 ml can lasts about this long in one go).</summary>
         public static float Lifespan = 45f;
@@ -39,6 +39,8 @@ namespace Backrooms.Interaction
         // go through it.
         public override Vector3 GripLocal => new Vector3((Radius + 0.002f) * 0.7071f, 0.1f, -(Radius + 0.002f) * 0.7071f);
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0.7f, -0.05f, 0.7f), new Vector3(0.7071f, 0f, -0.7071f));
+        /// <summary>Round 10: taken from any side round its middle (IGripRound).</summary>
+        public void GripAxis(out Vector3 point, out Vector3 axis) { point = Vector3.zero; axis = Vector3.up; }
         public override float GripCurl => 0.95f;
         public float FingerCurl(int finger) => 0.95f;
         public float ThumbCurl => 0.8f;

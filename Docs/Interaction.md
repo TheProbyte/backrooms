@@ -662,6 +662,42 @@ is on the neck in some runs and 15 mm off in others, and 9-17 mm off while squee
 rail, the plug pinch's wrist and the hammer carry's thumb are unchanged; side views draw no torso, so the bend shows only
 through the arm and the legs.
 
+Round 10: floor pickups for every item (2026-10-28, reviewer 7.5/10, pickups 7):
+- **Bug: the coil and the desk lamp were never offered off the floor.** The body's capsule kept the feet 0.6 m from any item
+  heavier than 0.5 kg, so the grip was out of reach. Now the capsule passes over the item the hand goes for (`PassOver`). It
+  is solid again once the body steps away. The step stops when the toes are 0.15 m (`ToeClear`) from the item's footprint:
+  its boxes at the feet, seen from the middle and from each foot (`StepToBox`). A round about the item's middle kept the
+  body 0.45 m from a hammer lying across the way.
+- **Bug: the sledgehammer was offered but never taken.** The offer looked only at the distance. Now the arm is solved from
+  the planned shoulder as it is each frame, wrist limits included (`FirstPersonBody.ArmStrainFrom`, `HandGets`). The hand may
+  be at most 25 degrees off its turn, and the palm may miss by at most 12 mm. The reach's own turn (`ReachTurn`) avoids
+  turns that miss.
+- **Any side, any way up** (`IGripRound`): a can, a lamp's rod, a hammer's handle, a coil, a chicken's neck, a tape roll and
+  a stick of chalk can be taken from any side round their axis. The side is chosen at the click: the back of the hand toward
+  the shoulder and up, never with the hand in the floor. A handle may also be taken end for end. As the item comes up, it
+  turns in the hand to the carry grip.
+- **The lift follows the hand.** The palm goes in a straight eased line from where it took the item to the carry, and the
+  hand turns the shortest way. The item goes with the hand. Before, the item's middle was eased and the hand put on it:
+  a long item's grip swung out of reach and a hammer jumped 32 cm in one frame. The blends that put the item on the palm
+  now turn it about its grip, not its middle. The palm stays within 1-5 mm of the grip through the lift. It was 23-60 mm.
+- **Low grips.** Below 0.15 m the body may bend 10 degrees more at the hips. At the lowest view (62 degrees down), an
+  item lying further down toward the feet is still offered: a can 0.45 m ahead was out of the aim.
+- **Held off.** A reach no nearer goes on out. It used to wait for a bend the body could not make, kept the arm bent and
+  gave up 45 mm from a lamp's rod.
+- **Held door pull, wall behind.** Pulling with no room to walk back, the hand tugs as the quick pull does
+  (`TugFromHold`). The body steps to the latch side and the door rests on it. It stalled at 26 degrees and sagged to 14.
+- **Cord plug-in.** The real flow does not move the coil box: it is set down and stays (0.00 m). The 0.2 m in the review
+  was the probe's box falling 0.18 m after it was spawned in the air. `PlugInRun` now counts from the click.
+Measured (World 3, `GaitProbe.FloorSweep`: 7 item types, stands 0.45, 0.6 and 0.9 m, upright and lying): every upright item
+offered and taken from every stand, grab 0.85-1.42 s, item moved 0 mm before the grab, least elbow 24-36, palm off the grip
+in the lift 0-5 mm, fastest the item moves 1.4-3.5 m/s. Lying: can, tape, chalk, coil and chicken taken in all tested
+poses; hammer in 4 of 6; lamp in 2 of 6. Desk can 0.58 s (unchanged). Doors: wall 1.0 m and 0.86 m behind, held pull 66-68
+degrees; open room 76; quick pull 46; push 88; quick push 88. Lamp plug-in 1.51 s; coil plug-in 1.52 s, box 0 m.
+Open after round 10: a lamp lying on its side is not taken from some sides (offered and given up at yaw 0; not offered
+with the shade toward you), and a hammer or a chicken lying with its grip on the far side, behind its own bulk, is not
+offered from that side (it is from the other side). The can turns up to 135 degrees about its axis in the hand on the way
+up. The "cordplug" probe's deployed cord lifts the player 0.7 m at some sockets.
+
 Open: furniture's colliders are boxes that do not match the model everywhere (a sofa's rolled arm: the fingers close on
 the box, 15 cm under the visible top, so they stay as wanted); the thumb lies along a hammer's handle rather than round
 it; the jamb's touch still has the little-finger side 1 cm in for a moment (the forearm at its turn limit); fingers on

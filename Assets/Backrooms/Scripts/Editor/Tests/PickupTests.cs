@@ -25,6 +25,43 @@ namespace Backrooms.Tests
 
         static bool Offered(Vector3 p, float room) => PropGrabber.PlanReach(p, Body(room), PropGrabber.PickReachShare, null, out _);
 
+        /// <summary>
+        /// Round 10: every item type lying on the floor 0.45, 0.6 and 0.9 m ahead is offered: the body steps in until its toes
+        /// are ToeClear off the item's footprint (the coil and the desk lamp were kept 0.6 m off by the body's capsule and never
+        /// offered; a hammer lying across the way, 0.45 m off by a round about its middle), squats and bends. Footprints (boxes
+        /// on the floor) and the grip on the near side, as the items are drawn.
+        /// </summary>
+        [Test]
+        public void EveryItemOnTheFloorIsOffered()
+        {
+            // name, footprint size (x, y, z), the grip from the footprint's middle (on the side nearest the body: -z).
+            var items = new (string name, Vector3 size, Vector3 grip)[]
+            {
+                ("spray can", new Vector3(0.066f, 0.2f, 0.066f), new Vector3(0f, 0.10f, -0.035f)),
+                ("spray can lying", new Vector3(0.2f, 0.066f, 0.066f), new Vector3(-0.1f, 0.068f, 0f)),
+                ("tape", new Vector3(0.11f, 0.05f, 0.11f), new Vector3(0f, 0.058f, -0.056f)),
+                ("chalk", new Vector3(0.017f, 0.017f, 0.09f), new Vector3(0f, 0.05f, 0f)),
+                ("rubber chicken", new Vector3(0.12f, 0.1f, 0.3f), new Vector3(0f, 0.07f, -0.05f)),
+                ("desk lamp", new Vector3(0.16f, 0.03f, 0.16f), new Vector3(0f, 0.118f, -0.047f)),
+                ("desk lamp lying", new Vector3(0.4f, 0.16f, 0.16f), new Vector3(-0.05f, 0.09f, -0.04f)),
+                ("coil", new Vector3(0.27f, 0.06f, 0.27f), new Vector3(0f, 0.035f, -0.11f)),
+                ("sledgehammer", new Vector3(0.2f, 0.8f, 0.1f), new Vector3(0f, 0.27f, -0.02f)),
+                ("sledgehammer lying", new Vector3(0.8f, 0.1f, 0.2f), new Vector3(-0.1f, 0.045f, 0f)),
+            };
+            foreach (var it in items)
+                foreach (float d in new[] { 0.45f, 0.6f, 0.9f })
+                {
+                    // In line with the working shoulder (0.2 m to the right of the view), as the body steps toward the grip.
+                    var box = new Bounds(new Vector3(0.2f, it.size.y * 0.5f, d), it.size);
+                    float room = Mathf.Clamp(PropGrabber.StepToBox(box, Vector3.zero, Vector3.forward) - 0.1f, 0f, PropGrabber.PickStep);
+                    Vector3 grip = box.center + new Vector3(it.grip.x, 0f, it.grip.z);
+                    grip.y = it.grip.y;
+                    Assert.That(Offered(grip, room), Is.True, $"{it.name} {d} m ahead (room to step {room:0.00} m)");
+                    // The toes stay off it.
+                    Assert.That(room + 0.1f, Is.LessThanOrEqualTo(d - it.size.z * 0.5f - PropGrabber.ToeClear + 1e-4f), $"{it.name}: toes off it");
+                }
+        }
+
         [Test]
         public void AnItemOutOfTheBodysReachIsNotOffered()
         {

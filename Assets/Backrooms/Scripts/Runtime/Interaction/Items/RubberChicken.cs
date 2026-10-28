@@ -9,7 +9,7 @@ namespace Backrooms.Interaction
     /// squeezed. Throw it (hold Q) and it squeaks when it lands hard.
     /// Model: Resources/Items/RubberChicken.fbx (origin at the body, head forward).
     /// </summary>
-    public class RubberChicken : WorldItem, IHandGrip
+    public class RubberChicken : WorldItem, IHandGrip, IGripRound
     {
         SkinnedMeshRenderer _skin;
         int _shape = -1;
@@ -29,6 +29,8 @@ namespace Backrooms.Interaction
         static readonly Vector3 NeckBack = new Vector3(0.6f, 0.8f, 0f);
         public override Vector3 GripLocal => new Vector3(0f, 0.008f, 0.15f) + NeckBack * (NeckR + 0.002f);
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0.8f, -0.6f, 0f), NeckBack);
+        /// <summary>Round 10: the neck taken from any side (IGripRound): it runs along z through the grip's middle.</summary>
+        public void GripAxis(out Vector3 point, out Vector3 axis) { point = new Vector3(0f, 0.008f, 0.15f); axis = Vector3.forward; }
         public override float GripCurl => 0.85f + 0.12f * _squeeze;      // the fist closes as it squeezes
         // Squeezed, the fist closes 10-15 degrees further and the pads sink 2-4 mm into the rubber (ContactDistance). (The
         // fingers stayed as in the plain hold, stopped on the neck.)

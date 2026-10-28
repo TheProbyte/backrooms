@@ -80,6 +80,10 @@ namespace Backrooms.Interaction
             Vector3 eye = cam.position, fwd = cam.forward;
             int m = Physics.OverlapSphereNonAlloc(eye + fwd * (range * 0.5f), range * 0.5f + 0.3f, _near, ~0, QueryTriggerInteraction.Ignore);
             float bestScore = float.MaxValue;
+            // (Round 10: the view looks down no further than pitchLimitDown (62 degrees). There, something lying further down,
+            // toward the feet, is still offered: a can 0.45 m in front of the feet, 75 degrees down, could never be aimed at.)
+            float viewDown = Mathf.Asin(Mathf.Clamp(-fwd.y, -1f, 1f)) * Mathf.Rad2Deg;
+            bool atLowest = viewDown > _player.pitchLimitDown - 3f;
             for (int i = 0; i < m; i++)
             {
                 var it = _near[i].GetComponentInParent<WorldItem>();
@@ -89,8 +93,15 @@ namespace Backrooms.Interaction
                 if (dist > range + 0.2f || dist < 0.05f) continue;
                 float angle = Vector3.Angle(fwd, to);
                 float off = Vector3.Cross(fwd, to).magnitude;                     // metres from the line of sight
-                if (angle > pickAssistAngle && off > 0.12f) continue;
-                if (angle > pickAssistAngle * 2f) continue;
+                float assist = pickAssistAngle;
+                if (atLowest)
+                {
+                    float below = Mathf.Asin(Mathf.Clamp(-to.y / dist, -1f, 1f)) * Mathf.Rad2Deg - viewDown;
+                    Vector3 fF = fwd, tF = to; fF.y = 0f; tF.y = 0f;
+                    if (below > 0f && Vector3.Angle(fF, tF) < pickAssistAngle + 10f) assist += Mathf.Min(below, 22f);
+                }
+                if (angle > assist && off > 0.12f) continue;
+                if (angle > Mathf.Max(assist, pickAssistAngle * 2f)) continue;
                 if (onFurniture && (off > 0.1f || Mathf.Abs(Vector3.Dot(to, fwd) - best) > 0.35f)) continue;
                 float score = angle + dist * 3f;
                 if (score >= bestScore || !InSight(eye, c, it) || !BodyReaches(it)) continue;
@@ -323,7 +334,9 @@ namespace Backrooms.Interaction
             {
                 var it = _passing[i];
                 if (!it) { _passing.RemoveAt(i); continue; }
-                if (it.Held) continue;
+                // (Round 10: nor while the hand is still going for it: from 0.9 m off, a lamp went solid again at once and the
+                // body stepped up onto it, 0.3 m off the floor.)
+                if (it.Held || it == _fetch) continue;
                 Vector3 d = transform.position - it.transform.position; d.y = 0f;
                 if (cc && d.magnitude < cc.radius + 0.45f) continue;
                 // (Light things never stop the body: WorldItem keeps them out of its way.)
@@ -662,7 +675,7 @@ namespace Backrooms.Interaction
                 // get there it is left where it lay.
                 if (_itemT <= 0f)
                 {
-                    Vector3 gripAt = _itemFromPos + _itemFromRot * Mirror(item.GripLocal);
+                    Vector3 gripAt = _itemFromPos + _itemFromRot * GripLocalOf(item, AltShare(item));
                     if (!_graspOn)
                     {
                         int r = ReachFor(gripAt, item, dt);
@@ -684,23 +697,42 @@ namespace Backrooms.Interaction
                     }
                 }
                 else { _itemT = Mathf.Min(1f, _itemT + dt / _liftTime); if (_itemT >= 1f) LiftDone(); }
-                float s = Mathf.SmoothStep(0f, 1f, _itemT);
-                pos = Vector3.Lerp(_itemFromPos, pos, s);
-                rot = Quaternion.Slerp(_itemFromRot, rot, s);
                 // The hand's turn about the palm reaching for it (fingers down along a can on the floor) goes back off as it
                 // comes up: about the palm's normal, so the palm stays on its grip. The grip it took is held until the lift
                 // is half done, then eased to the carry's (taken back off from the start, the can slid 2-3.5 cm in the palm).
                 tiltLeft = 1f - Ease(0.35f, 1f, _itemT);
             }
             else _pickTurn = Quaternion.identity;
-            item.transform.SetPositionAndRotation(pos, rot);
 
-            Quaternion grip = item.GripRotationLocal;
-            Vector3 f = Mirror(grip * Vector3.forward), u = Mirror(grip * Vector3.up);
-            HandPosition = reaching ? _pickHandAt : item.transform.TransformPoint(Mirror(item.GripLocal));
-            HandRotation = item.transform.rotation * Quaternion.LookRotation(f, u);
-            if (reaching) HandRotation = ReachTurn(HandRotation, reachGrip);
-            else if (tiltLeft > 0.001f) HandRotation = WithReachTurn(HandRotation, tiltLeft);
+            float alt = AltShare(item);
+            if (_itemT > 0f && (_itemT < 1f || alt > 0f))
+            {
+                // Round 10: up, the hand goes its own way, from where it took the item to where it carries it: the palm on a
+                // straight eased line, the hand's turn the shortest way round. The item goes with the hand on the grip it was
+                // taken by, turning to the carry's (AltShare), the reach's turn eased off. (The item's middle and turn were
+                // eased instead and the hand put on it: the grip of a long item swung out on an arc beyond the arm, and a
+                // sledgehammer lying down jumped 32 cm in a frame.)
+                float s = Mathf.SmoothStep(0f, 1f, _itemT);
+                Vector3 fromGrip = _itemFromPos + _itemFromRot * GripLocalOf(item, 1f);
+                Quaternion fromHand = _itemFromRot * GripTurnLocalOf(item, 1f) * _pickTurn;
+                Vector3 toGrip = pos + rot * Mirror(item.GripLocal);
+                Quaternion toHand = rot * GripTurnLocalOf(item, 0f);
+                HandPosition = Vector3.Lerp(fromGrip, toGrip, s);
+                HandRotation = Quaternion.Slerp(fromHand, toHand, s);
+                Quaternion ir = HandRotation * Quaternion.Inverse(GripTurnLocalOf(item, alt) * Quaternion.Slerp(Quaternion.identity, _pickTurn, tiltLeft));
+                item.transform.SetPositionAndRotation(HandPosition - ir * GripLocalOf(item, alt), ir);
+            }
+            else
+            {
+                if (_itemT <= 0f) { pos = _itemFromPos; rot = _itemFromRot; }
+                item.transform.SetPositionAndRotation(pos, rot);
+                Quaternion grip = item.GripRotationLocal;
+                Vector3 f = Mirror(grip * Vector3.forward), u = Mirror(grip * Vector3.up);
+                HandPosition = reaching ? _pickHandAt : item.transform.TransformPoint(alt > 0f ? GripLocalOf(item, alt) : Mirror(item.GripLocal));
+                HandRotation = item.transform.rotation * (alt > 0f ? GripTurnLocalOf(item, alt) : Quaternion.LookRotation(f, u));
+                if (reaching) HandRotation = ReachTurn(HandRotation, reachGrip);
+                else if (tiltLeft > 0.001f) HandRotation = WithReachTurn(HandRotation, tiltLeft);
+            }
             if (_switchT < 1f)
             {
                 _switchT = Mathf.Min(1f, _switchT + Time.deltaTime / 0.3f);

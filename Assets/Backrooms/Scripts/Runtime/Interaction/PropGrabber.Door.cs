@@ -50,7 +50,7 @@ namespace Backrooms.Interaction
             return true;
         }
 
-        float _doorSlipT, _doorRollAt = -1f;
+        float _doorSlipT, _doorRollAt = -1f, _doorStallT;
         Quaternion _doorTurnQ = Quaternion.identity;
         bool _doorPushing;
 
@@ -153,7 +153,7 @@ namespace Backrooms.Interaction
         {
             if (_door && HandBlend > 0.3f) { _letGoUntil = Time.time + 0.45f; _letGoOff = HandPosition - ReachShoulder; }
             _sideFix = 0f;
-            _doorSlipT = 0f; _notThereT = 0f; _doorPushing = false;
+            _doorSlipT = 0f; _notThereT = 0f; _doorPushing = false; _doorStallT = 0f;
             if (_door) _door.Release();
             _door = null;
             _doorPhase = DoorPhase.None;
@@ -234,6 +234,16 @@ namespace Backrooms.Interaction
                         _doorOffset = Quaternion.Inverse(transform.rotation) * (lever - StandShoulder);
                         _doorPushing = true;
                     }
+                    // Round 10: pulling with no room behind (a wall), walking back gets nowhere: the arm stood out straight, the
+                    // door stuck at 26 degrees and swung back to 14 when let go. The hand tugs it round as a quick pull does
+                    // (TugFromHold): the body steps to the latch side, out of the leaf's way, and the door rests on the body.
+                    if (_doorSide > 0 && !_doorPushing)
+                    {
+                        bool stuck = into > 0.25f && _door.Angle < 55f && _doorT > 0.3f
+                                     && (_player.PlanarVelocity.magnitude < 0.12f || (lever - RS).magnitude > ArmReach * 0.95f);
+                        _doorStallT = stuck ? _doorStallT + dt : 0f;
+                        if (_doorStallT > 0.3f) { TugFromHold(); break; }
+                    }
                     _door.Drive(target, dt);
                     _player.lookScale = 0.75f;
                     if (Time.time - _doorRollAt > 0.25f) { _doorTurnQ = Quaternion.RotateTowards(_doorTurnQ, LeverTurn(_door, _doorSide, 1f), 10f); _doorRollAt = Time.time; }
@@ -249,6 +259,27 @@ namespace Backrooms.Interaction
                     break;
                 }
             }
+        }
+
+        /// <summary>
+        /// A pulled door held with no room to walk back (round 10): the hand keeps the lever and the quick pull's tug takes over
+        /// (UpdateQuickDoor): the body steps back and to the latch side as the door comes round, the door rests on the body,
+        /// and the hand fades out when it can no longer follow.
+        /// </summary>
+        void TugFromHold()
+        {
+            var d = _door; int side = _doorSide;
+            Quaternion turnQ = _doorTurnQ;
+            _sideFix = 0f; _doorSlipT = 0f; _notThereT = 0f; _doorPushing = false; _doorStallT = 0f;
+            d.Release();
+            _door = null;
+            _doorPhase = DoorPhase.None;
+            _player.lookScale = 1f;
+            _quickDoor = d; _quickSide = side; _quickPull = true; _quickLever = true;
+            _quickPoint = d.GripPoint(side, 1f); _quickNormal = d.FaceNormal(side);
+            _quickTurnQ = turnQ;
+            _quick = QuickPhase.Push; _quickT = 0f;
+            ResetReach();
         }
 
         /// <summary>The hand on the lever (for the arm IK).</summary>

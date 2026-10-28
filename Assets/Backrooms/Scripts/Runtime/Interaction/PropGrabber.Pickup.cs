@@ -37,6 +37,8 @@ namespace Backrooms.Interaction
         /// <summary>Only a grip lower than this (m above the feet) is squatted for; higher, the knees stay nearly straight
         /// (the eye comes down at most HighStoop: a little give).</summary>
         public const float SquatBelow = 0.42f, HighStoop = 0.08f;
+        /// <summary>A grip this low (m above the feet) may have the body bend further at the hips over the squat.</summary>
+        public const float VeryLow = 0.15f;
 
         WorldItem _fetch;                // the item the hand is going for: untouched until the palm is on it
         /// <summary>The hand is on its way to take this item (it lies untouched until the palm is on it), or null.</summary>
@@ -154,7 +156,10 @@ namespace Backrooms.Interaction
                         {
                             // (Pitched: the fingers down over it, as a hand takes a stick of chalk off the floor from above.)
                             Quaternion rel = Quaternion.AngleAxis(a, Vector3.up) * Quaternion.AngleAxis(r, Vector3.forward) * Quaternion.AngleAxis(pt, Vector3.right);
-                            float s = _body.ArmStrain(grip, square * rel, out float over) + over * 0.02f
+                            // (Round 10: and how far the palm would still miss once the wrist is moved for it: a turn the
+                            // wrist could not do left the palm 28-36 mm off a lamp's rod until the reach gave up.)
+                            float s = _body.ArmStrainFrom(ReachShoulder, grip, square * rel, out float over, out float ws, out float miss) + over * 0.02f
+                                      + miss * 200f + Mathf.Max(0f, ws - 0.97f) * 40f
                                       + (Mathf.Abs(a) + (Mathf.Abs(r) + Mathf.Abs(pt)) * 1.5f) * 0.008f + Quaternion.Angle(rel, _pickTurn) * 0.001f;
                             if (s < best) { best = s; _pickTurnWant = rel; }
                         }
@@ -167,15 +172,167 @@ namespace Backrooms.Interaction
         Quaternion WithReachTurn(Quaternion square, float share) => square * Quaternion.Slerp(Quaternion.identity, _pickTurn, share);
         static readonly RaycastHit[] s_pickHits = new RaycastHit[16];
 
-        /// <summary>Where the hand takes an item, as it lies now (its grip: the palm's point).</summary>
-        Vector3 GripOf(WorldItem item) => item.transform.TransformPoint(Mirror(item.GripLocal));
+        /// <summary>Where the hand takes an item, as it lies now (its grip: the palm's point), on the side chosen (IGripRound).</summary>
+        Vector3 GripOf(WorldItem item) => item.transform.TransformPoint(GripLocalOf(item, AltShare(item)));
 
-        /// <summary>The hand's turn taking an item as it lies now.</summary>
-        Quaternion GripTurnOf(WorldItem item)
+        /// <summary>The hand's turn taking an item as it lies now, on the side chosen.</summary>
+        Quaternion GripTurnOf(WorldItem item) => item.transform.rotation * GripTurnLocalOf(item, AltShare(item));
+
+        // ---------------- Round 10: the side it is taken from ----------------
+
+        WorldItem _altItem;              // the item whose grip is turned about its axis (IGripRound) for this pick-up
+        Vector3 _altPoint;               // a point on its axis, in the item's space as the hand sees it (mirrored for the left hand)
+        Quaternion _altTurn = Quaternion.identity;   // the grip's turn about that point: round the axis, and maybe flipped
+        float _altAngle;                 // degrees round the axis (for tests)
+        bool _altFlip;                   // the hand turned end for end on the handle (for tests)
+        static readonly float[] AltAngles = { 0f, 45f, -45f, 90f, -90f, 135f, -135f, 180f };
+        static readonly int[] s_altOrder = new int[16];
+        static readonly float[] s_altScore = new float[16];
+        Quaternion AltQ(float share) => Quaternion.Slerp(Quaternion.identity, _altTurn, share);
+
+        /// <summary>How much of the chosen side's turn applies: all of it going for the item, eased off to the carry's grip as
+        /// it comes up (with HoldAsTaken: the hand and the item turn together, the palm stays on the item's surface).</summary>
+        float AltShare(WorldItem item) => !item || item != _altItem ? 0f : _altPlan || _fetch == item ? 1f
+                                          : HeldItem == item ? (_itemT > 0f ? HoldAsTaken : 1f) : 0f;
+        bool _altPlan;                   // planning: the side being tried applies in full
+
+        /// <summary>The held item's grip in its own space (mirrored), on the side it was taken from as far as that still applies.</summary>
+        public Vector3 HeldGripLocal => HeldItem ? GripLocalOf(HeldItem, AltShare(HeldItem)) : Vector3.zero;
+
+        /// <summary>
+        /// The held item's turn in the hand since it was taken (item space: a point on its axis and the turn about it): taken
+        /// from another side round its grip's axis, it turns in the hand toward the carry's grip as it comes up (FirstPersonBody
+        /// puts it there, as the hand took it, then this).
+        /// </summary>
+        public bool TakenRegrip(out Vector3 point, out Quaternion turn)
+        {
+            point = Vector3.zero; turn = Quaternion.identity;
+            if (!HeldItem || HeldItem != _altItem) return false;
+            point = _altPoint;
+            turn = _altTurn * Quaternion.Inverse(AltQ(AltShare(HeldItem)));
+            return true;
+        }
+
+        /// <summary>The grip's palm point in the item's space (mirrored), turned a share of the chosen side about its axis.</summary>
+        Vector3 GripLocalOf(WorldItem item, float share)
+        {
+            Vector3 g = Mirror(item.GripLocal);
+            if (item != _altItem || share <= 0f) return g;
+            return _altPoint + AltQ(share) * (g - _altPoint);
+        }
+
+        /// <summary>The grip's hand turn in the item's space (mirrored), turned a share of the chosen side about its axis.</summary>
+        Quaternion GripTurnLocalOf(WorldItem item, float share)
         {
             Quaternion g = item.GripRotationLocal;
-            return item.transform.rotation * Quaternion.LookRotation(Mirror(g * Vector3.forward), Mirror(g * Vector3.up));
+            Quaternion t = Quaternion.LookRotation(Mirror(g * Vector3.forward), Mirror(g * Vector3.up));
+            if (item != _altItem || share <= 0f) return t;
+            return AltQ(share) * t;
         }
+
+        /// <summary>
+        /// Plans the body's reach for an item and the side its grip is taken from (IGripRound): the sides are tried best first
+        /// (the back of the hand toward the shoulder and up, the grip near), never one with the hand in what the item lies
+        /// on, and the first the body and the arm can get to is kept (_altItem). A coil was reached for across itself, its
+        /// grip on the far rim; a hammer or a can lying down had its grip under it.
+        /// </summary>
+        bool PlanSide(WorldItem item, float share, out ReachPlan plan, out ReachBody b)
+        {
+            _altPlan = true;
+            try { return PlanSideCore(item, share, out plan, out b); }
+            finally { _altPlan = false; }
+        }
+
+        bool PlanSideCore(WorldItem item, float share, out ReachPlan plan, out ReachBody b)
+        {
+            _altItem = null; _altAngle = 0f;
+            var round = item as IGripRound;
+            if (round == null || !_body || !_body.HasArm) return PlanFor(GripOf(item), item, null, share, out plan, out b);
+            round.GripAxis(out Vector3 pt, out Vector3 ax);
+            Vector3 mp = Mirror(pt), ma = Mirror(ax).normalized;
+            SupportOf(item, out float top);
+            Vector3 S = ReachShoulder;
+            Vector3 g0 = Mirror(item.GripLocal);
+            Quaternion t0 = GripTurnLocalOf(item, 0f);
+            int n = 0;
+            for (int i = 0; i < AltAngles.Length * 2; i++)
+            {
+                Quaternion r = Quaternion.AngleAxis(AltAngles[i % AltAngles.Length], ma);
+                Vector3 gl = mp + r * (g0 - mp);
+                Quaternion tl = r * t0;
+                if (i >= AltAngles.Length)
+                {
+                    // Flipped: the hand turned end for end about its back, the handle across the palm the other way (a hammer
+                    // lying with its face toward you is taken palm down with the fingers away from you, not back at you). Only
+                    // where the back of the hand stands straight out from the axis (a handle, a rod, a neck, a can's side).
+                    Vector3 onAxis = mp + ma * Vector3.Dot(gl - mp, ma), U0 = tl * Vector3.up;
+                    if ((gl - onAxis).magnitude < 0.003f || Vector3.Cross(U0, gl - onAxis).magnitude > 0.004f) continue;
+                    tl = Quaternion.AngleAxis(180f, U0) * tl;
+                }
+                Vector3 g = item.transform.TransformPoint(gl);
+                Quaternion turn = item.transform.rotation * tl;
+                // The hand's lowest point (the palm's edges, the heel, the fingers' first part, the back) not in the floor.
+                Vector3 R = turn * Vector3.right, F = turn * Vector3.forward, U = turn * Vector3.up;
+                float low = Mathf.Abs(R.y) * 0.04f + Mathf.Max(0f, -F.y) * 0.05f + Mathf.Max(0f, F.y) * 0.03f + Mathf.Max(0f, -U.y) * 0.03f;
+                if (g.y - low < top - 0.004f) continue;
+                Vector3 toS = S - g;
+                float score = -Vector3.Dot(U, toS.normalized) - U.y * 0.5f + Mathf.Abs(AltAngles[i % AltAngles.Length]) / 180f * 0.3f + toS.magnitude
+                              + (i >= AltAngles.Length ? 1f : 0f);
+                int at = n;
+                while (at > 0 && s_altScore[at - 1] > score) { s_altScore[at] = s_altScore[at - 1]; s_altOrder[at] = s_altOrder[at - 1]; at--; }
+                s_altScore[at] = score; s_altOrder[at] = i; n++;
+            }
+            for (int k = 0; k < n; k++)
+            {
+                int i = s_altOrder[k];
+                float angle = AltAngles[i % AltAngles.Length];
+                Quaternion r = Quaternion.AngleAxis(angle, ma);
+                _altItem = item; _altPoint = mp; _altTurn = r; _altAngle = angle; _altFlip = i >= AltAngles.Length;
+                if (_altFlip)
+                {
+                    // (About the axis's point under the grip: the flip leaves the grip where it is, the turn round the axis too.)
+                    Vector3 gl = mp + r * (g0 - mp);
+                    _altPoint = mp + ma * Vector3.Dot(gl - mp, ma);
+                    _altTurn = Quaternion.AngleAxis(180f, r * t0 * Vector3.up) * r;
+                }
+                if (PlanFor(GripOf(item), item, null, share, out plan, out b)) return true;
+            }
+            _altItem = null; _altAngle = 0f; _altFlip = false; _altTurn = Quaternion.identity;
+            PlanFor(GripOf(item), item, null, share, out plan, out b);
+            return false;
+        }
+
+        static Quaternion[] s_reachRels;
+
+        /// <summary>
+        /// Can the arm put the palm on grip p from shoulder S (where the plan puts the body) with the hand turned about as the
+        /// item asks (square), turned as ReachTurn may turn it? The arm is solved as each frame solves it, the wrist's and
+        /// forearm's limits included: the hand at most 25 degrees off and the wrist within reach once the palm is on its point.
+        /// </summary>
+        bool HandGets(Vector3 S, Vector3 p, Quaternion square, float share)
+        {
+            if (!_body || !_body.HasArm) return true;
+            if (s_reachRels == null)
+            {
+                var list = new System.Collections.Generic.List<RelCost>();
+                foreach (float a in PickTilts)
+                    foreach (float r in PickRolls)
+                        foreach (float pt in PickPitches)
+                            list.Add(new RelCost { cost = Mathf.Abs(a) + (Mathf.Abs(r) + Mathf.Abs(pt)) * 1.5f,
+                                rel = Quaternion.AngleAxis(a, Vector3.up) * Quaternion.AngleAxis(r, Vector3.forward) * Quaternion.AngleAxis(pt, Vector3.right) });
+                list.Sort((x, y) => x.cost.CompareTo(y.cost));
+                s_reachRels = new Quaternion[list.Count];
+                for (int i = 0; i < list.Count; i++) s_reachRels[i] = list[i].rel;
+            }
+            float wristMax = share >= 1f ? 1.0f : 0.97f;
+            foreach (var rel in s_reachRels)
+            {
+                _body.ArmStrainFrom(S, p, square * rel, out float over, out float ws, out float miss);
+                if (over <= 25f && ws <= wristMax && miss <= 0.012f) return true;
+            }
+            return false;
+        }
+        struct RelCost { public float cost; public Quaternion rel; }
 
         // ---------------- Planning the body's way to it ----------------
 
@@ -226,7 +383,8 @@ namespace Backrooms.Interaction
             plan = new ReachPlan();
             bool low = p.y - b.feet < SquatBelow;
             float stoopTop = Mathf.Min(b.stoopMax, low ? 0.85f : HighStoop);
-            float hingeTop = Mathf.Min(b.hingeMax, low ? LowHinge : MaxHinge);
+            // (Round 10: lower than VeryLow, a squat and a bend of up to LowHinge + 10: a coil's rim at 3 cm.)
+            float hingeTop = Mathf.Min(b.hingeMax, low ? (p.y - b.feet < VeryLow ? LowHinge + 10f : LowHinge) : MaxHinge);
             int nS = b.room > 0.02f ? 6 : 1, kept = 0;
             for (int i = 0; i < nS; i++)
             {
@@ -286,32 +444,58 @@ namespace Backrooms.Interaction
             // on the floor, the body stood on it and pushed it 4 cm).
             if (item && b.room > 0f)
             {
-                // (A light item the capsule passes through (WorldItem.IgnorePlayer) only has to stay clear of the feet, which
-                // are behind the view: the eye may come within 0.15 m of it.)
-                var cc = GetComponent<CharacterController>();
-                var ic = item.GetComponentInChildren<Collider>();
-                bool passes = cc && ic && Physics.GetIgnoreCollision(cc, ic);
-                float r = passes ? 0.15f : (cc ? cc.radius : 0.3f) + ItemRadius(item) + 0.05f;
-                Vector3 to = item.transform.position - transform.position; to.y = 0f;
-                float along = Vector3.Dot(to, b.stepDir), side2 = to.sqrMagnitude - along * along;
+                // (The capsule passes over what the hand goes for (PassOver), so only the feet keep clear of it: the toes are
+                // about 0.04 m ahead of the view standing, 0.12 m bent over: ToeClear off its footprint. Kept off by the
+                // capsule, a coil or a lamp on the floor stayed 0.6 m off the feet and out of reach: never offered; kept off
+                // a round about its middle, a hammer lying across the way stayed 0.45 m off its handle.)
                 // (Less what the body runs on as it stops: it came 0.1 m further than planned and pushed a can 4 cm.)
-                if (side2 < r * r) b.room = Mathf.Clamp(along - Mathf.Sqrt(r * r - side2) - 0.1f, 0f, b.room);
+                b.room = Mathf.Clamp(StepToItem(item, transform.position, b.stepDir, b.feet) - 0.1f, 0f, b.room);
             }
             return b;
         }
 
-        /// <summary>How far the item reaches out from its middle across the floor (m), from its colliders.</summary>
-        static float ItemRadius(WorldItem item)
+        /// <summary>How far the toes keep off an item reached for on the floor (m): ahead of the view 0.04 standing, 0.12 bent.</summary>
+        public const float ToeClear = 0.15f;
+
+        /// <summary>
+        /// How far the body may step from <paramref name="from"/> along flat <paramref name="dir"/> before it comes within
+        /// ToeClear of the item's footprint: its colliders down at the feet, as boxes on the floor (a lamp's shade may hang
+        /// over the toes). 0 if it is there already; very far if the way passes by it.
+        /// </summary>
+        static float StepToItem(WorldItem item, Vector3 from, Vector3 dir, float feet)
         {
-            float r = 0.03f;
+            float best = float.MaxValue;
             foreach (var c in item.GetComponentsInChildren<Collider>())
+                if (c.enabled && !c.isTrigger && c.bounds.min.y <= feet + 0.25f) best = Mathf.Min(best, StepToBox(c.bounds, from, dir));
+            return best;
+        }
+
+        /// <summary>Pure (for tests): how far from <paramref name="from"/> along flat <paramref name="dir"/> until within ToeClear
+        /// of a box on the floor (seen from above); 0 if there already, float.MaxValue if the way passes by it.</summary>
+        public static float StepToBox(Bounds box, Vector3 from, Vector3 dir)
+        {
+            // (From the middle and from each foot, 0.11 m to the side: a can in front of the right foot was passed by.)
+            Vector3 side = Vector3.Cross(Vector3.up, dir).normalized * 0.11f;
+            float best = float.MaxValue;
+            for (int k = -1; k <= 1; k++)
             {
-                if (!c.enabled || c.isTrigger) continue;
-                Vector3 e = c.bounds.extents, o = c.bounds.center - item.transform.position;
-                o.y = 0f;
-                r = Mathf.Max(r, o.magnitude + Mathf.Max(e.x, e.z));
+                Vector3 o = from + side * k;
+                float t0 = 0f, t1 = float.MaxValue;
+                if (!Slab(o.x, dir.x, box.min.x - ToeClear, box.max.x + ToeClear, ref t0, ref t1)) continue;
+                if (!Slab(o.z, dir.z, box.min.z - ToeClear, box.max.z + ToeClear, ref t0, ref t1)) continue;
+                best = Mathf.Min(best, t0);
             }
-            return Mathf.Min(r, 0.3f);
+            return best;
+        }
+
+        /// <summary>One slab of a ray-box test: narrows the ray's [t0, t1] to where it is between lo and hi (false: never).</summary>
+        static bool Slab(float o, float d, float lo, float hi, ref float t0, ref float t1)
+        {
+            if (Mathf.Abs(d) < 1e-6f) return o >= lo && o <= hi;
+            float a = (lo - o) / d, b = (hi - o) / d;
+            if (a > b) { float t = a; a = b; b = t; }
+            t0 = Mathf.Max(t0, a); t1 = Mathf.Min(t1, b);
+            return t0 <= t1;
         }
 
         /// <summary>The body's plan for a grip (the arm's way and the head clear), within share of the reach.</summary>
@@ -319,7 +503,9 @@ namespace Backrooms.Interaction
         {
             b = BodyNow(p, item);
             var body = b;
-            return PlanReach(p, b, share, (c, s) => ArmWayClear(s, p, item, own) && HeadClear(body, c, item, null), out plan);
+            // (Round 10: with an item, the arm is solved from the planned shoulder too: what is offered is taken.)
+            Quaternion turn = item ? GripTurnOf(item) : Quaternion.identity;
+            return PlanReach(p, b, share, (c, s) => ArmWayClear(s, p, item, own) && HeadClear(body, c, item, null) && (!item || HandGets(s, p, turn, share)), out plan);
         }
 
         /// <summary>
@@ -330,10 +516,23 @@ namespace Backrooms.Interaction
         {
             if (!item) return false;
             if (!_body || !_body.HasArm) return (GripOf(item) - Eye).magnitude <= itemRange;
-            Vector3 p = GripOf(item);
-            if ((p - ReachShoulder).magnitude > ArmReach + PickStep + 0.9f) return false;
-            return PlanFor(p, item, null, PickReachShare, out _, out _);
+            if ((item.transform.position - ReachShoulder).magnitude > ArmReach + PickStep + 0.9f) return false;
+            // (Asked every frame for what the view is on: kept a quarter of a second while the body and the item stay put.)
+            float yaw = transform.eulerAngles.y;
+            if (_reachMemo.TryGetValue(item, out var m) && Time.time - m.t < 0.25f && (m.at - transform.position).sqrMagnitude < 1e-3f
+                && Mathf.Abs(Mathf.DeltaAngle(m.yaw, yaw)) < 4f && (m.itemAt - item.transform.position).sqrMagnitude < 1e-4f && Mathf.Abs(m.stoop - _player.stoop) < 0.03f)
+                return m.yes;
+            // (Without disturbing the side chosen for an item the hand is going for.)
+            var keepItem = _altItem; Vector3 keepP = _altPoint; Quaternion keepT = _altTurn; float keepAngle = _altAngle; bool keepFlip = _altFlip;
+            bool yes = PlanSide(item, PickReachShare, out _, out _);
+            _altItem = keepItem; _altPoint = keepP; _altTurn = keepT; _altAngle = keepAngle; _altFlip = keepFlip;
+            if (_reachMemo.Count > 64) _reachMemo.Clear();
+            _reachMemo[item] = new ReachMemo { t = Time.time, at = transform.position, itemAt = item.transform.position, yaw = yaw, stoop = _player.stoop, yes = yes };
+            return yes;
         }
+
+        struct ReachMemo { public float t, yaw, stoop; public Vector3 at, itemAt; public bool yes; }
+        readonly System.Collections.Generic.Dictionary<WorldItem, ReachMemo> _reachMemo = new System.Collections.Generic.Dictionary<WorldItem, ReachMemo>();
 
         /// <summary>How far the body can step this way (m, at most PickStep): its capsule swept, the feet's height left out.</summary>
         float StepRoom(Vector3 dir, WorldItem item)
@@ -422,14 +621,15 @@ namespace Backrooms.Interaction
         {
             _pickTurn = _pickTurnWant = Quaternion.identity; _pickTiltNext = 0f;
             PickGaveUp = false;
-            Vector3 g = GripOf(item);
             _planned = _body && _body.HasArm;
-            if (_planned && !PlanFor(g, item, null, PickPlanShare, out _plan, out var b) && !PlanFor(g, item, null, PickReachShare + 0.03f, out _plan, out b))
+            ReachBody b = new ReachBody();
+            if (_planned && !PlanSide(item, PickPlanShare, out _plan, out b) && !PlanSide(item, PickReachShare + 0.03f, out _plan, out b))
             {
                 // (Taken by code with the body unable to get there: it reaches as far as it can and gives up.)
-                _plan = new ReachPlan { step = b.room, stoop = b.stoopMax * (g.y - b.feet < SquatBelow ? 1f : 0f), hinge = 0f, share = 1f };
+                Vector3 g0 = GripOf(item);
+                _plan = new ReachPlan { step = b.room, stoop = b.stoopMax * (g0.y - b.feet < SquatBelow ? 1f : 0f), hinge = 0f, share = 1f };
             }
-            if (_planned) BeginPlannedReach(g);
+            if (_planned) BeginPlannedReach(GripOf(item));
         }
 
         /// <summary>The counters for a reach the body carries out by its plan (_plan), toward grip g.</summary>
@@ -502,11 +702,13 @@ namespace Backrooms.Interaction
             }
             _pickStoop = _plan.stoop + _pickStoopExtra;
             _hingeWant = Mathf.Min(_plan.hinge + _pickHingeExtra, MaxHinge + 8f);
-            bool bodyThere = stepDone && ReachHinge >= _hingeWant - 5f && _player.stoop >= _pickStoop - 0.06f;
+            // (As planned, the extra bend for an arm held off left out: waiting for a bend the body could not make, the hand was
+            // kept to a bent arm, 45 mm off a lamp's rod, until it gave up.)
+            bool bodyThere = stepDone && ReachHinge >= Mathf.Min(_hingeWant, _plan.hinge) - 5f && _player.stoop >= Mathf.Min(_pickStoop, _plan.stoop) - 0.06f;
 
             // The hand: bent while the body comes; then out to the grip (as far as planned, a little more), then further
             // if it gets no nearer.
-            float within = bodyThere ? Mathf.Lerp(Mathf.Max(PickBent, _plan.share + 0.04f), PickStretch, _pickStretch) : PickBent;
+            float within = bodyThere || _pickStretch > 0f ? Mathf.Lerp(Mathf.Max(PickBent, _plan.share + 0.04f), PickStretch, _pickStretch) : PickBent;
             _pickHandAt = Plug.WithinComfort(grip, Vector3.zero, S, reach, within, out _pickClamped);
 
             float palmToGrip = (_body.PalmNow - grip).magnitude;
@@ -532,9 +734,22 @@ namespace Backrooms.Interaction
         void StartFetch(WorldItem item)
         {
             _fetch = item;
+            PassOver(item);
             BeginReachFor(item);
             if (HandBlend > 0.5f) { _switchPos = HandPosition; _switchRot = HandRotation; _switchT = 0f; } else _switchT = 1f;
             _pickHandAt = HandBlend > 0.5f ? HandPosition : GripOf(item);
+        }
+
+        /// <summary>
+        /// Round 10: the body's capsule passes over the item the hand goes for (as it does small things), so the feet can stand
+        /// up to it as a person's do; it is solid to the body again once the body has stepped away (UpdatePassing).
+        /// </summary>
+        void PassOver(WorldItem item)
+        {
+            var cc = GetComponent<CharacterController>();
+            if (!cc || !item) return;
+            foreach (var c in item.GetComponentsInChildren<Collider>(true)) if (c && c.enabled) Physics.IgnoreCollision(cc, c, true);
+            if (!_passing.Contains(item)) _passing.Add(item);
         }
 
         void EndFetch()
