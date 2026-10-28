@@ -1224,6 +1224,7 @@ namespace Backrooms.DebugTools
                     Vector3 point = rail ? new Vector3(hit.point.x, b.max.y, hit.point.z) : hit.point;
                     if (!rail) point = (Vector3)T.GetMethod("ComfortableTouch", bf | BindingFlags.Static).Invoke(fpb, new object[] { hit, fpb.ShoulderNow, t.forward, t.right * side });
                     T.GetField("_touchPoint", bf).SetValue(fpb, point);
+                    T.GetField("_touchOnCol", bf).SetValue(fpb, col.transform.InverseTransformPoint(point));
                     T.GetField("_touchNormal", bf).SetValue(fpb, hit.normal);
                     T.GetField("_touchAlong", bf).SetValue(fpb, b.size.x > b.size.z ? Vector3.right : Vector3.forward);
                     T.GetField("_touchRailCentre", bf).SetValue(fpb, b.center);
@@ -1242,6 +1243,125 @@ namespace Backrooms.DebugTools
             };
             Application.onBeforeRender += act;
             return "touch test " + tag;
+        }
+
+        /// <summary>The working arm now: elbow bend, wrist bend (+ toward the palm), sideways (+ ulnar), forearm twist (degrees).</summary>
+        public static Vector4 ArmAngles()
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            System.Func<string, object> G = n => typeof(FirstPersonBody).GetField(n, bf).GetValue(fpb);
+            var upper = (Transform)G("_upper"); var fore = (Transform)G("_fore"); var hand = (Transform)G("_hand");
+            Vector3 foreBackL = (Vector3)G("_foreBack"), handFL = (Vector3)G("_handFingers"), handBL = (Vector3)G("_handBack");
+            Vector3 S = upper.position, E = fore.position, W = hand.position;
+            Vector3 u = (E - S).normalized, A = (W - E).normalized;
+            Vector3 Bk = Vector3.ProjectOnPlane(fore.TransformDirection(foreBackL), A).normalized;
+            Vector3 F = hand.TransformDirection(handFL).normalized, H = hand.TransformDirection(handBL).normalized;
+            float flex = Mathf.Asin(Mathf.Clamp(-Vector3.Dot(F, Bk), -1f, 1f)) * Mathf.Rad2Deg;
+            float dev = Mathf.Atan2(Vector3.Dot(F, Vector3.Cross(Bk, A)), Vector3.Dot(F, A)) * Mathf.Rad2Deg;
+            Vector3 b0 = -Vector3.Cross(u, A).normalized;
+            float tw = Vector3.SignedAngle(b0, Vector3.ProjectOnPlane(H, A), A);
+            return new Vector4(Vector3.Angle(u, A), flex, dev, tw);
+        }
+
+        /// <summary>
+        /// Round-7 door test: the door nearest near, shut and latched first; the player 0.8 m out from its lever on side (+1
+        /// the face it opens toward: a pull), facing it. quick: a right click (a shove or tug); else the lever held, and once
+        /// held a walk the way it opens (forward pushing, back pulling) for 90 frames, then let go. Every second frame into
+        /// file: phase, angle, latched, blend, PalmError, elbow, wrist bend and side, twist, the bot's walk.
+        /// </summary>
+        public static string DoorRun(Vector3 near, int side, bool quick, string file)
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var grab = pl.GetComponent<PropGrabber>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            Door door = null; float bd = float.MaxValue;
+            foreach (var d in FindObjectsByType<Door>(FindObjectsSortMode.None)) { float x = Vector3.Distance(d.transform.position, near); if (x < bd) { bd = x; door = d; } }
+            if (!door) return "no door";
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            typeof(Door).GetProperty("Angle").GetSetMethod(true).Invoke(door, new object[] { 0f });
+            typeof(Door).GetMethod("Pose", bf).Invoke(door, null);
+            typeof(Door).GetMethod("UpdateShut", bf).Invoke(door, null);
+            grab.botHold = null; pl.botInput = null;
+            typeof(Door).GetProperty("Latched").GetSetMethod(true).Invoke(door, new object[] { true });
+            typeof(Door).GetField("_vel", bf).SetValue(door, 0f);
+            Vector3 grip = door.GripPoint(side, 0f), n = door.FaceNormal(side);
+            Vector3 stand = grip + n * 0.8f; stand.y = pl.transform.position.y + 0.05f;
+            pl.TeleportSafe(stand, Mathf.Atan2(-n.x, -n.z) * Mathf.Rad2Deg, 25f);
+            var fPhase = typeof(PropGrabber).GetField(quick ? "_quick" : "_doorPhase", bf);
+            var sb = new StringBuilder();
+            sb.AppendFormat("door {0} side {1} quick {2}\n", door.transform.position, side, quick);
+            int frame = 0, heldAt = -1; float minPE = 1e9f, maxDev = 0f, minElbowReach = 999f, maxAngle = 0f;
+            UnityEngine.Events.UnityAction act = null;
+            act = () =>
+            {
+                frame++;
+                if (quick && frame == 8) grab.botShove = true;
+                if (!quick && frame == 8) grab.botHold = true;
+                string ph = fPhase.GetValue(grab).ToString();
+                if (!quick && heldAt < 0 && ph == "Hold") heldAt = frame;
+                if (heldAt > 0 && frame == heldAt + 10) pl.botInput = new Vector2(0f, side > 0 ? -1f : 1f);
+                if (heldAt > 0 && frame == heldAt + 100) { pl.botInput = null; grab.botHold = false; }
+                var a = ArmAngles();
+                maxAngle = Mathf.Max(maxAngle, door.Angle);
+                if (grab.HandBlend > 0.97f && ph != "None") { minPE = Mathf.Min(minPE, fpb.PalmError); maxDev = Mathf.Max(maxDev, Mathf.Abs(a.z)); }
+                if (ph == "Reach" && grab.HandBlend > 0.5f) minElbowReach = Mathf.Min(minElbowReach, a.x);
+                if (frame % 2 == 0)
+                    sb.AppendFormat("{0} | {1} | angle {2:0.0} latched {3} | blend {4:0.00} PE {5:0.0} | elbow {6:0} flex {7:0} dev {8:0} twist {9:0} | bot {10}\n", frame, ph, door.Angle, door.Latched,
+                                    grab.HandBlend, fpb.PalmError * 1000f, a.x, a.y, a.z, a.w, pl.botInput.HasValue ? pl.botInput.Value.ToString("F2") : "-");
+                if (frame >= (quick ? 150 : 260) || (!quick && heldAt < 0 && frame > 200))
+                {
+                    Application.onBeforeRender -= act;
+                    grab.botHold = null; pl.botInput = null;
+                    sb.AppendFormat("SUMMARY max angle {0:0.0} final {1:0.0} latched {2} | min elbow while reaching {3:0} | max |dev| on {4:0}\n", maxAngle, door.Angle, door.Latched, minElbowReach, maxDev);
+                    File.WriteAllText(file, sb.ToString());
+                }
+            };
+            Application.onBeforeRender += act;
+            return "door run";
+        }
+
+        /// <summary>
+        /// Round-7 use test: holding id at (x, z) facing yaw and pitch, the left button held from frame on to off (a squeeze,
+        /// a hammer's wind-up and blow, the tape's strip); every second frame into file: the item's use, PalmError, elbow,
+        /// wrist bend and side, twist, each finger's joints and the end pads' clearance (mm). At frame shot: MeasureR2 with
+        /// its pictures (tag) into dir.
+        /// </summary>
+        public static string UseRun(string id, float x, float z, float yaw, float pitch, int on, int off, int frames, int shot, string dir, string tag, string file)
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var grab = pl.GetComponent<PropGrabber>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            Hold(id, x, z, yaw, pitch);
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            var fingers = (System.Collections.IList)typeof(FirstPersonBody).GetField("_fingers", bf).GetValue(fpb);
+            var sb = new StringBuilder();
+            int frame = 0;
+            UnityEngine.Events.UnityAction act = null;
+            act = () =>
+            {
+                frame++;
+                if (frame == on) grab.botHold = true;
+                if (frame == off) grab.botHold = false;
+                if (frame == shot) sb.Append(MeasureR2(dir, tag, true)).AppendLine(FingerSkin(false));
+                if (frame % 2 == 0 && grab.HeldItem)
+                {
+                    var a = ArmAngles();
+                    var g = GripReport();
+                    sb.AppendFormat("{0} | use {1:0.00} | PE {2:0.0} | elbow {3:0} flex {4:0} dev {5:0} twist {6:0} | pads I {7:0.0} M {8:0.0} R {9:0.0} L {10:0.0} T {11:0.0} |", frame, grab.HeldItem.UseBlend, fpb.PalmError * 1000f, a.x, a.y, a.z, a.w, g[0], g[1], g[2], g[3], g[4]);
+                    if (fingers != null)
+                        foreach (var f in fingers)
+                        {
+                            var ft = f.GetType(); var aa = (float[])ft.GetField("a").GetValue(f);
+                            sb.AppendFormat(" ({0:0},{1:0},{2:0})", aa[0], aa[1], aa[2]);
+                        }
+                    sb.AppendLine();
+                }
+                if (frame >= frames) { Application.onBeforeRender -= act; grab.botHold = null; File.WriteAllText(file, sb.ToString()); }
+            };
+            Application.onBeforeRender += act;
+            return "use run " + id;
         }
 
         public static string MeasureHand(string dir, string tag, string next, bool render)

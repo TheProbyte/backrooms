@@ -16,3 +16,21 @@ namespace Backrooms.Interaction
         float ThumbOpposition { get; }
     }
 }
+
+namespace Backrooms.Interaction
+{
+    /// <summary>
+    /// A held item that sets some of its fingers' joints itself (round 7): a pencil's tripod, a plug's pad pinch, fingers
+    /// hooked through a tape roll's core. Closing until the first touch could not give those shapes (a stick under the
+    /// index and middle pads left both fingers straight; the pinch was a straight-fingered claw). The item is placed so
+    /// these fingers' pads lie on it; the others close on it as usual.
+    /// </summary>
+    public interface IHandPose
+    {
+        /// <summary>
+        /// True and the finger's joint bends (degrees, knuckle out; for the thumb, angles[3] is its turn across the palm in
+        /// degrees) for a finger (0 index, 1 middle, 2 ring, 3 little, 4 thumb); false: it closes on the item as usual.
+        /// </summary>
+        bool FingerPose(int finger, float[] angles);
+    }
+}

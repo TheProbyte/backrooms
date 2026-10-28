@@ -84,7 +84,8 @@ namespace Backrooms.Interaction
                 Vector3 dir = Quaternion.AngleAxis(ang, Vector3.up) * fwd;
                 bool hit = Physics.Raycast(origin, dir, out var h, 0.85f, ~0, QueryTriggerInteraction.Ignore)
                            && !h.collider.transform.IsChildOf(transform) && Mathf.Abs(h.normal.y) < 0.3f
-                           && !h.collider.GetComponentInParent<WorldItem>() && !h.collider.GetComponentInParent<MovableProp>();
+                           && !h.collider.GetComponentInParent<WorldItem>() && !h.collider.GetComponentInParent<MovableProp>()
+                           && !FirstPersonBody.Swings(h.collider);
                 float d = hit ? h.distance : 2f;
                 if (prevDist > 0f && prevDist < 0.7f && d - prevDist > 0.35f && Vector3.Dot(prev.normal, -prevDir) > 0.35f)
                 {

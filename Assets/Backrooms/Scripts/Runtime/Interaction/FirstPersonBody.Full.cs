@@ -316,11 +316,12 @@ namespace Backrooms.Interaction
             Quaternion yaw = transform.rotation;
             float side = _grab ? _grab.Side : 1f;
             Vector3 fwd = transform.forward;
-            for (int a = -40; a <= 40; a += 10)
+            for (int a = -60; a <= 60; a += 5)
             {
                 Vector3 f = Quaternion.AngleAxis(a, Vector3.up) * across;
                 // Only toward the way the body faces (turned back, the forearm was turned past its limit the other way and
-                // the index finger went into the rail), and no more than 40 degrees (past it, the forearm lay on the rail).
+                // the index finger went into the rail). (Round 7: up to 60 degrees: held to 40, the forearm was turned 96
+                // degrees, past its 95, and the wrist 26 to the side; at 75 the hand lay along the rail's top.)
                 if (Vector3.Dot(f - across, fwd) < -1e-3f) continue;
                 Quaternion hand = Quaternion.LookRotation(f, Vector3.up);
                 Vector3 wrist = palm - hand * _wristToGrip;
@@ -332,13 +333,16 @@ namespace Backrooms.Interaction
                     var p = SolveArm(shoulder, wrist, hand, pole0, k * 15f, side, yaw);
                     if (p.score < s) { s = p.score; bp = p; }
                 }
-                s += Mathf.Max(0f, Mathf.Abs(bp.twist) - 0.7f * forearmTwist) * 0.03f + Mathf.Abs(a) * 0.002f;
+                // The forearm turned no more than about 75 degrees (a hand on a rail beside you lies along it at a slant,
+                // not straight across it), a slant of about 50 degrees liked best.
+                s += Mathf.Max(0f, Mathf.Abs(bp.twist) - 0.7f * forearmTwist) * 0.03f + Mathf.Max(0f, Mathf.Abs(bp.twist) - 75f) * 0.15f
+                     + Mathf.Abs(Mathf.Abs(a) - 52f) * 0.004f;
                 // Not with the forearm lying on the rail (turned 60 degrees, it lay along the top, 6 mm into it): the
-                // forearm's underside (3 cm from its middle near the wrist) clear of it.
+                // forearm's underside (3 cm from its middle near the wrist, and a little more) clear of it.
                 for (int t = 1; t <= 4; t++)
                 {
                     Vector3 q = Vector3.Lerp(bp.wrist, bp.elbow, t * 0.1f);
-                    s += Mathf.Max(0f, 0.03f - TouchDistance(q)) * 30f;
+                    s += Mathf.Max(0f, 0.035f - TouchDistance(q)) * 30f;
                 }
                 if (s < bestS) { bestS = s; best = f; }
             }
@@ -408,7 +412,8 @@ namespace Backrooms.Interaction
             {
                 Vector3 to = _touchPoint - shoulder;
                 bool keep = allowed && TouchKept(to.magnitude, TouchReachOf(_upperLen, _foreLen)) && Vector3.Dot(to, fwd) > -0.12f
-                            && (Time.time < _touchUntil || Mathf.Abs(_player.Lean) > 0.2f || _vel.magnitude < 0.3f);
+                            && (Time.time < _touchUntil || Mathf.Abs(_player.Lean) > 0.2f || _vel.magnitude < 0.3f)
+                            && !TouchMoved();
                 if (!keep) _touching = false;
                 return;
             }
@@ -432,7 +437,7 @@ namespace Backrooms.Interaction
                 for (int i = 0; i < n; i++)
                 {
                     var h = _touchHits[i];
-                    if (h.distance >= best || h.collider.transform.IsChildOf(transform) || h.collider.GetComponentInParent<WorldItem>()) continue;
+                    if (h.distance >= best || h.collider.transform.IsChildOf(transform) || h.collider.GetComponentInParent<WorldItem>() || Swings(h.collider)) continue;
                     best = h.distance; hit = h;
                 }
                 if (best == float.MaxValue) continue;
@@ -452,8 +457,29 @@ namespace Backrooms.Interaction
                 if (!rail) _touchPoint = ComfortableTouch(hit, shoulder, fwd, right * side);
                 _touchUntil = Time.time + 0.8f + Random.value * 1.5f;
                 _touchFingersSet = false;
+                _touchOnCol = hit.collider.transform.InverseTransformPoint(_touchPoint);
                 return;
             }
+        }
+
+        Vector3 _touchOnCol;
+
+        /// <summary>
+        /// Something that swings or moves: a door's leaf (its kinematic body) or a loose prop. Not leant on. (A lean picked
+        /// a door's leaf and the hand stayed planted while it swung from 2 to 87 degrees, the fingertips through it.)
+        /// </summary>
+        public static bool Swings(Collider c)
+        {
+            var rb = c.attachedRigidbody;
+            return rb && (!rb.isKinematic || c.GetComponentInParent<Door>());
+        }
+
+        /// <summary>What the hand rests on has moved more than a centimetre under it since it was touched: let go.</summary>
+        bool TouchMoved()
+        {
+            var c = _touchColArr[0];
+            if (!c) return true;
+            return (c.transform.TransformPoint(_touchOnCol) - _touchPoint).sqrMagnitude > 0.01f * 0.01f;
         }
 
         // ---------------- Knocks ----------------

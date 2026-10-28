@@ -15,7 +15,7 @@ namespace Backrooms.Interaction
     /// Thrown hard at a wall, it breaks that too. Its settings (how wide and how hard it breaks, the wind-up) are tuned in
     /// game with F2 (ItemTuningMenu).
     /// </summary>
-    public class Sledgehammer : WorldItem
+    public class Sledgehammer : WorldItem, IHandPose
     {
         const float HeadY = SledgehammerModel.HeadY, HeadHalf = SledgehammerModel.HeadHalfZ;
         const float GripEnd = 0.05f, GripCarry = 0.27f;
@@ -402,6 +402,37 @@ namespace Backrooms.Interaction
 
         static Pose Blend(Pose a, Pose b, float t) => new Pose { h = Vector3.Lerp(a.h, b.h, t), r = Quaternion.Slerp(a.r, b.r, t), g = Mathf.Lerp(a.g, b.g, t) };
 
+        float _wristEase, _wristWant, _wristAt;
+        /// <summary>The pose turned about the back of the hand as the arm holds it best (picked 12 times a second), times k.</summary>
+        Pose EaseWrist(Pose p, float dt, float k)
+        {
+            if (Time.time >= _wristAt && k > 0.99f)
+            {
+                _wristAt = Time.time + 0.08f;
+                float bestS = float.MaxValue;
+                for (int c = -16; c <= 16; c += 8)
+                {
+                    var t = new Pose { h = p.h, r = Quaternion.AngleAxis(c, HandOf(p.r) * Vector3.up) * p.r, g = p.g };
+                    float s = Strain(t, out float over) + over * 0.02f + Mathf.Abs(c) * 0.003f;
+                    if (s < bestS) { bestS = s; _wristWant = c; }
+                }
+            }
+            _wristEase = Mathf.MoveTowards(_wristEase, _wristWant, dt * 120f);
+            p.r = Quaternion.AngleAxis(_wristEase * k, HandOf(p.r) * Vector3.up) * p.r;
+            return p;
+        }
+
+        /// <summary>
+        /// The thumb keeps the carry's wrap over the index and middle fingers whatever the hammer does (round 7: in the
+        /// wind-up and the swing it stood out straight, 8 mm off). The fingers close on the handle as usual.
+        /// </summary>
+        public bool FingerPose(int finger, float[] angles)
+        {
+            if (finger != 4) return false;
+            angles[0] = 9f; angles[1] = 27f; angles[2] = 31f; angles[3] = 57f;
+            return true;
+        }
+
         public override float UsePose(out Vector3 position, out Quaternion rotation)
         {
             position = transform.position; rotation = transform.rotation;
@@ -482,6 +513,12 @@ namespace Backrooms.Interaction
                     break;
                 }
             }
+            // Wound up and following through, the hammer is turned a little about the back of the hand (up to 16 degrees)
+            // as the wrist holds it best: the wind-up had the wrist 27 degrees to the thumb's side, the follow-through
+            // 22-27 to the little finger's. Back to none by the blow (it would move the head off the aim).
+            if (_phase == Phase.WindUp || _phase == Phase.Follow) _now = EaseWrist(_now, dt, 1f);
+            else if (_phase == Phase.Swing) _now = EaseWrist(_now, dt, 1f - Mathf.Clamp01(_t / Mathf.Max(0.01f, _swingTime)));
+            else _wristEase = Mathf.MoveTowards(_wristEase, 0f, dt * 120f);
             // Whatever the phase, the hand is where an arm can be: the hammer goes with the hand.
             {
                 Vector3 s = Shoulder;

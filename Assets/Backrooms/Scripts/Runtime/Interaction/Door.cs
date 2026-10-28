@@ -247,6 +247,16 @@ namespace Backrooms.Interaction
         /// <summary>Out of the face on that side (as the door stands now), toward whoever is there.</summary>
         public Vector3 FaceNormal(int side) => Swing(Angle) * transform.forward * side;
 
+        /// <summary>The way a point on the leaf moves as the door opens (level, unit; zero at the hinge).</summary>
+        public Vector3 OpeningAt(Vector3 p)
+        {
+            Vector3 r = Vector3.ProjectOnPlane(p - HingeWorld, transform.up);
+            return r.sqrMagnitude < 1e-6f ? Vector3.zero : Vector3.Cross(transform.up, r).normalized;
+        }
+
+        /// <summary>From the hinge toward the lever's edge, along the leaf as it stands now (level, unit).</summary>
+        public Vector3 TowardLatch => (Swing(Angle) * transform.TransformDirection(Spindle.x < 0f ? Vector3.left : Vector3.right)).normalized;
+
         /// <summary>
         /// A quick shove or tug from the hand (right click). Shut, it opens (pushed from the far side it swings wide,
         /// tugged from its own side part way); a latched door is unlatched on the way (the hand hits the lever). Already
@@ -272,7 +282,9 @@ namespace Backrooms.Interaction
             }
             _vel = speed;
             _moved = true;
+            _shovedAt = Time.time;
         }
+        float _shovedAt = -1f;
 
         /// <summary>Distance from a point to the slab (the palm flat on it).</summary>
         public float SlabDistance(Vector3 p)
@@ -289,6 +301,9 @@ namespace Backrooms.Interaction
         public void Nudge(Vector3 at, Vector3 push)
         {
             if (Latched || Held) return;
+            // Just tugged open, the body still coming in does not push it back shut (a quick pull at the lever: the door
+            // unlatched, the body's last step in shut it again the next frame and it latched).
+            if (Time.time - _shovedAt < 0.5f && Vector3.Dot(push, OpeningAt(at)) < 0f) return;
             Vector3 r = Vector3.ProjectOnPlane(at - HingeWorld, transform.up);
             if (r.sqrMagnitude < 0.01f) return;
             Vector3 opening = Vector3.Cross(transform.up, r).normalized;
@@ -328,7 +343,10 @@ namespace Backrooms.Interaction
                     Fx(SoundBank.DoorShut, Mathf.Clamp01(-_vel / 160f) * 0.9f + 0.15f);
                     _vel = 0f; Latched = true;
                 }
-                if (!TryMove(next)) _vel = -_vel * 0.1f;
+                // Swinging open into the player (pulled toward you), it rests against you and goes on as you step back; it
+                // used to bounce back and latch (a quick pull opened it 6 degrees and it shut again). Swinging shut into you,
+                // it bounces off.
+                if (!TryMove(next)) _vel = _vel > 0f ? Mathf.Min(_vel * 0.9f, 40f) : -_vel * 0.1f;
                 if (Mathf.Abs(_vel) < 1.5f) _vel = 0f;
             }
             else if (posed) Pose();

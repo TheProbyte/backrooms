@@ -10,7 +10,7 @@ namespace Backrooms.Interaction
     /// (<see cref="LineMetres"/> of line in a stick) and is gone when used up.
     /// Model: Resources/Items/Chalk.fbx (origin at the butt, tip forward).
     /// </summary>
-    public class Chalk : WorldItem, IHandGrip
+    public class Chalk : WorldItem, IHandGrip, IHandPose
     {
         /// <summary>Metres of line a whole stick draws.</summary>
         public static float LineMetres = 30f;
@@ -27,13 +27,12 @@ namespace Backrooms.Interaction
 
         public override Vector3 HoldOffset => new Vector3(0.15f, -0.2f, 0.34f);
         public override Vector3 UseOffset => new Vector3(0.12f, -0.14f, 0.42f);
-        // A writing grip (a tripod, as a pencil is held): the stick pinched between the pads of the thumb and the index
-        // finger, resting on the middle finger's end, ring and little finger curled in. It runs from the web of the thumb out
-        // past the index fingertip (its tip 4 cm beyond), 35 degrees down from the fingers toward the palm and a little
-        // across. (Found by trying 1,300 ways against the stick: thumb, index and middle skin 0.9-1.5 mm into it (skin
-        // gives 1 mm), nothing else in it. The round-5 grip had the stick under the index and middle pads, nearly along
-        // the fingers: two fingertips pressing on a stick.)
-        public override Vector3 GripLocal => TestGrip ?? new Vector3(0.02544f, 0.01526f - Radius, 0f);
+        // A writing grip (round 7): a tripod. Index and middle bent 45 and 52 degrees at the middle joint, the index pad on the stick and the
+        // middle finger's end under it, the thumb's pad against it from the side, the stick crossing the index's middle bone
+        // at 42 degrees across the hand and resting on the ball of the thumb; ring and little finger relaxed at 40. (Fitted
+        // to the posed fingers' skin: thumb, index and middle 0-0.7 mm off it. The round-6 grip lay along the index and
+        // middle base bones, 6-8 degrees off them, the two fingers straight: a cigarette's hold.)
+        public override Vector3 GripLocal => TestGrip ?? new Vector3(0.03829f, 0.04974f, 0.02134f);
         /// <summary>
         /// The stick as it is drawn (its model's axis is the item's z, through the origin), worn down from the tip. (The
         /// collider, for lying on the floor, sits a radius higher: fingers closed on it went 7.5 mm into the stick seen.)
@@ -43,9 +42,11 @@ namespace Backrooms.Interaction
             float h = Mathf.Max(0.02f, Length * left);
             return SegmentDistance(p, new Vector3(0f, 0f, Mathf.Min(0.0085f, h * 0.5f)), new Vector3(0f, 0f, Mathf.Max(h - 0.0085f, h * 0.5f))) - 0.0085f;
         }
-        public override Quaternion GripRotationLocal => TestGrip.HasValue ? Quaternion.Euler(TestTurn)
-            : Quaternion.LookRotation(new Vector3(-0.2756f, 0.5094f, 0.8152f), new Vector3(0f, 0.848f, -0.5299f));
-        public override Quaternion HoldTurn => TestHold.HasValue ? Quaternion.Euler(TestHold.Value) : Quaternion.identity;
+        public override Quaternion GripRotationLocal => TestGrip.HasValue ? Quaternion.Euler(TestTurn) : TripodTurn;
+        static readonly Quaternion TripodTurn = Quaternion.LookRotation(new Vector3(-0.7494f, 0.1717f, 0.6395f), new Vector3(0f, 0.9658f, -0.2593f));
+        // Held in the view with the hand as the round-6 grip held it (the stick turned to suit the new grip).
+        static readonly Quaternion HoldNew = Quaternion.LookRotation(new Vector3(-0.2756f, 0.5094f, 0.8152f), new Vector3(0f, 0.848f, -0.5299f)) * Quaternion.Inverse(TripodTurn);
+        public override Quaternion HoldTurn => TestHold.HasValue ? Quaternion.Euler(TestHold.Value) : HoldNew;
         /// <summary>Tests: how the stick is turned in the view (degrees) instead.</summary>
         public static Vector3? TestHold;
         public override float GripCurl => 0.85f;
@@ -56,6 +57,24 @@ namespace Backrooms.Interaction
         public static Vector3? TestGrip;
         public static Vector3 TestTurn;
         public static float[] TestCurls;
+        /// <summary>Tests: joint bends to use instead (per finger 0-4: knuckle, middle, end, the thumb's turn; null: closes as usual).</summary>
+        public static float[][] TestPose;
+        // The tripod (round 7): index and middle bent 40-60 degrees at the middle joint, the index pad on top of the stick and
+        // the middle finger's end under it, the thumb's pad against it from the side, ring and little finger relaxed at about
+        // 40 degrees. (Closed until they touched, the index and middle lay straight along the stick in a V, ring and little
+        // in a fist: a cigarette's hold.)
+        static readonly float[][] Tripod =
+        {
+            new[] { 18f, 45f, 0f, 0f }, new[] { 22f, 52f, 8f, 0f }, new[] { 38f, 40f, 22f, 0f }, new[] { 40f, 40f, 22f, 0f },
+            new[] { 0f, 10f, 25f, 20f },
+        };
+        public bool FingerPose(int finger, float[] angles)
+        {
+            var p = (TestPose ?? Tripod)[finger];
+            if (p == null) return false;
+            for (int i = 0; i < 4; i++) angles[i] = p[i];
+            return true;
+        }
         public override string Status => $"chalk {Mathf.CeilToInt(left * 100f)} %";
         public override float Amount { get => left; set { left = Mathf.Clamp01(value); Shape(); } }
 

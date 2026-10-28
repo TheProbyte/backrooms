@@ -16,7 +16,7 @@ namespace Backrooms.Interaction
     ///    pulling: cancelled, the tape goes back on the roll.
     /// Up to <see cref="MaxStrip"/> a strip; the roll holds <see cref="RollMetres"/>. Model: Resources/Items/TapeRoll.fbx.
     /// </summary>
-    public class TapeRoll : WorldItem, IHandGrip
+    public class TapeRoll : WorldItem, IHandGrip, IHandPose
     {
         public static float RollMetres = 40f;
         public const float MaxStrip = 2.4f, MinStrip = 0.03f;
@@ -62,6 +62,18 @@ namespace Backrooms.Interaction
         public static Vector3? TestGrip;
         public static Vector3 TestTurn;
         public static float[] TestCurls;
+        /// <summary>Tests: joint bends to use instead (as IHandPose; null: as usual).</summary>
+        public static float[][] TestPose;
+        // The fingers through the core hooked a little (middle joints 20-30 degrees), not dead straight: worn like a ring
+        // they read as wearing the roll (round 7). The little finger and the thumb close on it as usual.
+        static readonly float[][] Hook = { new[] { 4f, 25f, 12f, 0f }, new[] { 4f, 26f, 12f, 0f }, new[] { 4f, 24f, 12f, 0f }, null, null };
+        public bool FingerPose(int finger, float[] angles)
+        {
+            var p = (TestPose ?? Hook)[finger];
+            if (p == null) return false;
+            for (int i = 0; i < 4; i++) angles[i] = p[i];
+            return true;
+        }
         /// <summary>The roll: a ring of tape on its core, round its axis (x); the fingers inside the core stop on it.</summary>
         public override float ContactDistance(Vector3 p)
         {
@@ -254,9 +266,13 @@ namespace Backrooms.Interaction
             // Forward: lay pieces toward it.
             float maxTurn = Step / Mathf.Max(0.05f, bendRadius) * Mathf.Rad2Deg;
             float limit = Mathf.Min(MaxStrip, metres);
+            // No faster than a hand lays it (1.2 m/s), and no further than the arm holds the roll at the end: the body bends
+            // and steps in for more (round 7: the roll's place ran ahead of the arm while dragging, the palm up to 47 mm off it).
+            limit = Mathf.Min(limit, _len + Mathf.Max(Step, 1.2f * i.dt));
             for (int k = 0; k < 12 && _len + Step <= limit; k++)
             {
                 end = _pts[_pts.Count - 1]; n = _nrm[_nrm.Count - 1];
+                if (i.hand && (end + n * 0.06f - i.hand.ReachShoulder).magnitude > i.hand.ArmReach * 0.95f) break;
                 Vector3 to = target - end;
                 if (to.magnitude < Step * 0.75f) break;
                 Vector3 want = Vector3.ProjectOnPlane(to, n);

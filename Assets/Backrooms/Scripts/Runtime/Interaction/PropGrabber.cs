@@ -96,6 +96,11 @@ namespace Backrooms.Interaction
         float _reelUntil = -1f, _reelPhase, _reelW;
         /// <summary>Reeling a cord in this frame, the far end that way: the hand pulls hand over hand.</summary>
         public void ReelStroke(Vector3 towardFarEnd) { _reelDir = towardFarEnd; _reelUntil = Time.time + 0.1f; }
+        /// <summary>Reeling: how far one pull back along the cord goes (m), and pulls a second.</summary>
+        public const float ReelStrokeLength = 0.3f, ReelRate = 1.7f;
+        float _reelPulled, _reelOut;
+        /// <summary>How much cord the hand has pulled in since this was last asked (m): what the reel takes in.</summary>
+        public float TakeReeled() { float r = _reelPulled; _reelPulled = 0f; return r; }
 
         /// <summary>
         /// Out with the arm but the palm not there (the IK cannot get it there): after a moment step in toward it and bend
@@ -241,7 +246,7 @@ namespace Backrooms.Interaction
             }
             else if (_itemStepping) { _player.botInput = null; _itemStepping = false; }
             // Further down while the palm cannot get there (ComeCloser).
-            if (Current == State.Idle && !OnDoor) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0f, Time.deltaTime * 0.5f);
+            if (Current == State.Idle && !OnDoor && !QuickDooring) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0f, Time.deltaTime * 0.5f);
             want = Mathf.Min(0.85f, want + _stoopExtra);
             _player.stoop = Mathf.MoveTowards(_player.stoop, want, Time.deltaTime * (want > _player.stoop ? 1.6f : 1.0f));
         }

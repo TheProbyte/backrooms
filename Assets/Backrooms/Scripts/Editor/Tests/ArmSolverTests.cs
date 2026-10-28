@@ -35,9 +35,15 @@ namespace Backrooms.Tests
             {
                 var c = go.AddComponent<Chalk>();
                 Vector3 fingers = c.GripRotationLocal * Vector3.forward;
-                Assert.That(Vector3.Angle(fingers, Vector3.forward), Is.InRange(30f, 45f));
+                // Round 7: a tripod. Across the hand (the stick crosses the index's middle bone at about 42 degrees in the
+                // palm's plane: 40-60 to the hand's line), index and middle bent 40-60 at the middle joint, ring and little
+                // relaxed (not a fist).
+                Assert.That(Vector3.Angle(fingers, Vector3.forward), Is.InRange(40f, 60f));
                 Vector3 tip = new Vector3(0f, Chalk.Radius, Chalk.Length);
-                Assert.Greater(Vector3.Dot(tip - c.GripLocal, fingers), 0.06f, "the tip well out past the palm");
+                Assert.Greater(Vector3.Dot(tip - c.GripLocal, fingers), 0.03f, "the tip out past the palm");
+                var pose = new float[4];
+                for (int f = 0; f < 2; f++) { Assert.IsTrue(((IHandPose)c).FingerPose(f, pose)); Assert.That(pose[1], Is.InRange(40f, 60f)); }
+                for (int f = 2; f < 4; f++) { Assert.IsTrue(((IHandPose)c).FingerPose(f, pose)); Assert.That(pose[0] + pose[1], Is.LessThan(90f)); }
             }
             finally { Object.DestroyImmediate(go); }
         }
@@ -135,6 +141,43 @@ namespace Backrooms.Tests
                 Assert.That(at.y, Is.EqualTo(0f).Within(0.01f), "on the floor");
             }
             finally { Object.DestroyImmediate(floor); Object.DestroyImmediate(wall); Object.DestroyImmediate(player); }
+        }
+
+        [Test]
+        public void TouchIgnoresSwingingDoorLeaves()
+        {
+            // A lean onto a door's leaf kept the hand planted while the leaf swung 2 to 87 degrees (round 7): a leaf (its
+            // kinematic body under a Door) and a loose prop are not leant on; a wall is.
+            var door = new GameObject("Door"); door.AddComponent<Door>().enabled = false;
+            var leaf = new GameObject("Leaf"); leaf.transform.SetParent(door.transform, false);
+            leaf.AddComponent<Rigidbody>().isKinematic = true;
+            var slab = new GameObject("Slab"); slab.transform.SetParent(leaf.transform, false);
+            var slabCol = slab.AddComponent<BoxCollider>();
+            var wall = new GameObject("Wall"); var wallCol = wall.AddComponent<BoxCollider>();
+            var prop = new GameObject("Prop"); var propCol = prop.AddComponent<BoxCollider>(); prop.AddComponent<Rigidbody>();
+            try
+            {
+                Assert.IsTrue(FirstPersonBody.Swings(slabCol), "a door's leaf");
+                Assert.IsTrue(FirstPersonBody.Swings(propCol), "a loose prop");
+                Assert.IsFalse(FirstPersonBody.Swings(wallCol), "a wall");
+            }
+            finally { Object.DestroyImmediate(door); Object.DestroyImmediate(wall); Object.DestroyImmediate(prop); }
+        }
+
+        [Test]
+        public void ADoorIsPushedTheWayItOpens()
+        {
+            // Holding the lever and walking the way the door opens pushes it open (round 7: a door pushed while walking stayed
+            // at 0 degrees). The lever's edge moves toward the face the door opens toward (+z) as it opens.
+            var go = new GameObject("Door"); var door = go.AddComponent<Door>(); door.enabled = false;
+            try
+            {
+                Vector3 lever = door.GripPoint(-1, 0f);
+                Vector3 open = door.OpeningAt(lever);
+                Assert.Greater(open.z, 0.99f, "opening " + open);
+                Assert.Less(door.TowardLatch.x, -0.99f, "toward the latch " + door.TowardLatch);
+            }
+            finally { Object.DestroyImmediate(go); }
         }
     }
 }

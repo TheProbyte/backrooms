@@ -291,6 +291,9 @@ namespace Backrooms.Interaction
             if (contact != null && !poke && !_grab.HeldItem && _fingers != null && (_grab.TouchingWall || (_touchW > 0.5f && blend < 0.05f)))
             {
                 bool railTouch = _touchRail && blend < 0.05f && !_grab.TouchingWall;
+                // Twice: a move out can leave another part in (a rail's palm stayed 3.9 mm in after one).
+                for (int pass = 0; pass < 2; pass++)
+                {
                 float worst = 0f; Vector3 at = Vector3.zero;
                 foreach (var f in _fingers)
                 {
@@ -320,10 +323,9 @@ namespace Backrooms.Interaction
                 // On a rail the palm comes up off its top (out of the box the shortest way, the heel of the hand over the
                 // near edge went sideways and stayed 7 mm in the rail).
                 if (railTouch && worst < -0.002f) n = Vector3.up;
-                if (n.sqrMagnitude > 0.25f)
-                {
-                    pose = SolveArm(shoulder, pose.wrist + n.normalized * Mathf.Min(-worst, 0.05f), handRot, pole0, _swivel, side, yaw);
-                    PoseArm(_upper, _upperAxis, _upperBack, _fore, _foreAxis, _foreBack, _hand, _handFingers, _handBack, shoulder, pose, forearmTwistShare);
+                if (n.sqrMagnitude <= 0.25f) break;
+                pose = SolveArm(shoulder, pose.wrist + n.normalized * Mathf.Min(-worst + 0.0005f, 0.05f), handRot, pole0, _swivel, side, yaw);
+                PoseArm(_upper, _upperAxis, _upperBack, _fore, _foreAxis, _foreBack, _hand, _handFingers, _handBack, shoulder, pose, forearmTwistShare);
                 }
             }
             Vector3 wanted = poke ? _grab.PokeTip : _grab.HandPosition;
@@ -362,6 +364,7 @@ namespace Backrooms.Interaction
             // and turning across the palm toward the fingers (opposition).
             float curl = Mathf.Lerp(restCurl, _grab.HandCurl, s);
             var shape = blend > 0.01f ? _grab.HeldItem as IHandGrip : null;
+            var posed = blend > 0.01f && !_grab.ItemWaitingForHand ? _grab.HeldItem as IHandPose : null;
             float pointing = _grab.PokeIndex;
             if (_fingers == null) GroupFingers();
             bool closeOn = contact != null && pointing < 0.5f && (blend > 0.6f || (_touchW > 0.5f && blend < 0.05f));
@@ -396,6 +399,15 @@ namespace Backrooms.Interaction
                 f.adduct = thumb ? 0f : -f.spread * Mathf.Clamp01(Mathf.Max(want * 1.6f, holding ? 1f : 0f)) * (holding ? 1f : 0.85f);
                 // Holding or touching something: each joint no further than it can go before what is beyond it touches.
                 Close(f, want, opp, !closeOn ? null : thumb && fist ? _thumbOver : contact, _goal, out float goalOpp);
+                // An item that sets this finger's joints itself (a pencil's tripod, a pad pinch, fingers hooked through a
+                // roll's core): those, eased in with the reach (closing to the first touch left them straight).
+                if (posed != null && pointing < 0.5f && posed.FingerPose(FingerIndex(f.name), _poseAngles))
+                {
+                    for (int i = 0; i < f.joints.Count && i < 3; i++) { _poseFrom[i] = _goal[i]; _goal[i] = Mathf.Lerp(_goal[i], _poseAngles[i], s); }
+                    float oppFrom = goalOpp;
+                    if (thumb) goalOpp = Mathf.Lerp(goalOpp, _poseAngles[3], s);
+                    if (closeOn) PoseClear(f, oppFrom, ref goalOpp, contact);
+                }
                 float sum = 0f, of = 0f;
                 for (int i = 0; i < f.joints.Count; i++)
                 {
@@ -768,7 +780,36 @@ namespace Backrooms.Interaction
             f.oppDeg = savedOpp;
             for (int i = 0; i < n; i++) f.a[i] = _closeSaved[i];
         }
-        readonly float[] _closeSaved = new float[4];
+        readonly float[] _closeSaved = new float[4], _poseAngles = new float[4], _poseFrom = new float[4];
+
+        /// <summary>
+        /// A posed finger (IHandPose) never goes into what it holds: eased back from the pose toward where it closed (in
+        /// _poseFrom, its turn in oppFrom) until it is no more than 1.5 mm in. (Fingers hooked through a tape roll's core
+        /// went 7 mm into the roll.) The result in _goal and goalOpp.
+        /// </summary>
+        void PoseClear(Finger f, float oppFrom, ref float goalOpp, System.Func<Vector3, float> contact)
+        {
+            int n = f.joints.Count;
+            float savedOpp = f.oppDeg;
+            for (int i = 0; i < n; i++) _closeSaved[i] = f.a[i];
+            for (int i = 0; i < n; i++) f.a[i] = _goal[i];
+            f.oppDeg = goalOpp; Pose(f);
+            if (ClearanceFrom(f, 0, contact) < -0.0015f)
+            {
+                float lo = 0f, hi = 1f;
+                for (int it = 0; it < 5; it++)
+                {
+                    float m = (lo + hi) * 0.5f;
+                    for (int i = 0; i < n; i++) f.a[i] = Mathf.Lerp(_poseFrom[i], _goal[i], m);
+                    f.oppDeg = Mathf.Lerp(oppFrom, goalOpp, m); Pose(f);
+                    if (ClearanceFrom(f, 0, contact) >= -0.0015f) lo = m; else hi = m;
+                }
+                for (int i = 0; i < n; i++) _goal[i] = Mathf.Lerp(_poseFrom[i], _goal[i], lo);
+                goalOpp = Mathf.Lerp(oppFrom, goalOpp, lo);
+            }
+            for (int i = 0; i < n; i++) f.a[i] = _closeSaved[i];
+            f.oppDeg = savedOpp; Pose(f);
+        }
         readonly float[] _thumbTry = new float[4];
 
         /// <summary>

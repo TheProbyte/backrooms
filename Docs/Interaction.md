@@ -541,6 +541,46 @@ further toward the front, the forearm lay on the rail. Its little finger hangs 8
 The hammer's follow-through is not planned against the limits. Door pull, quick door, jamb, chicken squeeze, hammer
 wind-up and tape laying were not re-measured, and the camcorder hand was not looked at (its arm draws only a shadow).
 
+Round 7 (2026-10-28, reviewer 7.5/10):
+- **Doors open.** Holding a lever and walking into a door did nothing: the hand stayed where it took the lever and the
+  body stopped at the shut door. Now walking the way the door opens pushes it on ahead of the hand, and the hand lets go
+  when the lever leaves its reach; the door swings on and the body pushes it wider. A quick pull swung the door 6 degrees
+  into the player, the body's last step in pushed it shut and it latched. Now the body steps back and to the latch side as
+  it pulls, a door swinging open into you rests against you, and a door just tugged is not pushed shut for 0.5 s. If the
+  hand cannot get to a lever, the door is shoved open after 1.1-1.6 s instead of nothing (`GaitProbe.DoorRun`).
+- **Reaching for a door.** The hand goes out with the elbow bent 25-35 degrees while the body steps in (`BentReach`, 0.93
+  of the reach), and onto the lever once it is that near. Pressed against the door, the body leans in and the arm may
+  straighten to 0.98. The hand takes a lever turned and on a slant as the arm holds it best (`LeverTurn`).
+- **Fingers set by the item** (`IHandPose`). Closing until the first touch cannot make a pencil grip or a pad pinch, so an
+  item can set some fingers' joints. A posed finger is eased back toward where it closed until it is no more than 1.5 mm
+  into the item (`PoseClear`). Chalk: a tripod, index and middle bent 45 and 52 at the middle joint, ring and little at 40,
+  the stick crossing the index's middle bone at 42 degrees in the palm's plane, thumb, index and middle 0-0.7 mm off it
+  (fitted to the posed fingers' skin). Plug: a pad pinch, index and middle 48 and 52, the thumb's end joint 25; going into
+  a socket the hand turns to the old push grip over 0.15 s (pinched, it could not square the plug and never went in).
+  Tape roll: the fingers in the core hooked 9-16 degrees (25 went 7 mm into the roll). Sledgehammer: the thumb keeps the
+  carry's wrap in the wind-up and swing.
+- **Rail.** The hand may turn up to 60 degrees along the rail, liked best at about 52, and pays steeply past 75 degrees of
+  forearm turn. The hand pushed out of a rail or wall runs twice.
+- **Touch.** A lean never picks a door's leaf or a loose prop (`FirstPersonBody.Swings`), and lets go if what it rests on
+  moves more than a centimetre under the hand.
+- **Reeling.** The cord comes in as far as the hand pulls it (30 cm a pull, 1.7 a second; it came in 1.2 m a stroke). The
+  hand keeps hold of the coil (curl 0.9 throughout), rolls 18 degrees about the fingers and tips with the stroke.
+- **Hammer.** Wound up and following through, the hammer turns up to 16 degrees about the back of the hand as the wrist
+  holds it best, back to none by the blow.
+- **Desk lamp.** The hinge's knob (a drum 13.5 mm round) is in the contact; the fingers may wrap past a fist's curl.
+- **Chicken squeeze.** The rubber gives 4.5 mm under the fingers and the fist closes further.
+- **Tape laying.** The strip is laid no faster than 1.2 m/s and no further than the arm holds the roll.
+Measured (World 3; reviewer's round 5 -> round 7): door push held while walking 0 -> 55 degrees, quick pull 0 -> 27, hold
+pull opens fully (86); reach elbow 4-5 -> 28-52; rail twist 96 -> 76, ulnar 26 -> 19; chalk index and middle middle joints
+17-21 -> 45/52, ring and little 59-77 -> 40, stick to the index's middle bone 16 -> 42 degrees in the palm's plane; plug
+pinch middle joints 19-27 -> 48/52, thumb (3,9,11) -> (5,15,25), wrist bent 21 -> 3; hammer wind-up thumb pad 16 -> 1 mm,
+follow-through ulnar 22-27 -> 12-22; reel cord per stroke 0.75 m -> 0.30 m for a 0.28 m pull, curl 0.37-0.9 -> 0.9; tape
+middle joints 1-6 -> 8-16; squeeze fingers +3-4 degrees a joint. Lamp and cord plug-in still in at 1.5 s.
+Open after round 7: the chicken's thumb still lands 6-15 mm off from run to run; the rail's thumb stays straight and its
+index lies flat, its palm 4 mm in; the lamp's thumb is 11 mm off; the reel's wrist still swings -46 to 36; a cord plug's
+carry has a 3-frame palm error of 35 mm when it leaves the coil; the quick pull opens only 27 degrees; tape laying, the
+camcorder hand and a lean onto a door leaf were not re-measured in play.
+
 Open: furniture's colliders are boxes that do not match the model everywhere (a sofa's rolled arm: the fingers close on
 the box, 15 cm under the visible top, so they stay as wanted); the thumb lies along a hammer's handle rather than round
 it; the jamb's touch still has the little-finger side 1 cm in for a moment (the forearm at its turn limit); fingers on

@@ -598,19 +598,35 @@ namespace Backrooms.Interaction
             // Winding up a throw: back and up over the shoulder.
             offset += new Vector3(0.04f * Side, 0.1f, -0.16f) * ThrowCharge;
             Vector3 pos = _swayPos + view * offset;
-            // Reeling a cord in: hand over hand, out along the cord and a 25 cm pull back (the grip closed), 1.5 a second,
-            // then out again with the fingers open.
+            // Reeling a cord in: the hand pulls back along the cord 30 cm (the cord comes in as far as the hand pulls it:
+            // ReelPulled), then goes back out for the next pull, 1.7 a second, rolling at the wrist and forearm as it winds
+            // the cord on. It keeps hold of what it holds (round 7: the cord came in 1.2 m a stroke for a 25 cm pull, and
+            // the fingers opened to a curl of 0.37 on every stroke with the coil in that hand alone).
             bool reeling = Time.time < _reelUntil;
             _reelW = Mathf.MoveTowards(_reelW, reeling ? 1f : 0f, dt * 5f);
-            if (reeling) _reelPhase += dt * 1.5f;
+            if (reeling) _reelPhase += dt * ReelRate;
+            float reelRoll, reelFlex;
             {
                 float ph = _reelPhase - Mathf.Floor(_reelPhase);
                 float outAmt = ph < 0.6f ? 1f - ph / 0.6f : (ph - 0.6f) / 0.4f;
-                pos += _reelDir * ((outAmt - 0.5f) * 0.25f * _reelW);
-                GripOpen = (ph < 0.6f ? 0f : Mathf.Sin(Mathf.PI * (ph - 0.6f) / 0.4f)) * _reelW;
+                pos += _reelDir * ((outAmt - 0.5f) * ReelStrokeLength * _reelW);
+                if (reeling && ph < 0.6f && outAmt < _reelOut) _reelPulled += (_reelOut - outAmt) * ReelStrokeLength * _reelW;
+                _reelOut = outAmt;
+                if (!reeling) _reelPulled = 0f;
+                GripOpen = 0f;
+                reelRoll = Mathf.Sin(2f * Mathf.PI * ph) * 18f * _reelW * Side;
+                // The hand tips with the stroke as the forearm swings (held level, the wrist bent back 50 near the body and
+                // forward 40 out along the cord).
+                reelFlex = (0.5f - outAmt) * 60f * _reelW;
             }
             // Upright in the view, turned a little in toward the middle, tipped forward while in use.
             Quaternion rot = view * Quaternion.Euler(-8f * item.UseBlend - 25f * ThrowCharge, -10f * Side, 4f * Side) * item.HoldTurn;
+            // (About the fingers' line, near the forearm's: rolled about the view's line, the wrist flapped 60 degrees.)
+            if (_reelW > 0.001f)
+            {
+                rot = Quaternion.AngleAxis(reelFlex, rot * (item.GripRotationLocal * Vector3.right)) * rot;
+                rot = Quaternion.AngleAxis(reelRoll, rot * (item.GripRotationLocal * Vector3.forward)) * rot;
+            }
             float w = item.UsePose(out var usePos, out var useRot);
             EaseForArm(item, ref pos, ref rot, w, dt);
             if (w > 0f) { pos = Vector3.Lerp(pos, usePos, w); rot = Quaternion.Slerp(rot, useRot, w); }

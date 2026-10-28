@@ -55,12 +55,25 @@ namespace Backrooms.Interaction
         public override Vector3 GripLocal => new Vector3(0.0115f, 0.118f, -0.035f);
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0f, 0f, 1f), Vector3.right);
         public override float GripCurl => 0.95f;
-        public float FingerCurl(int finger) => 0.95f;
+        // A thin rod: past a fist's curl, so the middle and end joints go on wrapping it until they touch (at a fist's curl
+        // they stopped short: a loose C round the rod, knuckles 34-52 and middle joints 42-65 degrees).
+        public float FingerCurl(int finger) => 1.35f;
         public float ThumbCurl => 0.85f;
         public float ThumbOpposition => 0.75f;
-        /// <summary>The fingers close round the lower rod (and stop on the upper rod and the base).</summary>
+        /// <summary>
+        /// The hinge's knob where the rods meet: a drum 13.5 mm round across the lamp (x -23.5 to 16 mm), measured on the
+        /// model. (The index fingertip went 7-8 mm into it: drawn, but not in the contact.)
+        /// </summary>
+        static float Knob(Vector3 p)
+        {
+            Vector3 q = p - new Vector3(-0.00375f, 0.165f, -0.035f);
+            float radial = new Vector2(q.y, q.z).magnitude - 0.0135f, axial = Mathf.Abs(q.x) - 0.01975f;
+            return Mathf.Min(Mathf.Max(radial, axial), 0f) + new Vector2(Mathf.Max(radial, 0f), Mathf.Max(axial, 0f)).magnitude;
+        }
+        /// <summary>The fingers close round the lower rod (and stop on the knob, the upper rod and the base).</summary>
         public override float ContactDistance(Vector3 p) =>
-            Mathf.Min(Mathf.Min(SegmentDistance(p, RodLow, RodKnuckle) - 0.0095f, SegmentDistance(p, RodKnuckle, RodTop) - 0.008f),
+            Mathf.Min(Mathf.Min(Mathf.Min(SegmentDistance(p, RodLow, RodKnuckle) - 0.0095f, SegmentDistance(p, RodKnuckle, RodTop) - 0.008f),
+                                Knob(p)),
                       BoxDistance(p, new Vector3(0f, 0.015f, 0f), new Vector3(0.075f, 0.015f, 0.075f)));
         public override float Amount { get => switchOn ? 1f : 0f; set => switchOn = value > 0.5f; }
         public override string Status

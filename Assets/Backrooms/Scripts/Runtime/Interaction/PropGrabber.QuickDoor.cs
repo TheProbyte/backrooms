@@ -15,6 +15,7 @@ namespace Backrooms.Interaction
     {
         enum QuickPhase { None, Reach, Push, Back }
         QuickPhase _quick;
+        Quaternion _quickTurnQ = Quaternion.identity;
         Door _quickDoor;
         bool _quickPull, _quickLever;
         int _quickSide;
@@ -55,6 +56,8 @@ namespace Backrooms.Interaction
             // 0.8 m off a door's face, the usual distance, a push was refused outright.)
             if ((_quickPoint - ReachShoulder).magnitude > ArmReach + 0.6f) { _quickDoor = null; return false; }
             _quick = QuickPhase.Reach; _quickT = 0f;
+            ResetReach();
+            _quickTurnQ = _quickLever ? LeverTurn(door, side, 0f) : Quaternion.identity;
             return true;
         }
 
@@ -68,15 +71,12 @@ namespace Backrooms.Interaction
                     if (_quickLever) _quickPoint = _quickDoor.GripPoint(_quickSide, 0f);
                     // The door goes when the hand is on it (it used to go after 0.3 s wherever the hand was); out of reach,
                     // a step in first; never there: nothing.
-                    if (!(HandBlend > 0.8f && PalmError < 0.015f))
+                    // (The hand goes out with the elbow bent while the body steps in, and onto the door once it is that near:
+                    // BentReach. If it never gets there, the door goes anyway after a moment: it used to do nothing.)
+                    if (!(HandBlend > 0.8f && PalmError < 0.015f && WithinBent(_quickPoint)) && _quickT < 1.1f)
                     {
-                        float far = (_quickPoint - ReachShoulder).magnitude - (ArmReach + 0.05f);
-                        if (far > 0f)
-                        {
-                            Vector3 local = transform.InverseTransformDirection(_quickPoint - ReachShoulder); local.y = 0f;
-                            _player.botInput = new Vector2(local.x, local.z).normalized * 0.5f;
-                        }
-                        if (_quickT > 1.6f) { _player.botInput = null; _quick = QuickPhase.None; _quickDoor = null; }
+                        if (!WithinBent(_quickPoint)) StepInToward(_quickPoint, 0.5f);
+                        else _player.botInput = null;
                         break;
                     }
                     _player.botInput = null;
@@ -107,23 +107,39 @@ namespace Backrooms.Interaction
                     else _quickPoint += transform.forward * Time.deltaTime * 0.6f;
                     // With the door to the end of the arm's reach, no further (it was left up to 0.3 m behind the door).
                     _quickPoint = ReachShoulder + Vector3.ClampMagnitude(_quickPoint - ReachShoulder, ArmReach);
+                    // A tug: a step back and out of the door's way, toward its latch side, as it comes (standing at the
+                    // lever, the door swung 6 degrees into you, bounced and latched again).
+                    if (_quickPull) _player.botInput = PullStep();
                     if (_quickT > (_quickLever ? 0.22f : 0.12f)) { _quick = QuickPhase.Back; _quickT = 0f; }
                     break;
                 case QuickPhase.Back:
+                    // (The tug's step goes on a moment after the hand lets go.)
+                    if (_quickPull && _quickT < 0.45f) { _player.botInput = PullStep(); break; }
+                    if (_quickPull) _player.botInput = null;
                     _quick = QuickPhase.None; _quickDoor = null;
                     break;
             }
         }
 
+        /// <summary>Back from a tugged door and toward its latch side (the bot input for the step).</summary>
+        Vector2 PullStep()
+        {
+            Vector3 w = _quickNormal + _quickDoor.TowardLatch * 0.8f; w.y = 0f;
+            Vector3 local = transform.InverseTransformDirection(w);
+            return new Vector2(local.x, local.z).normalized * 0.8f;
+        }
+
         /// <summary>The hand on the door: flat on its face for a shove, round the lever for a tug.</summary>
         void QuickDoorPose()
         {
-            HandPosition = _quickPoint;
+            HandPosition = _quick == QuickPhase.Reach ? BentReach(_quickPoint) : _quickPoint;
             if (_quickLever)
             {
                 float turn = _quick == QuickPhase.Reach ? 0f : 1f;
-                HandRotation = _quickDoor.GripRotation(_quickSide, turn);
-                HandPosition = _quickPoint + HandRotation * Vector3.up * 0.012f;       // the palm on top of the bar
+                // Turned on the lever as the arm holds it best (LeverTurn, picked when the click came).
+                HandRotation = _quickTurnQ * _quickDoor.GripRotation(_quickSide, turn);
+                Vector3 p = _quickPoint + HandRotation * Vector3.up * 0.012f;       // the palm on top of the bar
+                HandPosition = _quick == QuickPhase.Reach ? BentReach(p) : p;
                 HandCurl = Mathf.MoveTowards(HandCurl, 0.8f, Time.deltaTime * 8f);
             }
             else

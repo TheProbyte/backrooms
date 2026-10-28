@@ -9,7 +9,7 @@ namespace Backrooms.Interaction
     /// in a socket it stays there, held by the socket, and the thing at the other end of its cord has power if the socket
     /// does. Model: Resources/Items/Plug.fbx (origin at the face the prongs leave, prongs forward).
     /// </summary>
-    public class Plug : WorldItem, IHandGrip
+    public class Plug : WorldItem, IHandGrip, IHandPose
     {
         /// <summary>Where the cord leaves the back of the plug (model frame).</summary>
         public static readonly Vector3 CordPoint = new Vector3(0f, 0f, -0.046f);
@@ -36,8 +36,40 @@ namespace Backrooms.Interaction
         // the plug; the fingers along the forearm's line, curling down onto its top.)
         // (Placed by trying the closing fingers against the body: 5.5 cm below the palm's centre, 3 cm ahead of it, index,
         // middle and thumb pads all touching; 1.5 cm higher and further forward the thumb missed it by 15 mm.)
-        public override Vector3 GripLocal => new Vector3(0.014f, 0.055f, -0.0525f);
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0f, 0.05f, 1f), new Vector3(0f, 1f, -0.05f));
+        // Round 7: a pad pinch. The body between the thumb's pad and the index and middle pads, those two bent 48 and 52
+        // degrees at the middle joint, the thumb's end joint 25, ring and little curled out of the way; the prongs out past
+        // the fingertips. (Fitted to the posed fingers' skin: 0-1 mm into its box. It was a tip pinch with straight fingers,
+        // the thumb straight: a dangling claw.) Held in the view with the hand turned as the old grip held it.
+        // Going into a socket the hand turns to the push grip it had (fingers along the prongs, palm above): pinched, the
+        // fingers 46 degrees off the prongs, the hand could not square the plug to the socket and it never went in.
+        public override Vector3 GripLocal => TestGrip ?? Vector3.Lerp(PinchGrip, PushGrip, PushBlend);
+        public override Quaternion GripRotationLocal => TestGrip.HasValue ? Quaternion.Euler(TestTurn) : Quaternion.Slerp(PinchTurn, PushTurn, PushBlend);
+        // (Turned over 0.15 s at the click: turned as it went, over 0.45 s, the palm was up to 39 mm off it.)
+        float PushBlend => Mathf.SmoothStep(0f, 1f, _regrip);
+        float _regrip;
+        static readonly Vector3 PinchGrip = new Vector3(-0.02908f, 0.06118f, -0.02733f), PushGrip = new Vector3(0.014f, 0.055f, -0.0525f);
+        static readonly Quaternion PushTurn = Quaternion.LookRotation(new Vector3(0f, 0.05f, 1f), new Vector3(0f, 1f, -0.05f));
+        static readonly Quaternion PinchTurn = Quaternion.LookRotation(new Vector3(0.6886f, 0.0238f, 0.7247f), new Vector3(-0.3841f, 0.8597f, 0.3366f));
+        static readonly Quaternion HoldNew = Quaternion.LookRotation(new Vector3(0f, 0.05f, 1f), new Vector3(0f, 1f, -0.05f)) * Quaternion.Inverse(PinchTurn);
+        public override Quaternion HoldTurn => TestHold.HasValue ? Quaternion.Euler(TestHold.Value) : HoldNew;
+        /// <summary>Tests: how it is turned in the view (degrees) instead.</summary>
+        public static Vector3? TestHold;
+        /// <summary>Tests: a grip to try instead (the palm's point; the hand's axes in the plug's frame as Euler angles), joint bends (as IHandPose; null: as usual).</summary>
+        public static Vector3? TestGrip;
+        public static Vector3 TestTurn;
+        public static float[][] TestPose;
+        static readonly float[][] Pinch =
+        {
+            new[] { 15f, 48f, 15f, 0f }, new[] { 20f, 52f, 18f, 0f }, new[] { 50f, 60f, 35f, 0f }, new[] { 55f, 60f, 35f, 0f },
+            new[] { 5f, 15f, 25f, 40f },
+        };
+        public bool FingerPose(int finger, float[] angles)
+        {
+            var src = TestPose ?? Pinch;
+            if (src == null || src[finger] == null || PushBlend > 0.4f) return false;
+            for (int i = 0; i < 4; i++) angles[i] = src[finger][i];
+            return true;
+        }
         public override float GripCurl => 0.45f;
         public float FingerCurl(int finger) => finger == 0 ? 0.45f : finger == 1 ? 0.55f : finger == 2 ? 0.85f : 0.9f;
         public float ThumbCurl => 0.45f;
@@ -153,7 +185,7 @@ namespace Backrooms.Interaction
         void LateUpdate() { if (Socket != null && !Held) Pose(); }
 
         protected override void OnPickedUp() { if (Plugged) Unplug(false); }
-        protected override void OnDropped() { _going = null; _pushT = -1f; _goPose = 0f; if (owner is PowerUser user) user.StopReeling(); }
+        protected override void OnDropped() { _going = null; _pushT = -1f; _goPose = 0f; _regrip = 0f; if (owner is PowerUser user) user.StopReeling(); }
 
         /// <summary>Put down, a plug just falls from the hand.</summary>
         public override bool DropsStraight => true;
@@ -170,6 +202,7 @@ namespace Backrooms.Interaction
         {
             // Right mouse held: reel the cord in toward this end (the thing at the other end is dragged in).
             if (owner is PowerUser user) { user.ReelFromPlug(this, i); if (!Held) return; }
+            _regrip = Mathf.MoveTowards(_regrip, _going != null ? 1f : 0f, i.dt / 0.15f);
             if (_going != null) { GoingIn(i); return; }
             _goPose = Mathf.MoveTowards(_goPose, 0f, i.dt * 3f);
             if (!i.pressed) return;
@@ -346,7 +379,9 @@ namespace Backrooms.Interaction
             }
             float d = Vector3.Distance(cord.A, cord.B);
             // Not while the far end is still catching up (stuck behind something): the cord would only stretch.
-            if (d < cord.length + 0.25f) cord.SetLength(Mathf.Max(0.3f, cord.length - reelSpeed * dt));
+            // As much as the hand pulls in (round 7: it came in at 1.8 m/s whatever the hand did, 1.2 m a 25 cm stroke).
+            float take = hand ? hand.TakeReeled() : reelSpeed * dt;
+            if (d < cord.length + 0.25f) cord.SetLength(Mathf.Max(0.3f, cord.length - take));
             if (plug.Plugged && d > cord.length) plug.Unplug(true);
             if (!plug.Plugged) plug.Body.WakeUp();
             return cord.length <= 0.32f || d < 0.3f;

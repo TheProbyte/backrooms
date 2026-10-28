@@ -30,7 +30,9 @@ namespace Backrooms.Interaction
         public override Vector3 GripLocal => new Vector3(0f, 0.008f, 0.15f) + NeckBack * (NeckR + 0.002f);
         public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0.8f, -0.6f, 0f), NeckBack);
         public override float GripCurl => 0.85f + 0.12f * _squeeze;      // the fist closes as it squeezes
-        public float FingerCurl(int finger) => 0.9f + 0.1f * _squeeze;
+        // Squeezed, the fist closes 10-15 degrees further and the pads sink 2-4 mm into the rubber (ContactDistance). (The
+        // fingers stayed as in the plain hold, stopped on the neck.)
+        public float FingerCurl(int finger) => 0.9f + 0.3f * _squeeze;
         public float ThumbCurl => 0.8f;
         public float ThumbOpposition => 0.75f;
         const float NeckR = 0.014f;
@@ -41,8 +43,11 @@ namespace Backrooms.Interaction
             float neck = SegmentDistance(p, new Vector3(0f, 0.01f, 0.06f), new Vector3(0f, 0.006f, 0.205f)) - NeckR;
             float head = Vector3.Distance(p, new Vector3(0f, 0.018f, 0.262f)) - 0.032f;
             float body = SegmentDistance(p, new Vector3(0f, 0f, -0.095f), new Vector3(0f, 0f, 0.02f)) - 0.041f;
-            return Mathf.Min(neck, Mathf.Min(head, body));
+            // Squeezed, the rubber gives under the fingers.
+            return Mathf.Min(neck, Mathf.Min(head, body)) + SqueezeGive * _squeeze;
         }
+        /// <summary>How far the pads sink into the rubber squeezed (m).</summary>
+        public const float SqueezeGive = 0.0045f;
         public override float UseBlend => _squeeze;
         public override string Status => "rubber chicken (hold to squeeze)";
 

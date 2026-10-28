@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Backrooms.Interaction
 {
@@ -44,14 +45,88 @@ namespace Backrooms.Interaction
             _door = door;
             _doorSide = door.SideOf(Eye);
             _doorPhase = DoorPhase.Reach; _doorT = 0f; _doorTurn = 0f;
+            ResetReach();
+            _doorTurnQ = LeverTurn(door, _doorSide, 0f); _doorRollAt = Time.time;
             return true;
         }
 
-        float _doorSlipT;
+        float _doorSlipT, _doorRollAt = -1f;
+        Quaternion _doorTurnQ = Quaternion.identity;
+        bool _doorPushing;
+
+        /// <summary>
+        /// How far out (of the arm's reach) the hand goes while the body still has to step in: the elbow bent 25-35 degrees.
+        /// (Sent straight to a lever 15-23 cm out of reach, the arm went out locked straight, the palm still 146-231 mm short
+        /// at full blend, and slid on over 10-14 frames as the body stepped in.)
+        /// </summary>
+        const float ReachBent = 0.93f;
+        // The bent reach now: a little straighter once the body is held off (pressed against the door, the lever 0.58 m from
+        // the shoulder, 0.93 of the reach is 0.586), and how long it has been held off.
+        float _bentNow = ReachBent, _heldOffT;
+        /// <summary>A point within the bent arm's reach of the shoulder, on the way to p.</summary>
+        Vector3 BentReach(Vector3 p) { Vector3 s = ReachShoulder; return s + Vector3.ClampMagnitude(p - s, ArmReach * _bentNow); }
+        bool WithinBent(Vector3 p) => (p - ReachShoulder).magnitude <= ArmReach * _bentNow + 0.01f;
+
+        /// <summary>
+        /// Steps in toward p (out of the bent arm's reach). Held off (the body against the door), it leans in toward it and
+        /// lets the arm straighten a little (to 0.98 of the reach) rather than keep walking into the door.
+        /// </summary>
+        void StepInToward(Vector3 p, float speed)
+        {
+            Vector3 local = transform.InverseTransformDirection(p - ReachShoulder); local.y = 0f;
+            var flat = new Vector2(local.x, local.z);
+            _player.botInput = flat.magnitude > 0.12f ? flat.normalized * speed : (Vector2?)null;
+            _heldOffT = _player.PlanarVelocity.magnitude < 0.2f ? _heldOffT + Time.deltaTime : 0f;
+            if (_heldOffT > 0.2f)
+            {
+                if (p.y < ReachShoulder.y - 0.2f) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0.35f, Time.deltaTime * 1.2f);
+                _bentNow = Mathf.MoveTowards(_bentNow, 0.98f, Time.deltaTime * 0.15f);
+            }
+        }
+        void ResetReach() { _bentNow = ReachBent; _heldOffT = 0f; }
+
+        /// <summary>Where the player is trying to walk (world, level, 0..1): the keys, or a test bot's input.</summary>
+        Vector3 MoveIntent()
+        {
+            Vector2 v = Vector2.zero;
+            if (_player.botInput.HasValue) v = _player.botInput.Value;
+            else if (_player.HasFocus && Keyboard.current != null)
+            {
+                var k = Keyboard.current;
+                if (k.wKey.isPressed) v.y += 1f;
+                if (k.sKey.isPressed) v.y -= 1f;
+                if (k.dKey.isPressed) v.x += 1f;
+                if (k.aKey.isPressed) v.x -= 1f;
+            }
+            v = Vector2.ClampMagnitude(v, 1f);
+            return transform.rotation * new Vector3(v.x, 0f, v.y);
+        }
+
+        /// <summary>
+        /// The hand on the lever turned as the arm holds it best (FirstPersonBody.ArmStrain): rolled about the bar (up to 28
+        /// degrees) and the bar taken across the palm on a slant (turned about the back of the hand, up to 30), as a hand
+        /// takes a lever from the side. (Square on it, the wrist was bent 28-29 degrees to the side through a whole pull.)
+        /// </summary>
+        Quaternion LeverTurn(Door d, int side, float turn)
+        {
+            if (!_body || !_body.HasArm) return Quaternion.identity;
+            Quaternion r0 = d.GripRotation(side, turn);
+            Vector3 bar = d.GripPoint(side, turn);
+            Quaternion best = Quaternion.identity; float bestS = float.MaxValue;
+            for (int y = -30; y <= 30; y += 10)
+                for (int a = -28; a <= 28; a += 14)
+                {
+                    Quaternion t = Quaternion.AngleAxis(a, r0 * Vector3.right) * Quaternion.AngleAxis(y, r0 * Vector3.up);
+                    Quaternion r = t * r0;
+                    float sc = _body.ArmStrain(bar + r * Vector3.up * 0.012f, r, out float over) + over * 0.02f + (Mathf.Abs(a) + Mathf.Abs(y)) * 0.002f;
+                    if (sc < bestS) { bestS = sc; best = t; }
+                }
+            return best;
+        }
 
         void EndDoor()
         {
-            _doorSlipT = 0f; _notThereT = 0f;
+            _doorSlipT = 0f; _notThereT = 0f; _doorPushing = false;
             if (_door) _door.Release();
             _door = null;
             _doorPhase = DoorPhase.None;
@@ -71,23 +146,33 @@ namespace Backrooms.Interaction
                 case DoorPhase.Reach:
                 {
                     // The lever is taken (and turned) only once the hand is on it: it used to turn by itself with the palm
-                    // 12 cm short. (The solved palm decides; the reach says when to step in.)
-                    if (HandBlend > 0.85f && HandArrived && toGrip.magnitude <= ArmReach + 0.15f)
+                    // 12 cm short. (The solved palm decides; the reach says when to step in.) The hand goes out with the
+                    // elbow bent while the body steps in (BentReach), and onto the lever once it is that near.
+                    float d = toGrip.magnitude, bent = ArmReach * _bentNow;
+                    bool there = HandBlend > 0.85f && HandArrived && WithinBent(grip);
+                    if (there || (_doorT > 1.2f && d <= ArmReach + 0.1f))
                     {
                         _player.botInput = null;
                         _doorPhase = DoorPhase.Turn; _doorT = 0f; _door.Grab(_doorSide); MicThump();
+                        _doorTurnQ = LeverTurn(_door, _doorSide, 0f); _doorRollAt = Time.time;
                         break;
                     }
-                    if (toGrip.magnitude <= ArmReach)
+                    // Never there (held off by something): the door still opens, shoved by the hand the way you face, rather
+                    // than leave you stuck at it. (It gave up after 2 s and nothing happened.)
+                    if (_doorT > 1.6f || d > lookRange + 0.6f)
+                    {
+                        _player.botInput = null;
+                        if (d <= lookRange + 0.6f) _door.Shove(_doorSide, grip, transform.forward, _doorSide > 0);
+                        EndDoor();
+                        break;
+                    }
+                    if (d <= bent)
                     {
                         if (!ComeCloser(grip, 2.5f)) EndDoor();
                         else if (_notThereT <= 0.2f) _player.botInput = null;
                         break;
                     }
-                    if (_doorT > 2f || toGrip.magnitude > lookRange + 0.6f) { EndDoor(); break; }
-                    Vector3 local = transform.InverseTransformDirection(toGrip); local.y = 0f;
-                    var flat = new Vector2(local.x, local.z);
-                    _player.botInput = flat.magnitude > 0.2f ? flat.normalized * 0.6f : (Vector2?)null;
+                    StepInToward(grip, 0.6f);
                     break;
                 }
                 case DoorPhase.Turn:
@@ -105,14 +190,32 @@ namespace Backrooms.Interaction
                     // The hand stays in front of the body where it took the lever, within the arm's reach of the shoulder
                     // as it is now; the door follows it.
                     Vector3 target = StandShoulder + transform.rotation * _doorOffset, RS = ReachShoulder;
+                    Vector3 lever = _door.GripPoint(_doorSide, 1f);
                     // (Within 0.9 of the reach, the elbow a little bent: at full stretch the palm fell 4 cm behind the
                     // lever pulling and the hand let go and took it again.)
                     target = RS + Vector3.ClampMagnitude(target - RS, ArmReach * 0.9f);
+                    // Walking the way the door opens (into a door pushed, back from one pulled): the hand pushes it on ahead
+                    // of the body and holds it where it got to when you stop. (The hand was kept where it took the lever from
+                    // the body, and the body stopped at the shut door: a door pushed while walking stayed at 0 degrees.)
+                    Vector3 opening = _door.OpeningAt(lever);
+                    float into = Vector3.Dot(MoveIntent(), opening);
+                    // (Pushing only: pulled toward you, the lever came in to the body, the elbow bent 97 degrees; walking back
+                    // with the hand where it took the lever opens it as you go.)
+                    if (into > 0.25f && _doorSide < 0)
+                    {
+                        target = lever + opening * (0.09f * into);
+                        _doorOffset = Quaternion.Inverse(transform.rotation) * (lever - StandShoulder);
+                        _doorPushing = true;
+                    }
                     _door.Drive(target, dt);
                     _player.lookScale = 0.75f;
+                    if (Time.time - _doorRollAt > 0.25f) { _doorTurnQ = Quaternion.RotateTowards(_doorTurnQ, LeverTurn(_door, _doorSide, 1f), 10f); _doorRollAt = Time.time; }
+                    // Pushed on past the arm's reach: the hand lets go and the door swings on with the speed it had (and
+                    // the body walking on pushes it further).
+                    if (_doorPushing && ((lever - RS).magnitude > ArmReach || PalmError > 0.02f)) { EndDoor(); break; }
                     // It could not follow (the hand would have to let go).
                     // The hand lets go when the lever leaves it (it used to stay "holding" with the palm up to 23 cm off).
-                    _doorSlipT = Vector3.Distance(_door.GripPoint(_doorSide, 1f), RS) > ArmReach + 0.2f || PalmError > 0.05f ? _doorSlipT + dt : 0f;
+                    _doorSlipT = Vector3.Distance(lever, RS) > ArmReach + 0.2f || PalmError > 0.05f ? _doorSlipT + dt : 0f;
                     if (_doorSlipT > 0.12f) EndDoor();
                     break;
                 }
@@ -122,9 +225,13 @@ namespace Backrooms.Interaction
         /// <summary>The hand on the lever (for the arm IK).</summary>
         void DoorHandPose()
         {
-            HandRotation = _door.GripRotation(_doorSide, _doorTurn);
+            Quaternion r0 = _door.GripRotation(_doorSide, _doorTurn);
+            // Rolled about the bar as the arm holds it best (LeverRoll).
+            HandRotation = _doorTurnQ * r0;
             // The palm on top of the lever's bar (its radius and a little), not at its middle.
-            HandPosition = _door.GripPoint(_doorSide, _doorTurn) + HandRotation * Vector3.up * 0.012f;
+            Vector3 p = _door.GripPoint(_doorSide, _doorTurn) + HandRotation * Vector3.up * 0.012f;
+            // Reaching, no further than the bent arm goes (the body steps in for the rest).
+            HandPosition = _doorPhase == DoorPhase.Reach ? BentReach(p) : p;
             float curl = _doorPhase == DoorPhase.Reach ? 0.35f : 0.8f;
             HandCurl = Mathf.MoveTowards(HandCurl, curl, Time.deltaTime * 4f);
         }
