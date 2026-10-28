@@ -90,7 +90,7 @@ Shader "Hidden/Backrooms/ContactShadowMask"
                     if (d2 > 25.0 || dot(f.colorAll, f.colorAll) < 1e-10) continue;
                     float3 L = toL * rsqrt(max(d2, 1e-4));
                     float a = LGrid_DistAtten(max(d2, 0.01), f.range) * saturate(dot(N, L));
-                    if (dot(f.dir, f.dir) > 0.5) a *= LGrid_AngleAtten(dot(f.dir, -L), f.cosOuter, f.cosInner);
+                    if (dot(f.dir, f.dir) > 0.5) a *= LGrid_Profile(dot(f.dir, -L), f.cosOuter, f.cosInner, f.padding.y);
                     float w = a * dot(f.colorAll, float3(0.2126, 0.7152, 0.0722));
                     if (w <= bestB) continue;
                     if (LGrid_LightVisible(P, N, f.pos) < 0.5) continue;

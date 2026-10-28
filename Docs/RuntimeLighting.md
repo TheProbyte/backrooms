@@ -277,3 +277,16 @@ Graphics > Save to asset, same path) after adding materials with new keyword set
 views drew 2 variants the list lacked (soft shadows off), which compiled mid-play (the "Compiling shader" box while
 walking around); every portal variant now also has its plain-shadow twin, and the plain (no keyword) forward and shadow
 passes are in (76 variants). The warmup now takes about 17 minutes here after a lit shader change.
+
+## Measured light shapes (IES) (2026-10-28)
+
+`Generation/PhotometricProfiles.cs`, `Resources/Lighting/IES/{Troffer,Dome,Strip}.txt`. Each fixture type's photometric
+file (IES LM-63: candela at each angle from straight down) is read, averaged over the horizontal planes and fitted with
+intensity ~ cos(angle)^k (solid-angle weighted). The bundled files are generic typical shapes (a 2 x 2 prismatic troffer:
+k 1.27, an opal dome: 0.51, a bare twin-tube batten: 0.31); put a real fixture's .ies there (renamed .txt) to use its
+measurement. The exponent goes to each grid light (`GridLight.padding.y`) with its cone opened to 90 degrees (so every test
+that culls by the cone stays valid) and `LGrid_Profile` / `LightGridMath.FixtureProfile` replace the cone in the forward
+pass (rectangular panels, point fixtures, reach), the light grid compute, portal lighting and the contact shadow mask.
+Effect: the tops of walls and pillars get the light a real fixture throws there (the cone cut it off at 75 degrees); in a
+test room the top third of the frame was about 8 % brighter. Lighting menu > Measured light shape (IES); off restores the
+cone (Fixture spread).

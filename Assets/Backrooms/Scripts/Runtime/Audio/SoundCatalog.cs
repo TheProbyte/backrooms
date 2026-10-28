@@ -15,6 +15,9 @@ namespace Backrooms.Audio
         public const string RoomTone = "ambience.room_tone";
         public const string Footsteps = "player.footsteps_carpet";
         public const string ZoomMotor = "camcorder.zoom_motor";
+        public const string Impacts = "physics.impacts";
+        public const string Scrapes = "physics.scrapes";
+        public const string Director = "ambience.director";
     }
 
     /// <summary>
@@ -241,6 +244,24 @@ namespace Backrooms.Audio
                 id = SoundIds.RoomTone, name = "Room tone", category = "Ambience", positional = false, hasPitch = false,
                 description = "The quiet, dark noise floor of an empty building.",
                 volume = 0.6f, spatialBlend = 0f,
+            });
+            Register(new SoundDef
+            {
+                id = SoundIds.Impacts, name = "Impacts", category = "Physics", positional = true,
+                description = "Things hitting things: loose items and furniture dropped, thrown, knocked or shoved, as loud as the hit, with the sound of what they hit (carpet, hard floors, concrete, walls, metal).",
+                volume = 1f, minDistance = 0.4f, maxDistance = 18f, rolloff = 1f, spatialBlend = 1f,
+            });
+            Register(new SoundDef
+            {
+                id = SoundIds.Scrapes, name = "Scraping", category = "Physics", positional = true,
+                description = "Furniture and things sliding along the floor: dragged over carpet, scraped over hard floors, office chairs rolling on their casters.",
+                volume = 1f, minDistance = 0.4f, maxDistance = 14f, rolloff = 1f, spatialBlend = 1f,
+            });
+            Register(new SoundDef
+            {
+                id = SoundIds.Director, name = "Unexplained sounds", category = "Ambience", positional = true,
+                description = "What the tension director places out of sight: knocks inside walls, something shifting in a duct, footsteps in the next room.",
+                volume = 1f, minDistance = 0.5f, maxDistance = 24f, rolloff = 1f, spatialBlend = 1f,
             });
             Register(new SoundDef
             {

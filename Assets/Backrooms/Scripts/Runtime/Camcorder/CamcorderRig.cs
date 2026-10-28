@@ -167,7 +167,11 @@ namespace Backrooms.Camcorder
                 _nextPlayerSearch = Time.unscaledTime + 1f;
             }
             float zoomMul = _player ? _player.FovMultiplier : 1f;
-            _cam.fieldOfView = s.fieldOfView * zoomMul;
+            // Focus breathing: a video zoom lens's angle of view tightens a little as it focuses close (about 3.5 % from
+            // infinity to half a metre), so a refocus on the hand, or the autofocus hunting in the dark, makes the frame
+            // creep in and out.
+            float breathe = 1f - 0.035f * Mathf.Max(0f, s.focusBreathing) * Mathf.Clamp01(_dFocus / 2f) * (s.autofocus || focusOverride > 0f ? 1f : 0f);
+            _cam.fieldOfView = s.fieldOfView * zoomMul * breathe;
             float zoomT = Mathf.InverseLerp(1f, 0.25f, zoomMul);   // 0 wide .. 1 full optical zoom
 
             // The 4:3 picture is the camera's own viewport (the bars are painted by the OSD's overlay canvas).
@@ -314,7 +318,10 @@ namespace Backrooms.Camcorder
                 Mathf.Clamp(s.highlightColour, 0.4f, 0.98f), 0f));
 
             // Format: bandwidths, edge enhancement, tape and playback.
-            m.SetVector(IdFmt, new Vector4(fmt.analog ? 1f : 0f, fmt.comb ? 1f : 0f, fmt.dv411 ? 1f : 0f, fmt.compression * s.blockiness));
+            // A digital format's blocks: the codec has a fixed budget per frame, so a noisy picture (low light, gain up) spends
+            // it on the noise and every block comes out coarser.
+            float busy = 1f + 1.2f * Mathf.Clamp01(gainEV / 3f);
+            m.SetVector(IdFmt, new Vector4(fmt.analog ? 1f : 0f, fmt.comb ? 1f : 0f, fmt.dv411 ? 1f : 0f, fmt.compression * s.blockiness * busy));
             var lw = CamcorderFormat.LumaWeights(fmt.lumaSigma);
             m.SetVector(IdLumaW, new Vector4(lw.x, lw.y, lw.z, 0f));
             m.SetVector(IdChroma, new Vector4(fmt.chromaSigma / Mathf.Max(0.2f, s.chromaDetail), fmt.chromaTrail * s.chromaBleed, fmt.chromaDelay * s.chromaShift,

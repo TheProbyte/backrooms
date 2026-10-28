@@ -117,6 +117,14 @@ float LGrid_AngleAtten(float cosAngle, float cosOuter, float cosInner)
     return saturate(cosAngle * inv - cosOuter * inv);
 }
 
+// A fixture's falloff away from straight down: its measured photometric shape (an IES file fitted as cos^k, k in
+// padding.y; Generation/PhotometricProfiles) when it has one, else the adjustable cone.
+float LGrid_Profile(float cosAngle, float cosOuter, float cosInner, float k)
+{
+    if (k > 0.001) return pow(saturate(cosAngle), k);
+    return LGrid_AngleAtten(cosAngle, cosOuter, cosInner);
+}
+
 // Shared tile lookup for the grid and real-light material-response paths.
 uint2 LGrid_TileRange(float3 P)
 {

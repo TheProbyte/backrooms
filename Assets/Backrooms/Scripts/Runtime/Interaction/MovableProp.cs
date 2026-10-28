@@ -113,6 +113,7 @@ namespace Backrooms.Interaction
             root.transform.SetParent(parent, false);
             root.transform.SetPositionAndRotation(position, rotation);
             root.AddComponent<LightingOccluder>();
+            root.AddComponent<Audio.ImpactSounder>();             // knocks, thumps and scraping (Audio/ImpactAudio)
             var mp = root.AddComponent<MovableProp>();
             mp.Spec = spec; mp.Shape = shape; mp.Body = rb;
             mp._ownedMeshes = builtMeshes;

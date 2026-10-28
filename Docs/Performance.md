@@ -86,3 +86,19 @@ Depth priming (PC_Renderer, Forced or Auto) saves 3.5 ms at 5120x1440 with a pix
 pixels differ), but with it the player segfaults on quit, every time (Unity 6000.4.5f1, URP 17.4, D3D12; nothing in the
 player log, no crash dump). It is off until that is understood.
 
+
+## Unity 6 features checked (2026-10-28)
+
+Measured in play (editor, a typical office): render thread 10.7 ms, GPU 6.6 ms, scripts under 5 ms (Update 0.7,
+LateUpdate 3.5), 222 SetPass calls, 0.75 M triangles, 58-60 fps.
+- Upscaling (STP / FSR): not needed. The game already draws the 3D view at 1.35 x the camcorder's recording lines (not the
+  window's), `GraphicsOptions.matchRecording`; the camcorder then processes at its own lines. STP would rebuild detail the
+  camcorder throws away.
+- GPU occlusion culling: covered by `ChunkVisibility` (rays over the layout stop drawing chunks behind walls), cheaper and
+  exact for this world.
+- GPU Resident Drawer: possible (Backrooms/Lit already has the DOTS instancing pragmas; the PC renderer is Forward+) and
+  aimed at the render thread, the busiest part of the frame. Not switched on yet: it brings new shader variants that would
+  compile mid-play (the stall that crashed the D3D12 editor, see LitShaderWarmup) unless added to the warm-up collection
+  first, and the editor's render-thread time overstates a build's. To try: measure a build first, then add the
+  DOTS_INSTANCING_ON variants to BackroomsLitVariants, warm them, set the URP asset's GPU Resident Drawer to Instanced
+  Drawing and Graphics > BatchRendererGroup variants to Keep All.

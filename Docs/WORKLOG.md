@@ -15,6 +15,18 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-27 22:22  Claude Code  Big-studio techniques: tension director, physics impact sounds, IES light shapes, focus breathing; camera motion capture guide
+- Asked: ideas 1-5 and 7 of the big-studio list (1 only explained; 6, playtest bots, skipped).
+- 1, recorded camera motion: `Docs/CameraMotionCapture.md` (how to record with a phone's gyro and hand it over). Not built.
+- 2, tension director (new): `Atmosphere/TensionDirector.cs` paces knocks in walls, duct thumps, footsteps (approaching at the peak), doors swinging shut, nearby rooms going dark, light stutters, power sags and a quiet fade, never in plain sight. Hooks: `BuildingAudio.Duck`, `FixtureLightManager.DirectorSag`, audio menu ATMOSPHERE slider, sound id ambience.director. New sounds in `ProceduralSounds.Atmosphere.cs`.
+- 3, camera and tape: most was there (autofocus hunting, exposure iris/gain lag, CCD smear, DV blocks, tape noise). Added focus breathing (Camera menu slider) and DV blocks growing with the gain. Rolling shutter left out (CCD camcorders have none).
+- 4, Unity 6 performance: render-at-recording-resolution and chunk occlusion already cover STP and GPU occlusion culling; the GPU Resident Drawer is possible but not switched on (mid-play variant compile risk; measure a build first). Notes in Docs/Performance.md.
+- 5, IES light shapes (new): `PhotometricProfiles` parses LM-63 files (Resources/Lighting/IES) and fits cos^k per fixture type; used in the forward pass, light grid compute, portal lighting, contact shadows and the CPU grid. Lighting menu toggle.
+- 7, impact sounds (new): `ImpactAudio`/`ImpactSounder` on every item and movable prop; modal synthesis (`ProceduralSounds.Impacts.cs`); scraping loops; sound settings Physics.
+- Checked in play (World 3, erased): director events each forced and seen working (knock, steps, approach, door shut from 31 to 0 deg and latched, a room switched off, stutter, sag; the duct needed a retry for tall-ceiling areas, fixed); items dropped played their ring and the floor's thud at different pitches; a pushed office chair's caster rumble followed its speed; focus breathing 74.97 -> 72.38 deg; IES on vs off renders (upper walls lit). EditMode 112/112 (3 new PhotometricProfileTests).
+- Shared Unity with the texture session through a lock file (.claude/unity.lock), released.
+- Open: untested by the user; the director's pacing (phase lengths, how often) is first tuning; impact levels set by ear-less numbers, may need a pass.
+
 ## 2026-10-27 21:43  Claude Code  Textures from the player's second set of photos: carpet, painted walls, boxes, wall insides, doors, ceiling stains, warehouse concrete
 - 12 photos into `Tools/Textures/Source` (descriptive names) and new steps in `Tools/Textures/make_surface_textures.py` (run with step names to run only those): lighting divided out, made seamless, laid with random flips where a patch repeats, normal maps from the fine relief, levels and tints matched.
 - Replaced (same files, the materials untouched): `RefCarpet_Albedo/Normal` (real pile and specks; the old texture's slow variation and mean kept, so no grid and the tint still works), `Plaster_Albedo/Normal` (the cream painted wall), `Cardboard_Albedo/Normal` (kraft liner, the old corrugation normals kept). The generated originals are kept as `Source/RefCarpet_Generated.png`, `Source/Cardboard_Normal_Generated.png` (inputs, so the steps can be rerun).

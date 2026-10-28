@@ -81,13 +81,17 @@ namespace Backrooms.Generation
         public float Mains { get; private set; } = 1f;
         [Tooltip("How deep the building's occasional brownouts go (0 = never).")]
         [Range(0f, 0.2f)] public float brownoutDepth = 0.07f;
+        /// <summary>A deeper sag the tension director asks for (0..1 of the supply lost), on top of the brownouts.</summary>
+        public static float DirectorSag;
+        /// <summary>Ceiling fixtures throw their measured (IES) light shape (GraphicsOptions.photometric; PhotometricProfiles).</summary>
+        public static bool Photometric = true;
 
         void UpdateMains(float now)
         {
             float n = Mathf.PerlinNoise(now * 0.045f, 7.3f);
             float sag = Mathf.Clamp01((n - 0.74f) / 0.14f);
             float quiver = 1f - 0.25f * Mathf.PerlinNoise(now * 9f, 1.7f) * sag;
-            Mains = 1f - brownoutDepth * sag * quiver;
+            Mains = 1f - Mathf.Max(brownoutDepth * sag * quiver, Mathf.Clamp01(DirectorSag) * (0.85f + 0.15f * Mathf.PerlinNoise(now * 11f, 3.1f)));
         }
         /// <summary>Smoothed CPU time of LateUpdate (both modes), for comparisons.</summary>
         public float LastUpdateMs { get; private set; }

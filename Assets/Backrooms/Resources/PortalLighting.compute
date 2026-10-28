@@ -17,7 +17,7 @@ half3 PortalIncident(float3 P, half3 N)
         float distance2 = dot(toLight, toLight);
         float3 L = toLight * rsqrt(max(distance2, 0.01));
         float a = LGrid_DistAtten(distance2, f.range) * saturate(dot(N, L));
-        if (dot(f.dir, f.dir) > 0.5) a *= LGrid_AngleAtten(dot(f.dir, -L), f.cosOuter, f.cosInner);
+        if (dot(f.dir, f.dir) > 0.5) a *= LGrid_Profile(dot(f.dir, -L), f.cosOuter, f.cosInner, f.padding.y);
         if (a < 1e-5 || LGrid_LightVisible(P, N, f.pos) < 0.5) continue;
         a *= LocalLightVisibility(P, N, f.pos);
         incident += f.colorAll * (a * _LGridParams.y);

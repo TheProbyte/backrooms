@@ -1,0 +1,15 @@
+IESNA:LM-63-2002
+[TEST] Backrooms generic photometry (typical shape, not a specific product)
+[MANUFAC] Generic
+[LUMCAT] 4FT-BATTEN-2T8
+[LUMINAIRE] 4 ft industrial batten, two bare fluorescent tubes, white steel channel
+[LAMP] 2 x F32T8 fluorescent
+[OTHER] Bare tubes: broad across the batten (90), narrower along it (0), where the tubes are seen end-on.
+TILT=NONE
+2 2800 1.0 11 3 1 2 0.06 1.22 0.08
+1.0 1.0 64
+0 5 15 25 35 45 55 65 75 85 90
+0 45 90
+520 518 507 486 455 414 362 300 226 140 96
+520 519 512 498 478 452 420 383 341 296 272
+520 520 516 508 497 482 465 445 424 401 390

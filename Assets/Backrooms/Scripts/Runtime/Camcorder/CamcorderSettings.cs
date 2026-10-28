@@ -33,6 +33,7 @@ namespace Backrooms.Camcorder
         public float aperture = 1.8f;           // widest aperture (f-number); the iris closes from here
         public float focusSpeed = 1f;           // focus motor speed, x
         public float focusHunting = 0.5f;       // how readily it hunts and overshoots
+        public float focusBreathing = 1f;       // the picture's slight zoom as the focus moves (a video zoom lens's breathing), x
 
         // Exposure: iris first, then gain, then (optionally) a slower shutter
         public bool autoExposure = true;

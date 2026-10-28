@@ -160,6 +160,10 @@ namespace Backrooms.Generation
             float inv = 1f / Mathf.Max(cosInner - cosOuter, 0.001f);
             return Mathf.Clamp01(cosAngle * inv - cosOuter * inv);
         }
+
+        /// <summary>A fixture's falloff (LGrid_Profile): its photometric cos^k when it has one (k in padding.y), else the cone.</summary>
+        public static float FixtureProfile(float cosAngle, float cosOuter, float cosInner, float k)
+            => k > 0.001f ? Mathf.Pow(Mathf.Clamp01(cosAngle), k) : PanelProfile(cosAngle, cosOuter, cosInner);
         public static bool IsLoaded(uint o) => (o & Loaded) != 0;
 
         /// <summary>Occupancy lookup: (cell x, cell z, storey) -> packed cell (0 = not loaded).</summary>
@@ -223,7 +227,7 @@ namespace Backrooms.Generation
             if (d2 >= L.range * L.range) return 0f;
             float att = DistanceAtten(Mathf.Max(d2, 0.36f), L.range);   // near field capped at one texel (as in the shader)
             toLight /= Mathf.Sqrt(Mathf.Max(d2, 1e-8f));
-            if (L.dir.sqrMagnitude > 0.5f) att *= PanelProfile(Vector3.Dot(L.dir, -toLight), L.cosOuter, L.cosInner);
+            if (L.dir.sqrMagnitude > 0.5f) att *= FixtureProfile(Vector3.Dot(L.dir, -toLight), L.cosOuter, L.cosInner, L.padding.y);
             if (att <= 1e-6f || !Visible(L.pos, Q, occ, pitch)) return 0f;
             var c = all ? L.colorAll : L.color;
             return (0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z) * att;

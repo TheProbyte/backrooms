@@ -58,6 +58,7 @@ namespace Backrooms.Camcorder
         [Look] public float haze = 0.25f;            // thin haze in the air, lit by the lights (0 = clear)
         [Look] public float poolSun = 1f, poolSky = 1f, poolBounce = 1f, poolWarmth = 0f;   // the Poolrooms (their own light)
         public bool areaLights = true;               // ceiling panels lit as rectangles (a method, not part of a look)
+        public bool photometric = true;              // ceiling fixtures throw their measured (IES) light shape
         public bool tracedBounce = true;             // bounce light traced through the rooms (off: the older bounce field)
         public int lookPreset = 0;                   // the LOOK preset last applied (-1: changed since, -2: my look)
 
@@ -73,7 +74,7 @@ namespace Backrooms.Camcorder
             var d = new GraphicsOptions();
             CopyLook(d);
             indoorReflections = d.indoorReflections; farLights = d.farLights; exactLightRadius = d.exactLightRadius;
-            areaLights = d.areaLights; tracedBounce = d.tracedBounce; lookPreset = 0;
+            areaLights = d.areaLights; tracedBounce = d.tracedBounce; photometric = d.photometric; lookPreset = 0;
         }
         /// <summary>Evenly lit and pale, like the found-footage references: little contrast, a lot of fill, soft shadows.</summary>
         public void ApplyEvenLighting() => ApplyLook(1);
@@ -390,6 +391,7 @@ namespace Backrooms.Camcorder
 
             // Backrooms/Lit's look switches (uniforms, no shader variants). Zero, as bound when no controller runs, is "off".
             // x: ceiling panels as rectangles, y: contact-hardening shadow softness, z: contact shadow strength, w: set.
+            FixtureLightManager.Photometric = o.photometric;
             Shader.SetGlobalVector(LookId, new Vector4(o.areaLights ? 1f : 0f, Mathf.Clamp(o.shadowSoftness, 0f, 2f), Mathf.Clamp01(o.contactShadows), 1f));
             // Contact shadows have a render pass of their own on the player's camera (it reads the camera depth properly).
             ContactShadows.Ensure().strength = Mathf.Clamp01(o.contactShadows);

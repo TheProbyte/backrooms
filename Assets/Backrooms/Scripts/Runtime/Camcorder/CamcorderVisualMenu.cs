@@ -250,6 +250,8 @@ namespace Backrooms.Camcorder
                 0.2f, 3f, "0.00", "x", () => S().focusSpeed, v => S().focusSpeed = v);
             Slider("Focus hunting", "How readily the focus hunts in the dark and how far it overshoots when it refocuses.",
                 0f, 1f, "0.00", "", () => S().focusHunting, v => S().focusHunting = v);
+            Slider("Focus breathing", "A video zoom lens's angle of view changes slightly with focus: the frame creeps in as it focuses close (on your hand) and pulses while it hunts. 0 is a lens that does not breathe.",
+                0f, 3f, "0.00", "x", () => S().focusBreathing, v => S().focusBreathing = v);
 
             Section("EXPOSURE", "The camera meters its own picture. It closes or opens the iris first; once the iris is wide open it turns the gain up (noisier), and drops the gain first when the light comes back.");
             Toggle("Auto exposure", "Automatic iris and gain. Off holds a fixed exposure (right for a lit corridor).",

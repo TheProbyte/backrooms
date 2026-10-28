@@ -339,13 +339,16 @@ namespace Backrooms.Generation
                 // every stutter made soft light pop in patches in the dark); its direct light keeps the exact waveform.
                 sh.smoothPower = sh.smoothPower < 0f || !smoothBounce ? power : Mathf.Lerp(sh.smoothPower, power, 1f - Mathf.Exp(-dt / 0.35f));
                 float bounceRatio = power > 0.001f ? Mathf.Round((Mathf.Clamp(sh.smoothPower / power, 0f, 8f) - 1f) * 64f) / 64f : 0f;
+                // The measured shape (IES) of a ceiling fixture, when on: lit out to the horizon (the cone opened to 90
+                // degrees for every test that culls by it), shaped by the photometric exponent.
+                float photometric = !c.isLamp && Photometric ? PhotometricProfiles.Exponent(c.dome, c.strip) : 0f;
                 _gridLights.Add(new LightGridMath.GridLight
                 {
                     pos = pos, range = range, dir = dir,
-                    cosOuter = Mathf.Cos(outer * 0.5f * Mathf.Deg2Rad), cosInner = Mathf.Cos(inner * 0.5f * Mathf.Deg2Rad),
+                    cosOuter = photometric > 0f ? 0f : Mathf.Cos(outer * 0.5f * Mathf.Deg2Rad), cosInner = photometric > 0f ? 1f : Mathf.Cos(inner * 0.5f * Mathf.Deg2Rad),
                     color = lin * gridShare, colorAll = lin * power, storey = c.chunk.y,
                     halfSize = c.isLamp ? Vector2.zero : (c.strip ? new Vector2(0.59f, 0.055f) : c.dome ? new Vector2(0.16f, 0.16f) : new Vector2(0.285f, 0.285f)) * emitterSize,
-                    padding = new Vector2(bounceRatio, 0f),
+                    padding = new Vector2(bounceRatio, photometric),
                 });
 
                 // Real light for the real share.

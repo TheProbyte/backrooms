@@ -202,7 +202,7 @@ half3 BackroomsRectFixture(LGridLight f, half3 energy, half shadow, float sizeWe
     float dC = sqrt(max(distanceSquared, 1e-6));
     float3 dirC = (f.pos - P) / dC;
     float cosE = dot(f.dir, -dirC);
-    float cone = LGrid_AngleAtten(cosE, f.cosOuter, f.cosInner);
+    float cone = LGrid_Profile(cosE, f.cosOuter, f.cosInner, f.padding.y);
     float window = distanceSquared / (f.range * f.range);
     window = saturate(1.0 - window * window); window *= window;
     float formFactor = BR_RectFormFactor(P, N, f.pos, h);
@@ -261,7 +261,7 @@ half3 BackroomsFixturePBR(LGridLight f, uint lightId, half3 energy, half shadow,
         return BackroomsRectFixture(f, energy, shadow, sizeWeight, distanceSquared, data, brdf, noSpecular);
     float3 dir = delta * rsqrt(max(distanceSquared, 1e-6));
     float attenuation = LGrid_DistAtten(max(distanceSquared, 0.01), f.range);
-    if (dot(f.dir, f.dir) > 0.5) attenuation *= LGrid_AngleAtten(dot(f.dir, -dir), f.cosOuter, f.cosInner);
+    if (dot(f.dir, f.dir) > 0.5) attenuation *= LGrid_Profile(dot(f.dir, -dir), f.cosOuter, f.cosInner, f.padding.y);
     if (attenuation < 1e-5) return 0;
     // Contrast is based on full output, independent of the handover share.
     float lum = max(dot(f.colorAll, float3(0.2126, 0.7152, 0.0722)) * attenuation, 1e-5);
@@ -301,7 +301,7 @@ half3 BackroomsDistantPBR(InputData data, BRDFData brdf, BRDFData coat, SurfaceD
         {
             float3 v = data.positionWS - f.pos;
             float d2 = max(dot(v, v), 0.01);
-            float reach = LGrid_DistAtten(d2, f.range) * LGrid_AngleAtten(dot(f.dir, v) * rsqrt(d2), f.cosOuter, f.cosInner);
+            float reach = LGrid_DistAtten(d2, f.range) * LGrid_Profile(dot(f.dir, v) * rsqrt(d2), f.cosOuter, f.cosInner, f.padding.y);
             energy += max(f.colorAll - f.color, 0) * (half)smoothstep(0.0002, 0.0008, reach);
         }
         if (dot(energy, energy) < 1e-10) continue;

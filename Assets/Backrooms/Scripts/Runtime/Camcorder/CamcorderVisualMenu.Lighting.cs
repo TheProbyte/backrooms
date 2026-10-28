@@ -57,6 +57,8 @@ namespace Backrooms.Camcorder
                 0f, 0.6f, "0.00", "", () => O().tallBoost, Look(v => O().tallBoost = v));
             Slider("Fixture spread", "How broadly a ceiling light throws its light. Low: a lamp-like cone that pools on nearby walls. High: a diffuse panel that washes the whole room.",
                 0f, 1f, "0.00", "", () => O().fixtureSpread, Look(v => O().fixtureSpread = v));
+            Toggle("Measured light shape (IES)", "Ceiling fixtures throw light the way the real ones do, from photometric (IES) files: a prismatic panel brightest straight down and still lighting the tops of the walls, a dome and bare tubes wider. Off uses the adjustable cone (Fixture spread).",
+                () => O().photometric, v => { O().photometric = v; O().Save(); });
             Toggle("Rectangular panels", "Ceiling panels light the room as the glowing rectangles they are: soft right under and beside them, with long rectangular reflections on glossy floors. Off treats each as a point (cheaper, harder light on walls right beside a panel).",
                 () => O().areaLights, v => { O().areaLights = v; O().Save(); });
             Slider("Panel size", "0 treats a fitting as a point. 1 is the visible panel or tubes, which softens near-wall hotspots and widens reflections.",

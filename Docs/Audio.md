@@ -187,3 +187,34 @@ Not established by these tests, needs listening: whether the hum, buzz and venti
 convincing, the reverb character of small offices versus tall halls, the amount of hiss and handling noise,
 and whether the AGC breathing is pleasant. A more convincing fluorescent or HVAC sound may eventually need
 recorded (licensed) material; everything here is synthesised.
+
+## Impacts and scraping (2026-10-28)
+
+`Audio/ImpactAudio.cs`, `Audio/ProceduralSounds.Impacts.cs`. Every loose item (WorldItem) and movable piece of furniture
+(MovableProp) gets an `ImpactSounder`; the sledgehammer, the rubber chicken and wall debris keep their own sounds.
+
+- A contact's loudness is its energy: the lighter body's mass and the speed along the contact normal (0.01 J faint, a can
+  dropped from the hand clear, furniture slammed the loudest), mapped logarithmically.
+- Two layers, as physically based game audio does: the struck thing's own ring (modal synthesis: damped partials per
+  material, pitched by size: can, plastic, chalk, tape, lamp metal, wood, cardboard, upholstery, office chair) and the
+  answer of what it hit (carpet, hard floor, concrete, tile, drywall, metal; or the other thing's own ring). Carpet damps
+  the ring. Surfaces come from `Surfaces.At` (floors) and the collider (doors wood, racks and ducts metal, walls drywall).
+- Sliding along the floor scrapes: dragged over carpet, scraped over a hard floor (stick-slip), rolling on casters; level
+  and pitch follow the slip speed; the three nearest slipping things get a voice.
+- Through Steam Audio (ItemModels.Source); 12 one-shot voices, at most 4 impacts a frame, nothing beyond 28 m, nothing in
+  the first 1.5 s after a thing appears (settling as the world loads). Sound settings: Physics > Impacts, Scraping.
+
+## The tension director (2026-10-28)
+
+`Atmosphere/TensionDirector.cs`, after Left 4 Dead's AI Director and Alien: Isolation's. It estimates how tense the player
+is (rises with what they hear, nearer counts more, in the dark and while running; falls in calm) and cycles Relax (nothing
+of its own; 70-160 s) -> Build-up (50-110 s: rarer and fainter at first, then nearer) -> Peak (one set piece) -> Fade (the
+ambience drops away, `BuildingAudio.Duck`) -> Relax. Already on edge: it backs off or ends the build-up early.
+
+Events, never in plain sight (out of view or behind a wall; sounds through Steam Audio): knocks inside a wall, something
+shifting in a duct over a drop ceiling, footsteps in a nearby room on that floor's surface (at the peak, coming toward you
+and stopping a few metres off behind a wall), an open door out of sight swinging shut or slamming, the lights of a nearby
+room going out (`LightZones`: saved, it stays dark until you find the switch), your room's lights blinking or stuttering,
+the power sagging (`FixtureLightManager.DirectorSag`). Off in the Poolrooms, the menus and noclip. Strength: audio menu >
+ATMOSPHERE > Tension director (0 off, 1 normal, 2 intense; saved). `TensionDirector.Instance.Force("steps")` etc. for testing;
+`Status` for a one-line state.

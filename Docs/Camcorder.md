@@ -110,3 +110,12 @@ then one shot per extra preset, logging iris, gain, exposure, meter, white balan
 of field ran. With `measureCost = true` it also times the GPU frame with the camcorder picture on and off, and with
 the 4:3 viewport and full width. `CamcorderTests` (EditMode) checks the transfer curve and knee, the formats, the
 presets, the migration, the white balance limits and that the shader compiles without keyword variants.
+
+## Focus breathing and busier compression (2026-10-28)
+
+- Focus breathing: a video zoom lens's angle of view tightens about 3.5 % as it focuses from infinity to half a metre, so a
+  refocus on the hand creeps the frame in and autofocus hunting in the dark pulses it (`CamcorderRig`, field of view x
+  (1 - 0.035 x breathing x focus in diopters / 2)). Only with autofocus on. Camera menu > Focus breathing (0-3, default 1).
+- DV blocks grow with the noise: the codec's bit budget per frame is fixed, so with the gain up in low light every block is
+  coarser (x 1 to 2.2 with the gain). Not with motion: that is MPEG (DVD and HDV camcorders, later); DV is intra-frame.
+- Not added: rolling shutter. 1990s camcorders used CCD sensors, which expose the whole frame at once (CMOS phones skew).

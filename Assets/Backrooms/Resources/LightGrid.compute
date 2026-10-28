@@ -156,7 +156,7 @@ float Attenuation(GridLight L, float3 Q, out float3 toLight)
         float d2 = dot(d, d);
         float3 dir = d * rsqrt(max(d2, 1e-8));
         float a = DistanceAtten(max(d2, 0.04), L.range);
-        if (dot(L.dir, L.dir) > 0.5) a *= AngleAtten(dot(L.dir, -dir), L.cosOuter, L.cosInner);
+        if (dot(L.dir, L.dir) > 0.5) a *= L.padding.y > 0.001 ? pow(saturate(dot(L.dir, -dir)), L.padding.y) : AngleAtten(dot(L.dir, -dir), L.cosOuter, L.cosInner);
         sum += a; moment += dir * a;
     }
     toLight = sum > 1e-8 ? moment / sum : 0;

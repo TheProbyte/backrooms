@@ -48,6 +48,8 @@ namespace Backrooms.Audio
     public class BuildingAudio : MonoBehaviour
     {
         public static BuildingAudio Instance { get; private set; }
+        /// <summary>The beds' level, 1 normally: the tension director lowers it for a quiet moment (the building goes silent).</summary>
+        public static float Duck = 1f;
 
         public WorldStreamer streamer;
         public FixtureLightManager lights;
@@ -587,7 +589,7 @@ namespace Backrooms.Audio
 
         void UpdateBeds(float dt)
         {
-            float amb = Mathf.Clamp(Dev.ambience, 0f, 2f);
+            float amb = Mathf.Clamp(Dev.ambience, 0f, 2f) * Mathf.Clamp01(Duck);
             float bedK = 1f - Mathf.Exp(-dt / 1.5f);
 
             _distantSmoothed = Mathf.Lerp(_distantSmoothed, DistantLevel, bedK);
