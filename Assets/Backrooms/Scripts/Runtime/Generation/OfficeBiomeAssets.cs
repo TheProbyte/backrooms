@@ -34,8 +34,16 @@ namespace Backrooms.Generation
             return room.painted && paintedWall ? paintedWall : wallpaper;
         }
 
+        /// <summary>
+        /// A warehouse hall (the warehouse biome's halls are 6 m and taller; offices top out at 5.4 m) with no finish of its
+        /// own: a concrete slab, not carpet (MaterialMaps.Concrete, from a photo). Footsteps there sound on concrete.
+        /// </summary>
+        public static bool ConcreteFloor(Room room) =>
+            room.floorFinish == FloorFinish.Default && room.ceiling >= 5.95f && !room.custom && string.IsNullOrEmpty(room.landmark) && room.kind != RoomKind.Crawl;
+
         public Material FloorMaterial(Room room)
         {
+            if (ConcreteFloor(room) && MaterialMaps.Concrete) return MaterialMaps.Concrete;
             switch (room.floorFinish)
             {
                 case FloorFinish.ReferenceCarpet: if (referenceCarpet) return referenceCarpet; break;

@@ -31,6 +31,7 @@ namespace Backrooms.Audio
             if (!L.InChunk(x, z)) return ProceduralSounds.Floor.Carpet;
             var room = L.RoomAt(x, z);
             if (p.y > L.BaseY + room.ceiling + 0.2f) return ProceduralSounds.Floor.Wood;          // above the ceiling: a special room
+            if (OfficeBiomeAssets.ConcreteFloor(room)) return ProceduralSounds.Floor.Concrete;
             switch (room.floorFinish)
             {
                 case FloorFinish.DarkWood:

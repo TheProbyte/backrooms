@@ -133,6 +133,23 @@ namespace Backrooms.Generation
             }
             s_wood = Wood("DoorWood", new Color(1.0f, 0.84f, 0.66f));
             s_frame = Wood("DoorFrame", new Color(0.93f, 0.78f, 0.62f));
+            // The photographed door's oak veneer (Resources/Textures/Photo/DoorVeneer: its own honey colour, 1.5 m along the
+            // grain by 0.5 m across; the model's UVs are 0.5 m to the unit with the grain along U), and its relief.
+            var veneer = Destruction.DemolitionMaterials.Photo("DoorVeneer");
+            if (veneer && src)
+            {
+                var vn = Destruction.DemolitionMaterials.Photo("DoorVeneer", true);
+                void Veneer(Material m, float shade)
+                {
+                    m.SetTexture("_BaseMap", veneer);
+                    m.SetTextureScale("_BaseMap", new Vector2(1f / 3f, 1f));
+                    m.SetColor("_BaseColor", new Color(shade, shade, shade));
+                    if (m.HasProperty("_Color")) m.SetColor("_Color", new Color(shade, shade, shade));
+                    if (vn && m.HasProperty("_BumpMap")) { m.SetTexture("_BumpMap", vn); m.SetFloat("_BumpScale", 1f); m.EnableKeyword("_NORMALMAP"); }
+                }
+                Veneer(s_wood, 1f);
+                Veneer(s_frame, 0.9f);
+            }
             s_metal = Interaction.ItemModels.Mat("DoorMetal", new Color(0.72f, 0.71f, 0.68f));
         }
 

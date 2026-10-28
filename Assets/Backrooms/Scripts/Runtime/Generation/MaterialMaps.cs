@@ -60,6 +60,7 @@ namespace Backrooms.Generation
             }
             Troffers(a);
             Ceilings(a);
+            Floors(a);
         }
 
         // ---------------- Ceiling tiles ----------------
@@ -87,6 +88,40 @@ namespace Backrooms.Generation
             m && (m == CeilingStainedA || m == CeilingStainedB || m == CeilingYellowed || m == Plenum || m == PlenumWood || m == PlenumDeck
                   || m == PlenumBatt || m == PlenumMetal || m == PlenumDuct || m == TileBack || m == CeilingCracked || m == ExitSign
                   || m == LedRed || m == Aluminium);
+
+        /// <summary>A photo's colour and normal maps (Resources/Textures/Photo) on a material, if they are there.</summary>
+        static void PhotoMaps(Material m, string photo, float bump)
+        {
+            if (!m) return;
+            var a = Destruction.DemolitionMaterials.Photo(photo);
+            if (!a) return;
+            m.SetTexture(BaseMap, a);
+            var n = Destruction.DemolitionMaterials.Photo(photo, true);
+            if (n && m.HasProperty(BumpMap)) { m.SetTexture(BumpMap, n); m.SetFloat(BumpScale, bump); m.EnableKeyword("_NORMALMAP"); }
+        }
+
+        // ---------------- Floors ----------------
+
+        /// <summary>
+        /// The warehouse halls' floor (OfficeBiomeAssets.FloorMaterial): trowelled concrete from a photo, a copy of the carpet
+        /// material (the same keywords: no new shader variant) with the concrete's maps, white, a little sheen. One texture
+        /// = 3 m, as the carpet's. Null without the photo or the carpet.
+        /// </summary>
+        public static Material Concrete;
+
+        static void Floors(OfficeBiomeAssets a)
+        {
+            Concrete = null;
+            var src = a.carpet;
+            var tex = Destruction.DemolitionMaterials.Photo("Concrete");
+            if (!src || !tex || !src.HasProperty(BaseMap)) return;
+            Concrete = Copy(src, " (concrete)", tex);
+            Concrete.SetColor(BaseColor, Color.white);
+            Concrete.SetTextureScale(BaseMap, Vector2.one);
+            Concrete.SetFloat("_Smoothness", 0.3f);
+            var n = Destruction.DemolitionMaterials.Photo("Concrete", true);
+            if (n && Concrete.HasProperty(BumpMap)) { Concrete.SetTexture(BumpMap, n); Concrete.SetFloat(BumpScale, 1f); }
+        }
 
         static Material Tinted(Material src, string suffix, Color tint)
         {
@@ -122,9 +157,14 @@ namespace Backrooms.Generation
             // to a little over half (what little comes up through a gap: dark, but the shapes show). Same shader and keywords.
             PlenumWood = Tinted(Destruction.DemolitionMaterials.Wood, " (old joist)", new Color(0.24f, 0.18f, 0.12f));
             PlenumDeck = Tinted(Destruction.DemolitionMaterials.Wood, " (deck)", new Color(0.16f, 0.125f, 0.09f));
+            // Old, weathered wood up there (a photo), not the new pine of the walls; laid with metre UVs.
+            PhotoMaps(PlenumWood, "OldWood", 1f);
+            PhotoMaps(PlenumDeck, "OldWood", 1f);
             PlenumBatt = Tinted(Destruction.DemolitionMaterials.BattYellow, " (dusty)", new Color(0.37f, 0.31f, 0.17f));
             PlenumMetal = Tinted(Destruction.DemolitionMaterials.Steel, " (dusty)", new Color(0.24f, 0.245f, 0.25f));
             PlenumDuct = Tinted(Destruction.DemolitionMaterials.Steel, " (foil duct)", new Color(0.33f, 0.33f, 0.32f));
+            PhotoMaps(PlenumDuct, "FlexDuct", 1f);
+            if (PlenumDuct) PlenumDuct.SetFloat("_Smoothness", 0.55f);
             TileBack = Tinted(Destruction.DemolitionMaterials.BackPaper, " (tile back)", new Color(0.28f, 0.27f, 0.25f));
             Aluminium = Tinted(Destruction.DemolitionMaterials.Steel, " (aluminium)", new Color(0.7f, 0.7f, 0.68f));
             Small(a);
@@ -291,14 +331,78 @@ namespace Backrooms.Generation
             int w = t.width;
             var rng = new System.Random(seed);
             int tile = w / 4;
+            bool photos = LoadStamps();
             for (int ty = 0; ty < 4; ty++)
             for (int tx = 0; tx < 4; tx++)
             {
                 double kind = rng.NextDouble();
-                if (kind < 0.8) WaterStain(px, w, tx * tile, ty * tile, tile, rng);
+                // Most water stains from the photographed tiles (turned, flipped, scaled, placed at random), some drawn.
+                if (kind < 0.8)
+                {
+                    if (photos && rng.NextDouble() < 0.75) PhotoStain(px, w, tx * tile, ty * tile, tile, rng);
+                    else WaterStain(px, w, tx * tile, ty * tile, tile, rng);
+                }
                 if (kind > 0.55) Mould(px, w, tx * tile, ty * tile, tile, rng);
             }
             return Finish(t, px);
+        }
+
+        // Two stains cut from photos of stained tiles (Resources/Textures/Photo/StainCorner, StainCentre: multiply stamps,
+        // white = no change, 512 px = one tile; Tools/Textures/make_surface_textures.py).
+        static Color32[] s_stampCorner, s_stampCentre;
+        static int s_stampW;
+
+        static bool LoadStamps()
+        {
+            if (s_stampCorner != null && s_stampCentre != null) return true;
+            var a = Resources.Load<Texture2D>("Textures/Photo/StainCorner");
+            var b = Resources.Load<Texture2D>("Textures/Photo/StainCentre");
+            if (!a || !b || a.width != b.width) return false;
+            var ta = Readable(a, " (read)", out s_stampCorner);
+            var tb = Readable(b, " (read)", out s_stampCentre);
+            s_stampW = a.width;
+            if (Application.isPlaying) { Object.Destroy(ta); Object.Destroy(tb); } else { Object.DestroyImmediate(ta); Object.DestroyImmediate(tb); }
+            return true;
+        }
+
+        /// <summary>
+        /// A photographed stain on one tile: the corner one stays in a corner (it ran in from the tile's edge, turned to any
+        /// of the four), the centre one at 55-95 % of the tile anywhere on it; a little fainter or full strength.
+        /// </summary>
+        static void PhotoStain(Color32[] px, int w, int ox, int oy, int tile, System.Random rng)
+        {
+            bool corner = rng.NextDouble() < 0.45;
+            var sp = corner ? s_stampCorner : s_stampCentre;
+            int rot = rng.Next(4);
+            bool flip = rng.NextDouble() < 0.5;
+            float scale = corner ? 0.8f + 0.2f * (float)rng.NextDouble() : 0.55f + 0.4f * (float)rng.NextDouble();
+            float strength = 0.65f + 0.35f * (float)rng.NextDouble();
+            int size = Mathf.Max(8, (int)(tile * scale));
+            int inset = tile / 48;
+            int room = Mathf.Max(0, tile - 2 * inset - size);
+            // The corner stain sits against the corner its own corner turns to; the centre one anywhere.
+            int sx = corner ? ((rot == 1 || rot == 2) ^ flip ? tile - inset - size : inset) : inset + rng.Next(room + 1);
+            int sy = corner ? (rot >= 2 ? tile - inset - size : inset) : inset + rng.Next(room + 1);
+            sx = Mathf.Clamp(sx, 0, tile - size); sy = Mathf.Clamp(sy, 0, tile - size);
+            int W = s_stampW;
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float u = (x + 0.5f) / size, v = (y + 0.5f) / size;
+                if (flip) u = 1f - u;
+                for (int r = 0; r < rot; r++) { float t = u; u = v; v = 1f - t; }
+                // Bilinear in the stamp.
+                float fx = u * W - 0.5f, fy = v * W - 0.5f;
+                int x0 = Mathf.Clamp((int)fx, 0, W - 1), y0 = Mathf.Clamp((int)fy, 0, W - 1);
+                int x1 = Mathf.Min(x0 + 1, W - 1), y1 = Mathf.Min(y0 + 1, W - 1);
+                float ax = Mathf.Clamp01(fx - x0), ay = Mathf.Clamp01(fy - y0);
+                Color32 c00 = sp[y0 * W + x0], c10 = sp[y0 * W + x1], c01 = sp[y1 * W + x0], c11 = sp[y1 * W + x1];
+                float S(byte p00, byte p10, byte p01, byte p11) =>
+                    Mathf.Lerp(Mathf.Lerp(p00, p10, ax), Mathf.Lerp(p01, p11, ax), ay) / 255f;
+                float mr = S(c00.r, c10.r, c01.r, c11.r), mg = S(c00.g, c10.g, c01.g, c11.g), mb = S(c00.b, c10.b, c01.b, c11.b);
+                if (mr > 0.995f && mg > 0.995f && mb > 0.995f) continue;
+                Multiply(px, (oy + sy + y) * w + ox + sx + x, Mathf.Lerp(1f, mr, strength), Mathf.Lerp(1f, mg, strength), Mathf.Lerp(1f, mb, strength));
+            }
         }
 
         static void Multiply(Color32[] px, int i, float r, float g, float b)

@@ -99,7 +99,8 @@ def normal_map(albedo, strength, fine_sigma, tile=True):
 
 
 def drywall():
-    a = load("Drywall_Photo.jpg")
+    # The painted wall photo (2026-10-28; the first drywall photo, Drywall_Photo.jpg, is kept for reference).
+    a = load("PaintedWall_Photo.jpg")
     a = flatten(a, 120)
     tile = seamless(a)
     tile = resample(tile, 512, 512)                                             # one repeat = 0.6 m
@@ -146,7 +147,235 @@ def duct():
     save_rgb(out, os.path.join(RES, "DuctMetal.png"))
 
 
+# ---------------- The second set of photos (2026-10-28) ----------------
+#
+# Each becomes a tileable colour map with the photo's lighting divided out (the cavities and fibres stay: the ambient
+# occlusion is in the colour) and a normal map from its fine relief. Textures the project's materials already reference
+# keep their names and the old mean colour (the materials' tints still give the look); the rest go to
+# Resources/Textures/Photo for the code that builds those materials at runtime. Most are "detail" maps: mean near white,
+# so the material's tint gives the colour as the old generated textures did.
+
+PHOTO = os.path.join(RES, "Photo")
+
+
+def lowpass(a, sigma, mode="wrap"):
+    return np.stack([ndimage.gaussian_filter(a[..., c], sigma, mode=mode) for c in range(a.shape[-1])], -1)
+
+
+def unflatten_tile(tile, sigma):
+    """What broad shading is left in a seamless tile (it would show as a grid when repeated): removed, wrapping."""
+    return tile / np.maximum(lowpass(tile, sigma), 1e-3) * tile.reshape(-1, 3).mean(0)
+
+
+def contrast(a, k):
+    """The variation around the mean scaled by k."""
+    m = a.reshape(-1, 3).mean(0)
+    return m + (a - m) * k
+
+
+def grid(tile, nx, ny, seed, flips=True):
+    """nx x ny copies of a seamless tile, each flipped at random (a flipped seamless tile still meets its neighbours)."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for j in range(ny):
+        row = []
+        for i in range(nx):
+            t = tile
+            if flips and rng.random() < 0.5:
+                t = t[:, ::-1]
+            if flips and rng.random() < 0.5:
+                t = t[::-1, :]
+            row.append(t)
+        rows.append(np.concatenate(row, 1))
+    return np.concatenate(rows, 0)
+
+
+def detail(a, white=0.92, saturation=0.4):
+    """A detail map: the photo's variation around a near-white mean (the material's tint gives the colour)."""
+    return match(a, (white * 255.0,) * 3, saturation)
+
+
+def save_pair(albedo, name, strength, sigma, folder=None):
+    folder = folder or PHOTO
+    os.makedirs(folder, exist_ok=True)
+    save_rgb(albedo, os.path.join(folder, name + "_Albedo.png"), alpha=True)
+    n = normal_map(albedo, strength, sigma)
+    save_rgb(n, os.path.join(folder, name + "_Normal.png"), alpha=True)
+    print("   normal xy std", np.round((n[..., :2] * 255).reshape(-1, 2).std(0), 1))
+
+
+def carpet():
+    """The office carpet (RefCarpet: M_Carpet and M_Ref_Carpet; one texture = 3 m of floor). The photo's pile and specks,
+    made seamless as a 0.75 m patch and laid 4 x 4 with random flips; the old texture's slow patchiness on top (so a big
+    floor does not show the grid), the old mean (the material's tan tint gives the colour)."""
+    a = load("Carpet_Photo.jpg")
+    a = flatten(a, 90)
+    tile = seamless(a)
+    tile = resample(tile, 512, 512)
+    # Only the pile and specks (under about 2 cm): any blotch bigger than that would repeat every 0.75 m as a grid.
+    tile = unflatten_tile(tile, 8)
+    tile = contrast(tile, 0.9)
+    floor = grid(tile, 4, 4, 11)
+    old = load("RefCarpet_Generated.png")                                        # the generated carpet this replaces
+    old = resample(old, 2048, 2048)
+    slow = lowpass(old, 40)
+    floor = floor * (slow / slow.reshape(-1, 3).mean(0))
+    floor = match(floor, (183.0, 183.0, 183.0), saturation=0.35)
+    save_pair(floor, "RefCarpet", 9.0, 0.9, TEX)
+
+
+def cardboard():
+    """Boxes (Cardboard: one texture = 0.5 m of box side). The kraft liner's fibres and specks with the old texture's
+    corrugation ridges kept in the normal map, the old mean colour."""
+    a = load("Kraft_Photo.jpg")
+    a = flatten(a, 150)
+    tile = seamless(a)
+    tile = resample(tile, 1024, 1024)
+    tile = unflatten_tile(tile, 40)
+    tile = match(tile, (143.1, 109.5, 69.3), saturation=1.0)
+    save_rgb(tile, os.path.join(TEX, "Cardboard_Albedo.png"), alpha=True)
+    fine = normal_map(tile, 10.0, 0.8)
+    old = load("Cardboard_Normal_Generated.png")                                 # the generated corrugation normals
+    old = resample(old, 1024, 1024) * 2.0 - 1.0
+    f = fine * 2.0 - 1.0
+    n = np.stack([old[..., 0] + f[..., 0], old[..., 1] + f[..., 1], old[..., 2] * f[..., 2]], -1)
+    n /= np.linalg.norm(n, axis=-1, keepdims=True)
+    save_rgb(n * 0.5 + 0.5, os.path.join(TEX, "Cardboard_Normal.png"), alpha=True)
+
+
+def paper():
+    """The paper back of drywall (and the ceiling tiles' backs): the kraft's fibres as a detail map, about 0.5 m."""
+    a = load("Kraft_Photo.jpg")
+    a = flatten(a, 150)
+    tile = resample(seamless(a), 512, 512)
+    tile = unflatten_tile(tile, 24)
+    save_pair(detail(grid(tile, 2, 2, 3), 0.9, 0.25), "Paper", 8.0, 0.8)
+
+
+def galvanized():
+    """Galvanised steel (spangle and a little rust): a square map for boxes, conduit and hanger wire (1 m, metre UVs),
+    and a tall one for steel studs (whose UVs are 0.5 m across by 2 m along the stud)."""
+    a = load("Galvanized_Photo.jpg")
+    a = flatten(a, 220)
+    tile = resample(seamless(a), 512, 512)                                      # about 0.4 m of sheet
+    tile = unflatten_tile(tile, 48)
+    sq = detail(grid(tile, 2, 2, 5), 0.86, 0.5)
+    save_pair(sq, "Galvanized", 5.0, 1.0)
+    tall = detail(grid(tile, 1, 4, 6), 0.86, 0.5)
+    save_pair(tall, "GalvanizedStud", 5.0, 1.0)
+
+
+def pine():
+    """Pine studs (0.5 m across by 2 m along the grain: the panels' upright UVs) and the sledgehammer's handle: the
+    board photo turned so the grain runs along v, laid four times along it."""
+    a = load("Pine_Photo.jpg")
+    a = flatten(a, 200)
+    a = np.rot90(a)                                                             # grain along the image's height
+    tile = resample(seamless(a), 512, 512)
+    tile = unflatten_tile(tile, 40)
+    # Pale, as a new stud is: the photo's orange latewood lines kept faint (they read as red streaks under the yellow light).
+    save_pair(detail(contrast(grid(tile, 1, 4, 8, flips=True), 0.8), 0.94, 0.35), "Pine", 7.0, 0.9)
+
+
+def end_grain():
+    """A sawn or broken stud's end: growth rings and checks (one texture = about 12 cm)."""
+    a = load("EndGrain_Photo.jpg")
+    a = a[220:1480, 30:1290]                                                     # the end face, without the side
+    a = flatten(a, 260)
+    tile = resample(seamless(a), 512, 512)
+    save_pair(detail(tile, 0.9, 0.6), "EndGrain", 10.0, 1.0)
+
+
+def old_wood():
+    """Old joists and the boards they carry, above the ceiling (metre UVs): weathered, dark, cracked."""
+    a = load("OldWood_Photo.jpg")
+    a = flatten(a, 160)
+    tile = resample(seamless(a), 512, 512)                                      # about 0.5 m
+    tile = unflatten_tile(tile, 36)
+    save_pair(detail(grid(tile, 2, 2, 9), 0.85, 0.7), "OldWood", 8.0, 1.0)
+
+
+def flex_duct():
+    """The foil flex duct above the ceiling (metre UVs, u along the duct): the ridged band of the photo, seamless along
+    the duct, about 0.35 m of it laid three times along 1 m."""
+    a = load("FlexDuct_Photo.jpg")
+    band = a[280:1200, :]
+    band = flatten(band, 160)
+    tile = seamless(band)
+    tile = resample(tile, 384, 256)
+    tile = unflatten_tile(tile, 24)
+    out = grid(tile, 3, 4, 10, flips=False)
+    save_pair(detail(resample(out, 1024, 1024), 0.9, 0.3), "FlexDuct", 6.0, 0.8)
+
+
+def door_veneer():
+    """The doors' oak veneer (build_door.py: 1 UV unit = 0.5 m, grain along U): a clean strip of the photographed door
+    (no knob, grime or scratches), 1.5 m along the grain by 0.5 m across, turned so the grain runs along U. Its own
+    honey colour, at the level the doors had."""
+    a = load("Door_Photo.jpg")
+    strip = a[200:1482, 260:687]                                                # 1.5 m x 0.5 m at about 855 px/m
+    strip = flatten(strip, 220)
+    strip = np.ascontiguousarray(np.transpose(strip, (1, 0, 2)))                # grain (the photo's height) along U
+    tile = seamless(strip)
+    tile = resample(tile, 1536, 512)
+    tile = unflatten_tile(tile, 48)
+    lum = tile @ np.array([0.2126, 0.7152, 0.0722])
+    tile = tile * (100.0 / 255.0) / lum.mean()                                 # the doors' old brightness, the photo's hue
+    save_pair(tile, "DoorVeneer", 4.0, 0.8)
+
+
+def concrete():
+    """Warehouse floors (floor UVs: one texture = 3 m): the trowelled slab, about 1.5 m, laid 2 x 2 with flips."""
+    a = load("Concrete_Photo.jpg")
+    a = flatten(a, 260)
+    tile = resample(seamless(a), 1024, 1024)
+    tile = unflatten_tile(tile, 96)
+    floor = grid(tile, 2, 2, 12)
+    floor = match(floor, (138.0, 132.0, 122.0), saturation=0.8)
+    save_pair(floor, "Concrete", 6.0, 1.0)
+
+
+def stains():
+    """Two water stains from the photographed ceiling tiles, as multiply stamps (white = no change): the stain divided
+    by the clean tile around it, the tile's own pits and specks left out. 512 px = one tile."""
+    for src, name, rim, keep in (("StainedTileCorner_Photo.jpg", "StainCorner", 30, "tl"), ("StainedTileCentre_Photo.jpg", "StainCentre", 30, "")):
+        a = load(src)
+        a = a[rim:-rim, rim:-rim]
+        lum = a @ np.array([0.2126, 0.7152, 0.0722])
+        # The clean tile: a bright percentile of the neighbourhood (stains and pits are darker), smoothed.
+        bg = ndimage.percentile_filter(ndimage.zoom(lum, 0.25, order=1), 85, size=31)
+        bg = ndimage.gaussian_filter(bg, 6)
+        bg = ndimage.zoom(bg, (lum.shape[0] / bg.shape[0], lum.shape[1] / bg.shape[1]), order=1)
+        clean = a.reshape(-1, 3)[lum.reshape(-1) > np.percentile(lum, 60)].mean(0)
+        lum_clean = clean @ np.array([0.2126, 0.7152, 0.0722])
+        ratio = a / (clean * (bg / lum_clean)[..., None])
+        ratio = np.clip(ratio, 0.0, 1.0)
+        ratio = np.stack([ndimage.median_filter(ratio[..., c], 5) for c in range(3)], -1)   # pits out
+        # Only the stain: where the tile is darker over an area (pits are tiny), feathered.
+        dark = 1.0 - ratio @ np.array([0.2126, 0.7152, 0.0722])
+        area = ndimage.gaussian_filter(dark, 18)
+        mask = np.clip((area - 0.025) / 0.04, 0.0, 1.0)
+        mask = ndimage.gaussian_filter(mask, 6)
+        # The photographed tile's own bevel darkens its edges: faded out, except where the stain runs off the tile.
+        h, w = mask.shape
+        ramp = np.clip(np.arange(w) / 24.0, 0.0, 1.0)
+        edge = np.ones_like(mask)
+        if "l" not in keep: edge *= ramp[None, :]
+        edge *= ramp[::-1][None, :]
+        if "t" not in keep: edge *= ramp[:, None]
+        edge *= ramp[::-1][:, None]
+        mask *= edge
+        stamp = 1.0 - (1.0 - ratio) * mask[..., None]
+        stamp = resample(stamp, 512, 512)
+        os.makedirs(PHOTO, exist_ok=True)
+        save_rgb(stamp, os.path.join(PHOTO, name + ".png"))
+
+
 if __name__ == "__main__":
-    drywall()
-    ceiling()
-    duct()
+    import sys
+    only = set(sys.argv[1:])
+    for f in (drywall, ceiling, duct, carpet, cardboard, paper, galvanized, pine, end_grain, old_wood, flex_duct,
+              door_veneer, concrete, stains):
+        if not only or f.__name__ in only:
+            print("--", f.__name__)
+            f()

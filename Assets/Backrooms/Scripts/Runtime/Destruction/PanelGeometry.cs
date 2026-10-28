@@ -13,7 +13,7 @@ namespace Backrooms.Destruction
     /// </summary>
     public static class PanelGeometry
     {
-        public const int Finish0 = 0, Finish1 = 1, Edge = 2, Paper = 3, Base = 4, Frame = 5, Batt = 6, Box = 7, Cable = 8, Pipe = 9, Slots = 10;
+        public const int Finish0 = 0, Finish1 = 1, Edge = 2, Paper = 3, Base = 4, Frame = 5, Batt = 6, Box = 7, Cable = 8, Pipe = 9, EndGrain = 10, Slots = 11;
 
         const float T = WallSpec.T, B = WallSpec.Board, CH = WallSpec.CavityHalf;
 
@@ -21,7 +21,7 @@ namespace Backrooms.Destruction
         {
             m.finish[0], m.finish[1], DemolitionMaterials.GypsumEdge, DemolitionMaterials.BackPaper, m.baseboardMaterial,
             DemolitionMaterials.Frame(m.steel), DemolitionMaterials.Batt(m.steel), DemolitionMaterials.Box(m.steel),
-            DemolitionMaterials.Cable(m.steel), DemolitionMaterials.Copper,
+            DemolitionMaterials.Cable(m.steel), DemolitionMaterials.Copper, DemolitionMaterials.EndGrain,
         };
 
         static float H01(int a, int b, int c, int d) => Dice.Hash(a, b, c, d) * 0.5f + 0.5f;
@@ -261,7 +261,10 @@ namespace Backrooms.Destruction
             else
             {
                 float W = WallSpec.WoodWidth * 0.5f;
-                mb.LocalBox(slot, k, pitch, new Vector3(us - W, span.x, -CH), new Vector3(us + W, span.y, CH), PanelMesh.Upright);
+                // The sides with the grain up them; the two ends (the cut or broken end grain) on their own material.
+                var lo3 = new Vector3(us - W, span.x, -CH); var hi3 = new Vector3(us + W, span.y, CH);
+                mb.LocalBox(slot, k, pitch, lo3, hi3, PanelMesh.Upright, 1 | 2 | 16 | 32);
+                mb.LocalBox(slot == Frame ? EndGrain : slot, k, pitch, lo3, hi3, PanelMesh.Metre, 4 | 8);
                 // Splinters at a broken end: thin slivers standing out of the break.
                 for (int e = 0; e < 2; e++)
                 {

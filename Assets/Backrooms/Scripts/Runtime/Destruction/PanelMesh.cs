@@ -73,10 +73,10 @@ namespace Backrooms.Destruction
         }
 
         /// <summary>A box in a panel's frame (u, v, w), drawn in the world (walls are axis-aligned).</summary>
-        public void LocalBox(int slot, WallKey k, float pitch, Vector3 min, Vector3 max, Projector uv)
+        public void LocalBox(int slot, WallKey k, float pitch, Vector3 min, Vector3 max, Projector uv, int faces = 63)
         {
             Vector3 a = k.ToWorld(min, pitch), b = k.ToWorld(max, pitch);
-            Box(slot, Vector3.Min(a, b), Vector3.Max(a, b), 63, uv);
+            Box(slot, Vector3.Min(a, b), Vector3.Max(a, b), faces, uv);
         }
 
         /// <summary>A round tube (cable, pipe) between two points.</summary>

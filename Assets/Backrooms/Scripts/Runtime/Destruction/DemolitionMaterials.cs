@@ -9,7 +9,9 @@ namespace Backrooms.Destruction
     /// and the existing normal-map keyword): the gypsum core of a broken board edge (paper on both faces), the grey kraft
     /// paper on a board's back, galvanised steel studs and tracks, pine studs and plates, fibreglass batts (yellow in the
     /// offices, pink in the older walls), electrical boxes (steel, or blue plastic on wood studs), cable and copper pipe;
-    /// and the gypsum dust a blow raises (Backrooms/Dust). Textures are made here at first use.
+    /// and the gypsum dust a blow raises (Backrooms/Dust). Textures are made here at first use; the paper, steel and pine
+    /// ones come from photos (Resources/Textures/Photo, Tools/Textures/make_surface_textures.py) when they are there, with
+    /// their own normal maps, the generated ones otherwise.
     /// </summary>
     public static class DemolitionMaterials
     {
@@ -18,16 +20,25 @@ namespace Backrooms.Destruction
         static Material s_dust;
 
         public static Material GypsumEdge => Get("GypsumEdge", () => Make("Wall gypsum edge", GypsumEdgeTexture(), Color.white, 0f, 0.08f, "Chalk", 0.6f));
-        public static Material BackPaper => Get("BackPaper", () => Make("Wall board back", PaperTexture(), new Color(0.66f, 0.62f, 0.55f), 0f, 0.12f, "Cardboard", 0.35f));
+        public static Material BackPaper => Get("BackPaper", () => Make("Wall board back", PaperTexture(), new Color(0.66f, 0.62f, 0.55f), 0f, 0.12f, "Cardboard", 0.35f, "Paper"));
         // Metals are only partly metallic, as the game's own are (racks 0.3-0.35, lamps 0.6): inside a wall there is next to
         // nothing to reflect, and a full metal shows black.
-        public static Material Steel => Get("Steel", () => Make("Galvanised steel", SpangleTexture(), new Color(0.66f, 0.68f, 0.7f), 0.45f, 0.5f, "MetalBrushed", 0.4f));
-        public static Material Wood => Get("Wood", () => Make("Pine stud", GrainTexture(), new Color(0.86f, 0.71f, 0.5f), 0f, 0.22f, "Cardboard", 0.5f));
+        public static Material Steel => Get("Steel", () => Make("Galvanised steel", SpangleTexture(), new Color(0.66f, 0.68f, 0.7f), 0.45f, 0.5f, "MetalBrushed", 0.4f, "Galvanized"));
+        /// <summary>Steel studs and tracks: the same steel, its texture laid out for the studs' upright UVs (0.5 m across, 2 m along).</summary>
+        public static Material SteelStud => Get("SteelStud", () => Make("Galvanised steel stud", SpangleTexture(), new Color(0.66f, 0.68f, 0.7f), 0.45f, 0.5f, "MetalBrushed", 0.4f, "GalvanizedStud"));
+        public static Material Wood => Get("Wood", () => Make("Pine stud", GrainTexture(), new Color(0.86f, 0.71f, 0.5f), 0f, 0.22f, "Cardboard", 0.5f, "Pine"));
+        /// <summary>A wood stud's broken or cut end: end grain (rings and checks), one texture = 12.5 cm (metre UVs).</summary>
+        public static Material EndGrain => Get("EndGrain", () =>
+        {
+            var m = Make("Pine end grain", GrainTexture(), new Color(0.86f, 0.71f, 0.5f), 0f, 0.12f, "Cardboard", 0.6f, "EndGrain");
+            m.SetTextureScale("_BaseMap", new Vector2(8f, 8f));
+            return m;
+        });
         public static Material BattYellow => Get("BattYellow", () => Make("Insulation batt", FluffTexture(), new Color(0.93f, 0.82f, 0.5f), 0f, 0.04f, "Fabric", 0.9f));
         public static Material BattPink => Get("BattPink", () => Make("Insulation batt (pink)", FluffTexture(), new Color(0.95f, 0.64f, 0.66f), 0f, 0.04f, "Fabric", 0.9f));
         public static Material BoxPlastic => Get("BoxPlastic", () => Make("Electrical box", null, new Color(0.14f, 0.3f, 0.7f), 0f, 0.55f, "Plastic", 0.3f));
         public static Material CableYellow => Get("CableYellow", () => Make("NM cable", null, new Color(0.92f, 0.76f, 0.18f), 0f, 0.45f, "Plastic", 0.3f));
-        public static Material CableMetal => Get("CableMetal", () => Make("MC cable", SpangleTexture(), new Color(0.6f, 0.62f, 0.63f), 0.4f, 0.45f, "MetalBrushed", 0.6f));
+        public static Material CableMetal => Get("CableMetal", () => Make("MC cable", SpangleTexture(), new Color(0.6f, 0.62f, 0.63f), 0.4f, 0.45f, "MetalBrushed", 0.6f, "Galvanized"));
         public static Material Copper => Get("Copper", () => Make("Copper pipe", null, new Color(0.78f, 0.46f, 0.3f), 0.5f, 0.62f, "MetalBrushed", 0.3f));
         // The sledgehammer: a hickory handle, a black-painted head worn bright at its faces and edges.
         public static Material HammerHandle => Get("HammerHandle", () => Make("Sledgehammer handle", GrainTexture(), new Color(0.74f, 0.55f, 0.36f), 0f, 0.42f, "Cardboard", 0.25f));
@@ -48,7 +59,7 @@ namespace Backrooms.Destruction
 
         public static Material Batt(bool steel) => steel ? BattYellow : BattPink;
         public static Material Box(bool steel) => steel ? Steel : BoxPlastic;
-        public static Material Frame(bool steel) => steel ? Steel : Wood;
+        public static Material Frame(bool steel) => steel ? SteelStud : Wood;
         public static Material Cable(bool steel) => steel ? CableMetal : CableYellow;
 
         static Material Get(string key, System.Func<Material> make)
@@ -59,15 +70,28 @@ namespace Backrooms.Destruction
             return m;
         }
 
-        static Material Make(string name, Texture2D albedo, Color tint, float metal, float smooth, string detail, float bump)
+        /// <summary>A photo texture pair (Resources/Textures/Photo/name_Albedo, name_Normal), or nulls.</summary>
+        public static Texture2D Photo(string name, bool normal = false) =>
+            name == null ? null : Resources.Load<Texture2D>("Textures/Photo/" + name + (normal ? "_Normal" : "_Albedo"));
+
+        static Material Make(string name, Texture2D albedo, Color tint, float metal, float smooth, string detail, float bump, string photo = null)
         {
+            // A photo's own maps (its relief at its own scale) instead of the generated texture and the shared detail normals.
+            var pa = Photo(photo);
+            if (pa)
+            {
+                if (albedo) { if (Application.isPlaying) Object.Destroy(albedo); else Object.DestroyImmediate(albedo); }
+                albedo = pa;
+                var pn = Photo(photo, true);
+                if (pn) { detail = null; bump = Mathf.Max(bump, 0.8f); }
+            }
             if (!s_lit) s_lit = Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit");
             var m = new Material(s_lit) { name = name, hideFlags = HideFlags.DontSave };
             m.SetColor("_BaseColor", tint);
             if (m.HasProperty("_Color")) m.SetColor("_Color", tint);
             if (albedo) { m.SetTexture("_BaseMap", albedo); if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", albedo); }
             m.SetFloat("_Metallic", metal); m.SetFloat("_Smoothness", smooth);
-            var tex = Resources.Load<Texture2D>("Textures/Generated/Detail_" + detail + "_Normal");
+            var tex = detail != null ? Resources.Load<Texture2D>("Textures/Generated/Detail_" + detail + "_Normal") : Photo(photo, true);
             if (tex && m.HasProperty("_BumpMap"))
             {
                 m.SetTexture("_BumpMap", tex); m.SetFloat("_BumpScale", bump);
