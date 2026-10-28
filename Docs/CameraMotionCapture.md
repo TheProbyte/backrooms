@@ -7,7 +7,8 @@ matched to what the player is doing.
 ## Status
 
 - **Walking forward: in the game (2026-10-28).** Two takes (`Tools/CameraMotion/Recordings/walk_normal_1.zip`, `_2.zip`;
-  a Pixel 10 Pro XL in Sensor Logger 1.68, rubber-banded to a 0.98 kg Bible: about 1.2 kg in the hand, like a camcorder).
+  a Pixel 10 Pro XL in Sensor Logger 1.68, rubber-banded to a 0.98 kg Bible: about 1.2 kg in the hand, like a camcorder;
+  held in the left hand, as the game's camcorder is, so nothing is mirrored. Keep using the left hand for new takes).
   98 steps a minute; four straight stretches, 34 strides (42 s) once the pick-up, the turn-around and the set-down are cut
   out. Camera menu > HANDHELD > Recorded walk (on; off is the generated bob). See Camcorder.md, "Recorded walk".
 - Everything else (standing, looking, running, crouching, stairs, strafing, backing up, a startle) still uses the generated
