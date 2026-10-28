@@ -137,6 +137,34 @@ namespace Backrooms
         bool _wasGrounded = true;
         float _airMinVy, _hopCarry;
         float _zoomVel;
+
+        // ---------------- Momentum ----------------
+        [Header("Momentum")]
+        [Tooltip("Getting up to speed walking: half-life of the gap (s). A critically damped spring, so speed builds and settles without a corner.")]
+        public float accelHalfLife = 0.05f;
+        [Tooltip("Getting up to a run (s): a little heavier.")] public float runAccelHalfLife = 0.08f;
+        [Tooltip("Coming to a stop, or reversing (s): the short slide of a body carrying on.")] public float stopHalfLife = 0.07f;
+        [Tooltip("In the air, what the keys can still change (s): little.")] public float airHalfLife = 0.45f;
+        [Tooltip("A jump still works this long after walking off an edge (s).")] public float coyoteTime = 0.12f;
+        [Tooltip("A jump pressed this long before landing happens on landing (s).")] public float jumpBuffer = 0.15f;
+        [Tooltip("How far the view rolls into a turn at full sideways acceleration (degrees).")] public float turnRoll = 1.1f;
+        Vector3 _moveAccel;
+        float _lastGrounded = -10f, _jumpPressedAt = -10f;
+        bool _jumpHeldInAir;
+        Vector3 _lastPlanar;
+        float _turnLean, _turnLeanVel;
+        float _bumpCooldown;
+        /// <summary>Leaning into a turn, -1..1 (+: the body tips to its right, as when turning right).</summary>
+        public float TurnLean => _turnLean;
+        /// <summary>Walked into something hard enough to feel it: the shove (world, m/s) and where (the contact point).</summary>
+        public event System.Action<Vector3, Vector3> Bumped;
+
+        /// <summary>A shove that moves the feet a little (never knocks you over): added to the walking speed, at most 1 m/s.</summary>
+        public void Push(Vector3 v)
+        {
+            v.y = 0f;
+            PlanarVelocity += Vector3.ClampMagnitude(v, 1f);
+        }
         readonly Collider[] _overlap = new Collider[8];
 
         void Awake()
@@ -219,7 +247,7 @@ namespace Backrooms
 
         void ApplyPivotRotation()
         {
-            if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, -_leanAmount * leanRoll);
+            if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, -_leanAmount * leanRoll - _turnLean * turnRoll);
         }
 
         // ---------------- Leash ----------------
@@ -334,11 +362,26 @@ namespace Backrooms
             targetSpeed *= moveScale;
             Vector3 target = (transform.forward * input.y + transform.right * input.x) * targetSpeed;
 
-            float rate = input.sqrMagnitude > 0.001f ? acceleration : deceleration;
+            // Momentum: the speed follows the keys through a critically damped spring (it builds up and settles, keeps
+            // its pace through a change of direction, and a stop slides a little); slower to change running, and in the
+            // air hardly at all.
+            bool pushing = input.sqrMagnitude > 0.001f;
+            bool reversing = pushing && Vector3.Dot(PlanarVelocity, target) < 0f;
+            float half = !pushing || reversing ? stopHalfLife : IsRunning ? runAccelHalfLife : accelHalfLife;
             // After dropping into a crouch or crawl from a run the body carries forward for a moment.
-            if (_hopCarry > 0f) { _hopCarry -= Time.deltaTime; rate *= 0.25f; }
-            if (!_controller.isGrounded) rate *= 0.3f;                    // little control in the air
-            PlanarVelocity = Vector3.MoveTowards(PlanarVelocity, target, rate * Mathf.Max(targetSpeed, 1f) * Time.deltaTime);
+            if (_hopCarry > 0f) { _hopCarry -= Time.deltaTime; half *= 4f; }
+            if (!_controller.isGrounded) half = airHalfLife;
+            PlanarVelocity = Springs.Damper(PlanarVelocity, ref _moveAccel, target, half, Time.deltaTime);
+            _moveAccel.y = 0f;
+            // Leaning into a turn: the sideways part of the acceleration (as a body tips into a curve).
+            {
+                float dt = Mathf.Max(Time.deltaTime, 1e-4f);
+                Vector3 acc = (PlanarVelocity - _lastPlanar) / dt;
+                _lastPlanar = PlanarVelocity;
+                float side = Vector3.Dot(acc, transform.right);
+                float want = _controller.isGrounded ? Mathf.Clamp(side / 9f, -1f, 1f) * Mathf.Clamp01(PlanarVelocity.magnitude / 1.2f) : 0f;
+                _turnLean = Springs.Damper(_turnLean, ref _turnLeanVel, want, 0.12f, Time.deltaTime);
+            }
 
             // Held back by a taut cord: no further out than it lets the hand go (pulled back in a little if past).
             LeashStrain = 0f;
@@ -373,6 +416,7 @@ namespace Backrooms
             {
                 Vector3 actual = _controller.velocity; actual.y = 0f;
                 PlanarVelocity = Vector3.ClampMagnitude(PlanarVelocity, actual.magnitude + 0.05f);
+                _moveAccel = Vector3.ClampMagnitude(_moveAccel, 2f);
             }
             if ((flags & CollisionFlags.Above) != 0 && _verticalVelocity > 0f) _verticalVelocity = 0f;
 
@@ -385,8 +429,20 @@ namespace Backrooms
                 LandedThisFrame = -_airMinVy;
                 _eyeVel -= Mathf.Min(2.5f, -_airMinVy * 0.45f);
             }
-            if (grounded) _airMinVy = 0f;
+            if (grounded) { _airMinVy = 0f; _lastGrounded = Time.time; }
             _wasGrounded = grounded;
+            _bumpCooldown -= Time.deltaTime;
+        }
+
+        /// <summary>Walking into a wall, a door, furniture at speed: felt (the body reacts, FirstPersonBody.Bump).</summary>
+        void OnControllerColliderHit(ControllerColliderHit hit)
+        {
+            if (_bumpCooldown > 0f || Mathf.Abs(hit.normal.y) > 0.5f) return;
+            Vector3 n = hit.normal; n.y = 0f; n.Normalize();
+            float into = -Vector3.Dot(_lastPlanar, n);
+            if (into < 1.1f) return;
+            _bumpCooldown = 0.45f;
+            Bumped?.Invoke(n * into, hit.point);
         }
 
         readonly RaycastHit[] _groundHits = new RaycastHit[8];
@@ -498,8 +554,19 @@ namespace Backrooms
 
         void UpdateJump(Keyboard kb, bool hasFocus)
         {
-            bool grounded = _controller.isGrounded;
-            if (hasFocus && grounded && CurrentStance != Stance.Crawl && kb.spaceKey.wasPressedThisFrame) _chargeT = Time.time;
+            // Forgiving: a jump still works a moment after walking off an edge (coyote time), and one pressed just before
+            // landing happens on landing (buffered: held, it charges from the landing; let go, it is a hop).
+            bool grounded = _controller.isGrounded || (Time.time - _lastGrounded < coyoteTime && _verticalVelocity <= 0f);
+            bool pressed = hasFocus && kb.spaceKey.wasPressedThisFrame;
+            if (pressed && !grounded) { _jumpPressedAt = Time.time; _jumpHeldInAir = true; }
+            if (_jumpHeldInAir && (!hasFocus || !kb.spaceKey.isPressed)) _jumpHeldInAir = false;
+            if (grounded && _chargeT < 0f && _launchAt < 0f && Time.time - _jumpPressedAt < jumpBuffer && CurrentStance != Stance.Crawl)
+            {
+                _jumpPressedAt = -10f;
+                if (_jumpHeldInAir) _chargeT = Time.time;
+                else { _launchHeight = hopHeight; _launchAt = Time.time + 0.05f; }
+            }
+            if (hasFocus && grounded && CurrentStance != Stance.Crawl && pressed) _chargeT = Time.time;
             if (_chargeT >= 0f && (!hasFocus || kb.spaceKey.wasReleasedThisFrame))
             {
                 float held = Time.time - _chargeT;
@@ -515,6 +582,7 @@ namespace Backrooms
                 _launchAt = -1f;
                 if (grounded)
                 {
+                    _lastGrounded = -10f;                  // no second jump off the same coyote moment
                     _verticalVelocity = Mathf.Sqrt(2f * -gravity * _launchHeight);
                     _eyeVel += 0.6f;                   // legs extend
                 }

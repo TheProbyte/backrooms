@@ -13,7 +13,7 @@ namespace Backrooms.Interaction
     {
         public WorldItem HeldItem { get; private set; }
         Quaternion _swayRot;
-        Vector3 _swayPos;
+        Vector3 _swayPos, _swayVel;
         bool _swayInit;
         float _bobPhase;
         [Header("Items")]
@@ -412,13 +412,20 @@ namespace Backrooms.Interaction
             // The item is in the hand, not glued to the lens: it trails the view's turns and the body's moves a little and
             // bobs with the steps, and the hand (which grips it) goes with it.
             float dt = Time.deltaTime;
-            if (!_swayInit) { _swayRot = pivot.rotation; _swayPos = pivot.position; _swayInit = true; }
+            if (!_swayInit) { _swayRot = pivot.rotation; _swayPos = pivot.position; _swayVel = Vector3.zero; _swayInit = true; }
             // Heavier things lag the view's turns more.
             float lag = 0.075f * (1f + Mathf.Clamp(item.Body ? item.Body.mass : 0.3f, 0f, 2f) * 0.6f);
             _swayRot = Quaternion.Slerp(_swayRot, pivot.rotation, 1f - Mathf.Exp(-dt / lag));
             if (Quaternion.Angle(_swayRot, pivot.rotation) > 25f) _swayRot = Quaternion.RotateTowards(pivot.rotation, _swayRot, 25f);
-            _swayPos = Vector3.Lerp(_swayPos, pivot.position, 1f - Mathf.Exp(-dt / 0.045f));
-            _swayPos = pivot.position + Vector3.ClampMagnitude(_swayPos - pivot.position, 0.06f);
+            // The load swings on the arm as on a pendulum (an under-damped spring): it trails a start, swings past a stop
+            // and settles; heavier things swing slower and further.
+            float mass = Mathf.Clamp(item.Body ? item.Body.mass : 0.3f, 0.05f, 3f);
+            _swayPos = Springs.Oscillator(_swayPos, ref _swayVel, pivot.position, Mathf.Lerp(4.2f, 2.6f, mass / 3f), Mathf.Lerp(0.55f, 0.38f, mass / 3f), dt);
+            if ((_swayPos - pivot.position).sqrMagnitude > 0.07f * 0.07f)
+            {
+                _swayPos = pivot.position + Vector3.ClampMagnitude(_swayPos - pivot.position, 0.07f);
+                _swayVel *= 0.5f;
+            }
             float speed = _player.PlanarVelocity.magnitude;
             _bobPhase += dt * speed * 5.2f;
             Vector3 bob = new Vector3(Mathf.Sin(_bobPhase) * 0.006f, Mathf.Abs(Mathf.Cos(_bobPhase)) * 0.01f - 0.005f, 0f) * Mathf.Clamp01(speed / 1.5f);

@@ -63,6 +63,7 @@ MATS = {
     "Pants": mat("Pants", (0.025, 0.025, 0.03), 0.8),
     "Shoes": mat("Shoes", (0.03, 0.03, 0.035), 0.6),
     "Sole": mat("Sole", (0.06, 0.06, 0.06), 0.7),
+    "Hair": mat("Hair", (0.07, 0.055, 0.045), 0.7),
 }
 
 # ======================================================================================================
@@ -1171,6 +1172,51 @@ def body_weights(kind):
     return fn
 
 
+# ------------------------------------------------------------------------------------------------------
+# Head and neck: a separate skinned mesh on the body's rig (Neck, Head bones), so the game can draw it into the
+# shadows only (the camera is in it). Eyes at about 1.62 m; frame as the body (z up, front -y).
+# ------------------------------------------------------------------------------------------------------
+SKULL_C, SKULL_R = (0.0, 0.015, 1.635), (0.076, 0.097, 0.100)
+
+
+def head_sdf(P):
+    d = ellipsoid(P, SKULL_C, SKULL_R)
+    d = smin(d, ellipsoid(P, (0.0, -0.035, 1.585), (0.060, 0.066, 0.075)), 0.03)            # face and jaw
+    d = smin(d, ellipsoid(P, (0.0, -0.074, 1.532), (0.027, 0.022, 0.022)), 0.015)           # chin
+    d = smin(d, round_cone(P, (0.0, -0.088, 1.617), (0.0, -0.103, 1.590), 0.008, 0.012), 0.012)   # nose
+    for sx in (-1, 1):
+        d = smin(d, ellipsoid(P, (sx * 0.078, 0.020, 1.610), (0.012, 0.028, 0.034)), 0.008)      # ears
+        d = smax(d, -ellipsoid(P, (sx * 0.031, -0.090, 1.624), (0.015, 0.008, 0.008)), 0.012)   # eye sockets
+        d = smin(d, ellipsoid(P, (sx * 0.030, -0.074, 1.646), (0.022, 0.012, 0.007)), 0.01)      # brows
+    d = smin(d, capsule(P, (0.0, 0.014, 1.40), (0.0, 0.010, 1.56), 0.045), 0.03)             # neck
+    return d
+
+
+def hair_sdf(P):
+    x, y, z = P[:, 0], P[:, 1], P[:, 2]
+    d = ellipsoid(P, (SKULL_C[0], SKULL_C[1] + 0.004, SKULL_C[2] + 0.004), (SKULL_R[0] + 0.009, SKULL_R[1] + 0.012, SKULL_R[2] + 0.013))
+    line = 1.585 + 0.08 * sstep(0.03, -0.085, y) + 0.02 * sstep(0.065, 0.085, np.abs(x)) * sstep(-0.02, 0.04, y)   # hairline: high at the front, low behind, over the ears' tops
+    d = smax(d, line - z, 0.01)
+    d = smax(d, -(ellipsoid(P, SKULL_C, SKULL_R) + 0.0015), 0.002)                        # a shell, not a solid
+    return d
+
+
+def head_weights(V):
+    z = V[:, 2]
+    t = sstep(1.47, 1.53, z)
+    n = sstep(1.42, 1.47, z)
+    return {"Torso": 1 - n, "Neck": n * (1 - t), "Head": t}
+
+
+def build_head():
+    hb = MeshBuilder()
+    head = sdf_shell("Head", head_sdf, (-0.1, -0.13, 1.39), (0.1, 0.125, 1.75), 0.0022, 3800, "Skin")
+    hb.add_object(head, head_weights)
+    hair = sdf_shell("Hair", hair_sdf, (-0.1, -0.12, 1.58), (0.1, 0.13, 1.76), 0.0022, 1600, "Hair")
+    hb.add_object(hair, lambda V: {"Head": 1.0})
+    return hb.build("HeadMesh")
+
+
 def build_body():
     log("BODY")
     mb = MeshBuilder()
@@ -1187,15 +1233,6 @@ def build_body():
         so = sdf_shell("Sole" + side, lambda P, fx=fx: sole_sdf(P, fx), (fx - 0.065, -0.235, -0.006), (fx + 0.065, 0.11, 0.04),
                        0.0018, 700, "Sole")
         mb.add_object(so, body_weights("foot" + side))
-    # neck stub (hidden by the camera, closes the collar)
-    bm = bmesh.new()
-    bmesh.ops.create_uvsphere(bm, u_segments=16, v_segments=8, radius=1.0)
-    for v in bm.verts:
-        v.co = Vector((v.co.x * 0.056, NECK[1] + v.co.y * 0.052, 1.45 + v.co.z * 0.06))
-    V = np.array([v.co[:] for v in bm.verts])
-    F = [tuple(v.index for v in f.verts) for f in bm.faces]
-    bm.free()
-    mb.add(V, F, "Skin", {"Torso": 1.0})
     # buttons down the placket
     for zb in (1.07, 1.16, 1.25, 1.34, 1.43):
         o = np.array([[0.0, -0.2, zb]])
@@ -1238,15 +1275,19 @@ def build_body():
     bpy.data.meshes.remove(me)
     mesh = mb.build("BodyMesh")
     bones = [("Hips", (0, 0, 0.93), (0, 0, 1.05), None, False, (0, -1, 0)),
-             ("Torso", (0, 0, 0.93), (0, 0, 1.45), "Hips", False, (0, -1, 0))]
+             ("Torso", (0, 0, 0.93), (0, 0, 1.45), "Hips", False, (0, -1, 0)),
+             ("Neck", (0, 0.012, 1.44), (0, 0.006, 1.56), "Torso", False, (0, -1, 0)),
+             ("Head", (0, 0.006, 1.56), (0, 0.006, 1.74), "Neck", True, (0, -1, 0))]
     for side, x in (("L", -0.1), ("R", 0.1)):
         bones += [(f"Thigh{side}", (x, 0, 0.93), (x, 0, 0.50), "Hips", False, (0, -1, 0)),
                   (f"Shin{side}", (x, 0, 0.50), (x, 0, 0.08), f"Thigh{side}", True, (0, -1, 0)),
                   (f"Foot{side}", (x, 0, 0.08), (x, -0.13, 0.03), f"Shin{side}", True, (0, 0, 1))]
+    head = build_head()
     rig = build_armature("PlayerBody", bones)
     skin_to(mesh, rig)
-    log("BODY tris", tri_count(mesh))
-    return rig, [rig, mesh]
+    skin_to(head, rig)
+    log("BODY tris", tri_count(mesh), "HEAD tris", tri_count(head))
+    return rig, [rig, mesh, head]
 
 
 if BUILD_ARM:

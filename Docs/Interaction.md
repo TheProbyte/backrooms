@@ -191,6 +191,40 @@ so `FirstPersonBody`'s IK and finger curl drive them unchanged. Skinned renderer
 (`updateWhenOffscreen`). The thumb folds across the palm on its own axis. The older rigid-segment builder
 `make_player.py` is kept for reference.
 
+Since 2026-10-27 the body also has a head and neck (`Neck`, `Head` bones; a separate skinned `HeadMesh`: skin with a
+face, ears and short hair, eyes at about 1.62 m), drawn into the shadows only (the camera is inside it), and the left
+arm (`PlayerArm.fbx`) holds the camcorder to the eye, also shadow-only, with a simple camcorder of boxes. Rebuild the body
+alone with `--no-arm`.
+
+## Body and movement (2026-10-27)
+
+`Interaction/FirstPersonBody.Full.cs`, `Motion/Springs.cs`, `CamcorderPlayerController` (Momentum).
+
+- **Springs** (`Springs.Damper`, critically damped, set by half-life; `Springs.Oscillator`, a damped pendulum): changes
+  of pose keep their velocity (inertialization), so a crouch, a landing, a turn or a stop blends like a body.
+- **Pose stack**: each limb is taken by the highest layer that wants it. Body (the legs' stepping; the right arm hanging
+  and swinging opposite its leg as a pendulum), IK (the free right hand laid flat on a wall or round a rail: when leaning
+  round a corner, walking slowly right beside a wall now and then, or after standing close to one), Override (the hand on
+  what it holds, PropGrabber). The arm is always there now (the shadow has it); in first person it hangs out of view.
+- **Feet**: planted and stepping as before, now: never in each other (a swinging foot goes round the standing one, at
+  least 12 cm apart centre to centre; two crowded feet after a turn make one step out), landings put on a stair tread
+  whole (`OnTread`: heel and toe clear of its edges), the hips coming down so both legs reach (pelvis offset), a gait for
+  the direction (shorter steps sideways and backward, a wider stance sideways, toes first going backward), and the hips
+  lagging the view's turns a little while the torso and head follow it.
+- **Momentum**: speed follows the keys through a damper (half-lives: walk 0.05 s, run 0.08 s, stop or reverse 0.07 s,
+  air 0.45 s): measured 95 % of walking speed in 0.17 s and a 12 cm slide over 0.32 s when you let go. The view rolls
+  about 1 degree into a turn (`turnRoll`) and the torso leans with it. Coyote time 0.12 s, jump buffer 0.15 s (held, it
+  charges from the landing; let go, it is a hop).
+- **Knocks** (`FirstPersonBody.Bump`): walking into something at over 1.1 m/s (`CamcorderPlayerController.Bumped`) or
+  a hard landing shoves the struck part (torso high, hips and a catching step low) through pendulum springs that pull
+  it back, with a jolt of the view and a small slide. Never a fall (no ragdoll, by request).
+- **Carried things** swing on the arm as pendulums (`PropGrabber`, by weight: lighter faster and stiffer).
+
+Checked in play: the feet stayed at least 12 cm apart strafing, turning on the spot and walking backward (16 steps); on a
+test staircase every step up landed mid-tread (13-17 cm from either edge); walking into a wall shoved the torso about
+4 degrees, back within about 0.4 s. Outside views (shadow-only parts shown for the picture): standing with the camcorder
+to the eye, the right arm hanging.
+
 ## Testing
 `Debug/GrabProbe.cs`: in play mode, add it and call `Run()`. For each kind it finds a prop (travelling to
 one if needed), grabs, lifts, drags, swings and shoves it with screenshots, then walks away until the
