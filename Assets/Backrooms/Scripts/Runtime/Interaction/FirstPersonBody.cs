@@ -317,7 +317,8 @@ namespace Backrooms.Interaction
             {
                 var held = _grab.HeldItem;
                 var it = held.transform;
-                Quaternion turn = pose.hand * Quaternion.Inverse(gripHand);
+                // (Turned at most 20 degrees onto the hand: a sledgehammer's head swept sideways up to 94 mid-swing.)
+                Quaternion turn = Quaternion.RotateTowards(Quaternion.identity, pose.hand * Quaternion.Inverse(gripHand), 20f);
                 it.SetPositionAndRotation(palmNow + turn * (it.position - wanted), turn * it.rotation);
                 // No part of the palm in it: the item is pushed out along its surface where the palm (its middle, heel and
                 // the base of the fingers, either side) is inside (a sledgehammer's handle sat 10.6 mm in the palm, a tape
@@ -329,6 +330,15 @@ namespace Backrooms.Interaction
                     {
                         // (Either side the palm bulges: the ball of the thumb and the little finger's side, 5 mm proud.)
                         Vector3 q = palmNow + hf * (a * 0.035f) + hr * (b * 0.03f) - hu * 0.005f;
+                        float d = held.ContactDistanceWorld(q);
+                        if (d < worstIn) { worstIn = d; deepAt = q; }
+                    }
+                // And the bases of the fingers, on the palm's side (a hammer's handle was 10.6 mm in at the ring finger's).
+                if (_fingers != null)
+                    foreach (var fg in _fingers)
+                    {
+                        if (fg.name == "Thumb" || fg.joints.Count == 0) continue;
+                        Vector3 q = fg.joints[0].t.position - hu * 0.012f;
                         float d = held.ContactDistanceWorld(q);
                         if (d < worstIn) { worstIn = d; deepAt = q; }
                     }
@@ -602,7 +612,8 @@ namespace Backrooms.Interaction
         }
         readonly float[] _closeSaved = new float[4];
         readonly float[] _thumbTry = new float[4];
-        float _extScale = 1f;
+        float _extScale = 1f, _thumbPrevOpp;
+        bool _thumbPrevSet;
 
         /// <summary>
         /// The thumb round what the hand holds: for turns across the palm from opened out to well across, each joint bends in
@@ -620,16 +631,16 @@ namespace Backrooms.Interaction
             bool found = false;
             float far = Mathf.Max(oppT, 25f) + 20f;
             const int Steps = 8;
-            for (int c = 0; c <= 6; c++)
+            for (int c = 0; c <= 8; c++)
             {
-                float o = Mathf.Lerp(open, far, c / 6f);
+                float o = Mathf.Lerp(open, far, c / 8f);
                 f.oppDeg = o;
                 for (int i = 0; i < n; i++) f.a[i] = 0f;
                 Pose(f);
                 if (ClearanceFrom(f, 0, contact) < 0f) continue;
                 for (int i = 0; i < n; i++)
                 {
-                    float target = Mathf.Max(want, 1f) * 62f * f.joints[i].w * 1.3f, done = 0f;
+                    float target = Mathf.Max(want, 1f) * 62f * f.joints[i].w * 1.6f, done = 0f;
                     for (int s = 1; s <= Steps; s++)
                     {
                         float k = (float)s / Steps;
@@ -651,7 +662,8 @@ namespace Backrooms.Interaction
                 var last = f.joints[n - 1].t;
                 float gap = contact(last.TransformPoint(f.tipLocal)) - FingerRadius;
                 // Nearest the surface (in mm), then nearest the grip's turn (10 degrees count as 2 mm).
-                float score = Mathf.Max(gap, 0f) + Mathf.Abs(o - oppT) * 0.0002f;
+                // (and, holding on, the turn it had: a spray can's thumb took a different one from run to run)
+                float score = Mathf.Max(gap, 0f) + Mathf.Abs(o - oppT) * 0.0002f + (_thumbPrevSet ? Mathf.Abs(o - _thumbPrevOpp) * 0.0001f : 0f);
                 if (score < bestScore)
                 {
                     bestScore = score; found = true; goalOpp = o;
@@ -659,6 +671,7 @@ namespace Backrooms.Interaction
                 }
             }
             if (!found) return false;
+            _thumbPrevOpp = goalOpp; _thumbPrevSet = true;
             for (int i = 0; i < n; i++) goal[i] = _thumbTry[i];
             return true;
         }

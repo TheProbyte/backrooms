@@ -105,6 +105,8 @@ namespace Backrooms.Interaction
                     // hand chasing a lever swinging away at 200 degrees a second was left up to 0.4 m behind it.)
                     if (_quickLever && (_quickPull || _quickT < 0.12f)) _quickPoint = _quickDoor.GripPoint(_quickSide, 1f);
                     else _quickPoint += transform.forward * Time.deltaTime * 0.6f;
+                    // With the door to the end of the arm's reach, no further (it was left up to 0.3 m behind the door).
+                    _quickPoint = ReachShoulder + Vector3.ClampMagnitude(_quickPoint - ReachShoulder, ArmReach);
                     if (_quickT > (_quickLever ? 0.22f : 0.12f)) { _quick = QuickPhase.Back; _quickT = 0f; }
                     break;
                 case QuickPhase.Back:

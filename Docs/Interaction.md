@@ -423,6 +423,10 @@ Measured (reviewer's probe `GaitProbe.MeasureR2`): quick door push closest 44 ->
 frames over 20 mm (was 31), no re-grab, elbow 4-43 degrees; thumb tips chicken 23 -> 11 mm, lamp 13 -> 9, plug 9, coil
 12, tape 9, spray can 12-15, chalk 16, sledgehammer 18; lamp little finger -30 -> 44 degrees at the knuckle; rail 777 ->
 86 skin vertices inside; walking, running, crawling and a throw's wind-up with an item: palm within 2 mm.
+Round 3b: a held item is turned at most 20 degrees onto the solved hand (the hammer's head swept sideways up to 94
+mid-swing); the palm push-out also checks the finger bases; the thumb tries 9 turns and bends further, and keeps the
+turn it had among near-equals (chalk thumb tip 16 -> 13 mm, spray can 12-15 -> 10.5, chicken 9.5); a pushed lever's
+follow-through stops at the end of the arm's reach.
 Open after round 3: the sledgehammer's swing is not re-planned (the item may still turn up to ~90 degrees onto the
 palm mid-swing) and its carry twist is -104 (limit 95), palm still 10 mm in at the ring finger's base; the chicken's
 twist 97; the coil's contact ring is fatter than its strands; the extension cord's coil still plugs in from the hand
