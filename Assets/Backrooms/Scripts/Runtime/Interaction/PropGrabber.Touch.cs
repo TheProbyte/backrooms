@@ -31,9 +31,9 @@ namespace Backrooms.Interaction
             if (_touching)
             {
                 _touchT += dt;
-                Vector3 toP = _touchPoint - Shoulder;
+                Vector3 toP = _touchPoint - ReachShoulder;
                 bool behind = Vector3.Dot(toP, transform.forward) < -0.08f;
-                if (!free || _touchT > _touchHold || behind || toP.magnitude > reach + 0.12f || _player.PlanarVelocity.magnitude < 0.15f)
+                if (!free || _touchT > _touchHold || behind || toP.magnitude > ArmReach + 0.05f || _player.PlanarVelocity.magnitude < 0.15f)
                 {
                     _touching = false;
                     _touchCooldown = Time.time + 1.2f;
@@ -53,7 +53,9 @@ namespace Backrooms.Interaction
             _touchHold = Random.Range(0.45f, 0.8f);
             _touchPoint = p; _touchNormal = n;
             _touchFingers = Vector3.ProjectOnPlane(Vector3.up + transform.forward * 0.45f, n).normalized;
-            _touchColliders = new[] { col };
+            var moved = ReachableTouch();
+            // (The fingers close on the face the hand ended on: moved along it, it may be another collider's.)
+            _touchColliders = moved && moved != col ? new[] { col, moved } : new[] { col };
             if (!_touchFx)
             {
                 var go = new GameObject("HandTouch");
@@ -92,13 +94,48 @@ namespace Backrooms.Interaction
                     p -= along * 0.05f;
                     p.y = transform.position.y + Random.Range(1.0f, 1.22f);
                     if (Vector3.Dot(p - origin, fwd) < 0.2f) return false;
-                    if ((p - Shoulder).magnitude > reach + 0.05f) return false;
+                    if ((p - ReachShoulder).magnitude > ArmReach) return false;
                     point = p + prev.normal * 0.004f; normal = prev.normal; col = prev.collider;
                     return true;
                 }
                 prevDist = hit ? d : -1f; prev = h; prevDir = dir;
             }
             return false;
+        }
+
+        /// <summary>
+        /// The touch made one an arm can do: the point moved along the face away from the edge (outward, to the hand's side)
+        /// until the forearm meets the face at no more than about 50 degrees from its normal, where the face goes that far,
+        /// and the fingers carrying on the forearm's line across the face, tipped up. (A palm flat on a face straight ahead,
+        /// fingers up, needs the wrist bent back 90 degrees: the hand ended 104 degrees off and the fingers in the jamb.)
+        /// </summary>
+        Collider ReachableTouch()
+        {
+            Collider moved = null;
+            Vector3 S = ReachShoulder, n = _touchNormal;
+            float dFace = Vector3.Dot(S - _touchPoint, n);
+            Vector3 foot = S - n * dFace;
+            Vector3 outward = Vector3.ProjectOnPlane(transform.right * Side, n); outward.y = 0f;
+            if (dFace > 0.05f && outward.sqrMagnitude > 0.04f)
+            {
+                outward.Normalize();
+                float now = Vector3.Dot(_touchPoint - foot, outward), want = dFace * 0.85f;
+                if (now < want)
+                {
+                    Vector3 q = _touchPoint + outward * (want - now);
+                    if ((q - S).magnitude < ArmReach * 0.95f && Physics.Raycast(q + n * 0.1f, -n, out var h, 0.2f, ~0, QueryTriggerInteraction.Ignore)
+                        && Vector3.Dot(h.normal, n) > 0.9f && Mathf.Abs(Vector3.Dot(h.point - _touchPoint, n)) < 0.02f)
+                    {
+                        _touchPoint = h.point + n * 0.004f;
+                        moved = h.collider;
+                    }
+                }
+            }
+            Vector3 along = Vector3.ProjectOnPlane(_touchPoint - S, n);
+            if (along.sqrMagnitude > 1e-4f) _touchFingers = Vector3.ProjectOnPlane(along.normalized + Vector3.up * 0.5f, n).normalized;
+            // Turned round the face's normal to the way the arm can lay the palm flat.
+            if (_body && _body.HasArm) _touchFingers = _body.ReachableFingers(_touchPoint, n, _touchFingers);
+            return moved;
         }
 
         /// <summary>The hand flat on the wall (for the arm IK).</summary>

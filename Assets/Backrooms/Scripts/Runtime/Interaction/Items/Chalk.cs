@@ -10,7 +10,7 @@ namespace Backrooms.Interaction
     /// (<see cref="LineMetres"/> of line in a stick) and is gone when used up.
     /// Model: Resources/Items/Chalk.fbx (origin at the butt, tip forward).
     /// </summary>
-    public class Chalk : WorldItem
+    public class Chalk : WorldItem, IHandGrip
     {
         /// <summary>Metres of line a whole stick draws.</summary>
         public static float LineMetres = 30f;
@@ -27,9 +27,20 @@ namespace Backrooms.Interaction
 
         public override Vector3 HoldOffset => new Vector3(0.15f, -0.2f, 0.34f);
         public override Vector3 UseOffset => new Vector3(0.12f, -0.14f, 0.42f);
-        public override Vector3 GripLocal => new Vector3(0.006f, -0.004f, 0.022f);
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(-0.35f, -0.1f, 0.93f), Vector3.up);
-        public override float GripCurl => 0.9f;
+        // A finger-pad grip: the stick along under the index and middle fingers toward the tip (+z), pressed by their pads,
+        // the thumb opposed under it from the side, ring and pinky tucked in; the palm clear above the butt. (A fist used to
+        // close on nothing: fingertips 32-69 mm away, the thumb pointing forward.)
+        // (The palm's centre is 3.7 cm to the little-finger side of the index: the stick lies under the index pad. The fingers
+        // point along the forearm's line, the pads curling down onto the stick.)
+        // (Placed by trying the closing fingers against the stick: under the index's line, 4.5 cm below the palm's centre,
+        // its butt 3.5 cm behind it, the index pad on top and the thumb's pad against its side, both touching. Between the
+        // index and middle fingers, as before, neither touched it: 2-3 cm off.)
+        public override Vector3 GripLocal => new Vector3(0.035f, 0.053f, 0.035f);
+        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0f, 0.05f, 1f), new Vector3(0f, 1f, -0.05f));
+        public override float GripCurl => 0.5f;
+        public float FingerCurl(int finger) => finger == 0 ? 0.5f : finger == 1 ? 0.7f : finger == 2 ? 0.9f : 0.95f;
+        public float ThumbCurl => 0.45f;
+        public float ThumbOpposition => 0.55f;
         public override string Status => $"chalk {Mathf.CeilToInt(left * 100f)} %";
         public override float Amount { get => left; set { left = Mathf.Clamp01(value); Shape(); } }
 

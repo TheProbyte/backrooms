@@ -14,7 +14,7 @@ namespace Backrooms.Interaction
     /// It lights (a warm, shadowed spot out of its shade) when switched on and its plug is in a socket with power.
     /// Model: Resources/Items/DeskLamp.fbx.
     /// </summary>
-    public class DeskLamp : PowerUser
+    public class DeskLamp : PowerUser, IHandGrip
     {
         public const float CordLength = 1.8f;
         static readonly Vector3 Bulb = new Vector3(0f, 0.3231f, 0.1032f);
@@ -44,16 +44,22 @@ namespace Backrooms.Interaction
         static readonly Quaternion BundleTurn = Quaternion.Euler(0f, 20.8f, 0f);
         public bool Lit => switchOn && PluggedLive;
         public override bool PlaceOnDrop => true;
-        public override Vector3 HoldOffset => new Vector3(0.2f, -0.42f, 0.42f);
+        public override Vector3 HoldOffset => new Vector3(0.2f, -0.35f, 0.4f);
         public override Vector3 UseOffset => HoldOffset;
-        // Round the upright stem like a handshake: the palm on its right, fingers forward round its front, thumb behind; the
-        // stem sits inside the curl of the fingers, a little ahead of the knuckles.
-        public override Vector3 GripLocal => new Vector3(0.014f, 0.17f, -0.004f);
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0.12f, 0f, 1f), Vector3.right);
+        // Round the lower rod like a handshake: the palm on its right, fingers forward round its front, thumb round the back;
+        // the model's lower rod stands at (0, y, -0.035), 9 mm round, from the base to its knuckle at y 0.165; the upper
+        // rod leans from there to the shade's pivot at (0, 0.38, 0.05). (The grip and the contact used to be a stem 3-5 cm
+        // in front of the real rod: ring and pinky closed on nothing.)
+        static readonly Vector3 RodLow = new Vector3(0f, 0.035f, -0.035f), RodKnuckle = new Vector3(0f, 0.165f, -0.035f), RodTop = new Vector3(0f, 0.37f, 0.05f);
+        public override Vector3 GripLocal => new Vector3(0.0115f, 0.1f, -0.035f);
+        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0f, 0f, 1f), Vector3.right);
         public override float GripCurl => 0.95f;
-        /// <summary>The fingers close round the upright stem (and stop on the base).</summary>
+        public float FingerCurl(int finger) => 0.95f;
+        public float ThumbCurl => 0.85f;
+        public float ThumbOpposition => 0.75f;
+        /// <summary>The fingers close round the lower rod (and stop on the upper rod and the base).</summary>
         public override float ContactDistance(Vector3 p) =>
-            Mathf.Min(SegmentDistance(p, new Vector3(0f, 0.035f, 0.012f), new Vector3(0f, 0.3f, 0.012f)) - 0.009f,
+            Mathf.Min(Mathf.Min(SegmentDistance(p, RodLow, RodKnuckle) - 0.0095f, SegmentDistance(p, RodKnuckle, RodTop) - 0.008f),
                       BoxDistance(p, new Vector3(0f, 0.015f, 0f), new Vector3(0.075f, 0.015f, 0.075f)));
         public override float Amount { get => switchOn ? 1f : 0f; set => switchOn = value > 0.5f; }
         public override string Status

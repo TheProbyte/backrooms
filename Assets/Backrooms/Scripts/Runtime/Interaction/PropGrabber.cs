@@ -62,6 +62,38 @@ namespace Backrooms.Interaction
         public Vector3 StandShoulder => transform.position + Vector3.up * _player.BaseEye + transform.rotation * ShoulderLocal;
         Vector3 Eye => _player.cameraPitchPivot ? _player.cameraPitchPivot.position : transform.position + Vector3.up * 1.58f;
 
+        FirstPersonBody _body;
+        /// <summary>
+        /// The shoulder the hand really reaches from: the body's own (its joint as the body stands and bends; the eye's
+        /// fixed offset was 24 cm off it stooping), or the offset when there is no body.
+        /// </summary>
+        public Vector3 ReachShoulder => _body && _body.HasArm ? _body.ShoulderNow : Shoulder;
+        /// <summary>How far the palm reaches from <see cref="ReachShoulder"/>: the body's arm (0.6 m), or the reach setting.</summary>
+        public float ArmReach => _body && _body.HasArm ? _body.ArmReach : reach;
+        /// <summary>The body's arm has the palm (or fingertip) where it was sent: within 2 cm. Nothing is taken before.</summary>
+        public bool HandArrived => !_body || !_body.HasArm || _body.PalmError < 0.02f;
+        /// <summary>How far the solved palm is from where it is wanted (m), or 0 with no body.</summary>
+        public float PalmError => _body && _body.HasArm ? _body.PalmError : 0f;
+        float _notThereT, _stoopExtra;
+
+        /// <summary>
+        /// Out with the arm but the palm not there (the IK cannot get it there): after a moment step in toward it and bend
+        /// lower. Returns false once that has gone on too long (give up).
+        /// </summary>
+        bool ComeCloser(Vector3 grip, float maxTime)
+        {
+            if (HandBlend < 0.95f || HandArrived) { _notThereT = 0f; return true; }
+            _notThereT += Time.deltaTime;
+            if (_notThereT > 0.2f)
+            {
+                Vector3 local = transform.InverseTransformDirection(grip - ReachShoulder); local.y = 0f;
+                var flat = new Vector2(local.x, local.z);
+                _player.botInput = flat.magnitude > 0.12f ? flat.normalized * 0.45f : (Vector2?)null;
+                if (grip.y < ReachShoulder.y - 0.2f) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0.4f, Time.deltaTime * 0.8f);
+            }
+            return _notThereT < maxTime;
+        }
+
         // Automated tests (bypass the mouse).
         [System.NonSerialized] public bool? botHold;
         [System.NonSerialized] public Vector2 botMouse;
@@ -79,7 +111,7 @@ namespace Backrooms.Interaction
         bool _hook;                      // they hook over an edge there
         Vector3 _offset;                 // wanted grip position: shoulder + yaw * _offset
         Quaternion _carryRel;            // carried props keep this rotation relative to the body
-        float _reachT, _slipT, _savedAngularDamping;
+        float _reachT, _blockedT, _slipT, _savedAngularDamping;
         Vector3 _force;
         float _lag;                      // metres the grip trails where the hand wants it
 
@@ -90,6 +122,7 @@ namespace Backrooms.Interaction
 
         void Start()
         {
+            _body = GetComponent<FirstPersonBody>();
             _cam = Camera.main;
             _shake = FindAnyObjectByType<HandheldCameraShake>();
         }
@@ -166,6 +199,9 @@ namespace Backrooms.Interaction
                 float down = Mathf.Clamp(StandShoulder.y - (_itemFromPos.y + 0.4f), 0f, 0.8f);
                 want = Mathf.Max(want, down * (1f - Mathf.SmoothStep(0.35f, 1f, _itemT)));
             }
+            // Further down while the palm cannot get there (ComeCloser).
+            if (Current == State.Idle && !OnDoor) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0f, Time.deltaTime * 0.5f);
+            want = Mathf.Min(0.85f, want + _stoopExtra);
             _player.stoop = Mathf.MoveTowards(_player.stoop, want, Time.deltaTime * (want > _player.stoop ? 1.6f : 1.0f));
         }
 
@@ -208,27 +244,36 @@ namespace Backrooms.Interaction
             _gripLocal = prop.transform.InverseTransformPoint(grip);
             _normalLocal = prop.transform.InverseTransformDirection(normal);
             _edgeLocal = prop.transform.InverseTransformDirection(edge);
-            _reachT = 0f;
+            _reachT = 0f; _blockedT = 0f;
             Current = State.Reaching;
         }
 
         void UpdateReach()
         {
             Vector3 grip = _target.transform.TransformPoint(_gripLocal);
-            Vector3 toGrip = grip - Shoulder;
+            Vector3 toGrip = grip - ReachShoulder;
             _reachT += Time.deltaTime;
-            if (toGrip.magnitude <= reach + 0.08f)
+            // Taken only once the palm is on it (it used to be taken from up to 0.37 m away, held from a distance). The
+            // solved palm decides; the reach (a little short of what the shoulder's carry adds) only says when to step in.
+            if (HandBlend > 0.85f && HandArrived && toGrip.magnitude <= ArmReach + 0.15f) { _player.botInput = null; Attach(); return; }
+            if (toGrip.magnitude <= ArmReach)
             {
-                _player.botInput = null;
-                if (HandBlend > 0.85f) Attach();
+                if (!ComeCloser(grip, 2.5f)) Cancel();
+                else if (_notThereT <= 0.2f) _player.botInput = null;
                 return;
             }
             // A little too far: step in (gives up after a moment if something is in the way).
-            if (_reachT > 2f || toGrip.magnitude > lookRange + 0.5f) { Cancel(); return; }
-            // Too far out in front: step in. (Too far down: the stoop brings the shoulder lower.)
+            if (_reachT > 3f || toGrip.magnitude > lookRange + 0.5f) { Cancel(); return; }
+            // Stepping in but held back (by the prop itself, a wall) with it still out of reach: the hand comes back
+            // (the top of a sofa's back from in front of the seat is 1.2 m from the shoulder; it used to be taken from
+            // 0.4 m away, then the arm stood out at full stretch for 3 s).
+            _blockedT = _player.botInput.HasValue && _player.PlanarVelocity.magnitude < 0.1f && _reachT > 1.2f ? _blockedT + Time.deltaTime : 0f;
+            if (_blockedT > 0.6f) { Cancel(); return; }
+            // Too far out in front: step in. Too far down: bend lower (the stoop alone stopped short of a sofa's seat).
             Vector3 local = transform.InverseTransformDirection(toGrip); local.y = 0f;
             var flat = new Vector2(local.x, local.z);
-            _player.botInput = flat.magnitude > 0.3f ? flat.normalized * 0.6f : (Vector2?)null;
+            _player.botInput = flat.magnitude > 0.25f ? flat.normalized * 0.6f : (Vector2?)null;
+            if (grip.y < ReachShoulder.y - 0.25f) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0.45f, Time.deltaTime * 0.8f);
         }
 
         /// <summary>The body knocks the camcorder (a grab, a pick-up, a throw): the mic hears it.</summary>
@@ -256,6 +301,7 @@ namespace Backrooms.Interaction
 
         void Cancel()
         {
+            _notThereT = 0f;
             _player.botInput = null;
             _target = null;
             Current = State.Idle;
@@ -330,6 +376,14 @@ namespace Backrooms.Interaction
             float k = mouseToMetres * _player.FovMultiplier;
             var want = _offset + new Vector3(md.x * k, md.y * k, 0f);
             var clamped = ClampOffset(want);
+            // Within the arm's reach from the real shoulder: the prop comes to the hand, not the hand stretching after it.
+            {
+                // (A little past the reach, as far as the arm took it: at 0.97 of it, a sofa taken by its seat at full
+                // stretch was pulled 4 cm in under the player's feet, who rode up onto it.)
+                Vector3 T = StandShoulder + transform.rotation * clamped, RS = ReachShoulder;
+                float r = ArmReach + 0.05f;
+                if ((T - RS).sqrMagnitude > r * r) clamped = Quaternion.Inverse(transform.rotation) * (RS + Vector3.ClampMagnitude(T - RS, r) - StandShoulder);
+            }
             // Past the arm's limit sideways the body turns with it (so you can keep swinging it round);
             // past the lift limit the view follows.
             float overX = (want.x - clamped.x) / k, overY = (want.y - clamped.y) / k;
@@ -357,10 +411,11 @@ namespace Backrooms.Interaction
                 if (Mathf.Abs(diff) > 14f) _player.AddLook(0f, Mathf.Sign(diff) * Mathf.Min(Mathf.Abs(diff) - 14f, 60f * Time.deltaTime));
             }
 
-            // Lost grip: the prop got stuck or was pulled out of reach.
-            float d = Vector3.Distance(grip, Shoulder);
-            _slipT = d > reach + 0.45f ? _slipT + Time.deltaTime : 0f;
-            if (_slipT > 0.25f) Release($"slipped (grip {d:F2} m from the shoulder)");
+            // Lost grip: the prop got stuck or was pulled out of reach, or the hand cannot stay on it.
+            float d = Vector3.Distance(grip, ReachShoulder);
+            bool off = d > ArmReach + 0.15f || PalmError > 0.1f;
+            _slipT = off ? _slipT + Time.deltaTime : 0f;
+            if (_slipT > 0.4f) Release($"slipped (grip {d:F2} m from the shoulder, palm {PalmError * 100f:F0} cm off it)");
         }
 
         void FixedUpdate()
@@ -431,8 +486,21 @@ namespace Backrooms.Interaction
             {
                 if (!c || !c.enabled || c.isTrigger) continue;
                 if (c is MeshCollider mc && !mc.convex) continue;
-                Vector3 q = Physics.ClosestPoint(p, c, c.transform.position, c.transform.rotation);
-                float d = (q - p).sqrMagnitude < 1e-12f ? -0.001f : Vector3.Distance(q, p);
+                float d;
+                if (c is BoxCollider b)
+                {
+                    // A box: how far inside too (ClosestPoint only says "inside", so a finger 1 mm in and one 3 cm in
+                    // looked the same, and a hand on a wall could not tell which way out was least in).
+                    Vector3 s = b.transform.lossyScale;
+                    s = new Vector3(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z));
+                    Vector3 q = Vector3.Scale(b.transform.InverseTransformPoint(p) - b.center, s);
+                    d = WorldItem.BoxDistance(q, Vector3.zero, Vector3.Scale(b.size * 0.5f, s));
+                }
+                else
+                {
+                    Vector3 q = Physics.ClosestPoint(p, c, c.transform.position, c.transform.rotation);
+                    d = (q - p).sqrMagnitude < 1e-12f ? -0.001f : Vector3.Distance(q, p);
+                }
                 if (d < best) best = d;
             }
             return best;

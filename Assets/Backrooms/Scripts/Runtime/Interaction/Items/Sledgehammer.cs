@@ -57,8 +57,12 @@ namespace Backrooms.Interaction
 
         public override Vector3 HoldOffset => new Vector3(0.22f, -0.36f, 0.42f);
         public override Vector3 GripLocal => new Vector3(SledgehammerModel.HandleA * 0.95f, _now.g > 0f ? _now.g : GripCarry, 0f);
-        // Fingers round the handle toward the striking face (+z), the back of the hand outward (+x).
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(Vector3.forward, Vector3.right);
+        // Fingers round the handle toward the striking face (+z), the back of the hand outward (+x); the handle across the
+        // palm on the slant a hand holds a handle at (from the heel of the hand to the base of the index finger, the head
+        // toward the thumb), 26 degrees round from square across it. (Square across, the wrist could not turn the hand to it:
+        // the carried hammer hung 26 degrees off its pose.)
+        public override Quaternion GripRotationLocal => Quaternion.LookRotation(Vector3.forward, Vector3.right)
+                                                         * Quaternion.AngleAxis(26.5f, new Vector3(-0.12f, -0.93f, -0.36f));
         public override float GripCurl => 0.97f;
         public override bool DropsStraight => false;
         public override string Status => _phase == Phase.WindUp ? $"sledgehammer: winding up {Mathf.RoundToInt(_charge * 100f)} %" : "sledgehammer (hold to wind up, release to swing)";
@@ -223,7 +227,15 @@ namespace Backrooms.Interaction
 
         // ---------------- Where it is (LateUpdate, from the hand) ----------------
 
-        Vector3 Shoulder => _hand ? _hand.Shoulder : transform.position;
+        // The body's real shoulder and the arm's reach (the hammer was swung up to 0.77 m from the shoulder by an arm that
+        // reaches 0.61: it left the hand for 0.4 s each swing).
+        Vector3 Shoulder => _hand ? _hand.ReachShoulder : transform.position;
+        float Reach => _hand ? Mathf.Min(armReach, _hand.ArmReach * 0.97f) : armReach;
+
+        /// <summary>The handle round (the collider is a little fatter) and the head: what the fingers close on.</summary>
+        public override float ContactDistance(Vector3 p) =>
+            Mathf.Min(SegmentDistance(p, new Vector3(0f, 0.02f, 0f), new Vector3(0f, 0.38f, 0f)) - SledgehammerModel.HandleA,
+                      BoxDistance(p, new Vector3(0f, 0.4f, 0f), new Vector3(0.0245f, 0.0275f, 0.06f)));
 
         /// <summary>
         /// The pose that puts the face of the head on a point, moving along a direction: the handle across the blow (hand
@@ -247,9 +259,9 @@ namespace Backrooms.Interaction
                 Vector3 h = centre - d * (HeadY - GripEnd);
                 best = new Pose { h = h, r = Quaternion.LookRotation(face, d), g = GripEnd };
                 axis = Vector3.Cross(d, face).normalized;
-                if ((h - s).magnitude <= armReach) { ok = true; break; }
+                if ((h - s).magnitude <= Reach) { ok = true; break; }
             }
-            if (!ok) best.h = s + Vector3.ClampMagnitude(best.h - s, armReach);
+            if (!ok) best.h = s + Vector3.ClampMagnitude(best.h - s, Reach);
             return best;
         }
 
@@ -348,6 +360,11 @@ namespace Backrooms.Interaction
                     _now.g = Mathf.Lerp(_from.g, GripCarry, Mathf.Clamp01((_t - 0.2f) / 0.3f));
                     break;
                 }
+            }
+            // Whatever the phase, the hand is where an arm can be: the hammer goes with the hand.
+            {
+                Vector3 s = Shoulder;
+                _now.h = s + Vector3.ClampMagnitude(_now.h - s, Reach);
             }
             rotation = _now.r;
             position = _now.h - rotation * new Vector3(SledgehammerModel.HandleA * 0.95f, _now.g, 0f);

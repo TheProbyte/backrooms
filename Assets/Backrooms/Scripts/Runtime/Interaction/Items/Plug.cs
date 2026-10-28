@@ -9,7 +9,7 @@ namespace Backrooms.Interaction
     /// in a socket it stays there, held by the socket, and the thing at the other end of its cord has power if the socket
     /// does. Model: Resources/Items/Plug.fbx (origin at the face the prongs leave, prongs forward).
     /// </summary>
-    public class Plug : WorldItem
+    public class Plug : WorldItem, IHandGrip
     {
         /// <summary>Where the cord leaves the back of the plug (model frame).</summary>
         public static readonly Vector3 CordPoint = new Vector3(0f, 0f, -0.046f);
@@ -29,9 +29,19 @@ namespace Backrooms.Interaction
         protected override bool Pinned => Plugged;
 
         public override Vector3 HoldOffset => new Vector3(0.14f, -0.18f, 0.33f);
-        public override Vector3 GripLocal => new Vector3(0.012f, 0f, -0.02f);
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(-0.3f, 0f, 0.95f), Vector3.up);
-        public override float GripCurl => 0.85f;
+        // A pinch: the plug's body under the pads of the index and middle fingers, the thumb opposed under it, ring and
+        // pinky tucked; the palm clear behind and above it, the prongs forward past the fingertips. (It used to sit inside
+        // the fist with the prongs through the fingers.)
+        // (The body under the index and middle pads: the palm's centre a little to the little-finger side, above and behind
+        // the plug; the fingers along the forearm's line, curling down onto its top.)
+        // (Placed by trying the closing fingers against the body: 5.5 cm below the palm's centre, 3 cm ahead of it, index,
+        // middle and thumb pads all touching; 1.5 cm higher and further forward the thumb missed it by 15 mm.)
+        public override Vector3 GripLocal => new Vector3(0.014f, 0.055f, -0.0525f);
+        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0f, 0.05f, 1f), new Vector3(0f, 1f, -0.05f));
+        public override float GripCurl => 0.45f;
+        public float FingerCurl(int finger) => finger == 0 ? 0.45f : finger == 1 ? 0.55f : finger == 2 ? 0.85f : 0.9f;
+        public float ThumbCurl => 0.45f;
+        public float ThumbOpposition => 0.55f;
         public override string Status => Plugged ? "plug: in" : "plug: click an outlet";
 
         public static Plug Create(string itemId, WorldItem owner, Vector3 position, Quaternion rotation, Color body)

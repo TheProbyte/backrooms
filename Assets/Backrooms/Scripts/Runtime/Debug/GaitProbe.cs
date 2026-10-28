@@ -720,5 +720,122 @@ namespace Backrooms.DebugTools
             Destroy(rt); Destroy(tex); Destroy(tex2); Destroy(go);
             File.WriteAllText(Path.Combine(folder, "view.txt"), _log.ToString());
         }
+
+        // ---------------- The hand (the hand reviewer's measure, 2026-10-28) ----------------
+
+        /// <summary>
+        /// The hand reviewer's measure (scratchpad tools/measure_render_swap.cs, the same numbers): elbow and wrist angles
+        /// against human limits, the palm against its grip and the surface, each finger's joints and tip against what is
+        /// held, skin vertices inside it; renders (eye and six close views) into dir when render; then drops the held item
+        /// and picks up next ("" keeps it, "none" holds nothing).
+        /// </summary>
+        public static string MeasureHand(string dir, string tag, string next, bool render)
+        {
+            var pl = FindAnyObjectByType<CamcorderPlayerController>();
+            var grab = pl.GetComponent<PropGrabber>();
+            var fpb = pl.GetComponent<FirstPersonBody>();
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            System.Func<string, object> G = n => typeof(FirstPersonBody).GetField(n, bf).GetValue(fpb);
+            var upper = (Transform)G("_upper"); var fore = (Transform)G("_fore"); var hand = (Transform)G("_hand");
+            Vector3 foreBackL = (Vector3)G("_foreBack"), handFL = (Vector3)G("_handFingers"), handBL = (Vector3)G("_handBack"), upperBackL = (Vector3)G("_upperBack"), w2g = (Vector3)G("_wristToGrip");
+            var sb = new StringBuilder();
+            sb.AppendFormat("[{0}] held={1} pitch={2:0}\n", tag, grab.HeldItem ? grab.HeldItem.name : "-", pl.Pitch);
+            Vector3 S = upper.position, E = fore.position, W = hand.position;
+            Vector3 u = (E - S).normalized, A = (W - E).normalized;
+            float elbowFlex = Vector3.Angle(u, A);
+            Vector3 Bk = Vector3.ProjectOnPlane(fore.TransformDirection(foreBackL), A).normalized;
+            Vector3 F = hand.TransformDirection(handFL).normalized, H = hand.TransformDirection(handBL).normalized;
+            Vector3 Sx = Vector3.Cross(Bk, A);
+            float flex = Mathf.Asin(Mathf.Clamp(-Vector3.Dot(F, Bk), -1f, 1f)) * Mathf.Rad2Deg;
+            float dev = Mathf.Atan2(Vector3.Dot(F, Sx), Vector3.Dot(F, A)) * Mathf.Rad2Deg;
+            float wristWring = Vector3.SignedAngle(Bk, Vector3.ProjectOnPlane(H, A), A);
+            Vector3 b0 = -Vector3.Cross(u, A).normalized;
+            float foreTwist = Vector3.SignedAngle(b0, Bk, A);
+            float totalTwist = Vector3.SignedAngle(b0, Vector3.ProjectOnPlane(H, A), A);
+            Vector3 Ub = Vector3.ProjectOnPlane(upper.TransformDirection(upperBackL), u).normalized;
+            float upperRoll = Vector3.SignedAngle(Vector3.ProjectOnPlane(b0, u).normalized, Ub, u);
+            Quaternion hf = Quaternion.LookRotation(F, H);
+            Vector3 gripW = W + hf * w2g;
+            sb.AppendFormat("elbowFlex {0:0} | wrist flex(+palm) {1:0} dev(+ulnar) {2:0} | twist total {3:0} fore {4:0} wristWring {5:0} | upperRoll vs hinge {6:0} | elbow height vs shoulder {7:0.00}m\n", elbowFlex, flex, dev, totalTwist, foreTwist, wristWring, upperRoll, E.y - S.y);
+            sb.AppendFormat("blend {0:0.00} curl {1:0.00} contact {2} | palm pt to surface {3:0.0}mm | palm pt off wanted {4:0.0}mm | hand angle off wanted {5:0.0}deg | body PalmError {6:0.0}mm\n", grab.HandBlend, grab.HandCurl, grab.HasContact, grab.ContactDistance(gripW) * 1000f, (grab.HandPosition - gripW).magnitude * 1000f, Quaternion.Angle(hf, grab.HandRotation), fpb.PalmError * 1000f);
+            var fingers = (System.Collections.IList)G("_fingers");
+            foreach (var f in fingers)
+            {
+                var ft = f.GetType();
+                string name = (string)ft.GetField("name").GetValue(f);
+                var joints = (System.Collections.IList)ft.GetField("joints").GetValue(f);
+                Vector3 tipLocal = (Vector3)ft.GetField("tipLocal").GetValue(f);
+                float c = (float)ft.GetField("curl").GetValue(f);
+                sb.AppendFormat("{0,-6} curl {1:0.00} joints(mm): ", name, c);
+                Transform last = null;
+                foreach (var j in joints) { var t = (Transform)j.GetType().GetField("Item1").GetValue(j); last = t; sb.AppendFormat("{0:0.0} ", grab.ContactDistance(t.position) * 1000f); }
+                Vector3 tip = last.TransformPoint(tipLocal);
+                Vector3 tl = Quaternion.Inverse(hf) * (tip - W);
+                sb.AppendFormat("tip {0:0.0} | tip in hand (pinky+,back+,fingers+) ({1:0.000},{2:0.000},{3:0.000})\n", grab.ContactDistance(tip) * 1000f, tl.x, tl.y, tl.z);
+            }
+            foreach (var r in fpb.GetComponentsInChildren<SkinnedMeshRenderer>())
+            {
+                if (!r.name.EndsWith(".ArmR") || r.name.Contains("suit")) continue;
+                var mesh = new Mesh(); r.BakeMesh(mesh, true);
+                var vs = mesh.vertices; int inside = 0, inside5 = 0, near = 0; float minD = 1e9f; Vector3 minP = Vector3.zero;
+                foreach (var lv in vs)
+                {
+                    Vector3 w = r.transform.position + r.transform.rotation * lv;
+                    if ((w - W).sqrMagnitude > 0.25f * 0.25f) continue;
+                    float d = grab.ContactDistance(w);
+                    if (d < minD) { minD = d; minP = w; }
+                    if (d < -0.002f) inside++;
+                    if (d < -0.005f) inside5++;
+                    if (d < 0.003f) near++;
+                }
+                Vector3 mpl = Quaternion.Inverse(hf) * (minP - W);
+                sb.AppendFormat("skin: verts inside >2mm {0}, >5mm {1}, touching(<3mm) {2}, deepest {3:0.0}mm at hand({4:0.000},{5:0.000},{6:0.000})\n", inside, inside5, near, minD * 1000f, mpl.x, mpl.y, mpl.z);
+                Destroy(mesh);
+            }
+            if (render)
+            {
+                Directory.CreateDirectory(dir);
+                var main = Camera.main;
+                var go = new GameObject("CritCam"); var cam = go.AddComponent<Camera>(); cam.enabled = false;
+                var lg = new GameObject("CritFill"); lg.transform.SetParent(go.transform, false); var fill = lg.AddComponent<Light>(); fill.type = LightType.Point; fill.range = 3f; fill.intensity = 1.4f; fill.shadows = LightShadows.None; fill.renderingLayerMask = -1;
+                var rt = new RenderTexture(960, 720, 24); var tex = new Texture2D(960, 720, TextureFormat.RGB24, false);
+                var tr = pl.transform; Vector3 at = grab.HandPosition; Vector3 mid = (fore.position + hand.position) * 0.5f;
+                var names = new[] { "eyeHD", "right", "left", "front", "top", "below", "arm" };
+                var froms = new[] { main.transform.position, at + tr.right * 0.35f + Vector3.up * 0.05f, at - tr.right * 0.35f + Vector3.up * 0.05f + tr.forward * 0.05f, at + tr.forward * 0.35f + Vector3.up * 0.04f, at + Vector3.up * 0.35f + tr.forward * 0.02f, at - Vector3.up * 0.3f + tr.forward * 0.12f + tr.right * 0.05f, mid + tr.right * 0.6f + Vector3.up * 0.15f + tr.forward * 0.1f };
+                var ats = new[] { Vector3.zero, at, at, at, at, at, mid };
+                for (int k = 0; k < names.Length; k++)
+                {
+                    cam.CopyFrom(main);
+                    if (k == 0) { fill.enabled = false; cam.transform.SetPositionAndRotation(main.transform.position, main.transform.rotation); }
+                    else { cam.fieldOfView = k == 6 ? 45f : 40f; cam.nearClipPlane = 0.02f; fill.enabled = true; cam.transform.position = froms[k]; cam.transform.LookAt(ats[k]); }
+                    cam.targetTexture = rt; cam.Render(); cam.targetTexture = null;
+                    var old = RenderTexture.active; RenderTexture.active = rt; tex.ReadPixels(new Rect(0, 0, 960, 720), 0, 0); tex.Apply(); RenderTexture.active = old;
+                    File.WriteAllBytes(Path.Combine(dir, tag + "_" + names[k] + ".png"), tex.EncodeToPNG());
+                }
+                Destroy(go); Destroy(rt); Destroy(tex);
+            }
+            if (next != "")
+            {
+                var old = grab.HeldItem;
+                if (old) { grab.Drop(); Destroy(old.gameObject); }
+                if (next == "plug")
+                {
+                    // The plug of a fresh desk lamp.
+                    var tt = pl.transform;
+                    var lamp = ItemFactory.Spawn("desklamp", tt.position + tt.forward * 0.6f + Vector3.up * 0.3f, tt.rotation);
+                    Plug plug = null;
+                    foreach (var p in FindObjectsByType<Plug>(FindObjectsInactive.Exclude)) if (p.owner == lamp) plug = p;
+                    if (plug) { grab.PickUp(plug); sb.Append("picked up the lamp's plug\n"); }
+                }
+                else if (next != "none")
+                {
+                    var tt = pl.transform;
+                    var item = ItemFactory.Spawn(next, tt.position + tt.forward * 0.6f + Vector3.up * 0.3f, tt.rotation);
+                    grab.PickUp(item);
+                    sb.Append("picked up " + next + "\n");
+                }
+            }
+            return sb.ToString();
+        }
     }
 }

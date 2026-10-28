@@ -9,7 +9,7 @@ namespace Backrooms.Interaction
     /// squeezed. Throw it (hold Q) and it squeaks when it lands hard.
     /// Model: Resources/Items/RubberChicken.fbx (origin at the body, head forward).
     /// </summary>
-    public class RubberChicken : WorldItem
+    public class RubberChicken : WorldItem, IHandGrip
     {
         SkinnedMeshRenderer _skin;
         int _shape = -1;
@@ -19,11 +19,29 @@ namespace Backrooms.Interaction
         int _variant;
         float _quietUntil;
 
-        public override Vector3 HoldOffset => new Vector3(0.17f, -0.22f, 0.4f);
-        public override Vector3 UseOffset => new Vector3(0.14f, -0.18f, 0.4f);
-        public override Vector3 GripLocal => new Vector3(0.03f, 0.02f, -0.06f);
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(-0.7f, 0f, 0.7f), Vector3.up);
-        public override float GripCurl => 0.6f + 0.35f * _squeeze;      // the fist closes as it squeezes
+        // Held by the neck (the model's neck: about z 0.09-0.21, 13-15 mm round, centred y 0.008), head up out of the top of
+        // the fist and the body hanging below: the fist round the neck, the back of the hand up and out, the index side
+        // toward the head. (The grip used to be inside the body: the hand in it, fingertips out of its belly.)
+        public override Vector3 HoldOffset => new Vector3(0.19f, -0.36f, 0.29f);
+        public override Vector3 UseOffset => new Vector3(0.17f, -0.33f, 0.29f);
+        public override Quaternion HoldTurn => Quaternion.Euler(-70f, 0f, 0f);
+        static readonly Vector3 NeckBack = new Vector3(0.6f, 0.8f, 0f);
+        public override Vector3 GripLocal => new Vector3(0f, 0.008f, 0.15f) + NeckBack * (NeckR + 0.002f);
+        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0.8f, -0.6f, 0f), NeckBack);
+        public override float GripCurl => 0.85f + 0.12f * _squeeze;      // the fist closes as it squeezes
+        public float FingerCurl(int finger) => 0.9f + 0.1f * _squeeze;
+        public float ThumbCurl => 0.8f;
+        public float ThumbOpposition => 0.75f;
+        const float NeckR = 0.014f;
+
+        /// <summary>The model's shape, roughly: the body, the neck and the head (the fingers close on the neck).</summary>
+        public override float ContactDistance(Vector3 p)
+        {
+            float neck = SegmentDistance(p, new Vector3(0f, 0.01f, 0.06f), new Vector3(0f, 0.006f, 0.205f)) - NeckR;
+            float head = Vector3.Distance(p, new Vector3(0f, 0.018f, 0.262f)) - 0.032f;
+            float body = SegmentDistance(p, new Vector3(0f, 0f, -0.095f), new Vector3(0f, 0f, 0.02f)) - 0.041f;
+            return Mathf.Min(neck, Mathf.Min(head, body));
+        }
         public override float UseBlend => _squeeze;
         public override string Status => "rubber chicken (hold to squeeze)";
 

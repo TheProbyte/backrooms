@@ -167,6 +167,24 @@ namespace Backrooms.Interaction
             UpdateFull();
         }
 
+        /// <summary>The working arm's shoulder joint as the body stands this frame (its collarbone at rest).</summary>
+        public Vector3 ShoulderNow { get; private set; }
+        /// <summary>
+        /// How far the working hand's palm reaches from <see cref="ShoulderNow"/> (m): the rig's own arm nearly straight, the
+        /// palm, and what the collarbone adds. PropGrabber reaches, steps in and lets go by this (it used a fixed 0.7 m, and
+        /// the arm is 0.61 m: things were taken from a distance).
+        /// </summary>
+        public float ArmReach { get; private set; } = 0.6f;
+        /// <summary>
+        /// How far the solved palm (or fingertip) is from where PropGrabber wants it (m), with the arm all the way out; 1
+        /// otherwise. PropGrabber takes hold only once it is there.
+        /// </summary>
+        public float PalmError { get; private set; } = 1f;
+        /// <summary>The body has an arm to measure (otherwise PropGrabber falls back on its own numbers).</summary>
+        public bool HasArm => _curArm != null;
+
+        System.Func<Vector3, float> _grabContact, _touchContact;
+
         void UpdateArm()
         {
             // The body's own arm while the body is shown; the separate arm while crawling (the body is hidden then).
@@ -180,7 +198,7 @@ namespace Backrooms.Interaction
                 // The separate arm is always there (the shadow has it) unless the body is not and nothing is held.
                 bool showLoose = loose && (blend > 0.001f || FeetActive);
                 foreach (var r in _looseArm.renderers) if (r) r.enabled = showLoose;
-                if (loose && !showLoose) return;
+                if (loose && !showLoose) { PalmError = 1f; return; }
             }
 
             Vector3 shoulder = _grab.Shoulder;
@@ -193,7 +211,10 @@ namespace Backrooms.Interaction
             {
                 if (_curArm.clavicle) _curArm.clavicle.localRotation = _curArm.clavicleRest;
                 natural = _upper.position;
+                shoulder = natural;
             }
+            ShoulderNow = natural;
+            ArmReach = (_upperLen + _foreLen) * 0.96f + _wristToGrip.magnitude + (loose ? 0f : 0.04f);
             // Resting (the Body and IK layers: hanging and swinging, or a hand on the world); reaching (the Override
             // layer, PropGrabber): palm on the grip.
             RestPose(natural, yaw, side, out Vector3 restWrist, out Quaternion restHand, out float restCurl);
@@ -206,6 +227,14 @@ namespace Backrooms.Interaction
             float s = Mathf.SmoothStep(0f, 1f, blend);
             Vector3 wrist = Vector3.Lerp(restWrist, gripWrist, s);
             Quaternion handRot = Quaternion.Slerp(restHand, gripHand, s);
+            Vector3 touchOff = poke ? _wristToTip : _wristToGrip;
+
+            // What the fingers (and palm) close on: what PropGrabber holds or touches, or the wall or rail the body's own
+            // touch layer rests the hand on (it had no contact at all: fingers went into the wall).
+            if (_grabContact == null) { _grabContact = _grab.ContactDistance; _touchContact = TouchDistance; }
+            System.Func<Vector3, float> contact = null;
+            if (_grab.HasContact && blend > 0.05f) contact = _grabContact;
+            else if (_touchW > 0.05f) contact = _touchContact;
 
             // A long reach brings the shoulder forward a little (and the arm with it), as a real one does.
             {
@@ -216,7 +245,6 @@ namespace Backrooms.Interaction
             // The body's arm: its collarbone carries the shoulder toward the reach's (as far as a collarbone turns).
             if (!loose) shoulder = CarryShoulder(_curArm.clavicle, _curArm.clavicleRest, _upper, Vector3.Lerp(natural, shoulder, s), 28f);
             // Where the hand touches (palm or fingertip): kept there whatever the wrist ends up doing.
-            Vector3 touchOff = poke ? _wristToTip : _wristToGrip;
             Vector3 touch = wrist + handRot * touchOff;
 
             // Two-bone IK with a skeleton's limits: the elbow may swing anywhere round the shoulder-wrist line, and the
@@ -232,7 +260,9 @@ namespace Backrooms.Interaction
             void Try(float sw)
             {
                 var p = SolveArm(shoulder, wrist, handRot, pole0, sw, side, yaw);
-                float score = p.score + (_swivelSet ? Mathf.Abs(Mathf.DeltaAngle(sw, _swivel)) * 0.008f : 0f);
+                // Staying near the elbow's swing now is worth a little (no flipping between near-equal ways), at most 0.2:
+                // a clearly better way round is taken (it stuck on one 20 degrees off the hand's angle, the elbow up).
+                float score = p.score + (_swivelSet ? Mathf.Min(Mathf.Abs(Mathf.DeltaAngle(sw, _swivel)) * 0.008f, 0.2f) : 0f);
                 if (score < bestScore) { bestScore = score; bestSwivel = sw; }
             }
             _swivel = _swivelSet ? Mathf.LerpAngle(_swivel, bestSwivel, 1f - Mathf.Exp(-Time.deltaTime / 0.08f)) : bestSwivel;
@@ -240,53 +270,161 @@ namespace Backrooms.Interaction
             var pose = SolveArm(shoulder, wrist, handRot, pole0, _swivel, side, yaw);
             // The wrist as it is now puts the palm somewhere else: move the wrist so the palm is back on its point.
             pose = SolveArm(shoulder, touch - pose.hand * touchOff, handRot, pole0, _swivel, side, yaw);
-            Vector3 elbow = pose.elbow, wristAt = pose.wrist;
-            Vector3 poleDir = Vector3.ProjectOnPlane(elbow - shoulder, (wristAt - shoulder).normalized).normalized;
 
             if (loose) { _arm.position = shoulder; _arm.rotation = Quaternion.identity; }
-            // The forearm bone takes part of the turn (forearmTwistShare), the hand all of it.
-            Vector3 foreBack = Quaternion.AngleAxis(pose.twist * forearmTwistShare, (wristAt - elbow).normalized) * pose.back0;
-            Orient(_upper, _upperAxis, _upperBack, elbow - shoulder, Vector3.Lerp(-poleDir, foreBack, 0.3f));
-            Orient(_fore, _foreAxis, _foreBack, wristAt - elbow, foreBack);
-            Orient(_hand, _handFingers, _handBack, pose.hand * Vector3.forward, pose.hand * Vector3.up);
-            // The model's own segment offsets put the hand at the wrist; nudge it onto the solved point.
-            _hand.position = wristAt;
+            PoseArm(_upper, _upperAxis, _upperBack, _fore, _foreAxis, _foreBack, _hand, _handFingers, _handBack, shoulder, pose, forearmTwistShare);
+            // A hand on a wall the wrist cannot lay quite flat touches with the edge of the hand (the knuckles at the
+            // surface) instead of pushing that edge into the wall (a jamb's touch, 20 degrees off flat: the little finger's
+            // knuckle 2 cm in).
+            if (contact != null && !poke && !_grab.HeldItem && _fingers != null && (_grab.TouchingWall || (_touchW > 0.5f && blend < 0.05f)))
+            {
+                float worst = 0f; Vector3 at = Vector3.zero;
+                foreach (var f in _fingers)
+                {
+                    if (f.name == "Thumb" || f.joints.Count == 0) continue;
+                    Vector3 k = f.joints[0].t.position;
+                    float d = contact(k) - FingerRadius;
+                    if (d < worst) { worst = d; at = k; }
+                }
+                Vector3 n = worst < -0.002f ? ContactNormal(contact, at) : Vector3.zero;
+                if (n.sqrMagnitude > 0.25f)
+                {
+                    pose = SolveArm(shoulder, pose.wrist + n.normalized * Mathf.Min(-worst, 0.05f), handRot, pole0, _swivel, side, yaw);
+                    PoseArm(_upper, _upperAxis, _upperBack, _fore, _foreAxis, _foreBack, _hand, _handFingers, _handBack, shoulder, pose, forearmTwistShare);
+                }
+            }
+            Vector3 wanted = poke ? _grab.PokeTip : _grab.HandPosition;
+            Vector3 palmNow = pose.wrist + pose.hand * touchOff;
+            PalmError = blend > 0.97f ? Vector3.Distance(palmNow, wanted) : 1f;
+            // A held item goes with the hand: where the arm cannot quite put the palm on its grip (at full reach, a wrist
+            // at its limit), the item is turned and moved onto the palm instead of floating off it (a sledgehammer's
+            // swing left the hand by up to 186 mm, then 46).
+            if (!poke && !loose && _grab.HeldItem && blend > 0.97f)
+            {
+                var it = _grab.HeldItem.transform;
+                Quaternion turn = pose.hand * Quaternion.Inverse(gripHand);
+                it.SetPositionAndRotation(palmNow + turn * (it.position - wanted), turn * it.rotation);
+            }
 
-            float curl = Mathf.Lerp(restCurl, _grab ? _grab.HandCurl : 0.2f, s);
-            float pointing = _grab ? _grab.PokeIndex : 0f;
+            // Fingers: one curl for all, or a held item's own shape (IHandGrip: a pinch, a pencil grip), the thumb flexing
+            // and turning across the palm toward the fingers (opposition).
+            float curl = Mathf.Lerp(restCurl, _grab.HandCurl, s);
+            var shape = blend > 0.01f ? _grab.HeldItem as IHandGrip : null;
+            float pointing = _grab.PokeIndex;
             if (_fingers == null) GroupFingers();
-            bool contact = _grab && _grab.HasContact && pointing < 0.5f && blend > 0.6f;
+            bool closeOn = contact != null && pointing < 0.5f && (blend > 0.6f || (_touchW > 0.5f && blend < 0.05f));
             float ease = 1f - Mathf.Exp(-Time.deltaTime / 0.05f);
             foreach (var f in _fingers)
             {
+                bool thumb = f.name == "Thumb";
+                float want = shape != null ? Mathf.Lerp(restCurl, thumb ? shape.ThumbCurl : shape.FingerCurl(FingerIndex(f.name)), s) : curl;
+                float opp = thumb ? (shape != null ? Mathf.Lerp(0f, shape.ThumbOpposition, s) : Mathf.Clamp01((curl - 0.2f) * 1.1f)) : 0f;
                 // Pointing: the index finger straight out, the other fingers and the thumb curled in.
-                float want = f.name == "Index" ? Mathf.Lerp(curl, -0.05f, pointing) : Mathf.Lerp(curl, f.name == "Thumb" ? 0.6f : 1.2f, pointing);
-                // Holding something: no further than the finger can go before it touches it.
-                float c = contact ? ContactCurl(f, want) : want;
-                f.curl = f.placed ? Mathf.Lerp(f.curl, c, ease) : c;
+                if (f.name == "Index") want = Mathf.Lerp(want, -0.05f, pointing);
+                else if (thumb) { want = Mathf.Lerp(want, 0.6f, pointing); opp = Mathf.Lerp(opp, 0.5f, pointing); }
+                else want = Mathf.Lerp(want, 1.2f, pointing);
+                // Holding or touching something: each joint no further than it can go before what is beyond it touches.
+                Close(f, want, opp, closeOn ? contact : null, _goal, out float goalOpp);
+                float sum = 0f, of = 0f;
+                for (int i = 0; i < f.joints.Count; i++)
+                {
+                    f.a[i] = f.placed ? Mathf.Lerp(f.a[i], _goal[i], ease) : _goal[i];
+                    sum += f.a[i]; of += want * 62f * f.joints[i].w;
+                }
+                f.oppDeg = f.placed ? Mathf.Lerp(f.oppDeg, goalOpp, ease) : goalOpp;
+                f.curl = of > 1e-3f ? want * sum / of : want;
+                f.opp = opp;
                 f.placed = true;
-                Curl(f, f.curl);
+                Pose(f);
             }
+        }
+
+        static int FingerIndex(string name) => name == "Index" ? 0 : name == "Middle" ? 1 : name == "Ring" ? 2 : name == "Pinky" ? 3 : 4;
+
+        /// <summary>The way out of a surface at p (the gradient of the distance), or zero where it is not defined.</summary>
+        static Vector3 ContactNormal(System.Func<Vector3, float> distance, Vector3 p)
+        {
+            const float H = 0.003f;
+            return new Vector3(distance(p + Vector3.right * H) - distance(p - Vector3.right * H),
+                               distance(p + Vector3.up * H) - distance(p - Vector3.up * H),
+                               distance(p + Vector3.forward * H) - distance(p - Vector3.forward * H)) / (2f * H);
+        }
+
+        /// <summary>
+        /// The upper arm, forearm and hand to a solved pose. The upper arm's back is the elbow's hinge (its rest back, the
+        /// back of the hand in MakeHuman's rest pose, lies along the hinge); it used to be put in the bend plane, rolling
+        /// the upper arm 60-70 degrees off the hinge and kinking the sleeve at the elbow. The forearm bone takes
+        /// twistShare of the forearm's turn, the hand all of it.
+        /// </summary>
+        static void PoseArm(Transform upper, Vector3 upperAxis, Vector3 upperBack, Transform fore, Vector3 foreAxis, Vector3 foreBackL,
+                            Transform hand, Vector3 handFingers, Vector3 handBack, Vector3 shoulder, in ArmPose pose, float twistShare)
+        {
+            Vector3 f = (pose.wrist - pose.elbow).normalized;
+            Vector3 foreBack = Quaternion.AngleAxis(pose.twist * twistShare, f) * pose.back0;
+            Orient(upper, upperAxis, upperBack, pose.elbow - shoulder, pose.back0);
+            Orient(fore, foreAxis, foreBackL, pose.wrist - pose.elbow, foreBack);
+            Orient(hand, handFingers, handBack, pose.hand * Vector3.forward, pose.hand * Vector3.up);
+            // The model's own segment offsets put the hand at the wrist; nudge it onto the solved point.
+            hand.position = pose.wrist;
+        }
+
+        /// <summary>
+        /// For tests: a body's arm in its rest pose, put through the solver and the posing (to its own rest wrist and hand
+        /// angle, the elbow swung where it is at rest): the largest angle (degrees) any of its bones ends up from its rest
+        /// rotation. Should be about zero: the solver and the rig agree on what "unturned" is.
+        /// </summary>
+        public static float RestPoseError(Transform body, string side = "r")
+        {
+            var up = Find(body, "upperarm_" + side); var fo = Find(body, "lowerarm_" + side); var ha = Find(body, "hand_" + side);
+            if (!up || !fo || !ha) return float.NaN;
+            var r = MeasureArmRig(body, Find(body, "clavicle_" + side), up, fo, ha, side, false);
+            Quaternion ru = up.rotation, rf = fo.rotation, rh = ha.rotation;
+            Vector3 S = up.position, E = fo.position, W = ha.position;
+            Quaternion handRot = Quaternion.LookRotation(ha.TransformDirection(r.handFingers), ha.TransformDirection(r.handBack));
+            Vector3 dir = (W - S).normalized;
+            Vector3 pole = Vector3.ProjectOnPlane(E - S, dir).normalized;
+            float sideSign = side == "l" ? -1f : 1f;
+            var lim = new ArmLimits { flex = 70f, extend = 60f, side = 28f, twist = 95f };
+            var pose = SolveArmCore(r.upperLen, r.foreLen, S, W, handRot, pole, 0f, sideSign, Quaternion.identity, lim);
+            PoseArm(up, r.upperAxis, r.upperBack, fo, r.foreAxis, r.foreBack, ha, r.handFingers, r.handBack, S, pose, 0.9f);
+            float err = Mathf.Max(Quaternion.Angle(ru, up.rotation), Mathf.Max(Quaternion.Angle(rf, fo.rotation), Quaternion.Angle(rh, ha.rotation)));
+            up.rotation = ru; fo.rotation = rf; ha.rotation = rh;
+            return err;
         }
 
         // ---------------- Fingers ----------------
         //
-        // Each finger (and the thumb) curls only as far as it can before it meets the surface of what the hand holds
-        // (PropGrabber.ContactDistance: a held item's shape, the furniture's colliders, a door's lever, a wall): the curl
-        // is swept from straight to the pose's amount and stops at the first touch of a knuckle or the fingertip. So
-        // fingers wrap a thin stem tightly, lie on a flat top, and never sink into what they hold.
+        // Each finger (and the thumb) closes only as far as it can before it meets the surface of what the hand holds
+        // (PropGrabber.ContactDistance: a held item's shape, the furniture's colliders, a door's lever, a wall; or the wall
+        // or rail the body's touch layer rests the hand on): the curl is swept from straight to the pose's amount and stops
+        // at the first touch of a phalanx (each of its joints and between them, a finger's thickness round). So fingers
+        // wrap a thin stem tightly, lie on a flat top, and never sink into what they hold. The thumb also turns across the
+        // palm toward the fingers (opposition), swept with its curl.
 
         class Finger
         {
             public string name;
             public readonly List<(Transform t, Quaternion rest, Vector3 axis, float w)> joints = new List<(Transform, Quaternion, Vector3, float)>();
             public Vector3 tipLocal;          // the fingertip in the last joint's frame
-            public float curl;
+            public Vector3 oppAxis;           // the thumb: its base turns about this toward the palm (local to the first joint)
+            public float curl, opp;           // how far it is closed (for tests), and the thumb's wanted opposition
+            public readonly float[] a = new float[4];      // each joint's bend now (degrees)
+            public float oppDeg;              // the thumb's base turned across the palm now (degrees; negative: opened out)
             public bool placed;
         }
+        readonly float[] _goal = new float[4];
+        /// <summary>The thumb opened out (degrees) before it closes round something big (MakeHuman's thumb at rest already points
+        /// across the palm: round a spray can it started inside it).</summary>
+        const float ThumbOpen = -50f;
+        /// <summary>How far a finger's joints straighten back past straight (degrees, knuckle out), to lie flat on a surface.</summary>
+        static readonly float[] Extend = { 30f, 8f, 6f };
         List<Finger> _fingers;
-        const float FingerRadius = 0.0065f;
+        /// <summary>Half a finger's thickness (MakeHuman's fingers are about 17 mm across).</summary>
+        const float FingerRadius = 0.0085f;
+        /// <summary>How far the thumb's base turns across the palm at full opposition (degrees).</summary>
+        const float ThumbOppDeg = 50f;
         public int ContactStops { get; private set; }  // fingers stopped by a surface last frame (for tests)
+        Vector3 _thumbOppAxis;
 
         void GroupFingers()
         {
@@ -305,47 +443,119 @@ namespace Backrooms.Interaction
                 Vector3 dir = (last.position - prev.position);
                 Vector3 tip = last.position + dir.normalized * (dir.magnitude * 0.9f);
                 f.tipLocal = last.InverseTransformPoint(tip);
+                if (f.name == "Thumb") f.oppAxis = _thumbOppAxis;
             }
         }
 
-        static void Curl(Finger f, float c)
+        static void Pose(Finger f)
         {
-            foreach (var j in f.joints) j.t.localRotation = j.rest * Quaternion.AngleAxis(c * 62f * j.w, j.axis);
+            for (int i = 0; i < f.joints.Count; i++)
+            {
+                var j = f.joints[i];
+                Quaternion turn = i == 0 && f.oppDeg != 0f && f.oppAxis.sqrMagnitude > 0.5f ? Quaternion.AngleAxis(f.oppDeg, f.oppAxis) : Quaternion.identity;
+                j.t.localRotation = j.rest * turn * Quaternion.AngleAxis(f.a[i], j.axis);
+            }
         }
 
-        /// <summary>The fingertip or the last knuckle touches (the base of the finger lies against what is held anyway).</summary>
-        bool Touches(Finger f)
+        /// <summary>
+        /// Where a finger's joints go (goal, degrees; the thumb's opposition in goalOpp): curled by want (and opposed by opp),
+        /// or with something to close on, joint by joint from the knuckle out, each bending until what lies beyond it touches
+        /// (so a finger whose first bone meets a can goes on wrapping it with the next two, as real fingers do; one curl for
+        /// the whole finger stopped them all at the first touch, the tips a centimetre and a half off). The thumb starts
+        /// opened out and closes from there. A finger already inside at the start takes whatever leaves it least inside.
+        /// </summary>
+        void Close(Finger f, float want, float opp, System.Func<Vector3, float> contact, float[] goal, out float goalOpp)
         {
             int n = f.joints.Count;
-            var last = f.joints[n - 1].t;
-            if (_grab.ContactDistance(last.TransformPoint(f.tipLocal)) < FingerRadius) return true;
-            return n > 1 && _grab.ContactDistance(last.position) < FingerRadius;
-        }
-
-        /// <summary>How far this finger may curl toward want before it touches what the hand holds.</summary>
-        float ContactCurl(Finger f, float want)
-        {
-            if (want <= 0.02f) return want;
-            Curl(f, 0f);
-            if (Touches(f)) { ContactStops++; return Mathf.Min(want, 0.12f); }
-            const int Steps = 8;
-            float ok = 0f;
-            for (int s = 1; s <= Steps; s++)
+            bool thumb = f.oppAxis.sqrMagnitude > 0.5f;
+            float oppT = opp * ThumbOppDeg;
+            for (int i = 0; i < n; i++) goal[i] = want * 62f * f.joints[i].w;
+            goalOpp = thumb ? oppT : 0f;
+            if (contact == null) return;
+            // (What the finger is now is put back at the end: the caller eases from it to the goal. Left at the last way
+            // tried, a finger already inside eased from a full curl every frame and stayed 2-3 cm in a wall.)
+            float savedOpp = f.oppDeg;
+            for (int i = 0; i < n; i++) { _closeSaved[i] = f.a[i]; f.a[i] = 0f; }
+            float open = thumb ? Mathf.Min(ThumbOpen, oppT) : 0f;
+            f.oppDeg = open;
+            Pose(f);
+            if (ClearanceFrom(f, 0, contact) < 0f)
             {
-                float c = want * s / Steps;
-                Curl(f, c);
-                if (Touches(f))
+                // Inside already. A finger may straighten back (past straight at the knuckle, as fingers laid flat on a
+                // wall do: the rig's rest fingers are a little bent, and with the palm flat on a wall they went 3 cm into
+                // it), or curl part way: of the ways that are clear, the one nearest the wanted curl; if none is, the
+                // least inside.
+                ContactStops++;
+                float bestK = 0f, bestC = float.MinValue;
+                bool clear = false;
+                for (int s = thumb ? 0 : -4; s <= 4; s++)
                 {
-                    // Halfway back between the last free curl and this one.
-                    float mid = (ok + c) * 0.5f;
-                    Curl(f, mid);
-                    if (!Touches(f)) ok = mid;
-                    ContactStops++;
-                    return ok;
+                    float k = s / 4f;
+                    for (int i = 0; i < n; i++) f.a[i] = k >= 0f ? goal[i] * k : k * Extend[Mathf.Min(i, Extend.Length - 1)];
+                    f.oppDeg = Mathf.Lerp(open, goalOpp, Mathf.Max(k, 0f));
+                    Pose(f);
+                    float c = ClearanceFrom(f, 0, contact);
+                    if (c >= 0f) { clear = true; bestK = k; bestC = c; }
+                    else if (!clear && c > bestC + 0.0005f) { bestC = c; bestK = k; }
                 }
-                ok = c;
+                for (int i = 0; i < n; i++) goal[i] = bestK >= 0f ? goal[i] * bestK : bestK * Extend[Mathf.Min(i, Extend.Length - 1)];
+                goalOpp = Mathf.Lerp(open, goalOpp, Mathf.Max(bestK, 0f));
+                f.oppDeg = savedOpp;
+                for (int i = 0; i < n; i++) f.a[i] = _closeSaved[i];
+                return;
             }
-            return want;
+            const int Steps = 8;
+            float oppAt = open;
+            for (int i = 0; i < n; i++)
+            {
+                float target = goal[i], done = 0f;
+                for (int s = 1; s <= Steps; s++)
+                {
+                    float k = (float)s / Steps;
+                    f.a[i] = target * k;
+                    if (i == 0 && thumb) f.oppDeg = Mathf.Lerp(open, goalOpp, k);
+                    Pose(f);
+                    if (ClearanceFrom(f, i, contact) < 0f)
+                    {
+                        ContactStops++;
+                        float half = (done + k) * 0.5f;
+                        f.a[i] = target * half;
+                        if (i == 0 && thumb) f.oppDeg = Mathf.Lerp(open, goalOpp, half);
+                        Pose(f);
+                        if (ClearanceFrom(f, i, contact) >= 0f) done = half;
+                        break;
+                    }
+                    done = k;
+                }
+                f.a[i] = target * done;
+                if (i == 0 && thumb) { oppAt = Mathf.Lerp(open, goalOpp, done); f.oppDeg = oppAt; }
+                Pose(f);
+                goal[i] = f.a[i];
+            }
+            goalOpp = thumb ? oppAt : 0f;
+            f.oppDeg = savedOpp;
+            for (int i = 0; i < n; i++) f.a[i] = _closeSaved[i];
+        }
+        readonly float[] _closeSaved = new float[4];
+
+        /// <summary>
+        /// The clearance of the part of a finger beyond joint 'from' (m; negative inside): over its phalanges (each joint
+        /// and the middle between them) and the tip, the surface distance less a finger's half thickness. Not the thumb's
+        /// first bone (the ball of the thumb lies on what the palm holds).
+        /// </summary>
+        static float ClearanceFrom(Finger f, int from, System.Func<Vector3, float> contact)
+        {
+            int n = f.joints.Count;
+            bool thumb = f.oppAxis.sqrMagnitude > 0.5f;
+            float best = float.MaxValue;
+            for (int i = from; i < n; i++)
+            {
+                Vector3 a = f.joints[i].t.position;
+                Vector3 b = i + 1 < n ? f.joints[i + 1].t.position : f.joints[n - 1].t.TransformPoint(f.tipLocal);
+                if (!(thumb && i == 0)) best = Mathf.Min(best, contact((a + b) * 0.5f));
+                best = Mathf.Min(best, contact(b));
+            }
+            return best - FingerRadius;
         }
 
         [Header("Arm limits")]
@@ -356,21 +566,60 @@ namespace Backrooms.Interaction
         bool _swivelSet;
 
         [Tooltip("How much of the forearm's turn (palm up or down) its bone takes; the hand takes all of it. The rig has no " +
-                 "twist bones, so the skin from elbow to wrist shares the turn instead of all of it wringing at the elbow.")]
-        [Range(0f, 1f)] public float forearmTwistShare = 0.55f;
+                 "twist bones: the rest shows at the wrist, where it twists the skin (most of it goes to the forearm, whose " +
+                 "elbow end is under the sleeve).")]
+        [Range(0f, 1f)] public float forearmTwistShare = 0.9f;
 
         struct ArmPose { public Vector3 elbow, wrist, foreBack, back0; public Quaternion hand; public float score, twist; }
+        struct ArmLimits { public float flex, extend, side, twist; }
+
+        /// <summary>
+        /// Of the ways a palm can lie flat on a face at <paramref name="point"/> (turned round the face's normal), the
+        /// fingers' direction the arm reaches with the least strain (the solver's score: wrist and forearm inside their
+        /// limits, the elbow down), leaning a little toward <paramref name="prefer"/>. (Fingers along the forearm's line,
+        /// tipped up, on a door jamb's face needed the forearm turned further than it turns: the hand stayed 34 degrees
+        /// off flat and the little-finger side went 3 cm into the wall.)
+        /// </summary>
+        public Vector3 ReachableFingers(Vector3 point, Vector3 normal, Vector3 prefer)
+        {
+            if (_curArm == null || !_grab) return prefer;
+            Vector3 basis = Vector3.ProjectOnPlane(prefer, normal);
+            if (basis.sqrMagnitude < 1e-4f) basis = Vector3.ProjectOnPlane(Vector3.up, normal);
+            if (basis.sqrMagnitude < 1e-4f) return prefer;
+            basis.Normalize();
+            Vector3 shoulder = ShoulderNow;
+            Quaternion yaw = transform.rotation;
+            float side = _grab.Side;
+            Vector3 best = basis; float bestScore = float.MaxValue;
+            for (int a = -180; a < 180; a += 15)
+            {
+                Vector3 f = Quaternion.AngleAxis(a, normal) * basis;
+                Quaternion hand = Quaternion.LookRotation(f, normal);
+                Vector3 wrist = point - hand * _wristToGrip;
+                Vector3 dir0 = (wrist - shoulder).normalized;
+                Vector3 pole0 = Vector3.ProjectOnPlane(yaw * new Vector3(0.8f * side, -1f, -0.25f), dir0).normalized;
+                float s = float.MaxValue;
+                for (int k = -8; k <= 10; k++) s = Mathf.Min(s, SolveArm(shoulder, wrist, hand, pole0, k * 15f, side, yaw).score);
+                s += Mathf.Abs(a) / 180f * 0.3f;
+                if (s < bestScore) { bestScore = s; best = f; }
+            }
+            return best;
+        }
+
+        ArmPose SolveArm(Vector3 shoulder, Vector3 wrist, Quaternion hand, Vector3 pole0, float swivel, float side, Quaternion yaw)
+            => SolveArmCore(_upperLen, _foreLen, shoulder, wrist, hand, pole0, swivel, side, yaw,
+                            new ArmLimits { flex = wristFlex, extend = wristExtend, side = wristSide, twist = forearmTwist });
 
         /// <summary>
         /// One arm pose for an elbow swing (degrees about the shoulder-wrist line from the default down-and-out): the elbow,
         /// the wrist, the forearm's turn (its back), and the hand within the wrist's limits, with a score (lower is more
         /// natural: little left undone at the limits, a forearm not turned far, the elbow not up or across the chest).
         /// </summary>
-        ArmPose SolveArm(Vector3 shoulder, Vector3 wrist, Quaternion hand, Vector3 pole0, float swivel, float side, Quaternion yaw)
+        static ArmPose SolveArmCore(float a, float b, Vector3 shoulder, Vector3 wrist, Quaternion hand, Vector3 pole0, float swivel, float side,
+                                    Quaternion yaw, ArmLimits lim)
         {
             var p = new ArmPose();
             Vector3 toW = wrist - shoulder;
-            float a = _upperLen, b = _foreLen;
             float d = Mathf.Clamp(toW.magnitude, 0.05f, (a + b) * 0.999f);
             Vector3 dir = toW.sqrMagnitude > 1e-8f ? toW.normalized : Vector3.down;
             Vector3 pole = Vector3.ProjectOnPlane(Quaternion.AngleAxis(swivel, dir) * pole0, dir).normalized;
@@ -385,7 +634,7 @@ namespace Backrooms.Interaction
             Vector3 F = hand * Vector3.forward, B = hand * Vector3.up;
             Vector3 want = Vector3.ProjectOnPlane(B, f);
             float twist = want.sqrMagnitude > 1e-6f ? Vector3.SignedAngle(b0, want, f) : 0f;
-            float tw = Mathf.Clamp(twist, -forearmTwist, forearmTwist);
+            float tw = Mathf.Clamp(twist, -lim.twist, lim.twist);
             p.foreBack = Quaternion.AngleAxis(tw, f) * b0;
             p.back0 = b0; p.twist = tw;
             // The wrist: what is left of the hand's angle, as a bend toward the palm or back and a bend to the side.
@@ -393,10 +642,10 @@ namespace Backrooms.Interaction
             Vector3 Fl = Quaternion.Inverse(fore) * F;
             float flex = Mathf.Asin(Mathf.Clamp(-Fl.y, -1f, 1f)) * Mathf.Rad2Deg;     // + toward the palm
             float dev = Mathf.Atan2(Fl.x, Fl.z) * Mathf.Rad2Deg;
-            float flexC = Mathf.Clamp(flex, -wristExtend, wristFlex), devC = Mathf.Clamp(dev, -wristSide, wristSide);
+            float flexC = Mathf.Clamp(flex, -lim.extend, lim.flex), devC = Mathf.Clamp(dev, -lim.side, lim.side);
             p.hand = fore * Quaternion.Euler(0f, devC, 0f) * Quaternion.Euler(flexC, 0f, 0f);
             float over = Mathf.Abs(twist - tw) + Mathf.Abs(flex - flexC) + Mathf.Abs(dev - devC);
-            float s = over * 0.05f + Mathf.Abs(tw) * 0.004f + (Mathf.Abs(flexC) + Mathf.Abs(devC)) * 0.004f;
+            float s = over * 0.08f + Mathf.Abs(tw) * 0.004f + (Mathf.Abs(flexC) + Mathf.Abs(devC)) * 0.004f;
             Vector3 e = p.elbow - shoulder;
             s += Mathf.Max(0f, e.y + 0.05f) * 6f;                                      // elbow up level with the shoulder
             s += Mathf.Max(0f, 0.04f - Vector3.Dot(e, yaw * Vector3.right * side)) * 8f; // elbow in across the chest
@@ -539,6 +788,7 @@ namespace Backrooms.Interaction
             _hipsRestLocal = Quaternion.Inverse(_body.rotation) * _hips.rotation;
             _torsoRest = _torso.localRotation;
             MeasureSpine();
+            MeasureBend();
             _torsoBendAxis = _torso.InverseTransformDirection(transform.right);
             _torsoUpAxis = _torso.InverseTransformDirection(transform.up);
             _torsoFwdAxis = _torso.InverseTransformDirection(transform.forward);

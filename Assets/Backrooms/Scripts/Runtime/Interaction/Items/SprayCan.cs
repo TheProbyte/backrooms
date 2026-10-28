@@ -12,7 +12,7 @@ namespace Backrooms.Interaction
     /// close, a wider, fainter one from further back. Lingering on one spot builds the paint up until it runs.
     /// The can holds <see cref="Lifespan"/> seconds of spraying; it sputters near the end and then only hisses.
     /// </summary>
-    public class SprayCan : WorldItem
+    public class SprayCan : WorldItem, IHandGrip
     {
         /// <summary>Seconds of spraying in a full can (a 400 ml can lasts about this long in one go).</summary>
         public static float Lifespan = 45f;
@@ -34,10 +34,15 @@ namespace Backrooms.Interaction
 
         public override Vector3 HoldOffset => new Vector3(0.16f, -0.24f, 0.36f);
         public override Vector3 UseOffset => new Vector3(0.12f, -0.15f, 0.43f);
-        // Palm on the back-right of the can, fingers round its front (mirrored for a left hand by the grabber).
-        public override Vector3 GripLocal => new Vector3(Radius * 0.72f + 0.005f, 0.1f, -Radius * 0.72f - 0.005f);
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(-0.6f, -0.05f, 0.8f), new Vector3(0.8f, 0f, 0.6f));
+        // Palm on the back-right of the can (its back outward), fingers round its front along the surface, thumb up and
+        // round the other side (mirrored for a left hand by the grabber). The fingers used to point at the can's axis and
+        // go through it.
+        public override Vector3 GripLocal => new Vector3((Radius + 0.002f) * 0.7071f, 0.1f, -(Radius + 0.002f) * 0.7071f);
+        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(0.7f, -0.05f, 0.7f), new Vector3(0.7071f, 0f, -0.7071f));
         public override float GripCurl => 0.95f;
+        public float FingerCurl(int finger) => 0.95f;
+        public float ThumbCurl => 0.8f;
+        public float ThumbOpposition => 0.7f;
         public override float UseBlend => _use;
         public bool Spraying { get; private set; }
         public override string Status => paint <= 0f ? "empty" : $"paint {Mathf.CeilToInt(paint * 100f)} %";

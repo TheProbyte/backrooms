@@ -16,7 +16,7 @@ namespace Backrooms.Interaction
     /// The cord is a physics rope (<see cref="Cord"/>): it lies on the floor, drapes over things and catches on corners.
     /// Models: Resources/Items/CordCoil.fbx, CordSocket.fbx, Plug.fbx.
     /// </summary>
-    public class CordBox : PowerUser
+    public class CordBox : PowerUser, IHandGrip
     {
         public const float Length = 8f;
         public const int MaxChain = 3;
@@ -48,13 +48,29 @@ namespace Backrooms.Interaction
         public int Depth => 1 + (_plug && _plug.Socket != null ? _plug.Socket.Depth : 0);
         /// <summary>Let go of out of its coil, the box just falls from the hand (as its plug does).</summary>
         public override bool DropsStraight => !coiled;
-        public override Vector3 HoldOffset => Bundle ? new Vector3(0.2f, -0.36f, 0.42f) : new Vector3(0.15f, -0.22f, 0.35f);
-        public override Vector3 GripLocal => Bundle ? new Vector3(0.12f, 0.03f, 0f) : new Vector3(0.02f, 0.02f, 0f);
-        public override Quaternion GripRotationLocal => Quaternion.LookRotation(new Vector3(-0.4f, -0.3f, 0.86f), Vector3.up);
+        // The coil: its strands lie between radius 0.10 and 0.135 m, 0-36 mm up (measured on the model). Held by its near
+        // rim, a little to the right: the palm on top of the strands, the fingers forward over them and curled under, the
+        // forearm coming straight from behind (held by the outer rim, fingers outward, the hand was 60 degrees past what a
+        // wrist turns). (The grip used to be inside a ring fatter than the strands: two fingers through it, two on nothing.)
+        static readonly Vector3 Rim = new Vector3(0.26f, 0f, -0.966f);
+        const float CoilR = 0.1175f, StrandR = 0.0175f, CoilY = 0.018f;
+        public override Vector3 HoldOffset => Bundle ? new Vector3(0.17f, -0.37f, 0.4f) : new Vector3(0.15f, -0.22f, 0.35f);
+        public override Vector3 GripLocal => Bundle ? Rim * CoilR + Vector3.up * (CoilY + StrandR + 0.002f) : new Vector3(0.02f, 0.02f, 0f);
+        public override Quaternion GripRotationLocal => Bundle ? Quaternion.LookRotation(new Vector3(-0.26f, 0f, 0.966f), Vector3.up)
+                                                                : Quaternion.LookRotation(new Vector3(-0.4f, -0.3f, 0.86f), Vector3.up);
         public override float GripCurl => 0.9f;
+        public float FingerCurl(int finger) => 0.92f;
+        public float ThumbCurl => Bundle ? 0.8f : 0.7f;
+        public float ThumbOpposition => 0.75f;
         /// <summary>Coiled: the ring of cord (the hand round one side of it); out: the box.</summary>
-        public override float ContactDistance(Vector3 p) =>
-            Bundle ? RingDistance(p, new Vector3(0f, 0.03f, 0f), Vector3.up, 0.085f, 0.14f, 0.03f) : base.ContactDistance(p);
+        /// <summary>The coil as a ring of round section (the strands), or the box.</summary>
+        public override float ContactDistance(Vector3 p)
+        {
+            if (!Bundle) return base.ContactDistance(p);
+            Vector3 d = p - new Vector3(0f, CoilY, 0f);
+            float r = new Vector2(d.x, d.z).magnitude;
+            return new Vector2(r - CoilR, d.y).magnitude - StrandR;
+        }
         /// <summary>Saved: 0 coiled, else the share of the cord that is out (old saves: 1, all of it).</summary>
         public override float Amount { get => coiled ? 0f : Mathf.Max(0.02f, PaidOut / Length); set { } }
         public override string Status => coiled ? $"extension cord ({Length:0} m): click an outlet"

@@ -47,8 +47,11 @@ namespace Backrooms.Interaction
             return true;
         }
 
+        float _doorSlipT;
+
         void EndDoor()
         {
+            _doorSlipT = 0f; _notThereT = 0f;
             if (_door) _door.Release();
             _door = null;
             _doorPhase = DoorPhase.None;
@@ -62,15 +65,23 @@ namespace Backrooms.Interaction
             float dt = Time.deltaTime;
             _doorT += dt;
             Vector3 grip = _door.GripPoint(_doorSide, _doorTurn);
-            Vector3 toGrip = grip - Shoulder;
+            Vector3 toGrip = grip - ReachShoulder;
             switch (_doorPhase)
             {
                 case DoorPhase.Reach:
                 {
-                    if (toGrip.magnitude <= reach + 0.05f)
+                    // The lever is taken (and turned) only once the hand is on it: it used to turn by itself with the palm
+                    // 12 cm short. (The solved palm decides; the reach says when to step in.)
+                    if (HandBlend > 0.85f && HandArrived && toGrip.magnitude <= ArmReach + 0.15f)
                     {
                         _player.botInput = null;
-                        if (HandBlend > 0.85f) { _doorPhase = DoorPhase.Turn; _doorT = 0f; _door.Grab(_doorSide); MicThump(); }
+                        _doorPhase = DoorPhase.Turn; _doorT = 0f; _door.Grab(_doorSide); MicThump();
+                        break;
+                    }
+                    if (toGrip.magnitude <= ArmReach)
+                    {
+                        if (!ComeCloser(grip, 2.5f)) EndDoor();
+                        else if (_notThereT <= 0.2f) _player.botInput = null;
                         break;
                     }
                     if (_doorT > 2f || toGrip.magnitude > lookRange + 0.6f) { EndDoor(); break; }
@@ -91,11 +102,16 @@ namespace Backrooms.Interaction
                     break;
                 case DoorPhase.Hold:
                 {
-                    // The hand stays in front of the body where it took the lever; the door follows it.
-                    Vector3 target = StandShoulder + transform.rotation * _doorOffset;
+                    // The hand stays in front of the body where it took the lever, within the arm's reach of the shoulder
+                    // as it is now; the door follows it.
+                    Vector3 target = StandShoulder + transform.rotation * _doorOffset, RS = ReachShoulder;
+                    target = RS + Vector3.ClampMagnitude(target - RS, ArmReach + 0.06f);
                     _door.Drive(target, dt);
                     _player.lookScale = 0.75f;
-                    if (Vector3.Distance(_door.GripPoint(_doorSide, 1f), Shoulder) > reach + 0.32f) EndDoor();   // it could not follow
+                    // It could not follow (the hand would have to let go).
+                    // The hand lets go when the lever leaves it (it used to stay "holding" with the palm up to 23 cm off).
+                    _doorSlipT = Vector3.Distance(_door.GripPoint(_doorSide, 1f), RS) > ArmReach + 0.2f || PalmError > 0.05f ? _doorSlipT + dt : 0f;
+                    if (_doorSlipT > 0.12f) EndDoor();
                     break;
                 }
             }
@@ -104,8 +120,9 @@ namespace Backrooms.Interaction
         /// <summary>The hand on the lever (for the arm IK).</summary>
         void DoorHandPose()
         {
-            HandPosition = _door.GripPoint(_doorSide, _doorTurn);
             HandRotation = _door.GripRotation(_doorSide, _doorTurn);
+            // The palm on top of the lever's bar (its radius and a little), not at its middle.
+            HandPosition = _door.GripPoint(_doorSide, _doorTurn) + HandRotation * Vector3.up * 0.012f;
             float curl = _doorPhase == DoorPhase.Reach ? 0.35f : 0.8f;
             HandCurl = Mathf.MoveTowards(HandCurl, curl, Time.deltaTime * 4f);
         }

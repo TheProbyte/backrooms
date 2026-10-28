@@ -71,6 +71,41 @@ namespace Backrooms.Interaction
             });
         }
 
+        /// <summary>How far forward and down the shoulder goes as the spine bends 0, 10 .. 90 degrees (m, measured on the rig).</summary>
+        readonly float[] _bendAhead = new float[10], _bendDrop = new float[10];
+        bool _bendMeasured;
+
+        /// <summary>
+        /// Measures where the shoulder goes as the spine bends (the body is placed so the shoulder keeps its place under the
+        /// eye). A rigid 0.65 m lever from the hips put it 17-27 cm further back than the rig's bending spine does: stooping
+        /// to a sofa's seat, the shoulder ended up 0.5 m behind the eye, the seat out of the arm's reach.
+        /// </summary>
+        void MeasureBend()
+        {
+            _bendMeasured = false;
+            Transform s = Find(_body, "upperarm_r");
+            if (!s) s = Find(_body, Bone("Neck"));
+            if (!s || _spine.Count == 0) return;
+            Vector3 p0 = Vector3.zero;
+            for (int i = 0; i < 10; i++)
+            {
+                PoseSpine(i * 10f, 0f, 0f);
+                Vector3 p = _body.InverseTransformPoint(s.position);
+                if (i == 0) p0 = p;
+                _bendAhead[i] = p.z - p0.z;
+                _bendDrop[i] = p0.y - p.y;
+            }
+            PoseSpine(0f, 0f, 0f);
+            _bendMeasured = _bendAhead[9] > 0.05f;
+        }
+
+        static float BendTable(float[] t, float bend)
+        {
+            float x = Mathf.Clamp(bend, 0f, 90f) / 10f;
+            int i = Mathf.Min((int)x, 8);
+            return Mathf.Lerp(t[i], t[i + 1], x - i);
+        }
+
         void PoseSpine(float bend, float twist, float roll)
         {
             // Rest first, all of them (a child's measured axes are in its own frame, so this order works top to bottom).
@@ -89,6 +124,7 @@ namespace Backrooms.Interaction
             public Quaternion clavicleRest;
             public float upperLen, foreLen;
             public Vector3 upperAxis, upperBack, foreAxis, foreBack, handFingers, handBack, wristToGrip, wristToTip;
+            public Vector3 thumbOppAxis;                  // the thumb's base turns about this toward the palm (its local frame)
             public readonly List<(Transform t, Quaternion rest, Vector3 axis, float weight, string finger)> joints =
                 new List<(Transform, Quaternion, Vector3, float, string)>();
             public List<Finger> fingers;
@@ -106,7 +142,7 @@ namespace Backrooms.Interaction
         /// Measures an arm in its rest pose. back: the back of the hand at rest (a separate model's watch face, or across
         /// the knuckles on the body's hand), so the code never depends on how the FBX axes were converted.
         /// </summary>
-        ArmRig MeasureArmRig(Transform root, Transform clavicle, Transform upper, Transform fore, Transform hand, string side, bool setThumb)
+        static ArmRig MeasureArmRig(Transform root, Transform clavicle, Transform upper, Transform fore, Transform hand, string side, bool setThumb)
         {
             var r = new ArmRig { root = side == null ? root : null, clavicle = clavicle, upper = upper, fore = fore, hand = hand };
             if (clavicle) r.clavicleRest = clavicle.localRotation;
@@ -132,7 +168,17 @@ namespace Backrooms.Interaction
                 else backW = Vector3.up;
             }
             r.upperAxis = upper.InverseTransformDirection(boneW);
-            r.upperBack = upper.InverseTransformDirection(Vector3.ProjectOnPlane(backW, boneW).normalized);
+            // The upper arm's back: the elbow's hinge at rest (the solver puts the hinge there), signed like the back of
+            // the hand (which lies within a few degrees of it in MakeHuman's rest pose); a straight rest arm has no hinge,
+            // so then the back of the hand.
+            Vector3 hingeW = Vector3.Cross(boneW, foreW);
+            Vector3 upperBackW = Vector3.ProjectOnPlane(backW, boneW).normalized;
+            if (hingeW.sqrMagnitude > 0.03f * 0.03f)
+            {
+                hingeW = Vector3.ProjectOnPlane(hingeW, boneW).normalized;
+                upperBackW = Vector3.Dot(hingeW, upperBackW) >= 0f ? hingeW : -hingeW;
+            }
+            r.upperBack = upper.InverseTransformDirection(upperBackW);
             r.foreAxis = fore.InverseTransformDirection(foreW);
             r.foreBack = fore.InverseTransformDirection(Vector3.ProjectOnPlane(backW, foreW).normalized);
             Vector3 fingersW = Vector3.ProjectOnPlane(fingersRaw, backW).normalized;
@@ -184,12 +230,32 @@ namespace Backrooms.Interaction
                 Vector3 ax = Vector3.Cross(thumbDir, across);
                 if (ax.sqrMagnitude > 1e-6f) thumbBendW = ax.normalized;
             }
+            // The thumb's opposition: its base turns toward the palm side (signed so a positive turn takes the thumb tip
+            // toward the palm), so it can close against the fingers round what the hand holds.
+            if (thumb1 && thumb2)
+            {
+                Vector3 thumbDir = (thumb2.position - thumb1.position).normalized;
+                Vector3 oppW = Vector3.Cross(thumbDir, -backW);
+                if (oppW.sqrMagnitude > 1e-6f)
+                {
+                    oppW.Normalize();
+                    var t3 = FingerOf(root, "Thumb", 3, side);
+                    Transform tipT = t3 ? t3 : thumb2;
+                    Quaternion r0 = thumb1.rotation;
+                    float before = Vector3.Dot(tipT.position - hand.position, -backW);
+                    thumb1.rotation = Quaternion.AngleAxis(25f, oppW) * r0;
+                    if (Vector3.Dot(tipT.position - hand.position, -backW) < before) oppW = -oppW;
+                    thumb1.rotation = r0;
+                    r.thumbOppAxis = thumb1.InverseTransformDirection(oppW);
+                }
+            }
             foreach (var name in FingerNames)
                 for (int i = 1; i <= 3; i++)
                 {
                     var t = FingerOf(root, name, i, side);
                     if (!t) continue;
-                    float w = name == "Thumb" ? (i == 1 ? 0.2f : 0.5f) : i == 1 ? 1f : i == 2 ? 1.25f : 0.8f;
+                    // The thumb's joints flex further (0.25, 0.75, 0.85 of a finger's: it could only get to 29 degrees).
+                    float w = name == "Thumb" ? (i == 1 ? 0.25f : i == 2 ? 0.75f : 0.85f) : i == 1 ? 1f : i == 2 ? 1.25f : 0.8f;
                     r.joints.Add((t, t.localRotation, t.InverseTransformDirection(name == "Thumb" ? thumbBendW : bendW), w, name));
                 }
             return r;
@@ -206,6 +272,7 @@ namespace Backrooms.Interaction
             _upperAxis = r.upperAxis; _upperBack = r.upperBack; _foreAxis = r.foreAxis; _foreBack = r.foreBack;
             _handFingers = r.handFingers; _handBack = r.handBack; _wristToGrip = r.wristToGrip; _wristToTip = r.wristToTip;
             _fingerJoints.Clear(); _fingerJoints.AddRange(r.joints);
+            _thumbOppAxis = r.thumbOppAxis;
             if (r.fingers == null) { _fingers = null; GroupFingers(); r.fingers = _fingers; }
             else _fingers = r.fingers;
             _swivelSet = false;

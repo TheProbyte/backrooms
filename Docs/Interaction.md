@@ -119,9 +119,10 @@
   torso tilts) to look round a corner. It stops short of walls; not while running or crawling.
 - **Steadying hand**: walking past a door jamb or the end of a wall on the hand's side, the free hand sometimes reaches
   out and rests on it for a moment (palm flat, a soft pat), then lets go (`PropGrabber.Touch.cs`).
-- **Fingers**: every finger and the thumb curl only until they touch what the hand holds (the held item's own shape,
-  the furniture's colliders, a door's lever, the wall), so they close round a stem, lie on a flat top and never sink in
-  (`FirstPersonBody`, "Fingers"; `PropGrabber.ContactDistance`, `WorldItem.ContactDistance`).
+- **Fingers**: every finger and the thumb close joint by joint until they touch what the hand holds (the held item's
+  own shape, the furniture's colliders, a door's lever, the wall or rail under the hand), so they wrap a can, lie flat on
+  a wall and pinch a stick of chalk (`FirstPersonBody`, "Fingers"; `PropGrabber.ContactDistance`,
+  `WorldItem.ContactDistance`). Nothing is taken until the palm is on it (see "Hands" below).
 - **Weight**: a heavy item in the hand (the lamp, a coiled cord) slows your steps and turns a little and lags the view
   more. Picking something up off the floor, you bend down for it first.
 
@@ -350,6 +351,61 @@ a riser. First person (pitch 0 / 45 / 62, the game's limit / 70; share of the fr
 the hand and sleeve as before in the eye view. Open: at 70 degrees (past the game's limit) the cut top of the jeans can
 show; running, a planted foot sometimes slips (mean 0.25 m/s, as before); stairs checked only on the test staircase.
 
+## Hands (2026-10-28)
+
+A reviewer scored the hands holding things 3/10: things held from up to 0.4 m away, fingers inside a spray can and a
+rubber chicken, a thumb that never closed, a sledgehammer that left the hand mid-swing, the upper arm rolled 60-70
+degrees off its elbow, a wall lean with the fingers 8-11 cm in the wall. What changed:
+
+- **No telekinesis.** The reach is the rig's own (`FirstPersonBody.ArmReach`: upper arm + forearm x 0.96 + wrist to palm,
+  about 0.63 m) from the body's real shoulder (`ShoulderNow`; `PropGrabber.ReachShoulder`, `ArmReach`, `HandArrived`).
+  Furniture, a door's lever, a quick shove and a light switch are taken only once the solved palm (or fingertip) is
+  within 2 cm of its point (`PalmError`); short of it the body steps in and bends lower (`ComeCloser`), held back (by the
+  prop, a wall) with it still out of reach the hand comes back after 0.6 s. Holding, the grip is kept within the arm's
+  reach; the hand lets go when the palm is 5 cm (a door, for 0.12 s) or 10 cm (furniture, 0.4 s) off it.
+- **Stooping.** The body is placed so the shoulder keeps its place under the eye however far the torso bends (measured
+  on the rig, `MeasureBend`; a rigid 0.65 m lever put the shoulder 0.5 m behind the eye, the seat of a sofa out of
+  reach), and a squat's hips going back no longer carry it. The top of a sofa's back from in front of the seat is 1.2 m
+  from the shoulder: refused.
+- **Held items go with the hand.** After the arm is solved the item is put on the palm as it ended up (a wrist at its
+  limit no longer leaves the item floating off it): the sledgehammer's swing left the hand by up to 186 mm; now 1 mm.
+- **Arm.** The upper arm's roll is the elbow's hinge (it was 61-71 degrees off); `ArmSolverTests` puts the rest pose
+  through the solver (0.35 degrees). The elbow's swing is chosen every frame with at most 0.2 of a penalty for moving
+  (it stuck on a way 20 degrees off the hand's angle).
+- **Fingers** close joint by joint from the knuckle out until what lies beyond touches (one curl for the whole finger
+  stopped them all at the first touch, tips 1.5 cm off), at a finger's half thickness (8.5 mm), each phalanx and the tip
+  checked. A finger already inside straightens back (to 30 degrees past straight at the knuckle: fingers flat on a wall)
+  or curls part way, whichever is clear and nearest what is wanted. The thumb opens out (50 degrees) and closes across
+  the palm (opposition) and down to its contact. Items say how each finger and the thumb close (`IHandGrip`:
+  `HandGrip.cs`). Boxes (walls, furniture) report how deep a point is (`CollidersDistance`; "inside" alone hid a
+  finger 3 cm in a wall).
+- **Grips.** Spray can and rubber chicken: palm on the surface, fingers round, thumb opposed. Chalk and plug: placed by
+  trying the closing fingers against the shape (index pad on top, thumb pad on the side). Desk lamp: on its real lower
+  rod. Coil: by its near rim, fingers over and under the strands. Sledgehammer: the handle across the palm on the slant a
+  hand holds a handle (26 degrees from square: the wrist could not turn square to it).
+- **Touching the world.** The steadying hand turns the palm round the face's normal to the way the arm reaches best
+  (`ReachableFingers`) and touches with the edge of the hand where it cannot lie flat; a wall lean and a rail rest the
+  palm on the surface (the rail: on top, over its middle) and the fingers close on the wall or round the rail.
+- **Quick door.** A shove from 0.8 m steps in first (it was refused); a shoved door swings off the hand.
+
+Measured (World 3; before -> after; reviewer's numbers before): spray can 878 skin vertices inside the can (31.7 mm
+deep) -> 90 (6.9 mm), fingers touching (joints 9-13 mm from the surface: a finger's half thickness), palm 2 mm, hand
+7 degrees off; rubber chicken 1583 (58.8 mm) -> 48 (4.9 mm), palm 2.4 mm; coil palm -25 mm and fingers through it ->
+palm 2 mm, hand 0.6 degrees off, 72 vertices (6.4 mm); plug inside the fist -> index, middle and thumb pads on it (tips
+9-13 mm), 4 vertices (2.6 mm); chalk tips 32-69 mm off -> index 14 mm and thumb 21 mm (joints 9-11); desk lamp grip
+25 mm from the rod, thumb 35 mm -> palm 2 mm, hand 0 degrees off, thumb tip 13 mm; tape 165 vertices (7 mm) -> 165
+(7.2 mm), thumb on it (9 mm); sledgehammer carry hand 33.5 degrees off -> 9, palm -0.7 mm; swing hammer off the hand
+186 mm -> 1 mm (IK miss 3 mm); door lever: palm 122 mm short and turning by itself -> turned only with the palm within
+2 cm (15 mm worst, 2.3 mean), held mean 12 mm; quick door shoved at 12-16 mm; sofa arm and seat taken with the palm
+0 mm off (were 236-371 mm, and the seat from 0.37 m), the back refused; wall lean fingers 76-111 mm in the wall, back of
+hand 74 degrees off -> fingers on it (tips 10-15 mm), 6 degrees off, 1080 -> 141 vertices in; jamb 104 degrees off ->
+15, palm 7 mm; rail no contact, 435 vertices in -> palm 3 mm, fingers round it, 78; upper arm roll 61-71 -> 0 degrees.
+Walking and running with an item the palm stays within 2 mm; crawling (the separate arm) 0 mm; a throw's wind-up 1 mm.
+Open: furniture's colliders are boxes that do not match the model everywhere (a sofa's rolled arm: the fingers close on
+the box, 15 cm under the visible top, so they stay as wanted); the thumb lies along a hammer's handle rather than round
+it; the jamb's touch still has the little-finger side 1 cm in for a moment (the forearm at its turn limit); fingers on
+the tape roll's core 7 mm in.
+
 ## Testing
 `Debug/GaitProbe.cs` (2026-10-28): `GaitProbe.Run(folder)` measures the body's gait on a flat test floor 60 m above the
 player with a test staircase (stand, walk, stop, run, slow walk, strafe, back up, diagonal, turn on the spot, look
@@ -357,6 +413,9 @@ round, crouch, crouch-walk, stand up, stairs): cadence and step times, stance sh
 floor, bone spikes, knee angles, pelvis and thorax, arm swing, foot roll (`gait.txt`, `gait.csv`). `Film(folder)`: side
 and front frames of a walk, run, strafe and backward cycle in the office (shadow-only parts drawn). `View(folder)`:
 first-person frames at pitch 0, 45, the limit and 70, standing and walking, with how much of each is the body.
+`GaitProbe.MeasureHand(folder, tag, next, render)`: the hand reviewer's numbers for what the hand holds (elbow, wrist,
+forearm turn, upper arm roll, palm to surface and to its point, each finger's joints and tip, skin vertices inside) and
+seven renders; then picks up `next`.
 
 `Debug/GrabProbe.cs`: in play mode, add it and call `Run()`. For each kind it finds a prop (travelling to
 one if needed), grabs, lifts, drags, swings and shoves it with screenshots, then walks away until the

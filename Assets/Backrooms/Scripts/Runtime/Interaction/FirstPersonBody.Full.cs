@@ -154,7 +154,9 @@ namespace Backrooms.Interaction
             Vector3 wristAt = shoulder + dir * len;
             if (_leftArm) _leftArm.SetPositionAndRotation(shoulder, Quaternion.identity);
             Vector3 handBack = handRot * Vector3.up;
-            Orient(r.upper, r.upperAxis, r.upperBack, elbow - shoulder, -pole);
+            // The upper arm's back on the elbow's hinge (as the working arm's).
+            Vector3 hinge = -side * Vector3.Cross(elbow - shoulder, wristAt - elbow);
+            Orient(r.upper, r.upperAxis, r.upperBack, elbow - shoulder, hinge.sqrMagnitude > 1e-8f ? hinge : -pole);
             // The forearm's roll from where the thumb points (across the forearm, always well defined), not from the back
             // of the hand: palm up under the camcorder the back of the hand lies nearly along the forearm, and its roll
             // flipped (the arm's bones turned up to 2400 degrees a second).
@@ -213,17 +215,23 @@ namespace Backrooms.Interaction
             Vector3 tw; Quaternion tr; float tc;
             if (_touchRail)
             {
-                // Round the rail: palm on top, fingers over and under it.
+                // Round the rail: palm on top, fingers over and under it (they stop on it: TouchDistance).
                 Vector3 fingers = Vector3.ProjectOnPlane(Vector3.Cross(Vector3.up, _touchAlong), Vector3.up).normalized;
                 if (Vector3.Dot(fingers, _touchPoint - shoulder) < 0f) fingers = -fingers;
                 tr = Quaternion.LookRotation(fingers, Vector3.up);
-                tw = _touchPoint + Vector3.up * 0.035f - fingers * 0.05f;
+                // The palm on the top of the rail, over its middle (it was past the far edge, 3 cm off it).
+                Vector3 top = _touchPoint + fingers * Vector3.Dot(_touchRailCentre - _touchPoint, fingers);
+                tw = top + Vector3.up * 0.003f - tr * _wristToGrip;
                 tc = 0.95f;
             }
             else
             {
-                // Flat on the wall: palm to it, fingers up and a little forward.
-                Vector3 fingers = Vector3.ProjectOnPlane(Vector3.up * 0.75f + fwd * 0.6f, _touchNormal).normalized;
+                // Flat on the wall: palm to it, the fingers carrying on the forearm's line along the wall and a little up,
+                // so the wrist only bends back (it was asked for fingers straight up: past what a wrist turns, the hand
+                // ended 74 degrees off the wall and the fingers in it).
+                Vector3 along = Vector3.ProjectOnPlane(_touchPoint - shoulder, _touchNormal);
+                if (along.sqrMagnitude < 1e-4f) along = Vector3.ProjectOnPlane(fwd, _touchNormal);
+                Vector3 fingers = Vector3.ProjectOnPlane(along.normalized + Vector3.up * 0.35f, _touchNormal).normalized;
                 tr = Quaternion.LookRotation(fingers, _touchNormal);
                 tw = _touchPoint + _touchNormal * 0.02f - fingers * 0.055f;
                 tc = 0.12f;
@@ -232,6 +240,47 @@ namespace Backrooms.Interaction
             wrist = Vector3.Lerp(hang, tw, s);
             hand = Quaternion.Slerp(hangRot, tr, s);
             curl = Mathf.Lerp(hangCurl, tc, s);
+        }
+
+        Vector3 _touchRailCentre;
+        float _touchRailR = 0.02f;
+
+        /// <summary>
+        /// Where on a wall the free hand rests: ahead of the shoulder along the wall about as far as the shoulder is from it
+        /// (so the forearm meets the wall at about 45 degrees and the wrist bends back only as far as a wrist does), between
+        /// waist and chest height, within the arm's reach, and only where the wall really is. (The first point the rays hit
+        /// was often right beside the shoulder: a palm flat there is out of a wrist's reach.)
+        /// </summary>
+        Vector3 ComfortableTouch(RaycastHit hit, Vector3 shoulder, Vector3 fwd, Vector3 outward)
+        {
+            Vector3 n = hit.normal, P = hit.point;
+            float dWall = Vector3.Dot(shoulder - P, n);
+            Vector3 foot = shoulder - n * dWall;
+            Vector3 t = Vector3.ProjectOnPlane(fwd, n); t.y = 0f;
+            if (t.sqrMagnitude < 0.04f) { t = Vector3.ProjectOnPlane(outward, n); t.y = 0f; }      // a wall ahead: out to the side
+            if (t.sqrMagnitude < 1e-4f) return P;
+            t.Normalize();
+            float along = Mathf.Max(Vector3.Dot(P - foot, t), dWall * 0.95f + 0.06f);
+            float y = Mathf.Clamp(P.y, shoulder.y - 0.45f, shoulder.y - 0.12f);
+            float reachTo = ArmReach * 0.9f;
+            Vector3 Q = foot + t * along; Q.y = y;
+            for (int k = 0; k < 6 && (Q - shoulder).magnitude > reachTo; k++) { along *= 0.85f; Q = foot + t * along; Q.y = y; }
+            // The wall must be there (not past its end or round a corner).
+            if (Physics.Raycast(Q + n * 0.15f, -n, out var h, 0.3f, ~0, QueryTriggerInteraction.Ignore) && !h.collider.transform.IsChildOf(transform)
+                && Vector3.Dot(h.normal, n) > 0.9f && Mathf.Abs(Vector3.Dot(h.point - P, n)) < 0.03f)
+                return h.point;
+            return P;
+        }
+
+        /// <summary>The surface the body's touch layer rests the hand on (the wall's plane, or round the rail), for the fingers.</summary>
+        float TouchDistance(Vector3 p)
+        {
+            if (_touchRail)
+            {
+                Vector3 a = _touchAlong.normalized, d = p - _touchRailCentre;
+                return (d - a * Vector3.Dot(d, a)).magnitude - _touchRailR;
+            }
+            return Vector3.Dot(p - _touchPoint, _touchNormal);
         }
 
         float _sideSign = 1f;
@@ -283,6 +332,9 @@ namespace Backrooms.Interaction
                 _touchPoint = rail ? new Vector3(hit.point.x, bounds.max.y, hit.point.z) : hit.point;
                 _touchNormal = hit.normal;
                 _touchAlong = bounds.size.x > bounds.size.z ? Vector3.right : Vector3.forward;
+                _touchRailCentre = bounds.center;
+                _touchRailR = Mathf.Max(0.008f, Mathf.Min(Mathf.Min(bounds.size.x, bounds.size.z), bounds.size.y) * 0.5f);
+                if (!rail) _touchPoint = ComfortableTouch(hit, shoulder, fwd, right * side);
                 _touchUntil = Time.time + 0.8f + Random.value * 1.5f;
                 return;
             }
@@ -396,7 +448,10 @@ namespace Backrooms.Interaction
         {
             if (!_body) return;
             float eye = _player.Eye;
-            bool visible = !_player.noclip && eye > HideBelowEye;
+            // (Bending down for something low keeps the body, and its own arm: the separate arm used to be swapped in
+            // mid-grab, a grey sleeve and another hand.)
+            bool visible = !_player.noclip && (eye > HideBelowEye
+                           || (_player.stoop > 0.05f && _player.CurrentStance != CamcorderPlayerController.Stance.Crawl));
             if (_body.gameObject.activeSelf != visible)
             {
                 _body.gameObject.SetActive(visible);
@@ -444,13 +499,18 @@ namespace Backrooms.Interaction
             // How far the eye is below standing: leaning the torso forward gives some, the knees the rest.
             float low = Mathf.Clamp01((_player.standEye - eye) / Mathf.Max(0.1f, _player.standEye - _player.crouchEye));
             float bend = Mathf.Clamp(_player.stoop, 0f, 0.8f) * 55f + low * 30f;
-            float torsoDrop = TorsoLength * (1f - Mathf.Cos(Mathf.Min(bend, 80f) * Mathf.Deg2Rad));
+            // (What the bend itself brings the shoulder down and forward: measured on the rig, MeasureBend.)
+            float torsoDrop = _bendMeasured ? BendTable(_bendDrop, Mathf.Min(bend, 80f))
+                                            : TorsoLength * (1f - Mathf.Cos(Mathf.Min(bend, 80f) * Mathf.Deg2Rad));
             float drop = Mathf.Clamp(_player.standEye - eye - torsoDrop, 0f, 0.5f);
             float squat = drop / 0.5f;
             // The body stands behind the eye along the torso's heading (between the view's and the legs'), at a height
             // eased over steps: going down stairs the hips sink smoothly instead of dropping a whole step at a time.
             {
-                float backBy = bodyBack + TorsoLength * 0.9f * Mathf.Sin(Mathf.Min(bend, 80f) * Mathf.Deg2Rad);
+                // (Measured on the rig, the shoulder keeps its place under the eye however far the torso bends; the
+                // squat's hips go back over the heels, below, and the body comes forward as much.)
+                float backBy = bodyBack + (_bendMeasured ? BendTable(_bendAhead, Mathf.Min(bend, 80f)) - squat * 0.12f
+                                                         : TorsoLength * 0.9f * Mathf.Sin(Mathf.Min(bend, 80f) * Mathf.Deg2Rad));
                 Vector3 local = Quaternion.Euler(0f, 0.25f * lag, 0f) * new Vector3(0f, 0f, -backBy);
                 Vector3 world = _body.parent ? _body.parent.TransformPoint(local) : local;
                 if (!_rootYSet || Mathf.Abs(world.y - _rootY) > 0.6f) { _rootY = world.y; _rootYVel = 0f; _rootYSet = true; }
