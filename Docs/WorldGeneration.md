@@ -138,8 +138,9 @@ the same from either chunk), and costs almost nothing: a few hundred triangles a
 - **Walls** (every room): scuffs at hip and chair height (40 % of hallway wall cells, 12 % elsewhere), nail holes (6 %),
   the paler ghost of something that hung there (3.5 %: a faint frame of dirt round it and its nail hole), wallpaper
   peeling at a seam by the ceiling or the baseboard (3 % in wallpapered rooms: a curled triangle, its paper back, the
-  painted board under it), and an exit sign over 6 % of doorways (one side; red letters on a white face, glowing,
-  never switched off). Marks are a `WallWear` overlay, rebuilt with the walls when one is broken; the peel is part of
+  painted board under it), and an exit sign over 6 % of headed doorways (one side; red letters on a white face,
+  glowing, never switched off; only over a flat header with wall above it: a plain opening runs to the ceiling and an
+  arch's curve reaches the sign's height, so a sign there hung in the air). Marks are a `WallWear` overlay, rebuilt with the walls when one is broken; the peel is part of
   the wall's own mesh.
 - **Doors**: 35 % have black kick marks low on one face, 45 % grime round the handle and along the free edge, as a small
   overlay on the leaf (it swings with it).

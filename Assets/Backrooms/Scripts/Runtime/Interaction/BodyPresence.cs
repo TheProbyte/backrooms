@@ -97,7 +97,7 @@ namespace Backrooms.Interaction
             _lastEye = _player.Eye;
             float want = Mathf.Clamp01(lookRate / 220f) * 0.55f + Mathf.Clamp01(eyeRate / 1.2f) * 0.8f + Mathf.Clamp01(speed / 3f) * 0.2f;
             _rustleLevel = Mathf.MoveTowards(_rustleLevel, Mathf.Clamp01(want), dt * (want > _rustleLevel ? 6f : 2f));
-            _rustle.volume = _rustleLevel * 0.16f;
+            _rustle.volume = _rustleLevel * 0.09f;
 
             // ---- Wind on the microphone: running, or whipping the camera round ----
             if (_chain) _chain.wind = Mathf.Clamp01((speed - 2f) / 1.8f) * 0.8f + Mathf.Clamp01((lookRate - 250f) / 500f) * 0.5f;
@@ -108,7 +108,8 @@ namespace Backrooms.Interaction
 
         void UpdateBrush(float dt, float speed, bool moving)
         {
-            float reach = (_cc ? _cc.radius : 0.3f) + 0.06f;
+            // Only when the shoulder is really on the wall (it was within 6 cm of it, so walking near one rubbed).
+            float reach = (_cc ? _cc.radius : 0.3f) + 0.025f;
             Vector3 origin = transform.position + Vector3.up * 1.3f;
             Vector3 vel = _player.PlanarVelocity;
             int sideHit = 0;
@@ -127,13 +128,13 @@ namespace Backrooms.Interaction
             if (brushing && !_brushing)
             {
                 // First touch: the camera is knocked a little away from the wall, the mic hears the body.
-                if (_shake) _shake.Jolt(new Vector3(2f, -10f * sideHit, 12f * sideHit) * Mathf.Clamp01(speed / 1.5f));
+                if (_shake) _shake.Jolt(new Vector3(1f, -5f * sideHit, 6f * sideHit) * Mathf.Clamp01(speed / 1.5f));
                 if (_chain) _chain.HandlingImpulse();
             }
             _brushing = brushing;
-            _brushLevel = Mathf.MoveTowards(_brushLevel, brushing ? Mathf.Clamp01(speed / 2f) : 0f, dt * 5f);
+            _brushLevel = Mathf.MoveTowards(_brushLevel, brushing ? Mathf.Clamp01(speed / 2.5f) : 0f, dt * (brushing ? 2.5f : 5f));
             if (_brushLevel > 0.001f && !_brush.isPlaying) { _brush.time = Random.Range(0f, _brush.clip.length); _brush.Play(); }
-            _brush.volume = _brushLevel * 0.35f;
+            _brush.volume = _brushLevel * 0.12f;
             if (_brushLevel <= 0.001f && _brush.isPlaying) _brush.Stop();
             if (brushing) _brush.transform.localPosition = new Vector3(0.25f * sideHit, 1.3f, 0f);
         }

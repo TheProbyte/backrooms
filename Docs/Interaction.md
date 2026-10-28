@@ -209,8 +209,19 @@ alone with `--no-arm`.
 - **Feet**: planted and stepping as before, now: never in each other (a swinging foot goes round the standing one, at
   least 12 cm apart centre to centre; two crowded feet after a turn make one step out), landings put on a stair tread
   whole (`OnTread`: heel and toe clear of its edges), the hips coming down so both legs reach (pelvis offset), a gait for
-  the direction (shorter steps sideways and backward, a wider stance sideways, toes first going backward), and the hips
-  lagging the view's turns a little while the torso and head follow it.
+  the direction (shorter steps sideways and backward, a wider stance sideways, toes first going backward).
+- **Lower body heading** (since 2026-10-28): the hips and feet have their own heading. Walking, it follows the view a
+  moment behind. Standing, it stays put while you look around (the torso takes three quarters of the turn back, the neck
+  and head the rest) until the view is 40 degrees round; then it turns to the view and the feet step round with it
+  (quicker steps, 0.28 s). A planted foot never slides: only a foot in the air is moved to keep the feet apart, and that
+  push eases in and out over its step (it used to switch on at lift-off and off at landing, a jump of the foot in one
+  frame: up to 15 m/s strafing, now at most 5, a normal swing).
+- **Steps and stairs** (since 2026-10-28): the body's height is eased over steps (the controller drops or climbs a whole
+  step in a frame); the legs only let go of the floor and hang after 0.14 s off it or when rising (a jump), not each
+  time the controller leaves a step's edge. Stepping down, the foot carries over the edge first and then lowers, landing
+  toes first; stepping up, it rises first and then goes over the nosing; a small lift either way (it used to add the
+  whole step's height on top, throwing the knee up). On stairs a foot goes one tread at a time (`OneTread`: a landing
+  that would cross a second change of floor height is pulled back onto the tread between).
 - **Momentum**: speed follows the keys through a damper (half-lives: walk 0.05 s, run 0.08 s, stop or reverse 0.07 s,
   air 0.45 s): measured 95 % of walking speed in 0.17 s and a 12 cm slide over 0.32 s when you let go. The view rolls
   about 1 degree into a turn (`turnRoll`) and the torso leans with it. Coyote time 0.12 s, jump buffer 0.15 s (held, it
@@ -224,6 +235,11 @@ Checked in play: the feet stayed at least 12 cm apart strafing, turning on the s
 test staircase every step up landed mid-tread (13-17 cm from either edge); walking into a wall shoved the torso about
 4 degrees, back within about 0.4 s. Outside views (shadow-only parts shown for the picture): standing with the camcorder
 to the eye, the right arm hanging.
+
+Checked again (2026-10-28, play): looking side to side (25 degrees each way) left the hips and feet still; a 90 degree
+turn on the spot took two steps; strafing back and forth with the view swaying, no foot moved more than 5 m/s in a frame;
+down a test staircase (three 17 cm steps) the controller stayed grounded, the legs never went to hanging, and the feet
+landed on 0.68, 0.34, 0.51, 0.34, 0.17, 0.17, 0 (the first step off the top still skipped a tread).
 
 ## Testing
 `Debug/GrabProbe.cs`: in play mode, add it and call `Run()`. For each kind it finds a prop (travelling to

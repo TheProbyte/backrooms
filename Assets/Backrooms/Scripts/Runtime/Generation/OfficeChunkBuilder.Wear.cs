@@ -405,8 +405,15 @@ namespace Backrooms.Generation
                         continue;
                     }
                     Threshold(x, z, side, edge, along, r);
-                    bool doorway = e == EdgeKind.Door || e == EdgeKind.DoorHeader;
-                    if (doorway && _L.WallTop(r) > OfficeBiome.DoorHeaderHeight + 0.35f)
+                    // Only over a flat header with wall above it: a plain Door edge is open to the ceiling and an arch's
+                    // curve reaches the sign's height, so a sign there would hang in the air.
+                    bool headed = false;
+                    if (e == EdgeKind.DoorHeader && _L.WallTop(r) > OfficeBiome.DoorHeaderHeight + 0.35f)
+                    {
+                        var view = ViewOpening(_L, Neighbour, vert, line, alongI, side == 1 || side == 3 ? 0 : 1);
+                        headed = !view.arched && view.top <= OfficeBiome.DoorHeaderHeight + 0.01f && !(Pool && _L.ArchSpan(vert, line, alongI, out _, out _));
+                    }
+                    if (headed)
                     {
                         // The odd exit sign over a doorway, on one side (the same dice from both rooms).
                         int ex = GX(side == 1 ? x + 1 : x), ez = GZ(side == 3 ? z + 1 : z);

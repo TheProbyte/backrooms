@@ -68,36 +68,39 @@ namespace Backrooms.Audio
             int fade = Rate / 8, n = Rate * 3 + fade;
             var raw = new float[n];
             var rng = new System.Random(1500);
-            var bp = Biquad.BandPass(2400f, 0.6f); var hp = Biquad.HighPass(5200f);
+            var bp = Biquad.BandPass(1700f, 0.6f); var hp = Biquad.HighPass(4800f);
             for (int i = 0; i < n; i++)
             {
                 float t = i / (float)Rate;
                 float swish = Mathf.Pow(Mathf.PerlinNoise(t * 3.1f, 0.4f), 2f) * 1.6f;
                 float crinkle = rng.NextDouble() < 0.002 ? 1.5f : 0f;
                 float x = White(rng);
-                raw[i] = bp.Run(x) * swish + hp.Run(x + crinkle) * 0.25f * swish;
+                raw[i] = bp.Run(x) * swish + hp.Run(x + crinkle) * 0.1f * swish;
             }
             var d = LoopJoin(raw, fade);
             Normalize(d, 0.35f);
             return Clip("Rustle", d, 1);
         }
 
-        /// <summary>A sleeve dragging along a wall: a rough, slightly tonal rub. Loops.</summary>
+        /// <summary>
+        /// A sleeve dragging along a wall: a soft, low fabric rub (cloth on painted drywall is dull, not a hiss: it was
+        /// bright band noise at 1.1 and 3.1 kHz, harsh once the camcorder's gain lifted it). Loops.
+        /// </summary>
         public static AudioClip Brush()
         {
             int fade = Rate / 8, n = Rate * 2 + fade;
             var raw = new float[n];
             var rng = new System.Random(1600);
-            var bp = Biquad.BandPass(1100f, 0.9f); var bp2 = Biquad.BandPass(3100f, 1.2f);
+            var bp = Biquad.BandPass(520f, 0.7f); var bp2 = Biquad.BandPass(1300f, 0.9f); var lp = Biquad.LowPass(1800f);
             for (int i = 0; i < n; i++)
             {
                 float t = i / (float)Rate;
-                float rough = 0.6f + 0.4f * Mathf.PerlinNoise(t * 17f, 2.2f);
+                float rough = 0.55f + 0.45f * Mathf.PerlinNoise(t * 9f, 2.2f);
                 float x = White(rng);
-                raw[i] = (bp.Run(x) * 0.9f + bp2.Run(x) * 0.5f) * rough;
+                raw[i] = lp.Run(bp.Run(x) * 0.9f + bp2.Run(x) * 0.25f) * rough;
             }
             var d = LoopJoin(raw, fade);
-            Normalize(d, 0.4f);
+            Normalize(d, 0.3f);
             return Clip("Brush", d, 1);
         }
 

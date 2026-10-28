@@ -455,6 +455,7 @@ namespace Backrooms.Interaction
             public Vector3 from, fromFwd;                // where the step started
             public float t, duration;                    // step progress 0..1 and its length (s)
             public float landY;                          // the ground height it is stepping to (eased)
+            public float reachCap = float.MaxValue;      // how far from where it left it may land (one stair tread at a time)
             public bool placed;
         }
         Leg _legA, _legB;
@@ -500,7 +501,7 @@ namespace Backrooms.Interaction
         Vector3 Home(Leg g, float squat)
         {
             float lateral = g.side + Mathf.Sign(g.side) * squat * 0.06f;
-            return _body.position + transform.right * lateral + transform.forward * (squat * 0.04f);
+            return _body.position + _legRight * lateral + _legFwd * (squat * 0.04f);
         }
 
         /// <summary>

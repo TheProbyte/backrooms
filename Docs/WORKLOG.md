@@ -15,6 +15,13 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-27 20:06  Claude Code  Fixes from play: exit signs on walls, softer movement sounds, no popping when turning, firm legs going down
+- Exit signs floated: they were also put over plain openings (open to the ceiling) and arches. Now only over a flat header with wall above (`OfficeChunkBuilder.Wear.cs`, `ViewOpening`). Render checked: flush on the wall over a headed doorway.
+- Sounds (the user found movement and scraping along walls harsh): the wall brush is a low fabric rub (was bright 1.1 and 3.1 kHz noise), a third of the level, only on real contact (was within 6 cm), eased in, a smaller knock; clothes rustle darker and at about half; footsteps a little quieter (running less of a stomp) and steps on the spot soft, without the handling thump.
+- Body (`FirstPersonBody.Full.cs`): the lower body has its own heading (follows the view walking; standing, holds until 40 degrees then the feet step round), planted feet never slide, the feet-apart push eases over the step (the pops), the body's height eased over steps, legs hang only on a real fall, step paths over the edge then down (toes first) and up then over, one stair tread per step (`OneTread`).
+- Checked: EditMode 109/109. Play (World 3, erased after): looking side to side 25 degrees, hips 0 deg/s and no steps' slide; strafing with the view swaying, foot speed at most 5 m/s (was 12-15 m/s at lift-off and landing); down a test staircase, no hanging legs and the feet one tread at a time except the first step.
+- Open: untested by the user. "Kinetic" in the request was unclear: the legs were treated as floppy on any step or drop down. World 2 has no save file now (only World 1's in the save folder); this work only erased World 3.
+
 ## 2026-10-27 19:25  Claude Code  Full body (head, camcorder arm) and a movement system: springs, foot placement, stairs, momentum, hands on walls, knocks
 - Body: `make_player_rig.py` builds a head and neck (separate `HeadMesh` on new Neck and Head bones, hair); `PlayerBody.fbx` rebuilt. The head, the left arm (`PlayerArm.fbx`) holding a box-built camcorder to the eye, are shadow-only. The right arm is always present (it was hidden whenever the hand was empty, so the shadow lost it).
 - New `Motion/Springs.cs` (critically damped damper by half-life; damped oscillator) and `Interaction/FirstPersonBody.Full.cs`: pose stack (Body / IK / Override), the right hand on walls and rails, arm swing as a pendulum, feet never overlapping, stair treads (`OnTread`), pelvis offset, directional gait, hips' yaw lag, inertialized hips and torso, knocks (`Bump`). The old `UpdateBody` is replaced.
