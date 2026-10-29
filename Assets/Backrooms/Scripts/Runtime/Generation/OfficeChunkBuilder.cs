@@ -174,7 +174,7 @@ namespace Backrooms.Generation
                 for (int x = 0; x <= n; x++)
                 {
                     bool solid = x < n && !_L.Has(x, z, CellFlags.OpenAbove);
-                    float h = solid ? _L.CeilingAt(x, z) : 0f;
+                    float h = solid ? _L.CeilingLowAt(x, z) : 0f;          // (a ceiling coming down: its cell's low side)
                     if (start >= 0 && (!solid || Mathf.Abs(h - h0) > 0.001f))
                     {
                         _boxes.Add((new Vector3((start + x) * 0.5f * C, h0 + 0.1f, (z + 0.5f) * C), new Vector3((x - start) * C, 0.2f, C)));
@@ -360,7 +360,7 @@ namespace Backrooms.Generation
                 int start = -1; float h0 = 0f;
                 for (int x = 0; x <= n; x++)
                 {
-                    bool solid = x < n && !_L.Has(x, z, CellFlags.NoFloor) && _L.RoomAt(x, z).feature != RoomFeature.Pit;
+                    bool solid = x < n && !_L.Has(x, z, CellFlags.NoFloor) && _L.RoomAt(x, z).feature != RoomFeature.Pit && _L.RoomAt(x, z).ramp == 0;
                     float h = solid ? _L.FloorAt(x, z) : 0f;
                     if (start >= 0 && (!solid || Mathf.Abs(h - h0) > 0.001f))
                     {
@@ -394,7 +394,11 @@ namespace Backrooms.Generation
                 // (A pit room's walkways are built with its shafts: OfficeChunkBuilder.Depth.)
                 if (!_L.Has(x, z, CellFlags.NoFloor) && r.feature != RoomFeature.Pit)
                 {
-                    WMask(_a.FloorMaterial(r), m).Quad(new Vector3(x0, fy, z0), new Vector3(x0, fy, z1), new Vector3(x1, fy, z1), new Vector3(x1, fy, z0), Vector3.up, MeshWriter.FloorUV);
+                    // (A ramp's floor slopes: each corner at its own height.)
+                    float f00 = fy, f01 = fy, f11 = fy, f10 = fy;
+                    if (r.ramp != 0) { f00 = _L.FloorOf(r, x, z); f01 = _L.FloorOf(r, x, z + 1); f11 = _L.FloorOf(r, x + 1, z + 1); f10 = _L.FloorOf(r, x + 1, z); }
+                    Vector3 up = r.ramp != 0 ? Vector3.Cross(new Vector3(0, f01 - f00, C), new Vector3(C, f10 - f00, 0)).normalized : Vector3.up;
+                    WMask(_a.FloorMaterial(r), m).Quad(new Vector3(x0, f00, z0), new Vector3(x0, f01, z1), new Vector3(x1, f11, z1), new Vector3(x1, f10, z0), up, MeshWriter.FloorUV);
                     // Beside a void (a well, a stair hall, an elevator shaft) the wall faces below sit half a wall thickness
                     // out from the cell edge: cover that strip so no slit shows from above.
                     float e = T * 0.5f;
@@ -406,6 +410,14 @@ namespace Backrooms.Generation
                 }
                 if (_L.Has(x, z, CellFlags.OpenAbove)) continue;     // the storey above closes it
                 var ceil = r.Tall && _a.ceilingPlaster ? _a.ceilingPlaster : _a.ceilingTile;
+                if (r.ceilDrop != 0 && _L.CeilingLowAt(x, z) < h - 0.001f)
+                {
+                    // A ceiling coming down (DepthPlan): the cell's tiles slope, each corner at its own height.
+                    float c00 = _L.CeilingOf(r, x, z), c01 = _L.CeilingOf(r, x, z + 1), c11 = _L.CeilingOf(r, x + 1, z + 1), c10 = _L.CeilingOf(r, x + 1, z);
+                    Vector3 down = -Vector3.Cross(new Vector3(0, c01 - c00, C), new Vector3(C, c10 - c00, 0)).normalized;
+                    WMask(ceil, m).Quad(new Vector3(x0, c00, z0), new Vector3(x1, c10, z0), new Vector3(x1, c11, z1), new Vector3(x0, c01, z1), down, MeshWriter.CeilingUV);
+                    continue;
+                }
                 if (DressCeiling(x, z, r, h, m, ceil)) continue;          // a stained, sagging, lifted or missing tile here
                 WMask(ceil, m).Quad(new Vector3(x0, h, z0), new Vector3(x1, h, z0), new Vector3(x1, h, z1), new Vector3(x0, h, z1), Vector3.down,
                     r.Tall ? (MeshWriter.UVProjector)MeshWriter.MetreUV : MeshWriter.CeilingUV);
@@ -425,6 +437,16 @@ namespace Backrooms.Generation
                 if (r.Tall || r.openAbove) continue;
                 var w = W(_a.ceilingGrid, r.color);
                 float x0 = r.rect.xMin * C, x1 = r.rect.xMax * C, z0 = r.rect.yMin * C, z1 = r.rect.yMax * C;
+                // (Where the ceiling comes down there is no grid: only over the flat part.)
+                if (r.ceilDrop != 0)
+                {
+                    var f = r.fullRect; int ox = _L.origin.x, oz = _L.origin.y;
+                    if (r.ceilDrop == 1) x1 = Mathf.Min(x1, (f.xMax - r.ceilCells - ox) * C);
+                    else if (r.ceilDrop == 2) x0 = Mathf.Max(x0, (f.xMin + r.ceilCells - ox) * C);
+                    else if (r.ceilDrop == 3) z1 = Mathf.Min(z1, (f.yMax - r.ceilCells - oz) * C);
+                    else z0 = Mathf.Max(z0, (f.yMin + r.ceilCells - oz) * C);
+                    if (x1 - x0 < 0.3f || z1 - z0 < 0.3f) continue;
+                }
                 for (float z = z0 + off; z < z1; z += 0.6f)
                     w.Box(new Vector3((x0 + x1) * 0.5f, y, z), new Vector3(x1 - x0, gd, gw), 4 | 16 | 32, MeshWriter.MetreUV);
                 for (int k = 0; k <= r.rect.width * 2; k++)
@@ -499,15 +521,17 @@ namespace Backrooms.Generation
                         if (room.floor < -0.001f) WallFace(room, cm, A(f, a0), A(f, a1), room.floor, 0f, n);
                         continue;
                     }
-                    // From this room's floor (a sunken room's is lower) to its ceiling.
-                    WallFace(room, cm, A(f, a0), A(f, a1), room.floor, myCeil, n);
-                    if (!room.noFloor) Baseboard(cm, A(f, a0) + Vector3.up * room.floor, A(f, a1) + Vector3.up * room.floor, n);
+                    // From this room's floor (a sunken room's is lower; a ramp's slopes along it) to its ceiling.
+                    float fa = room.floor, fb = room.floor;
+                    if (room.ramp != 0) { fa = FloorAlong(room, vertical, line, a0); fb = FloorAlong(room, vertical, line, a1); }
+                    if (room.ramp != 0) SlopedWallFace(room, cm, A(f, a0), A(f, a1), fa, fb, myCeil, n);
+                    else WallFace(room, cm, A(f, a0), A(f, a1), room.floor, myCeil, n);
+                    if (!room.noFloor) Baseboard(cm, A(f, a0) + Vector3.up * fa, A(f, a1) + Vector3.up * fb, n);
                     continue;
                 }
-                // Steps up to this doorway out of a sunken room: the last riser, on the edge's line (the steps stand in front).
-                if (room.floor < -0.001f && _L.StepSide(cx, cz) == SideOfEdge(vertical, s))
-                    WMask(_a.FloorMaterial(room), cm).Quad(A(l, a0 - T * 0.5f) + Vector3.up * room.floor, A(l, a1 + T * 0.5f) + Vector3.up * room.floor,
-                        A(l, a1 + T * 0.5f), A(l, a0 - T * 0.5f), n, MeshWriter.MetreUV);
+                // A doorway up to a higher floor (steps out of a sunken room, a ramp's lip): the riser on the edge's line, from
+                // this side's floor to the other's (the steps stand in front of it).
+                if (room.floor < -0.001f) DoorwayRiser(room, cm, vertical, line, along, s, l, n);
 
                 // Passable edge: where does the opening stop? (Both chunks of a border compute the same.)
                 var v = ViewOpening(_L, Neighbour, vertical, line, along, s);
@@ -522,6 +546,9 @@ namespace Backrooms.Generation
                     continue;
                 }
                 float top = v.top;
+                // A ceiling coming down here: the opening stops at it, with wall above to the room's ceiling (a crawl slot at a
+                // hallway's low end showed its own space above the low ceiling).
+                if (room.ceilDrop != 0) top = Mathf.Min(top, _L.CeilingOf(room, vertical ? line : along + 0.5f, vertical ? along + 0.5f : line));
                 if (myCeil <= top + 0.001f) continue;
 
                 WallFace(room, cm, A(f, a0), A(f, a1), top, myCeil, n);
@@ -795,7 +822,7 @@ namespace Backrooms.Generation
                     if (wall)
                     {
                         // Carried down into a basin, or to a sunken room's floor.
-                        float FB = Pool && _L.Basin(cx, cz) ? -PoolBiome.BasinDepth : Mathf.Min(0f, room.floor);
+                        float FB = Pool && _L.Basin(cx, cz) ? -PoolBiome.BasinDepth : Mathf.Min(0f, room.ramp != 0 ? _L.FloorOf(room, x, z) : room.floor);
                         w.Box(new Vector3(x * C, (FH + FB) * 0.5f, z * C), new Vector3(T, FH - FB, T), bit, Pool ? MeshWriter.MetreUV : MeshWriter.WallUV);
                         if (!NoBaseboard) WMask(_a.baseboard, pm).Box(new Vector3(x * C, room.floor + BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit, MeshWriter.MetreUV);
                     }

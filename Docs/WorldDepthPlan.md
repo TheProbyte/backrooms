@@ -2,7 +2,8 @@
 
 **Status (2026-10-28):** built: the foundation (floor height per room, steps, walls and colliders), split levels (sunken
 wings), the pit room with mantling and the landing jolt, and cut corners (WorldGeneration.md, "Height and depth").
-Not yet: ramps and sloped ceilings, diagonal hallways, mezzanines, holes to the storey below, the wrong rooms.
+Then ramps (into sunken wings) and ceilings that come down (toward crawl slots). Not yet: diagonal hallways, mezzanines,
+holes to the storey below, the wrong rooms.
 
 The reference is a pit room from Kane Pixels' videos: a level office floor broken into a lattice of narrow walkways over
 deep square shafts. The scale is ordinary (a 3 m ceiling, troffer lights), and the floor is the thing that is wrong.

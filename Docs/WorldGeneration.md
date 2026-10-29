@@ -171,6 +171,16 @@ floors).
 - **Cut corners** (`chamferChance`, 0.18 a room): a room's free corners (walls on both outer sides, nothing in the corner
   cell: no light, outlet, furniture, pillar, half wall, crawl hole, steps) get a wall at 45 degrees across the corner cell,
   face to face of the two walls, floor to ceiling, with its baseboard and a rotated collider (`Room.chamfers`).
+- **Ramps**: a hallway (one or two cells wide) beside a sunken wing may be its way in (0.6 of wings try): its floor
+  slopes from the wing's depth at one end up to the storey's floor over `RampCells` (1 in 6 at most), flat after
+  (`Room.ramp`, `rampCells`). Every doorway within the ramp opens into the wing (at most 0.12 m, `MaxLip`, below the
+  ramp there), at least one past it out to the rest. Drawn as a smooth slope (floor, wall bottoms, baseboards, posts);
+  walked on 0.2 m slices of collider (3 cm steps). No furniture on it. Wherever floors differ at a doorway the lower side
+  draws the riser between them (`DoorwayRiser`).
+- **Ceilings that come down** (`ceilingDropChance`, 0.4): a hallway with a crawl slot at its own end has its ceiling
+  slope over its last cells (up to four) to 1.35 m at the slot, so you crouch to get there (`Room.ceilDrop`,
+  `ceilCells`, `ceilLow`). No lights or grid on the slope; its colliders step down with it; the slot's opening stops at
+  the low ceiling.
 - Getting about: Space at a ledge 0.45-1.35 m up pulls you onto it (`CamcorderPlayerController` mantle); a drop of
   about a metre or more jolts the camcorder.
 - Tests: `DepthPlanTests` (the features turn up; every way into a wing has steps; shafts leave walkways and can be

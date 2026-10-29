@@ -47,6 +47,7 @@ namespace Backrooms.Generation
     {
         void BuildDepth()
         {
+            BuildRamps();
             BuildSteps();
             BuildPits();
             BuildChamfers();
@@ -87,6 +88,72 @@ namespace Backrooms.Generation
                     var c = edgeMid - outDir * (run * 0.5f) + Vector3.up * ((-depth + top) * 0.5f);
                     var s = alongZ ? new Vector3(run, top + depth, width) : new Vector3(width, top + depth, run);
                     w.Box(c, s, 8 | riser | ends, MeshWriter.MetreUV);
+                    _boxes.Add((c, s));
+                }
+            }
+        }
+
+        // ---------------- Risers ----------------
+
+        /// <summary>The floor on the far side of an edge at a point on its line (in this chunk or the next); 0 if unknown.</summary>
+        float OtherFloorAt(bool vertical, int line, int along, int s, float at)
+        {
+            int ox = vertical ? (s == 0 ? line : line - 1) : along, oz = vertical ? along : (s == 0 ? line : line - 1);
+            float px = vertical ? line : at / C, pz = vertical ? at / C : line;
+            if (_L.InChunk(ox, oz)) return _L.FloorOf(_L.RoomAt(ox, oz), px, pz);
+            int N = _L.N, dx = ox < 0 ? -1 : ox >= N ? 1 : 0, dz = oz < 0 ? -1 : oz >= N ? 1 : 0;
+            var nl = Neighbour(dx, dz);
+            if (nl == null) return 0f;
+            return nl.FloorOf(nl.RoomAt(ox - dx * N, oz - dz * N), px - dx * N, pz - dz * N);
+        }
+
+        /// <summary>
+        /// A doorway from a lower floor up to a higher one: the face on the edge's line between the two floors, seen from
+        /// the lower side (the last riser of steps, a ramp's lip). Each end at its own heights.
+        /// </summary>
+        void DoorwayRiser(Room room, uint cm, bool vertical, int line, int along, int s, float l, Vector3 n)
+        {
+            float b0 = along * C, b1 = (along + 1) * C;
+            float mine0 = FloorAlong(room, vertical, line, b0), mine1 = FloorAlong(room, vertical, line, b1);
+            float other0 = OtherFloorAt(vertical, line, along, s, b0), other1 = OtherFloorAt(vertical, line, along, s, b1);
+            if (other0 <= mine0 + 0.004f && other1 <= mine1 + 0.004f) return;
+            Vector3 P(float at, float y) => vertical ? new Vector3(l, y, at) : new Vector3(at, y, l);
+            WMask(_a.FloorMaterial(room), cm).Quad(P(b0, mine0), P(b1, mine1), P(b1, Mathf.Max(other1, mine1)), P(b0, Mathf.Max(other0, mine0)), n, MeshWriter.MetreUV);
+        }
+
+        // ---------------- Ramps ----------------
+
+        /// <summary>A ramp room's floor at a point on an edge line (vertical: X = line at Z = at, metres along; else Z = line).</summary>
+        float FloorAlong(Room r, bool vertical, int line, float at) => vertical ? _L.FloorOf(r, line, at / C) : _L.FloorOf(r, at / C, line);
+
+        /// <summary>A wall face whose bottom follows a sloping floor (from ya at a to yb at b) up to y1.</summary>
+        void SlopedWallFace(Room room, uint mask, Vector3 a, Vector3 b, float ya, float yb, float y1, Vector3 n)
+        {
+            WMask(WallMat(room), mask).Quad(a + Vector3.up * ya, b + Vector3.up * yb, b + Vector3.up * y1, a + Vector3.up * y1, n, Pool ? MeshWriter.MetreUV : MeshWriter.WallUV);
+        }
+
+        /// <summary>
+        /// A ramp's colliders: each cell in slices 0.2 m long down its slope, each as high as its high end (3 cm steps at
+        /// 1 in 6: the body walks them as a slope; the floor drawn is the smooth slope).
+        /// </summary>
+        void BuildRamps()
+        {
+            int N = _L.N;
+            const int K = 6;
+            for (int x = 0; x < N; x++)
+            for (int z = 0; z < N; z++)
+            {
+                var r = _L.RoomAt(x, z);
+                if (r.ramp == 0) continue;
+                bool alongX = r.ramp <= 2;
+                for (int k = 0; k < K; k++)
+                {
+                    float a = (float)k / K, b = (float)(k + 1) / K;
+                    float h = alongX ? Mathf.Max(_L.FloorOf(r, x + a, z + 0.5f), _L.FloorOf(r, x + b, z + 0.5f))
+                                     : Mathf.Max(_L.FloorOf(r, x + 0.5f, z + a), _L.FloorOf(r, x + 0.5f, z + b));
+                    const float depth = 1.2f;
+                    var c = alongX ? new Vector3((x + (a + b) * 0.5f) * C, h - depth * 0.5f, (z + 0.5f) * C) : new Vector3((x + 0.5f) * C, h - depth * 0.5f, (z + (a + b) * 0.5f) * C);
+                    var s = alongX ? new Vector3(C / K, depth, C) : new Vector3(C, depth, C / K);
                     _boxes.Add((c, s));
                 }
             }

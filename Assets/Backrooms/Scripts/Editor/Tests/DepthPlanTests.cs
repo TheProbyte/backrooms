@@ -57,7 +57,7 @@ namespace Backrooms.Tests
             foreach (var L in Districts())
             foreach (var r in L.rooms)
             {
-                if (r.feature != RoomFeature.Sunken) continue;
+                if (r.feature != RoomFeature.Sunken || r.ramp != 0) continue;       // (a ramp: RampsRiseToTheFloorAtTheirFarEnd)
                 var rc = r.rect;
                 Assert.That(rc.xMin > 0 && rc.yMin > 0 && rc.xMax < L.N && rc.yMax < L.N, Is.True, $"{L.coord}: a wing on the district's edge");
                 Assert.That(-r.floor, Is.InRange(0.44f, 0.91f), "depth");
@@ -69,7 +69,10 @@ namespace Backrooms.Tests
                     {
                         int nx = x + DX[s], nz = z + DZ[s];
                         if (!L.InChunk(nx, nz) || !OfficeLayout.IsPassable(L.EdgeOf(x, z, s))) continue;
-                        if (Mathf.Abs(L.FloorAt(nx, nz) - r.floor) < 0.001f) continue;
+                        // The floors on the doorway's line (a ramp's end meets the wing at the wing's floor).
+                        float ex = x + 0.5f + DX[s] * 0.5f, ez = z + 0.5f + DZ[s] * 0.5f;
+                        // (A ramp's lip, at most DepthPlan.MaxLip, needs no steps.)
+                        if (Mathf.Abs(L.FloorOf(L.RoomAt(nx, nz), ex, ez) - r.floor) <= DepthPlan.MaxLip + 1e-3f) continue;
                         outs++;
                         Assert.AreEqual(s, L.StepSide(x, z), $"{L.coord} cell ({x}, {z}): a way out to the higher floor with no steps up to it");
                         // The steps come down onto the wing's own floor.
@@ -80,6 +83,65 @@ namespace Backrooms.Tests
                     if (outs == 0) Assert.AreEqual(-1, L.StepSide(x, z), "steps with nowhere to go");
                 }
             }
+        }
+
+        [Test]
+        public void RampsRiseToTheFloorAtTheirFarEnd()
+        {
+            int ramps = 0;
+            foreach (var L in Districts())
+            foreach (var r in L.rooms)
+            {
+                if (r.ramp == 0) continue;
+                ramps++;
+                var rc = r.rect;
+                Assert.AreEqual(RoomKind.Hallway, r.kind);
+                bool alongX = r.ramp <= 2;
+                float length = (r.rampCells > 0 ? r.rampCells : (alongX ? rc.width : rc.height)) * C;
+                Assert.That(-r.floor / length, Is.LessThanOrEqualTo(DepthPlan.MaxSlope + 1e-4f), "slope");
+                Assert.That(r.rampCells, Is.LessThanOrEqualTo(alongX ? rc.width : rc.height), "the ramp fits its hallway");
+                for (int x = rc.xMin; x < rc.xMax; x++)
+                for (int z = rc.yMin; z < rc.yMax; z++)
+                {
+                    Assert.AreEqual(-1, L.StepSide(x, z), "steps on a ramp");
+                    for (int s = 0; s < 4; s++)
+                    {
+                        int nx = x + DX[s], nz = z + DZ[s];
+                        if (!L.InChunk(nx, nz) || L.roomOf[nx, nz] == r.id || !OfficeLayout.IsPassable(L.EdgeOf(x, z, s))) continue;
+                        // Every doorway meets a floor at the ramp's own height there.
+                        float ex = x + 0.5f + DX[s] * 0.5f, ez = z + 0.5f + DZ[s] * 0.5f;
+                        Assert.AreEqual(L.FloorOf(r, ex, ez), L.FloorOf(L.RoomAt(nx, nz), ex, ez), DepthPlan.MaxLip + 1e-3f, $"{L.coord}: a ramp's doorway at ({x}, {z}) side {s}");
+                    }
+                }
+            }
+            Assert.That(ramps, Is.GreaterThan(0), "ramps");
+        }
+
+        [Test]
+        public void CeilingsComeDownToCrawlSlotsWithNoLightsUnder()
+        {
+            int drops = 0;
+            foreach (var L in Districts())
+            foreach (var r in L.rooms)
+            {
+                if (r.ceilDrop == 0) continue;
+                drops++;
+                Assert.AreEqual(RoomKind.Hallway, r.kind);
+                var rc = r.rect;
+                // Along the hallway, not across it.
+                Assert.AreEqual(rc.width > rc.height, r.ceilDrop <= 2, "comes down along the hallway");
+                float lowest = float.MaxValue;
+                for (int x = rc.xMin; x < rc.xMax; x++)
+                for (int z = rc.yMin; z < rc.yMax; z++)
+                {
+                    float low = L.CeilingLowAt(x, z);
+                    lowest = Mathf.Min(lowest, low);
+                    if (low < r.ceiling - 0.05f)
+                        foreach (var f in L.fixtures) Assert.AreNotEqual(new Vector2Int(x, z), f.cell, "a light under a ceiling coming down");
+                }
+                Assert.AreEqual(1.35f, lowest, 0.01f, "the low end");
+            }
+            Assert.That(drops, Is.GreaterThan(0), "ceilings coming down");
         }
 
         [Test]

@@ -66,6 +66,8 @@ namespace Backrooms.Generation
         public float pitRoomChance = 0.12f;
         [Tooltip("Chance a room has its free corners cut off at 45 degrees.")]
         public float chamferChance = 0.18f;
+        [Tooltip("Chance a hallway that ends in a crawl slot has its ceiling come down toward it (you crouch to get there).")]
+        public float ceilingDropChance = 0.4f;
 
         [Header("Poolrooms (pool-style zones only)")]
         [Tooltip("Chance a room has openings in its roof (the sun comes in through them).")] public float skylights = 0f;

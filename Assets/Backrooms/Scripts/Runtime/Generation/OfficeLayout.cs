@@ -53,6 +53,41 @@ namespace Backrooms.Generation
         /// <summary>Corners cut off at 45 degrees across their corner cell (DepthPlan.Chamfers), bits in district-local terms
         /// of fullRect: 1 (xMin, zMin), 2 (xMax, zMin), 4 (xMin, zMax), 8 (xMax, zMax).</summary>
         public byte chamfers;
+        /// <summary>
+        /// A ramp (DepthPlan): the floor runs from <see cref="floor"/> at one end of the room (fullRect) up to the storey's
+        /// floor at the other: 0 none, the way it rises: 1 toward +X, 2 -X, 3 +Z, 4 -Z.
+        /// </summary>
+        public byte ramp;
+        /// <summary>How many cells from its low end a ramp takes to rise to the storey's floor (0: the whole room); flat after.</summary>
+        public int rampCells;
+        /// <summary>
+        /// A ceiling that comes down (DepthPlan): over the last <see cref="ceilCells"/> cells toward one end of the room it
+        /// slopes from <see cref="ceiling"/> to <see cref="ceilLow"/> at that end: 0 none, the end it comes down toward: 1 +X,
+        /// 2 -X, 3 +Z, 4 -Z.
+        /// </summary>
+        public byte ceilDrop;
+        public float ceilLow;
+        public int ceilCells;
+
+        /// <summary>The floor at a point (district-local cell units): the ramp's slope if it has one.</summary>
+        public float FloorAtD(float dx, float dz)
+        {
+            if (ramp == 0) return floor;
+            var f = fullRect;
+            // Cells from the low end, over the ramp's length.
+            float u = ramp == 1 ? dx - f.xMin : ramp == 2 ? f.xMax - dx : ramp == 3 ? dz - f.yMin : f.yMax - dz;
+            float len = rampCells > 0 ? rampCells : (ramp <= 2 ? f.width : f.height);
+            return Mathf.Lerp(floor, 0f, Mathf.Clamp01(u / len));
+        }
+
+        /// <summary>The ceiling at a point (district-local cell units): lower toward the end it comes down to, if it does.</summary>
+        public float CeilingAtD(float dx, float dz)
+        {
+            if (ceilDrop == 0 || ceilCells <= 0) return ceiling;
+            var f = fullRect;
+            float u = ceilDrop == 1 ? f.xMax - dx : ceilDrop == 2 ? dx - f.xMin : ceilDrop == 3 ? f.yMax - dz : dz - f.yMin;
+            return Mathf.Lerp(ceilLow, ceiling, Mathf.Clamp01(u / ceilCells));
+        }
         public bool Walkable => kind != RoomKind.Crawl;
         public bool Tall => ceiling > OfficeBiome.CeilingHeight + 0.01f;
 
@@ -60,7 +95,7 @@ namespace Backrooms.Generation
         {
             id = newId, globalId = globalId, rect = newRect, fullRect = fullRect, kind = kind, lights = lights, color = color,
             ceiling = ceiling, painted = painted, wallFinish = wallFinish, floorFinish = floorFinish, landmark = landmark, openAbove = openAbove, noFloor = noFloor, noDoors = noDoors, role = role, custom = custom, spiral = spiral,
-            floor = floor, feature = feature, chamfers = chamfers,
+            floor = floor, feature = feature, chamfers = chamfers, ramp = ramp, rampCells = rampCells, ceilDrop = ceilDrop, ceilLow = ceilLow, ceilCells = ceilCells,
         };
     }
 
@@ -226,8 +261,24 @@ namespace Backrooms.Generation
         public int StepSide(int x, int z) => steps == null ? -1 : steps[x, z];
         /// <summary>Pit rooms' shafts (DepthPlan), layout-local.</summary>
         public readonly List<PitShaft> pits = new List<PitShaft>();
-        /// <summary>The floor of a cell's room above (below) the storey's floor.</summary>
-        public float FloorAt(int x, int z) => rooms[roomOf[x, z]].floor;
+        /// <summary>District-local cell of this block's cell (0, 0): 0 for a district plan, the chunk's place in it for a slice.</summary>
+        public Vector2Int origin;
+        /// <summary>The floor above (below) the storey's floor at the middle of a cell.</summary>
+        public float FloorAt(int x, int z) => FloorAtPoint(x + 0.5f, z + 0.5f);
+        /// <summary>The floor at a point (layout-local cell units), in the room of the cell it lies in (a ramp slopes).</summary>
+        public float FloorAtPoint(float x, float z) => RoomAtPoint(x, z).FloorAtD(origin.x + x, origin.y + z);
+        /// <summary>The floor of a given room at a point (layout-local cell units): for points on its edges.</summary>
+        public float FloorOf(Room r, float x, float z) => r.FloorAtD(origin.x + x, origin.y + z);
+        /// <summary>The ceiling of a given room at a point (layout-local cell units).</summary>
+        public float CeilingOf(Room r, float x, float z) => r.CeilingAtD(origin.x + x, origin.y + z);
+        /// <summary>The lowest ceiling over a cell (where a ceiling comes down, its low side).</summary>
+        public float CeilingLowAt(int x, int z)
+        {
+            var r = RoomAt(x, z);
+            if (r.ceilDrop == 0) return r.ceiling;
+            return Mathf.Min(Mathf.Min(CeilingOf(r, x, z), CeilingOf(r, x + 1, z)), Mathf.Min(CeilingOf(r, x, z + 1), CeilingOf(r, x + 1, z + 1)));
+        }
+        Room RoomAtPoint(float x, float z) => rooms[roomOf[Mathf.Clamp(Mathf.FloorToInt(x), 0, N - 1), Mathf.Clamp(Mathf.FloorToInt(z), 0, N - 1)]];
         /// <summary>A cell with the plain flat floor (no sunken room, no pit room): crawl holes, noclip doors and doors only here.</summary>
         public bool Plain(int x, int z) { var r = rooms[roomOf[x, z]]; return r.feature == RoomFeature.None && Mathf.Abs(r.floor) < 0.001f; }
         /// <summary>Poolrooms: wide round-arched openings. Per edge (same layout as vEdges / hEdges): 0 = none, else

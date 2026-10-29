@@ -153,6 +153,7 @@ namespace Backrooms.Generation
                 for (int x = 0; x <= N; x++) for (int z = 0; z < N; z++) S.spanV[x, z] = plan.spanV[ox + x, oz + z];
                 for (int x = 0; x < N; x++) for (int z = 0; z <= N; z++) S.spanH[x, z] = plan.spanH[ox + x, oz + z];
             }
+            S.origin = new Vector2Int(ox, oz);
             if (plan.steps != null)
             {
                 S.steps = new sbyte[N, N];

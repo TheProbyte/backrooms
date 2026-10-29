@@ -15,6 +15,11 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-28 20:47  Claude Code  World height and depth, part 2: ramps and ceilings that come down
+- Built: a hallway beside a sunken wing can be its ramp (1 in 6 at most, then flat; doorways on the ramp only into the wing, a lip of at most 0.12 m); floors and ceilings are now functions of position in a room (`Room.FloorAtD`, `CeilingAtD`, `OfficeLayout.origin`); sloped floor and ceiling quads, wall bottoms and baseboards, stepped colliders; risers wherever floors differ at a doorway; hallways ending in a crawl slot can have their ceiling come down to 1.35 m (no lights or grid there).
+- Checked: EditMode 142/142 (ramps rise to the floor at their far end; ceilings come down along their hallway to 1.35 m with no lights under them; light leaks within tolerance once the lights' dice were kept); World 3: a 0.9 m ramp drawn and walked down smoothly (0 to -0.27 over 4 m), a hallway's ceiling sloping toward its crawl slot.
+- Open: diagonal hallways, mezzanines, holes to the storey below, the wrong rooms.
+
 ## 2026-10-28 20:31  Claude Code  World height and depth, part 1: sunken wings, pit rooms, cut corners, mantling
 - Asked: build Docs/WorldDepthPlan.md (more height and depth in the world: slants, diagonals, pits as in Kane Pixels' pit room).
 - Built (world version 14, WorldGeneration.md "Height and depth"): `DepthPlan` (sunken wings 0.45-0.9 m down with steps at every way in, kept off district edges; enclosed pit rooms with a walkway lattice over 1.8-2.4 m shafts, each with a corner block; 45-degree cut corners), `OfficeChunkBuilder.Depth.cs` (steps, walkways, shafts in darkening bands, cut corner walls), floors, walls, posts, colliders, props, outlets and pillars from a room's own floor; mantle (Space at a 0.45-1.35 m ledge) and a camera jolt on drops.
