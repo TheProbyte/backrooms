@@ -16,8 +16,17 @@ namespace Backrooms.Interaction
     /// </summary>
     public partial class PropGrabber
     {
-        /// <summary>How far the body steps in for an item, at most (m): one step.</summary>
-        public const float PickStep = 0.65f;
+        /// <summary>How far the body steps in for an item, at most (m): a long step. (Round 11: 0.65 left an item a little
+        /// further off unmarked, and the player shuffled about to get it offered.)</summary>
+        public const float PickStep = 0.95f;
+        /// <summary>
+        /// Round 11 (handling plan, step 1): a reach has this long (s) to get the palm onto an item's grip (FloorTakeBy for a
+        /// low one); from then on a palm within TakeSlack of it takes it, and the hand closes the last of the gap as the
+        /// fingers close (TakeGap). It waited for the palm within 12-15 mm however long that took: 0.5-1.4 s.
+        /// </summary>
+        public const float TakeBy = 0.32f, FloorTakeBy = 0.5f, TakeSlack = 0.045f;
+        /// <summary>Given up on (no nearer, or too long), a palm this near the grip still takes it (m).</summary>
+        public const float GiveUpSlack = 0.08f;
         /// <summary>An item is offered if the body can bring the grip within this much of the arm's reach (straight).</summary>
         public const float PickReachShare = 1.0f;
         /// <summary>The body is planned so the grip ends within this much of the arm's reach: the elbow bent 20-40 degrees.</summary>
@@ -61,7 +70,7 @@ namespace Backrooms.Interaction
                 if (!HeldItem || !_planned || _itemT <= 0f) return 0f;
                 // (The change of grip goes on 0.3 s past the lift: in the last half of the lift alone, the hand turned up to
                 // 60-90 degrees on the item in a quarter of a second.)
-                float u = _itemT < 1f ? _itemT * 0.7f : 0.7f + 0.3f * Mathf.Clamp01((Time.time - _liftDoneAt) / 0.3f);
+                float u = _itemT < 1f ? _itemT * 0.7f : 0.7f + 0.3f * Mathf.Clamp01((Time.time - _liftDoneAt) / 0.2f);
                 return 1f - Ease(0.35f, 1f, u);
             }
         }
@@ -111,7 +120,10 @@ namespace Backrooms.Interaction
             bool going = _fetch || (HeldItem && _itemT < 1f) || (_target && Current != State.Idle);
             if (!going) _hingeWant = 0f;
             float want = HeldItem && _itemT > 0f ? _hingeWant * (1f - Ease(0.15f, 0.9f, _itemT)) : _hingeWant;
-            ReachHinge = Mathf.Max(0f, Springs.Damper(ReachHinge, ref _hingeVel, want, 0.13f, Time.deltaTime));
+            // Putting an item down by hand (E): the bend at the hips its spot asks for.
+            if (PlaceBends) want = Mathf.Max(want, _placeHinge);
+            // (Round 11: 0.08 s, was 0.13: the bend took about half a second to get there.)
+            ReachHinge = Mathf.Max(0f, Springs.Damper(ReachHinge, ref _hingeVel, want, 0.08f, Time.deltaTime));
             if (ReachHinge < 0.05f && want <= 0f) { ReachHinge = 0f; _hingeVel = 0f; }
             ApplyHingeView();
         }
@@ -193,7 +205,16 @@ namespace Backrooms.Interaction
         /// <summary>How much of the chosen side's turn applies: all of it going for the item, eased off to the carry's grip as
         /// it comes up (with HoldAsTaken: the hand and the item turn together, the palm stays on the item's surface).</summary>
         float AltShare(WorldItem item) => !item || item != _altItem ? 0f : _altPlan || _fetch == item ? 1f
-                                          : HeldItem == item ? (_itemT > 0f ? HoldAsTaken : 1f) : 0f;
+                                          : HeldItem == item ? (KeepsSide(item) ? 1f : _itemT > 0f ? HoldAsTaken : 1f) : 0f;
+
+        /// <summary>
+        /// Round 11 (handling plan, step 5): the grip it was taken by is the grip it is carried by. Taken from another side
+        /// round its axis (a can, a lamp's rod, a coil, a roll of tape), it is carried turned so about its axis, the hand as it
+        /// always carries; it turned in the hand on the way up to the one carry grip, up to 135 degrees (a can spinning in the
+        /// fingers). Not the sledgehammer (it plans its own carry) nor a handle taken end for end (the head would hang the
+        /// wrong way).
+        /// </summary>
+        bool KeepsSide(WorldItem item) => !_altFlip && !(item is Sledgehammer);
         bool _altPlan;                   // planning: the side being tried applies in full
 
         /// <summary>The held item's grip in its own space (mirrored), on the side it was taken from as far as that still applies.</summary>
@@ -505,7 +526,20 @@ namespace Backrooms.Interaction
             var body = b;
             // (Round 10: with an item, the arm is solved from the planned shoulder too: what is offered is taken.)
             Quaternion turn = item ? GripTurnOf(item) : Quaternion.identity;
-            return PlanReach(p, b, share, (c, s) => ArmWayClear(s, p, item, own) && HeadClear(body, c, item, null) && (!item || HandGets(s, p, turn, share)), out plan);
+            bool loose = _looseTurn;
+            return PlanReach(p, b, share, (c, s) => ArmWayClear(s, p, item, own) && HeadClear(body, c, item, null) && (!item || loose || HandGets(s, p, turn, share)), out plan);
+        }
+
+        /// <summary>Round 11: planning without the hand's turn checked (the palm's point only). An item the arm reaches but not
+        /// quite at the turn it asks for is offered too: taken a little off its grip (TakeSlack, GiveUpSlack), it eases into
+        /// the hand on the way up. (Refused, it looked as if the item could only be had from one exact spot.)</summary>
+        bool _looseTurn;
+
+        bool PlanSideLoose(WorldItem item, float share, out ReachPlan plan, out ReachBody b)
+        {
+            _looseTurn = true;
+            try { return PlanSide(item, share, out plan, out b); }
+            finally { _looseTurn = false; }
         }
 
         /// <summary>
@@ -524,7 +558,7 @@ namespace Backrooms.Interaction
                 return m.yes;
             // (Without disturbing the side chosen for an item the hand is going for.)
             var keepItem = _altItem; Vector3 keepP = _altPoint; Quaternion keepT = _altTurn; float keepAngle = _altAngle; bool keepFlip = _altFlip;
-            bool yes = PlanSide(item, PickReachShare, out _, out _);
+            bool yes = PlanSide(item, PickReachShare, out _, out _) || PlanSideLoose(item, PickReachShare, out _, out _);
             _altItem = keepItem; _altPoint = keepP; _altTurn = keepT; _altAngle = keepAngle; _altFlip = keepFlip;
             if (_reachMemo.Count > 64) _reachMemo.Clear();
             _reachMemo[item] = new ReachMemo { t = Time.time, at = transform.position, itemAt = item.transform.position, yaw = yaw, stoop = _player.stoop, yes = yes };
@@ -623,7 +657,8 @@ namespace Backrooms.Interaction
             PickGaveUp = false;
             _planned = _body && _body.HasArm;
             ReachBody b = new ReachBody();
-            if (_planned && !PlanSide(item, PickPlanShare, out _plan, out b) && !PlanSide(item, PickReachShare + 0.03f, out _plan, out b))
+            if (_planned && !PlanSide(item, PickPlanShare, out _plan, out b) && !PlanSide(item, PickReachShare + 0.03f, out _plan, out b)
+                && !PlanSideLoose(item, PickPlanShare, out _plan, out b) && !PlanSideLoose(item, PickReachShare + 0.03f, out _plan, out b))
             {
                 // (Taken by code with the body unable to get there: it reaches as far as it can and gives up.)
                 Vector3 g0 = GripOf(item);
@@ -658,7 +693,7 @@ namespace Backrooms.Interaction
         {
             if (!solved || clamped) { nearT = 0f; return false; }
             if (palmError <= PalmOnGrip) return true;
-            if (palmError <= PalmNearGrip) { nearT += dt; return nearT > 0.15f; }
+            if (palmError <= PalmNearGrip) { nearT += dt; return nearT > 0.06f; }
             nearT = 0f;
             return false;
         }
@@ -673,6 +708,7 @@ namespace Backrooms.Interaction
         int ReachFor(Vector3 grip, WorldItem item, float dt, Collider[] own = null)
         {
             _pickT += dt;
+            _pickHandGrip = grip;
             Vector3 S = ReachShoulder;
             float reach = ArmReach;
             if (!_body || !_body.HasArm) { _pickHandAt = grip; return 1; }
@@ -685,7 +721,7 @@ namespace Backrooms.Interaction
             if (!_pickNoStep && stepLeft > 0.03f)
             {
                 Vector3 local = transform.InverseTransformDirection(_pickStepDir);
-                _player.botInput = new Vector2(local.x, local.z).normalized * Mathf.Clamp(0.3f + stepLeft * 1.8f, 0.3f, 0.85f);
+                _player.botInput = new Vector2(local.x, local.z).normalized * Mathf.Clamp(0.5f + stepLeft * 2.2f, 0.5f, 1f);
                 _pickStepping = true;
             }
             else StopPickStep();
@@ -704,7 +740,8 @@ namespace Backrooms.Interaction
             _hingeWant = Mathf.Min(_plan.hinge + _pickHingeExtra, MaxHinge + 8f);
             // (As planned, the extra bend for an arm held off left out: waiting for a bend the body could not make, the hand was
             // kept to a bent arm, 45 mm off a lamp's rod, until it gave up.)
-            bool bodyThere = stepDone && ReachHinge >= Mathf.Min(_hingeWant, _plan.hinge) - 5f && _player.stoop >= Mathf.Min(_pickStoop, _plan.stoop) - 0.06f;
+            // (Round 11: the arm goes on out while the body finishes its last 10 degrees and 10 cm: it waited for all of it.)
+            bool bodyThere = stepDone && ReachHinge >= Mathf.Min(_hingeWant, _plan.hinge) - 10f && _player.stoop >= Mathf.Min(_pickStoop, _plan.stoop) - 0.1f;
 
             // The hand: bent while the body comes; then out to the grip (as far as planned, a little more), then further
             // if it gets no nearer.
@@ -713,7 +750,10 @@ namespace Backrooms.Interaction
 
             float palmToGrip = (_body.PalmNow - grip).magnitude;
             bool solved = HandBlend >= 0.97f && _switchT >= 1f;
-            if (PalmTakes(PalmError, _pickClamped, solved, ref _pickNearT, dt)) return 1;
+            if (PalmTakes(PalmError, _pickClamped, solved, ref _pickNearT, dt)) return Took(0f);
+            // On time (round 11): past its time, a palm near enough takes an item and closes the gap as the fingers close.
+            if (item && solved && _pickT >= (grip.y - transform.position.y < SquatBelow ? FloorTakeBy : TakeBy) && palmToGrip <= TakeSlack)
+                return Took(palmToGrip);
 
             // No nearer once the body is there: the arm goes on out and the body bends a little further.
             if (palmToGrip < _pickBest - 0.004f) { _pickBest = palmToGrip; _pickStuckT = 0f; _pickSlowT = 0f; }
@@ -726,9 +766,29 @@ namespace Backrooms.Interaction
                 _pickHingeExtra = Mathf.MoveTowards(_pickHingeExtra, 10f, dt * 30f);
             }
             _pickBlockedT = ArmWayClear(S, grip, item, own) ? 0f : _pickBlockedT + dt;
-            if (_pickStuckT > 1f || _pickT > 4f || (_pickBlockedT > 0.8f && _pickStuckT > 0.4f)) { PickGaveUp = true; return -1; }
+            if (_pickStuckT > 1f || _pickT > 4f || (_pickBlockedT > 0.8f && _pickStuckT > 0.4f))
+            {
+                // (Round 11: near enough, it is taken rather than given up: the hand came back from 45 mm off a lamp's rod.)
+                if (item && solved && palmToGrip <= GiveUpSlack) return Took(palmToGrip);
+                PickGaveUp = true; return -1;
+            }
+            // (Held off with the palm already near, it need not wait the second out.)
+            if (item && solved && _pickStuckT > 0.25f && palmToGrip <= GiveUpSlack) return Took(palmToGrip);
             return 0;
         }
+
+        /// <summary>The palm (solved) is taken onto the grip from where it is: the gap closes as the fingers close (TakeGap).</summary>
+        int Took(float gap)
+        {
+            _takeGap = gap > 0.001f && _body && _body.HasArm ? _body.PalmNow - _pickHandGrip : Vector3.zero;
+            return 1;
+        }
+        Vector3 _takeGap, _pickHandGrip;
+
+        /// <summary>Round 11: the hand's offset from the grip as the fingers close on an item taken a little short of it,
+        /// gone in GapClose seconds (it is the hand that moves the last few centimetres, never the item).</summary>
+        Vector3 TakeGap => _graspOn && _itemT <= 0f && _takeGap != Vector3.zero ? _takeGap * (1f - Ease(0f, GapClose, _graspT)) : Vector3.zero;
+        const float GapClose = 0.09f;
 
         /// <summary>The hand goes out to take an item where it lies (not yet touched).</summary>
         void StartFetch(WorldItem item)
@@ -775,7 +835,7 @@ namespace Backrooms.Interaction
             HandRotation = ReachTurn(GripTurnOf(_fetch), GripOf(_fetch));
             if (_switchT < 1f)
             {
-                _switchT = Mathf.Min(1f, _switchT + Time.deltaTime / 0.3f);
+                _switchT = Mathf.Min(1f, _switchT + Time.deltaTime / SwitchTime);
                 float e = Mathf.SmoothStep(0f, 1f, _switchT);
                 HandPosition = Vector3.Lerp(_switchPos, HandPosition, e);
                 HandRotation = Quaternion.Slerp(_switchRot, HandRotation, e);

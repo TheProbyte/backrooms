@@ -238,6 +238,8 @@ namespace Backrooms.Camcorder
                 shake.roughness = s.handheldRoughness;
                 shake.recordedWalk = s.recordedWalk;
             }
+            if (!_hand) _hand = FindAnyObjectByType<Interaction.PropGrabber>();
+            if (_hand) _hand.handsInView = s.handsInView;
 
             // Recording cadence: the recording frame rate, 30 pictures a second while the slow shutter is on, or 59.94 fields a
             // second when fields are shown (so they alternate at the real rate whatever the display's frame rate).

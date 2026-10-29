@@ -128,10 +128,13 @@ namespace Backrooms.Interaction
             foreach (var c in GetComponentsInChildren<Collider>(true)) Physics.IgnoreCollision(cc, c, true);
         }
 
+        /// <summary>Set down by hand and still gliding the last of the way onto its spot (PropGrabber.Place): kinematic.</summary>
+        [System.NonSerialized] public bool settling;
+
         protected virtual void FixedUpdate()
         {
             if (!_playerIgnored) IgnorePlayer();
-            if (Held) return;
+            if (Held || settling) return;
             if (Pinned) { if (!Body.isKinematic) Body.isKinematic = true; return; }
             // Frozen while the ground under it is unloaded (it would fall forever), awake otherwise.
             if (!_streamer) _streamer = FindAnyObjectByType<WorldStreamer>();
@@ -166,6 +169,20 @@ namespace Backrooms.Interaction
 
         /// <summary>A pose of its own for the item while in use (chalk on the wall), with a weight 0..1; 0: the usual hold pose.</summary>
         public virtual float UsePose(out Vector3 position, out Quaternion rotation) { position = default; rotation = default; return 0f; }
+
+        /// <summary>
+        /// The ways it can rest when set down by hand (E: PropGrabber.Place), the first as it naturally rests; R goes
+        /// through them (turns in its own frame, before its yaw). By default: upright, on one side, on the other, upside down.
+        /// </summary>
+        public virtual Quaternion[] RestTurns => DefaultRests;
+        protected static readonly Quaternion[] DefaultRests =
+        {
+            Quaternion.identity, Quaternion.Euler(0f, 0f, 90f), Quaternion.Euler(90f, 0f, 0f), Quaternion.Euler(180f, 0f, 0f),
+        };
+
+        /// <summary>Busy with something of its own the hand must not interrupt to put it down (a plug on its way into a
+        /// socket, a hammer mid-swing).</summary>
+        public virtual bool Busy => false;
 
         /// <summary>Q sets it down upright where you look (a lamp) instead of tossing it.</summary>
         public virtual bool PlaceOnDrop => false;

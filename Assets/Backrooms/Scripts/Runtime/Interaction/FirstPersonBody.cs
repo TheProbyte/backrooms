@@ -231,7 +231,8 @@ namespace Backrooms.Interaction
             RestPose(natural, yaw, side, out Vector3 restWrist, out Quaternion restHand, out float restCurl);
             bool poke = _grab.PokePose;
             // First person: the working arm is drawn while it does something; hanging at the side, only its shadow.
-            if (!loose) SetWorkingArmShown(blend > 0.001f || poke || _touching || _touchW > 0.004f);
+            // (Hands in view Off: never drawn, its shadow only.)
+            if (!loose) SetWorkingArmShown((blend > 0.001f || poke || _touching || _touchW > 0.004f) && _grab.HandsShown);
             Quaternion gripHand = poke ? _grab.PokeRotation : _grab.HandRotation;
             Vector3 gripWrist = poke ? _grab.PokeTip - gripHand * _wristToTip
                                      : _grab.HandPosition - gripHand * new Vector3(_wristToGrip.x, _wristToGrip.y, _wristToGrip.z);

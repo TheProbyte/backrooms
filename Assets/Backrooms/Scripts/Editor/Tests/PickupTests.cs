@@ -65,8 +65,9 @@ namespace Backrooms.Tests
         [Test]
         public void AnItemOutOfTheBodysReachIsNotOffered()
         {
-            // On the floor 1.5 m out (it flew to the hand from up to 2.1 m): the player walks closer.
-            Assert.That(Offered(new Vector3(0f, 0.05f, 1.5f), PropGrabber.PickStep), Is.False, "floor 1.5 m out");
+            // On the floor 1.9 m out (it flew to the hand from up to 2.1 m): the player walks closer. (Round 11: the body takes
+            // one long step of up to 0.95 m itself.)
+            Assert.That(Offered(new Vector3(0f, 0.05f, 1.9f), PropGrabber.PickStep), Is.False, "floor 1.9 m out");
             // High over the head and out: no.
             Assert.That(Offered(new Vector3(0f, 2.3f, 0.5f), PropGrabber.PickStep), Is.False, "too high");
             // On a desk 1 m in from its edge, standing at it: no.
@@ -74,7 +75,7 @@ namespace Backrooms.Tests
             // Within reach, but the arm's way there blocked (a shelf board, a desk's edge): no.
             Assert.That(Offered(new Vector3(0f, 1.1f, 0.3f), 0f), Is.True, "within reach");
             Assert.That(PropGrabber.PlanReach(new Vector3(0f, 1.1f, 0.3f), Body(0f), 1f, (c, s) => false, out _), Is.False, "blocked");
-            Assert.That(PropGrabber.PickStep, Is.LessThanOrEqualTo(0.7f), "one step");
+            Assert.That(PropGrabber.PickStep, Is.LessThanOrEqualTo(1.0f), "one long step");
         }
 
         [Test]
@@ -117,9 +118,12 @@ namespace Backrooms.Tests
             Assert.That(PropGrabber.PalmTakes(0.01f, false, true, ref nearT, 0.02f), Is.True, "the palm on it");
             // Within 1.5 cm and no nearer: taken after a moment, not before.
             nearT = 0f;
-            Assert.That(PropGrabber.PalmTakes(0.014f, false, true, ref nearT, 0.05f), Is.False);
-            Assert.That(PropGrabber.PalmTakes(0.014f, false, true, ref nearT, 0.05f), Is.False);
-            Assert.That(PropGrabber.PalmTakes(0.014f, false, true, ref nearT, 0.06f), Is.True);
+            Assert.That(PropGrabber.PalmTakes(0.014f, false, true, ref nearT, 0.03f), Is.False);
+            Assert.That(PropGrabber.PalmTakes(0.014f, false, true, ref nearT, 0.02f), Is.False);
+            Assert.That(PropGrabber.PalmTakes(0.014f, false, true, ref nearT, 0.02f), Is.True);
+            // Round 11: past its time the reach takes a palm a few centimetres off (the hand closes the gap, not the item).
+            Assert.That(PropGrabber.TakeSlack, Is.LessThanOrEqualTo(0.05f));
+            Assert.That(PropGrabber.GiveUpSlack, Is.LessThanOrEqualTo(0.08f));
             Assert.That(PropGrabber.PalmOnGrip, Is.LessThanOrEqualTo(PropGrabber.PalmNearGrip));
             Assert.That(PropGrabber.PalmNearGrip, Is.LessThanOrEqualTo(0.015f));
         }

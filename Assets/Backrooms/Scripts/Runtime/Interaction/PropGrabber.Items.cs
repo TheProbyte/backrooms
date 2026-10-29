@@ -22,6 +22,8 @@ namespace Backrooms.Interaction
 
         float _itemT = 1f;               // 0..1 while the item comes up with the hand from where it lay
         float _switchT = 1f; Vector3 _switchPos; Quaternion _switchRot;   // the hand easing from one held item to the next
+        /// <summary>How long the hand eases from where it was to a new target (s). (Round 11: 0.3.)</summary>
+        const float SwitchTime = 0.18f;
         /// <summary>The item just taken still lies where it was (the hand on its way to it, or closing on it).</summary>
         public bool ItemWaitingForHand => HeldItem && _itemT <= 0f;
         bool _weighted;                  // the held item's weight is slowing the player
@@ -32,6 +34,7 @@ namespace Backrooms.Interaction
         readonly Collider[] _near = new Collider[48];
         /// <summary>What a click would pick up right now (for the focus marks), or null.</summary>
         public WorldItem AimedItem { get; private set; }
+        WorldItem _lastAimed;
         /// <summary>The point of a cord the view is on (its plug is the AimedItem), or null.</summary>
         public Vector3? AimedCordPoint { get; private set; }
         /// <summary>The socket a click would plug into with the held item (for the focus marks), or null.</summary>
@@ -93,7 +96,10 @@ namespace Backrooms.Interaction
                 if (dist > range + 0.2f || dist < 0.05f) continue;
                 float angle = Vector3.Angle(fwd, to);
                 float off = Vector3.Cross(fwd, to).magnitude;                     // metres from the line of sight
-                float assist = pickAssistAngle;
+                // (Round 11: what was aimed at last frame keeps the focus until the view is clearly elsewhere: half as much
+                // aim again, and it wins against a near-equal: the marks flickered between two cans side by side.)
+                bool kept = it == _lastAimed;
+                float assist = pickAssistAngle * (kept ? 1.5f : 1f);
                 if (atLowest)
                 {
                     float below = Mathf.Asin(Mathf.Clamp(-to.y / dist, -1f, 1f)) * Mathf.Rad2Deg - viewDown;
@@ -103,7 +109,7 @@ namespace Backrooms.Interaction
                 if (angle > assist && off > 0.12f) continue;
                 if (angle > Mathf.Max(assist, pickAssistAngle * 2f)) continue;
                 if (onFurniture && (off > 0.1f || Mathf.Abs(Vector3.Dot(to, fwd) - best) > 0.35f)) continue;
-                float score = angle + dist * 3f;
+                float score = angle + dist * 3f - (kept ? 5f : 0f);
                 if (score >= bestScore || !InSight(eye, c, it) || !BodyReaches(it)) continue;
                 bestScore = score; item = it;
             }
@@ -130,6 +136,7 @@ namespace Backrooms.Interaction
             if (Event.current.type != EventType.Repaint || !_cam) return;
             if (HeldItem)
             {
+                if (Placing) { PlaceMarks(); return; }
                 // The socket a click would plug into: small marks round it (or where the held item points: tape's start).
                 if (AimedSocket != null) FocusMarks(AimedSocket.Position, 0.022f, 16f);
                 else if (HeldItem.AimMark(out var mark)) FocusMarks(mark, 0.03f, 16f);
@@ -145,14 +152,16 @@ namespace Backrooms.Interaction
         }
 
         /// <summary>Camcorder-style focus marks (four corners) round a point of the world, sized by a world radius.</summary>
-        void FocusMarks(Vector3 at, float radius, float minSize)
+        void FocusMarks(Vector3 at, float radius, float minSize) => FocusMarksAlpha(at, radius, minSize, 0.75f);
+
+        void FocusMarksAlpha(Vector3 at, float radius, float minSize, float alpha)
         {
             Vector3 sp = _cam.WorldToScreenPoint(at);
             if (sp.z <= 0f) return;
             float size = Mathf.Clamp(radius / Mathf.Max(0.2f, sp.z) * Screen.height * 0.9f, minSize, 160f);
             float x = sp.x, y = Screen.height - sp.y, h = size * 0.5f, len = Mathf.Max(6f, size * 0.22f), t = Mathf.Max(1.5f, Screen.height / 540f);
             var old = GUI.color;
-            GUI.color = new Color(1f, 1f, 1f, 0.75f);
+            GUI.color = new Color(1f, 1f, 1f, alpha);
             void Bar(float bx, float by, float bw, float bh) => GUI.DrawTexture(new Rect(bx, by, bw, bh), Texture2D.whiteTexture);
             Bar(x - h, y - h, len, t); Bar(x - h, y - h, t, len);
             Bar(x + h - len, y - h, len, t); Bar(x + h - t, y - h, t, len);
@@ -211,6 +220,8 @@ namespace Backrooms.Interaction
             if (!palmOn && HandBlend > 0.5f) { _switchPos = HandPosition; _switchRot = HandRotation; _switchT = 0f; } else _switchT = 1f;
             HeldItem = item;
             AimedItem = null; AimedCordPoint = null;
+            // (Put straight into the hand by code: held by its usual grip, not a side some earlier pick-up took it by.)
+            if (palmOn && !fromReach && _altItem == item) _altItem = null;
             _itemFromPos = item.transform.position; _itemFromRot = item.transform.rotation;
             _itemT = 0f; _graspOn = palmOn; _graspT = 0f;
             // (The body's plan for the reach stays through the grasp and the lift: the squat and the bend come back off as it
@@ -226,6 +237,7 @@ namespace Backrooms.Interaction
         public void LetGo(WorldItem item)
         {
             if (!item || HeldItem != item) return;
+            EndPlacing();
             HeldItem = null;
             item.SetHeld(false);
         }
@@ -349,7 +361,7 @@ namespace Backrooms.Interaction
         /// <summary>The held item is gone (used up): the hand is free.</summary>
         public void ItemGone(WorldItem item)
         {
-            if (HeldItem == item) HeldItem = null;
+            if (HeldItem == item) { HeldItem = null; EndPlacing(); }
         }
 
         /// <summary>Lets go of the held item: it keeps the hand's motion plus a little toss forward (or is set down upright).</summary>
@@ -357,6 +369,7 @@ namespace Backrooms.Interaction
         {
             var item = HeldItem;
             if (!item) return;
+            EndPlacing();
             if (item.PlaceOnDrop && PlaceSpot(out var at, out var yaw))
             {
                 HeldItem = null;
@@ -462,7 +475,7 @@ namespace Backrooms.Interaction
             {
                 float m = HeldItem.Body ? HeldItem.Body.mass : 0f;
                 _player.moveScale = Mathf.Lerp(1f, 0.82f, Mathf.Clamp01(m / 2f));
-                _player.lookScale = Mathf.Lerp(1f, 0.86f, Mathf.Clamp01(m / 2f));
+                _player.lookScale = Mathf.Lerp(1f, 0.86f, Mathf.Clamp01(m / 2f)) * (_placeFine && _place == PlacePhase.Careful ? 0.25f : 1f);
                 _weighted = true;
             }
             else if (_weighted)
@@ -478,6 +491,7 @@ namespace Backrooms.Interaction
             MicThump();
             var item = HeldItem;
             if (!item) return;
+            EndPlacing();
             HeldItem = null;
             item.SetHeld(false);
             var cam = _cam ? _cam.transform : transform;
@@ -489,6 +503,8 @@ namespace Backrooms.Interaction
 
         void UpdateHeldItem(bool focus, Mouse mouse)
         {
+            // E: put it down by hand (PropGrabber.Place): while that goes on, nothing else.
+            if (UpdatePlacing(focus, mouse)) return;
             var kb = Keyboard.current;
             // Q: a tap drops (or sets down), held it winds up a throw that goes on release.
             if (focus && kb != null && kb.qKey.wasPressedThisFrame) _qDown = Time.time;
@@ -540,7 +556,7 @@ namespace Backrooms.Interaction
         /// </summary>
         void EaseForArm(WorldItem item, ref Vector3 pos, ref Quaternion rot, float useW, float dt)
         {
-            bool on = _body && _body.HasArm && !(item is Sledgehammer) && useW <= 0f && ThrowCharge <= 0f && _itemT >= 1f && HandBlend > 0.9f;
+            bool on = _body && _body.HasArm && !(item is Sledgehammer) && useW <= 0f && _placeW <= 0f && ThrowCharge <= 0f && _itemT >= 1f && HandBlend > 0.9f;
             Quaternion grip = item.GripRotationLocal;
             Quaternion hand = rot * Quaternion.LookRotation(Mirror(grip * Vector3.forward), Mirror(grip * Vector3.up));
             Vector3 palm = pos + rot * Mirror(item.GripLocal);
@@ -600,6 +616,7 @@ namespace Backrooms.Interaction
         /// <summary>After the camera has moved: the held item follows the view, and the hand grips it.</summary>
         void LateUpdate()
         {
+            if (_settles.Count > 0) UpdateSettles();
             if (!HeldItem) return;
             var item = HeldItem;
             Transform pivot = _player.cameraPitchPivot ? _player.cameraPitchPivot : (_cam ? _cam.transform : transform);
@@ -629,6 +646,8 @@ namespace Backrooms.Interaction
             Vector3 bob = new Vector3(Mathf.Sin(_bobPhase) * 0.006f, Mathf.Abs(Mathf.Cos(_bobPhase)) * 0.01f - 0.005f, 0f) * Mathf.Clamp01(speed / 1.5f);
             Quaternion view = _swayRot;
             Vector3 offset = Mirror(Vector3.Lerp(item.HoldOffset, item.UseOffset, item.UseBlend)) + bob;
+            // Hands in view (Camera menu): held lower and out to the side while carried, not while in use.
+            offset += Mirror(HandsInViewOffset) * (1f - item.UseBlend);
             // Winding up a throw: back and up over the shoulder.
             offset += new Vector3(0.04f * Side, 0.1f, -0.16f) * ThrowCharge;
             Vector3 pos = _swayPos + view * offset;
@@ -664,6 +683,14 @@ namespace Backrooms.Interaction
             float w = item.UsePose(out var usePos, out var useRot);
             EaseForArm(item, ref pos, ref rot, w, dt);
             if (w > 0f) { pos = Vector3.Lerp(pos, usePos, w); rot = Quaternion.Slerp(rot, useRot, w); }
+            // Being put down by hand: down onto its spot (PropGrabber.Place).
+            if (_placeW > 0f)
+            {
+                // Over and down in a small arc, as a hand sets a thing down (straight, it slid along the line of sight).
+                float pw = Mathf.SmoothStep(0f, 1f, _placeW);
+                pos = Vector3.Lerp(pos, _placePos, pw) + Vector3.up * (PlaceArc * 4f * pw * (1f - pw));
+                rot = Quaternion.Slerp(rot, _placeRot, pw);
+            }
             bool reaching = false;
             float tiltLeft = 0f;
             Vector3 reachGrip = Vector3.zero;
@@ -687,11 +714,12 @@ namespace Backrooms.Interaction
                     {
                         // The palm on it: the body stays bent over it while the fingers close (UpdateStoop, ReachHinge).
                         _graspT += dt;
-                        if ((HandCurl >= item.GripCurl - 0.05f || _graspT >= 0.25f) && HandBlend > 0.9f)
+                        if ((HandCurl >= item.GripCurl - 0.05f || _graspT >= 0.11f) && _graspT >= GapClose && HandBlend > 0.9f)
                         {
                             // Up with the hand at a hand's pace (it rose 1.1 m in 0.28 s, 22 cm in one frame).
-                            // (0.4-0.95 s was slow next to a hand: round 9, 0.45-0.75.)
-                            _liftTime = Mathf.Clamp(0.3f + 0.4f * Vector3.Distance(_itemFromPos, pos), 0.45f, 0.75f);
+                            // (0.4-0.95 s was slow next to a hand: round 9, 0.45-0.75; round 11, 0.28-0.45, as a
+                            // quick, sure hand lifts.)
+                            _liftTime = Mathf.Clamp(0.18f + 0.25f * Vector3.Distance(_itemFromPos, pos), 0.28f, 0.45f);
                             _itemT = 1e-4f;
                         }
                     }
@@ -728,14 +756,14 @@ namespace Backrooms.Interaction
                 item.transform.SetPositionAndRotation(pos, rot);
                 Quaternion grip = item.GripRotationLocal;
                 Vector3 f = Mirror(grip * Vector3.forward), u = Mirror(grip * Vector3.up);
-                HandPosition = reaching ? _pickHandAt : item.transform.TransformPoint(alt > 0f ? GripLocalOf(item, alt) : Mirror(item.GripLocal));
+                HandPosition = reaching ? _pickHandAt : item.transform.TransformPoint(alt > 0f ? GripLocalOf(item, alt) : Mirror(item.GripLocal)) + TakeGap;
                 HandRotation = item.transform.rotation * (alt > 0f ? GripTurnLocalOf(item, alt) : Quaternion.LookRotation(f, u));
                 if (reaching) HandRotation = ReachTurn(HandRotation, reachGrip);
                 else if (tiltLeft > 0.001f) HandRotation = WithReachTurn(HandRotation, tiltLeft);
             }
             if (_switchT < 1f)
             {
-                _switchT = Mathf.Min(1f, _switchT + Time.deltaTime / 0.3f);
+                _switchT = Mathf.Min(1f, _switchT + Time.deltaTime / SwitchTime);
                 float e = Mathf.SmoothStep(0f, 1f, _switchT);
                 HandPosition = Vector3.Lerp(_switchPos, HandPosition, e);
                 HandRotation = Quaternion.Slerp(_switchRot, HandRotation, e);

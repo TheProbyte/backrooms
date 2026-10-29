@@ -43,6 +43,16 @@ namespace Backrooms.Interaction
         [Tooltip("Mouse look left while holding (the rest of the mouse moves the prop).")] public float lookWhileHolding = 0.1f;
         [Tooltip("Shove impulse (N s), capped at 3.5 m/s of change.")] public float shove = 65f;
 
+        [Header("View")]
+        [Tooltip("0 full: held things in view, the hand on them. 1 low: held lower, at the bottom edge of the picture, the hand " +
+                 "mostly out of shot. 2 off: no hand drawn (its shadow only). Camera menu > HANDHELD > Hands in view.")]
+        public int handsInView = 1;
+        /// <summary>The working hand is drawn in first person (Hands in view is not Off).</summary>
+        public bool HandsShown => handsInView != 2;
+        /// <summary>Where held things are carried for Hands in view (view space, m; x mirrored): lower and further out to the
+        /// side, so the picture shows the top of what you hold.</summary>
+        public Vector3 HandsInViewOffset => handsInView == 1 ? new Vector3(0.035f, -0.075f, 0.01f) : handsInView == 2 ? new Vector3(0.05f, -0.13f, 0f) : Vector3.zero;
+
         // Read by the first-person body (hand IK) and the HUD.
         public enum State { Idle, Reaching, Holding }
         public State Current { get; private set; }
@@ -177,6 +187,7 @@ namespace Backrooms.Interaction
             bool free = !HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && focus;
             AimedPoke = free ? LookPoke() : null;
             AimedItem = AimedPoke == null && free && LookItem(itemRange, out var aimed) ? aimed : null;
+            _lastAimed = AimedItem;
             AimedDoorGrip = null;
             if (free && AimedPoke == null && !AimedItem)
             {
@@ -189,9 +200,10 @@ namespace Backrooms.Interaction
                 case State.Idle:
                     if (_fetch) { UpdateFetch(); break; }
                     if (_poke != PokePhase.None) break;
-                    if (QuickDooring) { UpdateQuickDoor(); break; }
+                    if (QuickDooring) { UpdateQuickDoor(hold); break; }
                     if (OnDoor) { UpdateDoor(hold); break; }
-                    if (pressed) { if (!TryHandUse() && !TryStartPoke() && !TryPickUp() && !TryStartDoor()) TryStart(); }
+                    // (Round 11: a click on a door opens it, or shuts it if it is well open; held on, it is the careful way.)
+                    if (pressed) { if (!TryHandUse() && !TryStartPoke() && !TryPickUp() && !TryQuickDoor(true)) TryStart(); }
                     else if (shovePressed) { if (!TryQuickDoor()) Push(); }
                     break;
                 case State.Reaching:
@@ -235,6 +247,8 @@ namespace Backrooms.Interaction
             // hand goes out and closes on it, and straightened as it comes up.
             bool picking = _planned && (_fetch || (HeldItem && _itemT < 1f) || (_target && Current != State.Idle));
             if (picking) want = Mathf.Max(want, _pickStoop * (HeldItem && _itemT > 0f ? 1f - Ease(0.15f, 0.9f, _itemT) : 1f));
+            // Putting an item down by hand (E): the squat its spot asks for (PropGrabber.Place).
+            if (PlaceBends) { want = Mathf.Max(want, _placeStoop); picking = true; }
             // A held item taking the hand somewhere (a plug to a socket, an item off the floor): bend down for it and step
             // in when it is out of the arm's reach.
             if (ItemReaching)
@@ -255,7 +269,9 @@ namespace Backrooms.Interaction
             if (Current == State.Idle && !OnDoor && !QuickDooring) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0f, Time.deltaTime * 0.5f);
             want = Mathf.Min(0.85f, want + _stoopExtra);
             // (Going down for an item, alongside the arm: 1.9 a second.)
-            _player.stoop = Mathf.MoveTowards(_player.stoop, want, Time.deltaTime * (want > _player.stoop ? (picking ? 1.9f : 1.6f) : picking ? 1.6f : 1.0f));
+            // (Round 11: 3.2 down and 2.6 up for an item: a squat for the floor took a third of a second, then as long again
+            // to come up.)
+            _player.stoop = Mathf.MoveTowards(_player.stoop, want, Time.deltaTime * (want > _player.stoop ? (picking ? 3.2f : 1.6f) : picking ? 2.6f : 1.0f));
         }
 
         // ---------------- Grab ----------------
@@ -589,14 +605,16 @@ namespace Backrooms.Interaction
             bool letGo = _quick == QuickPhase.Back || Time.time < _letGoUntil;
             bool active = (Current != State.Idle && _target) || Poking || HeldItem || _fetch || OnDoor || _touching || (QuickDooring && !letGo);
             // (Going out for an item, a little slower: it was there in 0.3 s, and the grab at 0.43 s looked snatched.)
+            // (Round 11: out in about 0.22 s, back in 0.3: 2.2 a second made every reach start with half a second of the arm
+            // coming up.)
             bool goingFor = _fetch || (HeldItem && _itemT <= 0f) || (_planned && Current == State.Reaching);
-            HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? (goingFor ? 2.2f : 3.2f) : letGo ? 5f : 2.5f));
+            HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? (goingFor ? 4.5f : 4.5f) : letGo ? 5f : 3.4f));
             // (Hand over hand on a cord: the grip opens going out and closes on the pull, as the fingers do. Going out to an
             // item it waits for, the hand is open; it closes once the palm is on it.)
             if (HeldItem)
             {
                 float want = ItemWaitingForHand && !_graspOn ? PickOpenCurl : HeldItem.GripCurl * (1f - 0.6f * GripOpen);
-                HandCurl = Mathf.MoveTowards(HandCurl, want, Time.deltaTime * 6f);
+                HandCurl = Mathf.MoveTowards(HandCurl, want, Time.deltaTime * (_graspOn && _itemT <= 0f ? 11f : 6f));
                 return;                                                                                           // pose set in LateUpdate
             }
             if (_fetch) { FetchHandPose(); return; }

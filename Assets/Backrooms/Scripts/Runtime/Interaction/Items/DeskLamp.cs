@@ -231,7 +231,7 @@ namespace Backrooms.Interaction
                         var p = _plug;
                         hand.PlaceInHand(p);               // the hand keeps the plug as it lets the cord out
                         hand.SetDownBeside(this, spot, turn);
-                        if (p) { hand.PickUp(p); p.BeginPlugIn(s); }
+                        if (p) { hand.PickUp(p); p.BeginPlugIn(s); _takeBack = hand; _takeBackAt = Time.time; }
                         return;
                     }
                 }
@@ -310,8 +310,23 @@ namespace Backrooms.Interaction
             _dustRenderer.SetPropertyBlock(_dustMpb);
         }
 
+        // Round 11 (handling plan, step 3): plugged in from the hand, the lamp is picked straight back up, in one go from
+        // the one click (it was left on the floor beside the feet, to be picked up again by hand).
+        PropGrabber _takeBack;
+        float _takeBackAt;
+
+        void TakeBackAfterPlug()
+        {
+            var h = _takeBack;
+            if (!h || !_plug) { _takeBack = null; return; }
+            if (h.HeldItem == _plug) { if (!_plug.GoingInto) _takeBack = null; return; }     // still going in, or given up
+            _takeBack = null;
+            if (_plug.Plugged && !Held && !h.HeldItem && !h.Fetching && Time.time - _takeBackAt < 8f) h.PickUp(this);
+        }
+
         void LateUpdate()
         {
+            if (_takeBack) TakeBackAfterPlug();
             UpdateDust();
             // The filament warms up and cools down in a moment; a lamp far from the camera keeps no shadow map.
             _level = Mathf.MoveTowards(_level, Lit ? 1f : 0f, Time.deltaTime * (Lit ? 12f : 6f));

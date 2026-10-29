@@ -221,8 +221,76 @@ namespace Backrooms.Interaction
             _fx.PlayOneShot(SoundBank.CordWhip, 0.6f);
         }
 
+        // ---------------- Plugging in from the coil in the hand ----------------
+        Socket _going;
+        float _goT, _goPose, _pushT = -1f, _stuckT, _bestGap;
+        Vector3 _goPos; Quaternion _goRot = Quaternion.identity;
+        const float CoilApproach = 0.05f, CoilPushTime = 0.15f;
+        /// <summary>The coil in the hand is on its way to push its plug into a socket (for tests).</summary>
+        public bool GoingInto => _going != null;
+        public override bool Busy => GoingInto;
+
+        void BeginCoilPlug(Socket s) { _going = s; _goT = 0f; _pushT = -1f; _stuckT = 0f; _bestGap = float.MaxValue; }
+
+        void EndCoilPlug() { _going = null; _pushT = -1f; }
+
+        /// <summary>
+        /// One frame of the coil going to a socket in the hand: turned so the plug on its edge points into the socket, 5 cm
+        /// out, then pushed in along the socket's axis. The hand's point is kept within a comfortable reach of the shoulder
+        /// while the body bends and steps in (as a plug goes in: Plug.WithinComfort). In, the cord is let out of the coil
+        /// (Deploy) and the hand comes back with the coil.
+        /// </summary>
+        void CoilGoingIn(in HoldInput i)
+        {
+            var s = _going;
+            if (s == null || s.occupant != null || s.dead || s.Depth + 1 > MaxChain || !i.hand) { EndCoilPlug(); return; }
+            if (i.hand.ItemWaitingForHand) return;
+            _goT += i.dt;
+            _goPose = Mathf.MoveTowards(_goPose, 1f, i.dt * 3.2f);
+            Transform bp = _bundlePlug.transform;
+            Quaternion rot = s.PlugRotation * Quaternion.Inverse(bp.localRotation);
+            Vector3 outward = -(s.PlugRotation * Vector3.forward);
+            float d = _pushT < 0f ? CoilApproach : CoilApproach * (1f - Mathf.SmoothStep(0f, 1f, _pushT / CoilPushTime));
+            Vector3 pos = s.Position + outward * d - rot * bp.localPosition;
+            Vector3 palmOff = rot * GripLocal;
+            Vector3 shoulder = i.hand.ReachShoulder;
+            Vector3 held = Plug.WithinComfort(pos, palmOff, shoulder, i.hand.ArmReach, Mathf.Lerp(Plug.ComfortReach, 1.1f, Mathf.Clamp01((_goT - 0.4f) * 2f)), out bool clamped);
+            _goPos = held; _goRot = rot;
+            i.hand.ReachToward(s.Position - rot * bp.localPosition + palmOff, _pushT < 0f, Plug.ComfortReach - 0.06f);
+            if (_pushT < 0f)
+            {
+                float gap = clamped ? (held - pos).magnitude : 0f;
+                // There: square to it, the palm where it should be. (Or after half a second, within 3.5 cm: the push takes
+                // the rest, as a hand does.)
+                bool there = _goPose >= 1f && !clamped && i.hand.PalmError < 0.02f;
+                bool nearly = _goT > 0.5f && _goPose >= 1f && gap < 0.035f && i.hand.PalmError < 0.04f;
+                if (there || nearly) { _pushT = 0f; return; }
+                if (gap < _bestGap - 0.01f) { _bestGap = gap; _stuckT = 0f; }
+                else if (_goPose >= 1f) _stuckT += i.dt;
+                if (_stuckT > 1f || _goT > 4f) EndCoilPlug();
+                return;
+            }
+            _pushT += i.dt;
+            if (_pushT < CoilPushTime) return;
+            EndCoilPlug();
+            Deploy(s);
+            MicThumpOf(i.hand);
+        }
+
+        static void MicThumpOf(PropGrabber hand) { var l = FindAnyObjectByType<AudioListener>(); var c = l ? l.GetComponent<Audio.CamcorderAudioChain>() : null; if (c) c.HandlingImpulse(); }
+
+        public override float UsePose(out Vector3 position, out Quaternion rotation)
+        {
+            if (_going == null) _goPose = Mathf.MoveTowards(_goPose, 0f, Time.deltaTime * 3.5f);
+            position = _goPos; rotation = _goRot;
+            return _goPose > 0f ? Mathf.SmoothStep(0f, 1f, _goPose) : 0f;
+        }
+
+        protected override void OnDropped() { EndCoilPlug(); _goPose = 0f; base.OnDropped(); }
+
         public override void HoldUpdate(in HoldInput i)
         {
+            if (_going != null) { CoilGoingIn(i); return; }
             if (i.secondary) { Coil(); return; }
             if (!coiled && ReelUpdate(_cord, _plug, i.reel, i.dt, i.hand)) { StopReel(_cord); Coil(); return; }
             if (!i.pressed) return;
@@ -232,21 +300,11 @@ namespace Backrooms.Interaction
             if (coiled)
             {
                 if (s.Depth + 1 > MaxChain) return;
-                // The hand takes the plug off the coil and carries it to the socket (the coil is put down), as a lamp's
-                // plug goes in (Plug.BeginPlugIn). (It went in from the coil in the hand, the hand never moving.)
-                // The coil is set down beside the feet first (PropGrabber.SetDownBeside: it was tossed toward the wall, in the way).
-                if (i.hand)
-                {
-                    var hand = i.hand;
-                    if (!hand.SpotBeside(s.Position, new Vector3(0.12f, 0.07f, 0.12f), null, out var spot, out var turn)) return;
-                    Deploy(null, hand.HandPosition);
-                    // The plug where the palm is, as the hand will hold it (round 8: it was made square to the world at the
-                    // palm, so the hand turned and moved over to it while the body bent for the socket, the arm folded up and
-                    // the palm 30-35 mm off it for three frames as it left the coil).
-                    if (_plug) hand.PlaceInHand(_plug);
-                    hand.SetDownBeside(this, spot, turn);
-                    if (_plug) { var p = _plug; hand.PickUp(p); p.BeginPlugIn(s); return; }
-                }
+                // Round 11 (handling plan, step 3): the coil stays in the hand. The hand takes the whole coil to the outlet,
+                // the plug on its edge pinched against it, pushes the plug in and comes back with the coil, the cord paying
+                // out as you walk off. (Round 4 to 10: the coil was set down beside the feet and the plug carried in alone,
+                // 1.5 s, and the coil then had to be picked up again to go anywhere.)
+                if (i.hand) { BeginCoilPlug(s); return; }
                 Deploy(s);
             }
             else if (_plug && !_plug.Plugged && _plug.CanUse(s) && Vector3.Distance(s.Position, transform.position) < Length * 0.95f) _plug.PlugInto(s);

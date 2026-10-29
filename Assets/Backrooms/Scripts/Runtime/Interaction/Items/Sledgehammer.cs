@@ -70,9 +70,13 @@ namespace Backrooms.Interaction
         /// <summary>Round 10: the handle taken from any side (IGripRound).</summary>
         public void GripAxis(out Vector3 point, out Vector3 axis) { point = Vector3.zero; axis = Vector3.up; }
         public override float GripCurl => 0.97f;
+        /// <summary>Set down by hand: lying on its side first, then standing on its head, then the other side.</summary>
+        public override Quaternion[] RestTurns => s_rests;
+        static readonly Quaternion[] s_rests = { Quaternion.Euler(0f, 0f, 90f), Quaternion.identity, Quaternion.Euler(0f, 0f, -90f) };
         public override bool DropsStraight => false;
         public override string Status => _phase == Phase.WindUp ? $"sledgehammer: winding up {Mathf.RoundToInt(_charge * 100f)} %" : "sledgehammer (hold to wind up, release to swing)";
         public override float UseBlend => _phase == Phase.Carry ? 0f : 1f;
+        public override bool Busy => _phase != Phase.Carry;
         // Holding a 2 kg hammer up over the shoulder: the camera strains with it.
         public override float Effort => _phase == Phase.WindUp ? _charge * 0.6f : 0f;
 

@@ -286,6 +286,16 @@ namespace Backrooms.Interaction
         }
         float _shovedAt = -1f, _tuggedAt = -1f;
 
+        /// <summary>A click on a door well open (round 11): the palm swings it shut; it latches as it gets there, clicking
+        /// home, or banging if it came hard.</summary>
+        public void ShoveShut(float speed = 150f)
+        {
+            if (Held || Angle < 0.5f) return;
+            _vel = -Mathf.Abs(speed);
+            _moved = true;
+            _shovedAt = Time.time;
+        }
+
         /// <summary>
         /// The hand on the lever tugging the door on open toward you (a quick pull, round 9): it swings at least this fast
         /// (degrees a second) while the hand pulls, resting against the body if the body is still in its way, and keeps

@@ -40,7 +40,19 @@ namespace Backrooms.Interaction
             return door;
         }
 
-        bool TryQuickDoor()
+        /// <summary>
+        /// Round 11 (handling plan, step 2): a left click on a door is the quick way (it was right click only). Held past
+        /// this (s) before the hand has it, it becomes the careful way instead: the hand keeps the lever and the door goes
+        /// with you as you walk (PropGrabber.Door), to peek through a crack.
+        /// </summary>
+        public const float HoldToDrag = 0.22f;
+        /// <summary>A door open at least this far (degrees) is swung shut by a click; less (ajar), it is opened on.</summary>
+        public const float ClickShutsFrom = 30f;
+        bool _quickClick, _quickClose;
+
+        bool TryQuickDoor() => TryQuickDoor(false);
+
+        bool TryQuickDoor(bool click)
         {
             var door = LookDoor(lookRange, out var hit);
             if (!door || door.Held) return false;
@@ -48,7 +60,10 @@ namespace Backrooms.Interaction
             bool shut = door.Angle < 3f;
             _quickDoor = door;
             _quickSide = side;
-            _quickPull = shut && side > 0;                 // it opens toward you: a tug on the lever
+            _quickClick = click;
+            // A click on a door well open swings it shut (the palm on its face); ajar, it opens on, toward you by the lever.
+            _quickClose = click && door.Angle >= ClickShutsFrom;
+            _quickPull = !_quickClose && side > 0 && (shut || click);   // it opens toward you: a tug on the lever
             _quickLever = _quickPull || shut && door.Latched;   // a latched door: the lever first, pushed or pulled
             _quickPoint = _quickLever ? door.GripPoint(side, 0f) : hit;
             _quickNormal = door.FaceNormal(side);
@@ -61,7 +76,7 @@ namespace Backrooms.Interaction
             return true;
         }
 
-        void UpdateQuickDoor()
+        void UpdateQuickDoor(bool hold = false)
         {
             if (!_quickDoor) { _quick = QuickPhase.None; return; }
             _quickT += Time.deltaTime;
@@ -69,20 +84,26 @@ namespace Backrooms.Interaction
             {
                 case QuickPhase.Reach:
                     if (_quickLever) _quickPoint = _quickDoor.GripPoint(_quickSide, 0f);
+                    // A click still held: the careful way (the hand keeps the lever and the door goes with you).
+                    if (_quickClick && hold && _quickT >= HoldToDrag) { QuickToHold(); break; }
                     // The door goes when the hand is on it (it used to go after 0.3 s wherever the hand was); out of reach,
                     // a step in first; never there: nothing.
                     // (The hand goes out with the elbow bent while the body steps in, and onto the door once it is that near:
                     // BentReach. If it never gets there, the door goes anyway after a moment: it used to do nothing.)
-                    if (!(HandBlend > 0.8f && PalmError < 0.015f && WithinBent(_quickPoint)) && _quickT < 1.1f)
+                    // (Round 11: or once it has had a third of a second and the palm is within 4 cm: it waited for 15 mm.)
+                    bool on = HandBlend > 0.8f && PalmError < 0.015f && WithinBent(_quickPoint);
+                    bool nearOn = _quickT > 0.33f && HandBlend > 0.8f && PalmError < 0.04f;
+                    if ((!(on || nearOn) && _quickT < 0.9f) || (_quickClick && hold))
                     {
-                        if (!WithinBent(_quickPoint)) StepInToward(_quickPoint, 0.5f);
+                        if (!WithinBent(_quickPoint)) StepInToward(_quickPoint, 0.6f);
                         else _player.botInput = null;
                         break;
                     }
                     _player.botInput = null;
                     {
                         // Contact: the door goes.
-                        _quickDoor.Shove(_quickSide, _quickPoint, transform.forward, _quickPull);
+                        if (_quickClose) _quickDoor.ShoveShut();
+                        else _quickDoor.Shove(_quickSide, _quickPoint, transform.forward, _quickPull);
                         MicThump();
                         if (!_quickLever)
                         {
@@ -147,21 +168,61 @@ namespace Backrooms.Interaction
             }
         }
 
+        /// <summary>A click held on: the quick way becomes the careful one on the same door (the hand goes on to its lever).</summary>
+        void QuickToHold()
+        {
+            var door = _quickDoor;
+            _quick = QuickPhase.None; _quickDoor = null; _quickClick = false;
+            _player.botInput = null;
+            _door = door;
+            _doorSide = door.SideOf(Eye);
+            _doorPhase = DoorPhase.Reach; _doorT = 0f; _doorTurn = 0f;
+            ResetReach();
+            _doorTurnQ = LeverTurn(door, _doorSide, 0f); _doorRollAt = Time.time;
+        }
+
         /// <summary>Back from a tugged door and toward its latch side (the bot input for the step).</summary>
         Vector2 PullStep()
         {
             // (Mostly to the latch side: out of the leaf's sweep the soonest, and still a way out with a wall behind.)
-            Vector3 w = _quickNormal + _quickDoor.TowardLatch * 1.2f; w.y = 0f;
+            // (Round 11: straight back if a wall is right there on the latch side: stepping into it, the body stayed put and
+            // the door, resting on it, crept from 19 to 39 degrees over a second.)
+            Vector3 latch = LatchSideOpen() ? _quickDoor.TowardLatch : Vector3.zero;
+            Vector3 w = _quickNormal + latch * 1.2f; w.y = 0f;
             Vector3 local = transform.InverseTransformDirection(w);
             return new Vector2(local.x, local.z).normalized;
         }
 
-        /// <summary>Toward a tugged door's latch side only, out of the leaf's sweep (the bot input for the step).</summary>
+        /// <summary>Toward a tugged door's latch side only, out of the leaf's sweep (the bot input for the step); straight
+        /// back if that side is walled.</summary>
         Vector2 SideStep()
         {
-            Vector3 w = _quickDoor.TowardLatch; w.y = 0f;
+            Vector3 w = LatchSideOpen() ? _quickDoor.TowardLatch : _quickNormal; w.y = 0f;
             Vector3 local = transform.InverseTransformDirection(w);
             return new Vector2(local.x, local.z).normalized * 0.75f;
+        }
+
+        float _latchCheckAt = -1f; bool _latchOpen = true;
+        /// <summary>Room for the body to step 0.4 m toward the tugged door's latch side (checked a few times a second).</summary>
+        bool LatchSideOpen()
+        {
+            if (Time.time < _latchCheckAt) return _latchOpen;
+            _latchCheckAt = Time.time + 0.2f;
+            var cc = GetComponent<CharacterController>();
+            if (!cc || !_quickDoor) return _latchOpen = true;
+            Vector3 dir = _quickDoor.TowardLatch; dir.y = 0f;
+            if (dir.sqrMagnitude < 1e-4f) return _latchOpen = true;
+            Vector3 c = transform.position + cc.center;
+            float half = Mathf.Max(0f, cc.height * 0.5f - cc.radius);
+            Vector3 a = c + Vector3.up * half, b = c - Vector3.up * (half - 0.2f);
+            int n = Physics.CapsuleCastNonAlloc(a, b, cc.radius * 0.9f, dir.normalized, s_pickHits, 0.4f, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var col = s_pickHits[i].collider;
+                if (!col || col.transform.IsChildOf(transform) || col.GetComponentInParent<Door>() == _quickDoor) continue;
+                return _latchOpen = false;
+            }
+            return _latchOpen = true;
         }
 
         /// <summary>The hand on the door: flat on its face for a shove, round the lever for a tug.</summary>

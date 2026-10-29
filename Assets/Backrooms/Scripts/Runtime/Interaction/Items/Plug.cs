@@ -158,7 +158,7 @@ namespace Backrooms.Interaction
             {
                 // The last few millimetres from where the hand left it, eased in over a few frames (it jumped 8-9 mm in
                 // one: the wrist cannot square a plug exactly).
-                _seatT = Mathf.Min(1f, _seatT + Time.deltaTime / SeatTime);
+                _seatT = Mathf.Min(1f, _seatT + Time.deltaTime / _seatTime);
                 float e = Mathf.SmoothStep(0f, 1f, _seatT);
                 transform.SetPositionAndRotation(Vector3.Lerp(_seatFrom, Socket.Position, e), Quaternion.Slerp(_seatFromRot, Socket.PlugRotation, e));
                 return;
@@ -168,8 +168,12 @@ namespace Backrooms.Interaction
         float _seatT = 1f;
         Vector3 _seatFrom;
         Quaternion _seatFromRot;
-        /// <summary>How long a plug let go short of its socket takes to slide the rest of the way in (s).</summary>
+        /// <summary>How long a plug let go short of its socket takes to slide the rest of the way in (s); up to 0.2 s from
+        /// SeatFrom away.</summary>
         public const float SeatTime = 0.1f;
+        /// <summary>Round 11: a plug let go this near its socket (m) slides in the rest of the way (it had to be within 3 cm).</summary>
+        public const float SeatFrom = 0.065f;
+        float _seatTime = SeatTime;
 
         void Update()
         {
@@ -224,13 +228,14 @@ namespace Backrooms.Interaction
         float _goT, _goPose, _pushT = -1f, _stuckT, _slowT, _stretch, _bestGap, _settleT;
         int _tries;
         Vector3 _goPos; Quaternion _goRot = Quaternion.identity;
-        const float Approach = 0.05f, PushTime = 0.24f;
+        const float Approach = 0.05f, PushTime = 0.16f;
         /// <summary>The hand's target is kept this far from the shoulder (of the arm's reach): bent, not locked straight.</summary>
         public const float ComfortReach = 0.86f;
         /// <summary>Seconds without getting nearer before it gives up (the hand comes back, the plug stays in it).</summary>
         public const float GiveUpAfter = 1f;
         /// <summary>Is it on its way into a socket (for tests)?</summary>
         public bool GoingInto => _going != null;
+        public override bool Busy => GoingInto;
         /// <summary>The last plug-in gave up (for tests).</summary>
         public bool GaveUp { get; private set; }
 
@@ -265,7 +270,8 @@ namespace Backrooms.Interaction
             // waiting for the hand folded the arm up, the palm 30-35 mm off it (round 8).
             if (i.hand && i.hand.ItemWaitingForHand) return;
             _goT += i.dt;
-            _goPose = Mathf.MoveTowards(_goPose, 1f, i.dt * 1.4f);
+            // (Round 11: square to the socket in about a third of a second; 1.4 a second took 0.7 s before anything else.)
+            _goPose = Mathf.MoveTowards(_goPose, 1f, i.dt * 3f);
             Vector3 outward = -(s.PlugRotation * Vector3.forward);
             float d = _pushT < 0f ? Approach : Approach * (1f - Mathf.SmoothStep(0f, 1f, _pushT / PushTime));
             Vector3 goal = s.Position + outward * d;
@@ -287,7 +293,13 @@ namespace Backrooms.Interaction
                 float gap = (transform.position - goal).magnitude;
                 WithinComfort(s.Position, palmOff, shoulder, reach, within, out bool socketFar);
                 bool there = _goPose >= 1f && !clamped && !socketFar && gap < 0.015f && i.hand.PalmError < 0.02f;
-                if (there) { _pushT = 0f; _settleT = 0f; return; }
+                // (Round 11: after half a second, within 3.5 cm will do: the push and the seat take the rest.)
+                bool nearly = _goT > 0.5f && _goPose >= 1f && !clamped && !socketFar && gap < 0.035f && i.hand.PalmError < 0.04f;
+                // (And held off a few centimetres short, the arm as far as it goes: a socket 0.28 m up from 0.33 m off the
+                // wall stopped the plug 55 mm short; it waited two seconds, then gave up. The push takes it, and it slides
+                // the rest of the way in: SeatFrom.)
+                bool heldShort = _goT > 0.7f && _goPose >= 1f && _slowT > 0.25f && (transform.position - s.Position).magnitude < SeatFrom + Approach;
+                if (there || nearly || heldShort) { _pushT = 0f; _settleT = 0f; return; }
                 if (gap < _bestGap - 0.01f) { _bestGap = gap; _stuckT = 0f; _slowT = 0f; }
                 else if (_goPose >= 1f) { _stuckT += i.dt; _slowT += i.dt; }
                 if (_slowT > 0.2f) _stretch = Mathf.MoveTowards(_stretch, 1f, i.dt * 1.5f);
@@ -299,14 +311,15 @@ namespace Backrooms.Interaction
             if (_pushT < PushTime) return;
             float off = (transform.position - s.Position).magnitude;
             _settleT += i.dt;
-            if (off > 0.004f && _settleT < 0.15f) return;
-            if (off < 0.03f)
+            if (off > 0.004f && _settleT < 0.08f) return;
+            if (off < SeatFrom)
             {
                 _going = null;
                 Vector3 from = transform.position; Quaternion fromRot = transform.rotation;
                 i.hand.LetGo(this);
                 PlugInto(s);
                 _seatFrom = from; _seatFromRot = fromRot; _seatT = 0f;
+                _seatTime = Mathf.Lerp(SeatTime, 0.2f, Mathf.InverseLerp(0.01f, SeatFrom, off));
                 transform.SetPositionAndRotation(from, fromRot);
             }
             else if (++_tries >= 2) GiveUp();

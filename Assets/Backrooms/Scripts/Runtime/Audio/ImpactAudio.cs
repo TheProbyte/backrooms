@@ -143,6 +143,25 @@ namespace Backrooms.Audio
             else Play(s_surface[(int)surface, Random.Range(0, Variants)], ct.point, loud * (surface == ImpactSurface.Carpet ? 0.55f : 0.9f) * vol, Random.Range(0.94f, 1.06f));
         }
 
+        /// <summary>
+        /// Set down by hand (round 11, PropGrabber.Place): a soft knock, the thing's own ring and the surface's, as for a
+        /// gentle hit. (Placed, it does not move, so no contact makes a sound.)
+        /// </summary>
+        public static void SetDown(ImpactSounder me, Collider on, Vector3 point, Vector3 normal)
+        {
+            if (!me || !me.enabled) return;
+            Ensure();
+            me.lastHit = Time.time;
+            float vol = SoundCatalog.Volume(SoundIds.Impacts) * 0.35f;
+            ImpactSurface surface = SurfaceOf(on, point, normal, out var otherBody);
+            float damp = surface == ImpactSurface.Carpet ? 0.45f : surface == ImpactSurface.Soft ? 0.3f : 1f;
+            const float loud = 0.32f;
+            float pitch = Mathf.Clamp(Mathf.Pow(0.3f / Mathf.Max(0.05f, me.size), 0.3f), 0.7f, 1.45f) * Random.Range(0.97f, 1.03f);
+            Play(s_body[(int)me.body, Random.Range(0, Variants)], point, loud * damp * vol, pitch);
+            if (otherBody.HasValue) Play(s_body[(int)otherBody.Value, Random.Range(0, Variants)], point, loud * 0.7f * vol, Random.Range(0.95f, 1.05f));
+            else Play(s_surface[(int)surface, Random.Range(0, Variants)], point, loud * (surface == ImpactSurface.Carpet ? 0.5f : 0.8f) * vol, Random.Range(0.95f, 1.05f));
+        }
+
         /// <summary>What a collider is, for the sound of striking it (a world surface, or a sounding thing's material).</summary>
         public static ImpactSurface SurfaceOf(Collider col, Vector3 point, Vector3 normal, out ImpactBody? body)
         {

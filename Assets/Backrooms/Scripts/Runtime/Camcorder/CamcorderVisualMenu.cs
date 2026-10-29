@@ -330,6 +330,8 @@ namespace Backrooms.Camcorder
                 0f, 3f, "0.00", "", () => S().handheldRoughness, v => S().handheldRoughness = v);
             Toggle("Recorded walk", "Walking moves the camera the way a real camera carried in the hand did: a phone recording (the sway, the bob of each step, the hand's tremor) kept in step with your feet. Off uses the generated walking bob. Shake intensity scales it.",
                 () => S().recordedWalk, v => S().recordedWalk = v);
+            Choice("Hands in view", "How much of your own hand the camera sees. Full: held things in view at the bottom right, the hand on them. Low: held lower, at the bottom edge, the hand mostly out of shot (as a camcorder held to the eye sees it). Off: no hand drawn at all, only its shadow.",
+                new[] { "Full", "Low", "Off" }, () => S().handsInView, v => S().handsInView = v);
             Slider("Motion blur (shutter)", "Smear from movement while the shutter is open, in light (so lights streak bright), trailing behind the motion, the same at any frame rate. 1 = exactly what the shutter time gives.",
                 0f, 2f, "0.00", "x", () => S().motionBlur, v => S().motionBlur = v);
 

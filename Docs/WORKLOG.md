@@ -15,6 +15,13 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-28 20:03  Claude Code  Handling plan: faster pickups, one-click doors, no drops plugging in, E to place, hands in view
+- Asked: a plan for faster, better-looking item handling, hands and doors from how top games do it (Docs/HandlingPlan.md), then build it; tapping E must still show a quick set-down, holding E must not walk you forward, letting go must set it down smoothly.
+- Built (Interaction.md, round 11): reaches on time (0.32/0.5 s, then a palm within 4.5 cm takes it and the hand closes the gap), quicker arm, fingers, lift, squat and bend; forgiving aim (a 0.95 m step, items reached at a looser turn offered, sticky focus); left click opens or shuts doors (held: the careful way), tugs step straight back by a wall; the coil stays in the hand plugging in, the lamp is picked back up after; plugs held short slide in; items keep the grip they were taken by; E places (tap, or hold to slide, turn, tip over; bends but never steps; arcs down; glides onto its spot); Hands in view (Full / Low / Off, Low default).
+- Checked: EditMode 135/135; World 3 numbers in Interaction.md (floor pick-up 0.67-0.85 s, desk 0.33 s, door open 1.0 s, coil plug-in 1.05 s, placing 0.6 s tap with no walking and no snap).
+- Note: Unity crashed once in Steam Audio (phonon, the audio thread) on leaving Play mode; Play is now stopped with the listener paused first.
+- Open: authored finger poses (waiting for the user's hand videos); a body stepping in climbs a box in front of a socket.
+
 ## 2026-10-28 10:34  Claude Code  Hands that hold things for real, and pickups by hand (rounds 2-10, reviewed until it was called done)
 - Asked for: a critique subagent rating the hands holding objects ("do fingers realistically hold them? is it natural? do hands bend weirdly?") and fixes until it rates 8-9/10. Later (via the main session) pickups like the cord plug-in: "you physically reach down to pick up the item and it doesn't float to you, it only moves once you're grabbing it". Then: "once all bugs are fixed have it commit and be done, too many rounds".
 - Reviews: 3 -> 6 -> 7 -> 7.5 -> 7.5 -> 7.5 -> 7.5 (hands 7.8, pickups 7.0 at the last review; most single interactions 8-8.5). The loop stopped at the user's word after a bugs-only round 10.

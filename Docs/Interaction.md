@@ -18,6 +18,20 @@
   focus brackets mark the item a click would take.
 - **Q** tapped drops the item (with a little toss). **Hold Q** to wind up and release to throw: the longer you hold
   (0.2 to 0.9 s), the harder (3.5 to 13 m/s). While the hand holds an item it does nothing else.
+- **E** puts the held item down by hand (2026-10-28, `PropGrabber.Place.cs`). **Tap E**: it is set down where you look,
+  as it naturally rests (the sledgehammer on its side, chalk lying, the rest upright), lined up with the edge of the desk
+  or a wall near it if within 15 degrees, and let go (about 0.3 s). **Hold E** (past 0.2 s): the hand brings it down there
+  and keeps hold of it 4 mm above the surface. While E is held: look about to slide it (within the arm's reach with the
+  body squatting and bending at the hips, never stepping; aimed further, the spot comes in toward the feet), **Shift** slows the view to a quarter for the last centimetre, the **scroll wheel** turns it 5 degrees a
+  notch (1 with Shift), **R** tips it onto its next way of resting (upright, on its side, on the other side, upside down;
+  the hammer: on its side, on its head, on the other side). It lines up with a desk's edge or a wall within 3 degrees and
+  sits flush on a wall within 1 cm (brighter focus marks when it has); **Alt** held: no help. **Release E** to let go: a
+  soft knock (of what it is and what it is on) and it stays exactly so, asleep until something knocks it, saved as
+  placed. **Right click** with E held puts it back in the carry. It may stand on another item; it is not put into
+  anything.
+- **Hands in view** (Camera menu > HANDHELD): Full (as before), Low (the default: held things sit 7.5 cm lower and 3.5
+  cm further out, at the bottom edge of the picture, the hand mostly out of shot) or Off (the working arm and hand are
+  never drawn, only their shadow; held things lower still).
 - A held item moves with the hand: it lags behind quick turns and bobs with your steps instead of staying fixed to the
   camera.
 - **L**: the developer menu "Items and furniture" (see below). **L** or **Esc** closes it.
@@ -103,6 +117,11 @@
   from one side, pull from the other), never swings through you, and walking into an unlatched door nudges it.
   Shut doors are latched until you use the lever. Doors remember where they were left (saved with the world). About
   4 in 10 such doorways in the Hallways, 3 in 10 in the Offices.
+  **Left click** (2026-10-28) is the quick way through, the same as right click below: a shut door is opened (pushed
+  wide from the side it opens away from, tugged open from its swing side, the body stepping back and to its latch side,
+  or straight back if a wall is right there); an open door (30 degrees or more) is swung shut and latches; one ajar is
+  opened on. Held past 0.22 s before the hand is on it, the click becomes the slow way (hold and walk). The door goes once
+  the palm is on it, or after a third of a second with the palm within 4 cm.
   **Right click** on a door within reach is the quick way through (`PropGrabber.QuickDoor.cs`, `Door.Shove`): from the
   side it opens away from, the hand presses the lever (a latched door) or slaps the door itself and shoves it, and it
   swings wide (about 80 degrees); from its swing side the hand takes the lever and tugs it part way open (about 30
@@ -697,6 +716,42 @@ Open after round 10: a lamp lying on its side is not taken from some sides (offe
 with the shade toward you), and a hammer or a chicken lying with its grip on the far side, behind its own bulk, is not
 offered from that side (it is from the other side). The can turns up to 135 degrees about its axis in the hand on the way
 up. The "cordplug" probe's deployed cord lifts the player 0.7 m at some sockets.
+
+Round 11: the handling plan (2026-10-28, Docs/HandlingPlan.md; no reviewer rounds, measured in World 3):
+- **On time instead of exact.** A reach has 0.32 s (0.5 s for something low) to get the palm on its grip; from then a palm
+  within 4.5 cm takes it and the hand closes the gap as the fingers close (`TakeBy`, `TakeSlack`, `TakeGap`; given up on,
+  within 8 cm still takes it). The arm comes out in 0.22 s (it was 0.45), the hand eases to a new target in 0.18 s (0.3),
+  the fingers close in 0.11 s (0.25), the lift takes 0.28-0.45 s (0.45-0.75), the squat goes 3.2 m/s down, 2.6 up (1.9,
+  1.6), the bend at the hips settles in 0.08 s (0.13), and the arm goes on out while the body finishes its last 10
+  degrees and 10 cm. The item still never moves before the hand has it.
+- **Forgiving aim.** One long step of up to 0.95 m (0.65). An item the arm reaches but not at the exact turn it asks for is
+  offered too (`PlanSideLoose`). What was aimed at keeps the focus (half as much aim again, and it wins near-ties).
+- **Doors on a left click** (`PropGrabber.QuickDoor`): the quick way; held past 0.22 s, the careful way. A door open 30
+  degrees or more is swung shut (`Door.ShoveShut`). It goes once the palm is on it or after a third of a second within 4
+  cm. A tug steps straight back when a wall is right there on the latch side (`LatchSideOpen`).
+- **Plugging in without dropping.** The extension cord's coil stays in the hand: the hand takes the whole coil to the
+  outlet, the plug on its edge into the socket, and comes back with it as the cord pays out (`CordBox.CoilGoingIn`). The
+  lamp is set down, its plug carried in, and the lamp picked straight back up, all from the one click
+  (`DeskLamp.TakeBackAfterPlug`). A plug carried in gets square in a third of a second, pushes in 0.16 s, and one held
+  short (by up to 6.5 cm, the arm at its reach) is pushed and slides in the rest of the way (`Plug.SeatFrom`).
+- **The grip it is taken by is the grip it is carried by** (`KeepsSide`): taken from another side round its axis, an item
+  is carried turned so; it used to turn up to 135 degrees in the fingers on the way up. Not the hammer, nor a handle
+  taken end for end.
+- **Placing with E** (`PropGrabber.Place.cs`), above. The body only squats and bends for it (a reach plan with no step:
+  told to step toward where the view met the floor, it walked on and on). The item comes over and down in a small arc
+  (6 cm) no faster than the body bends, and once let go it glides the last of the way onto its spot (up to 0.15 s) and
+  sleeps. `WorldItem.RestTurns`, `WorldItem.Busy`, `ImpactAudio.SetDown`.
+- **Hands in view** (Camera menu): above.
+Measured (World 3): floor pick-ups up 0.67-0.85 s after the click (0.85-1.42), in the carry 0.99-1.14 s (1.30-1.38); a
+floor item 1.2 m out now offered; desk can up 0.33-0.40 s (0.50-0.67), carry 0.62-0.70 s (0.96-1.14), turning at most 31-40
+degrees in the hand (102). Door click from the push side: swinging at 0.36 s, open 88 at 1.0 s; click shut from the pull
+side latched at 0.75 s; pull: 43 degrees at 0.9 s, 62 at 1.4 s on four doors. Coil plug-in 1.05 s (1.52), held throughout;
+lamp plug-in 1.45 s and back in the hand at 2.6 s. Placing, lamp, can and hammer: tap placed at 0.58-0.63 s, hold-and-release
+0.94-1.09 s, the player moved 0 m, the arm drawn throughout, no frame of the item over 11 cm (it jumped 39-45 cm onto its
+spot before). EditMode 135/135.
+Open after round 11: the body's step in for a floor item still takes about half a second; a cardboard box in front of a
+socket is climbed onto by the step in (the body rose 0.57 m and the plug gave up); the hammer cannot yet lean on a wall;
+fixed finger poses per item wait for the user's hand videos (Docs/HandlingPlan.md).
 
 Open: furniture's colliders are boxes that do not match the model everywhere (a sofa's rolled arm: the fingers close on
 the box, 15 cm under the visible top, so they stay as wanted); the thumb lies along a hammer's handle rather than round
