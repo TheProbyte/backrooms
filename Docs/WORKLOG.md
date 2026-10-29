@@ -15,6 +15,12 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-29 08:45  Claude Code  Teleports to the height-and-depth places; the next realism pass planned
+- Asked: an easier way to get to the new places to see them; a plan for the next realism pass (in the vein of the peeling wallpaper and ceiling tiles).
+- Built: F5 > PLACES > HEIGHT AND DEPTH, eight buttons (sunken room, pit room, ramp, low ceiling, sloping room, stairs to nowhere, mezzanine, cut corner), nearest first and the next on each press, placed where each is seen best (`CamcorderVisualMenu.Depth.cs`).
+- Checked: in World 3 (erased after) every button found one in 0-6 s and stood the player on the floor in view of it.
+- Planned: Docs/RealismPlan.md (dirt where it goes, the leak story, wallpaper, ceilings, floors, office fittings, light and air).
+
 ## 2026-10-28 20:55  Claude Code  World height and depth, part 3: sloping rooms, stairs to nowhere, mezzanines (world version 15)
 - Built: sloping rooms (an office's floor down from its doors' wall at 1 in 8 to 1 in 6), stairs to nowhere (a short carpeted flight into a blank wall), mezzanines along a wall of tall halls (a deck 4.2 m up with a railing and posts, a 24-step steel stair); lights kept off ceilings that come down and mezzanine strips with the plan's dice unchanged.
 - Checked: EditMode 143/143 (stairs to nowhere and mezzanines keep clear: walls, no doorways behind stairs, headroom, no lights in the strip; sloping rooms covered by the ramp test); World 3: a mezzanine climbed from the floor to its deck (0 to 4.23 m) and walked along, stairs to nowhere drawn against a wall. World 3 erased.

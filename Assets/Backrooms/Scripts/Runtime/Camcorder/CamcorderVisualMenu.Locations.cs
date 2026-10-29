@@ -128,6 +128,8 @@ namespace Backrooms.Camcorder
                 return (new Vector3(p.x, 0.05f, p.y), new Vector3(q.x, 1.4f, q.y), "an elevator lobby");
             }));
 
+            BuildDepthLocations();
+
             Section("TESTING", "Stand next to the nearest crawl space (its vent: crawl in with Ctrl) or the nearest noclip door (the taped outline: walk into the wall). Searches about 10 districts around you; press again for the next nearest.");
             var rt = BtnRow(_list);
             Button(rt, "NEAREST VENT", () => GoNearest("vent"));

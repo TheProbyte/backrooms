@@ -194,6 +194,9 @@ floors).
   anyway, pallets may stand under the deck.
 - Getting about: Space at a ledge 0.45-1.35 m up pulls you onto it (`CamcorderPlayerController` mantle); a drop of
   about a metre or more jolts the camcorder.
+- **Finding them**: F5 > PLACES > HEIGHT AND DEPTH: sunken room, pit room, ramp, low ceiling, sloping room, stairs to
+  nowhere, mezzanine, cut corner (`CamcorderVisualMenu.Depth.cs`): the nearest, then the next nearest on each press,
+  searched ring by ring out to about 8 districts, placed where each is seen best.
 - Tests: `DepthPlanTests` (the features turn up; every way into a wing has steps; shafts leave walkways and can be
   climbed out of; cut corners are clear; chunks carry their steps and shafts); the reachability and border checks cover
   them too.
