@@ -19,8 +19,8 @@ namespace Backrooms.Generation
         bool BatchTile(int gx, int gz, int i)
         {
             float patch = Field(gx * 0.35f, gz * 0.35f, 1300);
-            if (patch > 0.8f) return Dice(gx, gz, 1301 + i) < 0.55f;
-            return Dice(gx, gz, 1303 + i) < 0.012f;
+            if (patch > 0.8f) return Dice(gx, gz, 1301 + i) < 0.55f * Mathf.Min(1f, DetailRates.CeilingWear);
+            return Dice(gx, gz, 1303 + i) < 0.012f * DetailRates.CeilingWear;
         }
 
         /// <summary>
@@ -83,7 +83,9 @@ namespace Backrooms.Generation
         void TrofferWear(Vector2Int cell, int roomColor, Vector3 sc, float h, MeshWriter lens, int lensStart, MeshWriter hw, int hwStart)
         {
             int gx = GX(cell.x), gz = GZ(cell.y);
-            if (Dice(gx, gz, 1320) < 0.025f)
+            var room = _L.RoomAt(cell.x, cell.y);
+            bool tiles = !room.Tall && !room.openAbove && room.ceilDrop == 0 && MaterialMaps.PlenumWood;
+            if (tiles && Dice(gx, gz, 1320) < 0.025f * DetailRates.CeilingWear)
             {
                 int e = (int)(Dice(gx, gz, 1321) * 4f) & 3;
                 Vector3 toHinge = e == 0 ? Vector3.left : e == 1 ? Vector3.right : e == 2 ? Vector3.back : Vector3.forward;
@@ -93,17 +95,15 @@ namespace Backrooms.Generation
                 var q = Quaternion.AngleAxis(deg, axis);
                 if ((q * (-toHinge)).y > 0f) q = Quaternion.AngleAxis(-deg, axis);       // the free side hangs down
                 Saw(new Vector3(sc.x, h, sc.z), Vector3.down, "light_askew");
+                // The fitting's sheet-metal body above its lens, seen now that it hangs out of the grid.
+                hw.Box(new Vector3(sc.x, h + 0.05f, sc.z), new Vector3(0.56f, 0.1f, 0.56f), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
                 lens.RotateFrom(lensStart, pivot, q);
                 hw.RotateFrom(hwStart, pivot, q);
-                if (MaterialMaps.Plenum)
-                {
-                    float y = h + 0.03f;
-                    W(MaterialMaps.Plenum, roomColor).Quad(new Vector3(sc.x - 0.3f, y, sc.z - 0.3f), new Vector3(sc.x + 0.3f, y, sc.z - 0.3f),
-                        new Vector3(sc.x + 0.3f, y, sc.z + 0.3f), new Vector3(sc.x - 0.3f, y, sc.z + 0.3f), Vector3.down, MeshWriter.MetreUV);
-                }
+                // Its hole in the grid opens on the space above the ceiling (joists, ducts, hanger wires: BuildPlenums).
+                _gaps.Add((new Vector3(sc.x, h, sc.z), h, CellMask(cell.x, cell.y), room));
                 return;
             }
-            if (Dice(gx, gz, 1323) < 0.02f)
+            if (Dice(gx, gz, 1323) < 0.02f * DetailRates.CeilingWear)
             {
                 LensCracks(new Vector3(sc.x, h - 0.007f, sc.z), gx * 31 + gz * 7);
                 Saw(new Vector3(sc.x, h, sc.z), Vector3.down, "lens_cracked");

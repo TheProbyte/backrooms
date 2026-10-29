@@ -30,6 +30,7 @@ namespace Backrooms.Generation
         {
             Seed = seed;
             Settings = (settings ?? WorldGenSettings.Defaults()).Clone();
+            DetailRates.From(Settings);
         }
 
         public WorldGenSettings.Sample Sample(Vector2Int chunk) => Settings.Evaluate(Seed, chunk);

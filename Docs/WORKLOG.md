@@ -15,6 +15,28 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-29 19:30  Claude Code  Realism and depth fixes after the first look; HOW OFTEN settings; every sound in the Sound tab
+- Dirt (Generation/OfficeChunkBuilder.Grime.cs): patchy, fainter grime low on walls with shoe scuffs (the even band read
+  as a shadow); lighter corners. Paper.cs: no roller marks, no fresh-paint patches (looked like glitches).
+- Ceilings: askew lights open on the plenum (BuildPlenums) and show their metal body; cobwebs removed (Air.cs deleted).
+- Stairs (Depth.cs): one padded carpeted flight across an opening (PaddedFlight, rounded noses), joined across cells,
+  meeting on the diagonal where two flights meet at a corner; stairs to nowhere padded too.
+- Pit rooms: all shafts 4 m deep, smooth fade to black (overlay) instead of stepped bands, no block; PitRescue.cs puts a
+  fallen player back on the walkway (temporary). DepthPlanTests updated for it.
+- F5 > WORLD GEN > HOW OFTEN (WorldGenSettings + DetailRates.cs): vents per district (default 1, was 3), carpet-tile rooms
+  (5 %, was 16 %), uneven floors and ceilings, dirt, wall / ceiling damage, floor marks.
+- Sounds: 15 more sounds registered in SoundCatalog (breathing, clothes, settling, doors, switches, touching walls,
+  noclip, breaking walls, cords, chalk, tape, spray can, sledgehammer, rubber chicken, menu beeps), each playing through
+  SoundCatalog.Volume; the Sound tab groups by category with one heading each.
+- Ramp teleport: inside the room; the camera jolt spring (HandheldCameraShake) sub-stepped, which fixed the sideways
+  camera after long teleports.
+- Checked: EditMode 143/143; World 3 (erased after): stair flights and a corner, pit room shafts and a fall, two ramp
+  teleports (camera upright), an askew light.
+- Open: the HOW OFTEN sliders and the new Sound tab entries were not clicked through in the menu; the dirt was only seen
+  in passing.
+
+---
+
 ## 2026-10-29 10:40  Claude Code  Realism pass: dirt, wallpaper and walls, ceilings, floors, light and air (plan sections 1, 3, 4, 5, 7)
 - New: Generation/OfficeChunkBuilder.Grime.cs (dirt), .Paper.cs (seams, bubbles, peeling strips, patches, painted-wall
   marks, baseboards, plates), .CeilingWear.cs (tile batches, holed and dropped tiles, askew and cracked lights),

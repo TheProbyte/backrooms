@@ -27,6 +27,8 @@ namespace Backrooms.Generation
         public const float PitWalk = 0.24f, PitRim = 0.6f;
         /// <summary>The lattice's pitch in cells (2.4 m).</summary>
         public const int PitPitch = 2;
+        /// <summary>How deep every shaft of a pit room is (m): black long before its floor (only storey 0 has pit rooms).</summary>
+        public const float PitDepth = 4f;
 
         static readonly float[] Depths = { 0.45f, 0.45f, 0.6f, 0.6f, 0.9f };
 
@@ -40,12 +42,13 @@ namespace Backrooms.Generation
         {
             if (L.style == ZoneStyle.Pool) return;
             var R = L.RulesAt(L.N / 2, L.N / 2);
-            if (L.storey == 0 && rng.NextDouble() < R.pitRoomChance) TryPitRoom(L, rng);
-            if (rng.NextDouble() < R.sunkenChance) TrySunkenWing(L, rng);
+            float more = DetailRates.Depth;
+            if (L.storey == 0 && rng.NextDouble() < R.pitRoomChance * more) TryPitRoom(L, rng);
+            if (rng.NextDouble() < R.sunkenChance * more) TrySunkenWing(L, rng);
             TryLowCeilings(L, rng);
-            if (rng.NextDouble() < R.tiltedChance) TryTiltedRoom(L, rng);
-            if (rng.NextDouble() < R.nowhereChance) TryNowhere(L, rng);
-            foreach (var r in L.rooms) if (r.Tall && r.ceiling >= MezzanineMinCeiling && rng.NextDouble() < L.RulesAt(r.rect).mezzanineChance) TryMezzanine(L, r, rng);
+            if (rng.NextDouble() < R.tiltedChance * more) TryTiltedRoom(L, rng);
+            if (rng.NextDouble() < R.nowhereChance * more) TryNowhere(L, rng);
+            foreach (var r in L.rooms) if (r.Tall && r.ceiling >= MezzanineMinCeiling && rng.NextDouble() < L.RulesAt(r.rect).mezzanineChance * more) TryMezzanine(L, r, rng);
         }
 
         // ---------------- Sunken wing ----------------
@@ -415,7 +418,7 @@ namespace Backrooms.Generation
                         if (alongX ? toward > 1 : toward < 2) continue;
                         bool atEnd = toward == 1 ? nx == h.rect.xMax - 1 : toward == 0 ? nx == h.rect.xMin : toward == 3 ? nz == h.rect.yMax - 1 : nz == h.rect.yMin;
                         if (!atEnd) continue;
-                        if (length < 5 || rng.NextDouble() >= L.RulesAt(h.rect).ceilingDropChance) continue;
+                        if (length < 5 || rng.NextDouble() >= L.RulesAt(h.rect).ceilingDropChance * DetailRates.Depth) continue;
                         h.ceilDrop = (byte)(toward == 1 ? 1 : toward == 0 ? 2 : toward == 3 ? 3 : 4);
                         h.ceilCells = Mathf.Min(4, length - 2);
                         h.ceilLow = 1.35f;
@@ -504,6 +507,9 @@ namespace Backrooms.Generation
                     if (s0.depth - s0.ledge > 1.3f) s0.ledge += Rise;
                     s0.ledgeCorner = rng.Next(4);
                 }
+                // Every shaft drops into the dark now (the dice above still roll, so the rest of the plan is unchanged):
+                // too deep to climb out of, nothing seen at the bottom. Falling in brings you back up (PitRescue).
+                s0.depth = PitDepth; s0.ledge = 0f;
                 list.Add(s0);
             }
             return list;
@@ -541,7 +547,7 @@ namespace Backrooms.Generation
                 if (!Ordinary(L, r) || r.kind == RoomKind.Hallway) continue;
                 var rc = r.rect;
                 if (Mathf.Min(rc.width, rc.height) < 3) continue;
-                if (rng.NextDouble() >= L.RulesAt(rc).chamferChance) continue;
+                if (rng.NextDouble() >= L.RulesAt(rc).chamferChance * DetailRates.Depth) continue;
                 for (int c = 0; c < 4; c++)
                 {
                     if (rng.NextDouble() >= 0.65) continue;

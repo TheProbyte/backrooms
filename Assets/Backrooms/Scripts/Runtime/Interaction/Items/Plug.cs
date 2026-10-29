@@ -118,7 +118,7 @@ namespace Backrooms.Interaction
             Socket = s; s.occupant = this;
             Body.isKinematic = true;
             Pose();
-            _fx.PlayOneShot(SoundBank.PlugIn, 0.7f);
+            _fx.PlayOneShot(SoundBank.PlugIn, 0.7f * SoundCatalog.Volume(SoundIds.Cords));
             Wake();
             return true;
         }
@@ -130,7 +130,7 @@ namespace Backrooms.Interaction
             bool was = Plugged;
             Socket = null; _lost = false;
             if (!Held) Body.isKinematic = false;
-            if (was) _fx.PlayOneShot(SoundBank.PlugOut, popped ? 0.8f : 0.5f);
+            if (was) _fx.PlayOneShot(SoundBank.PlugOut, (popped ? 0.8f : 0.5f) * SoundCatalog.Volume(SoundIds.Cords));
             if (popped && !Held) Body.linearVelocity = Random.insideUnitSphere * 0.6f + Vector3.up * 0.8f;
             Wake();
         }
@@ -378,7 +378,7 @@ namespace Backrooms.Interaction
             // The sound is the cord running through the hand: at whichever end is held.
             if (plug) _reelFx.transform.position = plug.Held ? plug.transform.position : transform.position;
             if (active && !_reelFx.isPlaying) _reelFx.Play();
-            _reelFx.volume = Mathf.MoveTowards(_reelFx.volume, active ? 0.55f : 0f, dt * 6f);
+            _reelFx.volume = Mathf.MoveTowards(_reelFx.volume, (active ? 0.55f : 0f) * SoundCatalog.Volume(SoundIds.Cords), dt * 6f);
             if (!active)
             {
                 if (_reelFx.isPlaying && _reelFx.volume <= 0f) _reelFx.Stop();

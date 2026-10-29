@@ -7,6 +7,11 @@ plates; from 4, a bent grid runner; from 5, frayed carpet edges. The world's loo
 (`OfficeBiomeAssets.noBaseboard`), so the baseboard wear in 3 is built but never seen. F5 > PLACES > WEAR AND DETAIL
 jumps to the nearest of each of the rarer kinds.
 
+**After the first look (2026-10-29, evening):** the band of grime low on walls read as a shadow, so it is now patchy and
+fainter with shoe scuffs; roller marks and patches of fresh paint (hard-edged brighter rectangles) are gone; askew lights
+open on the real space above the ceiling; cobwebs are gone. How much of each kind there is can be set in F5 > WORLD GEN >
+HOW OFTEN (DetailRates); carpet-tile rooms are 5 % by default (were 16 %).
+
 Same idea as the wear and office details already in the world (WorldGeneration.md, "Wear and neglect", "Office
 details"): small signs of age and use, decided by the seed and the cell (the same every visit, from either chunk), cheap
 (overlays and a few hundred triangles a chunk), and rare. Most cells stay plain; one in twenty or so has something. The

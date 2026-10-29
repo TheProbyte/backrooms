@@ -149,6 +149,16 @@ the same from either chunk), and costs almost nothing: a few hundred triangles a
 
 ### Realism pass (2026-10-29, Docs/RealismPlan.md)
 
+**Changed after the first look (same day):** the grime low on walls is patchy (pieces 40 cm long whose strength and
+height follow fine world fields) and fainter, with short shoe scuffs, instead of an even band that read as a shadow;
+inside corners are lighter. No roller marks and no fresh-paint patches (both looked like rendering faults). Askew lights
+are gaps in the ceiling (`_gaps`, so `BuildPlenums` builds the joists, ducts and hanger wires above) with the fitting's
+metal body showing; the flat dark quad is gone. No cobwebs. **F5 > WORLD GEN > HOW OFTEN** (`WorldGenSettings.dirt`,
+`wallWear`, `ceilingWear`, `floorMarks`, `carpetTileRooms`, `depthAmount`, `crawlPortals`; copied to the static
+`DetailRates` whenever a `WorldGenerator` is made, read by the builders and `DepthPlan` on their threads): dirt strength,
+chance multipliers for wall, ceiling and floor wear and for the height-and-depth features, the share of carpet-tile rooms
+(5 %, was 16 %) and vent crawl spaces per district (1, was 3; settings saved before this are moved to the new default).
+
 Seeded like the wear (world seed and cell), so a place looks the same each visit and from either chunk. Marks are
 `WallWear` / `FloorWear` overlay quads (Backrooms/FloorWear: its blotches now vary with height too, and a flat mode for
 carpet tiles); a few things are geometry in the walls', floor's and ceiling's own materials. Strengths are tuned to read
@@ -187,6 +197,22 @@ through the camcorder's soft picture (half as strong did not show).
 - **Finding them**: chunks note where they put the rarer ones (`RealismSightings`, published as each chunk is made);
   F5 > PLACES > WEAR AND DETAIL takes you to the nearest of a kind among the places built so far, in front of a wall,
   beside a thing on the floor or below one on the ceiling; press again for the next.
+
+### Height and depth: after the first look (2026-10-29)
+
+- **Steps into sunken rooms** are one carpeted flight across the whole opening (`PaddedFlight`): each cell's part runs on
+  into the next cell's, to the wall's face where there is a wall, closed at an end open to the room, and every nose is
+  rounded (carpet over padding). Where two doorways near a corner each have steps at right angles, the two flights run
+  on to each other's doorway line and meet on the diagonal through the corner, so the steps turn the corner instead of
+  one flight ending against the other's side. Stairs to nowhere use the same padded flight.
+- **Pit rooms**: every shaft is `DepthPlan.PitDepth` (4 m) deep with no block in it (the dice still roll, so the rest of
+  the plan is unchanged). Its walls are the room's paint darkened by a smooth overlay (black from 2.2 m down) and its
+  floor black, instead of eleven bands each a shade darker. Falling in: `PitRescue` (on the player, added by the
+  streamer) puts you back where you last stood on the walkways once your feet are 1.7 m down. A stand-in until a fall
+  means something.
+- F5 > PLACES > RAMP stands inside the ramp's room (a ramp as long as its hallway put you past its end). The camera's
+  jolt spring (`HandheldCameraShake`) is stepped at 120 Hz at most: one long frame while chunks loaded after a teleport
+  blew it up and left the camera on its side with the arms torn, which was the "ramp teleport glitch".
 
 ### Height and depth (world version 14, Docs/WorldDepthPlan.md)
 `DepthPlan` (its own dice) runs on the district plan once the rooms are joined up (`Apply`) and once at the end

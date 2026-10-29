@@ -43,12 +43,26 @@ namespace Backrooms.Generation
 
         [Header("Crawl holes")]
         [Tooltip("Crawl spaces per district are twice this (fractions are a chance of one more). Each vent leads to a small special room above the ceiling.")]
-        public float crawlPortals = 1.5f;
+        public float crawlPortals = 0.5f;
         [Tooltip("Noclip doors: one per square of this many districts (0 = none). Each leads into the Poolrooms.")]
         public int noclipDoorSpacing = 4;
         [Tooltip("Far crawl holes: one link per square of this many districts (0 = none). The two ends are far apart (about " +
                  "(spacing - 3) x 81 m), so each leads somewhere well outside the load radius; see FarLinks.")]
         public int farLinkSpacing = 6;
+
+        [Header("How often (F5 > WORLD GEN > HOW OFTEN; DetailRates)")]
+        [Tooltip("Strength of the dirt low on walls, in corners, under the ceiling and round vents. 0 is clean, 1 normal.")]
+        public float dirt = 1f;
+        [Tooltip("How often wallpaper and paint are damaged (bubbles, peeling strips, patches, drips, scrapes, chips) and plates hang crooked. 1 normal.")]
+        public float wallWear = 1f;
+        [Tooltip("How often ceiling tiles are missing, stained, sagging, holed or dropped, and lights hang askew or are cracked. 1 normal.")]
+        public float ceilingWear = 1f;
+        [Tooltip("How often floors are marked: where furniture stood, rust rings, cigarette burns, worn doorways. 1 normal.")]
+        public float floorMarks = 1f;
+        [Tooltip("Share of rooms laid in square carpet tiles instead of wall-to-wall carpet.")]
+        public float carpetTileRooms = 0.05f;
+        [Tooltip("How often the floor and ceiling are not flat: sunken wings, pit rooms, sloping rooms, stairs to nowhere, mezzanines, cut corners, ceilings that come down. 1 normal.")]
+        public float depthAmount = 1f;
 
         /// <summary>Bump when generation code changes how a seed plays out.
         /// 2: fixture spacing, strips, open plan. 3: arches. 4: zones, landmarks, districts, storeys.</summary>
@@ -313,6 +327,8 @@ namespace Backrooms.Generation
                 if (!string.IsNullOrEmpty(json))
                 {
                     var s = JsonUtility.FromJson<WorldGenSettings>(json);
+                    // Saved before HOW OFTEN existed: vents were three a district then, now one by default.
+                    if (s != null && !json.Contains("\"carpetTileRooms\"")) s.crawlPortals = new WorldGenSettings().crawlPortals;
                     if (s != null && s.zones != null && s.zones.Count > 0) { s.AddMissingPinnedZones(); return s; }
                 }
                 string legacy = PlayerPrefs.GetString(LegacyPrefsKey, "");

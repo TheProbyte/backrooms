@@ -115,7 +115,7 @@ namespace Backrooms.Interaction
                                 _touchFx.playOnAwake = false; _touchFx.spatialBlend = 1f; _touchFx.minDistance = 0.3f; _touchFx.maxDistance = 8f;
                             }
                             _touchFx.transform.position = _quickPoint;
-                            _touchFx.PlayOneShot(SoundBank.WallPat(Random.Range(0, 3)), 0.6f);
+                            _touchFx.PlayOneShot(SoundBank.WallPat(Random.Range(0, 3)), 0.6f * SoundCatalog.Volume(SoundIds.Touch));
                         }
                         _quick = QuickPhase.Push; _quickT = 0f;
                     }

@@ -143,7 +143,7 @@ namespace Backrooms.Interaction
             _pose = Mathf.MoveTowards(_pose, can ? 1f : 0f, i.dt * 7f);
             _speed = Mathf.Lerp(_speed, drawn / Mathf.Max(i.dt, 1e-4f), 1f - Mathf.Exp(-i.dt / 0.06f));
             float vol = can ? Mathf.Clamp01(_speed / 0.6f) * 0.55f + 0.05f : 0f;
-            _scratch.volume = Mathf.MoveTowards(_scratch.volume, vol, i.dt * 6f);
+            _scratch.volume = Mathf.MoveTowards(_scratch.volume, vol * SoundCatalog.Volume(SoundIds.Chalk), i.dt * 6f);
             _scratch.pitch = 0.85f + Mathf.Clamp01(_speed / 1.2f) * 0.35f;
             if (_scratch.volume > 0.001f && !_scratch.isPlaying) _scratch.Play();
             else if (_scratch.volume <= 0.001f && _scratch.isPlaying) _scratch.Stop();
@@ -151,7 +151,7 @@ namespace Backrooms.Interaction
             if (left <= 0f)
             {
                 // Used up: the last crumb is gone.
-                AudioSource.PlayClipAtPoint(SoundBank.Tick(1), transform.position, 0.4f);
+                AudioSource.PlayClipAtPoint(SoundBank.Tick(1), transform.position, 0.4f * SoundCatalog.Volume(SoundIds.Chalk));
                 i.hand.ItemGone(this);
                 Destroy(gameObject);
             }

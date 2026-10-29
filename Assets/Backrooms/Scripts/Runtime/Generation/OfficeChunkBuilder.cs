@@ -214,7 +214,6 @@ namespace Backrooms.Generation
             }
             MakeWear(root.transform, resources);
             RealismSightings.Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), _sightings);
-            MakeWebs(root.transform, resources);
 
             foreach (var kv in _roomLenses)
             {
@@ -1163,8 +1162,8 @@ namespace Backrooms.Generation
                 // Some plates were painted over with a painted wall; some hang crooked, one screw loose (seeded by the cell).
                 int pgx = GX(p.cell.x), pgz = GZ(p.cell.y), ps = 1220 + p.side * 4 + (p.isSwitch ? 1 : 0);
                 float pv = Pool ? 0.5f : Dice(pgx, pgz, ps);
-                bool paintedOver = pv < 0.12f && PaintedRoom(_L.RoomAt(p.cell.x, p.cell.y));
-                float crooked = pv > 0.94f ? (Dice(pgx, pgz, ps + 100) < 0.5f ? -1f : 1f) * (3f + 6f * Dice(pgx, pgz, ps + 200)) : 0f;
+                bool paintedOver = pv < 0.12f * DetailRates.WallWear && PaintedRoom(_L.RoomAt(p.cell.x, p.cell.y));
+                float crooked = pv > 1f - 0.06f * DetailRates.WallWear ? (Dice(pgx, pgz, ps + 100) < 0.5f ? -1f : 1f) * (3f + 6f * Dice(pgx, pgz, ps + 200)) : 0f;
                 if (paintedOver) Saw(pos, n, "plate_painted");
                 if (crooked != 0f) Saw(pos, n, "plate_crooked");
                 if (parts != null)

@@ -19,7 +19,7 @@ namespace Backrooms.Generation
         bool CarpetTiled(Room r)
         {
             var d = WorldGenerator.DistrictOf(_L.coord);
-            return r.kind != RoomKind.Hallway && Dice(r.globalId, d.x * 7919 + d.y, 1430) < 0.16f;
+            return r.kind != RoomKind.Hallway && Dice(r.globalId, d.x * 7919 + d.y, 1430) < DetailRates.CarpetTileRooms;
         }
 
         /// <summary>The floor of one plain cell (from BuildWear, after the props, so Clear knows the furniture).</summary>
@@ -30,14 +30,15 @@ namespace Backrooms.Generation
             if (carpet)
             {
                 if (CarpetTiled(r)) { CarpetTiles(x, z, r, m); if (((GX(x) + GZ(z)) & 3) == 0) Saw(P(0.5f, 0.5f), Vector3.up, "carpet_tiles"); }
-                if (Dice(gx, gz, 1400) < 0.014f) FurnitureGhost(x, z, r);
-                if (Dice(gx, gz, 1410) < 0.006f)
+                float fm = DetailRates.FloorMarks;
+                if (Dice(gx, gz, 1400) < 0.014f * fm) FurnitureGhost(x, z, r);
+                if (Dice(gx, gz, 1410) < 0.006f * fm)
                 {
                     var p = P(0.2f + 0.6f * Dice(gx, gz, 1411), 0.2f + 0.6f * Dice(gx, gz, 1412));
                     Spot(p, 0.035f + 0.035f * Dice(gx, gz, 1413), new Color32(150, 104, 66, 190), 0.85f);
                     Saw(p, Vector3.up, "rust");
                 }
-                if (Dice(gx, gz, 1420) < 0.003f)
+                if (Dice(gx, gz, 1420) < 0.003f * fm)
                 {
                     var p = P(0.2f + 0.6f * Dice(gx, gz, 1421), 0.2f + 0.6f * Dice(gx, gz, 1422));
                     Spot(p, 0.022f, new Color32(126, 96, 66, 130), 0.3f);
@@ -47,7 +48,7 @@ namespace Backrooms.Generation
                 return;
             }
             // Hard floors: fine scratches, mostly along the room's long side (chairs pushed back, feet).
-            if (_a.FloorMaterial(r) == MaterialMaps.Concrete || Dice(gx, gz, 1460) > 0.3f) return;
+            if (_a.FloorMaterial(r) == MaterialMaps.Concrete || Dice(gx, gz, 1460) > 0.3f * DetailRates.FloorMarks) return;
             bool longX = r.rect.width >= r.rect.height;
             int n = 2 + (int)(Dice(gx, gz, 1461) * 5f);
             for (int k = 0; k < n; k++)

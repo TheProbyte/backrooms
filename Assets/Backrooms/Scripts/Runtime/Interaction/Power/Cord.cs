@@ -335,7 +335,7 @@ namespace Backrooms.Interaction
         /// <summary>The cord goes taut against the hand: a soft snap and a small jerk of the view toward the plug.</summary>
         static void Tug(Plug plug, WorldItem held)
         {
-            AudioSource.PlayClipAtPoint(Audio.SoundBank.CordWhip, held.transform.position, 0.45f);
+            AudioSource.PlayClipAtPoint(Audio.SoundBank.CordWhip, held.transform.position, 0.45f * Audio.SoundCatalog.Volume(Audio.SoundIds.Cords));
             var shake = FindAnyObjectByType<HandheldCameraShake>();
             var cam = Camera.main;
             if (!shake || !cam) return;
@@ -350,7 +350,7 @@ namespace Backrooms.Interaction
         {
             Vector3 toward = held.transform.position - plug.transform.position;
             plug.Body.linearVelocity = toward.normalized * 3.2f + Vector3.up * 1.4f;
-            AudioSource.PlayClipAtPoint(Audio.SoundBank.CordYank, held.transform.position, 1f);
+            AudioSource.PlayClipAtPoint(Audio.SoundBank.CordYank, held.transform.position, Audio.SoundCatalog.Volume(Audio.SoundIds.Cords));
             var shake = FindAnyObjectByType<HandheldCameraShake>();
             var cam = Camera.main;
             if (shake && cam)

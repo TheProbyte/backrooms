@@ -30,6 +30,8 @@ namespace Backrooms.Generation
 
         /// <summary>A smooth 0..1 over the world at a chunk-local point (the same from either chunk), for strengths along walls.</summary>
         float Smear(Vector3 p, int salt) => Field((_origin.x + p.x) * 0.45f, (_origin.z + p.z) * 0.45f, salt);
+        /// <summary>The same at a finer grain (features under a metre): where dirt comes and goes along a wall.</summary>
+        float Patchy(Vector3 p, int salt) => Field((_origin.x + p.x) * 1.6f, (_origin.z + p.z) * 1.6f, salt);
 
         static Color32 Tone(Color32 c, float k) => new Color32(c.r, c.g, c.b, (byte)Mathf.Clamp(c.a * k, 0f, 255f));
 
@@ -63,18 +65,49 @@ namespace Backrooms.Generation
             float a0 = -ext[0], a1 = ext[1];
             float u0 = ends[0] == WallEnd.Runs ? 0f : -1f, u1 = ends[1] == WallEnd.Runs ? 0f : 1f;
 
-            // Toward the floor: darkest just above the baseboard, gone 30 cm up, fading where the wall stops. (The same in
-            // every room: an open plan made of several rooms has one wall run, so it must not change at a room's edge.)
-            float yb = NoBaseboard ? 0f : BB, hb = GrimeBand;
-            var grime = new Color32(118, 108, 94, 185);
-            Color32 g0 = Tone(grime, 0.5f + 0.8f * Smear(P(a0, 0f), 951)), g1 = Tone(grime, 0.5f + 0.8f * Smear(P(a1, 0f), 951));
-            _wallWear.Quad(P(a0, yb), P(a1, yb), P(a1, yb + hb), P(a0, yb + hb),
-                           new Vector2(u0, 0f), new Vector2(u1, 0f), new Vector2(u1, 1f), new Vector2(u0, 1f), g0, g1, g1, g0, new Vector2(0.85f, 0f));
+            // Toward the floor: in patches, not a band (a band the same all along read as a shadow), heavier and higher in
+            // some stretches, nearly gone in others, in pieces 40 cm long whose strength and height follow smooth world
+            // fields, so neighbouring pieces and cells meet without a step. (The same in every room: an open plan made of
+            // several rooms has one wall run, so it must not change at a room's edge.)
+            float yb = NoBaseboard ? 0f : BB;
+            float dirt = DetailRates.Dirt;
+            var grime = new Color32(112, 102, 88, 120);
+            int pieces = Mathf.Max(1, Mathf.CeilToInt((a1 - a0) / 0.4f));
+            float GrimeK(float a)
+            {
+                Vector3 p = P(a, 0f);
+                float broad = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.3f, 0.8f, Smear(p, 951)));
+                return dirt * (0.08f + 0.92f * broad) * (0.35f + 0.65f * Patchy(p, 955));
+            }
+            float GrimeH(float a) => 0.12f + 0.2f * Patchy(P(a, 0f), 956);
+            for (int i = 0; i < pieces; i++)
+            {
+                float pa = Mathf.Lerp(a0, a1, i / (float)pieces), pb = Mathf.Lerp(a0, a1, (i + 1) / (float)pieces);
+                float ua = Mathf.Lerp(u0, u1, i / (float)pieces), ub = Mathf.Lerp(u0, u1, (i + 1) / (float)pieces);
+                Color32 ga = Tone(grime, GrimeK(pa)), gb = Tone(grime, GrimeK(pb));
+                float ha = GrimeH(pa), hb = GrimeH(pb);
+                _wallWear.Quad(P(pa, yb), P(pb, yb), P(pb, yb + hb), P(pa, yb + ha),
+                               new Vector2(ua, 0f), new Vector2(ub, 0f), new Vector2(ub, 1f), new Vector2(ua, 1f), ga, gb, gb, ga, new Vector2(0.85f, 0f));
+            }
+            // Shoe scuffs: short dark streaks just above the floor.
+            if (Dice(gx, gz, 957 + side) < 0.45f * Mathf.Min(1f, dirt))
+            {
+                int n = 1 + (int)(Dice(gx, gz, 958 + side) * 3f);
+                for (int j = 0; j < n; j++)
+                {
+                    int salt = 1020 + side * 8 + j;
+                    float hw = 0.025f + 0.06f * Dice(gx, gz, salt), hh = 0.003f + 0.008f * Dice(gx, gz, salt + 50);
+                    float a = Mathf.Lerp(a0 + 0.1f + hw, a1 - 0.1f - hw, Dice(gx, gz, salt + 100));
+                    float y = yb + 0.025f + 0.11f * Dice(gx, gz, salt + 150);
+                    var col = new Color32(66, 58, 50, (byte)Mathf.Clamp((110 + 90 * Dice(gx, gz, salt + 200)) * Mathf.Min(1.5f, dirt), 0f, 255f));
+                    _wallWear.Rect(P(a, y), along, up, hw, hh, col, new Vector2(0.35f, 0.1f));
+                }
+            }
 
             // The line under the ceiling, on the wall and on the ceiling beside it (not where the ceiling slopes or is open).
             if (r.ceilDrop == 0 && !r.openAbove && top < 6.5f)
             {
-                var line = new Color32(116, 110, 100, 165);
+                var line = new Color32(116, 110, 100, (byte)Mathf.Clamp(130 * dirt, 0f, 255f));
                 Color32 d0 = Tone(line, 0.35f + 1f * Smear(P(a0, top), 952)), d1 = Tone(line, 0.35f + 1f * Smear(P(a1, top), 952));
                 _wallWear.Quad(P(a0, top - CeilingBand), P(a1, top - CeilingBand), P(a1, top), P(a0, top),
                                new Vector2(u0, 1f), new Vector2(u1, 1f), new Vector2(u1, 0f), new Vector2(u0, 0f), d0, d1, d1, d0, new Vector2(0.85f, 0f));
@@ -93,10 +126,10 @@ namespace Backrooms.Generation
                     case WallEnd.Corner:
                     {
                         // Inside corner: a soft shadow of dirt up the whole height, a little heavier low down.
-                        var cc = new Color32(108, 100, 88, (byte)(140 + 70 * Smear(P(ae, 1f), 953)));
+                        var cc = new Color32(108, 100, 88, (byte)Mathf.Clamp((55 + 60 * Smear(P(ae, 1f), 953)) * dirt, 0f, 255f));
                         Vector3 b0 = P(ae, 0f), b1 = P(ae + sgn * CornerBand, 0f), t0 = P(ae, top), t1 = P(ae + sgn * CornerBand, top);
                         _wallWear.Quad(b0, b1, t1, t0, Vector2.zero, new Vector2(1f, 0f), new Vector2(1f, 0f), Vector2.zero,
-                                       Tone(cc, 1.25f), Tone(cc, 1.25f), Tone(cc, 0.8f), Tone(cc, 0.8f), Vector2.zero);
+                                       Tone(cc, 1.3f), Tone(cc, 1.3f), Tone(cc, 0.6f), Tone(cc, 0.6f), Vector2.zero);
                         break;
                     }
                     case WallEnd.Doorway:
@@ -108,13 +141,13 @@ namespace Backrooms.Generation
                         {
                             float w = 0.1f + 0.07f * Dice(gx, gz, 964 + side * 2 + k), y = 1.0f + 0.15f * Dice(gx, gz, 968 + side * 2 + k);
                             float hh = 0.15f + 0.1f * Dice(gx, gz, 972 + side * 2 + k);
-                            var hand = new Color32(108, 96, 82, (byte)(140 + 70 * Dice(gx, gz, 976 + side * 2 + k)));
+                            var hand = new Color32(108, 96, 82, (byte)Mathf.Clamp((110 + 60 * Dice(gx, gz, 976 + side * 2 + k)) * dirt, 0f, 255f));
                             Vector3 cen = P(ae + sgn * w, y);
                             _wallWear.Quad(cen - along * w - up * hh, cen + along * w - up * hh, cen + along * w + up * hh, cen - along * w + up * hh,
                                            new Vector2(ua, -1f), new Vector2(ub, -1f), new Vector2(ub, 1f), new Vector2(ua, 1f), hand, hand, hand, hand, new Vector2(0.1f, 0.3f));
                         }
                         // Chipped paint on the edge, at hip and trolley height.
-                        if (Dice(gx, gz, 980 + side * 2 + k) < (door ? 0.45f : 0.3f))
+                        if (Dice(gx, gz, 980 + side * 2 + k) < (door ? 0.45f : 0.3f) * DetailRates.WallWear)
                         {
                             int n = 1 + (int)(Dice(gx, gz, 984 + side * 2 + k) * 3f);
                             for (int j = 0; j < n; j++)
@@ -159,7 +192,7 @@ namespace Backrooms.Generation
         {
             int gx = GX(cell.x), gz = GZ(cell.y);
             if (Dice(gx, gz, 1000 + side) > 0.7f) return;
-            var col = new Color32(108, 96, 82, (byte)(140 + 70 * Dice(gx, gz, 1004 + side)));
+            var col = new Color32(108, 96, 82, (byte)Mathf.Clamp((120 + 60 * Dice(gx, gz, 1004 + side)) * DetailRates.Dirt, 0f, 255f));
             float lean = (Dice(gx, gz, 1008 + side) - 0.5f) * 0.03f;
             _wallWear.Rect(pos + n * 0.0012f + right * lean - Vector3.up * 0.012f, right, Vector3.up, 0.068f, 0.092f, col, new Vector2(0.25f, 0.25f));
         }
@@ -172,7 +205,7 @@ namespace Backrooms.Generation
         {
             float k = 0.6f + 0.6f * Dice(gx, gz, 1010 + i);
             float reach = 0.16f + 0.12f * Dice(gx, gz, 1012 + i);
-            var col = new Color32(72, 70, 68, (byte)Mathf.Clamp(190 * k, 0, 255));
+            var col = new Color32(72, 70, 68, (byte)Mathf.Clamp(190 * k * DetailRates.Dirt, 0, 255));
             c.y -= 0.0008f;
             Saw(c, Vector3.down, "smudge");
             for (int s = 0; s < 4; s++)

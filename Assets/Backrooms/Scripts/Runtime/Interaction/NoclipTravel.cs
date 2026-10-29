@@ -133,7 +133,7 @@ namespace Backrooms.Interaction
             _busy = true;
             // Into the wall: the tape breaks up, frames drop, the mic cuts out.
             _glitch = 1f; _drop = 1f;
-            _crackle.PlayOneShot(SoundBank.NoclipCrackle, 0.8f);
+            _crackle.PlayOneShot(SoundBank.NoclipCrackle, 0.8f * SoundCatalog.Volume(SoundIds.Noclip));
             CamcorderFrameHold.Freeze = true;
             yield return null;
 
@@ -201,7 +201,7 @@ namespace Backrooms.Interaction
                 Vector3 r1 = Vector3.Cross(Vector3.up, travel), r2 = Vector3.Cross(Vector3.up, toNormal);
                 float lateral = Mathf.Clamp(Vector3.Dot(c - d.centre, r1), -d.Width * 0.5f + extent, d.Width * 0.5f - extent);
                 Vector3 cOut = to + toNormal * (T * 0.5f + extent + 0.03f) + r2 * lateral + Vector3.up * (c.y - d.centre.y);
-                AudioSource.PlayClipAtPoint(SoundBank.NoclipCrackle, c, 0.35f);
+                AudioSource.PlayClipAtPoint(SoundBank.NoclipCrackle, c, 0.35f * SoundCatalog.Volume(SoundIds.Noclip));
                 // Turn it about its centre and move it across.
                 Vector3 pivotOffset = body.position - c;
                 Quaternion rot = turn * body.rotation;

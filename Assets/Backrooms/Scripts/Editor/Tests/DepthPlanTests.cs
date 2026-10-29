@@ -189,7 +189,7 @@ namespace Backrooms.Tests
         }
 
         [Test]
-        public void PitShaftsLeaveWalkwaysAndCanBeClimbedOutOf()
+        public void PitShaftsLeaveWalkwaysAndDropIntoTheDark()
         {
             foreach (var L in Districts())
                 foreach (var s in L.pits)
@@ -203,13 +203,10 @@ namespace Backrooms.Tests
                     if (Mathf.Abs(s.rect.xMin - rc.xMin * C - DepthPlan.PitWalk) < 1e-3f) Assert.Fail("a shaft only a walkway's half off the wall");
                     foreach (var o in L.pits)
                         if (!o.Equals(s) && o.rect.Overlaps(s.rect)) Assert.Fail("shafts overlap");
-                    // Out of it with the mantle: in one pull, or two by the block in its corner.
-                    if (s.ledge > 0f)
-                    {
-                        Assert.That(s.ledge, Is.LessThanOrEqualTo(Mantle), "the block");
-                        Assert.That(s.depth - s.ledge, Is.LessThanOrEqualTo(Mantle), "from the block to the rim");
-                    }
-                    else Assert.That(s.depth, Is.LessThanOrEqualTo(Mantle), "a shaft with no block");
+                    // Bottomless to look at: all the same depth, too deep to climb, no block (PitRescue brings you up).
+                    Assert.AreEqual(DepthPlan.PitDepth, s.depth, 1e-4f, "depth");
+                    Assert.That(s.ledge, Is.EqualTo(0f), "a block in a shaft");
+                    Assert.That(s.depth, Is.GreaterThan(Mantle), "a shaft shallow enough to climb out of");
                     // No doorway opens over a shaft.
                     for (int x = rc.xMin; x < rc.xMax; x++)
                     for (int z = rc.yMin; z < rc.yMax; z++)

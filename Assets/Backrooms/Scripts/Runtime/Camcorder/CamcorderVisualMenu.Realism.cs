@@ -33,7 +33,6 @@ namespace Backrooms.Camcorder
             ("rust", "RUST RING", "a rust ring on the carpet"),
             ("burn", "CIGARETTE BURN", "a cigarette burn"),
             ("tube_tint", "ODD TUBES", "a light with tubes of another white"),
-            ("cobweb", "COBWEB", "a cobweb at a return vent"),
         };
 
         void BuildRealismLocations()

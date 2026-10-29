@@ -83,7 +83,7 @@ namespace Backrooms.Interaction
             foreach (var s in s_all) if (s._chunk == _chunk && s._room == _room) s._want = off ? Throw : 0f;
             if (!_fx) _fx = ItemModels.Source(gameObject, 6f);
             _fx.pitch = off ? 0.92f : 1.05f;
-            _fx.PlayOneShot(SoundBank.SwitchClick, 0.9f);
+            _fx.PlayOneShot(SoundBank.SwitchClick, 0.9f * SoundCatalog.Volume(SoundIds.Switches));
         }
 
         /// <summary>The middle of the plate's face (for the focus marks).</summary>

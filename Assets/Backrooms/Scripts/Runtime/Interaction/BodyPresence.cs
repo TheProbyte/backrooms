@@ -84,8 +84,8 @@ namespace Backrooms.Interaction
                 float vol = Mathf.Clamp01((Exertion - 0.3f) / 0.7f) * 0.16f;
                 if (vol > 0.01f)
                 {
-                    if (_lastPhase > ph) _breath.PlayOneShot(SoundBank.BreathIn(_breathPick++), vol);
-                    else if (_lastPhase < Mathf.PI && ph >= Mathf.PI) _breath.PlayOneShot(SoundBank.BreathOut(_breathPick++), vol * 1.1f);
+                    if (_lastPhase > ph) _breath.PlayOneShot(SoundBank.BreathIn(_breathPick++), vol * SoundCatalog.Volume(SoundIds.Breathing));
+                    else if (_lastPhase < Mathf.PI && ph >= Mathf.PI) _breath.PlayOneShot(SoundBank.BreathOut(_breathPick++), vol * 1.1f * SoundCatalog.Volume(SoundIds.Breathing));
                 }
                 _lastPhase = ph;
             }
@@ -97,7 +97,7 @@ namespace Backrooms.Interaction
             _lastEye = _player.Eye;
             float want = Mathf.Clamp01(lookRate / 220f) * 0.55f + Mathf.Clamp01(eyeRate / 1.2f) * 0.8f + Mathf.Clamp01(speed / 3f) * 0.2f;
             _rustleLevel = Mathf.MoveTowards(_rustleLevel, Mathf.Clamp01(want), dt * (want > _rustleLevel ? 6f : 2f));
-            _rustle.volume = _rustleLevel * 0.09f;
+            _rustle.volume = _rustleLevel * 0.09f * SoundCatalog.Volume(SoundIds.Clothing);
 
             // ---- Wind on the microphone: running, or whipping the camera round ----
             if (_chain) _chain.wind = Mathf.Clamp01((speed - 2f) / 1.8f) * 0.8f + Mathf.Clamp01((lookRate - 250f) / 500f) * 0.5f;
@@ -134,7 +134,7 @@ namespace Backrooms.Interaction
             _brushing = brushing;
             _brushLevel = Mathf.MoveTowards(_brushLevel, brushing ? Mathf.Clamp01(speed / 2.5f) : 0f, dt * (brushing ? 2.5f : 5f));
             if (_brushLevel > 0.001f && !_brush.isPlaying) { _brush.time = Random.Range(0f, _brush.clip.length); _brush.Play(); }
-            _brush.volume = _brushLevel * 0.12f;
+            _brush.volume = _brushLevel * 0.12f * SoundCatalog.Volume(SoundIds.Clothing);
             if (_brushLevel <= 0.001f && _brush.isPlaying) _brush.Stop();
             if (brushing) _brush.transform.localPosition = new Vector3(0.25f * sideHit, 1.3f, 0f);
         }

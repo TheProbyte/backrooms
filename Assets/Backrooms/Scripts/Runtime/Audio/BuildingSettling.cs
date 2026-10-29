@@ -72,7 +72,7 @@ namespace Backrooms.Audio
                 var s = Free();
                 s.transform.position = p;
                 s.pitch = Random.Range(0.9f, 1.12f);
-                s.PlayOneShot(SoundBank.CeilingCreak(Random.Range(0, 4)), Random.Range(0.25f, 0.45f));
+                s.PlayOneShot(SoundBank.CeilingCreak(Random.Range(0, 4)), Random.Range(0.25f, 0.45f) * SoundCatalog.Volume(SoundIds.Settling));
                 return true;
             }
             return false;
@@ -94,7 +94,7 @@ namespace Backrooms.Audio
             var s = Free();
             s.transform.position = prop.transform.position + Vector3.up * 0.35f;
             s.pitch = Random.Range(0.85f, 1.15f);
-            s.PlayOneShot(SoundBank.FurnitureTick(Random.Range(0, 4)), Random.Range(0.22f, 0.38f));
+            s.PlayOneShot(SoundBank.FurnitureTick(Random.Range(0, 4)), Random.Range(0.22f, 0.38f) * SoundCatalog.Volume(SoundIds.Settling));
             return true;
         }
 

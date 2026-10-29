@@ -187,7 +187,7 @@ namespace Backrooms.Interaction
                 _pts.Clear(); _nrm.Clear();
                 _pts.Add(_aimPoint); _nrm.Add(_aimNormal);
                 _len = _lastLen = 0f;
-                _fx.PlayOneShot(SoundBank.TapeTear, 0.25f);
+                _fx.PlayOneShot(SoundBank.TapeTear, 0.25f * SoundCatalog.Volume(SoundIds.Tape));
             }
             if (_pulling)
             {
@@ -196,7 +196,7 @@ namespace Backrooms.Interaction
                 if (_pts.Count >= 2) Marks.Instance.SetPreview(_pts, _nrm); else Marks.Instance.ClearPreview();
                 float speed = Mathf.Abs(_len - _lastLen) / Mathf.Max(i.dt, 1e-4f);
                 _lastLen = _len;
-                _pull.volume = Mathf.MoveTowards(_pull.volume, Mathf.Clamp01(speed / 0.8f) * 0.5f, i.dt * 8f);
+                _pull.volume = Mathf.MoveTowards(_pull.volume, Mathf.Clamp01(speed / 0.8f) * 0.5f * SoundCatalog.Volume(SoundIds.Tape), i.dt * 8f);
                 if (_pull.volume > 0.001f && !_pull.isPlaying) _pull.Play();
 
                 if (!i.use)
@@ -208,7 +208,7 @@ namespace Backrooms.Interaction
                         Marks.Instance.AddTape(_pts, _nrm);
                         metres = Mathf.Max(0f, metres - _len);
                         Shape();
-                        _fx.PlayOneShot(SoundBank.TapeTear, 0.6f);
+                        _fx.PlayOneShot(SoundBank.TapeTear, 0.6f * SoundCatalog.Volume(SoundIds.Tape));
                     }
                     Stop();
                 }
@@ -235,7 +235,7 @@ namespace Backrooms.Interaction
 
         void Cancel()
         {
-            _fx.PlayOneShot(SoundBank.TapeTear, 0.15f);
+            _fx.PlayOneShot(SoundBank.TapeTear, 0.15f * SoundCatalog.Volume(SoundIds.Tape));
             Stop();
         }
 

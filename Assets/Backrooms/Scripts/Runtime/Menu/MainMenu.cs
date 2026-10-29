@@ -351,7 +351,7 @@ namespace Backrooms.Menu
 
         void Beep(int kind)
         {
-            if (_beep) _beep.PlayOneShot(SoundBank.MenuBeep(kind));
+            if (_beep) _beep.PlayOneShot(SoundBank.MenuBeep(kind), SoundCatalog.Volume(SoundIds.MenuBeep));
         }
 
         static Label Text(string text, string cls)

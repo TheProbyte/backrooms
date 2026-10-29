@@ -50,6 +50,24 @@ namespace Backrooms.Camcorder
             Button(seedRow, "Random", () => { int s = new System.Random().Next(1, int.MaxValue); _wgSeedField.value = s.ToString(); _ws.SetSeed(s); _wgMapCenter.x = int.MinValue; });
             Button(seedRow, "Copy code", () => GUIUtility.systemCopyBuffer = _ws.Settings.WorldCode(_ws.Seed));
 
+            // How often the smaller things turn up, everywhere (WorldGenSettings, DetailRates).
+            var how = _ws.Settings;
+            Section("HOW OFTEN", "How much of the world's smaller things there are, in every biome. Changing one rebuilds the world around you (not the chunk you stand in). Per-biome chances are in the biome rules further down.");
+            WG(Slider("Vent crawl spaces", "Square vents at the foot of walls, each leading to a small room above the ceiling. How many per district (a district is about 58 m square). Was 3.",
+                0f, 6f, "0.0", " per district", () => how.crawlPortals * 2f, v => how.crawlPortals = v * 0.5f));
+            WG(Slider("Carpet-tile rooms", "Share of rooms (not hallways) laid in square carpet tiles, a checker of two shades, instead of wall-to-wall carpet. Was 16 %.",
+                0f, 50f, "0", " %", () => how.carpetTileRooms * 100f, v => how.carpetTileRooms = v / 100f));
+            WG(Slider("Uneven floors and ceilings", "How often there are sunken wings, pit rooms, sloping rooms, stairs to nowhere, mezzanines, cut corners and ceilings coming down. 1 is normal, 0 none.",
+                0f, 3f, "0.00", "x", () => how.depthAmount, v => how.depthAmount = v));
+            WG(Slider("Dirt", "How dirty the walls are: low down, in corners, under the ceiling, by doorways and switches, round vents. 1 is normal, 0 clean.",
+                0f, 2f, "0.00", "x", () => how.dirt, v => how.dirt = v));
+            WG(Slider("Wall damage", "How often wallpaper bubbles, peels or is patched, paint drips or is scraped, edges are chipped, and outlets are painted over or crooked. 1 is normal, 0 none.",
+                0f, 3f, "0.00", "x", () => how.wallWear, v => how.wallWear = v));
+            WG(Slider("Ceiling damage", "How often ceiling tiles are missing, stained, sagging, holed, dropped or from another batch, and lights hang askew or are cracked. 1 is normal, 0 none.",
+                0f, 3f, "0.00", "x", () => how.ceilingWear, v => how.ceilingWear = v));
+            WG(Slider("Floor marks", "How often floors show where furniture stood, rust rings, cigarette burns, worn doorways and scratches. 1 is normal, 0 none.",
+                0f, 3f, "0.00", "x", () => how.floorMarks, v => how.floorMarks = v));
+
             // Field + delimiters.
             var set = _ws.Settings;
             Section("BIOME FIELD", "A noise density map (Hytale World Gen V2 style) picks each chunk's biome.");

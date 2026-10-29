@@ -164,7 +164,7 @@ namespace Backrooms.Interaction
             }
             ShowBundle();
             if (_cord) _cord.Lay();
-            _fx.PlayOneShot(SoundBank.CordWhip, 0.25f);
+            _fx.PlayOneShot(SoundBank.CordWhip, 0.25f * SoundCatalog.Volume(SoundIds.Cords));
         }
 
         /// <summary>Winds the cord back up behind the base (not while it is plugged in).</summary>
@@ -177,7 +177,7 @@ namespace Backrooms.Interaction
             StopReel(_cord);
             if (_cord) _cord.SetLength(CordLength);          // reeled in: full length again for next time
             ShowBundle();
-            _fx.PlayOneShot(SoundBank.CordWhip, 0.3f);
+            _fx.PlayOneShot(SoundBank.CordWhip, 0.3f * SoundCatalog.Volume(SoundIds.Cords));
         }
 
         public override void ReelFromPlug(Plug plug, in HoldInput i)
@@ -242,7 +242,7 @@ namespace Backrooms.Interaction
         public void Toggle()
         {
             switchOn = !switchOn;
-            _fx.PlayOneShot(SoundBank.SwitchClick, 0.6f);
+            _fx.PlayOneShot(SoundBank.SwitchClick, 0.6f * SoundCatalog.Volume(SoundIds.Switches));
         }
 
         // ---------------- Dust in the beam ----------------

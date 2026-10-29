@@ -92,7 +92,7 @@ namespace Backrooms.Interaction
             _variant = Random.Range(0, 3);
             _voice.pitch = Random.Range(0.95f, 1.06f);
             _voice.clip = SoundBank.ChickenRelease(_variant);
-            _voice.volume = 0.55f;
+            _voice.volume = 0.55f * SoundCatalog.Volume(SoundIds.RubberChicken);
             _voice.Play();
         }
 
@@ -105,7 +105,7 @@ namespace Backrooms.Interaction
             float air = Mathf.Clamp01((Time.time - _squeezedAt) / 0.45f) * 0.75f + 0.25f;
             _voice.clip = SoundBank.ChickenSqueeze(_variant);
             _voice.pitch = Random.Range(0.94f, 1.08f) * Mathf.Lerp(1.12f, 0.96f, air);
-            _voice.volume = 0.95f * air;
+            _voice.volume = 0.95f * air * SoundCatalog.Volume(SoundIds.RubberChicken);
             _voice.time = 0f;
             _voice.Play();
             _squawkEnd = Time.time + 0.12f + 0.68f * air;          // a short squeeze, a short squeak (faded out in Update)
@@ -137,7 +137,7 @@ namespace Backrooms.Interaction
             _quietUntil = Time.time + 0.35f;
             // A short squawk as it lands on its belly.
             _fx.pitch = Random.Range(1.0f, 1.15f);
-            _fx.PlayOneShot(SoundBank.ChickenSqueeze(Random.Range(0, 3)), Mathf.Clamp01((v - 2f) / 5f) * 0.7f);
+            _fx.PlayOneShot(SoundBank.ChickenSqueeze(Random.Range(0, 3)), Mathf.Clamp01((v - 2f) / 5f) * 0.7f * SoundCatalog.Volume(SoundIds.RubberChicken));
             _squeeze = 0.8f; Shape();
         }
 

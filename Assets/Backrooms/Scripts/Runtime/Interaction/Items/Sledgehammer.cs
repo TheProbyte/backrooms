@@ -117,7 +117,7 @@ namespace Backrooms.Interaction
         protected override void OnPickedUp()
         {
             _phase = Phase.Carry; _charge = 0f; _viewInit = false; _poseValid = false; _carryRollSet = false; _solveT = -1f;
-            _fx.PlayOneShot(SoundBank.WoodStudHit(1), 0.25f);
+            _fx.PlayOneShot(SoundBank.WoodStudHit(1), 0.25f * SoundCatalog.Volume(SoundIds.Sledgehammer));
         }
 
         protected override void OnDropped()
@@ -203,7 +203,7 @@ namespace Backrooms.Interaction
             _hitDone = false;
             Begin(Phase.Swing);
             _fx.pitch = Mathf.Lerp(1.15f, 0.9f, _charge);
-            _fx.PlayOneShot(SoundBank.HammerSwing(Random.Range(0, 3)), 0.25f + 0.55f * _energy);
+            _fx.PlayOneShot(SoundBank.HammerSwing(Random.Range(0, 3)), (0.25f + 0.55f * _energy) * SoundCatalog.Volume(SoundIds.Sledgehammer));
             if (_shake) _shake.Jolt(new Vector3(-1.5f - 2f * _energy, 1.2f * _energy, 0.8f));
         }
 
@@ -553,7 +553,7 @@ namespace Backrooms.Interaction
                 if (r.hit) return;
             }
             _fx.pitch = Random.Range(0.85f, 1.05f);
-            _fx.PlayOneShot(SoundBank.HardThud(Random.Range(0, 3)), Mathf.Clamp01((v - 1f) / 6f) * 0.6f);
+            _fx.PlayOneShot(SoundBank.HardThud(Random.Range(0, 3)), Mathf.Clamp01((v - 1f) / 6f) * 0.6f * SoundCatalog.Volume(SoundIds.Sledgehammer));
         }
     }
 }

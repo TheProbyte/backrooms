@@ -177,9 +177,17 @@ namespace Backrooms
             rot += new Vector3(3.2f, 1.2f, -2.0f) * _dip;
             rot += (Noise3(t * 9f + 333f) * 0.35f + Noise3(t * 3.1f + 71f) * 0.5f) * _effort;
 
-            // Jolts (a cord yanked out of the hand): a damped spring, felt even with the shake turned off.
-            _joltVel += (-_jolt * 260f - _joltVel * 22f) * dt;
-            _jolt += _joltVel * dt;
+            // Jolts (a cord yanked out of the hand): a damped spring, felt even with the shake turned off. Stepped at
+            // 120 Hz at most: in one long frame (a hitch while far chunks load after a teleport) a single step blew the
+            // spring up and left the camera on its side.
+            for (float rem = Mathf.Min(dt, 0.25f); rem > 1e-5f; rem -= 1f / 120f)
+            {
+                float h = Mathf.Min(rem, 1f / 120f);
+                _joltVel += (-_jolt * 260f - _joltVel * 22f) * h;
+                _jolt += _joltVel * h;
+            }
+            if (float.IsNaN(_jolt.x + _jolt.y + _jolt.z) || float.IsNaN(_joltVel.x + _joltVel.y + _joltVel.z)) _jolt = _joltVel = Vector3.zero;
+            _jolt = Vector3.ClampMagnitude(_jolt, 20f);
             // Held a little out in front of the eye (CamcorderPlayerController.CamcorderHold), the shake on top.
             transform.localPosition = (player ? player.CamcorderHold : Vector3.zero) + pos * shakeIntensity;
             transform.localRotation = Quaternion.Euler(rot * shakeIntensity + _jolt);

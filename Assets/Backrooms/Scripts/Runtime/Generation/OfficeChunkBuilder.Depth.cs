@@ -71,15 +71,16 @@ namespace Backrooms.Generation
                 Vector3 toWall = SideDir(st.side);
                 Vector3 face = new Vector3((x + 0.5f) * C, 0f, (z + 0.5f) * C) + toWall * (C * 0.5f - T * 0.5f);
                 bool alongZ = st.side < 2;
-                int riser = st.side == 0 ? 2 : st.side == 1 ? 1 : st.side == 2 ? 32 : 16;
-                int ends = alongZ ? 16 | 32 : 1 | 2;
+                Vector3 across = alongZ ? Vector3.forward : Vector3.right;
                 const float width = 1.0f;
+                var tops = new float[st.steps];
+                for (int k = 1; k <= st.steps; k++) tops[k - 1] = DepthPlan.StairRise * k;
+                PaddedFlight(w, face, -toWall, across, -width * 0.5f, width * 0.5f, 0f, tops, DepthPlan.StairTread, true, true);
                 for (int k = 1; k <= st.steps; k++)
                 {
                     float run = (st.steps - k + 1) * DepthPlan.StairTread, top = DepthPlan.StairRise * k;
                     var c = face - toWall * (run * 0.5f) + Vector3.up * (top * 0.5f);
                     var s = alongZ ? new Vector3(run, top, width) : new Vector3(width, top, run);
-                    w.Box(c, s, 8 | riser | ends, MeshWriter.MetreUV);
                     _boxes.Add((c, s));
                 }
             }
@@ -163,7 +164,11 @@ namespace Backrooms.Generation
 
         // ---------------- Steps ----------------
 
-        /// <summary>Steps down from a doorway into a sunken room: rising toward the doorway, across the cell's width.</summary>
+        /// <summary>
+        /// Steps down from a doorway into a sunken room: rising toward the doorway. One flight across the whole opening:
+        /// each cell's part runs on into the next cell's where that has steps too (no seam or slot between them), and to
+        /// the wall's face where a wall is; where it stops short of the room's floor its end is closed.
+        /// </summary>
         void BuildSteps()
         {
             if (_L.steps == null) return;
@@ -179,22 +184,123 @@ namespace Backrooms.Generation
                 int steps = DepthPlan.Steps(depth);
                 float rise = depth / steps, tread = DepthPlan.Tread(depth);
                 var w = WMask(_a.FloorMaterial(room), CellMask(x, z));
-                Vector3 outDir = side == 0 ? Vector3.left : side == 1 ? Vector3.right : side == 2 ? Vector3.back : Vector3.forward;
+                Vector3 outDir = SideDir(side);
                 // (Right up to the doorway's line, where the last riser is: from half a wall in, a slot showed down to the floor.)
                 Vector3 edgeMid = new Vector3((x + 0.5f) * C, 0f, (z + 0.5f) * C) + outDir * (C * 0.5f);
                 bool alongZ = side < 2;
-                // Faces: the top, the riser (facing into the room), and the two ends.
-                int riser = side == 0 ? 2 : side == 1 ? 1 : side == 2 ? 32 : 16;
-                int ends = alongZ ? 16 | 32 : 1 | 2;
-                float width = C - T;
+                Vector3 across = alongZ ? Vector3.forward : Vector3.right;
+                int ax = alongZ ? 0 : 1, az = alongZ ? 1 : 0;
+                float centreA = alongZ ? (z + 0.5f) * C : (x + 0.5f) * C;
+                // How far across each way, and whether that end shows or is cut on the diagonal (m: +1 the low end, -1 the
+                // high end moves inward by one metre across for each metre into the room).
+                float lo, hi, mLo, mHi; bool capLo, capHi;
+                Reach(-1, alongZ ? 2 : 0, out lo, out capLo, out mLo);
+                Reach(1, alongZ ? 3 : 1, out hi, out capHi, out mHi);
+                void Reach(int e, int endSide, out float a, out bool cap, out float mitre)
+                {
+                    mitre = 0f;
+                    int nx = x + e * ax, nz = z + e * az;
+                    bool wall = OfficeLayout.IsSolid(_L.EdgeOf(x, z, endSide));
+                    int s2 = wall ? -1 : StepSideAt(nx, nz, room.floor);
+                    if (s2 == side) { a = C * 0.5f; cap = false; return; }
+                    // Steps from another doorway at right angles, beside this cell or in front of it (two doorways near a
+                    // corner): the two flights meet on the diagonal through the corner where their doorway lines cross, as
+                    // stairs turning a corner do (each runs on to the other's doorway line, cut where the other is higher).
+                    for (int c = 0; c < 2; c++)
+                    {
+                        int qx = c == 0 ? nx : x - (int)outDir.x, qz = c == 0 ? nz : z - (int)outDir.z;
+                        if (c == 1 && OfficeLayout.IsSolid(_L.EdgeOf(x, z, side ^ 1))) continue;
+                        int q = c == 0 ? s2 : StepSideAt(qx, qz, room.floor);
+                        if (q < 0 || (q < 2) == alongZ) continue;
+                        float line = q == 0 ? qx * C : q == 1 ? (qx + 1) * C : q == 2 ? qz * C : (qz + 1) * C;
+                        float aK = line - centreA;
+                        float sigma = Vector3.Dot(-SideDir(q), across);
+                        if (sigma * e > -0.5f || aK * e < C * 0.5f - 0.01f || Mathf.Abs(aK) > C * 1.5f + 0.01f) continue;
+                        a = aK * e; cap = false; mitre = -e;
+                        return;
+                    }
+                    a = wall ? C * 0.5f - T * 0.5f : C * 0.5f;
+                    cap = !wall;
+                }
+                var tops = new float[steps - 1];
+                for (int k = 1; k < steps; k++) tops[k - 1] = -depth + rise * k;
+                PaddedFlight(w, edgeMid, -outDir, across, -lo, hi, -depth, tops, tread, capLo, capHi, mLo, mHi);
+                float width = lo + hi, mid = (hi - lo) * 0.5f;
                 for (int k = 1; k < steps; k++)
                 {
                     float run = (steps - k) * tread, top = -depth + rise * k;
-                    var c = edgeMid - outDir * (run * 0.5f) + Vector3.up * ((-depth + top) * 0.5f);
+                    var c = edgeMid + across * mid - outDir * (run * 0.5f) + Vector3.up * ((-depth + top) * 0.5f);
                     var s = alongZ ? new Vector3(run, top + depth, width) : new Vector3(width, top + depth, run);
-                    w.Box(c, s, 8 | riser | ends, MeshWriter.MetreUV);
                     _boxes.Add((c, s));
                 }
+            }
+        }
+
+        /// <summary>The side of the steps in cell (x, z) (in this chunk or a neighbour) going down to the same floor, or -1.</summary>
+        int StepSideAt(int x, int z, float floor)
+        {
+            int N = _L.N;
+            var L = _L;
+            int dx = x < 0 ? -1 : x >= N ? 1 : 0, dz = z < 0 ? -1 : z >= N ? 1 : 0;
+            if (dx != 0 || dz != 0) { L = Neighbour(dx, dz); if (L == null) return -1; x -= dx * N; z -= dz * N; }
+            if (x < 0 || z < 0 || x >= N || z >= N) return -1;
+            int s = L.StepSide(x, z);
+            return s >= 0 && Mathf.Abs(L.RoomAt(x, z).floor - floor) < 0.01f ? s : -1;
+        }
+
+        /// <summary>
+        /// A carpeted flight's faces: risers and treads, each nose rounded as carpet over padding is. origin: the middle of
+        /// its high end's line (y measured from the storey's floor), into: from the high end toward the low one, across from
+        /// a0 to a1. tops: the treads' heights, lowest first, each tread's depth tread; baseY: the floor at its foot. The
+        /// ends are closed where cap says (an end open to the room; not one against a wall or running on into more steps).
+        /// m0, m1: how each end moves across per metre into the room (a flight meeting another on a diagonal).
+        /// </summary>
+        void PaddedFlight(MeshWriter w, Vector3 origin, Vector3 into, Vector3 across, float a0, float a1, float baseY, float[] tops, float tread,
+                          bool capLo, bool capHi, float m0 = 0f, float m1 = 0f)
+        {
+            int n = tops.Length;
+            if (n == 0) return;
+            var MU = (MeshWriter.UVProjector)MeshWriter.MetreUV;
+            Vector3 up = Vector3.up;
+            Vector3 P(float u, float y, float a) => origin + into * u + up * y + across * a;
+            float A0(float u) => a0 + m0 * u;
+            float A1(float u) => Mathf.Max(a1 + m1 * u, A0(u));
+            Vector2 UV(Vector3 p, Vector3 nn) => MeshWriter.MetreUV(p + w.worldOffset, nn);
+            const int Arc = 4;
+            float prev = baseY;
+            for (int i = 0; i < n; i++)
+            {
+                float t = tops[i];
+                float uf = (n - i) * tread, ub = (n - i - 1) * tread;          // this step's riser, and the next one's (or the high end)
+                float rr = Mathf.Min(0.04f, Mathf.Min(t - prev, tread) * 0.4f);
+                if (A1(uf) - A0(uf) > 1e-4f) w.Quad(P(uf, prev, A0(uf)), P(uf, prev, A1(uf)), P(uf, t - rr, A1(uf)), P(uf, t - rr, A0(uf)), into, MU);
+                for (int k = 0; k < Arc; k++)
+                {
+                    float g0 = k * 0.5f * Mathf.PI / Arc, g1 = (k + 1) * 0.5f * Mathf.PI / Arc;
+                    Vector3 n0 = into * Mathf.Cos(g0) + up * Mathf.Sin(g0), n1 = into * Mathf.Cos(g1) + up * Mathf.Sin(g1);
+                    float u0 = uf - rr + rr * Mathf.Cos(g0), y0 = t - rr + rr * Mathf.Sin(g0);
+                    float u1 = uf - rr + rr * Mathf.Cos(g1), y1 = t - rr + rr * Mathf.Sin(g1);
+                    Vector3 p0 = P(u0, y0, A0(u0)), p1 = P(u1, y1, A0(u1)), p2 = P(u1, y1, A1(u1)), p3 = P(u0, y0, A1(u0));
+                    if (A1(u0) - A0(u0) > 1e-4f) w.SmoothQuad(p0, p1, p2, p3, n0, n1, n1, n0, UV(p0, n0), UV(p1, n1), UV(p2, n1), UV(p3, n0));
+                    for (int e = 0; e < 2; e++)
+                    {
+                        if (e == 0 ? !capLo : !capHi) continue;
+                        float a = e == 0 ? a0 : a1;
+                        Vector3 cn = e == 0 ? -across : across;
+                        w.Quad(P(uf - rr, t - rr, a), P(u0, y0, a), P(u1, y1, a), P(u1, y1, a), cn, MU);
+                    }
+                }
+                if (A1(ub) - A0(ub) > 1e-4f || A1(uf - rr) - A0(uf - rr) > 1e-4f)
+                    w.Quad(P(uf - rr, t, A0(uf - rr)), P(ub, t, A0(ub)), P(ub, t, A1(ub)), P(uf - rr, t, A1(uf - rr)), up, MU);
+                for (int e = 0; e < 2; e++)
+                {
+                    if (e == 0 ? !capLo : !capHi) continue;
+                    float a = e == 0 ? a0 : a1;
+                    Vector3 cn = e == 0 ? -across : across;
+                    w.Quad(P(ub, baseY, a), P(uf - rr, baseY, a), P(uf - rr, t, a), P(ub, t, a), cn, MU);
+                    w.Quad(P(uf - rr, baseY, a), P(uf, baseY, a), P(uf, t - rr, a), P(uf - rr, t - rr, a), cn, MU);
+                }
+                prev = t;
             }
         }
 
@@ -266,6 +372,9 @@ namespace Backrooms.Generation
 
         // ---------------- Pit rooms ----------------
 
+        /// <summary>How dark a shaft's walls are with depth: (metres down, overlay strength 0..255), smooth between.</summary>
+        static readonly Vector2[] ShaftFade = { new Vector2(0f, 0f), new Vector2(0.35f, 70f), new Vector2(0.9f, 160f), new Vector2(1.5f, 220f), new Vector2(2.2f, 255f), new Vector2(99f, 255f) };
+
         /// <summary>Is a chunk-local point (x, z) inside one of this chunk's shafts?</summary>
         bool InShaft(float x, float z)
         {
@@ -306,7 +415,8 @@ namespace Backrooms.Generation
                     float a0 = xs[i], a1 = xs[i + 1], b0 = zs[j], b1 = zs[j + 1];
                     if (a1 - a0 < 1e-4f || b1 - b0 < 1e-4f || InShaft((a0 + a1) * 0.5f, (b0 + b1) * 0.5f)) continue;
                     w.Quad(new Vector3(a0, 0, b0), new Vector3(a0, 0, b1), new Vector3(a1, 0, b1), new Vector3(a1, 0, b0), Vector3.up, MeshWriter.MetreUV);
-                    _boxes.Add((new Vector3((a0 + a1) * 0.5f, -1.5f, (b0 + b1) * 0.5f), new Vector3(a1 - a0, 3f, b1 - b0)));
+                    float solid = DepthPlan.PitDepth + 0.3f;
+                    _boxes.Add((new Vector3((a0 + a1) * 0.5f, -solid * 0.5f, (b0 + b1) * 0.5f), new Vector3(a1 - a0, solid, b1 - b0)));
                 }
             }
 
@@ -321,23 +431,32 @@ namespace Backrooms.Generation
                 uint m = CellMask(mx, mz);
                 var room = _L.RoomAt(mx, mz);
                 float d = p.depth;
-                // Walls, in bands darker toward the bottom.
+                // Walls: the room's paint all the way down, darkened smoothly toward black (an overlay, so the fixtures'
+                // light and the light grid can never lift it): half dark a metre down, black from a little over two.
                 void Wall(Vector3 a, Vector3 b, Vector3 n)
                 {
-                    int bands = DepthMaterials.Bands.Length;
-                    for (int i = 0; i < bands; i++)
+                    WMask(WallMat(room), m).Quad(a + Vector3.up * -d, b + Vector3.up * -d, b, a, n, MeshWriter.MetreUV);
+                    Vector3 o = n * 0.001f;
+                    for (int i = 0; i + 1 < ShaftFade.Length; i++)
                     {
-                        float y0 = -d * (i + 1) / bands, y1 = -d * i / bands;
-                        WMask(DepthMaterials.Band(i, WallMat(room)), m).Quad(a + Vector3.up * y0, b + Vector3.up * y0, b + Vector3.up * y1, a + Vector3.up * y1, n, MeshWriter.MetreUV);
+                        float y0 = -ShaftFade[i + 1].x, y1 = -ShaftFade[i].x;
+                        if (i + 2 == ShaftFade.Length) y0 = -d;
+                        var c0 = new Color32(0, 0, 0, (byte)ShaftFade[i + 1].y);
+                        var c1 = new Color32(0, 0, 0, (byte)ShaftFade[i].y);
+                        _wallWear.Quad(a + o + Vector3.up * y0, b + o + Vector3.up * y0, b + o + Vector3.up * y1, a + o + Vector3.up * y1,
+                                       Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, c0, c0, c1, c1, new Vector2(2.999f, 0.999f));
                     }
                 }
                 if (r.xMin >= lo && r.xMin < hi) Wall(new Vector3(r.xMin, 0, cz1), new Vector3(r.xMin, 0, cz0), Vector3.right);
                 if (r.xMax > lo && r.xMax <= hi) Wall(new Vector3(r.xMax, 0, cz0), new Vector3(r.xMax, 0, cz1), Vector3.left);
                 if (r.yMin >= lo && r.yMin < hi) Wall(new Vector3(cx0, 0, r.yMin), new Vector3(cx1, 0, r.yMin), Vector3.forward);
                 if (r.yMax > lo && r.yMax <= hi) Wall(new Vector3(cx1, 0, r.yMax), new Vector3(cx0, 0, r.yMax), Vector3.back);
-                // Its floor.
-                var floor = WMask(DepthMaterials.Floor(WallMat(room)), m);
+                // Its floor, black.
+                var floor = WMask(MaterialMaps.Plenum ? MaterialMaps.Plenum : DepthMaterials.Floor(WallMat(room)), m);
                 floor.Quad(new Vector3(cx0, -d, cz0), new Vector3(cx0, -d, cz1), new Vector3(cx1, -d, cz1), new Vector3(cx1, -d, cz0), Vector3.up, MeshWriter.MetreUV);
+                var black = new Color32(0, 0, 0, 255);
+                _floorWear.Quad(new Vector3(cx0, -d + 0.002f, cz0), new Vector3(cx0, -d + 0.002f, cz1), new Vector3(cx1, -d + 0.002f, cz1), new Vector3(cx1, -d + 0.002f, cz0),
+                                Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, black, black, black, black, new Vector2(2.999f, 0.999f));
                 _boxes.Add((new Vector3((cx0 + cx1) * 0.5f, -d - 0.25f, (cz0 + cz1) * 0.5f), new Vector3(cx1 - cx0, 0.5f, cz1 - cz0)));
                 // The block in its corner, a step up out of it (built by the chunk its middle is in).
                 if (p.ledge > 0.01f)

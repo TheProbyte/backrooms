@@ -218,7 +218,7 @@ namespace Backrooms.Interaction
             _plug = null; _cord = null;
             coiled = true;
             Shape();
-            _fx.PlayOneShot(SoundBank.CordWhip, 0.6f);
+            _fx.PlayOneShot(SoundBank.CordWhip, 0.6f * SoundCatalog.Volume(SoundIds.Cords));
         }
 
         // ---------------- Plugging in from the coil in the hand ----------------

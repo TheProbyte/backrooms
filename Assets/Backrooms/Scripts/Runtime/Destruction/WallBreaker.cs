@@ -340,7 +340,7 @@ namespace Backrooms.Destruction
             if (!src) return;
             src.transform.position = at;
             src.pitch = pitch;
-            src.PlayOneShot(clip, Mathf.Clamp01(volume));
+            src.PlayOneShot(clip, Mathf.Clamp01(volume * SoundCatalog.Volume(SoundIds.WallBreak)));
         }
 
         /// <summary>A piece of wall landing (debris), quietly, and not too many at once.</summary>

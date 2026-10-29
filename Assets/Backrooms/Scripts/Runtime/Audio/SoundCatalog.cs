@@ -18,6 +18,21 @@ namespace Backrooms.Audio
         public const string Impacts = "physics.impacts";
         public const string Scrapes = "physics.scrapes";
         public const string Director = "ambience.director";
+        public const string Breathing = "player.breathing";
+        public const string Clothing = "player.clothing";
+        public const string Settling = "ambience.settling";
+        public const string Doors = "interaction.doors";
+        public const string Switches = "interaction.switches";
+        public const string Touch = "interaction.touch";
+        public const string Cords = "items.cords";
+        public const string Chalk = "items.chalk";
+        public const string Tape = "items.tape";
+        public const string SprayCan = "items.spray_can";
+        public const string Sledgehammer = "items.sledgehammer";
+        public const string RubberChicken = "items.rubber_chicken";
+        public const string WallBreak = "destruction.walls";
+        public const string Noclip = "world.noclip";
+        public const string MenuBeep = "menu.beep";
     }
 
     /// <summary>
@@ -277,6 +292,24 @@ namespace Backrooms.Audio
                 paramAName = "Step variation", paramADesc = "How much each step differs from the last.",
                 paramA = 1f, paramAMin = 0f, paramAMax = 2f,
             });
+            // Sounds whose level, distance and placement are set where they play: here only their volume (and mute).
+            void Simple(string id, string name, string category, string description) =>
+                Register(new SoundDef { id = id, name = name, category = category, description = description, positional = false, hasPitch = false });
+            Simple(SoundIds.Breathing, "Breathing", "Player", "Your own breathing, close to the microphone: slow when still, quicker and heavier after running.");
+            Simple(SoundIds.Clothing, "Clothes rustle", "Player", "Your clothes moving as you walk, and your sleeve brushing walls you walk along.");
+            Simple(SoundIds.Settling, "Building settling", "Ambience", "The building creaking in the ceiling and ticking in the furniture now and then.");
+            Simple(SoundIds.Doors, "Doors", "World", "Doors creaking as they swing, latching, and knocking against their frames.");
+            Simple(SoundIds.Switches, "Light switches", "World", "The click of wall switches and lamp switches.");
+            Simple(SoundIds.Touch, "Touching walls", "World", "Your hand patting a wall or a door you touch or push.");
+            Simple(SoundIds.Noclip, "Noclip crackle", "World", "The crackle of going through a noclip door, and the doors' own faint crackle.");
+            Simple(SoundIds.WallBreak, "Breaking walls", "World", "Plasterboard cracking and crumbling, studs splintering, pieces falling when a wall is broken.");
+            Simple(SoundIds.Cords, "Cords and plugs", "Items", "Plugs going in and out of outlets, cords whipping and pulling taut, a cord reel winding.");
+            Simple(SoundIds.Chalk, "Chalk", "Items", "Chalk scratching on a wall, and its tap when you start a line.");
+            Simple(SoundIds.Tape, "Tape", "Items", "Tape pulled off the roll and torn.");
+            Simple(SoundIds.SprayCan, "Spray can", "Items", "The spray can's hiss, and its ball rattling when shaken.");
+            Simple(SoundIds.Sledgehammer, "Sledgehammer", "Items", "The sledgehammer's swing and its thuds (breaking a wall is under Breaking walls).");
+            Simple(SoundIds.RubberChicken, "Rubber chicken", "Items", "The rubber chicken's squeak and squawk.");
+            Simple(SoundIds.MenuBeep, "Menu beeps", "Interface", "The camcorder menu's beeps in the main menu.");
         }
     }
 }

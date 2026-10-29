@@ -389,7 +389,7 @@ namespace Backrooms.Interaction
                     _creak.clip = SoundBank.DoorCreak; _creak.loop = true; _creak.volume = 0f;
                 }
                 if (!_creak.isPlaying) { _creak.time = Random.Range(0f, _creak.clip.length); _creak.Play(); }
-                _creak.volume = Mathf.MoveTowards(_creak.volume, creak * 0.35f, dt * 3f);
+                _creak.volume = Mathf.MoveTowards(_creak.volume, creak * 0.35f * SoundCatalog.Volume(SoundIds.Doors), dt * 3f);
                 _creak.pitch = 0.85f + 0.3f * Mathf.Clamp01(Mathf.Abs(_vel) / 160f);
                 if (_creak.volume <= 0.001f && creak <= 0.001f) _creak.Stop();
             }
@@ -483,7 +483,7 @@ namespace Backrooms.Interaction
                 at.transform.localPosition = new Vector3(0.3f, 1.0f, 0f);
                 _fx = ItemModels.Source(at, 16f);
             }
-            _fx.PlayOneShot(clip, volume);
+            _fx.PlayOneShot(clip, volume * SoundCatalog.Volume(SoundIds.Doors));
         }
     }
 

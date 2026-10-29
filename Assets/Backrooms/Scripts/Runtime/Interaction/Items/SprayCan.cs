@@ -174,7 +174,7 @@ namespace Backrooms.Interaction
         protected override void OnPickedUp()
         {
             // Shake it: the ball rattles.
-            _clank.PlayOneShot(SoundBank.CanRattle(Random.Range(0, 4)), 0.5f);
+            _clank.PlayOneShot(SoundBank.CanRattle(Random.Range(0, 4)), 0.5f * SoundCatalog.Volume(SoundIds.SprayCan));
         }
 
         protected override void OnDropped()
@@ -208,7 +208,7 @@ namespace Backrooms.Interaction
             float want = Spraying ? Mathf.Lerp(0.08f, 0.35f, flow) : 0f;
             if (use && paint <= 0f) want = 0.05f;
             _hissLevel = Mathf.MoveTowards(_hissLevel, want, dt * 3f);
-            _hiss.volume = _hissLevel;
+            _hiss.volume = _hissLevel * SoundCatalog.Volume(SoundIds.SprayCan);
             _hiss.pitch = 1f + (flow - 1f) * 0.15f;
             if (_hissLevel > 0.001f && !_hiss.isPlaying) _hiss.Play();
             else if (_hissLevel <= 0.001f && _hiss.isPlaying) _hiss.Stop();

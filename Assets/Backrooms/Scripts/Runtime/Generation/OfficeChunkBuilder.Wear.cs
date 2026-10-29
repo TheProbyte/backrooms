@@ -32,7 +32,7 @@ namespace Backrooms.Generation
         void ClearWear()
         {
             _floorWear.Clear(); _wallWear.Clear(); _crumbs.Clear();
-            _missingTiles.Clear(); _gaps.Clear(); _sightings.Clear(); _webs.Clear();
+            _missingTiles.Clear(); _gaps.Clear(); _sightings.Clear();
             _fixtureKinds.Clear();
             foreach (var f in _L.fixtures) _fixtureKinds[f.cell] = f.strip ? 2 : f.dome ? 1 : 0;
         }
@@ -95,20 +95,20 @@ namespace Backrooms.Generation
             {
                 if (lit && i == 0) continue;                              // the square panel sits in tile 0
                 float u = Dice(gx, gz, 100 + i);
-                float t = 0f;
+                float t = 0f, cw = DetailRates.CeilingWear;
                 TileKind k = TileKind.Plain;
-                if (u < (t += 0.005f)) k = TileKind.Missing;
-                else if (u < (t += 0.012f)) k = TileKind.Tilted;
-                else if (u < (t += 0.01f)) k = TileKind.Shifted;
-                else if (u < (t += 0.006f)) k = TileKind.Crumbled;
-                else if (u < (t += 0.01f)) k = TileKind.Cracked;
-                else if (u < (t += 0.012f * wet)) k = TileKind.Sag;
-                else if (u < (t += 0.035f * wet)) k = TileKind.Stained;
-                else if (u < (t += 0.03f)) k = TileKind.Yellowed;
+                if (u < (t += 0.005f * cw)) k = TileKind.Missing;
+                else if (u < (t += 0.012f * cw)) k = TileKind.Tilted;
+                else if (u < (t += 0.01f * cw)) k = TileKind.Shifted;
+                else if (u < (t += 0.006f * cw)) k = TileKind.Crumbled;
+                else if (u < (t += 0.01f * cw)) k = TileKind.Cracked;
+                else if (u < (t += 0.012f * wet * cw)) k = TileKind.Sag;
+                else if (u < (t += 0.035f * wet * cw)) k = TileKind.Stained;
+                else if (u < (t += 0.03f * cw)) k = TileKind.Yellowed;
                 else if (u < (t += 0.03f)) k = TileKind.Supply;
                 else if (u < (t += 0.018f)) k = TileKind.Return;
-                else if (u < (t += 0.006f)) k = TileKind.Holed;
-                else if (u < (t += 0.006f)) k = TileKind.Dropped;
+                else if (u < (t += 0.006f * cw)) k = TileKind.Holed;
+                else if (u < (t += 0.006f * cw)) k = TileKind.Dropped;
                 if (k == TileKind.Plain && MaterialMaps.CeilingBatchA && BatchTile(gx, gz, i)) k = TileKind.Batch;
                 kinds[i] = k;
                 any |= k != TileKind.Plain;
@@ -185,7 +185,7 @@ namespace Backrooms.Generation
                         Saw(centre, Vector3.down, "tile_dropped");
                         DropTile(WMask(Dice(gx, gz, 130 + i) < 0.3f ? stained : ceil, m), centre, h, Dice(gx, gz, 150 + i), 0.012f + 0.02f * Dice(gx, gz, 1309 + i));
                         break;
-                    case TileKind.Return: ReturnGrille(m, tx0, zm0, h, Dice(gx, gz, 195 + i)); Cobweb(centre, gx, gz, i); break;
+                    case TileKind.Return: ReturnGrille(m, tx0, zm0, h, Dice(gx, gz, 195 + i)); break;
                 }
             }
             return true;
@@ -487,7 +487,7 @@ namespace Backrooms.Generation
             WearQuad(c - along * 0.55f, c + along * 0.55f, -outDir, 0.42f, new Color32(214, 206, 194, 190), new Vector2(0.35f, 0.3f), -1f, 1f, -1f, 1f);
             // Now and then a dark patch just inside (something spilt, or tracked in and never cleaned up).
             int gx = GX(x), gz = GZ(z);
-            if (Dice(gx, gz, 1450 + side) < 0.12f)
+            if (Dice(gx, gz, 1450 + side) < 0.12f * DetailRates.FloorMarks)
                 Spot(c - outDir * 0.2f + along * ((Dice(gx, gz, 1454 + side) - 0.5f) * 0.5f), 0.12f + 0.12f * Dice(gx, gz, 1458 + side), new Color32(140, 128, 112, 105), 0.15f);
         }
 

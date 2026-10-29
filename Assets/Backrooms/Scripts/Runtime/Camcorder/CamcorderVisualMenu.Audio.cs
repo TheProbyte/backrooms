@@ -160,8 +160,13 @@ namespace Backrooms.Camcorder
             _sndSearch.textEdition.placeholder = "Search sounds or categories...";
             _sndSearch.RegisterValueChangedCallback(_ => FilterSounds());
 
+            // Grouped by category (in the order each first appears), so a category has one heading.
+            var cats = new System.Collections.Generic.List<string>();
+            foreach (var d in SoundCatalog.All) if (!cats.Contains(d.category)) cats.Add(d.category);
+            var sorted = new System.Collections.Generic.List<SoundDef>();
+            foreach (var c in cats) foreach (var d in SoundCatalog.All) if (d.category == c) sorted.Add(d);
             string lastCat = null;
-            foreach (var d in SoundCatalog.All)
+            foreach (var d in sorted)
             {
                 if (d.category != lastCat)
                 {

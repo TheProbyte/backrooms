@@ -48,7 +48,7 @@ namespace Backrooms.Generation
                     float a = off + k * RollWidth - worldA;
                     _wallWear.Rect(P(a, (yb + top) * 0.5f, 0.0012f), along, up, 0.0017f, (top - yb) * 0.5f, new Color32(116, 108, 96, 60), new Vector2(0f, 0.97f));
                     // Opened up a little along part of it.
-                    if (Dice(lineId * 31 + k, side & 1, 1101) < 0.1f)
+                    if (Dice(lineId * 31 + k, side & 1, 1101) < 0.1f * DetailRates.WallWear)
                     {
                         float y = Mathf.Lerp(yb + 0.3f, top - 0.3f, Dice(lineId * 31 + k, side & 1, 1102)), hh = 0.08f + 0.25f * Dice(lineId * 31 + k, side & 1, 1103);
                         _wallWear.Rect(P(a, y, 0.0012f), along, up, 0.0026f, hh, new Color32(84, 76, 66, 150), new Vector2(0.2f, 0.75f));
@@ -60,7 +60,8 @@ namespace Backrooms.Generation
                 var paper = WMask(_a.wallpaper, m);
                 var bare = WMask(_a.paintedWall, m);
                 // Bubbles where the paste let go, a few together.
-                bool bubbles = Dice(gx, gz, 1110 + side) < 0.025f;
+                float ww = DetailRates.WallWear;
+                bool bubbles = Dice(gx, gz, 1110 + side) < 0.025f * ww;
                 if (bubbles)
                 {
                     float ca = Mathf.Lerp(reach0 + 0.12f, reach1 - 0.12f, Dice(gx, gz, 1111 + side)), cy = 0.7f + 1.3f * Dice(gx, gz, 1112 + side);
@@ -76,7 +77,7 @@ namespace Backrooms.Generation
                     }
                 }
                 // A long strip come away from the top (between two seams where the face has a whole roll).
-                if (Dice(gx, gz, 1140 + side) < 0.012f && top < 4f && top - yb > 1.6f)
+                if (Dice(gx, gz, 1140 + side) < 0.012f * ww && top < 4f && top - yb > 1.6f)
                 {
                     float s0 = float.NaN;
                     for (int k = k0 - 1; k <= k1; k++)
@@ -92,7 +93,7 @@ namespace Backrooms.Generation
                     Saw(P((s0 + s1) * 0.5f, top - len * 0.5f, 0f), into, "strip");
                 }
                 // A repair: a piece of paper hung out of line with the pattern, its edges showing.
-                if (!bubbles && Dice(gx, gz, 1150 + side) < 0.02f)
+                if (!bubbles && Dice(gx, gz, 1150 + side) < 0.02f * ww)
                 {
                     float hw = 0.12f + 0.15f * Dice(gx, gz, 1151 + side), hh = 0.1f + 0.12f * Dice(gx, gz, 1152 + side);
                     float a = Mathf.Lerp(reach0 + hw, reach1 - hw, Dice(gx, gz, 1153 + side)), y = 0.5f + 1.1f * Dice(gx, gz, 1154 + side);
@@ -107,19 +108,10 @@ namespace Backrooms.Generation
             }
             else if (PaintedRoom(r))
             {
-                // Roller marks: faint vertical bands a roller wide.
-                if (Dice(gx, gz, 1160 + side) < 0.35f)
-                {
-                    int n = 2 + (int)(Dice(gx, gz, 1161 + side) * 3f);
-                    for (int j = 0; j < n; j++)
-                    {
-                        float a = Mathf.Lerp(reach0 + 0.12f, reach1 - 0.12f, Dice(gx, gz, 1162 + side * 8 + j));
-                        _wallWear.Rect(P(a, (yb + top) * 0.5f, 0.0012f), along, up, 0.115f, (top - yb) * 0.5f,
-                                       new Color32(170, 164, 154, (byte)(16 + 18 * Dice(gx, gz, 1170 + side * 8 + j))), new Vector2(0.55f, 0.9f));
-                    }
-                }
+                // (No roller marks: tall faint stripes read as shadows through the camcorder.)
+                float ww = DetailRates.WallWear;
                 // A drip run, dried, with its bead at the bottom.
-                if (Dice(gx, gz, 1180 + side) < 0.04f)
+                if (Dice(gx, gz, 1180 + side) < 0.04f * ww)
                 {
                     float a = Mathf.Lerp(reach0, reach1, Dice(gx, gz, 1181 + side)), y0 = 1.3f + 0.8f * Dice(gx, gz, 1182 + side);
                     float len = 0.05f + 0.15f * Dice(gx, gz, 1183 + side);
@@ -128,21 +120,13 @@ namespace Backrooms.Generation
                     _wallWear.Rect(P(a, y0 - len, 0.0012f), along, up, 0.0042f, 0.005f, col, new Vector2(-0.3f, 0.4f));
                 }
                 // Paint scraped off where a desk or a chair back rubbed.
-                if (Dice(gx, gz, 1190 + side) < 0.06f)
+                if (Dice(gx, gz, 1190 + side) < 0.06f * ww)
                 {
                     float ha = 0.05f + 0.1f * Dice(gx, gz, 1191 + side), hb = 0.012f + 0.02f * Dice(gx, gz, 1192 + side);
                     float a = Mathf.Lerp(reach0 + ha, reach1 - ha, Dice(gx, gz, 1193 + side)), y = 0.72f + 0.08f * Dice(gx, gz, 1194 + side);
                     _wallWear.Rect(P(a, y, 0.0012f), along, up, ha, hb, new Color32(128, 124, 118, 170), new Vector2(0.5f, 0.3f));
                 }
-                // Newer paint over a repair, a little brighter than the wall round it.
-                if (MaterialMaps.PaintFresh && Dice(gx, gz, 1195 + side) < 0.025f)
-                {
-                    float hw = 0.15f + 0.2f * Dice(gx, gz, 1196 + side), hh = 0.12f + 0.2f * Dice(gx, gz, 1197 + side);
-                    float a = Mathf.Lerp(reach0 + hw, reach1 - hw, Dice(gx, gz, 1198 + side)), y = 0.5f + 1.2f * Dice(gx, gz, 1199 + side);
-                    Vector3 c = P(a, y, 0.0005f);
-                    Saw(c, into, "patch");
-                    WMask(MaterialMaps.PaintFresh, m).Quad(c - along * hw - up * hh, c + along * hw - up * hh, c + along * hw + up * hh, c - along * hw + up * hh, into, MeshWriter.WallUV);
-                }
+                // (No patches of newer paint: hard-edged brighter rectangles looked like a rendering fault.)
             }
         }
 

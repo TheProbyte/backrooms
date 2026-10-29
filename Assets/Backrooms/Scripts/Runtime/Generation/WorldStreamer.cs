@@ -155,6 +155,7 @@ namespace Backrooms.Generation
             DepthMaterials.Ensure(assets);                // a pit room's shafts, darker toward the bottom
             if (Application.isPlaying && !GetComponent<ChunkVisibility>()) gameObject.AddComponent<ChunkVisibility>();   // chunks behind walls are not drawn
             if (Application.isPlaying && !GetComponent<Audio.BuildingSettling>()) gameObject.AddComponent<Audio.BuildingSettling>().streamer = this;   // creaks, ticks, air at vents
+            if (Application.isPlaying && player && !player.GetComponent<PitRescue>()) player.gameObject.AddComponent<PitRescue>().streamer = this;   // back up out of a pit room's shafts
 #if STEAMAUDIO_ENABLED
             if (Application.isPlaying && !GetComponent<Audio.SteamAudioWorld>()) gameObject.AddComponent<Audio.SteamAudioWorld>().streamer = this;   // walls for Steam Audio
 #endif
