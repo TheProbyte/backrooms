@@ -51,6 +51,111 @@ namespace Backrooms.Generation
             BuildSteps();
             BuildPits();
             BuildChamfers();
+            BuildNowhere();
+            BuildMezzanines();
+        }
+
+        static Vector3 SideDir(int side) => side == 0 ? Vector3.left : side == 1 ? Vector3.right : side == 2 ? Vector3.back : Vector3.forward;
+
+        // ---------------- Stairs to nowhere ----------------
+
+        /// <summary>A flight of carpeted steps rising toward a solid wall, its top step against it (1 m wide).</summary>
+        void BuildNowhere()
+        {
+            foreach (var st in _L.nowhere)
+            {
+                int x = st.cell.x, z = st.cell.y;
+                if (!_L.InChunk(x, z)) continue;
+                var room = _L.RoomAt(x, z);
+                var w = WMask(_a.FloorMaterial(room), CellMask(x, z));
+                Vector3 toWall = SideDir(st.side);
+                Vector3 face = new Vector3((x + 0.5f) * C, 0f, (z + 0.5f) * C) + toWall * (C * 0.5f - T * 0.5f);
+                bool alongZ = st.side < 2;
+                int riser = st.side == 0 ? 2 : st.side == 1 ? 1 : st.side == 2 ? 32 : 16;
+                int ends = alongZ ? 16 | 32 : 1 | 2;
+                const float width = 1.0f;
+                for (int k = 1; k <= st.steps; k++)
+                {
+                    float run = (st.steps - k + 1) * DepthPlan.StairTread, top = DepthPlan.StairRise * k;
+                    var c = face - toWall * (run * 0.5f) + Vector3.up * (top * 0.5f);
+                    var s = alongZ ? new Vector3(run, top, width) : new Vector3(width, top, run);
+                    w.Box(c, s, 8 | riser | ends, MeshWriter.MetreUV);
+                    _boxes.Add((c, s));
+                }
+            }
+        }
+
+        // ---------------- Mezzanines ----------------
+
+        /// <summary>
+        /// A steel walkway along a tall hall's wall (DepthPlan): per cell of its strip in this chunk, the deck 4.2 m up from
+        /// the wall's face to the strip's inner edge with a railing along that edge and a post under it at each cell's start;
+        /// or, in the stair's cells, the steps up to it (each step built by the chunk its middle is in).
+        /// </summary>
+        void BuildMezzanines()
+        {
+            foreach (var m in _L.mezzanines)
+            {
+                Vector3 toWall = SideDir(m.side);
+                Vector3 along = m.AlongZ ? Vector3.forward : Vector3.right;
+                float width = C - T * 0.5f;
+                var metal = _a.lampMetal ? _a.lampMetal : _a.baseboard;
+                // The stair: steps along the strip, rising toward the deck.
+                int n = Mathf.CeilToInt(m.height / DepthPlan.StairRise - 1e-3f);
+                float rise = m.height / n, tread = m.stairCells * C / n;
+                var c0 = m.Cell(0);
+                // The strip's line: its cells' middles across, and where along it starts (metres, layout-local).
+                // (From the wall's face to the strip's inner edge: its middle a quarter of a wall off the cell's middle.)
+                Vector3 across = new Vector3((c0.x + 0.5f) * C, 0f, (c0.y + 0.5f) * C) - toWall * (T * 0.25f);
+                float stripStart = m.AlongZ ? c0.y * C : c0.x * C, stripEnd = stripStart + m.length * C;
+                for (int k = 0; k < n; k++)
+                {
+                    // From the stair's low end (the strip's start, or its end), k treads in.
+                    float a0 = m.stairAtMax ? stripEnd - (k + 1) * tread : stripStart + k * tread, a1 = a0 + tread;
+                    float mid = (a0 + a1) * 0.5f, top = rise * (k + 1);
+                    int cx = m.AlongZ ? c0.x : Mathf.FloorToInt(mid / C), cz = m.AlongZ ? Mathf.FloorToInt(mid / C) : c0.y;
+                    if (!_L.InChunk(cx, cz)) continue;
+                    Vector3 c = (m.AlongZ ? new Vector3(across.x, top * 0.5f, mid) : new Vector3(mid, top * 0.5f, across.z));
+                    var s = m.AlongZ ? new Vector3(width, top, tread) : new Vector3(tread, top, width);
+                    int risers = m.AlongZ ? (m.stairAtMax ? 32 : 16) : (m.stairAtMax ? 2 : 1);
+                    int inner = m.side == 0 ? 2 : m.side == 1 ? 1 : m.side == 2 ? 32 : 16;
+                    WMask(metal, CellMask(cx, cz)).Box(c, s, 8 | risers | inner, MeshWriter.MetreUV);
+                    _boxes.Add((c, s));
+                }
+                // The deck, its railing and its posts.
+                for (int i = 0; i < m.length; i++)
+                {
+                    if (m.IsStair(i)) continue;
+                    var cell = m.Cell(i);
+                    if (!_L.InChunk(cell.x, cell.y)) continue;
+                    uint cm = CellMask(cell.x, cell.y);
+                    var w = WMask(metal, cm);
+                    Vector3 mid = new Vector3((cell.x + 0.5f) * C, 0f, (cell.y + 0.5f) * C) - toWall * (T * 0.25f);
+                    const float thick = 0.18f;
+                    var deck = m.AlongZ ? new Vector3(width, thick, C) : new Vector3(C, thick, width);
+                    var dc = mid + Vector3.up * (m.height - thick * 0.5f);
+                    w.Box(dc, deck, 63, MeshWriter.MetreUV);
+                    _boxes.Add((dc, deck));
+                    // The railing on the inner edge: a top rail, a middle rail, a toe board, a baluster at the cell's start.
+                    Vector3 edge = mid - toWall * (width * 0.5f - 0.03f);
+                    Vector3 Rail(float y, float h, float t) => m.AlongZ ? new Vector3(t, h, C) : new Vector3(C, h, t);
+                    w.Box(edge + Vector3.up * (m.height + 1.05f), Rail(0, 0.05f, 0.05f), 63, MeshWriter.MetreUV);
+                    w.Box(edge + Vector3.up * (m.height + 0.55f), Rail(0, 0.04f, 0.03f), 63, MeshWriter.MetreUV);
+                    w.Box(edge + Vector3.up * (m.height + 0.06f), Rail(0, 0.12f, 0.015f), 63, MeshWriter.MetreUV);
+                    Vector3 startPt = edge - along * (C * 0.5f);
+                    w.Box(startPt + Vector3.up * (m.height + 0.55f), new Vector3(0.05f, 1.1f, 0.05f), 63, MeshWriter.MetreUV);
+                    _boxes.Add((edge + Vector3.up * (m.height + 0.55f), Rail(0, 1.1f, 0.06f)));
+                    // A post down to the floor at the cell's start (and at the deck's far end).
+                    w.Box(startPt + Vector3.up * ((m.height - thick) * 0.5f), new Vector3(0.12f, m.height - thick, 0.12f), 1 | 2 | 16 | 32, MeshWriter.MetreUV);
+                    _boxes.Add((startPt + Vector3.up * ((m.height - thick) * 0.5f), new Vector3(0.12f, m.height - thick, 0.12f)));
+                    bool last = m.stairAtMax ? i == 0 : i == m.length - 1;
+                    if (last)
+                    {
+                        Vector3 endPt = edge + along * (m.stairAtMax ? -C * 0.5f : C * 0.5f) - along * (m.stairAtMax ? -0.06f : 0.06f);
+                        w.Box(endPt + Vector3.up * ((m.height - thick) * 0.5f), new Vector3(0.12f, m.height - thick, 0.12f), 1 | 2 | 16 | 32, MeshWriter.MetreUV);
+                    }
+                }
+            }
         }
 
         /// <summary>The cell's side (0 -X, 1 +X, 2 -Z, 3 +Z) an edge seen from side s of it is on.</summary>

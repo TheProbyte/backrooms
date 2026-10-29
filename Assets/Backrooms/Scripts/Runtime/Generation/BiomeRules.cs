@@ -68,6 +68,12 @@ namespace Backrooms.Generation
         public float chamferChance = 0.18f;
         [Tooltip("Chance a hallway that ends in a crawl slot has its ceiling come down toward it (you crouch to get there).")]
         public float ceilingDropChance = 0.4f;
+        [Tooltip("Chance a district has a sloping room: an office whose whole floor slopes down away from its doors.")]
+        public float tiltedChance = 0.18f;
+        [Tooltip("Chance a district has a flight of steps that climbs into a blank wall.")]
+        public float nowhereChance = 0.15f;
+        [Tooltip("Chance a tall hall (6.4 m and up) has a steel walkway along one wall, a stair up to it.")]
+        public float mezzanineChance = 0.3f;
 
         [Header("Poolrooms (pool-style zones only)")]
         [Tooltip("Chance a room has openings in its roof (the sun comes in through them).")] public float skylights = 0f;

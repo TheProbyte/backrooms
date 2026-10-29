@@ -150,6 +150,39 @@ namespace Backrooms.Generation
         public int roomColor;
     }
 
+    /// <summary>
+    /// A flight of steps up into a wall, going nowhere (DepthPlan): it rises from the room toward the wall on the cell's
+    /// side, its top step against the wall. Layout-local.
+    /// </summary>
+    public struct NowhereStairs
+    {
+        public Vector2Int cell;
+        public int side;
+        public int steps;
+    }
+
+    /// <summary>
+    /// A steel walkway along one wall of a tall hall (DepthPlan): the strip of cells against the wall on <see cref="side"/>
+    /// from <see cref="start"/> for <see cref="length"/> cells (along Z for sides 0 and 1, along X for 2 and 3), its deck
+    /// <see cref="height"/> up, reached by a stair up the first <see cref="stairCells"/> cells of the strip from the min end
+    /// (or the max end). Layout-local.
+    /// </summary>
+    public struct Mezzanine
+    {
+        public int side;
+        public Vector2Int start;
+        public int length, stairCells;
+        public bool stairAtMax;
+        public float height;
+        public int roomColor;
+
+        public bool AlongZ => side < 2;
+        /// <summary>The strip's cell number i (0 at start).</summary>
+        public Vector2Int Cell(int i) => AlongZ ? new Vector2Int(start.x, start.y + i) : new Vector2Int(start.x + i, start.y);
+        /// <summary>Is cell i of the strip part of the stair (else the deck)?</summary>
+        public bool IsStair(int i) => stairAtMax ? i >= length - stairCells : i < stairCells;
+    }
+
     /// <summary>A half-height partition along cell edges. Horizontal runs along X at line z. Railings are slimmer.</summary>
     public struct HalfWall { public bool alongX; public int line; public int start; public int length; public int roomColor; public bool railing; }
 
@@ -261,6 +294,9 @@ namespace Backrooms.Generation
         public int StepSide(int x, int z) => steps == null ? -1 : steps[x, z];
         /// <summary>Pit rooms' shafts (DepthPlan), layout-local.</summary>
         public readonly List<PitShaft> pits = new List<PitShaft>();
+        /// <summary>Stairs going nowhere and mezzanines (DepthPlan), layout-local.</summary>
+        public readonly List<NowhereStairs> nowhere = new List<NowhereStairs>();
+        public readonly List<Mezzanine> mezzanines = new List<Mezzanine>();
         /// <summary>District-local cell of this block's cell (0, 0): 0 for a district plan, the chunk's place in it for a slice.</summary>
         public Vector2Int origin;
         /// <summary>The floor above (below) the storey's floor at the middle of a cell.</summary>

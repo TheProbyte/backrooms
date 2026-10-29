@@ -15,6 +15,11 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-28 20:55  Claude Code  World height and depth, part 3: sloping rooms, stairs to nowhere, mezzanines (world version 15)
+- Built: sloping rooms (an office's floor down from its doors' wall at 1 in 8 to 1 in 6), stairs to nowhere (a short carpeted flight into a blank wall), mezzanines along a wall of tall halls (a deck 4.2 m up with a railing and posts, a 24-step steel stair); lights kept off ceilings that come down and mezzanine strips with the plan's dice unchanged.
+- Checked: EditMode 143/143 (stairs to nowhere and mezzanines keep clear: walls, no doorways behind stairs, headroom, no lights in the strip; sloping rooms covered by the ramp test); World 3: a mezzanine climbed from the floor to its deck (0 to 4.23 m) and walked along, stairs to nowhere drawn against a wall. World 3 erased.
+- Open: diagonal hallways, holes to the storey below, a room tilted walls and all (Docs/WorldDepthPlan.md).
+
 ## 2026-10-28 20:47  Claude Code  World height and depth, part 2: ramps and ceilings that come down
 - Built: a hallway beside a sunken wing can be its ramp (1 in 6 at most, then flat; doorways on the ramp only into the wing, a lip of at most 0.12 m); floors and ceilings are now functions of position in a room (`Room.FloorAtD`, `CeilingAtD`, `OfficeLayout.origin`); sloped floor and ceiling quads, wall bottoms and baseboards, stepped colliders; risers wherever floors differ at a doorway; hallways ending in a crawl slot can have their ceiling come down to 1.35 m (no lights or grid there).
 - Checked: EditMode 142/142 (ramps rise to the floor at their far end; ceilings come down along their hallway to 1.35 m with no lights under them; light leaks within tolerance once the lights' dice were kept); World 3: a 0.9 m ramp drawn and walked down smoothly (0 to -0.27 over 4 m), a hallway's ceiling sloping toward its crawl slot.

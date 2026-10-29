@@ -786,7 +786,7 @@ namespace Backrooms.Generation
                             : r.lights == LightMode.Mixed ? rng.NextDouble() < R.mixedOnFraction
                             : rng.NextDouble() < 0.04;
                     // (None where a ceiling comes down: DepthPlan. After the dice, so the rest of the plan stays as it was.)
-                    if (r.ceilDrop != 0 && L.CeilingLowAt(x, z) < r.ceiling - 0.05f) { if (on) rng.NextDouble(); continue; }
+                    if (DepthPlan.NoLight(L, r, x, z)) { if (on) rng.NextDouble(); continue; }
                     L.fixtures.Add(new Fixture { cell = new Vector2Int(x, z), on = on, roomColor = r.color,
                         dome = r.Tall && !strips, strip = strips,
                         height = strips ? Mathf.Min(r.ceiling - 0.5f, 4.6f) : r.ceiling,

@@ -43,6 +43,9 @@ namespace Backrooms.Generation
             if (L.storey == 0 && rng.NextDouble() < R.pitRoomChance) TryPitRoom(L, rng);
             if (rng.NextDouble() < R.sunkenChance) TrySunkenWing(L, rng);
             TryLowCeilings(L, rng);
+            if (rng.NextDouble() < R.tiltedChance) TryTiltedRoom(L, rng);
+            if (rng.NextDouble() < R.nowhereChance) TryNowhere(L, rng);
+            foreach (var r in L.rooms) if (r.Tall && r.ceiling >= MezzanineMinCeiling && rng.NextDouble() < L.RulesAt(r.rect).mezzanineChance) TryMezzanine(L, r, rng);
         }
 
         // ---------------- Sunken wing ----------------
@@ -225,6 +228,164 @@ namespace Backrooms.Generation
             }
             return false;
         }
+
+        // ---------------- A sloping room ----------------
+
+        /// <summary>
+        /// An office (3 to 8 cells along its slope) whose floor slopes down from the wall its doors are in to the far wall,
+        /// 1 in 8 to 1 in 6, its ceiling level (so the far end is taller): every doorway at most MaxLip below the storey's
+        /// floor. A ramp over the whole room (Room.ramp, rampCells 0); nothing stands on it.
+        /// </summary>
+        static void TryTiltedRoom(OfficeLayout L, System.Random rng)
+        {
+            var list = new List<Room>();
+            foreach (var r in L.rooms)
+                if (Ordinary(L, r) && (r.kind == RoomKind.Office || r.kind == RoomKind.Lounge || r.kind == RoomKind.BigOffice) && r.ceilDrop == 0
+                    && Mathf.Min(r.rect.width, r.rect.height) >= 3) list.Add(r);
+            for (int attempt = 0; attempt < 8 && list.Count > 0; attempt++)
+            {
+                var r = list[rng.Next(list.Count)];
+                int start = rng.Next(4);
+                for (int k = 0; k < 4; k++)
+                {
+                    int dir = 1 + (start + k) % 4;                         // the way it rises (toward the doors)
+                    bool alongX = dir <= 2;
+                    int length = alongX ? r.rect.width : r.rect.height;
+                    if (length < 3 || length > 8) continue;
+                    float slope = Mathf.Lerp(1f / 8f, MaxSlope, (float)rng.NextDouble());
+                    float depth = Mathf.Round(length * OfficeBiome.CellSize * slope / 0.05f) * 0.05f;
+                    if (depth / (length * OfficeBiome.CellSize) > MaxSlope + 1e-4f) depth -= 0.05f;
+                    if (depth < 0.3f) continue;
+                    // Try it: every doorway within a lip of the storey's floor.
+                    r.floor = -depth; r.ramp = (byte)dir; r.rampCells = 0;
+                    bool ok = true;
+                    var rc = r.rect;
+                    for (int x = rc.xMin; x < rc.xMax && ok; x++)
+                    for (int z = rc.yMin; z < rc.yMax && ok; z++)
+                        for (int s = 0; s < 4; s++)
+                        {
+                            int nx = x + DX[s], nz = z + DZ[s];
+                            if (L.InChunk(nx, nz) && L.roomOf[nx, nz] == r.id) continue;
+                            if (!OfficeLayout.IsPassable(L.EdgeOf(x, z, s))) continue;
+                            float ex = x + 0.5f + DX[s] * 0.5f, ez = z + 0.5f + DZ[s] * 0.5f;
+                            if (L.FloorOf(r, ex, ez) < -MaxLip) { ok = false; break; }
+                        }
+                    if (ok) { r.feature = RoomFeature.Sunken; return; }
+                    r.floor = 0f; r.ramp = 0;
+                }
+            }
+        }
+
+        // ---------------- Stairs to nowhere ----------------
+
+        /// <summary>Steps' rise and tread for stairs to nowhere and mezzanines (m).</summary>
+        public const float StairRise = 0.175f, StairTread = 0.28f;
+
+        /// <summary>
+        /// A flight of four to seven steps in a big room or an office, climbing toward a solid wall and stopping against it
+        /// (two cells deep: the wall's cell and the one before it, neither a doorway's, nothing else in them).
+        /// </summary>
+        static void TryNowhere(OfficeLayout L, System.Random rng)
+        {
+            var list = new List<Room>();
+            foreach (var r in L.rooms)
+                if (Ordinary(L, r) && (r.kind == RoomKind.BigOffice || r.kind == RoomKind.Office) && Mathf.Min(r.rect.width, r.rect.height) >= 4) list.Add(r);
+            for (int attempt = 0; attempt < 12 && list.Count > 0; attempt++)
+            {
+                var r = list[rng.Next(list.Count)];
+                var rc = r.rect;
+                int side = rng.Next(4);
+                int x = side == 0 ? rc.xMin : side == 1 ? rc.xMax - 1 : rng.Next(rc.xMin + 1, rc.xMax - 1);
+                int z = side == 2 ? rc.yMin : side == 3 ? rc.yMax - 1 : rng.Next(rc.yMin + 1, rc.yMax - 1);
+                int bx = x - DX[side], bz = z - DZ[side];
+                if (L.EdgeOf(x, z, side) != EdgeKind.Wall) continue;
+                if (!FreeCell(L, r, x, z) || !FreeCell(L, r, bx, bz)) continue;
+                L.nowhere.Add(new NowhereStairs { cell = new Vector2Int(x, z), side = side, steps = rng.Next(4, 8) });
+                return;
+            }
+        }
+
+        /// <summary>A cell of the room with no way out of it, no steps, no stairs going nowhere.</summary>
+        static bool FreeCell(OfficeLayout L, Room r, int x, int z)
+        {
+            if (!L.InChunk(x, z) || L.roomOf[x, z] != r.id || L.StepSide(x, z) >= 0 || NowhereAt(L, x, z)) return false;
+            for (int s = 0; s < 4; s++)
+            {
+                int nx = x + DX[s], nz = z + DZ[s];
+                if (L.InChunk(nx, nz) && L.roomOf[nx, nz] == r.id) continue;
+                if (OfficeLayout.IsPassable(L.EdgeOf(x, z, s))) return false;
+            }
+            return true;
+        }
+
+        /// <summary>A cell a flight of stairs to nowhere stands in (its top step's cell or the one before it).</summary>
+        public static bool NowhereAt(OfficeLayout L, int x, int z)
+        {
+            foreach (var st in L.nowhere)
+            {
+                if (st.cell.x == x && st.cell.y == z) return true;
+                if (st.cell.x - DX[st.side] == x && st.cell.y - DZ[st.side] == z) return true;
+            }
+            return false;
+        }
+
+        // ---------------- Mezzanine ----------------
+
+        /// <summary>A mezzanine's deck height (m) and the least ceiling for one.</summary>
+        public const float MezzanineHeight = 4.2f, MezzanineMinCeiling = 6.4f;
+
+        /// <summary>The cells a mezzanine's stair takes along the wall (its steps' count and the tread).</summary>
+        public static int MezzanineStairCells => Mathf.CeilToInt(Mathf.Ceil(MezzanineHeight / StairRise) * 0.26f / OfficeBiome.CellSize);
+
+        /// <summary>
+        /// A steel walkway along one wall of a tall hall (6.4 m ceiling and more), 4.2 m up, its whole length; a stair up the
+        /// first cells of it from one end. The stair's cells have no doorway out (it would block it); the deck's may (it is
+        /// far overhead).
+        /// </summary>
+        static void TryMezzanine(OfficeLayout L, Room r, System.Random rng)
+        {
+            if (!Ordinary(L, r)) return;
+            var rc = r.rect;
+            int stair = MezzanineStairCells;
+            int first = rng.Next(4);
+            for (int k = 0; k < 4; k++)
+            {
+                int side = (first + k) % 4;
+                bool alongZ = side < 2;
+                int length = alongZ ? rc.height : rc.width;
+                if (length < stair + 3 || (alongZ ? rc.width : rc.height) < 6) continue;
+                var start = alongZ ? new Vector2Int(side == 0 ? rc.xMin : rc.xMax - 1, rc.yMin) : new Vector2Int(rc.xMin, side == 2 ? rc.yMin : rc.yMax - 1);
+                var m = new Mezzanine { side = side, start = start, length = length, stairCells = stair, stairAtMax = rng.NextDouble() < 0.5, height = MezzanineHeight, roomColor = r.id };
+                bool ok = true;
+                for (int i = 0; i < length && ok; i++)
+                {
+                    var c = m.Cell(i);
+                    // The strip itself free of steps; the stair's cells of doorways (and of pillars on its inner side).
+                    if (L.StepSide(c.x, c.y) >= 0 || NowhereAt(L, c.x, c.y)) ok = false;
+                    else if (m.IsStair(i) && !FreeCell(L, r, c.x, c.y)) ok = false;
+                }
+                if (!ok) continue;
+                L.mezzanines.Add(m);
+                return;
+            }
+        }
+
+        /// <summary>A cell of a mezzanine's strip (the deck overhead, or its stair).</summary>
+        public static bool MezzanineAt(OfficeLayout L, int x, int z, out bool stair)
+        {
+            stair = false;
+            foreach (var m in L.mezzanines)
+                for (int i = 0; i < m.length; i++)
+                {
+                    var c = m.Cell(i);
+                    if (c.x == x && c.y == z) { stair = m.IsStair(i); return true; }
+                }
+            return false;
+        }
+
+        /// <summary>No ceiling light in this cell: a ceiling coming down over it, or a mezzanine's deck or stair under it.</summary>
+        public static bool NoLight(OfficeLayout L, Room r, int x, int z) =>
+            (r.ceilDrop != 0 && L.CeilingLowAt(x, z) < r.ceiling - 0.05f) || (L.mezzanines.Count > 0 && MezzanineAt(L, x, z, out _));
 
         // ---------------- Ceilings that come down ----------------
 
@@ -418,7 +579,9 @@ namespace Backrooms.Generation
         public static bool Busy(OfficeLayout L, int x, int z)
         {
             var r = L.RoomAt(x, z);
-            return L.StepSide(x, z) >= 0 || r.feature == RoomFeature.Pit || r.ramp != 0;
+            if (L.StepSide(x, z) >= 0 || r.feature == RoomFeature.Pit || r.ramp != 0) return true;
+            if (L.nowhere.Count > 0 && NowhereAt(L, x, z)) return true;
+            return L.mezzanines.Count > 0 && MezzanineAt(L, x, z, out bool stair) && stair;
         }
     }
 }

@@ -167,6 +167,17 @@ namespace Backrooms.Generation
                 var g = pit; g.rect.position -= new Vector2(ox * C, oz * C);
                 S.pits.Add(g);
             }
+            // Stairs to nowhere: built by the chunk their top step's cell is in. A mezzanine: by every chunk its strip reaches.
+            foreach (var st in plan.nowhere)
+                if (st.cell.x >= ox && st.cell.y >= oz && st.cell.x < ox + N && st.cell.y < oz + N)
+                { var g = st; g.cell -= new Vector2Int(ox, oz); S.nowhere.Add(g); }
+            foreach (var mz in plan.mezzanines)
+            {
+                bool reaches = false;
+                for (int i = 0; i < mz.length && !reaches; i++) { var c = mz.Cell(i); reaches = c.x >= ox && c.y >= oz && c.x < ox + N && c.y < oz + N; }
+                if (!reaches) continue;
+                var g = mz; g.start -= new Vector2Int(ox, oz); S.mezzanines.Add(g);
+            }
             foreach (var arc in plan.arcs)
             {
                 int ax = Mathf.FloorToInt(arc.centre.x / C), az = Mathf.FloorToInt(arc.centre.y / C);

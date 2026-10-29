@@ -95,7 +95,8 @@ namespace Backrooms.Tests
                 if (r.ramp == 0) continue;
                 ramps++;
                 var rc = r.rect;
-                Assert.AreEqual(RoomKind.Hallway, r.kind);
+                // A hallway into a wing, or a sloping room (the whole room, rampCells 0).
+                Assert.IsTrue(r.kind == RoomKind.Hallway || r.rampCells == 0, "a ramp that is neither");
                 bool alongX = r.ramp <= 2;
                 float length = (r.rampCells > 0 ? r.rampCells : (alongX ? rc.width : rc.height)) * C;
                 Assert.That(-r.floor / length, Is.LessThanOrEqualTo(DepthPlan.MaxSlope + 1e-4f), "slope");
@@ -142,6 +143,49 @@ namespace Backrooms.Tests
                 Assert.AreEqual(1.35f, lowest, 0.01f, "the low end");
             }
             Assert.That(drops, Is.GreaterThan(0), "ceilings coming down");
+        }
+
+        [Test]
+        public void StairsToNowhereAndMezzaninesKeepClear()
+        {
+            int stairs = 0, decks = 0;
+            foreach (var L in Districts())
+            {
+                foreach (var st in L.nowhere)
+                {
+                    stairs++;
+                    Assert.AreEqual(EdgeKind.Wall, L.EdgeOf(st.cell.x, st.cell.y, st.side), "they climb into a wall");
+                    Assert.That(st.steps * DepthPlan.StairTread, Is.LessThanOrEqualTo(2f * C), "two cells deep at most");
+                    var cells = new[] { st.cell, st.cell - new Vector2Int(DX[st.side], DZ[st.side]) };
+                    foreach (var c in cells)
+                    {
+                        Assert.AreEqual(L.roomOf[st.cell.x, st.cell.y], L.roomOf[c.x, c.y], "in one room");
+                        var cell = new Rect(c.x * C, c.y * C, C, C);
+                        foreach (var p in L.props) Assert.IsFalse(cell.Contains(p.position), $"{p.kind} on stairs to nowhere");
+                    }
+                }
+                foreach (var m in L.mezzanines)
+                {
+                    decks++;
+                    var r = L.RoomAt(m.start.x, m.start.y);
+                    Assert.That(r.ceiling - m.height, Is.GreaterThanOrEqualTo(2.2f - 1e-3f), "headroom on the deck");
+                    for (int i = 0; i < m.length; i++)
+                    {
+                        var c = m.Cell(i);
+                        Assert.AreEqual(r.id, L.roomOf[c.x, c.y], "the strip is in its room");
+                        foreach (var f in L.fixtures) Assert.AreNotEqual(c, f.cell, "a light in a mezzanine's strip");
+                        if (!m.IsStair(i)) continue;
+                        for (int s = 0; s < 4; s++)
+                        {
+                            int nx = c.x + DX[s], nz = c.y + DZ[s];
+                            if (L.InChunk(nx, nz) && L.roomOf[nx, nz] == r.id) continue;
+                            Assert.IsFalse(OfficeLayout.IsPassable(L.EdgeOf(c.x, c.y, s)), "a doorway behind the stair");
+                        }
+                    }
+                }
+            }
+            Assert.That(stairs, Is.GreaterThan(0), "stairs to nowhere");
+            Assert.That(decks, Is.GreaterThan(0), "mezzanines");
         }
 
         [Test]

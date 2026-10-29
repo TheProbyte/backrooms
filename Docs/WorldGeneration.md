@@ -181,6 +181,17 @@ floors).
   slope over its last cells (up to four) to 1.35 m at the slot, so you crouch to get there (`Room.ceilDrop`,
   `ceilCells`, `ceilLow`). No lights or grid on the slope; its colliders step down with it; the slot's opening stops at
   the low ceiling.
+- **Sloping rooms** (`tiltedChance`, 0.18 a district; world version 15): an office, lounge or big office 3-8 cells along
+  its slope whose whole floor slopes down from its doors' wall, 1 in 8 to 1 in 6 (a ramp over the room, `rampCells` 0),
+  every doorway within `MaxLip` of the storey's floor; the ceiling level, so the far end is taller. Nothing stands in it.
+- **Stairs to nowhere** (`nowhereChance`, 0.15 a district): four to seven carpeted steps (0.175 m rise, 0.28 m tread, 1 m
+  wide) in a big room or office, climbing into a solid wall (`OfficeLayout.nowhere`); its two cells have no doorway and
+  nothing else in them.
+- **Mezzanines** (`mezzanineChance`, 0.3 a hall of 6.4 m and up): a steel walkway 4.2 m up along one wall of a tall hall,
+  its whole length, the deck from the wall's face to the strip's inner edge with a railing (top rail 1.05 m, mid rail,
+  toe board) and a post under it each cell; a steel stair (24 steps) up its first six cells from one end
+  (`OfficeLayout.mezzanines`). The stair's cells have no doorway out; no lights in the strip; racks keep off the wall
+  anyway, pallets may stand under the deck.
 - Getting about: Space at a ledge 0.45-1.35 m up pulls you onto it (`CamcorderPlayerController` mantle); a drop of
   about a metre or more jolts the camcorder.
 - Tests: `DepthPlanTests` (the features turn up; every way into a wing has steps; shafts leave walkways and can be

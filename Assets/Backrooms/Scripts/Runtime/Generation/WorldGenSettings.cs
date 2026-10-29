@@ -52,7 +52,7 @@ namespace Backrooms.Generation
 
         /// <summary>Bump when generation code changes how a seed plays out.
         /// 2: fixture spacing, strips, open plan. 3: arches. 4: zones, landmarks, districts, storeys.</summary>
-        public const int Version = 14;   // 10: far crawl-hole links. 11: pinned, sealed zones (the Poolrooms). 12: Poolrooms arches, curves, spiral stairs, second floor. 13: crawl spaces to special rooms, noclip doors. 14: height and depth (sunken wings, pit rooms, cut corners: DepthPlan)
+        public const int Version = 15;   // 10: far crawl-hole links. 11: pinned, sealed zones (the Poolrooms). 12: Poolrooms arches, curves, spiral stairs, second floor. 13: crawl spaces to special rooms, noclip doors. 14: height and depth (sunken wings, pit rooms, cut corners: DepthPlan). 15: ramps, ceilings that come down, sloping rooms, stairs to nowhere, mezzanines
 
         /// <summary>District size in chunks and cells.</summary>
         public const int DistrictChunks = 4, DistrictCells = DistrictChunks * OfficeBiome.ChunkCells;
