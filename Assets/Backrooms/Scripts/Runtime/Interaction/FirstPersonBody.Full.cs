@@ -79,6 +79,7 @@ namespace Backrooms.Interaction
             var root = new GameObject("CamcorderShadow").transform;
             var mat = new Material(Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit")) { name = "FP_Camcorder" };
             mat.SetColor("_BaseColor", new Color(0.05f, 0.05f, 0.055f));
+            NoDust(mat);
             _mats["Camcorder"] = mat;
             void Part(PrimitiveType type, Vector3 pos, Vector3 scale, Vector3 euler)
             {

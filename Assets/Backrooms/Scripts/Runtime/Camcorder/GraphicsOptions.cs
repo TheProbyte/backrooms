@@ -56,6 +56,8 @@ namespace Backrooms.Camcorder
         [Look] public float shadowSoftness = 1f;     // soft shadows that harden where things touch (0 = the plain soft filter)
         [Look] public float contactShadows = 0.6f;   // short screen-space shadows where things touch (their own depth pass)
         [Look] public float haze = 0.25f;            // thin haze in the air, lit by the lights (0 = clear)
+        public float surfaceDust = 1f;               // dust settled on what faces up: desks, baseboard tops, door headers (0 = none)
+        public float airDust = 1f;                   // motes in the air under lit fixtures (0 = none)
         [Look] public float poolSun = 1f, poolSky = 1f, poolBounce = 1f, poolWarmth = 0f;   // the Poolrooms (their own light)
         public bool areaLights = true;               // ceiling panels lit as rectangles (a method, not part of a look)
         public bool photometric = true;              // ceiling fixtures throw their measured (IES) light shape
@@ -221,7 +223,8 @@ namespace Backrooms.Camcorder
         PoolWorld _pool;
         float _poolSun, _poolBounce, _poolSky; Color _poolSunColour, _poolAmbient;
         Vector4 _poolApplied = new Vector4(-1, -1, -1, -1);
-        static readonly int LookId = Shader.PropertyToID("_BRLook"), EmissionTintId = Shader.PropertyToID("_BREmissionTint");
+        static readonly int LookId = Shader.PropertyToID("_BRLook"), EmissionTintId = Shader.PropertyToID("_BREmissionTint"), DustId = Shader.PropertyToID("_BRDust");
+        WorldStreamer _streamer;
         // SSAO on every renderer: the player's and the crawl holes' views (so the view through a hole has the same AO
         // as the room has once you are through it).
         readonly System.Collections.Generic.List<(ScriptableRendererFeature f, bool orig)> _ssao = new System.Collections.Generic.List<(ScriptableRendererFeature, bool)>();
@@ -393,6 +396,15 @@ namespace Backrooms.Camcorder
             // x: ceiling panels as rectangles, y: contact-hardening shadow softness, z: contact shadow strength, w: set.
             FixtureLightManager.Photometric = o.photometric;
             Shader.SetGlobalVector(LookId, new Vector4(o.areaLights ? 1f : 0f, Mathf.Clamp(o.shadowSoftness, 0f, 2f), Mathf.Clamp01(o.contactShadows), 1f));
+            // Dust on what faces up (Backrooms/Lit): strength, and the storey pitch (no dust on each storey's floor itself).
+            if (!_streamer) _streamer = FindAnyObjectByType<WorldStreamer>();
+            float pitch = _streamer && _streamer.Settings != null ? _streamer.Settings.storeyPitch : 9f;
+            Shader.SetGlobalVector(DustId, new Vector4(PoolWorld.Instance ? 0f : Mathf.Clamp(o.surfaceDust, 0f, 2f), pitch, 1f, 0f));
+            if (_streamer && Camera.main)
+            {
+                var air = AirDust.Ensure(Camera.main);
+                if (air) air.strength = PoolWorld.Instance ? 0f : Mathf.Clamp(o.airDust, 0f, 3f);
+            }
             // Contact shadows have a render pass of their own on the player's camera (it reads the camera depth properly).
             ContactShadows.Ensure().strength = Mathf.Clamp01(o.contactShadows);
             var tint = GraphicsOptions.ColourShift(o.colourTemp, o.colourTint) * Mathf.Clamp(o.panelGlow, 0f, 3f);

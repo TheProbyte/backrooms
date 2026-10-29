@@ -520,6 +520,7 @@ namespace Backrooms.Generation
                 // cone edge is drawn across tall walls. Strips are a little narrower.
                 TrofferCone(spread, s.src.dome, s.src.strip, out float angle, out float inner);
                 Color col = s.src.strip ? stripColor : tubeColor;
+                if (s.src.tint.a > 0f) col *= s.src.tint;          // its own tubes (old, a yellowed lens)
 
                 // Ceiling lights only ever light their own room (rendering layer), so no light can pass
                 // through a wall whatever the shadow resolution. Shadows ease in for the nearest lights and

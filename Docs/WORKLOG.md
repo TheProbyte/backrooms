@@ -15,6 +15,27 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-29 10:40  Claude Code  Realism pass: dirt, wallpaper and walls, ceilings, floors, light and air (plan sections 1, 3, 4, 5, 7)
+- New: Generation/OfficeChunkBuilder.Grime.cs (dirt), .Paper.cs (seams, bubbles, peeling strips, patches, painted-wall
+  marks, baseboards, plates), .CeilingWear.cs (tile batches, holed and dropped tiles, askew and cracked lights),
+  .FloorMarks.cs (furniture marks, carpet tiles, stains, scratches), .Air.cs (cobwebs, CobwebSway), AirDust.cs and
+  Resources/Shaders/AirDust.shader (motes under the lights), RealismSightings.cs and Camcorder/CamcorderVisualMenu.Realism.cs
+  (F5 > PLACES > WEAR AND DETAIL: jump to the nearest of 22 kinds).
+- Changed: Backrooms/Lit forward pass (`_BRDust`: settled dust on what faces up; the body opts out), FloorWear.shader
+  (blotches vary with height; a flat mode), LightSource.tint (yellowed lenses, old pink tubes, green and cool tubes)
+  used by FixtureLightManager and its grid, MaterialMaps (batch tiles, fresh paint, odd carpet, three troffer lenses),
+  F5 > LIGHT > AIR: "Settled dust" and "Dust in the air". The user asked to leave sections 2 (the leak) and 6 (things
+  on walls) for now.
+- Checked: EditMode 143/143 (chunk order and determinism included); looked at in World 3 through the Game view (erased
+  after): the first strengths did not read through the camcorder and were doubled; a step in the wall grime between
+  two rooms of one open plan was removed; batch tiles had lost their texture (fixed); bubbles on a patch showed the old
+  pattern (now one or the other); carpet tiles and the odd tile were too faint / too blue (fixed).
+- Open: no baseboards in the world's look, so the baseboard wear never shows; the cobweb strands were too thin to see
+  at first and were thickened without a second look; the motes are very faint by design and were not judged on
+  camera; askew lights were made steeper (6-10 degrees) without a second look.
+
+---
+
 ## 2026-10-29 08:45  Claude Code  Teleports to the height-and-depth places; the next realism pass planned
 - Asked: an easier way to get to the new places to see them; a plan for the next realism pass (in the vein of the peeling wallpaper and ceiling tiles).
 - Built: F5 > PLACES > HEIGHT AND DEPTH, eight buttons (sunken room, pit room, ramp, low ceiling, sloping room, stairs to nowhere, mezzanine, cut corner), nearest first and the next on each press, placed where each is seen best (`CamcorderVisualMenu.Depth.cs`).

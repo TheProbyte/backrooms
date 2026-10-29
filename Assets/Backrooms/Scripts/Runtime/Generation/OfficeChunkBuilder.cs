@@ -25,6 +25,7 @@ namespace Backrooms.Generation
         public float ceiling;        // ceiling height at the fixture
         public int faultyId;         // index of this tube's own lens renderer when it stutters, else -1
         public float dim;            // share of its light lost to age (a tube out, old pink tubes, bugs in the lens): 0 = full
+        public Color tint;           // its tubes' own colour, multiplied into the light (old pink tubes, a yellowed lens); alpha 0 = none
         public int room;             // the room it is in (index in its chunk's layout; LightZones), -1 for lamps
         public Vector3Int chunk;     // owning chunk (x, storey, z), set by the streamer
     }
@@ -212,6 +213,8 @@ namespace Backrooms.Generation
                 yield return root;
             }
             MakeWear(root.transform, resources);
+            RealismSightings.Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), _sightings);
+            MakeWebs(root.transform, resources);
 
             foreach (var kv in _roomLenses)
             {
@@ -526,7 +529,12 @@ namespace Backrooms.Generation
                     if (room.ramp != 0) { fa = FloorAlong(room, vertical, line, a0); fb = FloorAlong(room, vertical, line, a1); }
                     if (room.ramp != 0) SlopedWallFace(room, cm, A(f, a0), A(f, a1), fa, fb, myCeil, n);
                     else WallFace(room, cm, A(f, a0), A(f, a1), room.floor, myCeil, n);
-                    if (!room.noFloor) Baseboard(cm, A(f, a0) + Vector3.up * fa, A(f, a1) + Vector3.up * fb, n);
+                    if (!room.noFloor)
+                    {
+                        // (Plain cells: now and then pulled off the wall, a piece missing, the caulk cracked: .Paper.cs.)
+                        if (Pool || room.ramp != 0 || !_L.Plain(cx, cz)) Baseboard(cm, A(f, a0) + Vector3.up * fa, A(f, a1) + Vector3.up * fb, n);
+                        else BaseboardRun(cm, A(f, a0), A(f, a1), n, GX(cx), GZ(cz), (vertical ? 0 : 2) + s);
+                    }
                     continue;
                 }
                 // A doorway up to a higher floor (steps out of a sunken room, a ramp's lip): the riser on the edge's line, from
@@ -1054,21 +1062,26 @@ namespace Backrooms.Generation
                 int room = _L.roomOf[f.cell.x, f.cell.y];
                 MeshWriter lens;
                 // Some square panels have aged (seeded by the cell): one tube out, old tubes gone pink and dim, bugs in the lens.
-                int age = 0; float dim = 0f;
+                int age = 0; float dim = 0f; Color tint = default;
                 if (!f.strip && !f.dome && !f.faulty && f.on && MaterialMaps.TrofferDead)
                 {
                     float u = Dice(GX(f.cell.x), GZ(f.cell.y), 710);
-                    age = u < 0.05f ? 1 : u < 0.1f ? 2 : u < 0.17f ? 3 : 0;
-                    dim = age == 1 ? 0.33f : age == 2 ? 0.2f : age == 3 ? 0.06f : 0f;
+                    age = u < 0.05f ? 1 : u < 0.1f ? 2 : u < 0.17f ? 3 : u < 0.22f && MaterialMaps.TrofferYellow ? 4
+                        : u < 0.27f && MaterialMaps.TrofferGreen ? 5 : u < 0.31f && MaterialMaps.TrofferCool ? 6 : 0;
+                    dim = age == 1 ? 0.33f : age == 2 ? 0.2f : age == 3 ? 0.06f : age == 4 ? 0.14f : age == 5 ? 0.04f : 0f;
+                    tint = age == 2 ? new Color(1f, 0.9f, 0.93f, 1f) : age == 4 ? new Color(1f, 0.9f, 0.72f, 1f)
+                         : age == 5 ? new Color(0.93f, 1f, 0.86f, 1f) : age == 6 ? new Color(0.9f, 0.96f, 1.06f, 1f) : default;
+                    if (age == 5 || age == 6) Saw(c + SquareFixtureShift, Vector3.down, "tube_tint");
+                    if (age == 4) Saw(c + SquareFixtureShift, Vector3.down, "lens_yellow");
                 }
                 if (f.faulty) { lens = new MeshWriter { worldOffset = _origin }; faultyLenses.Add((lens, f.dome, room)); }
                 else if (f.on)
                 {
                     int kind = f.strip ? 2 : f.dome ? 1 : 0;
                     var on = f.strip ? _a.stripOn ?? _a.lensOn : f.dome ? _a.domeOn ?? _a.lensOn
-                           : age == 1 ? MaterialMaps.TrofferDead : age == 2 ? MaterialMaps.TrofferPink : age == 3 ? MaterialMaps.TrofferBugs : TrofferLens(true);
+                           : age == 1 ? MaterialMaps.TrofferDead : age == 2 ? MaterialMaps.TrofferPink : age == 3 ? MaterialMaps.TrofferBugs : age == 4 ? MaterialMaps.TrofferYellow : age == 5 ? MaterialMaps.TrofferGreen : age == 6 ? MaterialMaps.TrofferCool : TrofferLens(true);
                     var off = f.strip ? _a.stripOff ?? _a.lensOff : f.dome ? _a.domeOff ?? _a.lensOff : TrofferLens(false);
-                    int key = room * 16 + age * 4 + kind;
+                    int key = room * 32 + age * 4 + kind;
                     if (!_roomLenses.TryGetValue(key, out var rl))
                     {
                         rl = (new MeshWriter { worldOffset = _origin }, on, off, LayerBit(f.roomColor), room);
@@ -1103,20 +1116,22 @@ namespace Backrooms.Generation
                 {
                     // Square troffer: one 0.6 m ceiling tile, in the tile just west of the cell centre.
                     var sc = c + SquareFixtureShift;
-                    lens.Box(sc + Vector3.down * 0.004f, new Vector3(0.57f, 0.006f, 0.57f), 4 | 1 | 2 | 16 | 32, MaterialMaps.TrofferUV(_origin + sc, 0.57f));
                     var hw = W(_a.fixtureHousing, f.roomColor);
+                    int lensStart = lens.VertexCount, hwStart = hw.VertexCount;
+                    lens.Box(sc + Vector3.down * 0.004f, new Vector3(0.57f, 0.006f, 0.57f), 4 | 1 | 2 | 16 | 32, MaterialMaps.TrofferUV(_origin + sc, 0.57f));
                     const int m = 1 | 2 | 4 | 16 | 32;
                     hw.Box(sc + new Vector3(0, -0.009f, 0.291f), new Vector3(0.6f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
                     hw.Box(sc + new Vector3(0, -0.009f, -0.291f), new Vector3(0.6f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
                     hw.Box(sc + new Vector3(0.291f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
                     hw.Box(sc + new Vector3(-0.291f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
+                    if (!Pool) TrofferWear(f.cell, f.roomColor, sc, h, lens, lensStart, hw, hwStart);
                 }
                 if (f.on)
                     lights.Add(new LightSource
                     {
                         position = _origin + c + (f.dome ? Vector3.down * 0.07f : f.strip ? Vector3.down * 0.03f : SquareFixtureShift),
                         isLamp = false, dome = f.dome, strip = f.strip, ceiling = h, roomLayer = LayerBit(f.roomColor),
-                        faultyId = f.faulty ? faultyLenses.Count - 1 : -1, room = room, dim = dim,
+                        faultyId = f.faulty ? faultyLenses.Count - 1 : -1, room = room, dim = dim, tint = tint,
                     });
             }
         }
@@ -1142,15 +1157,23 @@ namespace Backrooms.Generation
                 float hw = 0.035f, hh = 0.0575f;
                 Vector3 f = pos + n * depth;
                 if (!p.isSwitch) outlets.Add((_origin + f, n));
+                else if (!Pool) SwitchGrime(pos, n, right, p.cell, p.side);
                 // The modelled plate (WallPlateModels), or the flat atlas plate if the models are not loaded.
                 var parts = p.isSwitch ? WallPlateModels.Switch : WallPlateModels.Outlet;
+                // Some plates were painted over with a painted wall; some hang crooked, one screw loose (seeded by the cell).
+                int pgx = GX(p.cell.x), pgz = GZ(p.cell.y), ps = 1220 + p.side * 4 + (p.isSwitch ? 1 : 0);
+                float pv = Pool ? 0.5f : Dice(pgx, pgz, ps);
+                bool paintedOver = pv < 0.12f && PaintedRoom(_L.RoomAt(p.cell.x, p.cell.y));
+                float crooked = pv > 0.94f ? (Dice(pgx, pgz, ps + 100) < 0.5f ? -1f : 1f) * (3f + 6f * Dice(pgx, pgz, ps + 200)) : 0f;
+                if (paintedOver) Saw(pos, n, "plate_painted");
+                if (crooked != 0f) Saw(pos, n, "plate_crooked");
                 if (parts != null)
                 {
-                    var rot = Quaternion.LookRotation(n, Vector3.up);
+                    var rot = Quaternion.LookRotation(n, Vector3.up) * Quaternion.AngleAxis(crooked, Vector3.forward);
                     bool live = p.isSwitch && WallPlateModels.HasToggle;      // the toggle is its own object (it flicks)
                     foreach (var part in parts)
                         if (!(part.toggle && live))
-                            W(part.material, p.roomColor).AddMesh(part.vertices, part.normals, part.tangents, part.uv, part.triangles, pos, rot);
+                            W(paintedOver ? _a.paintedWall : part.material, p.roomColor).AddMesh(part.vertices, part.normals, part.tangents, part.uv, part.triangles, pos, rot);
                     if (live) _switches.Add((pos, rot, _L.roomOf[p.cell.x, p.cell.y], p.roomColor));
                     continue;
                 }

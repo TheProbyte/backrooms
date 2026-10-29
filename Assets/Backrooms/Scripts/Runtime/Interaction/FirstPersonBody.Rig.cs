@@ -424,6 +424,7 @@ namespace Backrooms.Interaction
             if (_mats.TryGetValue(key, out var m)) return m;
             string asset = key.StartsWith("PlayerMPFB.") ? key.Substring("PlayerMPFB.".Length) : key;
             m = new Material(shader) { name = "FP_" + key };
+            NoDust(m);
             Texture tex = imported ? imported.mainTexture : null;
             if (!tex) tex = Resources.Load<Texture2D>("Player/MPFB/Textures/" + asset + "_diffuse");
             if (!tex) tex = Resources.Load<Texture2D>("Player/MPFB/Textures/" + asset);

@@ -123,6 +123,9 @@ namespace Backrooms.Interaction
         /// Backrooms/Lit materials (so the light grid lights the body too), one per FBX material name: plain colours on the
         /// old models, the textures on the MakeHuman body (whose head and camcorder arm only cast shadows).
         /// </summary>
+        /// <summary>Backrooms/Lit's settled dust is for the world, not the player (a negative detail-albedo scale turns it off).</summary>
+        static void NoDust(Material m) { if (m && m.HasProperty("_DetailAlbedoMapScale")) m.SetFloat("_DetailAlbedoMapScale", -1f); }
+
         void Setup(GameObject go, bool mpfb)
         {
             var shader = Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit");
@@ -136,6 +139,7 @@ namespace Backrooms.Interaction
                     if (!_mats.TryGetValue(key, out var m))
                     {
                         m = new Material(shader) { name = "FP_" + key };
+                        NoDust(m);
                         var c = Colors.TryGetValue(key, out var cc) ? cc : Color.gray;
                         m.SetColor("_BaseColor", c);
                         bool metal = key == "WatchCase" || key == "Ring";

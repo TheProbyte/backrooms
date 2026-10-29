@@ -132,6 +132,7 @@ namespace Backrooms.Generation
             range = src.dome || src.strip ? tubeRange + extra * 1.3f : tubeRange;
             TrofferCone(spread, src.dome, src.strip, out outer, out inner);
             col = src.strip ? stripColor : tubeColor;
+            if (src.tint.a > 0f) col *= src.tint;                  // its own tubes (old, a yellowed lens)
         }
 
         // ---------------- Far crawl-hole sites ----------------

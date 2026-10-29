@@ -17,7 +17,7 @@ namespace Backrooms.Generation
     /// </summary>
     public partial class OfficeChunkBuilder
     {
-        enum TileKind { Plain, Stained, Yellowed, Sag, Tilted, Shifted, Missing, Cracked, Crumbled, Supply, Return }
+        enum TileKind { Plain, Stained, Yellowed, Sag, Tilted, Shifted, Missing, Cracked, Crumbled, Supply, Return, Batch, Holed, Dropped }
 
         /// <summary>Kind of fixture in each cell that has one (0 square, 1 dome, 2 strip): tiles there are left alone.</summary>
         readonly Dictionary<Vector2Int, int> _fixtureKinds = new Dictionary<Vector2Int, int>();
@@ -32,7 +32,7 @@ namespace Backrooms.Generation
         void ClearWear()
         {
             _floorWear.Clear(); _wallWear.Clear(); _crumbs.Clear();
-            _missingTiles.Clear(); _gaps.Clear();
+            _missingTiles.Clear(); _gaps.Clear(); _sightings.Clear(); _webs.Clear();
             _fixtureKinds.Clear();
             foreach (var f in _L.fixtures) _fixtureKinds[f.cell] = f.strip ? 2 : f.dome ? 1 : 0;
         }
@@ -107,13 +107,16 @@ namespace Backrooms.Generation
                 else if (u < (t += 0.03f)) k = TileKind.Yellowed;
                 else if (u < (t += 0.03f)) k = TileKind.Supply;
                 else if (u < (t += 0.018f)) k = TileKind.Return;
+                else if (u < (t += 0.006f)) k = TileKind.Holed;
+                else if (u < (t += 0.006f)) k = TileKind.Dropped;
+                if (k == TileKind.Plain && MaterialMaps.CeilingBatchA && BatchTile(gx, gz, i)) k = TileKind.Batch;
                 kinds[i] = k;
                 any |= k != TileKind.Plain;
             }
             {
                 float dx0 = x * C, dz0 = z * C + OfficeBiome.TileGridOffset;
                 for (int i = 0; i < 2; i++)
-                    if (!(lit && i == 0) && (kinds[i] == TileKind.Plain || kinds[i] == TileKind.Stained || kinds[i] == TileKind.Yellowed || kinds[i] == TileKind.Cracked))
+                    if (!(lit && i == 0) && (kinds[i] == TileKind.Plain || kinds[i] == TileKind.Stained || kinds[i] == TileKind.Yellowed || kinds[i] == TileKind.Cracked || kinds[i] == TileKind.Batch))
                         CeilingDevices(x, z, kinds[i] == TileKind.Cracked ? h - 0.006f : h, m, dx0 + i * TileSize, dz0, i);
             }
             if (!any) return false;
@@ -162,8 +165,27 @@ namespace Backrooms.Generation
                         _crumbs.Add((Vector3.Lerp(k, new Vector3(centre.x, 0f, centre.z), 0.25f), x, z));
                         break;
                     }
-                    case TileKind.Supply: SupplyDiffuser(m, tx0, zm0, h); break;
-                    case TileKind.Return: ReturnGrille(m, tx0, zm0, h, Dice(gx, gz, 195 + i)); break;
+                    case TileKind.Supply: SupplyDiffuser(m, tx0, zm0, h); DiffuserSmudge(centre, gx, gz, i); break;
+                    case TileKind.Batch:
+                        CeilQuad(WMask(Dice(gx, gz, 1305 + i) < 0.5f ? MaterialMaps.CeilingBatchA : MaterialMaps.CeilingBatchB, m), tx0, zm0, tx1, zm1, h);
+                        Saw(centre, Vector3.down, "tile_batch");
+                        break;
+                    case TileKind.Holed:
+                    {
+                        _gaps.Add((centre, h, m, r));
+                        float rad = 0.045f + 0.04f * Dice(gx, gz, 1306 + i);
+                        float hx = rad + 0.07f + (TileSize - 2f * rad - 0.14f) * Dice(gx, gz, 1307 + i);
+                        float hz = rad + 0.07f + (TileSize - 2f * rad - 0.14f) * Dice(gx, gz, 1308 + i);
+                        Saw(centre, Vector3.down, "tile_hole");
+                        HoledTile(WMask(ceil, m), WMask(MaterialMaps.TileBack ? MaterialMaps.TileBack : ceil, m), tx0, zm0, h, hx, hz, rad);
+                        break;
+                    }
+                    case TileKind.Dropped:
+                        _gaps.Add((centre, h, m, r));
+                        Saw(centre, Vector3.down, "tile_dropped");
+                        DropTile(WMask(Dice(gx, gz, 130 + i) < 0.3f ? stained : ceil, m), centre, h, Dice(gx, gz, 150 + i), 0.012f + 0.02f * Dice(gx, gz, 1309 + i));
+                        break;
+                    case TileKind.Return: ReturnGrille(m, tx0, zm0, h, Dice(gx, gz, 195 + i)); Cobweb(centre, gx, gz, i); break;
                 }
             }
             return true;
@@ -384,6 +406,7 @@ namespace Backrooms.Generation
                 bool carpet = Carpeted(r);
                 uint m = CellMask(x, z);
                 if (carpet) CoffeeSpots(x, z);
+                FloorMarks(x, z, r, carpet, m);
                 var centre = new Vector3((x + 0.5f) * C, 0f, (z + 0.5f) * C);
                 for (int side = 0; side < 4; side++)
                 {
@@ -397,7 +420,10 @@ namespace Backrooms.Generation
                     if (OfficeLayout.IsSolid(e))
                     {
                         if (!Broken(vert, line, alongI, out _) && !HoleAt(vert, line, alongI, out _))
+                        {
                             WallDetails(x, z, side, edge - outDir * (T * 0.5f), along, -outDir, r, m, _L.WallTop(r));
+                            WallDirt(x, z, side, edge, outDir, along, r, m, _L.WallTop(r));
+                        }
                         if (!carpet) continue;
                         WallGrime(x, z, side, edge, outDir, along, r);
                         float loose = Dice(GX(x), GZ(z), 300 + side);
@@ -459,6 +485,10 @@ namespace Backrooms.Generation
         {
             Vector3 c = edge - outDir * 0.3f;
             WearQuad(c - along * 0.55f, c + along * 0.55f, -outDir, 0.42f, new Color32(214, 206, 194, 190), new Vector2(0.35f, 0.3f), -1f, 1f, -1f, 1f);
+            // Now and then a dark patch just inside (something spilt, or tracked in and never cleaned up).
+            int gx = GX(x), gz = GZ(z);
+            if (Dice(gx, gz, 1450 + side) < 0.12f)
+                Spot(c - outDir * 0.2f + along * ((Dice(gx, gz, 1454 + side) - 0.5f) * 0.5f), 0.12f + 0.12f * Dice(gx, gz, 1458 + side), new Color32(140, 128, 112, 105), 0.15f);
         }
 
         /// <summary>

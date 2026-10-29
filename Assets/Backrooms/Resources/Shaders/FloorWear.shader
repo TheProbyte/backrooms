@@ -31,7 +31,8 @@ Shader "Backrooms/FloorWear"
                 Varyings o;
                 float3 ws = TransformObjectToWorld(i.positionOS.xyz);
                 o.positionCS = TransformWorldToHClip(ws);
-                o.uv = i.uv; o.inner = i.inner; o.xz = ws.xz; o.color = i.color;
+                // Height folded into the blotches' plane, so marks on walls vary up the wall as well as along it.
+                o.uv = i.uv; o.inner = i.inner; o.xz = ws.xz + ws.y * float2(0.73, 1.31); o.color = i.color;
                 return o;
             }
 
@@ -53,6 +54,13 @@ Shader "Backrooms/FloorWear"
                     float r = length(i.uv);
                     float e = (r - 0.82) / 0.12;
                     profile = saturate((1.0 - smoothstep(-i.inner.x, 1.0, r)) * (1.0 - i.inner.y * 0.55) + exp(-e * e) * i.inner.y);
+                }
+                else if (i.inner.x >= 2.0)
+                {
+                    // Flat (a carpet tile's own shade): the profile only, no blotches.
+                    float2 a = abs(i.uv);
+                    float k0 = i.color.a * (1.0 - smoothstep(i.inner.x - 2.0, 1.0, a.x)) * (1.0 - smoothstep(i.inner.y, 1.0, a.y));
+                    return half4(lerp(1.0.xxx, i.color.rgb, saturate(k0)), 1.0);
                 }
                 else
                 {

@@ -73,6 +73,8 @@ namespace Backrooms.Generation
         /// the ceiling material.
         /// </summary>
         public static Material CeilingStainedA, CeilingStainedB, CeilingYellowed, Plenum;
+        /// <summary>Tiles from other batches (a replaced run that never matched): a shade whiter, a shade greyer.</summary>
+        public static Material CeilingBatchA, CeilingBatchB;
         static Texture2D s_stainedA, s_stainedB;
         static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
@@ -85,9 +87,9 @@ namespace Backrooms.Generation
 
         /// <summary>One of the world's dressing copies (none of them casts a shadow-map shadow).</summary>
         public static bool IsCeilingVariant(Material m) =>
-            m && (m == CeilingStainedA || m == CeilingStainedB || m == CeilingYellowed || m == Plenum || m == PlenumWood || m == PlenumDeck
+            m && (m == CeilingStainedA || m == CeilingStainedB || m == CeilingYellowed || m == CeilingBatchA || m == CeilingBatchB || m == Plenum || m == PlenumWood || m == PlenumDeck
                   || m == PlenumBatt || m == PlenumMetal || m == PlenumDuct || m == TileBack || m == CeilingCracked || m == ExitSign
-                  || m == LedRed || m == Aluminium);
+                  || m == LedRed || m == Aluminium || m == PaintFresh || m == CarpetOdd || m == CarpetOddRef);
 
         /// <summary>A photo's colour and normal maps (Resources/Textures/Photo) on a material, if they are there.</summary>
         static void PhotoMaps(Material m, string photo, float bump)
@@ -109,9 +111,20 @@ namespace Backrooms.Generation
         /// </summary>
         public static Material Concrete;
 
+        /// <summary>Newer paint over a repair on a painted wall (OfficeChunkBuilder.Paper): the wall's paint, a little brighter.</summary>
+        public static Material PaintFresh;
+
+        /// <summary>A carpet tile replaced from another lot (OfficeChunkBuilder.FloorMarks): the carpet (or the reference carpet), another shade.</summary>
+        public static Material CarpetOdd, CarpetOddRef;
+
         static void Floors(OfficeBiomeAssets a)
         {
             Concrete = null;
+            PaintFresh = CarpetOdd = CarpetOddRef = null;
+            if (a.carpet && a.carpet.HasProperty(BaseColor)) CarpetOdd = Tinted(a.carpet, " (odd tile)", a.carpet.GetColor(BaseColor) * new Color(0.86f, 0.83f, 0.78f, 1f));
+            if (a.referenceCarpet && a.referenceCarpet.HasProperty(BaseColor)) CarpetOddRef = Tinted(a.referenceCarpet, " (odd tile)", a.referenceCarpet.GetColor(BaseColor) * new Color(0.86f, 0.83f, 0.78f, 1f));
+            if (a.paintedWall && a.paintedWall.HasProperty(BaseColor))
+                PaintFresh = Tinted(a.paintedWall, " (fresh paint)", a.paintedWall.GetColor(BaseColor) * new Color(1.07f, 1.06f, 1.03f, 1f));
             var src = a.carpet;
             var tex = Destruction.DemolitionMaterials.Photo("Concrete");
             if (!src || !tex || !src.HasProperty(BaseMap)) return;
@@ -133,7 +146,7 @@ namespace Backrooms.Generation
 
         static void Ceilings(OfficeBiomeAssets a)
         {
-            CeilingStainedA = CeilingStainedB = CeilingYellowed = Plenum = null;
+            CeilingStainedA = CeilingStainedB = CeilingYellowed = Plenum = CeilingBatchA = CeilingBatchB = null;
             var src = a.ceilingTile;
             if (!src || !src.HasProperty(BaseMap)) return;
             var tex = src.GetTexture(BaseMap) as Texture2D;
@@ -147,6 +160,8 @@ namespace Backrooms.Generation
                 CeilingCracked = Copy(src, " (cracked)", s_cracked);
             }
             Color c = src.HasProperty(BaseColor) ? src.GetColor(BaseColor) : Color.white;
+            CeilingBatchA = Tinted(src, " (new batch)", c * new Color(1.05f, 1.05f, 1.055f, 1f));
+            CeilingBatchB = Tinted(src, " (old batch)", c * new Color(0.93f, 0.915f, 0.87f, 1f));
             CeilingYellowed = Copy(src, " (yellowed)", null);
             CeilingYellowed.SetColor(BaseColor, c * new Color(0.97f, 0.93f, 0.8f, 1f));
             Plenum = Copy(src, " (plenum)", null);
@@ -519,16 +534,20 @@ namespace Backrooms.Generation
         /// the lens (dark specks along its low edge). Chosen per fixture in OfficeChunkBuilder.BuildFixtures.
         /// </summary>
         public static Material TrofferDead, TrofferPink, TrofferBugs;
+        /// <summary>A lens yellowed with age: warmer and a little dimmer (its light too: LightSource.tint).</summary>
+        public static Material TrofferYellow;
+        /// <summary>Tubes of another white (replaced from another box): a little green, a little cooler (LightSource.tint too).</summary>
+        public static Material TrofferGreen, TrofferCool;
         static Texture2D s_glow, s_prism, s_glowDead, s_glowBugs;
         static readonly int EmissionMap = Shader.PropertyToID("_EmissionMap"), EmissionColor = Shader.PropertyToID("_EmissionColor"),
                             BaseMap = Shader.PropertyToID("_BaseMap");
 
         /// <summary>Is this one of the troffer lens copies?</summary>
-        public static bool IsTroffer(Material m) => m && (m == TrofferOn || m == TrofferOff || m == TrofferDead || m == TrofferPink || m == TrofferBugs);
+        public static bool IsTroffer(Material m) => m && (m == TrofferOn || m == TrofferOff || m == TrofferDead || m == TrofferPink || m == TrofferBugs || m == TrofferYellow || m == TrofferGreen || m == TrofferCool);
 
         static void Troffers(OfficeBiomeAssets a)
         {
-            TrofferOn = TrofferOff = null;
+            TrofferOn = TrofferOff = TrofferYellow = TrofferGreen = TrofferCool = null;
             if (!a.lensOn || !a.lensOff || !a.lensOn.HasProperty(EmissionMap)) return;
             if (!s_glow) s_glow = TrofferGlow(512, out s_glowMean);
             if (!s_prism) s_prism = Prism(512);
@@ -548,6 +567,13 @@ namespace Backrooms.Generation
             TrofferPink.SetColor(EmissionColor, TrofferOn.GetColor(EmissionColor) * new Color(0.84f, 0.66f, 0.72f, 1f));
             TrofferBugs = new Material(TrofferOn) { name = a.lensOn.name + " (bugs)", hideFlags = HideFlags.DontSave };
             TrofferBugs.SetTexture(EmissionMap, s_glowBugs);
+            TrofferYellow = new Material(TrofferOn) { name = a.lensOn.name + " (yellowed)", hideFlags = HideFlags.DontSave };
+            TrofferYellow.SetColor(EmissionColor, TrofferOn.GetColor(EmissionColor) * new Color(0.95f, 0.82f, 0.56f, 1f));
+            if (TrofferYellow.HasProperty(BaseColor)) TrofferYellow.SetColor(BaseColor, TrofferOn.GetColor(BaseColor) * new Color(1f, 0.93f, 0.74f, 1f));
+            TrofferGreen = new Material(TrofferOn) { name = a.lensOn.name + " (green tubes)", hideFlags = HideFlags.DontSave };
+            TrofferGreen.SetColor(EmissionColor, TrofferOn.GetColor(EmissionColor) * new Color(0.9f, 1f, 0.8f, 1f));
+            TrofferCool = new Material(TrofferOn) { name = a.lensOn.name + " (cool tubes)", hideFlags = HideFlags.DontSave };
+            TrofferCool.SetColor(EmissionColor, TrofferOn.GetColor(EmissionColor) * new Color(0.86f, 0.95f, 1.1f, 1f));
         }
 
         static float s_glowMean = 1f;

@@ -38,6 +38,18 @@ namespace Backrooms.Generation
                 _i.Add(i); _i.Add(i + 1); _i.Add(i + 2); _i.Add(i); _i.Add(i + 2); _i.Add(i + 3);
             }
 
+            /// <summary>As Quad, with a colour per corner (a strength that changes along a run of wall).</summary>
+            public void Quad(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Vector2 uv0, Vector2 uv1, Vector2 uv2, Vector2 uv3,
+                             Color32 c0, Color32 c1, Color32 c2, Color32 c3, Vector2 inner)
+            {
+                int i = _v.Count;
+                _v.Add(p0); _v.Add(p1); _v.Add(p2); _v.Add(p3);
+                _uv.Add(uv0); _uv.Add(uv1); _uv.Add(uv2); _uv.Add(uv3);
+                _c.Add(c0); _c.Add(c1); _c.Add(c2); _c.Add(c3);
+                for (int k = 0; k < 4; k++) _in.Add(inner);
+                _i.Add(i); _i.Add(i + 1); _i.Add(i + 2); _i.Add(i); _i.Add(i + 2); _i.Add(i + 3);
+            }
+
             /// <summary>A quad centred at c spanning ±ha along a and ±hb along b, its profile running u0..u1 along a, v0..v1 along b.</summary>
             public void Rect(Vector3 c, Vector3 a, Vector3 b, float ha, float hb, Color32 col, Vector2 inner, float u0 = -1f, float u1 = 1f, float v0 = -1f, float v1 = 1f)
                 => Quad(c - a * ha - b * hb, c + a * ha - b * hb, c + a * ha + b * hb, c - a * ha + b * hb,
@@ -95,7 +107,20 @@ namespace Backrooms.Generation
             var c = new Vector3(tx0 + TileSize * 0.5f, h, tz0 + TileSize * 0.5f);
             if (((tile % 5) + 5) % 5 == 2 && ((gz % 3) + 3) % 3 == 1)
             {
-                if (Dice(gx, gz, 200 + i) < 0.9f) Sprinkler(WMask(_a.lampMetal ? _a.lampMetal : _a.fixtureHousing, m), c);
+                if (Dice(gx, gz, 200 + i) < 0.9f)
+                {
+                    // Now and then painted over with the ceiling, or missing its ring (the hole round it shows).
+                    float v = Dice(gx, gz, 1310 + i);
+                    var metal = WMask(_a.lampMetal ? _a.lampMetal : _a.fixtureHousing, m);
+                    if (v < 0.07f) Sprinkler(WMask(_a.ceilingTile, m), c, true);
+                    else if (v < 0.15f && MaterialMaps.Plenum)
+                    {
+                        Sprinkler(metal, c, false);
+                        Saw(c, Vector3.down, "sprinkler_bare");
+                        WMask(MaterialMaps.Plenum, m).Disc(c - Vector3.up * 0.0006f, 0.027f, 12, Vector3.down, MeshWriter.MetreUV);
+                    }
+                    else Sprinkler(metal, c, true);
+                }
                 return;
             }
             if (Dice(gx, gz, 210 + i) < 0.012f && _a.fixtureHousing)
@@ -103,11 +128,14 @@ namespace Backrooms.Generation
                               c + new Vector3((Dice(gx, gz, 211 + i) - 0.5f) * 0.25f, 0f, (Dice(gx, gz, 212 + i) - 0.5f) * 0.25f));
         }
 
-        static void Sprinkler(MeshWriter w, Vector3 p)
+        static void Sprinkler(MeshWriter w, Vector3 p, bool ring)
         {
             var MU = (MeshWriter.UVProjector)MeshWriter.MetreUV;
-            w.Frustum(p - Vector3.up * 0.004f, 0.036f, 0.038f, 0.004f, 12, true, MU);       // the escutcheon
-            w.Disc(p - Vector3.up * 0.004f, 0.036f, 12, Vector3.down, MU);
+            if (ring)
+            {
+                w.Frustum(p - Vector3.up * 0.004f, 0.036f, 0.038f, 0.004f, 12, true, MU);   // the escutcheon
+                w.Disc(p - Vector3.up * 0.004f, 0.036f, 12, Vector3.down, MU);
+            }
             w.Frustum(p - Vector3.up * 0.034f, 0.007f, 0.011f, 0.03f, 8, true, MU);         // the body
             w.Box(p - Vector3.up * 0.022f, new Vector3(0.026f, 0.024f, 0.004f), 1 | 2 | 4 | 16 | 32, MU);   // the frame
             w.Disc(p - Vector3.up * 0.038f, 0.017f, 10, Vector3.down, MU);                   // the deflector

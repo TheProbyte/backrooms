@@ -1,5 +1,12 @@
 # Plan: the next realism pass (2026-10-29)
 
+**Status (2026-10-29):** built: sections 1 (dirt), 3 (walls and wallpaper), 4 (ceilings), 5 (floors) and 7 (light and
+air), described in WorldGeneration.md, "Realism pass". Not built: section 2 (the leak story) and section 6 (things on
+walls and in rooms), held back on purpose; from 3, the pattern out of line at a seam and cracked or missing outlet
+plates; from 4, a bent grid runner; from 5, frayed carpet edges. The world's look has no baseboards
+(`OfficeBiomeAssets.noBaseboard`), so the baseboard wear in 3 is built but never seen. F5 > PLACES > WEAR AND DETAIL
+jumps to the nearest of each of the rarer kinds.
+
 Same idea as the wear and office details already in the world (WorldGeneration.md, "Wear and neglect", "Office
 details"): small signs of age and use, decided by the seed and the cell (the same every visit, from either chunk), cheap
 (overlays and a few hundred triangles a chunk), and rare. Most cells stay plain; one in twenty or so has something. The

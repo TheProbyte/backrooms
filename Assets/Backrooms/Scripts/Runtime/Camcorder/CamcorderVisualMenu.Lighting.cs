@@ -93,6 +93,10 @@ namespace Backrooms.Camcorder
             Section("AIR", "Dust and haze in the air, lit by the lights: glow round fixtures, lit air in bright rooms, dark rooms stay clear.");
             Slider("Haze", "How thick the air is. Light hangs in it near the fixtures and in lit rooms; distant rooms soften. 0 is perfectly clear.",
                 0f, 1f, "0.00", "", () => O().haze, Look(v => O().haze = v));
+            Slider("Settled dust", "Dust settled on everything that faces up: desks and tables, the tops of baseboards, door headers, boxes, light fittings. Patchy, never on the floor itself. 0 is spotless.",
+                0f, 2f, "0.00", "x", () => O().surfaceDust, v => { O().surfaceDust = v; O().Save(); });
+            Slider("Dust in the air", "Motes drifting in the air, seen only where a ceiling light shines down through them. Very faint. 0 is clean air.",
+                0f, 3f, "0.00", "x", () => O().airDust, v => { O().airDust = v; O().Save(); });
 
             Section("CAMERA", "The camcorder's own response (the same settings as the CAMERA tab, saved with the camera).");
             Slider("Exposure bias", "How bright the camera wants the picture, in stops. The auto-iris then aims for that.",

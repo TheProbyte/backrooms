@@ -147,6 +147,47 @@ the same from either chunk), and costs almost nothing: a few hundred triangles a
 - **Carpet**: coffee spills (1.8 % of cells: a round stain with a darker dried rim, sometimes drips) and an aluminium
   threshold strip across any opening where the floor changes (drawn once per edge).
 
+### Realism pass (2026-10-29, Docs/RealismPlan.md)
+
+Seeded like the wear (world seed and cell), so a place looks the same each visit and from either chunk. Marks are
+`WallWear` / `FloorWear` overlay quads (Backrooms/FloorWear: its blotches now vary with height too, and a flat mode for
+carpet tiles); a few things are geometry in the walls', floor's and ceiling's own materials. Strengths are tuned to read
+through the camcorder's soft picture (half as strong did not show).
+
+- **Dirt** (`.Grime.cs`): every wall darker in its bottom 32 cm, fading up; inside corners darker floor to ceiling; a
+  dust line along the top of each wall and on the ceiling beside it (not where the ceiling slopes or is open); a
+  grubby patch at hand height beside 60 % of doorways and round 70 % of light switches; chipped paint on the edges of
+  openings (the board shows through wallpaper, grey plaster through paint); the dark halo round supply diffusers.
+  Strengths drift smoothly over the world (`Smear`), and a wall's band never changes at a room's edge (an open plan
+  is several rooms along one wall). **Settled dust** on everything that faces up (desks, boxes, door headers, light
+  housings) is Backrooms/Lit's own: `_BRDust`, a uniform (no new variant), never on a storey's floor itself or on the
+  player's body (`FirstPersonBody.NoDust`: a negative detail-albedo scale). F5 > LIGHT > AIR > Settled dust.
+- **Walls and wallpaper** (`.Paper.cs`): a faint seam every 53 cm roll on the world's grid along each wall line (10 %
+  opened up a little); bubbles in 2.5 % of papered faces (domes of the paper itself, its pattern running over them);
+  a long strip come away from the top in 1.2 % (bending out up to 125 degrees, its back plain, the bare board and old
+  paste behind); a repair patch hung out of line with the pattern (2 %, never with bubbles). Painted walls: roller marks
+  (35 %), drip runs (4 %), paint scraped at desk height (6 %), newer brighter paint over a repair (2.5 %,
+  `MaterialMaps.PaintFresh`). Plates: 12 % painted over on painted walls, 6 % hanging crooked (the switch's toggle
+  too). Baseboards (when the look has them): pulled off along part of a wall, a piece missing, caulk cracked.
+- **Ceilings** (`.CeilingWear.cs`): whole tiles from other batches, a shade whiter or greyer (in patches where a run
+  was replaced, now and then alone; `CeilingBatchA/B`, the tile's texture kept); 0.6 % of tiles with a round hole where
+  a fitting was taken out (the space above built behind it); 0.6 % with an edge dropped (a cross tee missing); 2.5 % of
+  square lights hanging askew (one side 6-10 degrees down, the dark above in the gap); 2 % with a cracked lens; 5 %
+  with a yellowed lens (dimmer, warmer light: `LightSource.tint`, multiplied into the light's colour by the grid and the
+  real lights; old pink tubes now tint their light too); 7 % of sprinklers painted over, 8 % missing their ring.
+- **Floors** (`.FloorMarks.cs`): where a desk or cabinet stood (1.4 % of carpet cells: four dents and a dirt line round
+  a clean patch); 16 % of rooms (not hallways) in 60 cm carpet tiles, decided per room for the whole district (laid
+  quarter-turned: a checker of two shades, seams; 0.8 % replaced from another lot, turned; 0.4 % gone, the concrete and
+  old glue in trowel lines and the neighbours' cut edges); rust rings, cigarette burns, a dark patch just inside 12 %
+  of doorways; fine scratches on hard floors.
+- **Light and air** (`.Air.cs`, `AirDust.cs`): 5 % of square lights have slightly green tubes and 4 % cooler ones (lens
+  and light); dust motes drift in a 7 m box round the camera, shown only in the light under the eight nearest lit
+  fixtures (Backrooms/AirDust; F5 > LIGHT > AIR > Dust in the air); 30 % of return grilles have a strand or two of
+  cobweb hanging off their frame, swaying in the draught (`CobwebSway`, only while drawn).
+- **Finding them**: chunks note where they put the rarer ones (`RealismSightings`, published as each chunk is made);
+  F5 > PLACES > WEAR AND DETAIL takes you to the nearest of a kind among the places built so far, in front of a wall,
+  beside a thing on the floor or below one on the ceiling; press again for the next.
+
 ### Height and depth (world version 14, Docs/WorldDepthPlan.md)
 `DepthPlan` (its own dice) runs on the district plan once the rooms are joined up (`Apply`) and once at the end
 (`Chamfers`); `OfficeChunkBuilder.Depth.cs` builds it. Rooms have a floor height (`Room.floor`) and a feature

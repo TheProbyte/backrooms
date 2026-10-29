@@ -49,7 +49,7 @@ namespace Backrooms.Generation
         bool WallWriter(Material m) =>
             m == MaterialMaps.For(_a.wallpaper) || m == MaterialMaps.For(_a.paintedWall) || m == MaterialMaps.For(_a.referenceCream) ||
             m == MaterialMaps.For(_a.referenceOlive) || m == MaterialMaps.For(_a.baseboard) || m == MaterialMaps.For(_a.halfWallCap) ||
-            m == _a.wallpaper || m == _a.baseboard;
+            m == _a.wallpaper || m == _a.baseboard || (MaterialMaps.PaintFresh && m == MaterialMaps.PaintFresh);
 
         /// <summary>After <see cref="BuildData"/> for the same chunk: puts this builder's walls and colliders into the loaded chunk.</summary>
         public void ReplaceWalls(GameObject root)

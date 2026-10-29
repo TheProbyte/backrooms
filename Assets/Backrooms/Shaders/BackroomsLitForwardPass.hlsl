@@ -8,6 +8,30 @@
 float4 _PortalClipPlane; // zero outside an explicit portal-camera render
 #include "Assets/Backrooms/Shaders/BackroomsLook.hlsl"     // Backrooms: rectangular panels, soft and contact shadows, haze
 
+// Backrooms: dust settled on what faces up (baseboard tops, door headers, desks, boxes, the tops of fittings), set by
+// GraphicsController. x: strength (0 = none), y: the storey pitch, z: set (1). A uniform branch, no shader variant. Not on
+// the floor itself (the first 3.5 cm above each storey's floor, and below it, for sunken floors and ramps) and not on
+// materials whose detail-albedo scale is negative (the player's body and camcorder: unused without a detail map).
+float4 _BRDust;
+float BR_DustHash(float2 p) { p = frac(p * float2(123.34, 456.21)); p += dot(p, p + 45.32); return frac(p.x * p.y); }
+float BR_DustNoise(float2 p)
+{
+    float2 i = floor(p), f = frac(p);
+    float2 u = f * f * (3.0 - 2.0 * f);
+    return lerp(lerp(BR_DustHash(i), BR_DustHash(i + float2(1, 0)), u.x), lerp(BR_DustHash(i + float2(0, 1)), BR_DustHash(i + 1), u.x), u.y);
+}
+void BR_SurfaceDust(inout SurfaceData s, float3 P, half3 N)
+{
+    if (_BRDust.x <= 0.0 || _DetailAlbedoMapScale < 0.0 || N.y < 0.55) return;
+    float local = P.y - floor(P.y / max(_BRDust.y, 1.0) + 1e-4) * max(_BRDust.y, 1.0);
+    if (local < 0.035 || local > 6.6) return;
+    half up = saturate((N.y - 0.55) / 0.4);
+    float n = BR_DustNoise(P.xz * 3.1) * 0.6 + BR_DustNoise(P.xz * 17.0) * 0.4;
+    half k = saturate(_BRDust.x * up * up * (0.2 + 0.8 * n) * 0.28);
+    s.albedo = lerp(s.albedo, half3(0.6, 0.58, 0.54), k);
+    s.smoothness *= 1.0 - saturate(k * 2.5);
+}
+
 #if defined(LOD_FADE_CROSSFADE)
     #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/LODCrossFade.hlsl"
 #endif
@@ -548,6 +572,7 @@ void LitPassFragment(
     ApplyDecalToSurfaceData(input.positionCS, surfaceData, inputData);
 #endif
 
+    BR_SurfaceDust(surfaceData, inputData.positionWS, inputData.normalWS);              // Backrooms: dust on what faces up
     InitializeBakedGIData(input, inputData);
     inputData.bakedGI += BackroomsLightGrid(inputData.positionWS, inputData.normalWS);   // Backrooms: light grid
 

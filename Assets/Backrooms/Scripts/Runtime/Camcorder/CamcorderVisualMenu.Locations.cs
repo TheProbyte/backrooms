@@ -129,6 +129,7 @@ namespace Backrooms.Camcorder
             }));
 
             BuildDepthLocations();
+            BuildRealismLocations();
 
             Section("TESTING", "Stand next to the nearest crawl space (its vent: crawl in with Ctrl) or the nearest noclip door (the taped outline: walk into the wall). Searches about 10 districts around you; press again for the next nearest.");
             var rt = BtnRow(_list);
