@@ -815,9 +815,9 @@ namespace Backrooms.Generation
                 }
                 if (!wall && !header) continue;
 
-                // (face bit, cell it faces)
-                var faces = new (int bit, int cx, int cz)[] { (1, x - 1, z), (2, x, z), (16, x, z - 1), (32, x, z) };
-                foreach (var (bit, cx, cz) in faces)
+                // (face bit, cell it faces, the other cell its face stands beside)
+                var faces = new (int bit, int cx, int cz, int ox, int oz)[] { (1, x - 1, z, x - 1, z - 1), (2, x, z, x, z - 1), (16, x, z - 1, x - 1, z - 1), (32, x, z, x - 1, z) };
+                foreach (var (bit, cx, cz, ox, oz) in faces)
                 {
                     if (!_L.InChunk(cx, cz)) continue;          // the neighbouring chunk emits this face
                     var room = _L.RoomAt(cx, cz);
@@ -830,6 +830,13 @@ namespace Backrooms.Generation
                     {
                         // Carried down into a basin, or to a sunken room's floor.
                         float FB = Pool && _L.Basin(cx, cz) ? -PoolBiome.BasinDepth : Mathf.Min(0f, room.ramp != 0 ? _L.FloorOf(room, x, z) : room.floor);
+                        // (A face spans the line between two cells: at a sunken room's doorway the other one is lower, and
+                        // the face stopping at this one's floor left a slot down into the dark.)
+                        if (!Pool && _L.InChunk(ox, oz))
+                        {
+                            var other = _L.RoomAt(ox, oz);
+                            FB = Mathf.Min(FB, other.ramp != 0 ? _L.FloorOf(other, x, z) : other.floor);
+                        }
                         w.Box(new Vector3(x * C, (FH + FB) * 0.5f, z * C), new Vector3(T, FH - FB, T), bit, Pool ? MeshWriter.MetreUV : MeshWriter.WallUV);
                         if (!NoBaseboard) WMask(_a.baseboard, pm).Box(new Vector3(x * C, room.floor + BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit, MeshWriter.MetreUV);
                     }

@@ -130,7 +130,7 @@ namespace Backrooms.Camcorder
                         int len = r.rampCells > 0 ? r.rampCells : (r.ramp <= 2 ? f.width : f.height);
                         // (Inside the room: a ramp as long as its hallway put you past its end, in the wall or the next room.)
                         float roomLen = r.ramp <= 2 ? f.width : f.height;
-                        float top = Mathf.Min(r.rampCells > 0 ? len + 0.6f : len - 0.6f, roomLen - 0.45f);
+                        float top = Mathf.Min(r.rampCells > 0 ? r.rampStart + len + 0.6f : len - 0.6f, roomLen - 0.45f);
                         float cx = f.center.x, cz = f.center.y;
                         Vector2 at, low;
                         switch (r.ramp)

@@ -93,12 +93,20 @@ namespace Backrooms.Generation
                 }
                 float depth = Depths[rng.Next(Depths.Length)];
                 // A hallway at the wing's end may slope down into it instead (a ramp, no steps at that end).
-                byte rampDir = 0;
-                int ramp = rng.NextDouble() < 0.6 ? TryRamp(L, wing, depth, out rampDir) : -1;
-                if (ramp >= 0) wing.Add(ramp);
-                if (!PlaceSteps(L, wing, ramp, out var steps)) continue;
+                byte rampDir = 0; int rampStart = 0;
+                int ramp = rng.NextDouble() < 0.9 ? TryRamp(L, wing, depth, out rampDir, out rampStart) : -1;
+                if (ramp >= 0)
+                {
+                    wing.Add(ramp);
+                    // Its slope known now: PlaceSteps puts steps at the wing's doorways onto its flat part.
+                    var rr = L.rooms[ramp]; rr.ramp = rampDir; rr.rampCells = RampCells(depth); rr.rampStart = rampStart; rr.floor = -depth;
+                }
                 // At least one way in (a sealed wing would never be reached).
-                if (steps.Count == 0 && ramp < 0) continue;
+                if (!PlaceSteps(L, wing, ramp, depth, out var steps) || (steps.Count == 0 && ramp < 0))
+                {
+                    if (ramp >= 0) { var rr = L.rooms[ramp]; rr.ramp = 0; rr.rampCells = 0; rr.rampStart = 0; rr.floor = 0f; }
+                    continue;
+                }
                 foreach (int id in wing) { L.rooms[id].floor = -depth; L.rooms[id].feature = RoomFeature.Sunken; }
                 if (ramp >= 0) { L.rooms[ramp].ramp = rampDir; L.rooms[ramp].rampCells = RampCells(depth); }
                 if (L.steps == null) { L.steps = new sbyte[L.N, L.N]; for (int x = 0; x < L.N; x++) for (int z = 0; z < L.N; z++) L.steps[x, z] = -1; }
@@ -123,7 +131,7 @@ namespace Backrooms.Generation
 
         /// <summary>Every passable edge out of the wing as (cell x, cell z, side); false if a cell would need two flights. (A ramp
         /// has none: it rises to the storey's floor at its far end.)</summary>
-        static bool PlaceSteps(OfficeLayout L, HashSet<int> wing, int ramp, out List<Vector3Int> steps)
+        static bool PlaceSteps(OfficeLayout L, HashSet<int> wing, int ramp, float depth, out List<Vector3Int> steps)
         {
             steps = new List<Vector3Int>();
             foreach (int id in wing)
@@ -137,7 +145,10 @@ namespace Backrooms.Generation
                     for (int s = 0; s < 4; s++)
                     {
                         int nx = x + DX[s], nz = z + DZ[s];
-                        if (!L.InChunk(nx, nz) || wing.Contains(L.roomOf[nx, nz]) || !OfficeLayout.IsPassable(L.EdgeOf(x, z, s))) continue;
+                        if (!L.InChunk(nx, nz) || !OfficeLayout.IsPassable(L.EdgeOf(x, z, s))) continue;
+                        // The wing's own rooms need no steps; nor does the ramp where it is down at the wing's floor.
+                        if (wing.Contains(L.roomOf[nx, nz]) && (L.roomOf[nx, nz] != ramp
+                            || L.FloorOf(L.rooms[ramp], x + 0.5f + DX[s] * 0.5f, z + 0.5f + DZ[s] * 0.5f) < -depth + MaxLip + 1e-4f)) continue;
                         if (found >= 0) return false;
                         found = s;
                     }
@@ -167,9 +178,9 @@ namespace Backrooms.Generation
         /// the ramp's length of that end opens into the wing (at most MaxLip below the ramp's floor there), and at least one
         /// past it opens out to a walkable room (the floor flat at the storey's floor there). Its id, or -1.
         /// </summary>
-        static int TryRamp(OfficeLayout L, HashSet<int> wing, float depth, out byte dir)
+        static int TryRamp(OfficeLayout L, HashSet<int> wing, float depth, out byte dir, out int start)
         {
-            dir = 0;
+            dir = 0; start = 0;
             var tried = new HashSet<int>();
             foreach (int id in wing)
             {
@@ -182,21 +193,23 @@ namespace Backrooms.Generation
                         if (!L.InChunk(nx, nz) || wing.Contains(L.roomOf[nx, nz]) || !OfficeLayout.IsPassable(L.EdgeOf(x, z, s))) continue;
                         var h = L.rooms[L.roomOf[nx, nz]];
                         if (!tried.Add(h.id)) continue;
-                        if (RampOk(L, h, wing, depth, out dir)) return h.id;
+                        if (RampOk(L, h, wing, depth, out dir, out start)) return h.id;
                     }
             }
             return -1;
         }
 
-        static bool RampOk(OfficeLayout L, Room h, HashSet<int> wing, float depth, out byte dir)
+        static bool RampOk(OfficeLayout L, Room h, HashSet<int> wing, float depth, out byte dir, out int start)
         {
-            dir = 0;
+            dir = 0; start = 0;
             if (h.kind != RoomKind.Hallway || !Ordinary(L, h)) return false;
             var rc = h.rect;
-            if (!(rc.xMin > 0 && rc.yMin > 0 && rc.xMax < L.N && rc.yMax < L.N)) return false;
             bool alongX = rc.width > rc.height;
             int width = alongX ? rc.height : rc.width, length = alongX ? rc.width : rc.height, need = RampCells(depth);
             if (width > 2 || length < need + 1) return false;
+            // The slope may start some cells in from the low end (level with the wing until then), where the wing's doorway
+            // is a cell or two along the hallway's side rather than at its end.
+            for (int s0 = 0; s0 + need < length; s0++)
             for (int end = 0; end < 2; end++)
             {
                 bool ok = true, touch = false, farOut = false;
@@ -205,28 +218,39 @@ namespace Backrooms.Generation
                     for (int k = 0; k < 4 && ok; k++)
                     {
                         int nx = x + DX[k], nz = z + DZ[k];
-                        if (!L.InChunk(nx, nz) || L.roomOf[nx, nz] == h.id || !OfficeLayout.IsPassable(L.EdgeOf(x, z, k))) continue;
-                        // Cells from the low end, and the doorway's middle from the low end's line.
+                        // Cells from the low end, and the doorway's middle from the low end's line (less where the slope starts).
                         int u = alongX ? (end == 0 ? x - rc.xMin : rc.xMax - 1 - x) : (end == 0 ? z - rc.yMin : rc.yMax - 1 - z);
                         bool endSide = alongX ? k < 2 : k >= 2;
                         bool towardLow = endSide && (end == 0 ? (k == 0 || k == 2) : (k == 1 || k == 3));
                         bool towardHigh = endSide && !towardLow;
-                        float at = towardLow ? u : towardHigh ? u + 1f : u + 0.5f;
-                        bool inWing = wing.Contains(L.roomOf[nx, nz]);
-                        if (at < need)
+                        float at = (towardLow ? u : towardHigh ? u + 1f : u + 0.5f) - s0;
+                        if (!L.InChunk(nx, nz))
                         {
-                            if (!inWing || depth * at / need > MaxLip + 1e-4f) { ok = false; break; }
-                            touch = true;
+                            // Out of the district (a room of the next one, at the storey's floor): only where the ramp is up.
+                            if (OfficeLayout.IsPassable(L.EdgeOf(x, z, k)) && at < need) ok = false;
+                            continue;
+                        }
+                        if (L.roomOf[nx, nz] == h.id || !OfficeLayout.IsPassable(L.EdgeOf(x, z, k))) continue;
+                        bool inWing = wing.Contains(L.roomOf[nx, nz]);
+                        if (inWing)
+                        {
+                            // Near the low end: level with the wing. Past the ramp: the wing's steps come up to it.
+                            if (at < need && depth * Mathf.Max(at, 0f) / need > MaxLip + 1e-4f) { ok = false; break; }
+                            if (at < need) touch = true;
                         }
                         else
                         {
-                            if (inWing) { ok = false; break; }
-                            if (L.rooms[L.roomOf[nx, nz]].Walkable) farOut = true;
+                            // Any other doorway where the ramp is already within a lip of that room's floor.
+                            var o = L.rooms[L.roomOf[nx, nz]];
+                            float here = -depth * Mathf.Clamp01(1f - at / need);
+                            if (Mathf.Abs(here - o.floor) > MaxLip + 1e-4f || o.ramp != 0) { ok = false; break; }
+                            if (o.Walkable && Mathf.Abs(o.floor) < 0.001f) farOut = true;
                         }
                     }
                 if (!ok || !touch || !farOut) continue;
                 // It rises toward the far end.
                 dir = (byte)(alongX ? (end == 0 ? 1 : 2) : (end == 0 ? 3 : 4));
+                start = s0;
                 return true;
             }
             return false;

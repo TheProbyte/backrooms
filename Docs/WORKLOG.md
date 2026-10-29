@@ -15,6 +15,18 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-29 21:30  Claude Code  Second look: light leaking under walls, ramps that never appeared, a slot beside stairs, mezzanine stair, blotches by battens
+- Shaders/LightGridSample.hlsl: LGrid_EmitterVisibleH checks every wall piece the cone to a tube reaches along a cell
+  line (was one each side): tubes 0.6 m past a wall lit a dark pit room's floor in curved streaks.
+- DepthPlan: ramps allowed with wing doorways past the ramp (steps up to its flat part, PlaceSteps) and other doorways
+  where the ramp is within a lip of that room's floor (seed 553893173 had no ramp in 81 districts).
+- OfficeChunkBuilder: post faces carried down to the lower of their two floors; mezzanine stair boxes closed but for the
+  wall side; Rebuild: light fitting housings no longer cast shadows.
+- Checked: the user's seed (553893173) in World 3 (erased after) at each of their four spots; see the commit for what
+  was looked at again after the fixes.
+
+---
+
 ## 2026-10-29 19:30  Claude Code  Realism and depth fixes after the first look; HOW OFTEN settings; every sound in the Sound tab
 - Dirt (Generation/OfficeChunkBuilder.Grime.cs): patchy, fainter grime low on walls with shoe scuffs (the even band read
   as a shadow); lighter corners. Paper.cs: no roller marks, no fresh-paint patches (looked like glitches).

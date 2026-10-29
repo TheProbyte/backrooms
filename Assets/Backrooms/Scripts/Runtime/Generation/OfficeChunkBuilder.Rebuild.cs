@@ -31,6 +31,7 @@ namespace Backrooms.Generation
             bool caster = !architecture && mat != _a.lensOn && mat != _a.lensOff && !MaterialMaps.IsTroffer(mat) && !MaterialMaps.IsCeilingVariant(mat) && mat != _a.ceilingGrid && mat != _a.carpet && mat != _a.ceilingTile && mat != _a.lampShadeOn
                           && mat != _a.domeOn && mat != _a.domeOff && mat != _a.ceilingPlaster && mat != _a.stripOn && mat != _a.stripOff
                           && mat != _a.referenceCarpet && mat != _a.cardboard && mat != _a.boxTape && mat != _a.boxPrint && mat != _a.rackUpright && mat != _a.rackBeam && mat != _a.pallet
+                          && mat != _a.fixtureHousing                 // light fittings: black blotches on the wall or header beside them
                           && !WallPlateModels.IsPlate(mat);   // warehouse dressing: proxies cast the shadows
             r.shadowCastingMode = mask == ProxyMask || mask == WallProxyMask ? ShadowCastingMode.ShadowsOnly : caster ? ShadowCastingMode.On : ShadowCastingMode.Off;
             if (Pool) r.shadowCastingMode = ShadowCastingMode.Off;      // the Poolrooms' sun is traced in the shader, not shadow-mapped

@@ -502,8 +502,10 @@ half LGrid_EmitterVisibleH(float3 P, float3 N, float3 L, float2 halfSize, bool s
         // The cone to the panel meets this cell line over about t x hw / |sin| of the angle between them: the wall piece
         // crossed, and the next ones along the line when the cone reaches them.
         float local = (stepX ? (p.y + toL.y * t) : (p.x + toL.x * t)) / LG_CELL - (stepX ? owner.y : owner.x);
-        float span = t * hw / max(stepX ? abs(along.x) : abs(along.y), 0.2) / LG_CELL;
-        int first = local < span ? -1 : 0, last = 1.0 - local < span ? 1 : 0;
+        // (Seen along a wall, close to it, the cone meets the wall's line over several cells: with one piece each side the
+        // rest of a tube past that wall counted as seen, curved streaks of light on the floor of a dark room beside it.)
+        float span = t * hw / max(stepX ? abs(along.x) : abs(along.y), 0.05) / LG_CELL;
+        int first = -min((int)ceil(max(span - local, 0.0)), 8), last = min((int)ceil(max(span - (1.0 - local), 0.0)), 8);
         float aCross = t * D;
         [loop] for (int k = first; k <= last && !done; k++)
         {

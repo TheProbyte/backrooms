@@ -214,6 +214,26 @@ through the camcorder's soft picture (half as strong did not show).
   jolt spring (`HandheldCameraShake`) is stepped at 120 Hz at most: one long frame while chunks loaded after a teleport
   blew it up and left the camera on its side with the arms torn, which was the "ramp teleport glitch".
 
+### Height and depth: second look (2026-10-29)
+
+- **Ramps** were almost never placed (none in 81 districts of one seed): every doorway within the ramp's length had to
+  open into the wing. Now a doorway from the wing past the ramp gets the wing's ordinary steps up to the ramp's flat
+  part (PlaceSteps knows the ramp's slope), a doorway into any other room is allowed where the ramp is within a lip of
+  that room's floor, the slope may start some cells in (`Room.rampStart`: level with the wing until then, for a wing
+  doorway a cell or two along the hallway's side), a hallway may touch the district's edge where the ramp is up, and a
+  wing tries for a ramp 90 % of the time (was 60 %). That seed now has 3 within 4 districts; still uncommon.
+- **Posts at a sunken doorway**: each face of a post is carried down to the lower of the two floors it stands between
+  (it stopped at the higher one, a black slot beside the top step).
+- **Mezzanine stairs** close every side but the wall's (the tallest step's back is seen from under the deck).
+- **Light fittings** (`fixtureHousing`) cast no shadows: a batten hung beside a header left black blotches on it.
+- **Tube lights through walls** (LightGridSample.hlsl, `LGrid_EmitterVisibleH`): the wall pieces checked along a cell
+  line now cover the whole cone to the panel (up to 8 cells each way), not one each side; seen along a wall, close to it,
+  the rest of a tube on the other side counted as seen. That alone did not stop the streaks of light on the floor of a
+  dark room beside a lit hallway: BackroomsLitForwardPass now also drops a part-seen panel whose middle and both ends are
+  behind walls (three point tests, only for part-seen panels).
+- Not fixed: in tall halls lit by hanging battens the wall above the battens gets no direct light (they shine down only),
+  and where a pillar meets the top of such a wall the light grid gives it near black. Light grid sampling, not the wear.
+
 ### Height and depth (world version 14, Docs/WorldDepthPlan.md)
 `DepthPlan` (its own dice) runs on the district plan once the rooms are joined up (`Apply`) and once at the end
 (`Chamfers`); `OfficeChunkBuilder.Depth.cs` builds it. Rooms have a floor height (`Room.floor`) and a feature

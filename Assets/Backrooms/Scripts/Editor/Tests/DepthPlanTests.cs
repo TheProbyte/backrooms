@@ -100,7 +100,7 @@ namespace Backrooms.Tests
                 bool alongX = r.ramp <= 2;
                 float length = (r.rampCells > 0 ? r.rampCells : (alongX ? rc.width : rc.height)) * C;
                 Assert.That(-r.floor / length, Is.LessThanOrEqualTo(DepthPlan.MaxSlope + 1e-4f), "slope");
-                Assert.That(r.rampCells, Is.LessThanOrEqualTo(alongX ? rc.width : rc.height), "the ramp fits its hallway");
+                Assert.That(r.rampStart + r.rampCells, Is.LessThanOrEqualTo(alongX ? rc.width : rc.height), "the ramp fits its hallway");
                 for (int x = rc.xMin; x < rc.xMax; x++)
                 for (int z = rc.yMin; z < rc.yMax; z++)
                 {
@@ -109,6 +109,7 @@ namespace Backrooms.Tests
                     {
                         int nx = x + DX[s], nz = z + DZ[s];
                         if (!L.InChunk(nx, nz) || L.roomOf[nx, nz] == r.id || !OfficeLayout.IsPassable(L.EdgeOf(x, z, s))) continue;
+                        if (L.StepSide(nx, nz) == (s ^ 1)) continue;          // the wing's steps come up to the ramp's flat part
                         // Every doorway meets a floor at the ramp's own height there.
                         float ex = x + 0.5f + DX[s] * 0.5f, ez = z + 0.5f + DZ[s] * 0.5f;
                         Assert.AreEqual(L.FloorOf(r, ex, ez), L.FloorOf(L.RoomAt(nx, nz), ex, ez), DepthPlan.MaxLip + 1e-3f, $"{L.coord}: a ramp's doorway at ({x}, {z}) side {s}");

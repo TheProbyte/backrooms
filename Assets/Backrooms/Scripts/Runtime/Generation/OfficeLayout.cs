@@ -60,6 +60,8 @@ namespace Backrooms.Generation
         public byte ramp;
         /// <summary>How many cells from its low end a ramp takes to rise to the storey's floor (0: the whole room); flat after.</summary>
         public int rampCells;
+        /// <summary>How many cells from its low end a ramp stays level with the wing before it starts to rise.</summary>
+        public int rampStart;
         /// <summary>
         /// A ceiling that comes down (DepthPlan): over the last <see cref="ceilCells"/> cells toward one end of the room it
         /// slopes from <see cref="ceiling"/> to <see cref="ceilLow"/> at that end: 0 none, the end it comes down toward: 1 +X,
@@ -75,7 +77,7 @@ namespace Backrooms.Generation
             if (ramp == 0) return floor;
             var f = fullRect;
             // Cells from the low end, over the ramp's length.
-            float u = ramp == 1 ? dx - f.xMin : ramp == 2 ? f.xMax - dx : ramp == 3 ? dz - f.yMin : f.yMax - dz;
+            float u = (ramp == 1 ? dx - f.xMin : ramp == 2 ? f.xMax - dx : ramp == 3 ? dz - f.yMin : f.yMax - dz) - rampStart;
             float len = rampCells > 0 ? rampCells : (ramp <= 2 ? f.width : f.height);
             return Mathf.Lerp(floor, 0f, Mathf.Clamp01(u / len));
         }
@@ -95,7 +97,7 @@ namespace Backrooms.Generation
         {
             id = newId, globalId = globalId, rect = newRect, fullRect = fullRect, kind = kind, lights = lights, color = color,
             ceiling = ceiling, painted = painted, wallFinish = wallFinish, floorFinish = floorFinish, landmark = landmark, openAbove = openAbove, noFloor = noFloor, noDoors = noDoors, role = role, custom = custom, spiral = spiral,
-            floor = floor, feature = feature, chamfers = chamfers, ramp = ramp, rampCells = rampCells, ceilDrop = ceilDrop, ceilLow = ceilLow, ceilCells = ceilCells,
+            floor = floor, feature = feature, chamfers = chamfers, ramp = ramp, rampCells = rampCells, rampStart = rampStart, ceilDrop = ceilDrop, ceilLow = ceilLow, ceilCells = ceilCells,
         };
     }
 

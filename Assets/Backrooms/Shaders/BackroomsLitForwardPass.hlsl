@@ -420,6 +420,15 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
             if (dot(energy, energy) < 1e-10 || !LGrid_FixtureMayReach(fixture, inputData.positionWS)) continue;
             if (!BR_InShadowCone(fixture, inputData.positionWS)) continue;   // outside its shadow map: BackroomsDistantPBR
             seen = LGrid_EmitterVisibleH(inputData.positionWS, inputData.normalWS, fixture.pos, fixture.halfSize, shadowMapped);
+            // A part-seen panel whose middle and both ends are behind walls is not seen at all: the panel walk left thin
+            // lines of light on the floor of a dark room beside a lit hallway (a tube 0.6 m past the wall).
+            [branch] if (seen > 0 && seen < 0.999)
+            {
+                float3 ax = fixture.halfSize.x >= fixture.halfSize.y ? float3(fixture.halfSize.x, 0, 0) : float3(0, 0, fixture.halfSize.y);
+                if (LGrid_LightVisibleH(inputData.positionWS, inputData.normalWS, fixture.pos, shadowMapped) < 0.5
+                    && LGrid_LightVisibleH(inputData.positionWS, inputData.normalWS, fixture.pos + ax * 0.95, shadowMapped) < 0.5
+                    && LGrid_LightVisibleH(inputData.positionWS, inputData.normalWS, fixture.pos - ax * 0.95, shadowMapped) < 0.5) seen = 0;
+            }
             if (seen <= 0) continue;
         }
         Light light;

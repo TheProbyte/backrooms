@@ -119,8 +119,9 @@ namespace Backrooms.Generation
                     Vector3 c = (m.AlongZ ? new Vector3(across.x, top * 0.5f, mid) : new Vector3(mid, top * 0.5f, across.z));
                     var s = m.AlongZ ? new Vector3(width, top, tread) : new Vector3(tread, top, width);
                     int risers = m.AlongZ ? (m.stairAtMax ? 32 : 16) : (m.stairAtMax ? 2 : 1);
-                    int inner = m.side == 0 ? 2 : m.side == 1 ? 1 : m.side == 2 ? 32 : 16;
-                    WMask(metal, CellMask(cx, cz)).Box(c, s, 8 | risers | inner, MeshWriter.MetreUV);
+                    int wallSide = m.side == 0 ? 1 : m.side == 1 ? 2 : m.side == 2 ? 16 : 32;
+                    // Every face but the floor's and the wall's: the tallest step's back is seen from under the deck.
+                    WMask(metal, CellMask(cx, cz)).Box(c, s, 63 & ~4 & ~wallSide, MeshWriter.MetreUV);
                     _boxes.Add((c, s));
                 }
                 // The deck, its railing and its posts.
