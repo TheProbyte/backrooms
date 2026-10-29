@@ -139,7 +139,17 @@ namespace Backrooms.Tests
                     float low = L.CeilingLowAt(x, z);
                     lowest = Mathf.Min(lowest, low);
                     if (low < r.ceiling - 0.05f)
+                    {
                         foreach (var f in L.fixtures) Assert.AreNotEqual(new Vector2Int(x, z), f.cell, "a light under a ceiling coming down");
+                        // No doorway in the hallway's sides there (it is taller than the ceiling: you saw above it).
+                        for (int s = 0; s < 4; s++)
+                        {
+                            if ((s < 2) == (rc.width > rc.height)) continue;
+                            int nx = x + DX[s], nz = z + DZ[s];
+                            if (L.InChunk(nx, nz) && L.roomOf[nx, nz] == r.id) continue;
+                            Assert.IsFalse(OfficeLayout.IsPassable(L.EdgeOf(x, z, s)), $"{L.coord}: a doorway under a ceiling coming down at ({x}, {z})");
+                        }
+                    }
                 }
                 Assert.AreEqual(1.35f, lowest, 0.01f, "the low end");
             }

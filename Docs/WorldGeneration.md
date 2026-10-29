@@ -43,6 +43,16 @@ What we call the rooms of zone 1 (Level 0), whatever biome they are in (`RoomSty
   (the conference table and its chairs are not placed).
 - **Warehouse**: the concrete-floored halls (`OfficeBiomeAssets.ConcreteFloor`): racks, pallets, boxes, as before.
 
+Floor lamps are items now (`Interaction.FloorLamp`, made with the chunk like a crawl space's loot: once picked up they
+are the player's and saved with their items). Each has a 2.5 m cord and plug: it lights only while plugged into a
+powered socket and switched on. A lamp the plan has lit gets an outlet on the wall beside it (`PlacePlates`) and is made
+with its plug in it; the others stand dark with their cord wound up. Its light is a warm point light in the shade; an
+open tube of the shade's shape casts the shade's shadow (80 %), so light comes out above and below it. Sofas and
+armchairs cast their own shadows (no box proxies, no box contact darkening).
+
+A ceiling that comes down toward a crawl slot stops short of any doorway in the hallway's side (the opening was taller
+than the ceiling there, and you saw above it).
+
 Wall clocks are not placed anywhere (nor offered in the F-menu items or the room builder's palette; custom rooms that
 have one keep the data).
 

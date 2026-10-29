@@ -1154,6 +1154,26 @@ namespace Backrooms.Generation
 
         static void PlacePlates(OfficeLayout L, System.Random rng)
         {
+            // An outlet on a wall beside each lit floor lamp (it is plugged into it: Interaction.FloorLamp).
+            float C = OfficeBiome.CellSize;
+            foreach (var p in L.props)
+            {
+                if (p.kind != PropKind.FloorLamp || !p.lit) continue;
+                int lx = Mathf.Clamp(Mathf.FloorToInt(p.position.x / C), 0, L.N - 1), lz = Mathf.Clamp(Mathf.FloorToInt(p.position.y / C), 0, L.N - 1);
+                float fx = p.position.x / C - lx, fz = p.position.y / C - lz;
+                // The nearer solid wall of the lamp's cell, and the outlet along it beside the lamp (not behind it).
+                int best = -1; float bd = 9f;
+                for (int s = 0; s < 4; s++)
+                {
+                    if (L.EdgeOf(lx, lz, s) != EdgeKind.Wall) continue;
+                    float d = s == 0 ? fx : s == 1 ? 1f - fx : s == 2 ? fz : 1f - fz;
+                    if (d < bd) { bd = d; best = s; }
+                }
+                if (best < 0) continue;
+                float along = best < 2 ? fz : fx;
+                float t = along < 0.5f ? Mathf.Min(0.85f, along + 0.4f) : Mathf.Max(0.15f, along - 0.4f);
+                L.plates.Add(new WallPlate { cell = new Vector2Int(lx, lz), side = best, t = t, height = 0.3f, roomColor = p.roomColor });
+            }
             for (int x = 0; x < L.N; x++)
             for (int z = 0; z < L.N; z++)
             {

@@ -443,8 +443,29 @@ namespace Backrooms.Generation
                         bool atEnd = toward == 1 ? nx == h.rect.xMax - 1 : toward == 0 ? nx == h.rect.xMin : toward == 3 ? nz == h.rect.yMax - 1 : nz == h.rect.yMin;
                         if (!atEnd) continue;
                         if (length < 5 || rng.NextDouble() >= L.RulesAt(h.rect).ceilingDropChance * DetailRates.Depth) continue;
+                        // Not over a doorway in the hallway's side: the opening is taller than the ceiling would be there, and
+                        // through it you saw above the ceiling. The slope stops short of the nearest one.
+                        int cells = Mathf.Min(4, length - 2);
+                        for (int u = 0; u < cells; u++)
+                        {
+                            bool door = false;
+                            for (int w = 0; w < (alongX ? h.rect.height : h.rect.width) && !door; w++)
+                            {
+                                int cx = alongX ? (toward == 1 ? h.rect.xMax - 1 - u : h.rect.xMin + u) : h.rect.xMin + w;
+                                int cz = alongX ? h.rect.yMin + w : (toward == 3 ? h.rect.yMax - 1 - u : h.rect.yMin + u);
+                                for (int k = 0; k < 4 && !door; k++)
+                                {
+                                    if ((k < 2) == alongX) continue;                                  // the sides, not the ends
+                                    int ox = cx + DX[k], oz = cz + DZ[k];
+                                    if (L.InChunk(ox, oz) && L.roomOf[ox, oz] == h.id) continue;
+                                    if (OfficeLayout.IsPassable(L.EdgeOf(cx, cz, k))) door = true;
+                                }
+                            }
+                            if (door) { cells = u; break; }
+                        }
+                        if (cells < 2) continue;
                         h.ceilDrop = (byte)(toward == 1 ? 1 : toward == 0 ? 2 : toward == 3 ? 3 : 4);
-                        h.ceilCells = Mathf.Min(4, length - 2);
+                        h.ceilCells = cells;
                         h.ceilLow = 1.35f;
                     }
             }

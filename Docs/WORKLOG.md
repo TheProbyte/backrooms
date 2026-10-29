@@ -15,6 +15,19 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 01:00  Claude Code  Floor lamps you can carry and plug in; lamp and sofa shadows; no doorway under a sloping ceiling
+- Interaction/Items/FloorLamp.cs: the living rooms' floor lamps as items (cord, plug, switch, carried by the pole); lit
+  only when plugged into a powered socket. OfficeChunkBuilder makes them with the chunk (lootId, LootRegistry); a lit one
+  starts plugged into an outlet DistrictGenerator.PlacePlates puts beside it. ItemFactory "floorlamp", F-menu item.
+- Lamp light: point light above the bulb, the shade's shadow from an open two-sided tube (the one-sided shade gave
+  moving streaks; the bulb's glass two-sided blocked all but a ring); the lit shade glows 2.2x.
+- MovableProp: sofas and armchairs cast their own mesh shadows, no box proxies, not light-grid box occluders.
+- DepthPlan.TryLowCeilings: the slope stops before a side doorway (test added).
+- Checked: EditMode 143/143; seed 553893173 in World 3 (erased after): the user's living room (lamp plugged in and lit,
+  clean cones, chairs without box shadows), the doorway at (-56.6, 411.6).
+
+---
+
 ## 2026-10-29 23:30  Claude Code  Level 0's room styles (backrooms, living rooms, warehouse), no clocks, battens light all round, no exposure bloom after a flicker
 - DistrictGenerator: RoomStyle / StyleOf (wallpaper = backrooms, painted = living room, concrete = warehouse); Furnish
   (sofas, armchairs, floor lamps) in living rooms only; lounges and meeting rooms painted; no conference tables or

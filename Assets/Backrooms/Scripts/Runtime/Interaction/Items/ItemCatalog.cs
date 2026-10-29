@@ -116,8 +116,7 @@ namespace Backrooms.Interaction
                             s.materials = new[] { board, a.boxTape ? a.boxTape : board, a.boxPrint ? a.boxPrint : board };
                         }) });
             if (a.floorLampPrefab)
-                list.Add(new Entry { name = "Floor lamp", category = "FURNITURE", clearance = 0.9f,
-                    spawn = (p, r, pv) => Static("Floor lamp", a.floorLampPrefab, p, r, pv, new Vector3(0.45f, 1.7f, 0.45f)) });
+                list.Add(new Entry { name = "Floor lamp", category = "ITEMS", clearance = 0.9f, spawn = (p, r, pv) => FloorLamp.Create(p, r).gameObject });
             return list;
         }
 

@@ -42,6 +42,9 @@ namespace Backrooms.Interaction
         }
 
         /// <summary>Builds the prop: visible parts, collider boxes, shadow proxies, a frozen rigidbody.</summary>
+        /// <summary>Props whose models cast their own shadows (no box proxies): sofas and armchairs.</summary>
+        static bool OwnShadow(MovableKind k) => k == MovableKind.Sofa || k == MovableKind.Armchair;
+
         public static MovableProp Spawn(MovableSpec spec, Transform parent, Vector3 position, Quaternion rotation)
         {
             var root = new GameObject($"{spec.kind}_{spec.id & 0xFFFF:X4}");
@@ -70,7 +73,9 @@ namespace Backrooms.Interaction
                 foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
                 {
                     r.renderingLayerMask = spec.renderMask;
-                    r.shadowCastingMode = ShadowCastingMode.Off;    // the proxies cast its shadow
+                    // Upholstery casts its own soft-edged shadow (its box proxies left square shadows on the wall behind);
+                    // everything else: the proxies cast its shadow.
+                    r.shadowCastingMode = OwnShadow(spec.kind) ? ShadowCastingMode.On : ShadowCastingMode.Off;
                     r.lightProbeUsage = LightProbeUsage.Off;
                     r.reflectionProbeUsage = ReflectionProbeUsage.Off;
                 }
@@ -85,7 +90,7 @@ namespace Backrooms.Interaction
             {
                 var bc = root.AddComponent<BoxCollider>();
                 bc.center = c; bc.size = s; bc.sharedMaterial = mat;
-                if (spec.proxyMaterial)
+                if (spec.proxyMaterial && !OwnShadow(spec.kind))
                 {
                     var px = new GameObject("ShadowProxy");
                     px.transform.SetParent(root.transform, false);
@@ -112,7 +117,8 @@ namespace Backrooms.Interaction
 
             root.transform.SetParent(parent, false);
             root.transform.SetPositionAndRotation(position, rotation);
-            root.AddComponent<LightingOccluder>();
+            // (Not upholstery: its collision boxes darkened the wall behind it in a box above its back; it casts its own shadow.)
+            if (!OwnShadow(spec.kind)) root.AddComponent<LightingOccluder>();
             root.AddComponent<Audio.ImpactSounder>();             // knocks, thumps and scraping (Audio/ImpactAudio)
             var mp = root.AddComponent<MovableProp>();
             mp.Spec = spec; mp.Shape = shape; mp.Body = rb;

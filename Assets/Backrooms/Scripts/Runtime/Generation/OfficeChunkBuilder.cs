@@ -130,7 +130,7 @@ namespace Backrooms.Generation
         public void BuildData(OfficeLayout layout, OfficeLayout[] neighbours)
         {
             _neighbours = neighbours;
-            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
+            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); _lampItems.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
             _capsules.Clear(); poolMap = null;
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
@@ -295,6 +295,19 @@ namespace Backrooms.Generation
             {
                 if (!moved || !moved.IsMoved(s.id))
                     MovableProp.Spawn(s, root.transform, s.position, Quaternion.Euler(0f, s.yaw, 0f));
+                yield return root;
+            }
+
+            // Floor lamps: a lamp picked up is the player's (saved with their items), so its chunk does not make it again.
+            foreach (var (at, yaw, lit, id) in _lampItems)
+            {
+                ulong lootId = (id * 0x9E3779B97F4A7C15ul) ^ 0x1A3Fu;
+                if (lootId == 0) lootId = 1;
+                if (Saves.LootRegistry.IsTaken(lootId)) continue;
+                var lamp = Interaction.FloorLamp.Create(_origin + at, Quaternion.Euler(0f, yaw, 0f));
+                lamp.lootId = lootId;
+                lamp.startPlugged = lit;
+                lamp.transform.SetParent(root.transform, true);
                 yield return root;
             }
 
@@ -1252,6 +1265,8 @@ namespace Backrooms.Generation
 
         /// <summary>Props the player can move (built in Instantiate, see Interaction.MovableProp).</summary>
         readonly List<MovableSpec> _movables = new List<MovableSpec>();
+        /// <summary>Floor lamps to make as items (chunk-local foot, yaw, plugged in, the prop's id).</summary>
+        readonly List<(Vector3 at, float yaw, bool lit, ulong id)> _lampItems = new List<(Vector3, float, bool, ulong)>();
 
         MovableSpec Movable(ulong id, MovableKind kind, Vector3 at, float yaw, int color)
         {
@@ -1302,8 +1317,9 @@ namespace Backrooms.Generation
                     break;
                 }
                 case PropKind.FloorLamp:
-                    Place(_a.floorLampPrefab, at, p.variant * 37f, col, null, p.lit);
-                    if (p.lit) lights.Add(new LightSource { position = _origin + at + Vector3.up * 1.5f, isLamp = true, roomLayer = LayerBit(col), faultyId = -1, room = -1 });
+                    // An item now (picked up, carried, plugged in): lit only with its plug in an outlet (one is put beside a
+                    // lamp the plan has lit: DistrictGenerator.PlacePlates). Made on the main thread with the chunk.
+                    _lampItems.Add((at, p.variant * 37f, p.lit, p.id));
                     break;
                 case PropKind.ConferenceTable:
                 {
