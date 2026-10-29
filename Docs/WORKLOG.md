@@ -22,8 +22,13 @@ Keep entries short and factual. Do not rewrite old entries.
   where the ramp is within a lip of that room's floor (seed 553893173 had no ramp in 81 districts).
 - OfficeChunkBuilder: post faces carried down to the lower of their two floors; mezzanine stair boxes closed but for the
   wall side; Rebuild: light fitting housings no longer cast shadows.
-- Checked: the user's seed (553893173) in World 3 (erased after) at each of their four spots; see the commit for what
-  was looked at again after the fixes.
+- Also: Room.rampStart (a ramp's slope may start some cells in), ramps beside the district's edge, 90 % ramp tries;
+  BackroomsLitForwardPass drops a part-seen panel whose middle and both ends are behind walls (the streaks remained
+  with the LightGridSample change alone).
+- Checked: EditMode 143/143; the user's seed (553893173) in World 3 (erased after): the dark pit room's streaks gone, the
+  slot beside the top step gone, the mezzanine stair closed, F5 RAMP finds 4 and lands upright (was none).
+- Open: the near-black top of a tall hall's wall where a pillar meets it (light grid sampling) is not fixed; turning
+  off contact shadows, SSAO, the wear overlays and fitting shadows did not change it.
 
 ---
 
