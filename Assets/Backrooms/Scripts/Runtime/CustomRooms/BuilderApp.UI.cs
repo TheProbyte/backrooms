@@ -204,8 +204,8 @@ namespace Backrooms.CustomRooms
                 case BuilderTool.Prop:
                 {
                     ImUi.Header(col.Row(24), "Prop");
-                    PropKind[] kinds = { PropKind.Box, PropKind.Pallet, PropKind.Sofa, PropKind.Armchair, PropKind.OfficeChair, PropKind.ConferenceTable, PropKind.FloorLamp, PropKind.StorageRack, PropKind.WallClock };
-                    string[] n = { "BOX", "PALLET", "SOFA", "ARMCHAIR", "OFFICE CHAIR", "TABLE", "FLOOR LAMP", "STORAGE RACK", "WALL CLOCK" };
+                    PropKind[] kinds = { PropKind.Box, PropKind.Pallet, PropKind.Sofa, PropKind.Armchair, PropKind.OfficeChair, PropKind.ConferenceTable, PropKind.FloorLamp, PropKind.StorageRack };
+                    string[] n = { "BOX", "PALLET", "SOFA", "ARMCHAIR", "OFFICE CHAIR", "TABLE", "FLOOR LAMP", "STORAGE RACK" };
                     for (int i = 0; i < kinds.Length; i++) if (ImUi.Button(col.Row(30), n[i], _propKind == kinds[i], WallProp(kinds[i]) ? "Click beside a solid wall. Drag after placing to choose another wall." : "Click the floor to place. Select and drag to move; R rotates.")) _propKind = kinds[i];
                     break;
                 }

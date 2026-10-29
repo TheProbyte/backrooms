@@ -346,10 +346,11 @@ namespace Backrooms.Generation
                 _gridLights.Add(new LightGridMath.GridLight
                 {
                     pos = pos, range = range, dir = dir,
-                    cosOuter = photometric > 0f ? 0f : Mathf.Cos(outer * 0.5f * Mathf.Deg2Rad), cosInner = photometric > 0f ? 1f : Mathf.Cos(inner * 0.5f * Mathf.Deg2Rad),
+                    // (A batten's bare tubes light all round: nothing culled by its cone, the share all round marked by k + 100.)
+                    cosOuter = c.strip ? -1f : photometric > 0f ? 0f : Mathf.Cos(outer * 0.5f * Mathf.Deg2Rad), cosInner = photometric > 0f || c.strip ? 1f : Mathf.Cos(inner * 0.5f * Mathf.Deg2Rad),
                     color = lin * gridShare, colorAll = lin * power, storey = c.chunk.y,
                     halfSize = c.isLamp ? Vector2.zero : (c.strip ? new Vector2(0.59f, 0.055f) : c.dome ? new Vector2(0.16f, 0.16f) : new Vector2(0.285f, 0.285f)) * emitterSize,
-                    padding = new Vector2(bounceRatio, photometric),
+                    padding = new Vector2(bounceRatio, photometric + (c.strip && !c.isLamp ? 100f : 0f)),
                 });
 
                 // Real light for the real share.

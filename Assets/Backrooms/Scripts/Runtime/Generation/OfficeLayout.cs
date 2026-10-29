@@ -193,6 +193,10 @@ namespace Backrooms.Generation
 
     public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock, StorageRack, Box, Pallet, Armchair, OfficeChair }
 
+    /// <summary>Level 0's kinds of room (DistrictGenerator.StyleOf): the backrooms (wallpaper), living rooms (painted,
+    /// furnished), the warehouse (concrete floors, racks).</summary>
+    public enum RoomStyle { Backrooms, LivingRoom, Warehouse }
+
     /// <summary>
     /// A crawl hole: a low square opening at the foot of a wall. The wall has a short boxed duct behind it on the other side,
     /// yet crawling in brings you out of a paired hole somewhere else (see CrawlPortals). Frames are in world space so a

@@ -31,6 +31,21 @@ Unchanged from version 3: fractal value noise with domain warp per chunk, split 
 bands (`upTo`), with rules interpolated over `transition` so areas change gradually. `maxRoomCells` (new)
 is the largest room side before a district split is forced (12 for offices, 20 for warehouse halls).
 
+### Level 0's three kinds of room (2026-10-29)
+
+What we call the rooms of zone 1 (Level 0), whatever biome they are in (`RoomStyle`, `DistrictGenerator.StyleOf`):
+
+- **Backrooms**: wallpaper and carpet, the usual halls and rooms. Bare: no lamps, no clocks, no sofas; only the odd
+  loose box.
+- **Living rooms**: painted walls and carpet, the big ones with pillars and tall ceilings. Furnished (`Furnish`):
+  sofas backed against the walls, an armchair or two, floor lamps in free corners (lounges and meeting rooms always,
+  big rooms 60 %, offices 45 %; lounges and meeting rooms are always painted now). No office chairs or tables for now
+  (the conference table and its chairs are not placed).
+- **Warehouse**: the concrete-floored halls (`OfficeBiomeAssets.ConcreteFloor`): racks, pallets, boxes, as before.
+
+Wall clocks are not placed anywhere (nor offered in the F-menu items or the room builder's palette; custom rooms that
+have one keep the data).
+
 ### Landmarks
 One landmark at most per landmark cell (`landmarkSpacing` x spacing districts): the cell's dice pick a
 district, a landmark allowed by its zone and biome, a chance roll, and a position (3 cells clear of the
@@ -231,8 +246,9 @@ through the camcorder's soft picture (half as strong did not show).
   the rest of a tube on the other side counted as seen. That alone did not stop the streaks of light on the floor of a
   dark room beside a lit hallway: BackroomsLitForwardPass now also drops a part-seen panel whose middle and both ends are
   behind walls (three point tests, only for part-seen panels).
-- Not fixed: in tall halls lit by hanging battens the wall above the battens gets no direct light (they shine down only),
-  and where a pillar meets the top of such a wall the light grid gives it near black. Light grid sampling, not the wear.
+- In tall halls lit by hanging battens the wall above the battens got no direct light (they shone down only), a dark
+  band, near black where a pillar met it. A batten's bare tubes now put 30 % of their light all round (`LGrid_Profile`,
+  `FixtureProfile`, LightGrid.compute: photometric exponent + 100 marks a batten; its cone culls nothing).
 
 ### Height and depth (world version 14, Docs/WorldDepthPlan.md)
 `DepthPlan` (its own dice) runs on the district plan once the rooms are joined up (`Apply`) and once at the end

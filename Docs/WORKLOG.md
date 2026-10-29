@@ -15,6 +15,17 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-29 23:30  Claude Code  Level 0's room styles (backrooms, living rooms, warehouse), no clocks, battens light all round, no exposure bloom after a flicker
+- DistrictGenerator: RoomStyle / StyleOf (wallpaper = backrooms, painted = living room, concrete = warehouse); Furnish
+  (sofas, armchairs, floor lamps) in living rooms only; lounges and meeting rooms painted; no conference tables or
+  office chairs; no wall clocks (also out of the F-menu items and the builder's palette).
+- Battens (strip lights) put 30 % of their light all round in the light grid and its shaders (LightGridSample.hlsl,
+  LightGrid.compute, LightGridMath): the dark band at the top of tall halls.
+- CamcorderAutoExposure: the iris waits 1 s of darkness before opening, and opens slower than it closes: lights that
+  went out together for a moment came back to an overexposed, blooming picture that then snapped down.
+
+---
+
 ## 2026-10-29 21:30  Claude Code  Second look: light leaking under walls, ramps that never appeared, a slot beside stairs, mezzanine stair, blotches by battens
 - Shaders/LightGridSample.hlsl: LGrid_EmitterVisibleH checks every wall piece the cone to a tube reaches along a cell
   line (was one each side): tubes 0.6 m past a wall lit a dark pit room's floor in curved streaks.

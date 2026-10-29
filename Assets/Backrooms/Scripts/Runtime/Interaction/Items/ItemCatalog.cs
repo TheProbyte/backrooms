@@ -118,9 +118,6 @@ namespace Backrooms.Interaction
             if (a.floorLampPrefab)
                 list.Add(new Entry { name = "Floor lamp", category = "FURNITURE", clearance = 0.9f,
                     spawn = (p, r, pv) => Static("Floor lamp", a.floorLampPrefab, p, r, pv, new Vector3(0.45f, 1.7f, 0.45f)) });
-            if (a.wallClockPrefab)
-                list.Add(new Entry { name = "Wall clock", category = "FURNITURE", placement = Placement.Wall,
-                    spawn = (p, r, pv) => Static("Wall clock", a.wallClockPrefab, p, r, pv, Vector3.zero) });
             return list;
         }
 

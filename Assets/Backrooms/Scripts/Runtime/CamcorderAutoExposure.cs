@@ -64,7 +64,7 @@ namespace Backrooms
 
         ColorAdjustments _color;
         bool _pending;
-        float _irisVel, _openShortT, _slowT, _fastT;
+        float _irisVel, _openShortT, _slowT, _fastT, _darkT;
         float _evUsedAtRequest;
         Vector3 _awbTarget = Vector3.one;
         float _flickerPhase;
@@ -121,9 +121,15 @@ namespace Backrooms
                 // Iris: a damped spring toward what the gain and shutter leave, held open while the gain is coming down.
                 float irisTarget = GainEV > 0.001f ? 0f : Mathf.Clamp(target - ShutterEV, -irisRange, 0f);
                 float err = irisTarget - IrisEV;
+                // Opening waits until it has been too dark for a second, and is slower than closing: lights that go out
+                // for a second (a flicker, a room's lights stuttering) no longer open it, so they do not come back on to
+                // a glaring, blooming picture that then snaps down.
+                _darkT = err > 0.12f ? _darkT + dt : 0f;
+                bool opening = err > 0f;
+                if (opening && _darkT < 1f && _irisVel <= 0f) { err = 0f; _irisVel = 0f; }
                 if (Mathf.Abs(err) > 0.12f || Mathf.Abs(_irisVel) > 0.05f)
                 {
-                    float w = 6.2831853f * 0.8f * k, zeta = 0.7f;
+                    float w = 6.2831853f * (opening ? 0.4f : 0.8f) * k, zeta = opening ? 0.9f : 0.7f;
                     _irisVel += (w * w * err - 2f * zeta * w * _irisVel) * dt;
                     IrisEV += _irisVel * dt;
                 }

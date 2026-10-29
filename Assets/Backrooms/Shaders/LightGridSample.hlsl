@@ -119,10 +119,14 @@ float LGrid_AngleAtten(float cosAngle, float cosOuter, float cosInner)
 
 // A fixture's falloff away from straight down: its measured photometric shape (an IES file fitted as cos^k, k in
 // padding.y; Generation/PhotometricProfiles) when it has one, else the adjustable cone.
+// A bare-tube batten (k + 100; FixtureLightManager): its tubes glow all round, so a share of it goes sideways and up too
+// (without it, everything above a tall hall's battens was lit by nothing but bounce: a dark band, near black in corners).
 float LGrid_Profile(float cosAngle, float cosOuter, float cosInner, float k)
 {
-    if (k > 0.001) return pow(saturate(cosAngle), k);
-    return LGrid_AngleAtten(cosAngle, cosOuter, cosInner);
+    float all = 0;
+    if (k >= 99.5) { k -= 100; all = 0.3; }
+    float p = k > 0.001 ? pow(saturate(cosAngle), k) : LGrid_AngleAtten(cosAngle, cosOuter, cosInner);
+    return all + (1 - all) * p;
 }
 
 // Shared tile lookup for the grid and real-light material-response paths.

@@ -163,7 +163,13 @@ namespace Backrooms.Generation
 
         /// <summary>A fixture's falloff (LGrid_Profile): its photometric cos^k when it has one (k in padding.y), else the cone.</summary>
         public static float FixtureProfile(float cosAngle, float cosOuter, float cosInner, float k)
-            => k > 0.001f ? Mathf.Pow(Mathf.Clamp01(cosAngle), k) : PanelProfile(cosAngle, cosOuter, cosInner);
+        {
+            // A bare-tube batten (k + 100): a share of its light all round (LGrid_Profile).
+            float all = 0f;
+            if (k >= 99.5f) { k -= 100f; all = 0.3f; }
+            float p = k > 0.001f ? Mathf.Pow(Mathf.Clamp01(cosAngle), k) : PanelProfile(cosAngle, cosOuter, cosInner);
+            return all + (1f - all) * p;
+        }
         public static bool IsLoaded(uint o) => (o & Loaded) != 0;
 
         /// <summary>Occupancy lookup: (cell x, cell z, storey) -> packed cell (0 = not loaded).</summary>

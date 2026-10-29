@@ -112,6 +112,8 @@ namespace Backrooms.Generation
                 if (r.kind != RoomKind.Crawl && r.kind != RoomKind.Hallway)
                     r.painted = r.Tall || rng.NextDouble() < R.paintedChance;   // wallpaper is designed for 2.7 m walls
                 else r.painted = rng.NextDouble() < R.paintedChance * 0.5f;
+                // Lounges and meeting rooms are living rooms: painted, so furnished (StyleOf).
+                if (r.kind == RoomKind.Lounge || r.kind == RoomKind.Conference) r.painted = true;
             }
 
             // 4. Walls everywhere rooms differ, plus the district edge.
@@ -921,12 +923,13 @@ namespace Backrooms.Generation
             {
                 if (r.landmark != null || r.noFloor) continue;
                 var rc = r.rect;
-                TryClock(L, rng, r);
                 if (r.feature == RoomFeature.Pit) continue;                 // nothing stands on a pit room's walkways
+                var style = StyleOf(r);
                 bool hasRacks = false;
                 foreach (var pr in L.props)
                     if (pr.kind == PropKind.StorageRack && rc.Contains(new Vector2Int(Mathf.FloorToInt(pr.position.x / C), Mathf.FloorToInt(pr.position.y / C)))) { hasRacks = true; break; }
-                if (r.kind == RoomKind.BigOffice && !hasRacks && rng.NextDouble() < L.RulesAt(rc).scatteredSeating * (r.Tall ? 1.5f : 1f))
+                // (Not in the backrooms: wallpapered rooms and halls stay bare.)
+                if (r.kind == RoomKind.BigOffice && !hasRacks && style != RoomStyle.Backrooms && rng.NextDouble() < L.RulesAt(rc).scatteredSeating * (r.Tall ? 1.5f : 1f))
                 {
                     // Abandoned seating left scattered across a big hall, at odd angles.
                     int count = rng.Next(2, 6);
@@ -945,42 +948,77 @@ namespace Backrooms.Generation
                         i++;
                     }
                 }
-                if (r.kind == RoomKind.Lounge)
-                {
-                    int sofas = rng.Next(1, 4);
-                    var usedWalls = new HashSet<int>();
-                    for (int i = 0; i < sofas * 4 && usedWalls.Count < sofas; i++)
-                    {
-                        int side = rng.Next(4);
-                        if (usedWalls.Contains(side)) continue;
-                        if (TrySofa(L, rng, r, side, occupied)) usedWalls.Add(side);
-                    }
-                    // Floor lamp in a free corner.
-                    int corner = rng.Next(4);
-                    float lx = (corner & 1) == 0 ? rc.xMin * C + 0.45f : rc.xMax * C - 0.45f;
-                    float lz = (corner & 2) == 0 ? rc.yMin * C + 0.45f : rc.yMax * C - 0.45f;
-                    int cx = Mathf.Clamp(Mathf.FloorToInt(lx / C), 0, L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(lz / C), 0, L.N - 1);
-                    if (!CellHasDoor(L, cx, cz) && !occupied.Contains(new Vector2Int(cx, cz)))
-                        L.props.Add(new Prop { kind = PropKind.FloorLamp, position = new Vector2(lx, lz), variant = rng.Next(2), lit = rng.NextDouble() < 0.8, roomColor = r.color });
-                }
-                else if (r.kind == RoomKind.Conference)
-                {
-                    bool alongX = rc.width >= rc.height;
-                    float len = (alongX ? rc.width : rc.height) * C - 2.2f;
-                    var center = new Vector2((rc.xMin + rc.width * 0.5f) * C, (rc.yMin + rc.height * 0.5f) * C);
-                    L.props.Add(new Prop { kind = PropKind.ConferenceTable, position = center, yaw = alongX ? 0f : 90f,
-                        size = new Vector3(Mathf.Clamp(len, 1.8f, 5.4f), 0.74f, 1.1f), variant = rng.Next(2), roomColor = r.color });
-                }
-                else if (r.kind == RoomKind.Office && rc.width >= 3 && rc.height >= 3 && rng.NextDouble() < 0.07)
-                {
-                    int corner = rng.Next(4);
-                    float lx = (corner & 1) == 0 ? rc.xMin * C + 0.4f : rc.xMax * C - 0.4f;
-                    float lz = (corner & 2) == 0 ? rc.yMin * C + 0.4f : rc.yMax * C - 0.4f;
-                    int cx = Mathf.Clamp(Mathf.FloorToInt(lx / C), 0, L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(lz / C), 0, L.N - 1);
-                    if (!CellHasDoor(L, cx, cz) && !occupied.Contains(new Vector2Int(cx, cz)))
-                        L.props.Add(new Prop { kind = PropKind.FloorLamp, position = new Vector2(lx, lz), variant = rng.Next(2), lit = rng.NextDouble() < 0.6, roomColor = r.color });
-                }
+                if (style == RoomStyle.LivingRoom && !hasRacks) Furnish(L, rng, r, occupied);   // (racks: a warehouse room after all)
             }
+        }
+
+        /// <summary>
+        /// Level 0's three kinds of room: the <b>backrooms</b> (wallpaper, carpet: the usual halls and rooms, bare), the
+        /// <b>living rooms</b> (painted walls and carpet, the big ones with pillars: furnished, lamps), the <b>warehouse</b>
+        /// (the concrete-floored halls: racks, pallets, boxes).
+        /// </summary>
+        public static RoomStyle StyleOf(Room r)
+        {
+            if (OfficeBiomeAssets.ConcreteFloor(r)) return RoomStyle.Warehouse;
+            bool painted = r.wallFinish == WallFinish.PaintedPlaster || (r.wallFinish == WallFinish.Default && r.painted);
+            return painted && r.kind != RoomKind.Hallway && r.kind != RoomKind.Crawl ? RoomStyle.LivingRoom : RoomStyle.Backrooms;
+        }
+
+        /// <summary>
+        /// A living room's furniture: sofas backed against its walls, an armchair or two, floor lamps in free corners. (No
+        /// office chairs or tables for now.) Lounges and meeting rooms always; offices and big rooms often.
+        /// </summary>
+        static void Furnish(OfficeLayout L, System.Random rng, Room r, HashSet<Vector2Int> occupied)
+        {
+            float C = OfficeBiome.CellSize;
+            var rc = r.rect;
+            bool small = r.kind == RoomKind.Office;
+            double chance = r.kind == RoomKind.Lounge || r.kind == RoomKind.Conference ? 1.0 : r.kind == RoomKind.BigOffice ? 0.6 : small ? 0.45 : 0.0;
+            if (rc.width < 2 || rc.height < 2 || rng.NextDouble() >= chance) return;
+            int sofas = small ? rng.Next(0, 2) : rng.Next(1, 4);
+            var usedWalls = new HashSet<int>();
+            for (int i = 0; i < sofas * 4 && usedWalls.Count < sofas; i++)
+            {
+                int side = rng.Next(4);
+                if (usedWalls.Contains(side)) continue;
+                if (TrySofa(L, rng, r, side, occupied)) usedWalls.Add(side);
+            }
+            int chairs = rng.Next(small ? 1 : 0, 3);
+            for (int i = 0, tries = 0; i < chairs && tries < 12; tries++)
+                if (TryArmchair(L, rng, r, occupied)) i++;
+            int lamps = 1 + (rc.width * rc.height >= 30 && rng.NextDouble() < 0.6 ? 1 : 0);
+            var usedCorners = new HashSet<int>();
+            for (int i = 0, tries = 0; i < lamps && tries < 8; tries++)
+            {
+                int corner = rng.Next(4);
+                if (!usedCorners.Add(corner)) continue;
+                float lx = (corner & 1) == 0 ? rc.xMin * C + 0.45f : rc.xMax * C - 0.45f;
+                float lz = (corner & 2) == 0 ? rc.yMin * C + 0.45f : rc.yMax * C - 0.45f;
+                int cx = Mathf.Clamp(Mathf.FloorToInt(lx / C), 0, L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(lz / C), 0, L.N - 1);
+                if (CellHasDoor(L, cx, cz) || occupied.Contains(new Vector2Int(cx, cz)) || NearPillarOrHalfWall(L, cx, cz)) continue;
+                occupied.Add(new Vector2Int(cx, cz));
+                L.props.Add(new Prop { kind = PropKind.FloorLamp, position = new Vector2(lx, lz), variant = rng.Next(2), lit = rng.NextDouble() < 0.8, roomColor = r.color });
+                i++;
+            }
+        }
+
+        /// <summary>An armchair against a solid wall in a free cell, turned a little toward the room.</summary>
+        static bool TryArmchair(OfficeLayout L, System.Random rng, Room r, HashSet<Vector2Int> occupied)
+        {
+            float C = OfficeBiome.CellSize;
+            var rc = r.rect;
+            int x = rng.Next(rc.xMin, rc.xMax), z = rng.Next(rc.yMin, rc.yMax), side = rng.Next(4);
+            var cell = new Vector2Int(x, z);
+            if (L.EdgeOf(x, z, side) != EdgeKind.Wall || CellHasDoor(L, x, z) || occupied.Contains(cell) || NearPillarOrHalfWall(L, x, z)) return false;
+            occupied.Add(cell);
+            const float depth = 0.85f;
+            float off = OfficeBiome.WallThickness * 0.5f + depth * 0.5f + 0.06f;
+            Vector2 c = new Vector2((x + 0.5f) * C, (z + 0.5f) * C);
+            Vector2 pos = side == 0 ? new Vector2(x * C + off, c.y) : side == 1 ? new Vector2((x + 1) * C - off, c.y)
+                        : side == 2 ? new Vector2(c.x, z * C + off) : new Vector2(c.x, (z + 1) * C - off);
+            float yaw = (side == 0 ? 90f : side == 1 ? -90f : side == 2 ? 0f : 180f) + (float)(rng.NextDouble() - 0.5) * 40f;
+            L.props.Add(new Prop { kind = PropKind.Armchair, position = pos, yaw = yaw, size = new Vector3(0.9f, 0.9f, depth), variant = rng.Next(8), roomColor = r.color });
+            return true;
         }
 
         /// <summary>
@@ -1040,7 +1078,7 @@ namespace Backrooms.Generation
             }
         }
 
-        /// <summary>Round wall clock on a solid wall, about 2.1 m up (higher in tall rooms).</summary>
+        /// <summary>Round wall clock on a solid wall, about 2.1 m up (higher in tall rooms). Not placed for now.</summary>
         static void TryClock(OfficeLayout L, System.Random rng, Room r)
         {
             double chance = r.kind == RoomKind.Lounge ? 0.45 : r.kind == RoomKind.Conference ? 0.5
