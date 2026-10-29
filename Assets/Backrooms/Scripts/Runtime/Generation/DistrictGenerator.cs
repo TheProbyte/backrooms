@@ -138,6 +138,8 @@ namespace Backrooms.Generation
             EncloseTallRooms(L);
             PlaceArches(L);
             if (pool) PoolArches(L, new System.Random(Hash(sseed, district.x, district.y, 0xA4C7)));
+            // Height and depth (world version 14): a sunken wing, a pit room. Their own dice.
+            DepthPlan.Apply(L, new System.Random(Hash(sseed, district.x, district.y, 0xDE97)));
 
             // 6. Lighting and dressing. Placements record the room id in their colour field; light colours
             // are assigned afterwards, once every light's position is known, and stamped in.
@@ -170,6 +172,8 @@ namespace Backrooms.Generation
             // Crawl spaces: their own dice too. Then the rare noclip door (after them, so it avoids their walls).
             CrawlPortals.Place(L, set, new System.Random(Hash(seed, district.x, district.y, 0x9047A1 + storey)));
             NoclipDoors.Place(L, set, seed);
+            // Corners cut at 45 degrees where nothing is in the corner (last: it looks at everything placed).
+            DepthPlan.Chamfers(L, new System.Random(Hash(sseed, district.x, district.y, 0xC4A3)));
             AssignColors(L);
             return L;
         }
@@ -794,6 +798,7 @@ namespace Backrooms.Generation
             foreach (var r in L.rooms)
             {
                 if (r.landmark != null) continue;                         // landmarks dress themselves
+                if (r.feature == RoomFeature.Pit) continue;               // walkways over shafts
                 var rc = r.rect;
                 var R = L.RulesAt(rc);
                 if (r.kind == RoomKind.BigOffice)
@@ -809,9 +814,10 @@ namespace Backrooms.Generation
                     for (int z = sz; z <= rc.yMax - 2; z += spacing)
                     {
                         if (sparse && rng.NextDouble() < 0.5) continue;
+                        if (DepthPlan.Busy(L, x - 1, z - 1) || DepthPlan.Busy(L, x, z - 1) || DepthPlan.Busy(L, x - 1, z) || DepthPlan.Busy(L, x, z)) continue;
                         L.pillars.Add(new Pillar { vertex = new Vector2Int(x, z), size = size, roomColor = r.color });
                     }
-                    int runs = rng.Next(0, Mathf.RoundToInt(R.halfWalls) + 1);
+                    int runs = r.feature == RoomFeature.Sunken ? 0 : rng.Next(0, Mathf.RoundToInt(R.halfWalls) + 1);
                     for (int i = 0; i < runs; i++) TryHalfWall(L, rng, r);
                     if (racks) PlaceRacks(L, rng, r);
                     if (r.Tall && rng.NextDouble() < 0.75) PlacePallets(L, rng, r);
@@ -820,7 +826,7 @@ namespace Backrooms.Generation
                 {
                     if (rng.NextDouble() < 0.3)
                         L.pillars.Add(new Pillar { vertex = new Vector2Int(rc.xMin + rc.width / 2, rc.yMin + rc.height / 2), size = 0.45f, roomColor = r.color });
-                    else if (rng.NextDouble() < 0.3) TryHalfWall(L, rng, r);
+                    else if (rng.NextDouble() < 0.3 && r.feature == RoomFeature.None) TryHalfWall(L, rng, r);
                 }
             }
         }
@@ -914,6 +920,7 @@ namespace Backrooms.Generation
                 if (r.landmark != null || r.noFloor) continue;
                 var rc = r.rect;
                 TryClock(L, rng, r);
+                if (r.feature == RoomFeature.Pit) continue;                 // nothing stands on a pit room's walkways
                 bool hasRacks = false;
                 foreach (var pr in L.props)
                     if (pr.kind == PropKind.StorageRack && rc.Contains(new Vector2Int(Mathf.FloorToInt(pr.position.x / C), Mathf.FloorToInt(pr.position.y / C)))) { hasRacks = true; break; }
@@ -925,7 +932,7 @@ namespace Backrooms.Generation
                     {
                         int cx = rng.Next(rc.xMin + 1, rc.xMax - 1), cz = rng.Next(rc.yMin + 1, rc.yMax - 1);
                         var cell = new Vector2Int(cx, cz);
-                        if (occupied.Contains(cell) || NearPillarOrHalfWall(L, cx, cz)) continue;
+                        if (occupied.Contains(cell) || NearPillarOrHalfWall(L, cx, cz) || DepthPlan.Busy(L, cx, cz)) continue;
                         bool clear = true;
                         for (int ox = -1; ox <= 1; ox++) for (int oz = -1; oz <= 1; oz++) if (occupied.Contains(new Vector2Int(cx + ox, cz + oz))) clear = false;
                         if (!clear) continue;
@@ -983,7 +990,7 @@ namespace Backrooms.Generation
             float C = OfficeBiome.CellSize;
             foreach (var r in L.rooms)
             {
-                if (r.landmark != null || r.noFloor) continue;
+                if (r.landmark != null || r.noFloor || r.feature == RoomFeature.Pit) continue;
                 double chance = r.kind == RoomKind.Office ? 0.22 : r.kind == RoomKind.BigOffice ? 0.35 : r.kind == RoomKind.Hallway ? 0.04 : 0.0;
                 if (rng.NextDouble() >= chance) continue;
                 var rc = r.rect;
@@ -1071,7 +1078,8 @@ namespace Backrooms.Generation
         static bool CellHasDoor(OfficeLayout L, int x, int z)
         {
             for (int s = 0; s < 4; s++) { var e = L.EdgeOf(x, z, s); if (e == EdgeKind.Door || e == EdgeKind.DoorHeader) return true; }
-            return false;
+            // (Steps down into a sunken room, and a pit room's lattice, keep clear too.)
+            return DepthPlan.Busy(L, x, z);
         }
 
         /// <summary>Sofa against one room wall, occupying two cells whose edges on that side are solid.</summary>

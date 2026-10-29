@@ -378,6 +378,7 @@ namespace Backrooms.Generation
             for (int z = 0; z < N; z++)
             {
                 if (_L.Has(x, z, CellFlags.NoFloor)) continue;
+                if (!_L.Plain(x, z)) continue;            // (wear is laid at the storey's floor: not in sunken or pit rooms)
                 var r = _L.RoomAt(x, z);
                 if (r.kind == RoomKind.Crawl) continue;
                 bool carpet = Carpeted(r);
@@ -574,7 +575,7 @@ namespace Backrooms.Generation
         {
             foreach (var (c, x, z) in _missingTiles)
             {
-                if (_L.Has(x, z, CellFlags.NoFloor) || !Clear(c, 0.48f)) continue;
+                if (_L.Has(x, z, CellFlags.NoFloor) || !_L.Plain(x, z) || !Clear(c, 0.48f)) continue;
                 int gx = GX(x), gz = GZ(z);
                 float yaw = Dice(gx, gz, 500) * 360f, tilt = Dice(gx, gz, 501) * 3f;
                 var q = Quaternion.Euler(tilt, yaw, 0f);

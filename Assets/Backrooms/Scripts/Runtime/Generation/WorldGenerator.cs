@@ -153,6 +153,19 @@ namespace Backrooms.Generation
                 for (int x = 0; x <= N; x++) for (int z = 0; z < N; z++) S.spanV[x, z] = plan.spanV[ox + x, oz + z];
                 for (int x = 0; x < N; x++) for (int z = 0; z <= N; z++) S.spanH[x, z] = plan.spanH[ox + x, oz + z];
             }
+            if (plan.steps != null)
+            {
+                S.steps = new sbyte[N, N];
+                for (int x = 0; x < N; x++) for (int z = 0; z < N; z++) S.steps[x, z] = plan.steps[ox + x, oz + z];
+            }
+            // A pit room's shafts: every chunk a shaft reaches has it (each builds its own part of it).
+            foreach (var pit in plan.pits)
+            {
+                var r = pit.rect;
+                if (r.xMax <= ox * C || r.yMax <= oz * C || r.xMin >= (ox + N) * C || r.yMin >= (oz + N) * C) continue;
+                var g = pit; g.rect.position -= new Vector2(ox * C, oz * C);
+                S.pits.Add(g);
+            }
             foreach (var arc in plan.arcs)
             {
                 int ax = Mathf.FloorToInt(arc.centre.x / C), az = Mathf.FloorToInt(arc.centre.y / C);

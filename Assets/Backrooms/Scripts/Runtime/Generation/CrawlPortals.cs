@@ -262,7 +262,7 @@ namespace Backrooms.Generation
             {
                 if (!L.InChunk(x, z)) return false;
                 var r = L.RoomAt(x, z);
-                return r.Walkable && r.landmark == null && !r.custom && !r.noFloor && !r.openAbove && r.role == AnnexRole.None && !L.Has(x, z, CellFlags.NoFloor);
+                return r.Walkable && r.landmark == null && !r.custom && !r.noFloor && !r.openAbove && r.role == AnnexRole.None && !L.Has(x, z, CellFlags.NoFloor) && L.Plain(x, z);
             }
 
             for (int x = 1; x < n - 1; x++)

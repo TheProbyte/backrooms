@@ -147,6 +147,36 @@ the same from either chunk), and costs almost nothing: a few hundred triangles a
 - **Carpet**: coffee spills (1.8 % of cells: a round stain with a darker dried rim, sometimes drips) and an aluminium
   threshold strip across any opening where the floor changes (drawn once per edge).
 
+### Height and depth (world version 14, Docs/WorldDepthPlan.md)
+`DepthPlan` (its own dice) runs on the district plan once the rooms are joined up (`Apply`) and once at the end
+(`Chamfers`); `OfficeChunkBuilder.Depth.cs` builds it. Rooms have a floor height (`Room.floor`) and a feature
+(`Room.feature`: Sunken, Pit); `OfficeLayout.FloorAt`, `Plain` (crawl holes, noclip doors, doors and wear only on plain
+floors).
+- **Sunken wing** (`sunkenChance`, 0.45 a district): one to three joined ordinary rooms (not conference rooms, at least 3
+  x 3) 0.45, 0.6 or 0.9 m down, their ceilings where they were. Every passable edge out of the wing has steps in the wing's
+  cell beside it, rising to the doorway (`OfficeLayout.steps`: the side per cell, sliced into chunks; 0.15 m rises, treads
+  0.3 m or less so a flight fits one cell). A wing never touches the district's edge (districts are planned apart) nor
+  has a cell with two ways out. Walls, posts, baseboards, pillars, outlets and furniture start from the room's floor; the
+  floor's colliders are runs of one height (the storey's floor 1 m deep so a sunken floor beside it is closed). No doors
+  at its doorways, no half walls, no furniture or boxes on the steps (`DepthPlan.Busy`).
+- **Pit room** (`pitRoomChance`, 0.12 a district, storey 0): an enclosed big room (at least 7 x 7, only doorways out)
+  whose floor is a lattice of walkways (0.48 m between shafts, 0.6 m along the walls) on a 2.4 m pitch over square
+  shafts (`OfficeLayout.pits`, layout-local metres, sliced to every chunk a shaft reaches). A 2 x 2 cell block with a
+  doorway in it stays floor (a landing), as does an odd row along a wall; one in ten blocks is filled in. Shafts are 1.8-2.4
+  m deep with a 0.6 m block in one corner half as high (so both pulls out are 1.3 m or less), or 0.6-0.9 m with none.
+  Painted plaster; the shafts' walls in eleven bands darker toward the bottom and their floors darker still
+  (`DepthMaterials`, made on the main thread by WorldStreamer): the light grid knows no floor heights, so the dark is in
+  the paint. Colliders: the walkways solid 3 m down, the shafts' floors, the blocks. No furniture, boxes, pillars, crawl
+  holes or noclip doors in it.
+- **Cut corners** (`chamferChance`, 0.18 a room): a room's free corners (walls on both outer sides, nothing in the corner
+  cell: no light, outlet, furniture, pillar, half wall, crawl hole, steps) get a wall at 45 degrees across the corner cell,
+  face to face of the two walls, floor to ceiling, with its baseboard and a rotated collider (`Room.chamfers`).
+- Getting about: Space at a ledge 0.45-1.35 m up pulls you onto it (`CamcorderPlayerController` mantle); a drop of
+  about a metre or more jolts the camcorder.
+- Tests: `DepthPlanTests` (the features turn up; every way into a wing has steps; shafts leave walkways and can be
+  climbed out of; cut corners are clear; chunks carry their steps and shafts); the reachability and border checks cover
+  them too.
+
 ### Chunks and storeys
 A chunk is cut from its district: clipped room rectangles with the district room id (`globalId`),
 edges, arch flags, cell flags, and every fixture/prop/pillar/plate whose anchor lies in it. The builder

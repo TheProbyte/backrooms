@@ -149,6 +149,7 @@ namespace Backrooms.Generation
             BuildCrawls();
             BuildPillars();
             BuildHalfWalls();
+            BuildDepth();
             BuildShadowProxies();
             BuildDoorways();
             BuildDoors();
@@ -344,7 +345,7 @@ namespace Backrooms.Generation
         {
             int n = _L.N;
             bool any = false;
-            for (int x = 0; x < n && !any; x++) for (int z = 0; z < n; z++) if (_L.Has(x, z, CellFlags.NoFloor)) { any = true; break; }
+            for (int x = 0; x < n && !any; x++) for (int z = 0; z < n; z++) if (_L.Has(x, z, CellFlags.NoFloor) || !_L.Plain(x, z)) { any = true; break; }
             if (!any)
             {
                 var floor = root.AddComponent<BoxCollider>();
@@ -352,20 +353,24 @@ namespace Backrooms.Generation
                 floor.size = new Vector3(OfficeBiome.ChunkSize, 0.5f, OfficeBiome.ChunkSize);
                 return;
             }
+            // Runs of one floor height per row (a sunken room's floor is lower; a well and a pit room have none here: the pit
+            // room's walkways and shafts make their own). The storey's floor is 1 m deep, so a sunken floor beside it is closed.
             for (int z = 0; z < n; z++)
             {
-                int start = -1;
+                int start = -1; float h0 = 0f;
                 for (int x = 0; x <= n; x++)
                 {
-                    bool solid = x < n && !_L.Has(x, z, CellFlags.NoFloor);
-                    if (solid && start < 0) start = x;
-                    if (!solid && start >= 0)
+                    bool solid = x < n && !_L.Has(x, z, CellFlags.NoFloor) && _L.RoomAt(x, z).feature != RoomFeature.Pit;
+                    float h = solid ? _L.FloorAt(x, z) : 0f;
+                    if (start >= 0 && (!solid || Mathf.Abs(h - h0) > 0.001f))
                     {
+                        float depth = h0 < -0.001f ? 0.5f : 1f;
                         var b = root.AddComponent<BoxCollider>();
-                        b.center = new Vector3((start + x) * 0.5f * C, -0.25f, (z + 0.5f) * C);
-                        b.size = new Vector3((x - start) * C, 0.5f, C);
+                        b.center = new Vector3((start + x) * 0.5f * C, h0 - depth * 0.5f, (z + 0.5f) * C);
+                        b.size = new Vector3((x - start) * C, depth, C);
                         start = -1;
                     }
+                    if (solid && start < 0) { start = x; h0 = h; }
                 }
             }
         }
@@ -385,10 +390,11 @@ namespace Backrooms.Generation
             {
                 var r = _L.RoomAt(x, z);
                 uint m = CellMask(x, z);
-                float x0 = x * C, z0 = z * C, x1 = x0 + C, z1 = z0 + C, h = r.ceiling;
-                if (!_L.Has(x, z, CellFlags.NoFloor))
+                float x0 = x * C, z0 = z * C, x1 = x0 + C, z1 = z0 + C, h = r.ceiling, fy = r.floor;
+                // (A pit room's walkways are built with its shafts: OfficeChunkBuilder.Depth.)
+                if (!_L.Has(x, z, CellFlags.NoFloor) && r.feature != RoomFeature.Pit)
                 {
-                    WMask(_a.FloorMaterial(r), m).Quad(new Vector3(x0, 0, z0), new Vector3(x0, 0, z1), new Vector3(x1, 0, z1), new Vector3(x1, 0, z0), Vector3.up, MeshWriter.FloorUV);
+                    WMask(_a.FloorMaterial(r), m).Quad(new Vector3(x0, fy, z0), new Vector3(x0, fy, z1), new Vector3(x1, fy, z1), new Vector3(x1, fy, z0), Vector3.up, MeshWriter.FloorUV);
                     // Beside a void (a well, a stair hall, an elevator shaft) the wall faces below sit half a wall thickness
                     // out from the cell edge: cover that strip so no slit shows from above.
                     float e = T * 0.5f;
@@ -489,12 +495,19 @@ namespace Backrooms.Generation
                     {
                         // A broken panel draws itself (Destruction.BrokenPanel); above what breaks the wall stays as it was.
                         if (myCeil > broken + 0.001f) WallFace(room, cm, A(f, a0), A(f, a1), broken, myCeil, n);
+                        // (Below the storey's floor, in a sunken room, the wall is whole.)
+                        if (room.floor < -0.001f) WallFace(room, cm, A(f, a0), A(f, a1), room.floor, 0f, n);
                         continue;
                     }
-                    WallFace(room, cm, A(f, a0), A(f, a1), 0f, myCeil, n);
-                    if (!room.noFloor) Baseboard(cm, A(f, a0), A(f, a1), n);
+                    // From this room's floor (a sunken room's is lower) to its ceiling.
+                    WallFace(room, cm, A(f, a0), A(f, a1), room.floor, myCeil, n);
+                    if (!room.noFloor) Baseboard(cm, A(f, a0) + Vector3.up * room.floor, A(f, a1) + Vector3.up * room.floor, n);
                     continue;
                 }
+                // Steps up to this doorway out of a sunken room: the last riser, on the edge's line (the steps stand in front).
+                if (room.floor < -0.001f && _L.StepSide(cx, cz) == SideOfEdge(vertical, s))
+                    WMask(_a.FloorMaterial(room), cm).Quad(A(l, a0 - T * 0.5f) + Vector3.up * room.floor, A(l, a1 + T * 0.5f) + Vector3.up * room.floor,
+                        A(l, a1 + T * 0.5f), A(l, a0 - T * 0.5f), n, MeshWriter.MetreUV);
 
                 // Passable edge: where does the opening stop? (Both chunks of a border compute the same.)
                 var v = ViewOpening(_L, Neighbour, vertical, line, along, s);
@@ -781,9 +794,10 @@ namespace Backrooms.Generation
                     float FH = _L.WallTop(room);
                     if (wall)
                     {
-                        float FB = Pool && _L.Basin(cx, cz) ? -PoolBiome.BasinDepth : 0f;   // carried down into a basin
+                        // Carried down into a basin, or to a sunken room's floor.
+                        float FB = Pool && _L.Basin(cx, cz) ? -PoolBiome.BasinDepth : Mathf.Min(0f, room.floor);
                         w.Box(new Vector3(x * C, (FH + FB) * 0.5f, z * C), new Vector3(T, FH - FB, T), bit, Pool ? MeshWriter.MetreUV : MeshWriter.WallUV);
-                        if (!NoBaseboard) WMask(_a.baseboard, pm).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit, MeshWriter.MetreUV);
+                        if (!NoBaseboard) WMask(_a.baseboard, pm).Box(new Vector3(x * C, room.floor + BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), bit, MeshWriter.MetreUV);
                     }
                     else
                     {
@@ -796,7 +810,7 @@ namespace Backrooms.Generation
                 if (x < N && z < N)
                 {
                     var room = _L.RoomAt(x, z);
-                    if (wall && !NoBaseboard) WMask(_a.baseboard, CellMask(x, z)).Box(new Vector3(x * C, BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), 8, MeshWriter.MetreUV);
+                    if (wall && !NoBaseboard) WMask(_a.baseboard, CellMask(x, z)).Box(new Vector3(x * C, room.floor + BB * 0.5f, z * C), new Vector3(T + BD * 2f, BB, T + BD * 2f), 8, MeshWriter.MetreUV);
                     else
                     {
                         float hy = blockBottom;
@@ -877,10 +891,10 @@ namespace Backrooms.Generation
             foreach (var p in _L.pillars)
             {
                 var room = _L.RoomAt(Mathf.Min(p.vertex.x, _L.N - 1), Mathf.Min(p.vertex.y, _L.N - 1));
-                float h = room.ceiling;
-                var c = new Vector3(p.vertex.x * C, h * 0.5f, p.vertex.y * C);
+                float fl = room.floor, h = room.ceiling - fl;
+                var c = new Vector3(p.vertex.x * C, fl + h * 0.5f, p.vertex.y * C);
                 W(WallMat(room), p.roomColor).Box(c, new Vector3(p.size, h, p.size), 1 | 2 | 16 | 32, MeshWriter.WallUV);
-                if (!NoBaseboard) W(_a.baseboard, p.roomColor).Box(new Vector3(c.x, BB * 0.5f, c.z), new Vector3(p.size + BD * 2f, BB, p.size + BD * 2f), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
+                if (!NoBaseboard) W(_a.baseboard, p.roomColor).Box(new Vector3(c.x, fl + BB * 0.5f, c.z), new Vector3(p.size + BD * 2f, BB, p.size + BD * 2f), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
                 _boxes.Add((c, new Vector3(p.size, h, p.size)));
             }
         }
@@ -1088,13 +1102,14 @@ namespace Backrooms.Generation
             foreach (var p in _L.plates)
             {
                 float x0 = p.cell.x * C, z0 = p.cell.y * C;
+                float py = p.height + _L.FloorAt(p.cell.x, p.cell.y);       // above the room's own floor
                 Vector3 n, pos;
                 switch (p.side)
                 {
-                    case 0: n = Vector3.right; pos = new Vector3(x0 + T * 0.5f, p.height, z0 + p.t * C); break;
-                    case 1: n = Vector3.left; pos = new Vector3(x0 + C - T * 0.5f, p.height, z0 + p.t * C); break;
-                    case 2: n = Vector3.forward; pos = new Vector3(x0 + p.t * C, p.height, z0 + T * 0.5f); break;
-                    default: n = Vector3.back; pos = new Vector3(x0 + p.t * C, p.height, z0 + C - T * 0.5f); break;
+                    case 0: n = Vector3.right; pos = new Vector3(x0 + T * 0.5f, py, z0 + p.t * C); break;
+                    case 1: n = Vector3.left; pos = new Vector3(x0 + C - T * 0.5f, py, z0 + p.t * C); break;
+                    case 2: n = Vector3.forward; pos = new Vector3(x0 + p.t * C, py, z0 + T * 0.5f); break;
+                    default: n = Vector3.back; pos = new Vector3(x0 + p.t * C, py, z0 + C - T * 0.5f); break;
                 }
                 Vector3 right = Vector3.Cross(Vector3.up, n);   // horizontal axis on the wall
                 float hw = 0.035f, hh = 0.0575f;
@@ -1160,7 +1175,9 @@ namespace Backrooms.Generation
             foreach (var p in _L.props)
             {
                 var rot = Quaternion.Euler(0f, p.yaw, 0f);
-                var at = new Vector3(p.position.x, 0f, p.position.y);
+                // On the floor of the room it stands in (a sunken room's is lower).
+                int pcx = Mathf.Clamp(Mathf.FloorToInt(p.position.x / C), 0, _L.N - 1), pcz = Mathf.Clamp(Mathf.FloorToInt(p.position.y / C), 0, _L.N - 1);
+                var at = new Vector3(p.position.x, _L.FloorAt(pcx, pcz), p.position.y);
                 if (modelled) { PlaceModelled(p, at, rot, lights); continue; }
                 switch (p.kind)
                 {

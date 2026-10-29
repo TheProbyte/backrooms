@@ -59,6 +59,14 @@ namespace Backrooms.Generation
         [Tooltip("Outlets per wall face.")] public float outletChance = 0.09f;
         [Tooltip("Chance a tall room is lit by hanging cool-white fluorescent strips instead of round domes.")] public float stripLights = 0f;
 
+        [Header("Height and depth (world version 14, DepthPlan)")]
+        [Tooltip("Chance a district has a sunken wing: one to three rooms 0.45-0.9 m below the rest, steps down at their doorways.")]
+        public float sunkenChance = 0.45f;
+        [Tooltip("Chance a district has a pit room: a big room's floor turned into narrow walkways over square shafts.")]
+        public float pitRoomChance = 0.12f;
+        [Tooltip("Chance a room has its free corners cut off at 45 degrees.")]
+        public float chamferChance = 0.18f;
+
         [Header("Poolrooms (pool-style zones only)")]
         [Tooltip("Chance a room has openings in its roof (the sun comes in through them).")] public float skylights = 0f;
         [Tooltip("Share of rooms that are flooded basins (the rest are dry tiled decks).")] public float flooded = 0f;

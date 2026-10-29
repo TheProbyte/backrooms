@@ -9,6 +9,12 @@ namespace Backrooms.Generation
     public enum WallFinish { Default, Wallpaper, PaintedPlaster, ReferenceCream, ReferenceOlive }
     public enum FloorFinish { Default, ReferenceCarpet, DarkWood, Laminate }
 
+    /// <summary>
+    /// What a room does with its floor (world version 14, Docs/WorldDepthPlan.md; DepthPlan): sunk below the storey's floor
+    /// with steps down at its doorways, or a pit room (narrow walkways over square shafts).
+    /// </summary>
+    public enum RoomFeature : byte { None, Sunken, Pit }
+
     /// <summary>Per-cell flags for multi-storey volumes.</summary>
     [System.Flags]
     public enum CellFlags : byte
@@ -40,6 +46,13 @@ namespace Backrooms.Generation
         public AnnexRole role;        // stair hall, shaft ... (see AtriumAnnex)
         public bool custom;           // part of a player-built room: its own lights, doors and dressing (see CustomRooms)
         public bool spiral;           // Poolrooms: the tower of a spiral stair (storey 0: the stair; storey 1: its well and landing)
+        /// <summary>Floor height above (below: negative) the storey's floor, m (DepthPlan). The ceiling stays where it was, so a
+        /// sunken room is that much taller.</summary>
+        public float floor;
+        public RoomFeature feature;
+        /// <summary>Corners cut off at 45 degrees across their corner cell (DepthPlan.Chamfers), bits in district-local terms
+        /// of fullRect: 1 (xMin, zMin), 2 (xMax, zMin), 4 (xMin, zMax), 8 (xMax, zMax).</summary>
+        public byte chamfers;
         public bool Walkable => kind != RoomKind.Crawl;
         public bool Tall => ceiling > OfficeBiome.CeilingHeight + 0.01f;
 
@@ -47,6 +60,7 @@ namespace Backrooms.Generation
         {
             id = newId, globalId = globalId, rect = newRect, fullRect = fullRect, kind = kind, lights = lights, color = color,
             ceiling = ceiling, painted = painted, wallFinish = wallFinish, floorFinish = floorFinish, landmark = landmark, openAbove = openAbove, noFloor = noFloor, noDoors = noDoors, role = role, custom = custom, spiral = spiral,
+            floor = floor, feature = feature, chamfers = chamfers,
         };
     }
 
@@ -85,6 +99,20 @@ namespace Backrooms.Generation
         /// <summary>Flooded: the floor is <see cref="PoolBiome.BasinDepth"/> below the deck, under still water.</summary>
         public bool basin;
         public SkylightShape skylight;
+    }
+
+    /// <summary>
+    /// A square shaft in a pit room's floor (DepthPlan): layout-local metres (x, z), its depth below the storey's floor, and
+    /// the block in one corner that is a step up out of it (half as high as it is deep; 0: none).
+    /// </summary>
+    public struct PitShaft
+    {
+        public Rect rect;
+        public float depth;
+        public float ledge;
+        /// <summary>Which corner the block stands in: 0 (xMin, zMin), 1 (xMax, zMin), 2 (xMin, zMax), 3 (xMax, zMax).</summary>
+        public int ledgeCorner;
+        public int roomColor;
     }
 
     /// <summary>A half-height partition along cell edges. Horizontal runs along X at line z. Railings are slimmer.</summary>
@@ -190,6 +218,18 @@ namespace Backrooms.Generation
         /// <summary>Pool-style layouts only: flooded cells and roof openings, [x, z].</summary>
         public PoolCell[,] pool;
         public bool Basin(int x, int z) => pool != null && pool[x, z].basin;
+        /// <summary>
+        /// Steps down into a sunken room (DepthPlan): per cell, the side (0 -X, 1 +X, 2 -Z, 3 +Z) whose doorway the steps rise
+        /// toward, or -1; null when there are none in this block.
+        /// </summary>
+        public sbyte[,] steps;
+        public int StepSide(int x, int z) => steps == null ? -1 : steps[x, z];
+        /// <summary>Pit rooms' shafts (DepthPlan), layout-local.</summary>
+        public readonly List<PitShaft> pits = new List<PitShaft>();
+        /// <summary>The floor of a cell's room above (below) the storey's floor.</summary>
+        public float FloorAt(int x, int z) => rooms[roomOf[x, z]].floor;
+        /// <summary>A cell with the plain flat floor (no sunken room, no pit room): crawl holes, noclip doors and doors only here.</summary>
+        public bool Plain(int x, int z) { var r = rooms[roomOf[x, z]]; return r.feature == RoomFeature.None && Mathf.Abs(r.floor) < 0.001f; }
         /// <summary>Poolrooms: wide round-arched openings. Per edge (same layout as vEdges / hEdges): 0 = none, else
         /// (index in the run + 1) | (run length in cells &lt;&lt; 8). The run is a row of open edges between two rooms.</summary>
         public ushort[,] spanV, spanH;

@@ -408,7 +408,7 @@ namespace Backrooms.Generation
             if (!MaterialMaps.TileBack) return;
             foreach (var (c, x, z) in _crumbs)
             {
-                if (_L.Has(x, z, CellFlags.NoFloor) || !Clear(c, 0.2f)) continue;
+                if (_L.Has(x, z, CellFlags.NoFloor) || !_L.Plain(x, z) || !Clear(c, 0.2f)) continue;
                 int gx = GX(x), gz = GZ(z);
                 int n = 3 + (int)(Dice(gx, gz, 350) * 4f);
                 var bits = WMask(MaterialMaps.TileBack, CellMask(x, z));

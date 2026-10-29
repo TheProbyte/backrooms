@@ -134,6 +134,9 @@
   LightSpill.shader`, strength from `FixtureLightManager.RoomLight`); once the door opens the light comes through the
   gap for real. An unlatched door is never quite still: air moves it a degree or two now and then (a gust a little
   more, with a creak). It never latches itself.
+- **Climbing up** (2026-10-28): **Space** at a ledge 0.45-1.35 m above the feet, close ahead, with room on top, pulls you
+  up onto it (up the face, then over, about half a second; `CamcorderPlayerController.TryMantle`). A pit room's shaft is
+  two pulls (the block in its corner first). Lower, Space is a jump. A drop of about a metre or more jolts the camcorder.
 - **Leaning**: hold **Z** or **X** to lean the head out to the left or right (0.32 m, the view rolls 9 degrees, the
   torso tilts) to look round a corner. It stops short of walls; not while running or crawling.
 - **Steadying hand**: walking past a door jamb or the end of a wall on the hand's side, the free hand sometimes reaches

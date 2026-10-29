@@ -36,7 +36,8 @@ namespace Backrooms.Generation
         {
             var r = _L.RoomAt(x, z);
             return !r.noFloor && !r.custom && r.role == AnnexRole.None && r.kind != RoomKind.Crawl && !r.spiral && !r.openAbove
-                   && r.ceiling >= OfficeBiome.DoorHeaderHeight + 0.2f && !_L.Has(x, z, CellFlags.NoFloor);
+                   && r.ceiling >= OfficeBiome.DoorHeaderHeight + 0.2f && !_L.Has(x, z, CellFlags.NoFloor)
+                   && _L.Plain(x, z);                // (no door at steps down into a sunken room, nor onto a pit room's landing)
         }
 
         void BuildDoors()

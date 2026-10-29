@@ -15,6 +15,12 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-28 20:31  Claude Code  World height and depth, part 1: sunken wings, pit rooms, cut corners, mantling
+- Asked: build Docs/WorldDepthPlan.md (more height and depth in the world: slants, diagonals, pits as in Kane Pixels' pit room).
+- Built (world version 14, WorldGeneration.md "Height and depth"): `DepthPlan` (sunken wings 0.45-0.9 m down with steps at every way in, kept off district edges; enclosed pit rooms with a walkway lattice over 1.8-2.4 m shafts, each with a corner block; 45-degree cut corners), `OfficeChunkBuilder.Depth.cs` (steps, walkways, shafts in darkening bands, cut corner walls), floors, walls, posts, colliders, props, outlets and pillars from a room's own floor; mantle (Space at a 0.45-1.35 m ledge) and a camera jolt on drops.
+- Checked: EditMode 140/140 (5 new DepthPlanTests, plus reachability and borders with the features on); World 3: walked down a sunken room's steps (0 to -0.42 m, stairs detected), a pit room's lattice and shafts drawn as in the reference, dropped into a 2.1 m shaft and climbed out in two pulls (0.6 s each), a cut corner drawn and solid.
+- Open: ramps and sloped ceilings, diagonal hallways, mezzanines, holes to the storey below, the wrong rooms; the light grid knows no floor heights (shafts are darkened by paint).
+
 ## 2026-10-28 20:03  Claude Code  Handling plan: faster pickups, one-click doors, no drops plugging in, E to place, hands in view
 - Asked: a plan for faster, better-looking item handling, hands and doors from how top games do it (Docs/HandlingPlan.md), then build it; tapping E must still show a quick set-down, holding E must not walk you forward, letting go must set it down smoothly.
 - Built (Interaction.md, round 11): reaches on time (0.32/0.5 s, then a palm within 4.5 cm takes it and the hand closes the gap), quicker arm, fingers, lift, squat and bend; forgiving aim (a 0.95 m step, items reached at a looser turn offered, sticky focus); left click opens or shuts doors (held: the careful way), tugs step straight back by a wall; the coil stays in the hand plugging in, the lamp is picked back up after; plugs held short slide in; items keep the grip they were taken by; E places (tap, or hold to slide, turn, tip over; bends but never steps; arcs down; glides onto its spot); Hands in view (Full / Low / Off, Low default).

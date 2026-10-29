@@ -365,6 +365,9 @@ namespace Backrooms
                 return;
             }
 
+            // Pulling up onto a ledge (Space at a ledge 0.45-1.35 m up): the body climbs, nothing else moves it.
+            if (_mantleT >= 0f) { UpdateMantle(); return; }
+
             if (_holdForGround > 0f)
             {
                 _holdForGround -= Time.deltaTime;
@@ -446,6 +449,13 @@ namespace Backrooms
             {
                 LandedThisFrame = -_airMinVy;
                 _eyeVel -= Mathf.Min(2.5f, -_airMinVy * 0.45f);
+                // A real drop (about a metre and more, into a pit room's shaft): the camcorder in the hand jolts down.
+                if (-_airMinVy > 4.5f)
+                {
+                    if (!_shakeRef) _shakeRef = FindAnyObjectByType<HandheldCameraShake>();
+                    float hard = Mathf.Clamp01((-_airMinVy - 4.5f) / 3.5f);
+                    if (_shakeRef) _shakeRef.Jolt(new Vector3(9f + 10f * hard, (Random.value - 0.5f) * 8f * hard, (Random.value - 0.5f) * 10f * (0.4f + hard)));
+                }
             }
             if (grounded) { _airMinVy = 0f; _lastGrounded = Time.time; }
             UpdateStairs(grounded);
@@ -614,6 +624,87 @@ namespace Backrooms
             CamcorderHold = Quaternion.Inverse(cameraPitchPivot.localRotation) * (want * _holdIn);
         }
 
+        // ---------------- Mantle ----------------
+        // Space at a ledge 0.45-1.35 m above the feet, close ahead, with room on top for the body: it pulls up onto it (up
+        // the face, then over), about half a second; out of a pit room's shaft in two pulls (the block in its corner first).
+
+        [Header("Mantle")]
+        [Tooltip("Lowest and highest ledge (m above the feet) Space pulls you up onto; lower is an ordinary jump.")]
+        public float mantleMin = 0.45f, mantleMax = 1.35f;
+        [Tooltip("How long a pull up takes (s), a little more for a higher ledge.")] public float mantleTime = 0.5f;
+        float _mantleT = -1f, _mantleDur;
+        Vector3 _mantleFrom, _mantleTo;
+        HandheldCameraShake _shakeRef;
+        /// <summary>Pulling up onto a ledge now (for the body and tests).</summary>
+        public bool Mantling => _mantleT >= 0f;
+        /// <summary>Tests: a pull up asked for this frame (as Space).</summary>
+        [System.NonSerialized] public bool botMantle;
+
+        /// <summary>A ledge ahead to pull up onto: where the feet will stand on top of it.</summary>
+        bool FindLedge(out Vector3 stand)
+        {
+            stand = default;
+            Vector3 fwd = transform.forward; fwd.y = 0f; fwd.Normalize();
+            Vector3 feet = transform.position;
+            float r = _controller.radius;
+            // Its top, a little way past the front of the body (from above, down to the feet).
+            for (float reach = r + 0.2f; reach <= r + 0.5f; reach += 0.15f)
+            {
+                Vector3 from = feet + fwd * reach + Vector3.up * (mantleMax + 0.15f);
+                if (!Physics.Raycast(from, Vector3.down, out var hit, mantleMax + 0.15f - mantleMin + 0.05f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                if (hit.collider.transform.IsChildOf(transform) || hit.normal.y < 0.75f) continue;
+                float h = hit.point.y - feet.y;
+                if (h < mantleMin || h > mantleMax) continue;
+                // A face in front of the body (a ledge, not a slope or a lip of the floor).
+                if (!Physics.Raycast(feet + Vector3.up * (h - 0.12f), fwd, reach + 0.1f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                // Room on top for the standing body a little past the edge: a slimmer body than the controller's, since a
+                // walkway can be narrower than it (a pit room's are 0.48 m; the controller stands overhanging them).
+                // (The top was found reach ahead, at least 0.2 m past the edge: a step more onto it.)
+                Vector3 top = hit.point + fwd * 0.05f + Vector3.up * (_controller.skinWidth + 0.02f);
+                const float slim = 0.2f;
+                Vector3 a = top + Vector3.up * (slim + 0.02f), b = top + Vector3.up * (_controller.height - slim);
+                if (Physics.CheckCapsule(a, b, slim, ~0, QueryTriggerInteraction.Ignore)) continue;
+                stand = top;
+                return true;
+            }
+            return false;
+        }
+
+        bool TryMantle()
+        {
+            if (CurrentStance == Stance.Crawl || !FindLedge(out var stand)) return false;
+            _mantleFrom = transform.position; _mantleTo = stand;
+            _mantleDur = mantleTime * Mathf.Lerp(0.85f, 1.2f, Mathf.InverseLerp(mantleMin, mantleMax, stand.y - transform.position.y));
+            _mantleT = 0f;
+            _verticalVelocity = 0f; PlanarVelocity = Vector3.zero; _moveAccel = Vector3.zero;
+            _chargeT = -1f; _launchAt = -1f; _jumpPressedAt = -10f;
+            _eyeVel -= 0.8f;                                     // the arms take the weight
+            if (!_shakeRef) _shakeRef = FindAnyObjectByType<HandheldCameraShake>();
+            if (_shakeRef) _shakeRef.Jolt(new Vector3(5f, 0f, (Random.value - 0.5f) * 4f));
+            return true;
+        }
+
+        void UpdateMantle()
+        {
+            _mantleT += Time.deltaTime / Mathf.Max(0.1f, _mantleDur);
+            float t = Mathf.Clamp01(_mantleT);
+            // Up the face first (the hips over the edge), then over onto the top.
+            float up = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / 0.65f));
+            float over = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.35f) / 0.65f));
+            Vector3 want = new Vector3(Mathf.Lerp(_mantleFrom.x, _mantleTo.x, over), Mathf.Lerp(_mantleFrom.y, _mantleTo.y + 0.03f, up), Mathf.Lerp(_mantleFrom.z, _mantleTo.z, over));
+            _controller.enabled = false;
+            transform.position = want;
+            _controller.enabled = true;
+            PlanarVelocity = Vector3.zero; _verticalVelocity = 0f;
+            if (t >= 1f)
+            {
+                _mantleT = -1f;
+                _verticalVelocity = -2f;
+                _airMinVy = 0f; _lastGrounded = Time.time;
+                _eyeVel += 0.5f;
+            }
+        }
+
         // ---------------- Jump ----------------
 
         void UpdateJump(Keyboard kb, bool hasFocus)
@@ -621,7 +712,10 @@ namespace Backrooms
             // Forgiving: a jump still works a moment after walking off an edge (coyote time), and one pressed just before
             // landing happens on landing (buffered: held, it charges from the landing; let go, it is a hop).
             bool grounded = _controller.isGrounded || (Time.time - _lastGrounded < coyoteTime && _verticalVelocity <= 0f);
-            bool pressed = hasFocus && kb.spaceKey.wasPressedThisFrame;
+            bool pressed = (hasFocus && kb.spaceKey.wasPressedThisFrame) || botMantle;
+            botMantle = false;
+            // At a ledge (and in the air just after a jump at it): pull up onto it instead.
+            if (pressed && TryMantle()) return;
             if (pressed && !grounded) { _jumpPressedAt = Time.time; _jumpHeldInAir = true; }
             if (_jumpHeldInAir && (!hasFocus || !kb.spaceKey.isPressed)) _jumpHeldInAir = false;
             if (grounded && _chargeT < 0f && _launchAt < 0f && Time.time - _jumpPressedAt < jumpBuffer && CurrentStance != Stance.Crawl)
