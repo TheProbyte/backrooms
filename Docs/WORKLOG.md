@@ -15,6 +15,23 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Handling fixes: camera rises, no spinning, steady grab marks
+
+- Owner: the camera stayed at the floor after taking something low (a pallet, a couch's underside) and did not rise as
+  a couch was tipped up. The squat and hip bend the reach planned stayed on for the whole hold. Carrying and tipping now
+  clear the plan once taken, so the body bends only as low as the hands hold it (tipping a couch: the camera 0.57 m up at
+  the start, 1.12 m at 88 degrees). Pushing keeps it (cleared, the body straightened off a grip at arm's length and it
+  slipped). The extra bend for a palm that could not get there also wears off while holding, not only when idle.
+- Owner: a couch held by its side spun. Pushing pulled the hands' target toward the shoulder (the offset clamp and the
+  arm-bent reach), off the grip; at a grip far from its middle that swung it round, and the hands gave and let it go on
+  round. Now the hands stay where they took hold (the lead is only kept within the arm or where the grip already is),
+  and a pushed thing never spins faster than 1.6 rad/s. Held by its end: still for 2 s, pushed 1.5 m, no turn.
+- Owner: the grab marks popped about. They used a real grab's random few centimetres along the edge, re-rolled every
+  frame; now none, and the marks glide to the spot (0.09 s) instead of jumping from edge to edge.
+- Checked with `Debug/HandlingProbe.cs` (World 3, erased): couch by the top pushed 2.2 m, steered 63 degrees as you
+  turned 80; by its end as above; tipped to 91 degrees with the camera rising; office chair carried at 1.31 m camera
+  height. EditMode 149/149.
+
 ## 2026-10-30 - Handling round 12: heavy by top or underside, light carried, pockets as homes, hint line
 
 - Owner's review and design. Heavy things (couch, armchair, table, heavy box, loaded pallet) are taken by where you hold

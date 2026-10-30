@@ -278,7 +278,8 @@ namespace Backrooms.Interaction
             }
             else if (_itemStepping) { _player.botInput = null; _itemStepping = false; }
             // Further down while the palm cannot get there (ComeCloser).
-            if (Current == State.Idle && !OnDoor && !QuickDooring) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0f, Time.deltaTime * 0.5f);
+            // (Round 13: not only once idle: held on to it, it kept the body down at the floor for the whole hold.)
+            if (Current != State.Reaching && !OnDoor && !QuickDooring) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0f, Time.deltaTime * 0.5f);
             want = Mathf.Min(0.85f, want + _stoopExtra);
             if (LowPush) want = Mathf.Min(want, 0.3f);           // pushing a pallet: bent a little, not down at its edge
             // (Going down for an item, alongside the arm: 1.9 a second.)
@@ -494,7 +495,9 @@ namespace Backrooms.Interaction
         {
             float k = mouseToMetres * _player.FovMultiplier;
             var want = _offset + new Vector3(md.x * k, md.y * k, 0f);
-            var clamped = ClampOffset(want);
+            // (Pushing: the hands stay where they took hold. Clamped, the target was pulled toward the shoulder off the grip,
+            // and a couch held by its far side was swung round by it and spun, round 13.)
+            var clamped = Pushing ? want : ClampOffset(want);
             // Within the arm's reach from the real shoulder: the prop comes to the hand, not the hand stretching after it.
             {
                 // (A little past the reach, as far as the arm took it: at 0.97 of it, a sofa taken by its seat at full
@@ -502,8 +505,8 @@ namespace Backrooms.Interaction
                 Vector3 T = StandShoulder + transform.rotation * clamped, RS = ReachShoulder;
                 // (Pushing: the arm kept bent, so it has room to push ahead as you walk. A pallet, at your feet: not kept
                 // within the arm at all, or the hand pulled it up toward the shoulder instead of pushing it.)
-                float r = Pushing ? ArmReach - 0.2f : ArmReach + 0.05f;
-                if (!LowPush && (T - RS).sqrMagnitude > r * r) clamped = Quaternion.Inverse(transform.rotation) * (RS + Vector3.ClampMagnitude(T - RS, r) - StandShoulder);
+                float r = ArmReach + 0.05f;
+                if (!Pushing && (T - RS).sqrMagnitude > r * r) clamped = Quaternion.Inverse(transform.rotation) * (RS + Vector3.ClampMagnitude(T - RS, r) - StandShoulder);
             }
             // Past the arm's limit sideways the body turns with it (so you can keep swinging it round);
             // past the lift limit the view follows.
@@ -549,6 +552,7 @@ namespace Backrooms.Interaction
             if (Carrying) { CarryForces(rb); return; }
             if (Tipping) { TipForces(rb); return; }
             Vector3 T = StandShoulder + transform.rotation * _offset;
+            Vector3 T0 = T;
             // Pushing: the hand goes ahead of you the way you walk (the body alone stops against it), and pushes at its
             // balance point's height so it slides and turns rather than tipping over.
             // (Not back toward you: walking back, the hand just holds on and it follows; led back, it was pulled into
@@ -558,7 +562,9 @@ namespace Backrooms.Interaction
             {
                 T += transform.rotation * _pushLead;
                 Vector3 RS = ReachShoulder;
-                float r = ArmReach + 0.05f;                       // (never further than the arm: the hand slipped off)
+                // (The lead never takes the hands further than the arm, or than where they hold it now: clamped to the arm
+                // alone, a grip taken at full stretch was pulled in, off the grip, and the couch swung round.)
+                float r = Mathf.Max(ArmReach + 0.05f, (T0 - RS).magnitude);
                 if (!LowPush && (T - RS).sqrMagnitude > r * r) T = RS + Vector3.ClampMagnitude(T - RS, r);
             }
             Vector3 G = rb.position + rb.rotation * _gripLocal;

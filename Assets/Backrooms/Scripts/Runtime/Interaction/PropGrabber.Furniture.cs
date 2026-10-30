@@ -118,9 +118,13 @@ namespace Backrooms.Interaction
             TwoHanded = false;
             _secondFarT = 0f;
             Handling = Hold.None;
-            if (StartCarry()) return;
+            if (StartCarry()) { ClearPlan(); return; }
             Vector3 grip = Held.transform.TransformPoint(_gripLocal), n = Held.transform.TransformDirection(_normalLocal);
-            if (UnderGrip(Held, grip, n)) StartTip(); else StartPush();
+            // Carried or tipped up, the hands go up with it: the squat and bend the reach planned are done with, and the body
+            // stands as the hands rise (round 13: the plan's squat stayed on for the whole hold, the camera at the floor, and
+            // did not rise as a couch was tipped up). Pushing, you stay leant over it as you took it (cleared, the body
+            // straightened off a grip at arm's length and it slipped).
+            if (UnderGrip(Held, grip, n)) { StartTip(); ClearPlan(); } else StartPush();
         }
 
         void ReleaseFurniture()
@@ -137,7 +141,9 @@ namespace Backrooms.Interaction
             Handling = Hold.Push;
             _pushFrom = Time.time;
             _pushLift = 0f;
-            _pushBase = _offset;
+            // Exactly where the hands took it (not clamped toward the body: that pulled the grip and swung the couch round).
+            _pushBase = Quaternion.Inverse(transform.rotation) * (Held.transform.TransformPoint(_gripLocal) - StandShoulder);
+            _offset = _pushBase;
             TakeSecondGrip();
         }
 
@@ -397,7 +403,12 @@ namespace Backrooms.Interaction
             Vector3 turn = Vector3.Project(tau, Vector3.up) * (Iy / Mathf.Max(I, 1e-4f)), tip = tau - Vector3.Project(tau, Vector3.up);
             tau = Vector3.ClampMagnitude(turn, TwoHanded ? twoHandTurnTorque : pushTurnTorque) + Vector3.ClampMagnitude(tip, TwoHanded ? twoHandTorque : pushTorque);
             rb.AddTorque(tau, ForceMode.Force);
+            // A couch pushed round never spins faster than you could swing it (about 90 degrees a second): whatever else
+            // goes wrong, it does not whirl.
+            var av = rb.angularVelocity;
+            if (Mathf.Abs(av.y) > MaxPushSpin) { av.y = Mathf.Sign(av.y) * MaxPushSpin; rb.angularVelocity = av; }
         }
+        const float MaxPushSpin = 1.6f;
 
         /// <summary>How much of a hand's lifting strength pushing uses: a steadying hold, up to all of it as the mouse
         /// lifts your end.</summary>

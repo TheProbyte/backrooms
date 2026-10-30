@@ -77,6 +77,24 @@ namespace Backrooms.DebugTools
             yield return new WaitForSeconds(1.2f);
             Log($"let go: tilt {Tilt(sofa):F0} deg");
 
+            // ---- The couch by its side (the end of an arm): held still, then pushed; it must not spin ----
+            yield return StandAtEnd(sofa, 1.2f);
+            sb = sofa.Shape.bounds;
+            yield return AimDirect(sofa.transform.TransformPoint(new Vector3(sb.max.x - 0.08f, sb.min.y + sb.size.y * 0.72f, sb.center.z + 0.1f)));
+            _log.AppendLine($"aimed at its end: hint '{_grab.HintText}'");
+            yield return Hold();
+            Log("couch by its side");
+            float ys = sofa.transform.eulerAngles.y, maxSpin = 0f;
+            for (float t = 0f; t < 2f; t += Time.deltaTime) { maxSpin = Mathf.Max(maxSpin, Mathf.Abs(sofa.Body.angularVelocity.y)); yield return null; }
+            Log($"held still 2 s: it turned {Mathf.DeltaAngle(ys, sofa.transform.eulerAngles.y):F0} deg, fastest spin {maxSpin:F2} rad/s");
+            Vector3 ps = sofa.transform.position; ys = sofa.transform.eulerAngles.y; maxSpin = 0f;
+            for (float t = 0f; t < 2f; t += Time.deltaTime) { _ctrl.botInput = new Vector2(0f, 0.8f); maxSpin = Mathf.Max(maxSpin, Mathf.Abs(sofa.Body.angularVelocity.y)); yield return null; }
+            _ctrl.botInput = null;
+            Log($"pushed by its side 2 s: moved {Flat(sofa.transform.position - ps).magnitude:F2} m, turned {Mathf.DeltaAngle(ys, sofa.transform.eulerAngles.y):F0} deg, fastest spin {maxSpin:F2} rad/s");
+            Shot("3b_couch_by_side");
+            _grab.botHold = false; yield return null; _grab.botHold = null;
+            yield return new WaitForSeconds(1f);
+
             // ---- The couch by the underside of its back: tipped up ----
             yield return StandBehind(sofa, 1.35f);
             sb = sofa.Shape.bounds;
@@ -86,9 +104,12 @@ namespace Backrooms.DebugTools
             Shot("4_couch_aimed_low");
             yield return Hold();
             Log("couch by the underside");
+            yield return new WaitForSeconds(0.6f);
+            Log("couch by the underside, settled");
             for (int i = 0; i < 160; i++) { _grab.botMouse = new Vector2(0f, 5f); if (i % 40 == 0) Log($"  tipping {i}: tilt {Tilt(sofa):F0}"); yield return null; }
             _grab.botMouse = Vector2.zero;
             yield return new WaitForSeconds(0.6f);
+            yield return new WaitForSeconds(0.8f);
             Log($"tipped: tilt {Tilt(sofa):F0} deg, hint '{_grab.HintText}'");
             Shot("5_couch_tipped");
             _grab.botHold = false; yield return null; _grab.botHold = null;
@@ -108,6 +129,7 @@ namespace Backrooms.DebugTools
             yield return Hold();
             yield return new WaitForSeconds(0.8f);
             Log($"office chair: {Carry(chair)}");
+            Log("office chair carried");
             yield return Walk(new Vector2(0f, 0.8f), 1.5f);
             Log($"walked: {Carry(chair)}");
             Shot("7_chair_carried");
@@ -205,6 +227,15 @@ namespace Backrooms.DebugTools
         static float Tilt(MovableProp p) => Vector3.Angle(p.transform.up, Vector3.up);
         static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z);
 
+        /// <summary>At the couch's +X end, facing it.</summary>
+        IEnumerator StandAtEnd(MovableProp p, float d)
+        {
+            Vector3 side = Flat(p.transform.right).normalized;
+            Vector3 s = p.WorldBounds.center + side * (p.Shape.bounds.extents.x + d); s.y = _ctrl.transform.position.y;
+            _ctrl.Teleport(s, Quaternion.LookRotation(-side).eulerAngles.y);
+            yield return new WaitForSeconds(0.5f);
+        }
+
         /// <summary>Behind the couch (its back, -Z, toward you), facing it.</summary>
         IEnumerator StandBehind(MovableProp p, float d)
         {
@@ -271,7 +302,8 @@ namespace Backrooms.DebugTools
 
         void Log(string what)
         {
-            _log.AppendLine($"{Time.time:F1}s {what}: state={_grab.Current} handling={_grab.Handling} two={_grab.TwoHanded} strap={_grab.CamcorderOnStrap} last release='{_grab.LastRelease}'");
+            _log.AppendLine($"{Time.time:F1}s {what}: state={_grab.Current} handling={_grab.Handling} two={_grab.TwoHanded} strap={_grab.CamcorderOnStrap} " +
+                            $"camera {Camera.main.transform.position.y - _ctrl.transform.position.y:F2} m up (stoop {_ctrl.stoop:F2}) last release='{_grab.LastRelease}'");
         }
 
         void Shot(string name) => ScreenCapture.CaptureScreenshot(Path.Combine(folder, name + ".png"));

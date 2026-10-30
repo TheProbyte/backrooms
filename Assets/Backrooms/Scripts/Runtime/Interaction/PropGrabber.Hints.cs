@@ -18,7 +18,12 @@ namespace Backrooms.Interaction
         float _noteUntil = -10f;
         Vector3? _hintMark;
         GUIStyle _hintStyle;
-        static readonly System.Random s_hintRng = new System.Random(1);
+        /// <summary>No jitter along the edge for the marks (FindGrip varies a real grab a few centimetres; re-rolled each
+        /// frame, the marks shook, round 13).</summary>
+        sealed class NoJitter : System.Random { public override double NextDouble() => 0.5; }
+        static readonly System.Random s_hintRng = new NoJitter();
+        Vector3 _markShown;
+        MovableProp _markProp;
 
         /// <summary>A short note in place of the hint for a moment (something did not work).</summary>
         void Note(string text) { _note = text; _noteUntil = Time.time + 1.6f; }
@@ -44,6 +49,7 @@ namespace Backrooms.Interaction
         {
             grip = default; verb = null;
             if (!Look(lookRange, out var hit, out prop) || !prop || prop.Shape == null) return false;
+            _aimedMarkProp = prop;
             prop.FindGrip(hit.point, hit.normal, Shoulder, s_hintRng, out grip, out var n, out _);
             verb = PropVerb(prop, grip, n);
             return true;
@@ -65,7 +71,7 @@ namespace Backrooms.Interaction
                 if (Stowing || _itemT < 1f) return;
                 if (AimedSocket != null) { _hint = "CLICK TO PLUG IN"; return; }
                 if (!HeldItem.UsesAim && HeldItem.Pocketable && AimedProp(out var p, out var g, out var verb))
-                { _hint = $"HOLD TO {verb} {NameOf(p)}"; _hintMark = g; return; }
+                { _hint = $"HOLD TO {verb} {NameOf(p)}"; _hintMark = g; SmoothMark(); return; }
                 _hint = HeldItem.Pocketable ? "Q DROP · E SET DOWN · 1-4 POCKET" : "Q DROP · E SET DOWN";
                 return;
             }
@@ -73,7 +79,18 @@ namespace Backrooms.Interaction
             if (AimedPoke != null) { _hint = "CLICK TO PRESS"; return; }
             if (AimedDoorGrip.HasValue) { _hint = "CLICK TO OPEN OR SHUT · HOLD TO MOVE IT SLOWLY"; return; }
             if (AimedProp(out var prop, out var grip, out var v)) { _hint = $"HOLD TO {v} {NameOf(prop)}"; _hintMark = grip; }
+            SmoothMark();
         }
+
+        /// <summary>The marks glide to where the hands would take it (they popped from edge to edge as the view moved).</summary>
+        void SmoothMark()
+        {
+            if (!_hintMark.HasValue) { _markProp = null; return; }
+            var p = _aimedMarkProp;
+            if (p != _markProp) { _markProp = p; _markShown = _hintMark.Value; return; }
+            _markShown = Vector3.Lerp(_markShown, _hintMark.Value, 1f - Mathf.Exp(-Time.deltaTime / 0.09f));
+        }
+        MovableProp _aimedMarkProp;
 
         void HintGUI()
         {
@@ -91,7 +108,7 @@ namespace Backrooms.Interaction
             GUI.color = note ? new Color(1f, 0.9f, 0.6f, 0.9f) : new Color(1f, 1f, 1f, 0.75f);
             GUI.Label(r, text, _hintStyle);
             GUI.color = old;
-            if (_hintMark.HasValue && !note) FocusMarksAlpha(_hintMark.Value, 0.035f, 12f, 0.45f);
+            if (_hintMark.HasValue && !note) FocusMarksAlpha(_markShown, 0.035f, 12f, 0.45f);
         }
     }
 }
