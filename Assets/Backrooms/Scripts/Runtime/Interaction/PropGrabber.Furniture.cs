@@ -1,85 +1,87 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 namespace Backrooms.Interaction
 {
     /// <summary>
-    /// Handling furniture by physics (Docs/FurnitureHandlingPlan.md): nothing snaps, the hand only applies what a hand could.
+    /// Heavy things (a couch, an armchair, a table, a heavy box, a loaded pallet) by physics (Docs/FurnitureHandlingPlan.md):
+    /// nothing snaps, the hands only apply what hands could. Two ways to take one, by where you take it:
     /// <list type="bullet">
-    /// <item><b>A wrist.</b> Besides the pull at the grip, the hand turns what it holds toward the angle it took it at, with a
-    /// limited torque (<see cref="wristTorque"/>): a light chair held by its frame keeps its angle; held by a leg it swings;
-    /// a sofa barely notices. Past what the wrist can hold it gives (the angle it wants follows the prop).</item>
-    /// <item><b>Turning on purpose.</b> Hold <b>R</b> while holding: the mouse turns it about your grip instead of moving your
-    /// end (up and down tip it toward or away from you, left and right roll it onto a side). Gravity and the floor do the
-    /// rest: past its balance point it goes over by itself.</item>
-    /// <item><b>Pushing.</b> Taking furniture starts with one hand on it, the camcorder still at the eye in the other: the
-    /// hand keeps its spot in front of you, so walking pushes it ahead (S pulls it back) and turning steers it, and you
-    /// look over it at where it goes. The mouse turns you, as it does walking.</item>
-    /// <item><b>Two hands (heaving it up).</b> A sharp move of the mouse up while pushing (or R) heaves it: the camcorder
-    /// hangs on its strap at your chest (the picture drops and swings: HandheldCameraShake.strap) and frees the left hand:
-    /// it is taken with both, a second grip across from the first. Twice the strength, and two grips make a lever, so it
-    /// can be lifted and turned. Lowered onto the floor upright, keep lowering and you are pushing again; let go and the
-    /// camcorder comes back up.</item>
+    /// <item><b>By its top</b> (anywhere on top: the back, an arm, a side): both hands on the edge, the camcorder on its strap
+    /// at your chest. <b>W</b> pushes it ahead, <b>S</b> pulls it back, <b>A/D</b> slide it; <b>the mouse turns you</b> and it
+    /// turns with you (steering); <b>mouse up</b> lifts your end a little (a few centimetres, off its feet), down sets it back.
+    /// That is all: it is pushed and steered, not carried.</item>
+    /// <item><b>By its underside</b> (look at its bottom edge, or the low part of it): both hands under it. <b>Mouse up</b> tips
+    /// it up about its far bottom edge (onto its back, or up on end if you took it by an end), <b>down</b> lowers it again; it
+    /// goes as far as hands under it can take it, a quarter turn, and stops where something is in the way. Let go part way
+    /// and it falls back (or on over, past its balance point).</item>
     /// </list>
+    /// Light things (a light box, an empty pallet, an office chair) are carried instead (PropGrabber.Carry).
     /// </summary>
     public partial class PropGrabber
     {
         [Header("Furniture")]
-        [Tooltip("Most a wrist can turn what it holds (N m). A 12 kg chair held 0.3 m from its balance point weighs 35 N m.")]
+        [Tooltip("Most a wrist can turn what it holds (N m).")]
         public float wristTorque = 14f;
         [Tooltip("With both hands, most the two grips together can turn it (N m), on top of the lever they make.")]
         public float twoHandTorque = 60f;
-        [Tooltip("Degrees the held thing turns per mouse count with R held.")]
-        public float twistPerCount = 0.18f;
         [Tooltip("Second hand: how far from the first grip it looks for its own (m).")]
         public float secondGripSpread = 0.42f;
-        [Tooltip("Pushing: most the hand on it, your weight behind it, can keep it upright and turn it with you (N m).")]
+        [Tooltip("Pushing: most the hands on it, your weight behind it, can keep it upright (N m).")]
         public float pushTorque = 40f;
-        [Tooltip("Pushing: mouse counts up within a moment (about 0.15 s) that heave it up into both hands. Lowered back onto " +
-                 "the floor, as many counts down put you back to pushing.")]
-        public float heaveCounts = 300f;
-        [Tooltip("Pushing: how far ahead of its spot the hand goes the way you walk (m).")]
+        [Tooltip("Pushing: how far ahead of its spot the hands go the way you walk (m).")]
         public float pushLead = 0.25f;
         [Tooltip("Pushing: most it is turned round with you about the vertical, steering (N m).")]
         public float pushTurnTorque = 160f;
+        [Tooltip("Pushing with both hands on it (a lever between them): most it is turned round with you (N m). A 54 kg couch's " +
+                 "feet hold it against about 220 N m.")]
+        public float twoHandTurnTorque = 380f;
+        [Tooltip("Pushing: how high the mouse lifts your end (m).")]
+        public float pushLiftMax = 0.12f;
+        [Tooltip("Tipping from the underside: degrees per mouse count.")]
+        public float tipPerCount = 0.15f;
         Vector3 _pushLead;
 
-        /// <summary>Pushing furniture: one hand on it, the camcorder at the eye (see the class notes).</summary>
-        public bool Pushing { get; private set; }
-        float _heaveAcc, _setDownAcc;
+        public enum Hold { None, Push, Tip, Carry }
+        /// <summary>How the held prop is being handled (see the class notes, and PropGrabber.Carry).</summary>
+        public Hold Handling { get; private set; }
+        /// <summary>Pushing heavy furniture by its top.</summary>
+        public bool Pushing => Handling == Hold.Push && Held;
+        /// <summary>Tipping heavy furniture up from its underside.</summary>
+        public bool Tipping => Handling == Hold.Tip && Held;
 
-        /// <summary>Furniture (anything but a box light enough to carry) is pushed first, heaved up with both hands.</summary>
-        bool IsFurniture(MovableProp p) => p && !(p.Spec.kind == MovableKind.Box && p.Mass <= carryMass);
+        /// <summary>Heavy: pushed or tipped, never carried (everything that is not light, PropGrabber.Carry.IsLight).</summary>
+        bool IsFurniture(MovableProp p) => p && !IsLight(p);
 
-        /// <summary>Tests: R held this frame (twist).</summary>
-        [System.NonSerialized] public bool? botTwist;
-
-        /// <summary>The camcorder hangs on its strap at the chest (while furniture is taken or held): the left hand is free.</summary>
+        /// <summary>The camcorder hangs on its strap at the chest (while a prop is held with both hands): the left hand is free.</summary>
         public bool CamcorderOnStrap { get; private set; }
-        /// <summary>Holding furniture with both hands right now (the left on <see cref="SecondGrip"/>).</summary>
+        /// <summary>Holding with both hands right now (the left on <see cref="SecondGrip"/>).</summary>
         public bool TwoHanded { get; private set; }
-        /// <summary>Twisting what it holds (R held).</summary>
-        public bool Twisting { get; private set; }
         /// <summary>The second hand's grip (world) and the surface's normal there, while two-handed.</summary>
         public Vector3 SecondGrip => TwoHanded && Held ? Held.transform.TransformPoint(_gripLocalB) : Vector3.zero;
         public Vector3 SecondNormal => TwoHanded && Held ? Held.transform.TransformDirection(_normalLocalB) : Vector3.up;
 
-        Quaternion _wristRel;            // the held thing's rotation relative to the body that the wrist keeps
+        Quaternion _wristRel;            // the held thing's rotation relative to the body that the hands keep
         Vector3 _gripLocalB, _normalLocalB;
         float _secondFarT;
 
         float _strapOffAt;
         Collider[] _heldColliders;
 
+        // Pushing: where the hands were taken (the lift is added on), how far up the mouse has lifted them.
+        Vector3 _pushBase;
+        float _pushLift, _pushFrom;
+        // Tipping: the pose it was taken in, the edge it turns about, the angle wanted and the angle it is driven to.
+        Vector3 _tipFromPos, _tipPivot, _tipAxis;
+        Quaternion _tipFromRot;
+        float _tipWant, _tipAngle, _tipBlockT;
+
         /// <summary>
-        /// The camcorder goes onto its strap by itself while the hands take or hold furniture (both hands are needed), and
-        /// comes back up a moment after letting go. While it hangs, the camera keeps out of what you hold.
+        /// The camcorder goes onto its strap by itself while both hands hold a prop (and while reaching for a light one),
+        /// and comes back up a moment after letting go. While it hangs, the camera keeps out of what you hold.
         /// </summary>
         void UpdateStrap()
         {
-            // (Not while pushing, nor reaching to push: the camcorder stays at the eye until it is heaved up.)
-            bool want = !HeldItem && _target && (Current == State.Reaching || Current == State.Holding)
-                        && !(IsFurniture(_target) && (Current == State.Reaching || Pushing));
+            bool want = !HeldItem && _target && (Current == State.Holding || (Current == State.Reaching && IsLight(_target)));
             if (want) _strapOffAt = Time.time + 0.35f;
             bool on = want || (CamcorderOnStrap && Time.time < _strapOffAt);
             if (on != CamcorderOnStrap)
@@ -97,140 +99,55 @@ namespace Backrooms.Interaction
             }
         }
 
-        bool TwistHeld(bool focus)
-        {
-            var kb = Keyboard.current;
-            Twisting = botTwist ?? (focus && kb != null && kb.rKey.isPressed);
-            return Twisting;
-        }
-
         /// <summary>
-        /// The mouse turns the held thing: up/down tip it away or toward you, left/right roll it onto a side. It turns about
-        /// its own balance point, so the hand (and the other hand) go round with it: pushing a chair's back away tips it
-        /// over its far legs, the floor pushing back where it is in the way.
+        /// A grip that takes it from underneath (tipping) rather than by its top (pushing): an edge facing down, or low on
+        /// it (the bottom fifth of its height).
         /// </summary>
-        void UpdateTwist(Vector2 md)
+        public static bool UnderGrip(MovableProp p, Vector3 grip, Vector3 normal)
         {
-            float k = twistPerCount * _player.FovMultiplier;
-            var dq = Quaternion.AngleAxis(-md.x * k, Vector3.forward) * Quaternion.AngleAxis(md.y * k, Vector3.right);
-            _player.lookScale = 0f;
-            if (!Held) return;
-            Quaternion yaw = transform.rotation;
-            Vector3 T = StandShoulder + yaw * _offset;
-            Quaternion dqW = yaw * dq * Quaternion.Inverse(yaw);
-            // Standing on the floor: about the edge of its foot on the side it is tipped toward (rocked over, as you would:
-            // its feet are not asked to slide). Lifted: one hand about its balance point (the arm pushes it round), two
-            // about the hands (the wrists turn it, it swings round them).
-            var wb = Held.WorldBounds;
-            Vector3 C;
-            if (wb.min.y < transform.position.y + 0.08f)
-            {
-                Vector3 mid = wb.center;
-                Vector3 move = dqW * (T - mid) - (T - mid); move.y = 0f;
-                C = new Vector3(mid.x, wb.min.y, mid.z);
-                if (move.sqrMagnitude > 1e-8f)
-                {
-                    float best = float.MinValue;
-                    for (int c = 0; c < 4; c++)
-                    {
-                        var corner = new Vector3((c & 1) == 0 ? wb.min.x : wb.max.x, wb.min.y, (c & 2) == 0 ? wb.min.z : wb.max.z);
-                        // Toward the tip, along it: the middle of the bottom edge on that side.
-                        float d = Vector3.Dot(corner - mid, move);
-                        if (d > best + 1e-4f) { best = d; C = corner; }
-                        else if (Mathf.Abs(d - best) <= 1e-4f) C = (C + corner) * 0.5f;
-                    }
-                    Vector3 m = move.normalized;
-                    C = new Vector3(mid.x, wb.min.y, mid.z) + m * Vector3.Dot(C - new Vector3(mid.x, wb.min.y, mid.z), m);
-                }
-            }
-            else C = TwoHanded ? T + yaw * _wristRel * ((_gripLocalB - _gripLocal) * 0.5f)
-                               : T + yaw * _wristRel * (Held.Body.centerOfMass - _gripLocal);
-            Vector3 Tn = C + dqW * (T - C);
-            var newRel = dq * _wristRel;
-            var newOffset = ClampOffset(Quaternion.Inverse(yaw) * (Tn - StandShoulder));
-            _twistAt = Time.time;
-            if (TwoHanded)
-            {
-                // Both hands go round with it, so it only turns as far as both can still reach (and the right hand's
-                // spot is where it was asked to be: a clamped one would twist the two grips against each other). Out of
-                // reach, you step toward where the hands have to go (as the hand steps you in to take something).
-                Vector3 TA = StandShoulder + yaw * newOffset;
-                Vector3 TB = TA + yaw * newRel * (_gripLocalB - _gripLocal);
-                if ((TA - Tn).sqrMagnitude > 0.03f * 0.03f || Vector3.Distance(TB, LeftShoulder) > ArmReach + 0.2f)
-                {
-                    Vector3 need = Quaternion.Inverse(yaw) * ((Tn + TB) * 0.5f - (ReachShoulder + LeftShoulder) * 0.5f);
-                    var flat = new Vector2(need.x, need.z);
-                    if (flat.sqrMagnitude > 1e-4f) { _player.botInput = flat.normalized * 0.5f; _twistStepping = true; }
-                    return;
-                }
-            }
-            if (_twistStepping) { _player.botInput = null; _twistStepping = false; }
-            _wristRel = newRel;
-            _offset = newOffset;
+            if (!p) return false;
+            var wb = p.WorldBounds;
+            float f = wb.size.y > 1e-3f ? (grip.y - wb.min.y) / wb.size.y : 1f;
+            return normal.y < -0.3f || f < 0.2f;
         }
 
-        /// <summary>When a hold starts: the wrist keeps the angle it was taken at; with the camcorder on its strap the
-        /// left hand takes a second grip.</summary>
+        /// <summary>When a hold starts: carried if light, else pushed by its top or tipped from its underside.</summary>
         void AttachFurniture()
         {
             _wristRel = Quaternion.Inverse(transform.rotation) * Held.transform.rotation;
             TwoHanded = false;
             _secondFarT = 0f;
-            _heaveAcc = _setDownAcc = 0f;
-            Pushing = IsFurniture(Held);
-            _pushFrom = Time.time;
-            if (StartPalletCarry()) return;                 // an empty pallet: carried at your side (PropGrabber.Pallet)
-            if (!Pushing && CamcorderOnStrap) TakeSecondGrip();
+            Handling = Hold.None;
+            if (StartCarry()) return;
+            Vector3 grip = Held.transform.TransformPoint(_gripLocal), n = Held.transform.TransformDirection(_normalLocal);
+            if (UnderGrip(Held, grip, n)) StartTip(); else StartPush();
         }
 
-        void ReleaseFurniture() { EndPalletCarry(); TwoHanded = false; Twisting = false; Pushing = false; if (_twistStepping) { _twistStepping = false; } }
-
-        /// <summary>
-        /// Pushing or heaving (each frame while holding). Returns true while pushing: the hand keeps its spot and the mouse
-        /// turns you. A sharp move up (or R) heaves it into both hands; lifted and set back down upright on the floor, a
-        /// move down as sharp puts you back to pushing.
-        /// </summary>
-        bool UpdatePush(Vector2 md, bool turnKey)
+        void ReleaseFurniture()
         {
-            if (!Held) return false;
-            float dt = Time.deltaTime;
-            if (Pushing)
-            {
-                _heaveAcc = _heaveAcc * Mathf.Exp(-dt / 0.15f) + Mathf.Max(0f, md.y);
-                // (A loaded pallet is too heavy to heave: it stays pushed.)
-                if (Held.Spec.kind == MovableKind.Pallet) { _heaveAcc = 0f; return true; }
-                if (_heaveAcc > heaveCounts || turnKey) { Heave(turnKey ? 0f : 0.12f); return false; }
-                return true;
-            }
-            if (!IsFurniture(Held)) return false;
-            bool down = Held.WorldBounds.min.y < transform.position.y + 0.05f && Vector3.Angle(Held.transform.up, Vector3.up) < 25f && !Twisting;
-            _setDownAcc = down ? _setDownAcc * Mathf.Exp(-dt / 0.15f) + Mathf.Max(0f, -md.y) : 0f;
-            if (_setDownAcc > heaveCounts) { BackToPushing(); return true; }
-            return false;
-        }
-
-        /// <summary>Heaved up: the camcorder onto its strap, the left hand takes a second grip, your end comes up a little.</summary>
-        void Heave(float lift)
-        {
-            Pushing = false;
-            _heaveAcc = _setDownAcc = 0f;
-            UpdateStrap();
-            _wristRel = Quaternion.Inverse(transform.rotation) * Held.transform.rotation;
-            TakeSecondGrip();
-            _offset = ClampOffset(_offset + Vector3.up * lift);
-        }
-
-        /// <summary>Set down again: the left hand back to the camcorder, the right keeps its grip where it is.</summary>
-        void BackToPushing()
-        {
-            Pushing = true;
-            _pushFrom = Time.time;
+            EndCarry();
+            Handling = Hold.None;
             TwoHanded = false;
-            _heaveAcc = _setDownAcc = 0f;
-            _strapOffAt = 0f;
-            UpdateStrap();
-            _wristRel = Quaternion.Inverse(transform.rotation) * Held.transform.rotation;
-            _offset = ClampOffset(Quaternion.Inverse(transform.rotation) * (Held.transform.TransformPoint(_gripLocal) - StandShoulder));
+        }
+
+        // ---------------- Pushing (by the top) ----------------
+
+        void StartPush()
+        {
+            Handling = Hold.Push;
+            _pushFrom = Time.time;
+            _pushLift = 0f;
+            _pushBase = _offset;
+            TakeSecondGrip();
+        }
+
+        /// <summary>Each frame while pushing: mouse up lifts your end a little; the mouse turns you (and steers it).</summary>
+        void UpdatePush(Vector2 md)
+        {
+            _pushLift = Mathf.Clamp(_pushLift + md.y * mouseToMetres * _player.FovMultiplier, 0f, pushLiftMax);
+            _offset = _pushBase + Vector3.up * _pushLift;
+            UpdateHold(Vector2.zero);
+            PushLook();
         }
 
         /// <summary>Pushing: the mouse turns you (slower the heavier it is), and steers what you push.</summary>
@@ -243,15 +160,124 @@ namespace Backrooms.Interaction
             if (Time.time - _pushFrom < 0.9f && _player.Pitch > ahead)
                 _player.AddLook(0f, -Mathf.Min(_player.Pitch - ahead, 70f * Time.deltaTime));
         }
-        float _pushFrom;
 
-        bool _twistStepping;
-        float _twistAt = -10f;
-        /// <summary>Turning it just now (the grip does not count as slipping while the hands work it round).</summary>
-        public bool TurningNow => Time.time - _twistAt < 0.6f;
+        // ---------------- Tipping (from the underside) ----------------
 
-        /// <summary>No longer turning: stop the steps the turn asked for.</summary>
-        void EndTwistSteps() { if (_twistStepping && !Twisting) { _player.botInput = null; _twistStepping = false; } }
+        /// <summary>
+        /// Taken from underneath: it will turn about its far bottom edge (the far side of its footprint, square to one of its
+        /// own sides, from you), the near side coming up. The second hand goes under the same edge, to the left.
+        /// </summary>
+        void StartTip()
+        {
+            Handling = Hold.Tip;
+            var rb = Held.Body;
+            _tipFromPos = rb.position; _tipFromRot = rb.rotation;
+            _tipWant = _tipAngle = 0f; _tipBlockT = 0f;
+            // Away from you, along whichever of its own sides lies most that way (it tips square over an edge).
+            Vector3 away = Flat(Held.WorldBounds.center - transform.position);
+            away = away.sqrMagnitude > 1e-6f ? away.normalized : Flat(transform.forward).normalized;
+            Vector3 best = away; float bestDot = -2f;
+            var t = Held.transform;
+            foreach (var ax in new[] { t.right, -t.right, t.up, -t.up, t.forward, -t.forward })
+            {
+                Vector3 f = Flat(ax);
+                if (f.magnitude < 0.7f) continue;
+                f.Normalize();
+                float d = Vector3.Dot(f, away);
+                if (d > bestDot) { bestDot = d; best = f; }
+            }
+            away = best;
+            // The far bottom edge: the corners of its shape lowest down and furthest that way.
+            var b = Held.Shape.bounds;
+            var corners = new Vector3[8];
+            float minY = float.MaxValue;
+            for (int i = 0; i < 8; i++)
+            {
+                corners[i] = t.TransformPoint(new Vector3((i & 1) == 0 ? b.min.x : b.max.x, (i & 2) == 0 ? b.min.y : b.max.y, (i & 4) == 0 ? b.min.z : b.max.z));
+                minY = Mathf.Min(minY, corners[i].y);
+            }
+            float far = float.MinValue;
+            foreach (var c in corners) if (c.y < minY + 0.05f) far = Mathf.Max(far, Vector3.Dot(c, away));
+            Vector3 sum = Vector3.zero; int n = 0;
+            foreach (var c in corners) if (c.y < minY + 0.05f && Vector3.Dot(c, away) > far - 0.05f) { sum += c; n++; }
+            _tipPivot = n > 0 ? sum / n : Held.WorldBounds.center;
+            _tipAxis = Vector3.Cross(Vector3.up, away).normalized;
+            // The left hand under the same edge, 0.4 m to the left of the right (kept on it).
+            Vector3 a = t.TransformPoint(_gripLocal);
+            Vector3 edge = t.TransformDirection(_edgeLocal);
+            if (edge.sqrMagnitude < 1e-4f) edge = -transform.right * Side;
+            edge.Normalize();
+            if (Vector3.Dot(edge, -transform.right * Side) < 0f) edge = -edge;
+            Vector3 bp = ClosestOnHeld(a + edge * 0.4f);
+            _gripLocalB = t.InverseTransformPoint(bp);
+            _normalLocalB = _normalLocal;
+            TwoHanded = (bp - a).magnitude > 0.15f;
+        }
+
+        Vector3 ClosestOnHeld(Vector3 p)
+        {
+            Vector3 best = p; float bd = float.MaxValue;
+            foreach (var c in Held.GetComponentsInChildren<Collider>())
+            {
+                if (!c.enabled || c.isTrigger) continue;
+                Vector3 q = c.ClosestPoint(p);
+                float d = (q - p).sqrMagnitude;
+                if (d < bd) { bd = d; best = q; }
+            }
+            return best;
+        }
+
+        static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z);
+
+        /// <summary>How far it has turned about the tipping edge since it was taken (degrees, up positive).</summary>
+        float TipAngleNow()
+        {
+            (Held.Body.rotation * Quaternion.Inverse(_tipFromRot)).ToAngleAxis(out float a, out Vector3 ax);
+            if (a > 180f) a -= 360f;
+            if (ax.sqrMagnitude < 0.5f || float.IsNaN(ax.x)) return 0f;
+            return a * Vector3.Dot(ax.normalized, _tipAxis);
+        }
+
+        /// <summary>Each frame while tipping: mouse up tips it further up, down lowers it; it is held there, turned at a
+        /// pace its weight allows, and stops where it meets something.</summary>
+        void UpdateTip(Vector2 md)
+        {
+            float dt = Time.deltaTime;
+            _tipWant = Mathf.Clamp(_tipWant + md.y * tipPerCount * _player.FovMultiplier, 0f, 92f);
+            float rate = Mathf.Lerp(80f, 30f, Mathf.Clamp01((Held.Mass - 10f) / 50f));
+            _tipAngle = Mathf.MoveTowards(_tipAngle, _tipWant, rate * dt);
+            // Held back (a wall, the ceiling, something on the floor): it stays where it got to.
+            float now = TipAngleNow();
+            _tipBlockT = Mathf.Abs(now - _tipAngle) > 12f ? _tipBlockT + dt : 0f;
+            if (_tipBlockT > 0.3f) { _tipAngle = _tipWant = Mathf.Clamp(now, 0f, 92f); _tipBlockT = 0f; }
+            _player.lookScale = 0.15f;
+            _player.moveScale = 0.05f;
+            _player.noRun = true;
+            Vector3 grip = Held.transform.TransformPoint(_gripLocal);
+            _offset = Quaternion.Inverse(transform.rotation) * (grip - StandShoulder);   // the body bends only as far as the hands are low
+            Strain = Mathf.Clamp01(0.35f + Held.Mass / 90f);
+            if (Vector3.Distance(grip, ReachShoulder) > ArmReach + 1.1f) Release("it went over, out of the hands");
+        }
+
+        /// <summary>FixedUpdate while tipping: it is turned about its edge to the angle the hands hold it at.</summary>
+        void TipForces(Rigidbody rb)
+        {
+            var q = Quaternion.AngleAxis(_tipAngle, _tipAxis);
+            DriveTo(rb, _tipPivot + q * (_tipFromPos - _tipPivot), q * _tipFromRot, 0.08f, 3f);
+            _force = Vector3.zero;
+        }
+
+        /// <summary>Moves a body to a pose by setting its velocities (steady, it does not sag or swing; whatever is in the
+        /// way still stops it).</summary>
+        static void DriveTo(Rigidbody rb, Vector3 pos, Quaternion rot, float tau, float maxSpeed)
+        {
+            rb.linearVelocity = Vector3.ClampMagnitude((pos - rb.position) / tau, maxSpeed);
+            (rot * Quaternion.Inverse(rb.rotation)).ToAngleAxis(out float ang, out Vector3 axis);
+            if (ang > 180f) ang -= 360f;
+            rb.angularVelocity = axis.sqrMagnitude > 0.5f && !float.IsNaN(axis.x) ? Vector3.ClampMagnitude(axis.normalized * (ang * Mathf.Deg2Rad / (tau * 1.2f)), 6f) : Vector3.zero;
+        }
+
+        // ---------------- The second hand ----------------
 
         /// <summary>The left (free) shoulder, about where the body's is.</summary>
         Vector3 LeftShoulder => ReachShoulder - transform.right * Side * 0.4f;
@@ -293,6 +319,8 @@ namespace Backrooms.Interaction
             _secondFarT = 0f;
         }
 
+        // ---------------- Forces ----------------
+
         /// <summary>How heavy the body feels pushed at a point along a direction (kg): its mass, less where a push there
         /// mostly turns it (a chair taken by the top of its back).</summary>
         static float PointMass(Rigidbody rb, Vector3 p, Vector3 dir)
@@ -321,8 +349,8 @@ namespace Backrooms.Interaction
             return mp < mEff ? F * (mp / mEff) : F;
         }
 
-        /// <summary>The second hand's pull and the wrist's (or two hands') turn, after the first hand's pull (FixedUpdate).</summary>
-        void FurnitureForces(Rigidbody rb, Vector3 T, bool carry)
+        /// <summary>The second hand's pull and the hands' turn while pushing, after the first hand's pull (FixedUpdate).</summary>
+        void FurnitureForces(Rigidbody rb, Vector3 T)
         {
             float m = rb.mass, mEff = Mathf.Min(m, 30f), w = stiffness;
             if (TwoHanded)
@@ -335,25 +363,21 @@ namespace Backrooms.Interaction
                 F = AtPointMass(rb, B, F, mEff);
                 Vector3 h = new Vector3(F.x, 0f, F.z);
                 if (h.magnitude > maxPush) h = h.normalized * maxPush;
-                F = h + Vector3.up * Mathf.Clamp(F.y, -200f, maxLift);
+                F = h + Vector3.up * Mathf.Clamp(F.y, -200f, maxLift * PushLiftShare);
                 rb.AddForceAtPosition(F, B);
-                // Too far for the left arm (it was turned or dragged away): it lets go, the right keeps hold.
-                // (Not while the hands work it round: the grip lags the turn.)
+                // Too far for the left arm (turned or dragged away): it lets go, the right keeps hold.
                 bool far = Vector3.Distance(B, LeftShoulder) > ArmReach + 0.35f;
-                _secondFarT = far && !TurningNow ? _secondFarT + Time.fixedDeltaTime : far ? _secondFarT : 0f;
+                _secondFarT = far ? _secondFarT + Time.fixedDeltaTime : 0f;
                 if (_secondFarT > 0.6f) TwoHanded = false;
             }
-            if (carry) return;                              // a carried box keeps its angle its own way
-            // The wrist: toward the angle it holds, never more than a wrist (or two hands) can.
+            // The hands: toward the angle they took it at, never more than they can.
             Quaternion want = transform.rotation * _wristRel;
             (want * Quaternion.Inverse(rb.rotation)).ToAngleAxis(out float ang, out Vector3 axis);
             if (ang > 180f) ang -= 360f;
             if (axis.sqrMagnitude < 0.5f || float.IsNaN(axis.x)) return;
-            // Past what it can hold, the wrist gives: the angle it wants comes round to where the thing is.
-            // Only which way it faces gives freely: how far it is tipped gives only once it is well over (knocked down), so
-            // swinging round on the spot with it does not let it roll over and stay over.
-            // (Pushing, it only gives once it is well round: steering it round a corner lags behind you a while.)
-            if (Mathf.Abs(ang) > (Pushing ? 70f : 35f) && !Twisting)
+            // Past what they can hold they give: which way it faces gives once it is well round (steering lags round a
+            // corner); how far it is tipped only once it is well over (knocked down).
+            if (Mathf.Abs(ang) > 70f)
             {
                 Quaternion actual = Quaternion.Inverse(transform.rotation) * rb.rotation;
                 Vector3 upWant = _wristRel * Vector3.up, upHas = actual * Vector3.up;
@@ -361,21 +385,22 @@ namespace Backrooms.Interaction
                 Quaternion to = Vector3.Angle(upWant, upHas) > 60f ? actual : faced;
                 _wristRel = Quaternion.Slerp(_wristRel, to, Time.fixedDeltaTime * 3f);
             }
-            // Its real resistance to turning about this axis (a rough m * 0.12 was several times too much for a chair
-            // and made the wrist overshoot every step: the chair shook).
+            // Its real resistance to turning about this axis (a rough m * 0.12 overshot every step: the chair shook).
             float I = Mathf.Min(m * 0.12f, InertiaAbout(rb, axis.normalized));
+            // (About the vertical, what it takes to turn it against its feet on the floor: the spring was sized to its turning
+            // inertia alone and asked for less than the friction holding it.)
+            // (No more than three times its real inertia about the vertical: more and the damping overshoots every step.)
+            float Iy = Mathf.Max(I, Mathf.Min(m * 0.5f, InertiaAbout(rb, Vector3.up) * 3f));
             float wr = 9f;
             Vector3 tau = I * (wr * wr * (ang * Mathf.Deg2Rad) * axis.normalized - 2f * wr * rb.angularVelocity);
-            float cap = TwoHanded ? twoHandTorque : Pushing ? pushTorque : wristTorque;
-            if (Pushing)
-            {
-                // Pushing, your weight swings it round with you: much stronger about the vertical (steering) than at
-                // tipping it (the hand on it only steadies that).
-                Vector3 turn = Vector3.Project(tau, Vector3.up), tip = tau - turn;
-                tau = Vector3.ClampMagnitude(turn, pushTurnTorque) + Vector3.ClampMagnitude(tip, cap);
-            }
-            else if (tau.magnitude > cap) tau = tau.normalized * cap;
+            // Your weight swings it round with you: much stronger about the vertical (steering) than at tipping it.
+            Vector3 turn = Vector3.Project(tau, Vector3.up) * (Iy / Mathf.Max(I, 1e-4f)), tip = tau - Vector3.Project(tau, Vector3.up);
+            tau = Vector3.ClampMagnitude(turn, TwoHanded ? twoHandTurnTorque : pushTurnTorque) + Vector3.ClampMagnitude(tip, TwoHanded ? twoHandTorque : pushTorque);
             rb.AddTorque(tau, ForceMode.Force);
         }
+
+        /// <summary>How much of a hand's lifting strength pushing uses: a steadying hold, up to all of it as the mouse
+        /// lifts your end.</summary>
+        float PushLiftShare => Mathf.Lerp(0.25f, 1f, pushLiftMax > 0f ? _pushLift / pushLiftMax : 0f);
     }
 }

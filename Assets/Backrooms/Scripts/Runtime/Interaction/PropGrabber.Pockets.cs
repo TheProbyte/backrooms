@@ -6,14 +6,21 @@ namespace Backrooms.Interaction
     /// <summary>
     /// Four pockets (Docs/ProjectBrief.md, "Smaller objects"): keys 1-4 are the front left, front right, back left and back
     /// right pockets, each holding one small thing (<see cref="WorldItem.Pocketable"/>: chalk, spray paint, tape, the
-    /// rubber chicken, the hammer, the box of nails; not lamps, cords, the sledgehammer or plugs). A key:
+    /// rubber chicken, the hammer, the box of nails; not lamps, cords, the sledgehammer or plugs). Each thing has its own
+    /// pocket, kept for it while it is in the hand (owner's choice, round 12: the pockets are homes, not slots that trade):
     /// <list type="bullet">
-    /// <item>with something small in the hand and that pocket empty: the hand puts it away (down out of view);</item>
-    /// <item>with the hand empty and something in that pocket: the hand takes it out (up from the pocket);</item>
-    /// <item>with both: they swap (the hand's thing goes in, the pocket's comes out).</item>
+    /// <item>hand empty, a key: that pocket's thing comes out into the hand;</item>
+    /// <item>holding a thing from a pocket, its own key: it goes back; another pocket's key: it goes back into its own and
+    /// that pocket's thing comes out (the hammer from 2, press 1: the hammer goes into 2, the chalk from 1 comes out);</item>
+    /// <item>holding a thing, the key of an empty pocket: it goes into that one, which is its pocket from now on (how a thing
+    /// moves to another pocket);</item>
+    /// <item>holding something new (picked up, no pocket yet), a full pocket's key: they trade places, the new thing in, the
+    /// pocket's thing out into the hand (with no pocket of its own now).</item>
     /// </list>
-    /// A small strip at the bottom of the picture shows what is in each pocket for a moment after a key. A pocketed thing is
-    /// switched off and carried with the body; the world save keeps it in its pocket (WorldSaver, ItemData.pocket).
+    /// Clicking a prop with something small in the hand that is not aimed at things (the hammer, the nails, the chicken)
+    /// puts it in its pocket and takes the prop; letting go of the prop brings it back out. A strip at the bottom of the
+    /// picture shows the pockets for a moment after a key. A pocketed thing is switched off and carried with the body; the
+    /// world save keeps it in its pocket (WorldSaver, ItemData.pocket, ItemData.home).
     /// </summary>
     public partial class PropGrabber
     {
@@ -25,17 +32,30 @@ namespace Backrooms.Interaction
             new Vector3(-0.16f, 0.9f, 0.06f), new Vector3(0.16f, 0.9f, 0.06f), new Vector3(-0.14f, 0.92f, -0.12f), new Vector3(0.14f, 0.92f, -0.12f),
         };
         readonly WorldItem[] _pockets = new WorldItem[PocketCount];
+        /// <summary>The thing in a pocket now (not one out in the hand).</summary>
         public WorldItem Pocket(int i) => i >= 0 && i < PocketCount ? _pockets[i] : null;
+
+        /// <summary>The held thing's own pocket (kept for it while it is out), or -1 (picked up, not pocketed yet).</summary>
+        public int HeldHome => HeldItem && _homeItem == HeldItem ? _homeSlot : -1;
+        WorldItem _homeItem;
+        int _homeSlot = -1;
 
         /// <summary>Tests: a pocket key pressed this frame (0-3), or -1.</summary>
         [System.NonSerialized] public int botPocket = -1;
 
-        int _stowSlot = -1, _drawSlot = -1, _swapSlot = -1;
+        int _stowSlot = -1, _drawSlot = -1;
+        WorldItem _thenDraw;            // comes out once the held thing is in (a switch, or a trade)
+        int _thenDrawFrom = -1, _thenDrawHome = -1;
         float _stowT;
         const float StowTime = 0.22f;
         float _pocketShowUntil = -10f;
         string _pocketNote;
         GUIStyle _pocketStyle;
+
+        // Put away to take a prop: it comes back out when the prop is let go.
+        WorldItem _grabStowed;
+        int _grabStowSlot = -1;
+        bool _returnPending;
 
         /// <summary>Putting the held thing into a pocket right now (it goes down out of view).</summary>
         public bool Stowing => _stowSlot >= 0;
@@ -47,6 +67,13 @@ namespace Backrooms.Interaction
         /// pocket (it is not used meanwhile).</summary>
         bool UpdatePockets(bool focus)
         {
+            if (_returnPending)
+            {
+                _returnPending = false;
+                var it = _grabStowed;
+                _grabStowed = null;
+                if (it && !HeldItem && !_fetch && Current == State.Idle && _pockets[_grabStowSlot] == it) Draw(_grabStowSlot, it, _grabStowSlot);
+            }
             int key = botPocket;
             botPocket = -1;
             var kb = Keyboard.current;
@@ -75,32 +102,41 @@ namespace Backrooms.Interaction
             _pocketNote = null;
             if (_stowSlot >= 0 || Placing || ThrowCharge > 0f) return;
             if (Current != State.Idle || OnDoor || _fetch) { _pocketNote = "HANDS BUSY"; return; }
-            var inPocket = _pockets[i];
+            var there = _pockets[i];
             if (HeldItem)
             {
                 if (_itemT < 1f || HeldItem.Busy) return;
                 if (!HeldItem.Pocketable) { _pocketNote = $"{HeldItem.displayName.ToUpperInvariant()} WON'T FIT IN A POCKET"; return; }
-                _stowSlot = i; _stowT = 0f;
-                _swapSlot = inPocket ? i : -1;            // its pocket's thing comes out once this one is in
-                MicThump();
+                int home = HeldHome;
+                if (!there) Stow(i, null, -1, -1);                        // its own, or an empty one (it lives there now)
+                else if (home >= 0) Stow(home, there, i, i);               // back into its own; that pocket's thing out
+                else Stow(i, there, i, -1);                                // new: they trade places
                 return;
             }
-            if (inPocket) Draw(i);
+            if (there) Draw(i, there, i);
         }
 
-        /// <summary>The held thing is in the pocket: switched off and carried with the body.</summary>
+        void Stow(int into, WorldItem thenDraw, int thenFrom, int thenHome)
+        {
+            _stowSlot = into; _stowT = 0f;
+            _thenDraw = thenDraw; _thenDrawFrom = thenFrom; _thenDrawHome = thenHome;
+            MicThump();
+        }
+
+        /// <summary>The held thing is in the pocket: switched off and carried with the body; then what comes out, out.</summary>
         void FinishStow()
         {
-            int slot = _stowSlot, swap = _swapSlot;
-            _stowSlot = -1; _swapSlot = -1;
+            int slot = _stowSlot;
+            _stowSlot = -1;
             var item = HeldItem;
+            var next = _thenDraw; _thenDraw = null;
             if (!item) return;
-            var out_ = swap >= 0 ? _pockets[swap] : null;
             HeldItem = null;
             AimedSocket = null;
             EndPlacing();
+            if (next && _pockets[_thenDrawFrom] == next) _pockets[_thenDrawFrom] = null;
             PutAway(item, slot);
-            if (out_) Draw(swap, out_);
+            if (next) Draw(_thenDrawFrom, next, _thenDrawHome);
         }
 
         void PutAway(WorldItem item, int slot)
@@ -112,6 +148,7 @@ namespace Backrooms.Interaction
             item.transform.SetPositionAndRotation(PocketPoint(slot), PocketTurn);
             item.gameObject.SetActive(false);
             _pockets[slot] = item;
+            if (_homeItem == item) _homeItem = null;
         }
 
         /// <summary>Into a pocket at once, with no hand (a save being restored).</summary>
@@ -119,25 +156,66 @@ namespace Backrooms.Interaction
         {
             if (!item || slot < 0 || slot >= PocketCount) return;
             if (_pockets[slot] && _pockets[slot] != item) { Debug.LogWarning($"[Backrooms] Pocket {slot + 1} is full; {item.displayName} left out of it."); return; }
-            if (HeldItem == item) { HeldItem = null; }
+            if (HeldItem == item) HeldItem = null;
             PutAway(item, slot);
         }
 
-        /// <summary>Takes the pocket's thing out: it comes up from the pocket into the hand.</summary>
-        void Draw(int i, WorldItem item = null)
+        /// <summary>The thing in the hand has this pocket as its own (a save being restored).</summary>
+        public void SetHeldHome(WorldItem item, int slot)
         {
-            item = item ? item : _pockets[i];
+            if (!item || slot < 0 || slot >= PocketCount || _pockets[slot]) return;
+            _homeItem = item; _homeSlot = slot;
+        }
+
+        /// <summary>Takes a thing out of a pocket: it comes up from there into the hand; home: its own pocket from now on (or -1).</summary>
+        void Draw(int from, WorldItem item, int home)
+        {
             if (!item) return;
-            if (_pockets[i] == item) _pockets[i] = null;
+            if (_pockets[from] == item) _pockets[from] = null;
             item.transform.SetParent(null, true);
-            item.transform.SetPositionAndRotation(PocketPoint(i), PocketTurn);
+            item.transform.SetPositionAndRotation(PocketPoint(from), PocketTurn);
             item.gameObject.SetActive(true);
             item.Body.isKinematic = true;
-            _drawSlot = i;
+            _drawSlot = from;
             Take(item, true);
             // (Not closing on it where it lies: it is already in the hand, coming up.)
             _itemT = 1e-4f; _liftTime = 0.3f; _pickTurn = Quaternion.identity;
+            _homeItem = home >= 0 ? item : null; _homeSlot = home;
             MicThump();
+        }
+
+        int FirstFreePocket()
+        {
+            for (int i = 0; i < PocketCount; i++) if (!_pockets[i] && HeldHome != i) return i;
+            return -1;
+        }
+
+        /// <summary>
+        /// A click on a prop within reach with something small in the hand that is not aimed at things: it goes into its
+        /// pocket (or the first free one) at once and the hand takes the prop. Returns true if the click was used.
+        /// </summary>
+        bool TryGrabWithItem()
+        {
+            var item = HeldItem;
+            if (!item || item.UsesAim || !item.Pocketable || _itemT < 1f || item.Busy || Placing || ThrowCharge > 0f) return false;
+            if (!Look(lookRange, out _, out var prop) || !prop) return false;
+            int slot = HeldHome >= 0 ? HeldHome : FirstFreePocket();
+            if (slot < 0) { Note("POCKETS FULL"); return true; }
+            HeldItem = null;
+            AimedSocket = null;
+            EndPlacing();
+            PutAway(item, slot);
+            _grabStowed = item; _grabStowSlot = slot;
+            _pocketShowUntil = Time.time + 1.5f;
+            TryStart();
+            if (Current == State.Idle) ReturnStowed();
+            return true;
+        }
+
+        /// <summary>The prop let go (or the reach given up): what was put away to take it comes back out (next frame).</summary>
+        void ReturnStowed()
+        {
+            if (_grabStowed) _returnPending = true;
         }
 
         /// <summary>LateUpdate: going into a pocket, the held thing goes down to it out of view; coming out, it rises from
@@ -183,16 +261,19 @@ namespace Backrooms.Interaction
             for (int i = 0; i < PocketCount; i++)
             {
                 var it = _pockets[i];
-                bool here = _stowSlot == i || (_drawSlot == i && HeldItem);
-                string what = it ? it.displayName.ToUpperInvariant() : "EMPTY";
-                if (_stowSlot == i && HeldItem) what = HeldItem.displayName.ToUpperInvariant();
+                string what;
+                bool lit;
+                if (_stowSlot == i && HeldItem) { what = HeldItem.displayName.ToUpperInvariant(); lit = true; }
+                else if (it) { what = it.displayName.ToUpperInvariant(); lit = true; }
+                else if (HeldHome == i) { what = "IN HAND: " + HeldItem.displayName.ToUpperInvariant(); lit = true; }
+                else { what = "EMPTY"; lit = false; }
                 var r = new Rect(x0 + i * (w + gap), y, w, h);
                 GUI.color = new Color(0f, 0f, 0f, 0.35f * a);
                 GUI.DrawTexture(r, Texture2D.whiteTexture);
                 string text = $"{i + 1} {PocketNames[i]}\n{what}";
                 GUI.color = new Color(0f, 0f, 0f, 0.8f * a);
                 GUI.Label(new Rect(r.x + 2f, r.y + 2f, r.width, r.height), text, _pocketStyle);
-                GUI.color = it || here ? new Color(1f, 1f, 1f, a) : new Color(1f, 1f, 1f, 0.5f * a);
+                GUI.color = lit ? new Color(1f, 1f, 1f, a) : new Color(1f, 1f, 1f, 0.5f * a);
                 GUI.Label(r, text, _pocketStyle);
             }
             if (!string.IsNullOrEmpty(_pocketNote))
@@ -205,5 +286,8 @@ namespace Backrooms.Interaction
             }
             GUI.color = old;
         }
+
+        /// <summary>The top of the pocket strip while it shows (for the hint line to sit above), or the bottom of the screen.</summary>
+        float PocketsTop => Time.time > _pocketShowUntil ? Screen.height : Screen.height - (54f + 70f + 40f) * (Screen.height / 1080f);
     }
 }

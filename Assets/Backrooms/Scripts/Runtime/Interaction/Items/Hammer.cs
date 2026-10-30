@@ -28,6 +28,7 @@ namespace Backrooms.Interaction
         public override Quaternion[] RestTurns => s_rests;
         static readonly Quaternion[] s_rests = { Quaternion.Euler(0f, 0f, 90f), Quaternion.Euler(0f, 0f, -90f) };
         public override bool Pocketable => true;
+        public override bool UsesAim => false;
         public override string Status => "hammer";
 
         /// <summary>The handle (an oval, narrowing up to the head) and the head (face to claw).</summary>

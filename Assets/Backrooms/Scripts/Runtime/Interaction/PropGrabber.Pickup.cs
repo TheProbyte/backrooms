@@ -863,6 +863,7 @@ namespace Backrooms.Interaction
         /// <summary>Lets go of an item the hand never got to, where it lay (it was taken into the hand to wait there).</summary>
         void LeaveWhereItLies(WorldItem item)
         {
+            Note("CAN'T REACH");
             HeldItem = null;
             AimedSocket = null;
             _graspOn = false;

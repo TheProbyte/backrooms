@@ -118,6 +118,7 @@ namespace Backrooms.Saves
         {
             yield return null;            // the player's hand is set up
             WorldItem held = null;
+            int heldHome = -1;
             var spawned = new List<WorldItem>();
             var pocketed = new List<(WorldItem item, int slot)>();
             foreach (var it in _data.items)
@@ -125,7 +126,7 @@ namespace Backrooms.Saves
                 var item = SpawnItem(it);
                 spawned.Add(item);
                 if (item && it.pocket >= 0) pocketed.Add((item, it.pocket));
-                else if (item && it.held) held = item;
+                else if (item && it.held) { held = item; heldHome = it.home; }
             }
             yield return null;            // lamps make their plugs and cords
             RestorePlugs(spawned);
@@ -142,7 +143,7 @@ namespace Backrooms.Saves
             }
             var grabber = _streamer && _streamer.player ? _streamer.player.GetComponent<PropGrabber>() : null;
             if (grabber) foreach (var (item, slot) in pocketed) grabber.PutInPocket(item, slot);
-            if (held && grabber) grabber.PickUp(held);
+            if (held && grabber) { grabber.PickUp(held); grabber.SetHeldHome(held, heldHome); }
             _restored = true;
         }
 
@@ -231,6 +232,7 @@ namespace Backrooms.Saves
             {
                 // A plug held in the hand is saved where the hand holds it, as an item would be.
                 var data = new ItemData { id = it.itemId, position = it.transform.position, rotation = it.transform.rotation, held = it.Held, amount = it.Amount };
+                if (it.Held && _streamer && _streamer.player && _streamer.player.GetComponent<PropGrabber>() is PropGrabber g && g.HeldItem == it) data.home = g.HeldHome;
                 if (it is SprayCan can) data.amount = can.paint;
                 if (it is PowerUser user && user.Plug)
                 {

@@ -4,52 +4,52 @@
 - **Hold left mouse** on furniture or a box within about 2.4 m. If it is a little too far you step in; if it
   is low you bend down. The right hand takes the nearest grab edge to where you look, a few centimetres
   different each time.
-- **Furniture starts in push mode** (anything but a box light enough to carry). The camcorder stays at your eye in the
-  left hand, one hand on it:
-  - **W** pushes it ahead (the hand leads 0.25 m the way you walk, the arm kept bent so it has room), **A/D** slide it
-    sideways, **S** walks back and it follows on the hand.
-  - **The mouse turns you**, slower the heavier it is, and it turns with you (steering: up to 160 N m about the
-    vertical, so it lags round a corner rather than snapping).
-  - The push is applied at its balance point's height and the hand does not lift it, so it slides and turns rather
-    than tipping. Taken looking down at it, the view comes up to look ahead over it.
-  - **A sharp move of the mouse up** (about 300 counts in 0.15 s, `heaveCounts`) or **R** heaves it: the camcorder
-    drops onto its strap and both hands take it (below). Lowered onto the floor upright, **a sharp move down** puts
-    you back to pushing.
-- **Heaved up (both hands)**, and boxes:
-  - **Mouse left/right** swings your end sideways. Past the arm's limit you turn with it.
-  - **Mouse up/down** lifts or lowers your end. Lift a long thing high enough and walk into it to stand it on end.
-  - **WASD** walks and drags it with you, slower the heavier it is (and very slowly away from something stuck).
-  - **Hold R**: the mouse turns it instead of moving your end (up/down tip it away or toward you, left/right
-    roll it onto a side). Standing on the floor it rocks over the edge of its foot; lifted, one hand turns it about its
-    balance point, two about the hands. The hand also holds the angle it took it at, as a wrist would (14 N m: a chair by
-    its frame stays put, by a leg it swings, a sofa barely notices; past what it can hold it gives). `PropGrabber.Furniture.cs`.
-  - The camcorder hangs on its strap at your chest (it comes back up a moment after you let go or set it down): the
-    picture drops to chest height, looks ahead and a little down, swings as you start, stop and turn, bobs with your
-    steps, and keeps 30 cm clear of what you hold, rising toward the eye to look over it (`HandheldCameraShake.strap`,
-    `avoid`). Held at least 0.38 m out from you. The left hand takes the best grab edge across from the right: twice
-    the strength and a lever between the grips, so a chair can be lifted and rolled over; a turn that needs more reach
-    steps you toward it. Grab edges go round the sides and undersides too, so a chair is taken however it lies.
-- **Pallets** (2026-10-30, `PropGrabber.Pallet.cs`):
-  - **Empty** (nothing resting on it): taken, the camcorder goes onto its strap and both hands swing it up onto its
-    long edge at your right side, top edge at hip height, a little ahead of you, so you see past it and it goes through
-    doors. It is held steady, not wrestled: it follows you as you walk and turn (the mouse turns you as when walking), a
-    wall or door frame stops it, and held back half a second it is dropped. Let go and it drops from your hands (it often
-    stays standing on its edge: one way to block a doorway).
-  - **Loaded** (boxes or anything on it): too heavy to lift, it is pushed like furniture and the boxes ride on it (they
-    slide off if you are rough). A heave flick does nothing. Pushing it the hand is not kept within the arm's reach and
-    the body bends only a little (a pallet's edge is 14.5 cm up: kept within reach, the hand pulled it up toward the
-    shoulder instead of pushing it).
-  - While the hands go for a pallet or hold it, the feet do not step up onto it (walking into one to push it, the body
-    climbed onto what it was pushing).
-- **Warehouse boxes**: the cartons on racks and pallets are movable boxes now (each its own, saved when moved), about
-  half as many as before. The racks are solid where the steel is (uprights, shelf decks, the end bracing), so boxes rest
-  on the shelves and can be taken off them. Generated boxes there are never the heavy paper-filled kind.
+- **Heavy things** (a couch, an armchair, a table, a heavy paper-filled box, a loaded pallet; round 12, owner's design,
+  `PropGrabber.Furniture.cs`), taken by where you hold left mouse on them:
+  - **By the top** (anywhere on top: the back, an arm, a side, a pallet's deck edge): both hands on the edge, the
+    camcorder on its strap at your chest. **W** pushes it ahead (the hands lead 0.25 m the way you walk), **S** pulls it
+    back, **A/D** slide it; **the mouse turns you** (slower the heavier it is) and it turns with you (two hands steer it
+    with up to 380 N m about the vertical: a 54 kg couch's feet hold it with about 220). **Mouse up** lifts your end a
+    little (up to 12 cm), down sets it back. The push is applied at its balance height, so it slides and turns rather than
+    tipping. That is all: it is not lifted clear or carried.
+  - **By the underside** (its bottom edge, or the low fifth of it): both hands under it. **Mouse up** tips it up about
+    its far bottom edge, square to one of its sides (taken under its back: onto its back; under an end: up on that end),
+    **down** lowers it again, at a pace its weight allows (80 to 30 degrees a second), up to a quarter turn; it stops where
+    something is in the way. Let go part way and it falls back, or on over past its balance point. It is turned to where
+    the hands hold it (velocities set each step), not by a hand's limited pull.
+  - The old heave (a sharp mouse flick up) and R to twist are gone.
+- **Light things** (a box light enough, an empty pallet, an office chair; `PropGrabber.Carry.cs`): taken up like an item,
+  by themselves, with both hands (the camcorder on its strap), and held steady in a place for each kind: a box upright,
+  low in front of you (its bottom at the hips), a hand each side; an empty pallet on its long edge at your side; an office
+  chair upright ahead on the hand's side, 8 cm off the floor, by the top of its back. It follows you as you walk and turn;
+  a wall or door frame stops it, and held back half a second it is dropped ("IT CAUGHT ON SOMETHING"). Let go and it
+  drops (a pallet often stays standing on its edge). A pallet with anything on it is heavy: pushed, the boxes riding on
+  it. While the hands go for a pallet or hold it, the feet do not step up onto it.
+- **Grabs never silently do nothing**: if the hand cannot get onto the spot as planned it takes it anyway when the palm is
+  near enough (within the arm's reach and 35 cm), else the hint line says "CAN'T REACH" (items too).
+- **The hint line** (`PropGrabber.Hints.cs`): small camcorder lettering at the bottom of the picture, always: what a click
+  does on what the view is on within reach ("HOLD TO PUSH COUCH", "HOLD TO TIP UP COUCH", "HOLD TO CARRY BOX", "CLICK
+  TO PICK UP CHALK", "CLICK TO PRESS", "CLICK TO OPEN OR SHUT"), the controls while holding a prop or an item, and short
+  notes ("CAN'T REACH", "POCKETS FULL"). Faint focus marks show where the hands would take a prop.
+- **Warehouse boxes**: the cartons on racks and pallets are movable boxes (each its own, saved when moved), about half as
+  many as before. The racks are solid where the steel is (uprights, shelf decks, the end bracing), so boxes rest on the
+  shelves and can be taken off them. Generated boxes there are never the heavy paper-filled kind.
 - **Pockets** (keys **1-4**, `PropGrabber.Pockets.cs`): front left, front right, back left, back right, one small thing
   each (chalk, spray paint, tape, the rubber chicken, the hammer, the box of nails; not lamps, cords, plugs or the
-  sledgehammer: "WON'T FIT IN A POCKET"). With something small in the hand, a key puts it in that pocket (the hand
-  takes it down out of view); with the hand empty, it takes that pocket's thing out (up into the hand); with both, they
-  swap. A strip at the bottom of the picture shows the four pockets for a moment after a key. Pocketed things are
-  switched off and carried with the body; the world save keeps them in their pockets (`ItemData.pocket`).
+  sledgehammer: "WON'T FIT IN A POCKET"). Each thing has its own pocket (owner's choice, round 12), kept for it while it is
+  in the hand:
+  - hand empty, a key: that pocket's thing comes out;
+  - holding a thing, its own key: it goes back; another full pocket's key: it goes back into its own and that one comes
+    out (the hammer from 2, press 1: the hammer goes into 2, the chalk from 1 comes out);
+  - holding a thing, an empty pocket's key: it goes there, its pocket from now on (how a thing changes pockets);
+  - holding something new (no pocket yet), a full pocket's key: they trade places, the new thing in, the other out (with
+    no pocket of its own).
+  - With something small in the hand that is not aimed at things (the hammer, the nails, the chicken), clicking a prop
+    puts it in its pocket and takes the prop; letting go brings it back out. (Chalk, spray, tape and the sledgehammer are
+    used on furniture too: pocket them first.)
+  - A strip at the bottom shows the pockets for a moment after a key ("IN HAND" under the held thing's own). Pocketed
+    things are switched off and carried with the body; the save keeps them in their pockets and the held thing's own
+    pocket (`ItemData.pocket`, `ItemData.home`).
 - **Hammer and nails** (`Items/Hammer.cs`, `Items/Nails.cs`, models from `Tools/Blender/build_items2.py`): a 33 cm claw
   hammer and a small open box of 2-inch nails. No use yet (meant for nailing boards and pallets in place); picked up,
   carried, dropped, thrown, set down and pocketed like the other items. In the developer menu (L) under ITEMS.

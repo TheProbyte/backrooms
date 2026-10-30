@@ -15,6 +15,33 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Handling round 12: heavy by top or underside, light carried, pockets as homes, hint line
+
+- Owner's review and design. Heavy things (couch, armchair, table, heavy box, loaded pallet) are taken by where you hold
+  them (`PropGrabber.Furniture.cs`, rewritten): by the top, both hands on the edge and the camcorder on its strap, W/S
+  push and pull, the mouse turns you and steers it (two hands: 380 N m about the vertical; at 160 a couch's feet held
+  it), mouse up lifts your end up to 12 cm; by the underside (an edge facing down, or the low fifth of it), mouse up tips
+  it up about its far bottom edge square to one of its sides, driven to the angle the hands hold (not a hand's pull),
+  stopping where something is in the way. The flick heave and R twist are gone (`PushProbe`, `FurnitureProbe` removed).
+- Light things (light boxes, empty pallets, office chairs) are carried steady by themselves (`PropGrabber.Carry.cs`,
+  was `PropGrabber.Pallet.cs`): a box low in front, a hand each side (it used to fill the view); a pallet on edge at
+  your side; an office chair ahead on the hand's side.
+- Grabs never silently do nothing: taken when the palm is near enough, else "CAN'T REACH".
+- Pockets are homes (owner's choices): a thing goes back to its own pocket, another pocket's key switches, an empty
+  pocket's key moves it there, a new thing trades places with a full pocket's thing. With the hammer, nails or chicken
+  in hand (`WorldItem.UsesAim` false), clicking a prop pockets it and takes the prop; letting go brings it back. Saved
+  (`ItemData.home`).
+- A hint line in small camcorder lettering at the bottom, always (`PropGrabber.Hints.cs`): what a click does on what the
+  view is on ("HOLD TO PUSH COUCH", "HOLD TO TIP UP COUCH", "HOLD TO CARRY BOX"), the controls while holding, short notes;
+  faint focus marks where the hands would take a prop.
+- Checked with `Debug/HandlingProbe.cs` in World 3 (erased between runs): couch pushed 2.5 m, steered 45 degrees as you
+  turned 80, lifted 4 degrees; tipped from under its back to 91 degrees and left on its back; office chair and box
+  carried; every pocket rule; hammer in hand, an armchair clicked: hammer pocketed, armchair pushed, back in hand on
+  letting go. EditMode 149/149.
+- Open: not played by the owner; the probe's spot finder sometimes pushes into a wall (one run tipped the couch over
+  against one); tipping a long couch up on end leaves the hands short of its edge (they float); click-to-take instead
+  of holding the button (owner's idea 6) not done.
+
 ## 2026-10-30 - Pallets and warehouse boxes movable, pockets, hammer and nails
 
 - Pallets are movable props (`MovableKind.Pallet`, `PalletGeometry`). An empty one is carried: the camcorder on its

@@ -135,6 +135,7 @@ namespace Backrooms.Interaction
         {
             if (Event.current.type != EventType.Repaint || !_cam) return;
             PocketsGUI();
+            HintGUI();
             if (HeldItem)
             {
                 if (Placing) { PlaceMarks(); return; }

@@ -186,6 +186,9 @@ namespace Backrooms.Interaction
 
         /// <summary>Small enough to go in a pocket (keys 1-4: PropGrabber.Pockets).</summary>
         public virtual bool Pocketable => false;
+        /// <summary>Its use is aimed at what you look at (paint, chalk, tape, a swing): a click on furniture uses it. False
+        /// (the hammer, the nails, the chicken): a click on furniture puts it in a pocket and takes the furniture.</summary>
+        public virtual bool UsesAim => true;
 
         /// <summary>Q sets it down upright where you look (a lamp) instead of tossing it.</summary>
         public virtual bool PlaceOnDrop => false;

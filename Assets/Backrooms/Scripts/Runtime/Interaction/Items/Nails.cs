@@ -20,6 +20,7 @@ namespace Backrooms.Interaction
         public override Quaternion[] RestTurns => s_rests;
         static readonly Quaternion[] s_rests = { Quaternion.identity, Quaternion.Euler(0f, 90f, 0f) };
         public override bool Pocketable => true;
+        public override bool UsesAim => false;
         public override string Status => "box of nails";
 
         public static Nails Create(Vector3 position, Quaternion rotation)

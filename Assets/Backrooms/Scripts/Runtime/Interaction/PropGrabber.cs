@@ -153,7 +153,6 @@ namespace Backrooms.Interaction
         Vector3 _fingersLocal;           // which way the fingers lie on the prop (PlaceHand), or zero
         bool _hook;                      // they hook over an edge there
         Vector3 _offset;                 // wanted grip position: shoulder + yaw * _offset
-        Quaternion _carryRel;            // carried props keep this rotation relative to the body
         float _reachT, _blockedT, _slipT, _savedAngularDamping;
         Vector3 _force;
         float _lag;                      // metres the grip trails where the hand wants it
@@ -197,7 +196,10 @@ namespace Backrooms.Interaction
                 var d = LookDoor(lookRange);
                 if (d) AimedDoorGrip = d.GripPoint(d.SideOf(Eye), 0f);
             }
-            if (HeldItem) { if (!stowing) UpdateHeldItem(focus, mouse); }
+            // Something small in the hand that is not aimed at things (the hammer, the nails, the chicken), and a click on a prop
+            // within reach: the hand puts it in its pocket and takes the prop (it comes back out on letting go).
+            if (HeldItem && pressed && !stowing && TryGrabWithItem()) { }
+            else if (HeldItem) { if (!stowing) UpdateHeldItem(focus, mouse); }
             else switch (Current)
             {
                 case State.Idle:
@@ -216,13 +218,11 @@ namespace Backrooms.Interaction
                 case State.Holding:
                     if (!hold || !Held) { Release(!hold ? "let go" : "prop gone"); break; }
                     if (shovePressed) { ShoveAndRelease(); break; }
-                    if (CarryingPallet) { UpdatePalletCarry(); break; }
-                    // R held: the mouse turns it about the grip (PropGrabber.Furniture) instead of moving your end.
-                    // Furniture is pushed first (the mouse turns you); heaved up (a sharp move up, or R) it is in both hands.
-                    bool turnKey = TwistHeld(focus || botTwist.HasValue);
-                    if (UpdatePush(md, turnKey)) { EndTwistSteps(); UpdateHold(Vector2.zero); PushLook(); }
-                    else if (turnKey) { UpdateTwist(md); UpdateHold(Vector2.zero); }
-                    else { EndTwistSteps(); UpdateHold(md); }
+                    // Light things are carried, heavy ones pushed by the top or tipped from underneath (PropGrabber.Carry,
+                    // PropGrabber.Furniture).
+                    if (Carrying) UpdateCarry();
+                    else if (Tipping) UpdateTip(md);
+                    else UpdatePush(md);
                     break;
             }
             if (_poke != PokePhase.None) UpdatePoke();
@@ -230,7 +230,8 @@ namespace Backrooms.Interaction
             UpdateTouch(!HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking && !QuickDooring);
             UpdateCarriedWeight();
             UpdatePassing();
-            UpdatePalletPassing();
+            UpdateCarryPassing();
+            UpdateHint();
             UpdateStoop();
             UpdateReachHinge();
             UpdateHandPose();
@@ -349,7 +350,7 @@ namespace Backrooms.Interaction
             {
                 int r = ReachFor(grip, null, Time.deltaTime, _reachOwn);
                 if (r > 0) { StopPickStep(); Attach(); }
-                else if (r < 0) { StopPickStep(); Cancel(); }
+                else if (r < 0) { StopPickStep(); GiveUpReach(grip); }
                 return;
             }
             // Taken only once the palm is on it (it used to be taken from up to 0.37 m away, held from a distance). The
@@ -357,17 +358,17 @@ namespace Backrooms.Interaction
             if (HandBlend > 0.85f && HandArrived && toGrip.magnitude <= ArmReach + 0.15f) { _player.botInput = null; Attach(); return; }
             if (toGrip.magnitude <= ArmReach)
             {
-                if (!ComeCloser(grip, 2.5f)) Cancel();
+                if (!ComeCloser(grip, 2.5f)) GiveUpReach(grip);
                 else if (_notThereT <= 0.2f) _player.botInput = null;
                 return;
             }
             // A little too far: step in (gives up after a moment if something is in the way).
-            if (_reachT > 3f || toGrip.magnitude > lookRange + 0.5f) { Cancel(); return; }
+            if (_reachT > 3f || toGrip.magnitude > lookRange + 0.5f) { GiveUpReach(grip); return; }
             // Stepping in but held back (by the prop itself, a wall) with it still out of reach: the hand comes back
             // (the top of a sofa's back from in front of the seat is 1.2 m from the shoulder; it used to be taken from
             // 0.4 m away, then the arm stood out at full stretch for 3 s).
             _blockedT = _player.botInput.HasValue && _player.PlanarVelocity.magnitude < 0.1f && _reachT > 1.2f ? _blockedT + Time.deltaTime : 0f;
-            if (_blockedT > 0.6f) { Cancel(); return; }
+            if (_blockedT > 0.6f) { GiveUpReach(grip); return; }
             // Too far out in front: step in. Too far down: bend lower (the stoop alone stopped short of a sofa's seat).
             Vector3 local = transform.InverseTransformDirection(toGrip); local.y = 0f;
             var flat = new Vector2(local.x, local.z);
@@ -394,9 +395,21 @@ namespace Backrooms.Interaction
             Held.Body.angularDamping = Mathf.Max(_savedAngularDamping, Held.Mass > carryMass ? 1.2f : 3f);
             Vector3 grip = Held.transform.TransformPoint(_gripLocal);
             _offset = ClampOffset(Quaternion.Inverse(transform.rotation) * (grip - StandShoulder));
-            _carryRel = Quaternion.Inverse(transform.rotation) * Held.transform.rotation;
             _slipT = 0f;
             AttachFurniture();
+        }
+
+        /// <summary>
+        /// The hand could not get onto it as planned: taken anyway if the palm is near enough (it closes the last bit as the
+        /// fingers do: a grab never just does nothing), else "CAN'T REACH" (round 12: the owner found grabs that silently did
+        /// nothing, at a pallet's edge and deep on a low shelf).
+        /// </summary>
+        void GiveUpReach(Vector3 grip)
+        {
+            _player.botInput = null;
+            if (Vector3.Distance(grip, ReachShoulder) <= ArmReach + 0.35f) { Attach(); return; }
+            Cancel();
+            Note("CAN'T REACH");
         }
 
         void Cancel()
@@ -407,6 +420,7 @@ namespace Backrooms.Interaction
             _player.botInput = null;
             _target = null;
             Current = State.Idle;
+            ReturnStowed();
         }
 
         public void Release() => Release("let go");
@@ -434,6 +448,7 @@ namespace Backrooms.Interaction
             }
             Strain = 0f;
             Current = State.Idle;
+            ReturnStowed();
         }
 
         void ShoveAndRelease()
@@ -522,7 +537,7 @@ namespace Backrooms.Interaction
             float d = Vector3.Distance(grip, ReachShoulder);
             bool off = LowPush ? d > ArmReach + 0.9f : d > ArmReach + 0.15f || PalmError > 0.1f;
             // (Not while the hands work it round: the grip lags the turn a moment.)
-            _slipT = off && !TurningNow ? _slipT + Time.deltaTime : off ? _slipT : 0f;
+            _slipT = off ? _slipT + Time.deltaTime : 0f;
             if (_slipT > 0.4f) Release($"slipped (grip {d:F2} m from the shoulder, palm {PalmError * 100f:F0} cm off it)");
         }
 
@@ -531,7 +546,8 @@ namespace Backrooms.Interaction
             if (Current != State.Holding || !Held) return;
             var rb = Held.Body;
             if (rb.isKinematic) Held.Wake();
-            if (CarryingPallet) { PalletCarryForces(rb); return; }
+            if (Carrying) { CarryForces(rb); return; }
+            if (Tipping) { TipForces(rb); return; }
             Vector3 T = StandShoulder + transform.rotation * _offset;
             // Pushing: the hand goes ahead of you the way you walk (the body alone stops against it), and pushes at its
             // balance point's height so it slides and turns rather than tipping over.
@@ -550,32 +566,20 @@ namespace Backrooms.Interaction
             Vector3 vG = rb.GetPointVelocity(G);
             Vector3 vT = _player.PlanarVelocity;
             float m = rb.mass;
-            bool carry = m <= carryMass && Held.Spec.kind == MovableKind.Box;
             float mEff = Mathf.Min(m, 30f), w = stiffness;
             Vector3 F = mEff * (w * w * (T - G) + 2f * w * (vT - vG));
-            // (Each part sized to the weight felt where it is applied: pushing, the push at the balance height, the
-            // hand's hold up or down at the grip.)
-            if (Pushing) F = AtPointMass(rb, low, new Vector3(F.x, 0f, F.z), mEff) + AtPointMass(rb, G, Vector3.up * F.y, mEff);
-            else if (!carry) F = AtPointMass(rb, G, F, mEff);
-            if (carry) F -= Physics.gravity * m;                 // a box is carried, not dragged
+            // (Each part sized to the weight felt where it is applied: the push at the balance height, the hands' hold up
+            // or down at the grip.)
+            F = AtPointMass(rb, low, new Vector3(F.x, 0f, F.z), mEff) + AtPointMass(rb, G, Vector3.up * F.y, mEff);
             // A hand is only so strong.
             Vector3 h = new Vector3(F.x, 0f, F.z);
             if (h.magnitude > maxPush) h = h.normalized * maxPush;
-            // (Pushing, the hand only steadies it up and down: it does not lift what it pushes.)
-            float up = Mathf.Clamp(F.y, -200f, Pushing ? maxLift * 0.25f : maxLift);
+            // (Pushing, the hands only steady it up and down, unless the mouse lifts your end: then up to all they have.)
+            float up = Mathf.Clamp(F.y, -200f, maxLift * PushLiftShare);
             F = h + Vector3.up * up;
-            if (Pushing) { rb.AddForceAtPosition(h, low); rb.AddForceAtPosition(Vector3.up * up, G); }
-            else rb.AddForceAtPosition(F, G);
+            rb.AddForceAtPosition(h, low); rb.AddForceAtPosition(Vector3.up * up, G);
             _force = F;
-            FurnitureForces(rb, T, carry);
-            if (carry)
-            {
-                // Carried: it keeps its angle in the hand.
-                Quaternion want = transform.rotation * _carryRel;
-                (want * Quaternion.Inverse(rb.rotation)).ToAngleAxis(out float ang, out Vector3 axis);
-                if (ang > 180f) ang -= 360f;
-                if (axis.sqrMagnitude > 0.5f) rb.AddTorque(axis * (ang * Mathf.Deg2Rad * 80f) - rb.angularVelocity * 12f, ForceMode.Acceleration);
-            }
+            FurnitureForces(rb, T);
             float err = Vector3.Distance(T, G);
             _lag = err;
             Strain = Mathf.Clamp01(Mathf.Max(err / 0.3f, F.magnitude / (maxPush * 1.1f)));

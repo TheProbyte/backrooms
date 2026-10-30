@@ -104,6 +104,8 @@ namespace Backrooms.Saves
         public bool held;
         /// <summary>In a pocket (0-3: Interaction.PropGrabber.Pockets), or -1.</summary>
         public int pocket = -1;
+        /// <summary>Held: the pocket that is its own (kept for it while it is out), or -1.</summary>
+        public int home = -1;
         // Cords: where the plug is, and what it is in: -1 nothing, 0 the wall socket at plugWall, n > 0 socket plugSocket
         // of the extension cord that is item n - 1.
         public bool hasPlug;

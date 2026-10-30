@@ -54,6 +54,7 @@ namespace Backrooms.Interaction
         public const float SqueezeGive = 0.011f;     // (4.5 mm closed the fist only 3-4 degrees)
         public override float UseBlend => _squeeze;
         public override bool Pocketable => true;
+        public override bool UsesAim => false;
         public override string Status => "rubber chicken (hold to squeeze)";
 
         public static RubberChicken Create(Vector3 position, Quaternion rotation)
