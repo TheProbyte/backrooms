@@ -15,6 +15,31 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Floral sofa; box-carry hands out of the box, the left hand on it
+
+- Owner: a new couch from their reference photo and tileable floral pattern, as realistic as can be, spawnable. Built
+  headless in Blender (`Tools/Blender/build_floral_sofa.py`): a cream three-seater (2.25 x 0.93 x 0.94 m) with low rolled
+  arms piped round their fronts, an upholstered front rail and back frame, three crowned seat cushions and three pinched
+  pillow back cushions leaning back 11-14 degrees, all piped and each cut from a different part of the pattern (box
+  projected in its own frame, 0.62 m a repeat), a few millimetres of unevenness each, and tapered walnut legs; 32k
+  triangles. The frame's fabric is a tileable cream basket weave with slubs made by the script (albedo and normal map).
+  `Editor/FloralSofaBuilder.cs` (Backrooms > Build floral sofa) sets the imports (the mesh readable, for the hand),
+  makes its two materials (`Materials/FloralSofa/`) and the prefab in `Resources/Furniture`; the developer menu lists it
+  as "Floral sofa" (a sofa: pushed, steered, tipped); a moved one is found again on loading by name
+  (`WorldSaver.AssetKeys` falls back to `Resources/Furniture`).
+- Owner: carrying a box the hands went into it, and the left hand only hung out beside it, trailing into it as you
+  moved. The left hand was eased after its grip every frame (a 0.12 s lag); now it is blended between hanging and the
+  grip, both worked out each frame, so on it it is exactly where it holds. The hands take the box near the back of its
+  sides (at the middle of them the forearms came in through its back corners). The box follows the body's walk and turn
+  rate straight across (steered by the gap alone it trailed a fast turn by ~10 degrees and swung its corner into the
+  arms), and the hands' contact is measured where the box is drawn, not its colliders a physics step ahead
+  (`MovableProp.ShapeDistance`). Measured (`HandlingProbe.round15`, `FirstPersonBody.HandDepthsDetail`, forearms taken
+  as 3.5 cm thick): still, 1.0-1.5 cm (a forearm against the side); turning 120 degrees a second and side-stepping, at
+  most 3.8 cm (was 8-12).
+- EditMode 149/149.
+- Open: not played by the owner; the floral sofa's colliders are the generic sofa's boxes (the back cushions stand
+  12 cm further forward than its back box).
+
 ## 2026-10-30 - Handling round 14: any edge, box lift, pallet under the arm, hands out of things
 
 - Owner: a chair on its side could only be taken by a leg, the marks hopping from one leg to the other. Grab edges were

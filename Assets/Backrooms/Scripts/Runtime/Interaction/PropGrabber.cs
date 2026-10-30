@@ -184,6 +184,7 @@ namespace Backrooms.Interaction
             botShove = false;
             Vector2 md = botHold.HasValue ? botMouse : focus && mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
             UpdateStrap();
+            UpdateYawRate();
             bool stowing = UpdatePockets(focus);
 
             bool free = !HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && focus;
@@ -612,6 +613,8 @@ namespace Backrooms.Interaction
             if (QuickDooring && _quickDoor) return _quickLever ? _quickDoor.LeverDistance(_quickSide, 1f, p) : _quickDoor.SlabDistance(p);
             if (_target && (Current == State.Holding || Current == State.Reaching))
             {
+                // Its shape where it is drawn (MovableProp.ShapeDistance), not its colliders a physics step ahead.
+                if (_target.Shape != null) return _target.ShapeDistance(p);
                 if (_contactProp != _target) { _contactProp = _target; _targetColliders = _target.GetComponentsInChildren<Collider>(); }
                 return CollidersDistance(_targetColliders, p);
             }

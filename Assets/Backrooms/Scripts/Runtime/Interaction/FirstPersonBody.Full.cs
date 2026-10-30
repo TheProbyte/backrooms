@@ -146,9 +146,49 @@ namespace Backrooms.Interaction
             if (!_grab || !_grab.HasContact) return;
             if (_hand) right = Mathf.Max(right, -_grab.ContactDistance(_hand.position));
             foreach (var j in _fingerJoints) if (j.t) right = Mathf.Max(right, -_grab.ContactDistance(j.t.position));
+            right = Mathf.Max(right, ForearmDepth(_fore, _hand));
             if (_lRig == null || !_grab.TwoHanded) return;
             if (_lRig.hand) left = Mathf.Max(left, -_grab.ContactDistance(_lRig.hand.position));
             foreach (var j in _lRig.joints) if (j.t) left = Mathf.Max(left, -_grab.ContactDistance(j.t.position));
+            left = Mathf.Max(left, ForearmDepth(_lRig.fore, _lRig.hand));
+        }
+
+        /// <summary>For probes: as HandDepths, the hand (fingers and wrist) and the forearm apart, each side, and where the
+        /// deepest forearm point is (world).</summary>
+        public void HandDepthsDetail(out float rHand, out float rFore, out float lHand, out float lFore, out Vector3 rAt, out Vector3 lAt)
+        {
+            rHand = rFore = lHand = lFore = 0f; rAt = lAt = Vector3.zero;
+            if (!_grab || !_grab.HasContact) return;
+            if (_hand) rHand = Mathf.Max(rHand, -_grab.ContactDistance(_hand.position));
+            foreach (var j in _fingerJoints) if (j.t) rHand = Mathf.Max(rHand, -_grab.ContactDistance(j.t.position));
+            rFore = ForearmDepth(_fore, _hand, out rAt);
+            if (_lRig == null || !_grab.TwoHanded) return;
+            if (_lRig.hand) lHand = Mathf.Max(lHand, -_grab.ContactDistance(_lRig.hand.position));
+            foreach (var j in _lRig.joints) if (j.t) lHand = Mathf.Max(lHand, -_grab.ContactDistance(j.t.position));
+            lFore = ForearmDepth(_lRig.fore, _lRig.hand, out lAt);
+        }
+
+        float ForearmDepth(Transform fore, Transform hand, out Vector3 at)
+        {
+            at = Vector3.zero;
+            if (!fore || !hand) return 0f;
+            float d = 0f;
+            for (int i = 1; i <= 5; i++)
+            {
+                Vector3 p = Vector3.Lerp(fore.position, hand.position, i / 5f);
+                float k = 0.035f - _grab.ContactDistance(p);
+                if (k > d) { d = k; at = p; }
+            }
+            return d;
+        }
+
+        /// <summary>How far a forearm (elbow to wrist, 3.5 cm thick) is inside what the hands hold (m).</summary>
+        float ForearmDepth(Transform fore, Transform hand)
+        {
+            if (!fore || !hand) return 0f;
+            float d = 0f;
+            for (int i = 1; i <= 5; i++) d = Mathf.Max(d, 0.035f - _grab.ContactDistance(Vector3.Lerp(fore.position, hand.position, i / 5f)));
+            return d;
         }
 
         readonly System.Collections.Generic.List<Renderer> _camArm = new System.Collections.Generic.List<Renderer>();
@@ -172,8 +212,10 @@ namespace Backrooms.Interaction
 
         Vector3 _freeGrip;
         float _leftOut;                  // how far the left hand is kept out from its grip, off what it holds (m)
+        float _freeW, _holdCurl = 0.3f;  // how far out to its grip (0 hanging, 1 on it), and its fingers' close there
+        Vector3 _holdGrip;
+        Quaternion _holdRot = Quaternion.identity;
         Quaternion _freeRot = Quaternion.identity;
-        bool _freeInit;
 
         /// <summary>
         /// The left hand free of the camcorder: on the furniture's second grip (palm on its surface, fingers round it) while
@@ -186,29 +228,28 @@ namespace Backrooms.Interaction
             Quaternion yaw = transform.rotation;
             Vector3 shoulder = eye.position + yaw * new Vector3(0.2f * side, -0.28f, -0.08f);
             if (!r.root && !_leftArm) shoulder = CarryShoulder(r.clavicle, r.clavicleRest, r.upper, shoulder, 10f);
-            Vector3 grip; Quaternion handRot; float curl;
+            // Hanging at the side, worked out every frame.
+            Vector3 hang = shoulder + yaw * new Vector3(0.06f * side, -0.62f, 0.04f);
+            Quaternion hangRot = Quaternion.LookRotation(Vector3.down, yaw * new Vector3(side, 0f, 0f));
             if (_grab.TwoHanded)
             {
                 Vector3 n = _grab.SecondNormal.normalized;
-                grip = _grab.SecondGrip + n * (0.012f + _leftOut);
+                _holdGrip = _grab.SecondGrip + n * (0.012f + _leftOut);
                 // Fingers the way the grip found fits the surface (PropGrabber.PlaceSecond), else away from the body along it;
                 // the back of the hand out of it. Closed round an edge they hook over, nearly flat on a face.
                 Vector3 fingers = Vector3.ProjectOnPlane(_grab.SecondFingers, n);
-                if (fingers.sqrMagnitude < 1e-4f) fingers = Vector3.ProjectOnPlane(grip - shoulder, n);
+                if (fingers.sqrMagnitude < 1e-4f) fingers = Vector3.ProjectOnPlane(_holdGrip - shoulder, n);
                 if (fingers.sqrMagnitude < 1e-4f) fingers = Vector3.ProjectOnPlane(yaw * Vector3.forward, n);
-                handRot = Quaternion.LookRotation(fingers.normalized, n);
-                curl = _grab.SecondCurl;
+                _holdRot = Quaternion.LookRotation(fingers.normalized, n);
+                _holdCurl = _grab.SecondCurl;
             }
-            else
-            {
-                grip = shoulder + yaw * new Vector3(0.06f * side, -0.62f, 0.04f);
-                handRot = Quaternion.LookRotation(Vector3.down, yaw * new Vector3(side, 0f, 0f));
-                curl = 0.3f;
-            }
-            float ease = 1f - Mathf.Exp(-Time.deltaTime / 0.12f);
-            if (!_freeInit) { _freeGrip = grip; _freeRot = handRot; _freeInit = true; }
-            _freeGrip = Vector3.Lerp(_freeGrip, grip, ease);
-            _freeRot = Quaternion.Slerp(_freeRot, handRot, ease);
+            // Out to the grip and back as a blend between the two, both worked out this frame: on it, the hand is exactly
+            // where it holds (round 15: eased after it every frame, it trailed behind into a carried box as you turned).
+            _freeW = Mathf.MoveTowards(_freeW, _grab.TwoHanded ? 1f : 0f, Time.deltaTime / 0.25f);
+            float sw = Mathf.SmoothStep(0f, 1f, _freeW);
+            _freeGrip = Vector3.Lerp(hang, _holdGrip, sw);
+            _freeRot = Quaternion.Slerp(hangRot, _holdRot, sw);
+            float curl = Mathf.Lerp(0.3f, _holdCurl, sw);
             Vector3 wrist = _freeGrip - _freeRot * new Vector3(0f, -0.02f, 0.065f);
             Vector3 d = wrist - shoulder;
             float a = r.upperLen, b = r.foreLen, len = Mathf.Clamp(Gait.SoftReach(d.magnitude, a + b, (a + b) * 0.03f), Mathf.Abs(a - b) + 0.02f, (a + b) * 0.999f);
@@ -234,7 +275,7 @@ namespace Backrooms.Interaction
             {
                 float deep = r.hand ? -_grab.ContactDistance(r.hand.position) : 0f;
                 foreach (var j in r.joints) if (j.t) deep = Mathf.Max(deep, -_grab.ContactDistance(j.t.position));
-                _leftOut = deep > 0.002f ? Mathf.Min(_leftOut + deep * 0.6f, 0.08f) : Mathf.MoveTowards(_leftOut, 0f, Time.deltaTime * 0.02f);
+                _leftOut = deep > 0.002f ? Mathf.Min(_leftOut + deep * 0.6f, 0.08f) : Mathf.MoveTowards(_leftOut, 0f, Time.deltaTime * 0.05f);
             }
             else _leftOut = 0f;
         }

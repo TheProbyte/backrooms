@@ -21,6 +21,8 @@ namespace Backrooms.DebugTools
         public bool done;
         [Tooltip("Only the round 14 checks: any edge of a chair on its side, crouched low grabs, a box lifted, a pallet under the arm, hand depths.")]
         public bool round14;
+        [Tooltip("Only the round 15 checks: the floral sofa, boxes carried while turning (hand and forearm depths).")]
+        public bool round15;
 
         readonly StringBuilder _log = new StringBuilder();
         WorldStreamer _ws;
@@ -38,6 +40,7 @@ namespace Backrooms.DebugTools
             _ctrl.Teleport(at, yaw);
             yield return new WaitForSeconds(0.5f);
             if (round14) { yield return Round14(catalog); Finish("ok"); yield break; }
+            if (round15) { yield return Round15(catalog); Finish("ok"); yield break; }
             Vector3 fwd = Flat(_ctrl.transform.forward).normalized;
 
             // ---- The couch, its back toward you ----
@@ -159,6 +162,82 @@ namespace Backrooms.DebugTools
 
             yield return Pockets(sofa);
             Finish("ok");
+        }
+
+        IEnumerator Round15(System.Collections.Generic.List<ItemCatalog.Entry> catalog)
+        {
+            var body = _ws.player.GetComponent<FirstPersonBody>();
+            Vector3 home = _ctrl.transform.position;
+            float homeYaw = _ctrl.transform.eulerAngles.y;
+            Vector3 fwd = Flat(_ctrl.transform.forward).normalized;
+
+            // ---- The floral sofa: seen from the front, then pushed by the top of its back ----
+            var fe = catalog.Find(x => x.name == "Floral sofa");
+            if (fe == null) { _log.AppendLine("no floral sofa in the catalog"); yield break; }
+            var sofa = fe.spawn(home + fwd * 2.6f, Quaternion.LookRotation(-fwd), false).GetComponent<MovableProp>();
+            yield return new WaitForSeconds(1.2f);
+            _log.AppendLine($"floral sofa: {sofa.Shape.edges.Count} grab edges, mass {sofa.Mass:F0} kg, bounds {sofa.WorldBounds.size}");
+            {
+                Vector3 c = sofa.WorldBounds.center, front = sofa.transform.forward;
+                View("r15_1_floral_front", c + front * 2.9f + Vector3.up * 0.45f, c + Vector3.down * 0.1f);
+                View("r15_2_floral_angle", c + Quaternion.Euler(0f, 38f, 0f) * front * 2.6f + Vector3.up * 0.7f, c + Vector3.down * 0.1f);
+                View("r15_2b_floral_close", c + Quaternion.Euler(0f, -30f, 0f) * front * 1.3f + sofa.transform.right * 0.6f + Vector3.up * 0.35f, c + sofa.transform.right * 0.75f + Vector3.down * 0.05f);
+            }
+            yield return StandBehind(sofa, 1.25f);
+            var sb = sofa.Shape.bounds;
+            yield return AimDirect(sofa.transform.TransformPoint(new Vector3(sb.center.x + 0.3f, sb.max.y - 0.03f, sb.min.z + 0.06f)));
+            _log.AppendLine($"aimed at its back: hint '{_grab.HintText}'");
+            yield return Hold();
+            Log($"floral sofa by the top: {Depths(body)}");
+            Vector3 p0 = sofa.transform.position;
+            yield return Walk(new Vector2(0f, 1f), 1.5f);
+            Log($"pushed {Flat(sofa.transform.position - p0).magnitude:F2} m: {Depths(body)}");
+            Shot("r15_3_floral_pushed");
+            _grab.botHold = false; yield return null; _grab.botHold = null;
+            yield return new WaitForSeconds(1f);
+            yield return Home(sofa, home, homeYaw);
+
+            // ---- Boxes carried while turning and stepping side to side: how far do the hands and forearms go in ----
+            foreach (var size in new[] { "medium", "large" })
+            {
+                fwd = Flat(_ctrl.transform.forward).normalized;
+                var box = catalog.Find(x => x.name == $"Cardboard box ({size})").spawn(_ctrl.transform.position + fwd * 0.9f, Quaternion.LookRotation(fwd), false).GetComponent<MovableProp>();
+                yield return new WaitForSeconds(1f);
+                yield return AimDirect(box.WorldBounds.center + Vector3.up * box.WorldBounds.extents.y * 0.9f);
+                yield return Hold();
+                yield return new WaitForSeconds(0.8f);
+                yield return new WaitForEndOfFrame();
+                Log($"{size} box carried: {Depths(body)}");
+                ArmsView($"r15_3b_{size}_box_still_above", box);
+                float maxR = 0f, maxL = 0f;
+                float mrh = 0f, mrf = 0f, mlh = 0f, mlf = 0f; Vector3 rAtMax = default, lAtMax = default;
+                body.HandDepthsDetail(out float srh, out float srf, out float slh, out float slf, out Vector3 sra, out Vector3 sla);
+                _log.AppendLine($"   still: right hand {srh * 100f:F1} forearm {srf * 100f:F1} (at {box.transform.InverseTransformPoint(sra).ToString("F2")} in the box), left hand {slh * 100f:F1} forearm {slf * 100f:F1} (at {box.transform.InverseTransformPoint(sla).ToString("F2")}), box half {(box.Spec.size * 0.5f).ToString("F2")}");
+                for (float t = 0f; t < 3f; t += Time.deltaTime)
+                {
+                    float dir = Mathf.Sign(Mathf.Sin(t * Mathf.PI));          // a second each way
+                    _ctrl.AddLook(dir * 120f * Time.deltaTime, 0f);
+                    _ctrl.botInput = new Vector2(dir, 0.2f);
+                    yield return null;
+                    yield return new WaitForEndOfFrame();          // after the body has posed its arms this frame
+                    body.HandDepths(out float r, out float l);
+                    maxR = Mathf.Max(maxR, r); maxL = Mathf.Max(maxL, l);
+                    body.HandDepthsDetail(out float rh, out float rf, out float lh, out float lf, out Vector3 ra, out Vector3 la);
+                    mrh = Mathf.Max(mrh, rh); mlh = Mathf.Max(mlh, lh);
+                    if (rf > mrf) { mrf = rf; rAtMax = box.transform.InverseTransformPoint(ra); }
+                    if (lf > mlf) { mlf = lf; lAtMax = box.transform.InverseTransformPoint(la); }
+                    if (Mathf.Abs(t - 1.5f) < Time.deltaTime) { Shot($"r15_4_{size}_box_turning"); ArmsView($"r15_4b_{size}_box_turning_above", box); }
+                }
+                _ctrl.botInput = null;
+                _log.AppendLine($"   turning: right hand {mrh * 100f:F1} forearm {mrf * 100f:F1} (at {rAtMax.ToString("F2")}), left hand {mlh * 100f:F1} forearm {mlf * 100f:F1} (at {lAtMax.ToString("F2")})");
+                Log($"{size} box, 3 s turning 120 deg/s and stepping side to side: deepest right {maxR * 100f:F1} cm, left {maxL * 100f:F1} cm (hands and forearms), two={_grab.TwoHanded}");
+                yield return new WaitForSeconds(0.5f);
+                Shot($"r15_5_{size}_box_still");
+                Log($"{size} box still again: {Depths(body)}");
+                _grab.botHold = false; yield return null; _grab.botHold = null;
+                yield return new WaitForSeconds(1f);
+                yield return Home(box, home, homeYaw);
+            }
         }
 
         IEnumerator Round14(System.Collections.Generic.List<ItemCatalog.Entry> catalog)
@@ -299,6 +378,36 @@ namespace Backrooms.DebugTools
             yield return null;
             _ctrl.Teleport(home, yaw);
             yield return new WaitForSeconds(0.5f);
+        }
+
+        /// <summary>The box and both arms from above and behind the left shoulder (to see whether the arms go into it).</summary>
+        void ArmsView(string name, MovableProp box)
+        {
+            var t = _ctrl.transform;
+            View(name, t.position + Vector3.up * 2.05f - t.forward * 0.35f - t.right * 0.25f, box.WorldBounds.center);
+        }
+
+        /// <summary>Renders a view from a camera like the main one into a PNG.</summary>
+        void View(string name, Vector3 eye, Vector3 target)
+        {
+            var main = Camera.main;
+            var go = new GameObject("ProbeViewCam");
+            var cam = go.AddComponent<Camera>();
+            if (main) cam.CopyFrom(main);
+            cam.fieldOfView = 55f; cam.nearClipPlane = 0.02f;
+            go.transform.position = eye;
+            go.transform.LookAt(target, Vector3.up);
+            var rt = new RenderTexture(1280, 800, 24);
+            cam.targetTexture = rt;
+            cam.Render();
+            RenderTexture.active = rt;
+            var tex = new Texture2D(1280, 800, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, 1280, 800), 0, 0);
+            tex.Apply();
+            RenderTexture.active = null;
+            File.WriteAllBytes(Path.Combine(folder, name + ".png"), tex.EncodeToPNG());
+            cam.targetTexture = null;
+            Destroy(rt); Destroy(tex); Destroy(go);
         }
 
         string Depths(FirstPersonBody body)

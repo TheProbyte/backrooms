@@ -52,6 +52,21 @@ namespace Backrooms.Interaction
         Quaternion _carryRot;
         float _carryT, _carryCaughtT, _carryArc;
         float _carryLift;               // a box: how far the mouse has lifted (+) or lowered (-) it from the carry (m)
+        float _yawRate, _lastYaw;       // how fast the body turns (rad/s, smoothed), for what is carried
+        bool _yawSet;
+
+        /// <summary>The body's turn rate, smoothed over a few frames (each frame: Update).</summary>
+        void UpdateYawRate()
+        {
+            float y = transform.eulerAngles.y, dt = Time.deltaTime;
+            if (_yawSet && dt > 1e-5f)
+            {
+                float r = Mathf.DeltaAngle(_lastYaw, y) * Mathf.Deg2Rad / dt;
+                if (Mathf.Abs(r) > 30f) r = 0f;                                   // a teleport, not a turn
+                _yawRate = Mathf.Lerp(_yawRate, r, 1f - Mathf.Exp(-dt / 0.05f));
+            }
+            _lastYaw = y; _yawSet = true;
+        }
         float _palTopSide;              // a pallet: +1 or -1, which long edge (its local z) is on top
         Collider[] _carryColliders;
         CharacterController _cc;
@@ -122,8 +137,12 @@ namespace Backrooms.Interaction
                     _carryCentre = new Vector3(0f, 0.72f + s.y * 0.5f, 0.3f + depth * 0.5f);
                     _carryArc = 0.1f;
                     Vector3 r = new Vector3(Mathf.Round(rightLocal.x), 0f, Mathf.Round(rightLocal.z));
-                    float gy = s.y * 0.6f;
-                    SetGrips(r * halfAcross + Vector3.up * gy, r, -r * halfAcross + Vector3.up * gy, -r);
+                    Vector3 f = new Vector3(Mathf.Round(fwdLocal.x), 0f, Mathf.Round(fwdLocal.z));
+                    // Toward the back of its sides, near you: at the middle of them the forearms came in through its back
+                    // corners (round 15).
+                    Vector3 back = -f * (depth * 0.5f - Mathf.Min(0.065f, depth * 0.25f));
+                    float gy = s.y * 0.5f;
+                    SetGrips(r * halfAcross + back + Vector3.up * gy, r, -r * halfAcross + back + Vector3.up * gy, -r);
                     break;
                 }
             }
@@ -240,11 +259,17 @@ namespace Backrooms.Interaction
         void CarryForces(Rigidbody rb)
         {
             CarryTarget(out var pos, out var rot);
-            Vector3 v = (pos - rb.position) / 0.07f + _player.PlanarVelocity;
-            rb.linearVelocity = Vector3.ClampMagnitude(v, 6f);
+            // The body's own motion (walking and turning) carried straight across, the gap closed on top: steered by the gap
+            // alone it trailed a turn by ~10 degrees, and its back corner swung into the forearms (round 15). (From the body's
+            // walk and turn rate, not the target's step-to-step change: physics steps fall unevenly between frames.)
+            Vector3 wT = Vector3.up * _yawRate;
+            Vector3 vT = _player.PlanarVelocity + Vector3.Cross(wT, pos - transform.position);
+            Vector3 v = (pos - rb.position) / 0.07f + vT;
+            rb.linearVelocity = Vector3.ClampMagnitude(v, 8f);
             (rot * Quaternion.Inverse(rb.rotation)).ToAngleAxis(out float ang, out Vector3 axis);
             if (ang > 180f) ang -= 360f;
-            rb.angularVelocity = axis.sqrMagnitude > 0.5f && !float.IsNaN(axis.x) ? Vector3.ClampMagnitude(axis.normalized * (ang * Mathf.Deg2Rad / 0.09f), 9f) : Vector3.zero;
+            Vector3 w = axis.sqrMagnitude > 0.5f && !float.IsNaN(axis.x) ? axis.normalized * (ang * Mathf.Deg2Rad / 0.09f) : Vector3.zero;
+            rb.angularVelocity = Vector3.ClampMagnitude(w + wT, 12f);
             _force = Vector3.zero;
             _lag = Vector3.Distance(pos, rb.position);
         }

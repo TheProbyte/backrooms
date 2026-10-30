@@ -456,6 +456,21 @@ namespace Backrooms.Interaction
             }
         }
 
+        /// <summary>
+        /// Distance from a point to its shape (negative inside), where it is drawn: its boxes in its transform's frame. Its
+        /// colliders are where the physics has it, up to a step ahead of the drawn (interpolated) pose while it moves, and the
+        /// hands are put on the drawn one (round 15: measured against the colliders, a carried box swung round looked 10 cm
+        /// into the forearms).
+        /// </summary>
+        public float ShapeDistance(Vector3 p)
+        {
+            if (Shape == null) return float.MaxValue;
+            Vector3 q = transform.InverseTransformPoint(p);
+            float best = float.MaxValue;
+            foreach (var (c, s) in Shape.boxes) best = Mathf.Min(best, WorldItem.BoxDistance(q, c, s * 0.5f));
+            return best;
+        }
+
         public bool FindGrip(Vector3 hitPoint, Vector3 hitNormal, Vector3 shoulder, System.Random rng, out Vector3 point, out Vector3 surfaceNormal, out Vector3 edgeDir)
             => FindGrip(hitPoint, hitNormal, shoulder, rng, -1, out point, out surfaceNormal, out edgeDir, out _);
 

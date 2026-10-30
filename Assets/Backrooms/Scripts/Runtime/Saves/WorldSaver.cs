@@ -392,7 +392,8 @@ namespace Backrooms.Saves
             {
                 string n = key.Substring(5);
                 foreach (var o in s_obj.Values) if (o is T t && o.name == n) return t;
-                return null;
+                // Furniture kept in Resources rather than the biome's assets (the floral sofa).
+                return Resources.Load<T>("Furniture/" + n);
             }
             return s_obj.TryGetValue(key, out var v) ? v as T : null;
         }

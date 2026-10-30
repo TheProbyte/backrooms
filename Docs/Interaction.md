@@ -23,7 +23,8 @@
   - The old heave (a sharp mouse flick up) and R to twist are gone.
 - **Light things** (a box light enough, an empty pallet, an office chair; `PropGrabber.Carry.cs`): taken up like an item,
   by themselves, with both hands (the camcorder on its strap), and held steady in a place for each kind: a box upright,
-  low in front of you (its bottom at the hips), a hand each side, **mouse up lifts it** (its bottom up to 1.5 m, to stack
+  low in front of you (its bottom at the hips), a hand each side near the back of them (round 15: the forearms clear of
+  it), **mouse up lifts it** (its bottom up to 1.5 m, to stack
   boxes), **down lowers it** to the floor, the view following a third as far; an empty pallet on its long edge under
   your arm, one hand, the camcorder staying up at the eye (round 14); an office
   chair upright ahead on the hand's side, 8 cm off the floor, by the top of its back. It follows you as you walk and turn;
@@ -246,7 +247,9 @@ RESET puts the kind back to its built-in values. Escape or F2 closes it.
 | `Items/CordBundleHandle.cs` | The desk lamp's wound-up cord (`Resources/Items/CordBundle.fbx`): clicking it lets the cord out with the plug in your hand. |
 | `Items/ItemCatalog.cs`, `Items/ItemsMenu.cs` | The developer menu (L): a grid with a rendered picture of every item and furniture piece (each sofa model and fabric, armchairs, office chair, table, three boxes, floor lamp, wall clock). Click to spawn in front of you (the clock on the wall you look at); shift-click keeps the menu open. Spawned furniture joins the moved-props list, so it stays put through chunk unloads. |
 
-Movable kinds: sofa, armchair, office chair (casters, low friction), conference table, cardboard box
+Movable kinds: sofa (the chesterfield and modern ones in three fabrics, and the floral sofa: round 15,
+`Tools/Blender/build_floral_sofa.py`, `Editor/FloralSofaBuilder.cs`, its prefab in `Resources/Furniture`), armchair, office
+chair (casters, low friction), conference table, cardboard box
 (new in world version 5: a few against walls in offices). Floor lamps, clocks and racks stay fixed.
 
 Tuning: `PropGrabber` (reach, maxPush, maxLift, stiffness, mouseToMetres, shove), masses and frictions in
