@@ -95,6 +95,9 @@ namespace Backrooms
             _verticalVelocity = 0f;
         }
 
+        /// <summary>The walk keys this frame (x strafe, y forward, at most 1 long), whether or not the body could move.</summary>
+        public Vector2 MoveInput { get; private set; }
+
         /// <summary>Test hook: when set, used as WASD input (x strafe, y forward) regardless of focus.</summary>
         [System.NonSerialized] public Vector2? botInput;
 
@@ -349,6 +352,7 @@ namespace Backrooms
                 if (keyboard.aKey.isPressed) input.x -= 1f;
             }
             input = Vector2.ClampMagnitude(input, 1f);
+            MoveInput = input;
 
             if (noclip)
             {

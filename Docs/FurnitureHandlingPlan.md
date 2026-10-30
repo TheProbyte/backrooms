@@ -31,6 +31,8 @@ the left hand can float short of its grip when the chair is turned away from it.
 
 Owner's second look: holding shook fast side to side. Measured (`Debug/HoldJitterProbe.cs`, a CSV of the camera, body and furniture each frame): the camera was smooth; the armchair flipped 2-3 degrees back and forth every physics step (spinning up to 5.7 rad/s while held still). The hands' springs were sized for the whole mass but pull far from its middle, where it mostly turns and weighs a few kilos, and the wrist's rough inertia was several times the chair's. Now each pull is scaled to the mass felt at its point and the wrist uses the real inertia: held still it does not move (0.01 rad/s), nothing moves more than about 1 mm a frame. Also: the wrist gives freely only on which way the thing faces, on its tilt only past 60 degrees (a quick turn on the spot used to roll an armchair over onto its back and keep it there); the strap camera rises more gently out of the way.
 
+Then push mode (owner's choice: heave the mouse up to lift): taking furniture now pushes it, one hand on it and the camcorder at the eye; the mouse turns you and it steers with you; a sharp move up (or R) heaves it into both hands (the strap view); set down upright, a sharp move down is pushing again. Checked (`Debug/PushProbe.cs`, World 3, facing the most open way): armchair pushed 2.4 m in 2.5 s, turned 69 degrees as you turned 100, pulled back 1.1 m, heaved and lifted 0.64 m, set down, pushed again; office chair the same (2.8 m, 89 degrees). Shake about 1 mm a frame. Not felt by the owner yet; open: how sharp the heave flick should be (`heaveCounts`).
+
 ## Why it is hard now
 
 - **One spring at one point.** `PropGrabber.FixedUpdate` pulls the grip point toward the hand with a strength limit

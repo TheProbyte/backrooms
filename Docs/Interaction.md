@@ -4,21 +4,34 @@
 - **Hold left mouse** on furniture or a box within about 2.4 m. If it is a little too far you step in; if it
   is low you bend down. The right hand takes the nearest grab edge to where you look, a few centimetres
   different each time.
-- While holding:
+- **Furniture starts in push mode** (anything but a box light enough to carry). The camcorder stays at your eye in the
+  left hand, one hand on it:
+  - **W** pushes it ahead (the hand leads 0.25 m the way you walk, the arm kept bent so it has room), **A/D** slide it
+    sideways, **S** walks back and it follows on the hand.
+  - **The mouse turns you**, slower the heavier it is, and it turns with you (steering: up to 160 N m about the
+    vertical, so it lags round a corner rather than snapping).
+  - The push is applied at its balance point's height and the hand does not lift it, so it slides and turns rather
+    than tipping. Taken looking down at it, the view comes up to look ahead over it.
+  - **A sharp move of the mouse up** (about 300 counts in 0.15 s, `heaveCounts`) or **R** heaves it: the camcorder
+    drops onto its strap and both hands take it (below). Lowered onto the floor upright, **a sharp move down** puts
+    you back to pushing.
+- **Heaved up (both hands)**, and boxes:
   - **Mouse left/right** swings your end sideways. Past the arm's limit you turn with it.
   - **Mouse up/down** lifts or lowers your end. Lift a long thing high enough and walk into it to stand it on end.
   - **WASD** walks and drags it with you, slower the heavier it is (and very slowly away from something stuck).
-  - **Right mouse** shoves it and lets go. **Release left mouse** to let go.
-  - **Hold R** while holding: the mouse turns it instead of moving your end (up/down tip it away or toward you, left/right
+  - **Hold R**: the mouse turns it instead of moving your end (up/down tip it away or toward you, left/right
     roll it onto a side). Standing on the floor it rocks over the edge of its foot; lifted, one hand turns it about its
     balance point, two about the hands. The hand also holds the angle it took it at, as a wrist would (14 N m: a chair by
     its frame stays put, by a leg it swings, a sofa barely notices; past what it can hold it gives). `PropGrabber.Furniture.cs`.
-- **Taking furniture** lets the camcorder hang on its strap at your chest by itself (it comes back up a moment after you
-  let go): the picture drops to chest height, looks ahead and a little down, swings as you start, stop and turn, bobs
-  with your steps, and keeps 30 cm clear of what you hold, rising toward the eye to look over it
-  (`HandheldCameraShake.strap`, `avoid`). Furniture is held at least 0.38 m out from you. The left hand is free and
-  seen: furniture is taken with both hands, the left on the best grab edge across from the right. Twice the strength and a lever between the grips, so a chair can be lifted and rolled over; a turn that needs
-  more reach steps you toward it. Grab edges now go round the sides and undersides too, so a chair is taken however it lies.
+  - The camcorder hangs on its strap at your chest (it comes back up a moment after you let go or set it down): the
+    picture drops to chest height, looks ahead and a little down, swings as you start, stop and turn, bobs with your
+    steps, and keeps 30 cm clear of what you hold, rising toward the eye to look over it (`HandheldCameraShake.strap`,
+    `avoid`). Held at least 0.38 m out from you. The left hand takes the best grab edge across from the right: twice
+    the strength and a lever between the grips, so a chair can be lifted and rolled over; a turn that needs more reach
+    steps you toward it. Grab edges go round the sides and undersides too, so a chair is taken however it lies.
+- **Right mouse** while holding shoves it and lets go. **Release left mouse** to let go.
+- Each hand's pull is sized to the weight felt where it is applied (`PointMass`): pulling far from the middle, a
+  chair mostly turns and weighs a few kilos (sized for the whole mass, it overshot every physics step and shook).
 - **Right mouse** without holding: a quick push. Walking into light props nudges them.
 - The left hand holds the camcorder: it dips and trembles a little while the right hand works, more for
   heavy things. (`PropGrabber.rightHanded` off brings back the old left-handed setup and left arm model.)

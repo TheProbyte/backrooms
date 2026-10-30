@@ -12,9 +12,14 @@ namespace Backrooms.Interaction
     /// <item><b>Turning on purpose.</b> Hold <b>R</b> while holding: the mouse turns it about your grip instead of moving your
     /// end (up and down tip it toward or away from you, left and right roll it onto a side). Gravity and the floor do the
     /// rest: past its balance point it goes over by itself.</item>
-    /// <item><b>Two hands.</b> Taking furniture lets the camcorder hang on its strap at your chest (the picture drops and
-    /// swings: HandheldCameraShake.strap) and frees the left hand: it is taken with both, a second grip across from the
-    /// first. Twice the strength, and two grips make a lever, so it can be lifted and turned. Let go and it comes back up.</item>
+    /// <item><b>Pushing.</b> Taking furniture starts with one hand on it, the camcorder still at the eye in the other: the
+    /// hand keeps its spot in front of you, so walking pushes it ahead (S pulls it back) and turning steers it, and you
+    /// look over it at where it goes. The mouse turns you, as it does walking.</item>
+    /// <item><b>Two hands (heaving it up).</b> A sharp move of the mouse up while pushing (or R) heaves it: the camcorder
+    /// hangs on its strap at your chest (the picture drops and swings: HandheldCameraShake.strap) and frees the left hand:
+    /// it is taken with both, a second grip across from the first. Twice the strength, and two grips make a lever, so it
+    /// can be lifted and turned. Lowered onto the floor upright, keep lowering and you are pushing again; let go and the
+    /// camcorder comes back up.</item>
     /// </list>
     /// </summary>
     public partial class PropGrabber
@@ -28,6 +33,23 @@ namespace Backrooms.Interaction
         public float twistPerCount = 0.18f;
         [Tooltip("Second hand: how far from the first grip it looks for its own (m).")]
         public float secondGripSpread = 0.42f;
+        [Tooltip("Pushing: most the hand on it, your weight behind it, can keep it upright and turn it with you (N m).")]
+        public float pushTorque = 40f;
+        [Tooltip("Pushing: mouse counts up within a moment (about 0.15 s) that heave it up into both hands. Lowered back onto " +
+                 "the floor, as many counts down put you back to pushing.")]
+        public float heaveCounts = 300f;
+        [Tooltip("Pushing: how far ahead of its spot the hand goes the way you walk (m).")]
+        public float pushLead = 0.25f;
+        [Tooltip("Pushing: most it is turned round with you about the vertical, steering (N m).")]
+        public float pushTurnTorque = 160f;
+        Vector3 _pushLead;
+
+        /// <summary>Pushing furniture: one hand on it, the camcorder at the eye (see the class notes).</summary>
+        public bool Pushing { get; private set; }
+        float _heaveAcc, _setDownAcc;
+
+        /// <summary>Furniture (anything but a box light enough to carry) is pushed first, heaved up with both hands.</summary>
+        bool IsFurniture(MovableProp p) => p && !(p.Spec.kind == MovableKind.Box && p.Mass <= carryMass);
 
         /// <summary>Tests: R held this frame (twist).</summary>
         [System.NonSerialized] public bool? botTwist;
@@ -55,7 +77,9 @@ namespace Backrooms.Interaction
         /// </summary>
         void UpdateStrap()
         {
-            bool want = !HeldItem && _target && (Current == State.Reaching || Current == State.Holding);
+            // (Not while pushing, nor reaching to push: the camcorder stays at the eye until it is heaved up.)
+            bool want = !HeldItem && _target && (Current == State.Reaching || Current == State.Holding)
+                        && !(IsFurniture(_target) && (Current == State.Reaching || Pushing));
             if (want) _strapOffAt = Time.time + 0.35f;
             bool on = want || (CamcorderOnStrap && Time.time < _strapOffAt);
             if (on != CamcorderOnStrap)
@@ -152,10 +176,71 @@ namespace Backrooms.Interaction
             _wristRel = Quaternion.Inverse(transform.rotation) * Held.transform.rotation;
             TwoHanded = false;
             _secondFarT = 0f;
-            if (CamcorderOnStrap) TakeSecondGrip();
+            _heaveAcc = _setDownAcc = 0f;
+            Pushing = IsFurniture(Held);
+            _pushFrom = Time.time;
+            if (!Pushing && CamcorderOnStrap) TakeSecondGrip();
         }
 
-        void ReleaseFurniture() { TwoHanded = false; Twisting = false; if (_twistStepping) { _twistStepping = false; } }
+        void ReleaseFurniture() { TwoHanded = false; Twisting = false; Pushing = false; if (_twistStepping) { _twistStepping = false; } }
+
+        /// <summary>
+        /// Pushing or heaving (each frame while holding). Returns true while pushing: the hand keeps its spot and the mouse
+        /// turns you. A sharp move up (or R) heaves it into both hands; lifted and set back down upright on the floor, a
+        /// move down as sharp puts you back to pushing.
+        /// </summary>
+        bool UpdatePush(Vector2 md, bool turnKey)
+        {
+            if (!Held) return false;
+            float dt = Time.deltaTime;
+            if (Pushing)
+            {
+                _heaveAcc = _heaveAcc * Mathf.Exp(-dt / 0.15f) + Mathf.Max(0f, md.y);
+                if (_heaveAcc > heaveCounts || turnKey) { Heave(turnKey ? 0f : 0.12f); return false; }
+                return true;
+            }
+            if (!IsFurniture(Held)) return false;
+            bool down = Held.WorldBounds.min.y < transform.position.y + 0.05f && Vector3.Angle(Held.transform.up, Vector3.up) < 25f && !Twisting;
+            _setDownAcc = down ? _setDownAcc * Mathf.Exp(-dt / 0.15f) + Mathf.Max(0f, -md.y) : 0f;
+            if (_setDownAcc > heaveCounts) { BackToPushing(); return true; }
+            return false;
+        }
+
+        /// <summary>Heaved up: the camcorder onto its strap, the left hand takes a second grip, your end comes up a little.</summary>
+        void Heave(float lift)
+        {
+            Pushing = false;
+            _heaveAcc = _setDownAcc = 0f;
+            UpdateStrap();
+            _wristRel = Quaternion.Inverse(transform.rotation) * Held.transform.rotation;
+            TakeSecondGrip();
+            _offset = ClampOffset(_offset + Vector3.up * lift);
+        }
+
+        /// <summary>Set down again: the left hand back to the camcorder, the right keeps its grip where it is.</summary>
+        void BackToPushing()
+        {
+            Pushing = true;
+            _pushFrom = Time.time;
+            TwoHanded = false;
+            _heaveAcc = _setDownAcc = 0f;
+            _strapOffAt = 0f;
+            UpdateStrap();
+            _wristRel = Quaternion.Inverse(transform.rotation) * Held.transform.rotation;
+            _offset = ClampOffset(Quaternion.Inverse(transform.rotation) * (Held.transform.TransformPoint(_gripLocal) - StandShoulder));
+        }
+
+        /// <summary>Pushing: the mouse turns you (slower the heavier it is), and steers what you push.</summary>
+        void PushLook()
+        {
+            if (!Held) return;
+            _player.lookScale = Mathf.Lerp(0.85f, 0.35f, Mathf.Clamp01((Held.Mass - 10f) / 60f));
+            // Taken looking down at it: the view comes up to look ahead over it (once, as the push starts).
+            const float ahead = 22f;
+            if (Time.time - _pushFrom < 0.9f && _player.Pitch > ahead)
+                _player.AddLook(0f, -Mathf.Min(_player.Pitch - ahead, 70f * Time.deltaTime));
+        }
+        float _pushFrom;
 
         bool _twistStepping;
         float _twistAt = -10f;
@@ -264,7 +349,8 @@ namespace Backrooms.Interaction
             // Past what it can hold, the wrist gives: the angle it wants comes round to where the thing is.
             // Only which way it faces gives freely: how far it is tipped gives only once it is well over (knocked down), so
             // swinging round on the spot with it does not let it roll over and stay over.
-            if (Mathf.Abs(ang) > 35f && !Twisting)
+            // (Pushing, it only gives once it is well round: steering it round a corner lags behind you a while.)
+            if (Mathf.Abs(ang) > (Pushing ? 70f : 35f) && !Twisting)
             {
                 Quaternion actual = Quaternion.Inverse(transform.rotation) * rb.rotation;
                 Vector3 upWant = _wristRel * Vector3.up, upHas = actual * Vector3.up;
@@ -277,8 +363,15 @@ namespace Backrooms.Interaction
             float I = Mathf.Min(m * 0.12f, InertiaAbout(rb, axis.normalized));
             float wr = 9f;
             Vector3 tau = I * (wr * wr * (ang * Mathf.Deg2Rad) * axis.normalized - 2f * wr * rb.angularVelocity);
-            float cap = TwoHanded ? twoHandTorque : wristTorque;
-            if (tau.magnitude > cap) tau = tau.normalized * cap;
+            float cap = TwoHanded ? twoHandTorque : Pushing ? pushTorque : wristTorque;
+            if (Pushing)
+            {
+                // Pushing, your weight swings it round with you: much stronger about the vertical (steering) than at
+                // tipping it (the hand on it only steadies that).
+                Vector3 turn = Vector3.Project(tau, Vector3.up), tip = tau - turn;
+                tau = Vector3.ClampMagnitude(turn, pushTurnTorque) + Vector3.ClampMagnitude(tip, cap);
+            }
+            else if (tau.magnitude > cap) tau = tau.normalized * cap;
             rb.AddTorque(tau, ForceMode.Force);
         }
     }

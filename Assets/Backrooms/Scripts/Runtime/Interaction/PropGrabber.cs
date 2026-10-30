@@ -216,7 +216,10 @@ namespace Backrooms.Interaction
                     if (!hold || !Held) { Release(!hold ? "let go" : "prop gone"); break; }
                     if (shovePressed) { ShoveAndRelease(); break; }
                     // R held: the mouse turns it about the grip (PropGrabber.Furniture) instead of moving your end.
-                    if (TwistHeld(focus || botTwist.HasValue)) { UpdateTwist(md); UpdateHold(Vector2.zero); }
+                    // Furniture is pushed first (the mouse turns you); heaved up (a sharp move up, or R) it is in both hands.
+                    bool turnKey = TwistHeld(focus || botTwist.HasValue);
+                    if (UpdatePush(md, turnKey)) { EndTwistSteps(); UpdateHold(Vector2.zero); PushLook(); }
+                    else if (turnKey) { UpdateTwist(md); UpdateHold(Vector2.zero); }
                     else { EndTwistSteps(); UpdateHold(md); }
                     break;
             }
@@ -478,7 +481,8 @@ namespace Backrooms.Interaction
                 // (A little past the reach, as far as the arm took it: at 0.97 of it, a sofa taken by its seat at full
                 // stretch was pulled 4 cm in under the player's feet, who rode up onto it.)
                 Vector3 T = StandShoulder + transform.rotation * clamped, RS = ReachShoulder;
-                float r = ArmReach + 0.05f;
+                // (Pushing: the arm kept bent, so it has room to push ahead as you walk.)
+                float r = Pushing ? ArmReach - 0.2f : ArmReach + 0.05f;
                 if ((T - RS).sqrMagnitude > r * r) clamped = Quaternion.Inverse(transform.rotation) * (RS + Vector3.ClampMagnitude(T - RS, r) - StandShoulder);
             }
             // Past the arm's limit sideways the body turns with it (so you can keep swinging it round);
@@ -499,8 +503,9 @@ namespace Backrooms.Interaction
             if (_lag > 0.3f && Vector3.Dot(_player.PlanarVelocity, away) > 0f) scale *= 0.3f;
             _player.moveScale = Mathf.Max(0.12f, scale);
 
-            // Keep the hand in view: the camera eases toward the grip when it drifts far off centre.
-            if (_cam)
+            // Keep the hand in view: the camera eases toward the grip when it drifts far off centre (not pushing: you look
+            // over it at where it goes).
+            if (_cam && !Pushing)
             {
                 Vector3 to = grip - Eye;
                 float wantPitch = -Mathf.Atan2(to.y, new Vector2(to.x, to.z).magnitude) * Mathf.Rad2Deg - 12f;
@@ -522,21 +527,39 @@ namespace Backrooms.Interaction
             var rb = Held.Body;
             if (rb.isKinematic) Held.Wake();
             Vector3 T = StandShoulder + transform.rotation * _offset;
+            // Pushing: the hand goes ahead of you the way you walk (the body alone stops against it), and pushes at its
+            // balance point's height so it slides and turns rather than tipping over.
+            // (Not back toward you: walking back, the hand just holds on and it follows; led back, it was pulled into
+            // the legs and the body stepped up onto it.)
+            _pushLead = Vector3.MoveTowards(_pushLead, Pushing ? new Vector3(_player.MoveInput.x, 0f, Mathf.Max(0f, _player.MoveInput.y)) * pushLead : Vector3.zero, Time.fixedDeltaTime * 2f);
+            if (_pushLead.sqrMagnitude > 1e-6f)
+            {
+                T += transform.rotation * _pushLead;
+                Vector3 RS = ReachShoulder;
+                float r = ArmReach + 0.05f;                       // (never further than the arm: the hand slipped off)
+                if ((T - RS).sqrMagnitude > r * r) T = RS + Vector3.ClampMagnitude(T - RS, r);
+            }
             Vector3 G = rb.position + rb.rotation * _gripLocal;
+            Vector3 low = new Vector3(G.x, rb.worldCenterOfMass.y, G.z);
             Vector3 vG = rb.GetPointVelocity(G);
             Vector3 vT = _player.PlanarVelocity;
             float m = rb.mass;
             bool carry = m <= carryMass && Held.Spec.kind == MovableKind.Box;
             float mEff = Mathf.Min(m, 30f), w = stiffness;
             Vector3 F = mEff * (w * w * (T - G) + 2f * w * (vT - vG));
-            if (!carry) F = AtPointMass(rb, G, F, mEff);
+            // (Each part sized to the weight felt where it is applied: pushing, the push at the balance height, the
+            // hand's hold up or down at the grip.)
+            if (Pushing) F = AtPointMass(rb, low, new Vector3(F.x, 0f, F.z), mEff) + AtPointMass(rb, G, Vector3.up * F.y, mEff);
+            else if (!carry) F = AtPointMass(rb, G, F, mEff);
             if (carry) F -= Physics.gravity * m;                 // a box is carried, not dragged
             // A hand is only so strong.
             Vector3 h = new Vector3(F.x, 0f, F.z);
             if (h.magnitude > maxPush) h = h.normalized * maxPush;
-            float up = Mathf.Clamp(F.y, -200f, maxLift);
+            // (Pushing, the hand only steadies it up and down: it does not lift what it pushes.)
+            float up = Mathf.Clamp(F.y, -200f, Pushing ? maxLift * 0.25f : maxLift);
             F = h + Vector3.up * up;
-            rb.AddForceAtPosition(F, G);
+            if (Pushing) { rb.AddForceAtPosition(h, low); rb.AddForceAtPosition(Vector3.up * up, G); }
+            else rb.AddForceAtPosition(F, G);
             _force = F;
             FurnitureForces(rb, T, carry);
             if (carry)

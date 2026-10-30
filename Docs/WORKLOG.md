@@ -15,6 +15,19 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Furniture: push mode
+
+- Taking furniture now pushes it: one hand on it, the camcorder at the eye. W pushes (the hand leads 0.25 m the way
+  you walk, the arm kept bent; the body alone only stopped against it), the mouse turns you and it steers with you
+  (160 N m about the vertical), S walks back and it follows. The push is applied at its balance height and the hand
+  does not lift, so it slides instead of tipping. The view comes up to look over it as the push starts.
+- A sharp mouse move up (or R) heaves it into both hands with the camcorder on its strap (the old hold); lowered onto
+  the floor upright, a sharp move down is pushing again (owner's choice of switch).
+- Found on the way: a pushing lead toward you dragged an office chair into the legs and the body stepped onto it
+  (no lead backward now); the lead past arm's reach made the hand slip (clamped). `CamcorderPlayerController.MoveInput`.
+- Checked with `Debug/PushProbe.cs` in World 3 (erased between runs: spawned furniture is saved): armchair and office
+  chair push, steer, pull back, heave, lift, set down, push again. EditMode tests. Build rebuilt.
+
 ## 2026-10-30 - Furniture: no more shaking while held
 
 - The owner found holding furniture shook fast side to side. Measured with a new probe (`Debug/HoldJitterProbe.cs`):
