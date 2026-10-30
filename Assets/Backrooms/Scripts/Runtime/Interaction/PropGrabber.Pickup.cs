@@ -769,11 +769,11 @@ namespace Backrooms.Interaction
             if (_pickStuckT > 1f || _pickT > 4f || (_pickBlockedT > 0.8f && _pickStuckT > 0.4f))
             {
                 // (Round 11: near enough, it is taken rather than given up: the hand came back from 45 mm off a lamp's rod.)
-                if (item && solved && palmToGrip <= GiveUpSlack) return Took(palmToGrip);
+                if ((item || LowGrab) && solved && palmToGrip <= GiveUpSlack) return Took(palmToGrip);
                 PickGaveUp = true; return -1;
             }
             // (Held off with the palm already near, it need not wait the second out.)
-            if (item && solved && _pickStuckT > 0.25f && palmToGrip <= GiveUpSlack) return Took(palmToGrip);
+            if ((item || LowGrab) && solved && _pickStuckT > 0.25f && palmToGrip <= GiveUpSlack) return Took(palmToGrip);
             return 0;
         }
 

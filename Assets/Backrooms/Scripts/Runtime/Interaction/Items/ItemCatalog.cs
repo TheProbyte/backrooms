@@ -51,6 +51,9 @@ namespace Backrooms.Interaction
             list.Add(new Entry { name = "Rubber chicken", category = "ITEMS", clearance = 0.8f, spawn = (p, r, pv) => RubberChicken.Create(p + Vector3.up * 0.08f, r * Quaternion.Euler(0f, 90f, 0f)).gameObject });
             // Lying on its side, the handle toward you.
             list.Add(new Entry { name = "Sledgehammer", category = "ITEMS", clearance = 1f, spawn = (p, r, pv) => Sledgehammer.Create(p + Vector3.up * 0.04f, r * Quaternion.Euler(-90f, 0f, 0f) * Quaternion.Euler(0f, 90f, 0f)).gameObject });
+            // Lying on its side, the handle toward you; the nails' open flap away from you.
+            list.Add(new Entry { name = "Hammer", category = "ITEMS", clearance = 0.8f, spawn = (p, r, pv) => Hammer.Create(p + Vector3.up * 0.016f, r * Quaternion.Euler(-90f, 0f, 0f) * Quaternion.Euler(0f, 90f, 0f)).gameObject });
+            list.Add(new Entry { name = "Box of nails", category = "ITEMS", clearance = 0.7f, spawn = (p, r, pv) => Nails.Create(p, r * Quaternion.Euler(0f, 180f, 0f)).gameObject });
             if (!a) return list;
 
             uint MaskAt(Vector3 p)
@@ -115,6 +118,10 @@ namespace Backrooms.Interaction
                             s.cardboard = true;
                             s.materials = new[] { board, a.boxTape ? a.boxTape : board, a.boxPrint ? a.boxPrint : board };
                         }) });
+            var palletWood = a.pallet ? a.pallet : a.wood;
+            if (palletWood)
+                list.Add(new Entry { name = "Pallet", category = "FURNITURE", clearance = 1.2f,
+                    spawn = (p, r, pv) => Movable(MovableKind.Pallet, p, r, pv, s => s.materials = new[] { palletWood }) });
             if (a.floorLampPrefab)
                 list.Add(new Entry { name = "Floor lamp", category = "ITEMS", clearance = 0.9f, spawn = (p, r, pv) => FloorLamp.Create(p, r).gameObject });
             return list;

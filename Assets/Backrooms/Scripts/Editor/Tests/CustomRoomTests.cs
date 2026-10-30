@@ -99,11 +99,36 @@ namespace Backrooms.Tests
             Assert.IsNull(error, error?.ToString());
             const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var boxes = (List<(Vector3 c, Vector3 s, float yaw)>)typeof(OfficeChunkBuilder).GetField("_rotBoxes", flags).GetValue(builder);
-            Assert.IsTrue(boxes.Any(b => Mathf.Abs(b.s.x - 2.3f) < 0.01f && Mathf.Abs(b.yaw - 90f) < 0.01f), "rack collider follows its rotated geometry");
+            // Its shelves (a deck slab per level, as long as the rack) and its uprights are solid, turned with it.
+            Assert.IsTrue(boxes.Any(b => Mathf.Abs(b.s.x - 2.28f) < 0.01f && Mathf.Abs(b.yaw - 90f) < 0.01f), "rack shelf colliders follow its rotated geometry");
             var instances = (List<OfficeChunkBuilder.PropInstance>)typeof(OfficeChunkBuilder).GetField("_instances", flags).GetValue(builder);
             Assert.IsTrue(instances.Any(p => p.prefab == assets.wallClockPrefab && Mathf.Abs(p.position.y - 2.1f) < 0.01f), "clock mounts at its saved height");
-            var movables = (System.Collections.IList)typeof(OfficeChunkBuilder).GetField("_movables", flags).GetValue(builder);
-            Assert.AreEqual(2, movables.Count, "explicit armchair and office chair are movable");
+            var movables = ((System.Collections.IList)typeof(OfficeChunkBuilder).GetField("_movables", flags).GetValue(builder)).Cast<Backrooms.Interaction.MovableSpec>().ToList();
+            Assert.AreEqual(2, movables.Count(m => m.kind != Backrooms.Interaction.MovableKind.Box), "explicit armchair and office chair are movable");
+            // The rack's boxes are movable too, turned with it.
+            foreach (var m in movables.Where(m => m.kind == Backrooms.Interaction.MovableKind.Box))
+                Assert.Less(Mathf.Abs(Mathf.DeltaAngle(m.yaw, 90f)), 10f, "a rack's box turns with the rack");
+        }
+
+        [Test]
+        public void PalletsAndTheirBoxesAreMovableWithTheirOwnIds()
+        {
+            var assets = UnityEditor.AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
+            var bp = RoomBlueprint.CreateNew();
+            var v = bp.variants[0];
+            // Several, so some come out loaded (60 %).
+            for (int i = 0; i < 6; i++) v.props.Add(new PropDef { kind = PropKind.Pallet, x = 1.5f + (i % 3) * 2.5f, z = 2f + (i / 3) * 3f, size = new Vector3(1.2f, 1.6f, 1.0f) });
+            v.props.Add(new PropDef { kind = PropKind.StorageRack, x = 2f, z = 8f, size = new Vector3(2.3f, 2.4f, 0.95f) });
+            var layout = CustomRoomHarness.BuildLayout(bp, 0, 0, out _);
+            var builder = new OfficeChunkBuilder(assets);
+            builder.BuildData(layout);
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var movables = ((System.Collections.IList)typeof(OfficeChunkBuilder).GetField("_movables", flags).GetValue(builder)).Cast<Backrooms.Interaction.MovableSpec>().ToList();
+            Assert.AreEqual(6, movables.Count(m => m.kind == Backrooms.Interaction.MovableKind.Pallet), "each pallet is a movable pallet");
+            Assert.IsTrue(movables.Any(m => m.kind == Backrooms.Interaction.MovableKind.Box), "pallets and the rack carry movable boxes");
+            Assert.AreEqual(movables.Count, movables.Select(m => m.id).Distinct().Count(), "every pallet and box has its own id (so each is saved on its own)");
+            foreach (var m in movables.Where(m => m.kind == Backrooms.Interaction.MovableKind.Box))
+                Assert.AreNotEqual(0, m.variant & 7, "warehouse boxes are never the heavy paper-filled kind");
         }
 
         static bool Reaches(OfficeLayout L, Vector2Int from, System.Func<Vector2Int, bool> goal)

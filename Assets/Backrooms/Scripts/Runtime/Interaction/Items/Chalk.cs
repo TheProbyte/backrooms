@@ -77,6 +77,7 @@ namespace Backrooms.Interaction
             for (int i = 0; i < 4; i++) angles[i] = p[i];
             return true;
         }
+        public override bool Pocketable => true;
         public override string Status => $"chalk {Mathf.CeilToInt(left * 100f)} %";
         public override float Amount { get => left; set { left = Mathf.Clamp01(value); Shape(); } }
 

@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Backrooms.Interaction
 {
-    public enum MovableKind { Sofa, Armchair, OfficeChair, Table, Box }
+    public enum MovableKind { Sofa, Armchair, OfficeChair, Table, Box, Pallet }
 
     /// <summary>
     /// Everything needed to (re)create one movable prop: what it looks like and what kind of thing it is.
@@ -150,6 +150,26 @@ namespace Backrooms.Interaction
                     s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.1f, T - 0.05f, D * 0.5f - e), new Vector3(L * 0.5f - 0.1f, T - 0.05f, D * 0.5f - e), Vector3.down));
                     for (int i = -1; i <= 1; i += 2)
                         s.edges.Add(new GrabEdge(new Vector3(i * L * 0.32f, 0.08f, -D * 0.4f), new Vector3(i * L * 0.32f, T - 0.1f, -D * 0.4f), Vector3.back));
+                    break;
+                }
+                case MovableKind.Pallet:
+                {
+                    // One box round it (the slats are too thin to matter); taken by the deck's edges, or the bottom's (on its side).
+                    const float L = Generation.PalletGeometry.Length, W = Generation.PalletGeometry.Width, H = Generation.PalletGeometry.Height;
+                    Box(s, -L * 0.5f, L * 0.5f, 0f, H, -W * 0.5f, W * 0.5f);
+                    s.mass = 20f;
+                    s.friction = 0.5f;
+                    s.centreOfMass = new Vector3(0f, H * 0.5f, 0f);
+                    const float e = 0.03f;
+                    for (int k = 0; k < 2; k++)
+                    {
+                        float y = k == 0 ? H : 0f;
+                        Vector3 n = k == 0 ? up : Vector3.down;
+                        s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.08f, y, -W * 0.5f + e), new Vector3(L * 0.5f - 0.08f, y, -W * 0.5f + e), n));
+                        s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.08f, y, W * 0.5f - e), new Vector3(L * 0.5f - 0.08f, y, W * 0.5f - e), n));
+                        s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + e, y, -W * 0.5f + 0.08f), new Vector3(-L * 0.5f + e, y, W * 0.5f - 0.08f), n));
+                        s.edges.Add(new GrabEdge(new Vector3(L * 0.5f - e, y, -W * 0.5f + 0.08f), new Vector3(L * 0.5f - e, y, W * 0.5f - 0.08f), n));
+                    }
                     break;
                 }
                 default:

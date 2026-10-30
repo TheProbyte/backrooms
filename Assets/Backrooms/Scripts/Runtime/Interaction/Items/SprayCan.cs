@@ -47,6 +47,7 @@ namespace Backrooms.Interaction
         public float ThumbOpposition => 0.7f;
         public override float UseBlend => _use;
         public bool Spraying { get; private set; }
+        public override bool Pocketable => true;
         public override string Status => paint <= 0f ? "empty" : $"paint {Mathf.CeilToInt(paint * 100f)} %";
 
         /// <summary>A new full can lying at a point.</summary>

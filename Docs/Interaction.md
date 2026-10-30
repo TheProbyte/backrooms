@@ -29,6 +29,30 @@
     `avoid`). Held at least 0.38 m out from you. The left hand takes the best grab edge across from the right: twice
     the strength and a lever between the grips, so a chair can be lifted and rolled over; a turn that needs more reach
     steps you toward it. Grab edges go round the sides and undersides too, so a chair is taken however it lies.
+- **Pallets** (2026-10-30, `PropGrabber.Pallet.cs`):
+  - **Empty** (nothing resting on it): taken, the camcorder goes onto its strap and both hands swing it up onto its
+    long edge at your right side, top edge at hip height, a little ahead of you, so you see past it and it goes through
+    doors. It is held steady, not wrestled: it follows you as you walk and turn (the mouse turns you as when walking), a
+    wall or door frame stops it, and held back half a second it is dropped. Let go and it drops from your hands (it often
+    stays standing on its edge: one way to block a doorway).
+  - **Loaded** (boxes or anything on it): too heavy to lift, it is pushed like furniture and the boxes ride on it (they
+    slide off if you are rough). A heave flick does nothing. Pushing it the hand is not kept within the arm's reach and
+    the body bends only a little (a pallet's edge is 14.5 cm up: kept within reach, the hand pulled it up toward the
+    shoulder instead of pushing it).
+  - While the hands go for a pallet or hold it, the feet do not step up onto it (walking into one to push it, the body
+    climbed onto what it was pushing).
+- **Warehouse boxes**: the cartons on racks and pallets are movable boxes now (each its own, saved when moved), about
+  half as many as before. The racks are solid where the steel is (uprights, shelf decks, the end bracing), so boxes rest
+  on the shelves and can be taken off them. Generated boxes there are never the heavy paper-filled kind.
+- **Pockets** (keys **1-4**, `PropGrabber.Pockets.cs`): front left, front right, back left, back right, one small thing
+  each (chalk, spray paint, tape, the rubber chicken, the hammer, the box of nails; not lamps, cords, plugs or the
+  sledgehammer: "WON'T FIT IN A POCKET"). With something small in the hand, a key puts it in that pocket (the hand
+  takes it down out of view); with the hand empty, it takes that pocket's thing out (up into the hand); with both, they
+  swap. A strip at the bottom of the picture shows the four pockets for a moment after a key. Pocketed things are
+  switched off and carried with the body; the world save keeps them in their pockets (`ItemData.pocket`).
+- **Hammer and nails** (`Items/Hammer.cs`, `Items/Nails.cs`, models from `Tools/Blender/build_items2.py`): a 33 cm claw
+  hammer and a small open box of 2-inch nails. No use yet (meant for nailing boards and pallets in place); picked up,
+  carried, dropped, thrown, set down and pocketed like the other items. In the developer menu (L) under ITEMS.
 - **Right mouse** while holding shoves it and lets go. **Release left mouse** to let go.
 - Each hand's pull is sized to the weight felt where it is applied (`PointMass`): pulling far from the middle, a
   chair mostly turns and weighs a few kilos (sized for the whole mass, it overshot every physics step and shook).
@@ -818,7 +842,7 @@ outlet with it plugged in (held back, then out), reeling an extension cord in fr
 ## Not done yet
 - Saving moved props to disk (they last the session).
 - Creatures moving things while you are away (the manager's records are the place for it).
-- Two-handed carrying, stacking aids, an inventory.
+- Stacking aids, a backpack (the pockets are in).
 - Per-finger contact: fingers curl by a set amount and can sink into thin edges.
 
 ## Cardboard boxes

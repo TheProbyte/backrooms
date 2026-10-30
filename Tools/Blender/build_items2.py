@@ -1484,7 +1484,132 @@ def light_switch():
     return ob
 
 
+def rounded_rect(c, sv, uv, hw, hh, ch):
+    """8 points of a rectangle (half sizes hw along sv, hh along uv) with chamfered corners ch, about c, counter-clockwise
+    seen from sv x uv."""
+    pts = [(hw, -hh + ch), (hw, hh - ch), (hw - ch, hh), (-hw + ch, hh), (-hw, hh - ch), (-hw, -hh + ch), (-hw + ch, -hh), (hw - ch, -hh)]
+    return [c + sv * a + uv * b for a, b in pts]
+
+
+HAMMER_HEAD_Z = 0.315     # Blender z of the head's axis (Unity y)
+
+
+def hammer():
+    """A 16 oz claw hammer, 33 cm: a hickory handle (an oval, wider along the head, flaring at the butt) into a steel head:
+    a round striking face toward -Y (Unity +Z), a curved split claw toward +Y. Origin at the handle's butt."""
+    wood = mat("HammerWood", (0.66, 0.47, 0.27), 0.55)
+    steel = mat("HammerMetal", (0.20, 0.21, 0.23), 0.45, 0.85)
+    face = mat("HammerFaceMetal", (0.62, 0.62, 0.60), 0.25, 1.0)
+    # Handle: (z, half along y, half along x).
+    prof = [(0.000, 0.0128, 0.0094), (0.003, 0.0160, 0.0118), (0.012, 0.0172, 0.0127), (0.035, 0.0164, 0.0121),
+            (0.090, 0.0150, 0.0111), (0.160, 0.0131, 0.0098), (0.220, 0.0113, 0.0087), (0.270, 0.0108, 0.0084),
+            (0.300, 0.0114, 0.0088), (0.328, 0.0114, 0.0088)]
+    seg = 20
+    rings = [Vector((0, 0, -0.0012))]
+    for z, hy, hx in prof:
+        ring = []
+        for i in range(seg):
+            a = 2 * math.pi * i / seg
+            # (A slightly squared oval, as a handle is shaped.)
+            ca, sa = math.cos(a), math.sin(a)
+            k = 1.0 / ((abs(ca) ** 3 + abs(sa) ** 3) ** (1 / 3)) ** 0.35
+            ring.append(Vector((hx * ca * k, hy * sa * k, z)))
+        rings.append(ring)
+    handle = loft("Handle", rings, wood, cap0=False, cap1=True, recalc=True)
+
+    hz = HAMMER_HEAD_Z
+    # The eye: the block the handle goes through (cheeks either side), slightly tapered toward the top.
+    eye = rbox("Eye", (0.026, 0.036, 0.042), (0, 0.001, hz), steel, bevel=0.0025, segs=2)
+    # Neck and face toward -Y: a lathe about its own axis, the face crowned and chamfered.
+    neck_prof = [(0.0118, 0.0), (0.0104, 0.007), (0.0108, 0.016), (0.0126, 0.029), (0.0145, 0.037), (0.0149, 0.041),
+                 (0.0149, 0.0445), (0.0141, 0.0472)]
+    neck = lathe("Neck", neck_prof, steel, segments=28, cap_bottom=False, cap_top=False,
+                 xf=M4(rot_to((0, -1, 0)), (0, -0.016, hz)))
+    face_disc = lathe("Face", [(0.0141, 0.0), (0.009, 0.0012), (0.0, 0.0016)], face, segments=28, cap_bottom=False, cap_top=False,
+                      xf=M4(rot_to((0, -1, 0)), (0, -0.016 - 0.0472, hz)))
+    # Claw toward +Y, curving down toward the handle: a solid root, then two prongs with a V between them.
+    path = catmull([(0, 0.016, hz + 0.008), (0, 0.040, hz + 0.009), (0, 0.062, hz + 0.003), (0, 0.078, hz - 0.012), (0, 0.087, hz - 0.030)], 4)
+    P = [Vector(p) for p in path]
+    T = tangents(P)
+    n = len(P)
+    parts = [handle, eye, neck, face_disc]
+
+    def claw_ring(i, xoff, hw):
+        t = i / (n - 1)
+        side = Vector((1, 0, 0))
+        up = T[i].cross(side).normalized()
+        hh = 0.0105 * (1 - t) + 0.0016 * t           # thick at the root, thin at the tips
+        return rounded_rect(P[i] + side * xoff, side, up, hw, hh, min(hw, hh) * 0.35)
+
+    root_end = int(n * 0.35)
+    parts.append(loft("ClawRoot", [claw_ring(i, 0.0, 0.0125 - 0.001 * i / n) for i in range(0, root_end + 1)], steel, recalc=True))
+    for s in (-1, 1):
+        rings = []
+        for i in range(root_end - 1, n):
+            t = (i - (root_end - 1)) / (n - root_end)
+            gap = 0.0006 + 0.0034 * t                   # the V opens toward the tips
+            hw = (0.0125 - gap) * 0.5 * (1 - 0.25 * t)
+            rings.append(claw_ring(i, s * (gap + hw), hw))
+        parts.append(loft("Prong", rings, steel, recalc=True))
+    ob = finish(parts, "Hammer", sharp_deg=50)
+    REPORT["Hammer"] = {"origin": "the handle's butt", "head axis y (Unity)": hz, "face centre (Unity)": U((0, -0.016 - 0.0488, hz)),
+                        "claw tips (Unity)": U(P[-1]), "handle half sizes at the grip (Unity x, z)": (0.0111, 0.0150)}
+    return ob
+
+
+def nail(c, d, L, bm_parts, metal):
+    """One wire nail from c along d (head at c), length L."""
+    d = Vector(d).normalized()
+    side = Vector((0, 0, 1)) if abs(d.z) < 0.9 else Vector((1, 0, 0))
+    m = M4(rot_to(d), c)
+    shank = lathe("Nail", [(0.0013, 0.0), (0.0013, L - 0.004), (0.0004, L - 0.0008), (0.0, L)], metal, segments=6, cap_bottom=False,
+                  cap_top=False, xf=m)
+    head = lathe("NailHead", [(0.0, -0.0009), (0.0033, -0.0009), (0.0033, -0.0002), (0.0013, 0.0004)], metal, segments=10,
+                 cap_bottom=False, cap_top=False, xf=m)
+    bm_parts += [shank, head]
+
+
+def nails():
+    """A small open cardboard box of 2-inch wire nails (about 1 lb), a red label round it, one flap folded back, nails
+    heaped inside. Origin at the bottom centre; the box is 11 x 7 x 5 cm (Unity x, z, y)."""
+    board = mat("NailBoxCardboard", (0.63, 0.48, 0.31), 0.85)
+    label = mat("NailBoxLabel", (0.70, 0.09, 0.06), 0.6)
+    metal = mat("NailMetal", (0.52, 0.52, 0.50), 0.4, 0.9)
+    W, D, H, t = 0.110, 0.070, 0.050, 0.0016
+    parts = [rbox("Bottom", (W, D, t), (0, 0, t / 2), board)]
+    for s in (-1, 1):
+        parts.append(rbox("Long", (W, t, H), (0, s * (D - t) / 2, H / 2), board))
+        parts.append(rbox("End", (t, D - 2 * t, H), (s * (W - t) / 2, 0, H / 2), board))
+        # The label round the outside, its top and bottom edges a little in.
+        parts.append(rbox("LabelLong", (W - 0.004, 0.0004, H * 0.62), (0, s * (D / 2 + 0.0002), H * 0.47), label))
+        parts.append(rbox("LabelEnd", (0.0004, D - 0.004, H * 0.62), (s * (W / 2 + 0.0002), 0, H * 0.47), label))
+    # The back flap, folded open past upright (hinged on the back top edge, +Y).
+    flap = rbox("Flap", (W - 0.002, D * 0.5, t), (0, -D * 0.25, 0), board)
+    flap.data.transform(Matrix.Rotation(math.radians(-112), 4, "X"))
+    flap.data.transform(Matrix.Translation((0, D / 2 - t / 2, H)))
+    parts.append(flap)
+    # Under the top layer: the heap's mass (seen only between nails).
+    parts.append(rbox("Heap", (W - 2 * t - 0.002, D - 2 * t - 0.002, H * 0.55), (0, 0, t + H * 0.275), metal))
+    import random
+    rnd = random.Random(7)
+    L = 0.050
+    for i in range(60):
+        a = rnd.uniform(-0.35, 0.35) + (math.pi if rnd.random() < 0.5 else 0.0)
+        d = Vector((math.cos(a), math.sin(a) * 0.5, rnd.uniform(-0.12, 0.12)))
+        d.normalize()
+        span = Vector((d.x * L, d.y * L, 0))
+        cx = rnd.uniform(-(W / 2 - t - 0.004) + max(0, -span.x), (W / 2 - t - 0.004) - max(0, span.x))
+        cy = rnd.uniform(-(D / 2 - t - 0.004) + max(0, -span.y), (D / 2 - t - 0.004) - max(0, span.y))
+        z = t + H * 0.55 + rnd.uniform(0.0004, 0.0085)
+        nail(Vector((cx, cy, z)), d, L, parts, metal)
+    ob = finish(parts, "Nails", sharp_deg=40, merge=0.00001)
+    REPORT["Nails"] = {"origin": "bottom centre", "size (Unity x, y, z)": (W, H, D)}
+    return ob
+
+
 MODELS = [
+    ("Hammer", hammer, (0.9, -0.7, 0.35)),
+    ("Nails", nails, (0.55, -0.9, 0.9)),
     ("Chalk", chalk, (0.9, -0.55, -0.3)),
     ("TapeRoll", tape_roll, (0.85, -1.0, 0.55)),
     ("TapeRollEmpty", tape_roll_empty, (0.85, -1.0, 0.55)),

@@ -119,11 +119,13 @@ namespace Backrooms.Saves
             yield return null;            // the player's hand is set up
             WorldItem held = null;
             var spawned = new List<WorldItem>();
+            var pocketed = new List<(WorldItem item, int slot)>();
             foreach (var it in _data.items)
             {
                 var item = SpawnItem(it);
                 spawned.Add(item);
-                if (item && it.held) held = item;
+                if (item && it.pocket >= 0) pocketed.Add((item, it.pocket));
+                else if (item && it.held) held = item;
             }
             yield return null;            // lamps make their plugs and cords
             RestorePlugs(spawned);
@@ -138,11 +140,9 @@ namespace Backrooms.Saves
                     if (go && !go.GetComponent<PlacedThing>()) go.AddComponent<PlacedThing>().catalogName = p.name;
                 }
             }
-            if (held)
-            {
-                var grabber = _streamer && _streamer.player ? _streamer.player.GetComponent<PropGrabber>() : null;
-                if (grabber) grabber.PickUp(held);
-            }
+            var grabber = _streamer && _streamer.player ? _streamer.player.GetComponent<PropGrabber>() : null;
+            if (grabber) foreach (var (item, slot) in pocketed) grabber.PutInPocket(item, slot);
+            if (held && grabber) grabber.PickUp(held);
             _restored = true;
         }
 
@@ -245,6 +245,17 @@ namespace Backrooms.Saves
                 }
                 d.items.Add(data);
             }
+            // Things in the pockets (switched off, so not found above).
+            var hand = _streamer && _streamer.player ? _streamer.player.GetComponent<PropGrabber>() : null;
+            if (hand)
+                for (int i = 0; i < PropGrabber.PocketCount; i++)
+                {
+                    var it = hand.Pocket(i);
+                    if (!it || string.IsNullOrEmpty(it.itemId)) continue;
+                    var data = new ItemData { id = it.itemId, position = it.transform.position, rotation = it.transform.rotation, pocket = i, amount = it.Amount };
+                    if (it is SprayCan can) data.amount = can.paint;
+                    d.items.Add(data);
+                }
             d.takenLoot = LootRegistry.Export();
             // Broken walls, with their rubble (and the bits still falling, where they are now).
             d.walls = Destruction.WallDamage.Export();
@@ -325,7 +336,7 @@ namespace Backrooms.Saves
                 if (!prefab && !mat) { Debug.LogWarning($"[Backrooms] A saved {s.kind} lost a part ('{p.prefab}{p.material}')."); continue; }
                 s.parts.Add(new MovableSpec.Part { prefab = prefab, material = mat, position = p.position, scale = p.scale, yaw = p.yaw });
             }
-            if (s.parts.Count == 0 && !s.cardboard) return null;
+            if (s.parts.Count == 0 && !s.cardboard && s.kind != MovableKind.Pallet) return null;
             return s;
         }
     }

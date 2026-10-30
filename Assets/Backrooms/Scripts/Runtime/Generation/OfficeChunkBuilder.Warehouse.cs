@@ -5,8 +5,9 @@ namespace Backrooms.Generation
 {
     /// <summary>
     /// Warehouse dressing: steel pallet racking (slotted blue uprights, orange box beams, deck boards, end
-    /// bracing, base plates) loaded with neatly packed cardboard boxes, and wooden pallets with stacked boxes.
-    /// Everything is merged into the chunk's meshes; shadows come from a few proxy boxes.
+    /// bracing, base plates) loaded with cardboard boxes, and wooden pallets, some with stacked boxes. The racks are merged
+    /// into the chunk's meshes (solid where the steel and the decks are, so boxes rest on the shelves); the boxes and the
+    /// pallets are movable props (Interaction.MovableProp): taken off the shelves, pushed, carried.
     /// </summary>
     public partial class OfficeChunkBuilder
     {
@@ -29,6 +30,7 @@ namespace Backrooms.Generation
 
         const float UprightSize = 0.07f, BeamHeight = 0.10f, DeckThickness = 0.022f;
 
+        /// <summary>A carton merged into the chunk's meshes (fixed: the special rooms' utility shelves).</summary>
         void BoxAt(System.Random rng, MeshWriter body, MeshWriter tape, MeshWriter print, Vector3 foot, Vector3 size, float yaw)
             => CardboardBoxGeometry.Build(body, tape, print, foot, size, yaw, rng);
 
@@ -66,7 +68,7 @@ namespace Backrooms.Generation
             if (Mathf.Abs(p.yaw) < 0.001f) { RackUnrotated(p, at); return; }
             var starts = new Dictionary<MeshWriter, int>();
             foreach (var w in _writers.Values) starts[w] = w.VertexCount;
-            int boxes = _boxes.Count;
+            int boxes = _boxes.Count, movables = _movables.Count;
             RackUnrotated(p, at);
             var rotation = Quaternion.Euler(0f, p.yaw, 0f);
             foreach (var w in _writers.Values)
@@ -74,6 +76,19 @@ namespace Backrooms.Generation
             for (int i = boxes; i < _boxes.Count; i++)
             { var b = _boxes[i]; _rotBoxes.Add((at + rotation * (b.c - at), b.s, p.yaw)); }
             _boxes.RemoveRange(boxes, _boxes.Count - boxes);
+            Vector3 pivot = _origin + at;
+            for (int i = movables; i < _movables.Count; i++)
+            { var m = _movables[i]; m.position = pivot + rotation * (m.position - pivot); m.yaw += p.yaw; }
+        }
+
+        /// <summary>A movable carton standing at foot (chunk-local), never the heavy paper-filled kind (MovableShapes).</summary>
+        void Carton(ulong id, Vector3 foot, float yaw, Vector3 size, int color, System.Random rng)
+        {
+            var s = Movable(id, Interaction.MovableKind.Box, foot + Vector3.up * 0.002f, yaw, color);
+            s.size = size;
+            s.variant = (rng.Next(1, 1 << 12) << 3) | (1 + rng.Next(7));
+            s.cardboard = true;
+            s.materials = new[] { BoardMat, TapeMat, PrintMat };
         }
 
         void RackUnrotated(Prop p, Vector3 at)
@@ -82,16 +97,21 @@ namespace Backrooms.Generation
             float L = p.size.x, h = p.size.y, D = p.size.z;
             var rng = new System.Random(p.variant ^ 0x5EED);
             var steel = W(UprightMat, col); var beams = W(BeamMat, col); var deck = W(DeckMat, col);
-            var body = W(BoardMat, col); var tape = W(TapeMat, col); var print = W(PrintMat, col);
+            int boxId = 0;
             float ux = L * 0.5f - UprightSize * 0.5f, uz = D * 0.5f - UprightSize * 0.5f;
 
-            // Uprights, base plates.
+            // Uprights, base plates. (Solid, and casting shadows: they and the decks are what is solid of a rack now that
+            // its boxes can be taken off it; it was one solid box.)
             for (int i = 0; i < 4; i++)
             {
                 float x = (i % 2 == 0 ? -1 : 1) * ux, z = (i < 2 ? -1 : 1) * uz;
                 Upright(steel, at + new Vector3(x, 0, z), h);
                 beams.Box(at + new Vector3(x, 0.006f, z), new Vector3(0.14f, 0.012f, 0.14f), 63, MeshWriter.MetreUV);
+                _boxes.Add((at + new Vector3(x, h * 0.5f, z), new Vector3(UprightSize, h, UprightSize)));
             }
+            // The end frames' bracing, as a thin wall each end (boxes do not slide out past them).
+            for (int side = -1; side <= 1; side += 2)
+                _boxes.Add((at + new Vector3(side * ux, h * 0.5f, 0f), new Vector3(0.03f, h, D - UprightSize)));
 
             // End frames (the short sides): ties and a diagonal between the two uprights.
             for (int side = -1; side <= 1; side += 2)
@@ -127,19 +147,18 @@ namespace Backrooms.Generation
                 float bz = Da * 0.5f - 0.02f;
                 for (int s = -1; s <= 1; s += 2)
                     deck.Box(at + new Vector3(0, yb + DeckThickness * 0.5f + 0.01f, s * (bz * 0.5f + 0.01f)), new Vector3(La, DeckThickness, bz), 63, MeshWriter.MetreUV);
-                ProxyBox(at, 0f, new Vector3(0, yb - 0.04f, 0), new Vector3(L - 0.1f, BeamHeight + DeckThickness, D - 0.1f));
-
-                // Load the shelf.
+                // Load the shelf: what the boxes stand on is the deck's top.
                 float top = yb + DeckThickness + 0.01f;
+                float bottom = yb - BeamHeight;
+                _boxes.Add((at + new Vector3(0f, (top + bottom) * 0.5f, 0f), new Vector3(L - 0.02f, top - bottom, D - 0.05f)));
                 float free = (l == levels - 1 ? Mathf.Min(1.0f, h - top - 0.1f) : pitch - BeamHeight - DeckThickness - 0.07f);
-                if (rng.NextDouble() < 0.88) LoadShelf(rng, body, tape, print, at, top, La, Da, free);
+                if (rng.NextDouble() < 0.6) LoadShelf(rng, p, at, top, La, Da, free, ref boxId);
             }
-
-            _boxes.Add((at + Vector3.up * h * 0.5f, new Vector3(L, h, D)));
         }
 
-        /// <summary>Packs one shelf level with cartons in one or two rows: usually matching sizes, some stacked.</summary>
-        void LoadShelf(System.Random rng, MeshWriter body, MeshWriter tape, MeshWriter print, Vector3 at, float top, float La, float Da, float free)
+        /// <summary>Puts cartons on one shelf level in one or two rows, with gaps: usually matching sizes, a few stacked. Each
+        /// is a movable box (ids from the rack's).</summary>
+        void LoadShelf(System.Random rng, Prop p, Vector3 at, float top, float La, float Da, float free, ref int boxId)
         {
             int rows = Da >= 0.82f ? 2 : 1;
             float rowDepth = Da / rows - 0.03f;
@@ -156,62 +175,50 @@ namespace Backrooms.Generation
                     if (s.z > rowDepth) s = new Vector3(s.x, s.y, rowDepth);                      // squeezed into the depth
                     if (s.y > free) { if (matching) break; continue; }
                     if (x + s.x > La * 0.5f - 0.01f) break;
-                    if (rng.NextDouble() < 0.12) { x += 0.25f + (float)rng.NextDouble() * 0.35f; continue; }   // an empty gap
+                    if (rng.NextDouble() < 0.3) { x += 0.3f + (float)rng.NextDouble() * 0.5f; continue; }   // an empty gap
                     float pull = (float)rng.NextDouble() * 0.04f;                                  // not all flush
                     float z = rowZ + (rows == 1 ? (float)(rng.NextDouble() - 0.5) * (Da - s.z - 0.04f) * 0.5f : (row == 0 ? 1f : -1f) * (pull * 0.5f));
                     float yaw = (float)(rng.NextDouble() - 0.5) * (rng.NextDouble() < 0.1 ? 14f : 4f);
-                    int stack = (2f * s.y + 0.02f <= free && rng.NextDouble() < 0.4) ? (3f * s.y + 0.03f <= free && rng.NextDouble() < 0.3 ? 3 : 2) : 1;
+                    int stack = (2f * s.y + 0.02f <= free && rng.NextDouble() < 0.25) ? (3f * s.y + 0.03f <= free && rng.NextDouble() < 0.15 ? 3 : 2) : 1;
                     for (int k = 0; k < stack; k++)
                     {
-                        var foot = at + new Vector3(x + s.x * 0.5f + (k > 0 ? (float)(rng.NextDouble() - 0.5) * 0.02f : 0f), top + k * (s.y + 0.002f), z);
-                        BoxAt(rng, body, tape, print, foot, s, yaw + (k > 0 ? (float)(rng.NextDouble() - 0.5) * 3f : 0f));
+                        var foot = at + new Vector3(x + s.x * 0.5f + (k > 0 ? (float)(rng.NextDouble() - 0.5) * 0.02f : 0f), top + k * (s.y + 0.004f), z);
+                        Carton(Interaction.MovableSpec.SubId(p.id, boxId++), foot, yaw + (k > 0 ? (float)(rng.NextDouble() - 0.5) * 3f : 0f), s, p.roomColor, rng);
                     }
-                    ProxyBox(at, 0f, new Vector3(x + s.x * 0.5f, top + stack * (s.y + 0.002f) * 0.5f, z), new Vector3(s.x, stack * (s.y + 0.002f), s.z));
                     x += s.x + 0.015f + (float)rng.NextDouble() * 0.05f;
                 }
             }
         }
 
-        /// <summary>Wooden pallet (1.2 x 1.0 m) loaded with stacked cartons; p.size.y is unused (the load is rolled here).</summary>
+        /// <summary>A wooden pallet (1.2 x 1.0 m, movable), loaded with stacked cartons more often than not (each movable too);
+        /// p.size.y is unused (the load is rolled here).</summary>
         void Pallet(Prop p, Vector3 at, Quaternion rot)
         {
             int col = p.roomColor;
             var rng = new System.Random(p.variant ^ 0x9A11);
-            var wood = W(DeckMat, col);
-            var body = W(BoardMat, col); var tape = W(TapeMat, col); var print = W(PrintMat, col);
-            const float PL = 1.2f, PW = 1.0f, PH = 0.145f;
+            const float PL = PalletGeometry.Length, PW = PalletGeometry.Width, PH = PalletGeometry.Height;
+            var pallet = Movable(p.id, Interaction.MovableKind.Pallet, at, p.yaw, col);
+            pallet.materials = new[] { DeckMat };
             Vector3 World(Vector3 local) => at + rot * local;
-            void Plank(Vector3 centre, Vector3 size) => wood.Box(World(centre), size, rot, 63, MeshWriter.MetreUV);
-
-            // Three runners (each with two notches would be overkill; blocks keep it simple), three bottom boards, top deck.
-            for (int i = -1; i <= 1; i++) Plank(new Vector3(i * 0.5f, 0.0525f, 0f), new Vector3(0.095f, 0.09f, PW - 0.02f));      // runners along z
-            for (int i = -1; i <= 1; i++) Plank(new Vector3(0f, 0.01f, i * 0.44f), new Vector3(PL, 0.02f, 0.1f));                  // bottom boards
-            for (int i = 0; i < 7; i++) Plank(new Vector3(0f, PH - 0.011f, -PW * 0.5f + 0.05f + i * ((PW - 0.1f) / 6f)), new Vector3(PL, 0.022f, 0.1f));   // top deck
-
-            float loadTop = PH;
-            if (rng.NextDouble() < 0.85)
+            if (rng.NextDouble() >= 0.6) return;                                                 // an empty one
+            var s = Cartons[rng.Next(Cartons.Length)];
+            if (s.x > PL * 0.55f || s.y < 0.2f) s = new Vector3(0.40f, 0.30f, 0.30f);
+            int nx = Mathf.Max(1, Mathf.FloorToInt((PL - 0.02f) / s.x)), nz = Mathf.Max(1, Mathf.FloorToInt((PW - 0.02f) / s.z));
+            int layers = rng.Next(1, 4);
+            float gx = (PL - nx * s.x) * 0.5f, gz = (PW - nz * s.z) * 0.5f;
+            int boxId = 0;
+            for (int layer = 0; layer < layers; layer++)
             {
-                var s = Cartons[rng.Next(Cartons.Length)];
-                if (s.x > PL * 0.55f || s.y < 0.2f) s = new Vector3(0.40f, 0.30f, 0.30f);
-                int nx = Mathf.Max(1, Mathf.FloorToInt((PL - 0.02f) / s.x)), nz = Mathf.Max(1, Mathf.FloorToInt((PW - 0.02f) / s.z));
-                int layers = rng.Next(1, 5);
-                float gx = (PL - nx * s.x) * 0.5f, gz = (PW - nz * s.z) * 0.5f;
-                for (int layer = 0; layer < layers; layer++)
+                float y = PH + layer * (s.y + 0.004f);
+                bool last = layer == layers - 1;
+                for (int ix = 0; ix < nx; ix++)
+                for (int iz = 0; iz < nz; iz++)
                 {
-                    float y = PH + layer * (s.y + 0.002f);
-                    bool last = layer == layers - 1;
-                    for (int ix = 0; ix < nx; ix++)
-                    for (int iz = 0; iz < nz; iz++)
-                    {
-                        if (last && layer > 0 && rng.NextDouble() < 0.3) continue;                 // a part-filled top layer
-                        var local = new Vector3(-PL * 0.5f + gx + (ix + 0.5f) * s.x, y, -PW * 0.5f + gz + (iz + 0.5f) * s.z);
-                        BoxAt(rng, body, tape, print, World(local), s, p.yaw + (float)(rng.NextDouble() - 0.5) * 3f);
-                    }
-                    loadTop = y + s.y;
+                    if (last && layer > 0 && rng.NextDouble() < 0.4) continue;                 // a part-filled top layer
+                    var local = new Vector3(-PL * 0.5f + gx + (ix + 0.5f) * s.x, y, -PW * 0.5f + gz + (iz + 0.5f) * s.z);
+                    Carton(Interaction.MovableSpec.SubId(p.id, boxId++), World(local), p.yaw + (float)(rng.NextDouble() - 0.5) * 3f, s, col, rng);
                 }
             }
-            ProxyBox(at, p.yaw, new Vector3(0, loadTop * 0.5f, 0), new Vector3(PL, loadTop, PW));
-            _rotBoxes.Add((at + Vector3.up * loadTop * 0.5f, new Vector3(PL, loadTop, PW), p.yaw));
         }
     }
 }

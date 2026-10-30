@@ -179,10 +179,11 @@ namespace Backrooms.Interaction
             _heaveAcc = _setDownAcc = 0f;
             Pushing = IsFurniture(Held);
             _pushFrom = Time.time;
+            if (StartPalletCarry()) return;                 // an empty pallet: carried at your side (PropGrabber.Pallet)
             if (!Pushing && CamcorderOnStrap) TakeSecondGrip();
         }
 
-        void ReleaseFurniture() { TwoHanded = false; Twisting = false; Pushing = false; if (_twistStepping) { _twistStepping = false; } }
+        void ReleaseFurniture() { EndPalletCarry(); TwoHanded = false; Twisting = false; Pushing = false; if (_twistStepping) { _twistStepping = false; } }
 
         /// <summary>
         /// Pushing or heaving (each frame while holding). Returns true while pushing: the hand keeps its spot and the mouse
@@ -196,6 +197,8 @@ namespace Backrooms.Interaction
             if (Pushing)
             {
                 _heaveAcc = _heaveAcc * Mathf.Exp(-dt / 0.15f) + Mathf.Max(0f, md.y);
+                // (A loaded pallet is too heavy to heave: it stays pushed.)
+                if (Held.Spec.kind == MovableKind.Pallet) { _heaveAcc = 0f; return true; }
                 if (_heaveAcc > heaveCounts || turnKey) { Heave(turnKey ? 0f : 0.12f); return false; }
                 return true;
             }

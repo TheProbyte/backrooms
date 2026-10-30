@@ -33,6 +33,8 @@ Owner's second look: holding shook fast side to side. Measured (`Debug/HoldJitte
 
 Then push mode (owner's choice: heave the mouse up to lift): taking furniture now pushes it, one hand on it and the camcorder at the eye; the mouse turns you and it steers with you; a sharp move up (or R) heaves it into both hands (the strap view); set down upright, a sharp move down is pushing again. Checked (`Debug/PushProbe.cs`, World 3, facing the most open way): armchair pushed 2.4 m in 2.5 s, turned 69 degrees as you turned 100, pulled back 1.1 m, heaved and lifted 0.64 m, set down, pushed again; office chair the same (2.8 m, 89 degrees). Shake about 1 mm a frame. Not felt by the owner yet; open: how sharp the heave flick should be (`heaveCounts`).
 
+Then pallets (owner's choice: carry empty, push loaded): an empty pallet is not wrestled with physics but carried steady in both hands on its long edge at your side (moved to where the hands hold it; a wall stops it, held back it drops); a loaded one is pushed, the boxes riding on it, and cannot be heaved. A pallet's edge is so low that push mode had to stop keeping the hand within the arm's reach for it, and the feet no longer step up onto a pallet the hands are on. Checked (`Debug/WarehouseProbe.cs`): loaded pushed 1.7 m with its boxes; empty carried and turned with. Open: steering a loaded one in open floor.
+
 ## Why it is hard now
 
 - **One spring at one point.** `PropGrabber.FixedUpdate` pulls the grip point toward the hand with a strength limit

@@ -44,6 +44,9 @@ namespace Backrooms.Interaction
         /// <summary>Builds the prop: visible parts, collider boxes, shadow proxies, a frozen rigidbody.</summary>
         /// <summary>Props whose models cast their own shadows (no box proxies): sofas and armchairs.</summary>
         static bool OwnShadow(MovableKind k) => k == MovableKind.Sofa || k == MovableKind.Armchair;
+        /// <summary>Its own model casts its shadow (no box proxies): upholstery, and the meshes built at spawn (a carton, a
+        /// pallet: closed shapes, and fewer objects for the many on a warehouse's racks).</summary>
+        static bool OwnShadow(MovableSpec s) => OwnShadow(s.kind) || s.cardboard || s.kind == MovableKind.Pallet;
 
         public static MovableProp Spawn(MovableSpec spec, Transform parent, Vector3 position, Quaternion rotation)
         {
@@ -75,7 +78,7 @@ namespace Backrooms.Interaction
                     r.renderingLayerMask = spec.renderMask;
                     // Upholstery casts its own soft-edged shadow (its box proxies left square shadows on the wall behind);
                     // everything else: the proxies cast its shadow.
-                    r.shadowCastingMode = OwnShadow(spec.kind) ? ShadowCastingMode.On : ShadowCastingMode.Off;
+                    r.shadowCastingMode = OwnShadow(spec) ? ShadowCastingMode.On : ShadowCastingMode.Off;
                     r.lightProbeUsage = LightProbeUsage.Off;
                     r.reflectionProbeUsage = ReflectionProbeUsage.Off;
                 }
@@ -83,6 +86,7 @@ namespace Backrooms.Interaction
 
             var builtMeshes = new System.Collections.Generic.List<Mesh>();
             if (spec.cardboard && spec.materials != null) BuildCardboard(root, spec, builtMeshes);
+            if (spec.kind == MovableKind.Pallet && spec.materials != null && spec.materials.Length > 0) BuildPallet(root, spec, builtMeshes);
 
             var shape = MovableShapes.Build(spec, root);
             var mat = shape.rolls ? Rolling : Sliding(shape.friction);
@@ -90,7 +94,7 @@ namespace Backrooms.Interaction
             {
                 var bc = root.AddComponent<BoxCollider>();
                 bc.center = c; bc.size = s; bc.sharedMaterial = mat;
-                if (spec.proxyMaterial && !OwnShadow(spec.kind))
+                if (spec.proxyMaterial && !OwnShadow(spec))
                 {
                     var px = new GameObject("ShadowProxy");
                     px.transform.SetParent(root.transform, false);
@@ -109,7 +113,9 @@ namespace Backrooms.Interaction
             rb.mass = shape.mass;
             rb.centerOfMass = shape.centreOfMass;
             rb.isKinematic = true;
-            rb.interpolation = RigidbodyInterpolation.Interpolate;
+            // Smoothed only while it moves (Wake/Freeze): interpolating hundreds of frozen boxes on a warehouse's racks cost
+            // about 5 ms a frame.
+            rb.interpolation = RigidbodyInterpolation.None;
             rb.collisionDetectionMode = shape.mass < 10f ? CollisionDetectionMode.ContinuousSpeculative : CollisionDetectionMode.Discrete;
             rb.maxDepenetrationVelocity = 1.2f;                  // things that start slightly overlapping ease apart
             rb.linearDamping = 0.05f;
@@ -149,29 +155,57 @@ namespace Backrooms.Interaction
             if (_ownedMeshes != null) foreach (var m in _ownedMeshes) if (m) Destroy(m);
         }
 
-        /// <summary>Builds the box visuals (board, tape, print) as three child meshes.</summary>
+        /// <summary>Builds the box visuals (board, tape, print) as one mesh with a part for each, casting its own shadow.</summary>
         static void BuildCardboard(GameObject root, MovableSpec spec, System.Collections.Generic.List<Mesh> meshes)
         {
             var board = new MeshWriter { worldOffset = spec.position };
             var tape = new MeshWriter { worldOffset = spec.position };
             var print = new MeshWriter { worldOffset = spec.position };
             CardboardBoxGeometry.Build(board, tape, print, Vector3.zero, spec.size, 0f, new System.Random(spec.variant));
-            var writers = new[] { board, tape, print };
-            for (int i = 0; i < 3; i++)
+            OneRenderer(root, spec, meshes, "Carton", new[] { board, tape, print });
+        }
+
+        /// <summary>Builds a pallet's planks.</summary>
+        static void BuildPallet(GameObject root, MovableSpec spec, System.Collections.Generic.List<Mesh> meshes)
+        {
+            var wood = new MeshWriter { worldOffset = spec.position };
+            PalletGeometry.Build(wood, Vector3.zero);
+            OneRenderer(root, spec, meshes, "Pallet", new[] { wood });
+        }
+
+        static readonly System.Collections.Generic.List<CombineInstance> s_combine = new System.Collections.Generic.List<CombineInstance>();
+        static readonly System.Collections.Generic.List<Material> s_mats = new System.Collections.Generic.List<Material>();
+
+        /// <summary>One child renderer for writers that each have their own material (spec.materials in order), casting its own shadow.</summary>
+        static void OneRenderer(GameObject root, MovableSpec spec, System.Collections.Generic.List<Mesh> meshes, string name, MeshWriter[] writers)
+        {
+            s_combine.Clear(); s_mats.Clear();
+            for (int i = 0; i < writers.Length; i++)
             {
                 if (writers[i].VertexCount == 0) continue;
-                var go = new GameObject("Box" + i);
-                go.transform.SetParent(root.transform, false);
-                var mesh = writers[i].ToMesh("Carton" + i);
-                meshes.Add(mesh);
-                go.AddComponent<MeshFilter>().sharedMesh = mesh;
-                var r = go.AddComponent<MeshRenderer>();
-                r.sharedMaterial = spec.materials[Mathf.Min(i, spec.materials.Length - 1)];
-                r.renderingLayerMask = spec.renderMask;
-                r.shadowCastingMode = ShadowCastingMode.Off;
-                r.lightProbeUsage = LightProbeUsage.Off;
-                r.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                s_combine.Add(new CombineInstance { mesh = writers[i].ToMesh(name + i, true), transform = Matrix4x4.identity });
+                s_mats.Add(spec.materials[Mathf.Min(i, spec.materials.Length - 1)]);
             }
+            if (s_combine.Count == 0) return;
+            Mesh mesh;
+            if (s_combine.Count == 1) mesh = s_combine[0].mesh;
+            else
+            {
+                mesh = new Mesh { name = name };
+                mesh.CombineMeshes(s_combine.ToArray(), false, false);
+                foreach (var c in s_combine) Destroy(c.mesh);
+            }
+            mesh.UploadMeshData(true);                  // (no CPU copy kept, as the chunk's meshes)
+            meshes.Add(mesh);
+            var go = new GameObject(name);
+            go.transform.SetParent(root.transform, false);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var r = go.AddComponent<MeshRenderer>();
+            r.sharedMaterials = s_mats.ToArray();
+            r.renderingLayerMask = spec.renderMask;
+            r.shadowCastingMode = ShadowCastingMode.On;
+            r.lightProbeUsage = LightProbeUsage.Off;
+            r.reflectionProbeUsage = ReflectionProbeUsage.Off;
         }
 
         /// <summary>Starts simulating (and marks the prop as moved, so its pose is saved from now on).</summary>
@@ -181,6 +215,7 @@ namespace Backrooms.Interaction
             if (!Body.isKinematic) { Body.WakeUp(); return; }
             MovablePropManager.Instance?.Detach(this);
             Body.isKinematic = false;
+            Body.interpolation = RigidbodyInterpolation.Interpolate;
             Body.WakeUp();
             // Frozen props touching this one (chairs tucked under a table) join in, or they would act as walls.
             foreach (var (c, s) in Shape.boxes)
@@ -217,6 +252,7 @@ namespace Backrooms.Interaction
             if (Body.isKinematic) return;
             Body.linearVelocity = Vector3.zero; Body.angularVelocity = Vector3.zero;
             Body.isKinematic = true;
+            Body.interpolation = RigidbodyInterpolation.None;
             _lastGoodPos = transform.position; _lastGoodRot = transform.rotation;
             MovablePropManager.Instance?.Store(this);
         }

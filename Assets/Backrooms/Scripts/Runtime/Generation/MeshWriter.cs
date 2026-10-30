@@ -160,13 +160,16 @@ namespace Backrooms.Generation
             }
         }
 
-        public Mesh ToMesh(string name)
+        public Mesh ToMesh(string name) => ToMesh(name, false);
+
+        /// <summary>readable: keep the CPU copy (to combine it with others first).</summary>
+        public Mesh ToMesh(string name, bool readable)
         {
             var m = new Mesh { name = name };
             if (_v.Count > 65000) m.indexFormat = IndexFormat.UInt32;
             m.SetVertices(_v); m.SetNormals(_n); m.SetTangents(_t); m.SetUVs(0, _uv);
             m.SetTriangles(_i, 0, true);
-            m.UploadMeshData(true); // free the CPU copy; chunks are static
+            m.UploadMeshData(!readable); // free the CPU copy; chunks are static
             return m;
         }
 

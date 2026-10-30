@@ -184,6 +184,9 @@ namespace Backrooms.Interaction
         /// socket, a hammer mid-swing).</summary>
         public virtual bool Busy => false;
 
+        /// <summary>Small enough to go in a pocket (keys 1-4: PropGrabber.Pockets).</summary>
+        public virtual bool Pocketable => false;
+
         /// <summary>Q sets it down upright where you look (a lamp) instead of tossing it.</summary>
         public virtual bool PlaceOnDrop => false;
         /// <summary>Q lets it fall straight from the hand (no toss).</summary>

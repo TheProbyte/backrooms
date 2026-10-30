@@ -82,6 +82,7 @@ namespace Backrooms.Interaction
             float outer = _wound ? FullRadius * _wound.localScale.y : FullRadius;
             return RingDistance(p, new Vector3(0f, FullRadius, 0f), Vector3.right, 0.038f, outer, 0.024f);
         }
+        public override bool Pocketable => true;
         public override string Status => metres <= 0.01f ? "tape: empty"
             : _pulling ? $"tape {metres - _len:0.0} m  (release: tear off, right mouse: cancel)"
             : _aiming ? (_aimValid ? "tape: hold left mouse to stick it here" : "tape: get closer to a wall or the floor")

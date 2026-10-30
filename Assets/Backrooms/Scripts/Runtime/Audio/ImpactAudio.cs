@@ -65,7 +65,7 @@ namespace Backrooms.Audio
                 {
                     case Interaction.MovableKind.Sofa: case Interaction.MovableKind.Armchair: body = ImpactBody.Soft; break;
                     case Interaction.MovableKind.OfficeChair: body = ImpactBody.Chair; break;
-                    case Interaction.MovableKind.Table: body = ImpactBody.Wood; break;
+                    case Interaction.MovableKind.Table: case Interaction.MovableKind.Pallet: body = ImpactBody.Wood; break;
                     case Interaction.MovableKind.Box: body = ImpactBody.Cardboard; break;
                 }
             }

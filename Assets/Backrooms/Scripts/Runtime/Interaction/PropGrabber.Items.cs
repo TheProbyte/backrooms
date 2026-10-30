@@ -134,6 +134,7 @@ namespace Backrooms.Interaction
         void OnGUI()
         {
             if (Event.current.type != EventType.Repaint || !_cam) return;
+            PocketsGUI();
             if (HeldItem)
             {
                 if (Placing) { PlaceMarks(); return; }
@@ -691,6 +692,8 @@ namespace Backrooms.Interaction
                 pos = Vector3.Lerp(pos, _placePos, pw) + Vector3.up * (PlaceArc * 4f * pw * (1f - pw));
                 rot = Quaternion.Slerp(rot, _placeRot, pw);
             }
+            // Into or out of a pocket (PropGrabber.Pockets).
+            PocketPose(ref pos, ref rot);
             bool reaching = false;
             float tiltLeft = 0f;
             Vector3 reachGrip = Vector3.zero;

@@ -15,6 +15,35 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Pallets and warehouse boxes movable, pockets, hammer and nails
+
+- Pallets are movable props (`MovableKind.Pallet`, `PalletGeometry`). An empty one is carried: the camcorder on its
+  strap, both hands, stood on its long edge at your right side (`PropGrabber.Pallet.cs`), moved to where the hands hold
+  it rather than by a hand's pull, dropped if held back half a second. A loaded one is pushed like furniture (owner's
+  choice), the boxes riding on it; it cannot be heaved. Pushing it the hand is not clamped to the arm's reach and the
+  body bends only a little (kept within reach, the hand pulled the 14.5 cm edge up toward the shoulder and it did not
+  move); the feet do not step up onto a pallet while the hands are on it (the body climbed onto what it pushed).
+  Reaching for a pallet's edge takes it when the palm is near enough, as items are.
+- The cartons on racks and pallets are movable boxes (`Carton`, ids `SubId` of the rack's or pallet's), about half as
+  many (shelves loaded 60 % instead of 88 %, more gaps, fewer stacks; pallets loaded 60 %, 1-3 layers). Racks are solid
+  where the steel is (uprights, a deck slab per shelf, the end bracing) instead of one solid box. Boxes and pallets
+  cast their own shadows and are one renderer each.
+- Movable props are smoothed (rigidbody interpolation) only while they move: interpolating ~600 frozen boxes cost about
+  5 ms a frame in the editor.
+- Pockets (keys 1-4, `PropGrabber.Pockets.cs`): four, one small thing each (`WorldItem.Pocketable`), put away, taken
+  out, swapped; a strip shows them for a moment; saved (`ItemData.pocket`). Owner's choice: hand + 4 pockets, small
+  things only.
+- Hammer and box of nails modelled in Blender (`build_items2.py` Hammer, Nails), as items with no use yet.
+- Checked with `Debug/WarehouseProbe.cs` in World 3 (erased between runs): a box taken off a shelf 1.2-1.4 m up and
+  carried; a spawned loaded pallet pushed 1.7 m with all 3 boxes still on it, a heave flick ignored; an empty pallet
+  carried, walked and turned 90 degrees with it (middle 0.4 m to the side, bottom 6 cm off the floor), dropped; hammer
+  and nails into pockets, swapped, out again, a lamp refused; the save lists them in their pockets. EditMode 149/149
+  (a rack test now checks its shelf colliders and boxes turn with it; a new one checks pallets and boxes get their own
+  ids).
+- Open: steering a loaded pallet barely turned it in the probe (a narrow corridor between racks; not checked in open
+  floor); carrying a pallet in a narrow aisle can catch on a rack and drop; boxes deep on a bottom shelf can be out of
+  reach; not played by the owner yet.
+
 ## 2026-10-30 - Furniture: push mode
 
 - Taking furniture now pushes it: one hand on it, the camcorder at the eye. W pushes (the hand leads 0.25 m the way

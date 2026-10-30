@@ -102,6 +102,8 @@ namespace Backrooms.Saves
         public Quaternion rotation;
         public float amount = 1f;              // paint left, chalk left, tape left, a lamp's switch, a cord coiled (0) or the share of it out (1: all)
         public bool held;
+        /// <summary>In a pocket (0-3: Interaction.PropGrabber.Pockets), or -1.</summary>
+        public int pocket = -1;
         // Cords: where the plug is, and what it is in: -1 nothing, 0 the wall socket at plugWall, n > 0 socket plugSocket
         // of the extension cord that is item n - 1.
         public bool hasPlug;

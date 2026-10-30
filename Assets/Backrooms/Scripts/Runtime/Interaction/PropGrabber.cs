@@ -170,7 +170,7 @@ namespace Backrooms.Interaction
             _shake = FindAnyObjectByType<HandheldCameraShake>();
         }
 
-        void OnDisable() { Release(); if (HeldItem) Drop(); if (_fetch) EndFetch(); }
+        void OnDisable() { Release(); if (HeldItem) Drop(); if (_fetch) EndFetch(); UpdatePalletStep(); }
 
         void Update()
         {
@@ -185,6 +185,7 @@ namespace Backrooms.Interaction
             botShove = false;
             Vector2 md = botHold.HasValue ? botMouse : focus && mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
             UpdateStrap();
+            bool stowing = UpdatePockets(focus);
 
             bool free = !HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && focus;
             AimedPoke = free ? LookPoke() : null;
@@ -196,7 +197,7 @@ namespace Backrooms.Interaction
                 var d = LookDoor(lookRange);
                 if (d) AimedDoorGrip = d.GripPoint(d.SideOf(Eye), 0f);
             }
-            if (HeldItem) UpdateHeldItem(focus, mouse);
+            if (HeldItem) { if (!stowing) UpdateHeldItem(focus, mouse); }
             else switch (Current)
             {
                 case State.Idle:
@@ -215,6 +216,7 @@ namespace Backrooms.Interaction
                 case State.Holding:
                     if (!hold || !Held) { Release(!hold ? "let go" : "prop gone"); break; }
                     if (shovePressed) { ShoveAndRelease(); break; }
+                    if (CarryingPallet) { UpdatePalletCarry(); break; }
                     // R held: the mouse turns it about the grip (PropGrabber.Furniture) instead of moving your end.
                     // Furniture is pushed first (the mouse turns you); heaved up (a sharp move up, or R) it is in both hands.
                     bool turnKey = TwistHeld(focus || botTwist.HasValue);
@@ -228,6 +230,7 @@ namespace Backrooms.Interaction
             UpdateTouch(!HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking && !QuickDooring);
             UpdateCarriedWeight();
             UpdatePassing();
+            UpdatePalletPassing();
             UpdateStoop();
             UpdateReachHinge();
             UpdateHandPose();
@@ -276,6 +279,7 @@ namespace Backrooms.Interaction
             // Further down while the palm cannot get there (ComeCloser).
             if (Current == State.Idle && !OnDoor && !QuickDooring) _stoopExtra = Mathf.MoveTowards(_stoopExtra, 0f, Time.deltaTime * 0.5f);
             want = Mathf.Min(0.85f, want + _stoopExtra);
+            if (LowPush) want = Mathf.Min(want, 0.3f);           // pushing a pallet: bent a little, not down at its edge
             // (Going down for an item, alongside the arm: 1.9 a second.)
             // (Round 11: 3.2 down and 2.6 up for an item: a squat for the floor took a third of a second, then as long again
             // to come up.)
@@ -481,9 +485,10 @@ namespace Backrooms.Interaction
                 // (A little past the reach, as far as the arm took it: at 0.97 of it, a sofa taken by its seat at full
                 // stretch was pulled 4 cm in under the player's feet, who rode up onto it.)
                 Vector3 T = StandShoulder + transform.rotation * clamped, RS = ReachShoulder;
-                // (Pushing: the arm kept bent, so it has room to push ahead as you walk.)
+                // (Pushing: the arm kept bent, so it has room to push ahead as you walk. A pallet, at your feet: not kept
+                // within the arm at all, or the hand pulled it up toward the shoulder instead of pushing it.)
                 float r = Pushing ? ArmReach - 0.2f : ArmReach + 0.05f;
-                if ((T - RS).sqrMagnitude > r * r) clamped = Quaternion.Inverse(transform.rotation) * (RS + Vector3.ClampMagnitude(T - RS, r) - StandShoulder);
+                if (!LowPush && (T - RS).sqrMagnitude > r * r) clamped = Quaternion.Inverse(transform.rotation) * (RS + Vector3.ClampMagnitude(T - RS, r) - StandShoulder);
             }
             // Past the arm's limit sideways the body turns with it (so you can keep swinging it round);
             // past the lift limit the view follows.
@@ -515,7 +520,7 @@ namespace Backrooms.Interaction
 
             // Lost grip: the prop got stuck or was pulled out of reach, or the hand cannot stay on it.
             float d = Vector3.Distance(grip, ReachShoulder);
-            bool off = d > ArmReach + 0.15f || PalmError > 0.1f;
+            bool off = LowPush ? d > ArmReach + 0.9f : d > ArmReach + 0.15f || PalmError > 0.1f;
             // (Not while the hands work it round: the grip lags the turn a moment.)
             _slipT = off && !TurningNow ? _slipT + Time.deltaTime : off ? _slipT : 0f;
             if (_slipT > 0.4f) Release($"slipped (grip {d:F2} m from the shoulder, palm {PalmError * 100f:F0} cm off it)");
@@ -526,6 +531,7 @@ namespace Backrooms.Interaction
             if (Current != State.Holding || !Held) return;
             var rb = Held.Body;
             if (rb.isKinematic) Held.Wake();
+            if (CarryingPallet) { PalletCarryForces(rb); return; }
             Vector3 T = StandShoulder + transform.rotation * _offset;
             // Pushing: the hand goes ahead of you the way you walk (the body alone stops against it), and pushes at its
             // balance point's height so it slides and turns rather than tipping over.
@@ -537,7 +543,7 @@ namespace Backrooms.Interaction
                 T += transform.rotation * _pushLead;
                 Vector3 RS = ReachShoulder;
                 float r = ArmReach + 0.05f;                       // (never further than the arm: the hand slipped off)
-                if ((T - RS).sqrMagnitude > r * r) T = RS + Vector3.ClampMagnitude(T - RS, r);
+                if (!LowPush && (T - RS).sqrMagnitude > r * r) T = RS + Vector3.ClampMagnitude(T - RS, r);
             }
             Vector3 G = rb.position + rb.rotation * _gripLocal;
             Vector3 low = new Vector3(G.x, rb.worldCenterOfMass.y, G.z);
