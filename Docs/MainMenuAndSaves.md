@@ -20,7 +20,11 @@ the editor, starting a build, or "Main menu" from the pause menu). Build mode's 
     - An empty slot reads "EMPTY — START A NEW SAVE".
     - A used slot shows where you were, the time on tape, the seed and when it was saved.
     - **ERASE** (or Delete) empties a slot after a second press within 4 s.
-  - **SETTINGS**: a placeholder that points to F5.
+  - **SETTINGS**: SCREEN (fullscreen, borderless fullscreen, windowed, borderless window) and SIZE, stepped with ◄ ►
+    (`Camcorder/ScreenSettings.cs`, saved under `Backrooms.Screen.v1`, applied again at start; a borderless window is
+    made with Win32 and centred on the monitor). PICTURE, SOUND AND LIGHT opens the F5 menu over the main menu with only
+    the CAMERA, AUDIO, SOUND, DISPLAY and LIGHT tabs (`CamcorderVisualMenu.OpenFromMainMenu`). F5 > DISPLAY has the same
+    SCREEN section.
   - **QUIT**: stops Play Mode in the editor, or quits the game.
   - Mouse, or arrow keys / W S, Enter, Escape / Backspace to go back.
 - **Between menu and world**, a camcorder blue screen ("PLAY ►", "PLAY ►  NEW WORLD", "STOP ■") covers the scene load,

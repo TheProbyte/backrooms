@@ -15,6 +15,15 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 02:00  Claude Code  First build for friends: the camcorder picture fixed in builds, window and size settings in the main menu, editor settings shipped
+- Asked for: a build to test and send to friends; then (from the build) "colors go wild" with any camcorder preset but Clean, display settings (resolution, borderless, windowed) and the F5 settings in the main menu.
+- Colours: the camcorder look switches URP to HDR colour grading while it plays, but the URP assets are set to LDR, so URP left the HDR post-processing shaders out of the build (the editor has them all). New `Editor/HdrGradingForBuild.cs` sets the assets to HDR grading only for the length of a build (nothing in Assets/Settings changes).
+- Settings: new `Camcorder/ScreenSettings.cs` (fullscreen, borderless fullscreen, windowed, borderless window via Win32, size; saved and applied at start). Main menu SETTINGS: SCREEN and SIZE (stepped with arrow keys), and PICTURE, SOUND AND LIGHT opening the F5 menu over the menu without its PLAYER, WORLD and PLACES tabs (`CamcorderVisualMenu.OpenFromMainMenu`). F5 > DISPLAY has the same SCREEN section. Chosen option buttons in the F5 menu are now highlighted (the style was missing, so Shutter, Format and the rest never showed their choice).
+- Builds start from the editor's tuned settings: `Editor/ShipEditorSettings.cs` writes them to `Resources/ShippedSettings.json` during the build (removed after); `ShippedSettings.cs` takes each one the player has not saved yet.
+- `Debug/BuildProbe.cs`: `-probe [folder]` checks a build unattended (World 3, screenshots per preset, exposure numbers, then erases World 3). Docs/Building.md.
+- Checked: build vs editor with the probe: before, the build's meter saw the scene 3x brighter and orange (white balance 0.77/0.99/1.80); after, the same numbers as the editor (exposure 0.28, white balance 0.95/0.99/1.21) and the same spawn. Borderless window measured in the build: 1920x1080, centred on the 5120x1440 monitor, no frame. Main menu and F5 pages rendered in the editor. EditMode tests.
+- Open: exclusive FULLSCREEN at a size other than the monitor's not tried on the wide monitor; the user's own build still has Clean chosen from before (pick a preset in SETTINGS > PICTURE).
+
 ## 2026-10-30 01:00  Claude Code  Floor lamps you can carry and plug in; lamp and sofa shadows; no doorway under a sloping ceiling
 - Interaction/Items/FloorLamp.cs: the living rooms' floor lamps as items (cord, plug, switch, carried by the pole); lit
   only when plugged into a powered socket. OfficeChunkBuilder makes them with the chunk (lootId, LootRegistry); a lit one

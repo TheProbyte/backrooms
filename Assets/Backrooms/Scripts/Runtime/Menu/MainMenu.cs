@@ -16,7 +16,7 @@ namespace Backrooms.Menu
     /// The main menu, shown whenever the world scene starts without a save chosen. Behind it is the camcorder's own
     /// picture: it lies on its side on the carpet of a fixed world (<see cref="MenuSeed"/>), focused on the carpet just
     /// in front of the lens, the room beyond out of focus, the OSD on STBY. The menu is the camcorder's menu: PLAY (the
-    /// three world saves), SETTINGS (nothing yet), QUIT. Mouse or keys (arrows / W S, Enter, Escape).
+    /// three world saves), SETTINGS (the window and its size, and the F5 menu's picture, sound and light tabs), QUIT. Mouse or keys (arrows / W S, Enter, Escape).
     /// Added by the WorldStreamer in menu mode; the player is switched off while it is up.
     /// </summary>
     [DefaultExecutionOrder(200)]
@@ -51,6 +51,9 @@ namespace Backrooms.Menu
         VisualElement _root, _panel, _list;
         Label _pageLabel;
         readonly List<(VisualElement el, Action act)> _items = new List<(VisualElement, Action)>();
+        readonly Dictionary<int, Action<int>> _steps = new Dictionary<int, Action<int>>();
+        CamcorderVisualMenu _vm;
+        bool _vmShown;
         int _sel;
         int _armedSlot = -1;
         float _armedUntil;
@@ -80,8 +83,8 @@ namespace Backrooms.Menu
                 _rig = _cam.GetComponent<CamcorderRig>();
             }
             // The camcorder's own F5 menu and the developer menu wait for the game.
-            var vm = FindAnyObjectByType<CamcorderVisualMenu>();
-            if (vm) vm.enabled = false;
+            _vm = FindAnyObjectByType<CamcorderVisualMenu>();
+            if (_vm) _vm.enabled = false;
             var items = GetComponent<ItemsMenu>();
             if (items) items.enabled = false;
             _osd = FindAnyObjectByType<CamcorderOSD>();
@@ -111,8 +114,20 @@ namespace Backrooms.Menu
             Cursor.visible = true;
             if (_armedSlot >= 0 && Time.unscaledTime > _armedUntil) Disarm();
 
+            // The F5 menu opened from SETTINGS has the keys until it closes (F5, Escape or END).
+            if (_vmShown)
+            {
+                if (_vm && _vm.enabled && _vm.IsOpen) return;
+                _vmShown = false;
+                if (_vm) _vm.enabled = false;
+                _panel.style.display = DisplayStyle.Flex;
+                return;
+            }
+
             var kb = Keyboard.current;
             if (kb == null || _leaving || _items.Count == 0) return;
+            bool left = kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame, right = kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame;
+            if ((left || right) && _steps.TryGetValue(_sel, out var step)) { step(right ? 1 : -1); Beep(0); return; }
             if (kb.upArrowKey.wasPressedThisFrame || kb.wKey.wasPressedThisFrame) Select((_sel + _items.Count - 1) % _items.Count, true);
             else if (kb.downArrowKey.wasPressedThisFrame || kb.sKey.wasPressedThisFrame) Select((_sel + 1) % _items.Count, true);
             else if (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame) Activate(_sel);
@@ -210,8 +225,8 @@ namespace Backrooms.Menu
         {
             _page = page;
             Disarm();
-            _list.Clear(); _items.Clear();
-            _panel.EnableInClassList("mm-wide", page == Page.Saves);
+            _list.Clear(); _items.Clear(); _steps.Clear();
+            _panel.EnableInClassList("mm-wide", page != Page.Top);
             switch (page)
             {
                 case Page.Top:
@@ -227,8 +242,19 @@ namespace Backrooms.Menu
                     break;
                 case Page.Settings:
                     _pageLabel.text = "SETTINGS";
-                    _list.Add(Text("NOTHING TO SET HERE YET.", "mm-note"));
-                    _list.Add(Text("In a world, F5 opens the camcorder's own menu: picture, sound, controls and the world's settings.", "mm-desc"));
+                    Option("SCREEN", () => ScreenSettings.ModeNames[(int)ScreenSettings.CurrentMode], d =>
+                    {
+                        int m = ((int)ScreenSettings.CurrentMode + d + ScreenSettings.ModeNames.Length) % ScreenSettings.ModeNames.Length;
+                        ScreenSettings.Apply((ScreenSettings.Mode)m, ScreenSettings.CurrentSize);
+                    });
+                    Option("SIZE", () => ScreenSettings.SizeName(ScreenSettings.EffectiveSize), d =>
+                    {
+                        var sizes = ScreenSettings.Sizes();
+                        int i = Mathf.Max(0, sizes.IndexOf(ScreenSettings.EffectiveSize));
+                        ScreenSettings.Apply(ScreenSettings.CurrentMode, sizes[(i - d + sizes.Count) % sizes.Count]);
+                    });
+                    if (_vm) Item("PICTURE, SOUND AND LIGHT ►", OpenCamcorderMenu);
+                    _list.Add(Text("◄ ► CHANGES A SETTING.  IN A WORLD, F5 OPENS THE FULL MENU.", "mm-desc"));
                     Item("BACK", () => { Beep(2); Show(Page.Top); }, true);
                     break;
             }
@@ -243,6 +269,30 @@ namespace Backrooms.Menu
             row.Add(Text(text, "mm-text"));
             Add(row, act);
             return row;
+        }
+
+        /// <summary>A setting with a value: ◄ ► (or A D) step it, Enter or a click steps it forward.</summary>
+        void Option(string label, Func<string> value, Action<int> step)
+        {
+            var row = new VisualElement(); row.AddToClassList("mm-item");
+            row.Add(Text("►", "mm-cursor"));
+            var text = Text("", "mm-text");
+            row.Add(text);
+            void Refresh() => text.text = label + "   ◄ " + value() + " ►";
+            Refresh();
+            _steps[_items.Count] = d => { step(d); Refresh(); };
+            Add(row, () => { step(1); Refresh(); Beep(0); });
+        }
+
+        /// <summary>The F5 menu's picture, sound, display and light tabs over the menu (the room behind shows each change).</summary>
+        void OpenCamcorderMenu()
+        {
+            if (!_vm) return;
+            Beep(1);
+            _vm.enabled = true;
+            _vm.OpenFromMainMenu();
+            _vmShown = true;
+            _panel.style.display = DisplayStyle.None;
         }
 
         void Add(VisualElement row, Action act)

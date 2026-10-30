@@ -27,6 +27,8 @@ namespace Backrooms.Camcorder
                 Button(presets, GraphicsOptions.PresetNames[i], () => { O().ApplyPreset(idx); O().Save(); RefreshAll(); });
             }
 
+            BuildScreen();
+
             Section("DISPLAY", "Frame pacing and resolution.");
             Toggle("VSync", "Keeps frames in step with your monitor, removing tearing: at the fraction of its refresh rate nearest the cap below (a 240 Hz monitor and a 60 cap: every 4th refresh).",
                 () => O().vSync, v => { O().vSync = v; O().Save(); });
@@ -56,6 +58,35 @@ namespace Backrooms.Camcorder
                 20f, 44f, "0", " m", () => O().lightDistance, v => { O().lightDistance = v; O().Save(); });
             Slider("Bounce fill lights", "Nearest fixtures that also add soft bounced light to walls and floor.",
                 0f, 48f, "0", "", () => O().bounceLights, v => { O().bounceLights = Mathf.RoundToInt(v); O().Save(); }, true);
+        }
+
+        /// <summary>The game window: how it is shown and its size (ScreenSettings). Applied straight away.</summary>
+        void BuildScreen()
+        {
+            Section("SCREEN", "How the game window is shown and its size. On a wide monitor, WINDOWED or BORDERLESS WINDOW at 1920 × 1080 keeps the game to that size. Not in the editor.");
+            Choice("Screen", "FULLSCREEN takes over the monitor at the size below (the monitor switches to it). BORDERLESS FULLSCREEN fills the screen as a window (quick to switch away from). WINDOWED is a normal window of the size below. BORDERLESS WINDOW is that window without its frame, centred.",
+                ScreenSettings.ModeNames, () => (int)ScreenSettings.CurrentMode,
+                v => ScreenSettings.Apply((ScreenSettings.Mode)v, ScreenSettings.CurrentSize));
+
+            var row = new VisualElement(); row.AddToClassList("cc-row");
+            var head = new VisualElement(); head.AddToClassList("cc-rowhead");
+            head.Add(Text("SIZE", null));
+            var value = Text("", "cc-value"); head.Add(value);
+            row.Add(head);
+            var buttons = BtnRow(row);
+            void Step(int d)
+            {
+                var sizes = ScreenSettings.Sizes();
+                int i = Mathf.Max(0, sizes.IndexOf(ScreenSettings.EffectiveSize));
+                i = Mathf.Clamp(i + d, 0, sizes.Count - 1);
+                ScreenSettings.Apply(ScreenSettings.CurrentMode, sizes[i]);
+                value.text = ScreenSettings.SizeName(sizes[i]);
+            }
+            Button(buttons, "◄ LARGER", () => Step(-1));
+            Button(buttons, "SMALLER ►", () => Step(1));
+            AttachTip(row, "Size", "The game's size in pixels: the window's size, or the screen's in FULLSCREEN. Larger than the monitor is not offered.");
+            _list.Add(row);
+            _refreshers.Add(() => value.text = ScreenSettings.SizeName(ScreenSettings.EffectiveSize));
         }
 
         void UpdateGraphicsTab()

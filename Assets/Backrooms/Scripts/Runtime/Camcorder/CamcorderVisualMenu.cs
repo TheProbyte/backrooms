@@ -28,8 +28,22 @@ namespace Backrooms.Camcorder
 
         void Start()
         {
-            Build();
-            SetOpen(false);
+            if (_panel == null) Build();
+            if (!IsOpen) SetOpen(false);
+        }
+
+        /// <summary>Opened from the main menu's SETTINGS: only the tabs that make sense outside a world (no PLAYER, WORLD or
+        /// PLACES). The main menu switches this menu off again when it closes.</summary>
+        public bool FromMainMenu { get; private set; }
+        static readonly int[] WorldOnlyTabs = { 1, 2, 7 };
+
+        public void OpenFromMainMenu()
+        {
+            if (_panel == null) Build();
+            FromMainMenu = true;
+            foreach (int t in WorldOnlyTabs) Show(_tabButtons[t], false);
+            if (System.Array.IndexOf(WorldOnlyTabs, _tab) >= 0) ShowTab(0);
+            SetOpen(true);
         }
 
         void Update()
@@ -60,6 +74,11 @@ namespace Backrooms.Camcorder
             }
             else
             {
+                if (FromMainMenu)
+                {
+                    FromMainMenu = false;
+                    if (_tabButtons != null) foreach (int t in WorldOnlyTabs) Show(_tabButtons[t], true);
+                }
                 if (rig) rig.Settings.Save();
                 CloseAudio();
                 HideTip();
