@@ -65,10 +65,14 @@ namespace Backrooms.Generation
         public float depthAmount = 1f;
         [Tooltip("How many doorways between rooms have a wooden door in them: multiplies each biome's door chance. 1 is the biome rules' amount; 0.5 (half) by default.")]
         public float doors = 0.5f;
+        [Tooltip("Rooms worth making a base (janitor's closets, security offices, break rooms, stock rooms): about 1.5 per district at 1.")]
+        public float goodRooms = 1f;
+        [Tooltip("Share of ordinary rooms whose outlets have power without a breaker switched on (good rooms always have it).")]
+        public float liveOutlets = 0.15f;
 
         /// <summary>Bump when generation code changes how a seed plays out.
         /// 2: fixture spacing, strips, open plan. 3: arches. 4: zones, landmarks, districts, storeys.</summary>
-        public const int Version = 15;   // 10: far crawl-hole links. 11: pinned, sealed zones (the Poolrooms). 12: Poolrooms arches, curves, spiral stairs, second floor. 13: crawl spaces to special rooms, noclip doors. 14: height and depth (sunken wings, pit rooms, cut corners: DepthPlan). 15: ramps, ceilings that come down, sloping rooms, stairs to nowhere, mezzanines
+        public const int Version = 16;   // 10: far crawl-hole links. 11: pinned, sealed zones (the Poolrooms). 12: Poolrooms arches, curves, spiral stairs, second floor. 13: crawl spaces to special rooms, noclip doors. 14: height and depth (sunken wings, pit rooms, cut corners: DepthPlan). 15: ramps, ceilings that come down, sloping rooms, stairs to nowhere, mezzanines. 16: good rooms (one door, live outlets), most outlets dead, breaker panels
 
         /// <summary>District size in chunks and cells.</summary>
         public const int DistrictChunks = 4, DistrictCells = DistrictChunks * OfficeBiome.ChunkCells;

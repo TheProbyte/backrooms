@@ -25,6 +25,13 @@ namespace Backrooms.Camcorder
         Canvas _canvas;
         RectTransform _frame, _barL, _barR, _content;
         Text _rec, _counter, _date, _time, _sp;
+        Text _notice;
+        static string s_notice;
+        static float s_noticeAt = -100f;
+        const float NoticeFor = 4f;
+
+        /// <summary>A word stamped in the middle of the picture for a few seconds (HOME), shown with or without the viewfinder display.</summary>
+        public static void Notice(string text) { s_notice = text; s_noticeAt = Time.unscaledTime; }
         Image _recDot;
         DateTime _start;
         float _t0;
@@ -162,6 +169,9 @@ namespace Backrooms.Camcorder
             _time = Label("", new Vector2(0, 0), new Vector2(0, 44), TextAnchor.LowerLeft, 34);
             _date = Label("", new Vector2(0, 0), Vector2.zero, TextAnchor.LowerLeft, 34);
             _debug = Label("", new Vector2(1, 0), Vector2.zero, TextAnchor.LowerRight, 20);
+            _notice = Label("", new Vector2(0.5f, 0.5f), new Vector2(0, -60), TextAnchor.MiddleCenter, 72);
+            _notice.transform.SetParent(_barCanvas.transform, false);
+            var nr = _notice.rectTransform; nr.anchorMin = nr.anchorMax = nr.pivot = new Vector2(0.5f, 0.32f); nr.anchoredPosition = Vector2.zero;
             _debug.transform.SetParent(_barCanvas.transform, false);
             var dr2 = _debug.rectTransform; dr2.anchorMin = dr2.anchorMax = dr2.pivot = new Vector2(1, 0); dr2.anchoredPosition = new Vector2(-16, 12);
             Battery();
@@ -253,6 +263,15 @@ namespace Backrooms.Camcorder
             _frame.GetComponent<AspectRatioFitter>().aspectRatio = pillarbox ? 4f / 3f : w / Mathf.Max(1f, h);
             _content.gameObject.SetActive(visible);
             _debug.enabled = showDebug;
+            float na = Time.unscaledTime - s_noticeAt;
+            _notice.enabled = na < NoticeFor && !string.IsNullOrEmpty(s_notice);
+            if (_notice.enabled)
+            {
+                _notice.text = s_notice;
+                // Steady, then a few blinks out, like a camcorder's title.
+                bool show = na < NoticeFor - 1f || ((na * 4f) % 1f) < 0.6f;
+                _notice.color = new Color(1f, 1f, 1f, show ? 0.95f : 0f);
+            }
             if (showDebug && Camera.main)
             {
                 var p = Camera.main.transform.position;

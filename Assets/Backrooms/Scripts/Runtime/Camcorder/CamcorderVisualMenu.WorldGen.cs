@@ -57,6 +57,10 @@ namespace Backrooms.Camcorder
                 0f, 6f, "0.0", " per district", () => how.crawlPortals * 2f, v => how.crawlPortals = v * 0.5f));
             WG(Slider("Doors", "How many doorways between rooms have a wooden door in them, as a share of each biome's door chance (Offices 30 %, Hallways 40 %, Warehouse 12 % of square doorways). 1 is that full amount; 0.5 by default; 0 none.",
                 0f, 2f, "0.00", "x", () => how.doors, v => how.doors = v));
+            WG(Slider("Good rooms", "Rooms worth making a base: janitor's closets (with the district's breaker panel), security offices, break rooms and stock rooms. One way in through a door, outlets with power, dead ceiling lights. 1 is about one and a half per district.",
+                0f, 3f, "0.00", "x", () => how.goodRooms, v => how.goodRooms = v));
+            WG(Slider("Rooms with power", "Share of ordinary rooms whose outlets work without a breaker switched on. A janitor's closet's breaker panel powers the rest of its district.",
+                0f, 100f, "0", " %", () => how.liveOutlets * 100f, v => how.liveOutlets = v / 100f));
             WG(Slider("Carpet-tile rooms", "Share of rooms (not hallways) laid in square carpet tiles, a checker of two shades, instead of wall-to-wall carpet. Was 16 %.",
                 0f, 50f, "0", " %", () => how.carpetTileRooms * 100f, v => how.carpetTileRooms = v / 100f));
             WG(Slider("Uneven floors and ceilings", "How often there are sunken wings, pit rooms, sloping rooms, stairs to nowhere, mezzanines, cut corners and ceilings coming down. 1 is normal, 0 none.",

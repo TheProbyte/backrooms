@@ -60,6 +60,29 @@ in World 3.
 - Wedging a door shut (a chair under the lever), a bolt.
 - Later, with the brief's impossible architecture: home rooms are the ones that never change.
 
+## Status (2026-10-30): built, all phases
+
+Decisions (from the owner): claiming is automatic; homes are unlimited for now; no map help to find home (only your own
+marks); most outlets dead.
+
+- **Good rooms** (`Generation/SpecialRooms.cs`, `Room.special`, F5 > WORLD > HOW OFTEN > Good rooms): janitor's closet
+  (shelving, mop sink, the district's breaker panel), security office (desk with old monitors and a keyboard, a desk lamp
+  plugged in and lit, a chair, shelving), break room (counter with a sink and a microwave, fridge, table and chairs), stock
+  room (loaded steel shelving on the walls and a back-to-back row down the middle; beside the warehouse). Chosen after the
+  rooms are joined up: every doorway but one walled up only if the district stays connected; the one left always has a
+  wooden door, shut when found, with a slide bolt inside. Tubes dead, a switch by the door, at least two live outlets.
+  About 1.35 per district. Not built: the chain-link storage cage (needs see-through walls) and the mezzanine office.
+  Furniture: `OfficeChunkBuilder.Special.cs` in `FurnitureMaterials` finishes.
+- **Power** (`Interaction/Power/PowerGrid.cs`, `BreakerPanel.cs`; `Room.live`, `WallPlate.live`): about 15 % of ordinary
+  rooms have power of their own (HOW OFTEN > Rooms with power); the rest only when their district's breaker is switched on
+  at the panel in a janitor's closet (a handle you push up, a green lamp; saved). Floor lamps spawn lit only in rooms with
+  power. Ceiling lights are not on the breakers (yet).
+- **Home** (`Interaction/Homes.cs`): a lamp you have carried, left lit (plugged in, switched on, not in the hand) in a room
+  whose every way in is shut by a door, for 3 s: the room is home and the camcorder stamps HOME. Inside a home the
+  building's hum and room tone drop to half. Items, lights, doors, bolts and paint are saved as you leave them.
+- **Making it yours:** slide bolts on good rooms' doors (`DoorBolt`, `Door.Bolted`): bolted, the lever turns but the door
+  only rattles. Sofas and armchairs already move. Not built: carrying furniture through doors, wedging a door with a chair.
+
 ## Decisions needed
 
 1. Claiming: automatic (lamp lit, door shut) or an explicit act (e.g. writing on the wall with the spray can)?

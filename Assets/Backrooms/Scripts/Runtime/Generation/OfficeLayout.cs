@@ -15,6 +15,12 @@ namespace Backrooms.Generation
     /// </summary>
     public enum RoomFeature : byte { None, Sunken, Pit }
 
+    /// <summary>
+    /// A room worth making a base (SpecialRooms, Docs/BaseRoomsPlan.md): one way in through a wooden door, live outlets,
+    /// its ceiling lights dead, its own furniture. Rare: a few per district.
+    /// </summary>
+    public enum GoodRoom : byte { None, StockRoom, SecurityOffice, BreakRoom, JanitorCloset }
+
     /// <summary>Per-cell flags for multi-storey volumes.</summary>
     [System.Flags]
     public enum CellFlags : byte
@@ -53,6 +59,10 @@ namespace Backrooms.Generation
         /// <summary>Corners cut off at 45 degrees across their corner cell (DepthPlan.Chamfers), bits in district-local terms
         /// of fullRect: 1 (xMin, zMin), 2 (xMax, zMin), 4 (xMin, zMax), 8 (xMax, zMax).</summary>
         public byte chamfers;
+        /// <summary>A room worth making a base (SpecialRooms), or None.</summary>
+        public GoodRoom special;
+        /// <summary>Its wall outlets have power without a breaker being switched on (SpecialRooms.Live; most rooms' do not).</summary>
+        public bool live;
         /// <summary>
         /// A ramp (DepthPlan): the floor runs from <see cref="floor"/> at one end of the room (fullRect) up to the storey's
         /// floor at the other: 0 none, the way it rises: 1 toward +X, 2 -X, 3 +Z, 4 -Z.
@@ -98,6 +108,7 @@ namespace Backrooms.Generation
             id = newId, globalId = globalId, rect = newRect, fullRect = fullRect, kind = kind, lights = lights, color = color,
             ceiling = ceiling, painted = painted, wallFinish = wallFinish, floorFinish = floorFinish, landmark = landmark, openAbove = openAbove, noFloor = noFloor, noDoors = noDoors, role = role, custom = custom, spiral = spiral,
             floor = floor, feature = feature, chamfers = chamfers, ramp = ramp, rampCells = rampCells, rampStart = rampStart, ceilDrop = ceilDrop, ceilLow = ceilLow, ceilCells = ceilCells,
+            special = special, live = live,
         };
     }
 
@@ -189,9 +200,15 @@ namespace Backrooms.Generation
     public struct HalfWall { public bool alongX; public int line; public int start; public int length; public int roomColor; public bool railing; }
 
     /// <summary>Electrical plate on a wall face. Face is the cell side the plate is visible from.</summary>
-    public struct WallPlate { public Vector2Int cell; public int side; public float t; public float height; public bool isSwitch; public int roomColor; }
+    public struct WallPlate { public Vector2Int cell; public int side; public float t; public float height; public bool isSwitch; public int roomColor; public bool live; }
 
-    public enum PropKind { Sofa, FloorLamp, ConferenceTable, WallClock, StorageRack, Box, Pallet, Armchair, OfficeChair }
+    public enum PropKind
+    {
+        Sofa, FloorLamp, ConferenceTable, WallClock, StorageRack, Box, Pallet, Armchair, OfficeChair,
+        // The good rooms' furniture (SpecialRooms; built in OfficeChunkBuilder.Special): position is the middle of the foot,
+        // yaw turns the front (local +Z) toward the room, size is width x height x depth.
+        Counter, Fridge, Shelving, Desk, Monitor, BreakerPanel, MopSink, Microwave, DiningTable, DeskLamp,
+    }
 
     /// <summary>Level 0's kinds of room (DistrictGenerator.StyleOf): the backrooms (wallpaper), living rooms (painted,
     /// furnished), the warehouse (concrete floors, racks).</summary>

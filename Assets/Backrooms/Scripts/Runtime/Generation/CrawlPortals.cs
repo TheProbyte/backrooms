@@ -96,7 +96,7 @@ namespace Backrooms.Generation
                         var p = o + s * i + lat * j;
                         if (!L.InChunk(p.x, p.y) || p.x / cc != chunk.x || p.y / cc != chunk.y || used.Contains(p)) { ok = false; break; }
                         var r = L.RoomAt(p.x, p.y);
-                        if (r.openAbove || r.noFloor || r.landmark != null || r.custom || r.role != AnnexRole.None
+                        if (r.openAbove || r.noFloor || r.landmark != null || r.custom || r.role != AnnexRole.None || r.special != GoodRoom.None
                             || L.Has(p.x, p.y, CellFlags.OpenAbove) || L.Has(p.x, p.y, CellFlags.NoFloor) || r.ceiling > MaxCeilingUnder) { ok = false; break; }
                         maxCeil = Mathf.Max(maxCeil, r.ceiling);
                         x0 = Mathf.Min(x0, p.x); z0 = Mathf.Min(z0, p.y); x1 = Mathf.Max(x1, p.x); z1 = Mathf.Max(z1, p.y);
@@ -262,7 +262,7 @@ namespace Backrooms.Generation
             {
                 if (!L.InChunk(x, z)) return false;
                 var r = L.RoomAt(x, z);
-                return r.Walkable && r.landmark == null && !r.custom && !r.noFloor && !r.openAbove && r.role == AnnexRole.None && !L.Has(x, z, CellFlags.NoFloor) && L.Plain(x, z);
+                return r.Walkable && r.landmark == null && !r.custom && !r.noFloor && !r.openAbove && r.role == AnnexRole.None && r.special == GoodRoom.None && !L.Has(x, z, CellFlags.NoFloor) && L.Plain(x, z);
             }
 
             for (int x = 1; x < n - 1; x++)

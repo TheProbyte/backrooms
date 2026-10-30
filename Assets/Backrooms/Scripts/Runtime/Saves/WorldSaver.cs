@@ -212,7 +212,9 @@ namespace Backrooms.Saves
             }
 
             d.lightsOff = Generation.LightZones.Save();
-            Interaction.DoorStates.Save(d.doorKeys, d.doorAngles);
+            d.breakersOn = Interaction.PowerGrid.Save();
+            d.homes = Interaction.Homes.Save();
+            Interaction.DoorStates.Save(d.doorKeys, d.doorAngles, d.doorBolts);
             d.props.Clear();
             var mgr = MovablePropManager.Instance;
             if (mgr) foreach (var s in mgr.Export()) d.props.Add(FromSpec(s.spec, s.position, s.rotation));

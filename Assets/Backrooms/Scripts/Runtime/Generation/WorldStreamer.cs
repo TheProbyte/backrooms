@@ -138,8 +138,10 @@ namespace Backrooms.Generation
             bool playing = Saves.GameSession.Slot >= 0 && Saves.GameSession.Data != null;
             // Every light on, but those the save has switched off (before the first chunk lights up).
             LightZones.Load(playing ? Saves.GameSession.Data.lightsOff : null);
+            Interaction.PowerGrid.Load(playing ? Saves.GameSession.Data.breakersOn : null);
+            Interaction.Homes.Load(playing ? Saves.GameSession.Data.homes : null);
             DoorEdges.Clear();
-            if (playing) Interaction.DoorStates.Load(Saves.GameSession.Data.doorKeys, Saves.GameSession.Data.doorAngles); else Interaction.DoorStates.Clear();
+            if (playing) Interaction.DoorStates.Load(Saves.GameSession.Data.doorKeys, Saves.GameSession.Data.doorAngles, Saves.GameSession.Data.doorBolts); else Interaction.DoorStates.Clear();
             MenuMode = !playing && Saves.GameSession.InMenu;
             if (MenuMode) Seed = Menu.MainMenu.MenuSeed;
             else if (playing) Seed = Saves.GameSession.Data.seed;
@@ -152,6 +154,7 @@ namespace Backrooms.Generation
             // fog and ripples.
             PoolMaterials.Ensure();
             SpecialRoomMaterials.Ensure(assets);          // the rooms behind crawl spaces
+            FurnitureMaterials.Ensure(assets);            // the good rooms' furniture
             DepthMaterials.Ensure(assets);                // a pit room's shafts, darker toward the bottom
             if (Application.isPlaying && !GetComponent<ChunkVisibility>()) gameObject.AddComponent<ChunkVisibility>();   // chunks behind walls are not drawn
             if (Application.isPlaying && !GetComponent<Audio.BuildingSettling>()) gameObject.AddComponent<Audio.BuildingSettling>().streamer = this;   // creaks, ticks, air at vents
@@ -181,7 +184,7 @@ namespace Backrooms.Generation
             Destruction.WallDamage.Bind(_world, Settings.storeyPitch, assets);
             if (Application.isPlaying && !GetComponent<Destruction.WallBreaker>()) gameObject.AddComponent<Destruction.WallBreaker>().streamer = this;
             // The save being played: moved props are back on the list before any chunk is built. Or the main menu.
-            if (playing) { _saver = gameObject.AddComponent<Saves.WorldSaver>(); _saver.RestoreProps(_world); }
+            if (playing) { _saver = gameObject.AddComponent<Saves.WorldSaver>(); _saver.RestoreProps(_world); gameObject.AddComponent<Interaction.HomeTracker>(); }
             else if (MenuMode) gameObject.AddComponent<Menu.MainMenu>().streamer = this;
             if (!MenuMode && !GetComponent<Interaction.NoclipTravel>()) gameObject.AddComponent<Interaction.NoclipTravel>().streamer = this;
         }

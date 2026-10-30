@@ -33,9 +33,15 @@ namespace Backrooms.Saves
         public List<string> takenLoot = new List<string>();
         /// <summary>Rooms whose lights were switched off at the wall: chunk x, storey, z and room, four ints each (Generation.LightZones).</summary>
         public List<int> lightsOff = new List<int>();
+        /// <summary>Districts whose breaker was switched on: district x, storey, z, three ints each (Interaction.PowerGrid).</summary>
+        public List<int> breakersOn = new List<int>();
+        /// <summary>Rooms claimed as home: district x, storey, district z, room id, four ints each (Interaction.Homes).</summary>
+        public List<int> homes = new List<int>();
         /// <summary>Doors that were opened or shut (Interaction.DoorStates): their keys and angles.</summary>
         public List<string> doorKeys = new List<string>();
         public List<float> doorAngles = new List<float>();
+        /// <summary>Doors slide-bolted shut (their keys).</summary>
+        public List<string> doorBolts = new List<string>();
         /// <summary>The door a Poolrooms noclip door leads back to (Interaction.NoclipTravel).</summary>
         public bool hasNoclipOrigin;
         public Vector3 noclipOrigin, noclipOriginNormal;

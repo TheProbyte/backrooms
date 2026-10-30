@@ -142,6 +142,9 @@ namespace Backrooms.Generation
             if (pool) PoolArches(L, new System.Random(Hash(sseed, district.x, district.y, 0xA4C7)));
             // Height and depth (world version 14): a sunken wing, a pit room. Their own dice.
             DepthPlan.Apply(L, new System.Random(Hash(sseed, district.x, district.y, 0xDE97)));
+            // Rooms worth making a base (one door, live outlets: SpecialRooms), then which rooms' outlets have power. Own dice.
+            SpecialRooms.Choose(L, set, new System.Random(Hash(sseed, district.x, district.y, 0x600D)));
+            SpecialRooms.SetLive(L, set, sseed);
 
             // 6. Lighting and dressing. Placements record the room id in their colour field; light colours
             // are assigned afterwards, once every light's position is known, and stamped in.
@@ -162,6 +165,7 @@ namespace Backrooms.Generation
                 double p = rng.NextDouble();
                 r.lights = p < R.lightsAllOn ? LightMode.AllOn : p < R.lightsAllOn + R.lightsMixed ? LightMode.Mixed : LightMode.Dark;
                 if (r.kind == RoomKind.Lounge && rng.NextDouble() < 0.5) r.lights = LightMode.Dark; // lamps carry the room
+                if (r.special != GoodRoom.None) r.lights = LightMode.Dark;                     // a good room's tubes are dead: you light it
             }
             PlaceFixtures(L, rng);
             PlacePillarsAndHalfWalls(L, rng);
@@ -598,7 +602,7 @@ namespace Backrooms.Generation
             Debug.LogWarning($"[Backrooms] District {L.coord} storey {L.storey} could not be fully connected.");
         }
 
-        static bool[,] Flood(OfficeLayout L)
+        public static bool[,] Flood(OfficeLayout L)
         {
             var seen = new bool[L.N, L.N];
             var q = new Queue<Vector2Int>();
@@ -801,7 +805,7 @@ namespace Backrooms.Generation
         {
             foreach (var r in L.rooms)
             {
-                if (r.landmark != null) continue;                         // landmarks dress themselves
+                if (r.landmark != null || r.special != GoodRoom.None) continue;   // landmarks and good rooms dress themselves
                 if (r.feature == RoomFeature.Pit) continue;               // walkways over shafts
                 var rc = r.rect;
                 var R = L.RulesAt(rc);
@@ -924,6 +928,7 @@ namespace Backrooms.Generation
                 if (r.landmark != null || r.noFloor) continue;
                 var rc = r.rect;
                 if (r.feature == RoomFeature.Pit) continue;                 // nothing stands on a pit room's walkways
+                if (r.special != GoodRoom.None) { SpecialRooms.Dress(L, rng, r, occupied); continue; }
                 var style = StyleOf(r);
                 bool hasRacks = false;
                 foreach (var pr in L.props)
@@ -997,7 +1002,10 @@ namespace Backrooms.Generation
                 int cx = Mathf.Clamp(Mathf.FloorToInt(lx / C), 0, L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(lz / C), 0, L.N - 1);
                 if (CellHasDoor(L, cx, cz) || occupied.Contains(new Vector2Int(cx, cz)) || NearPillarOrHalfWall(L, cx, cz)) continue;
                 occupied.Add(new Vector2Int(cx, cz));
-                L.props.Add(new Prop { kind = PropKind.FloorLamp, position = new Vector2(lx, lz), variant = rng.Next(2), lit = rng.NextDouble() < 0.8, roomColor = r.color });
+                // Lit only where its outlet has power (most rooms' do not: SpecialRooms.SetLive).
+                int lampVariant = rng.Next(2);
+                bool lampLit = rng.NextDouble() < 0.8 && r.live;
+                L.props.Add(new Prop { kind = PropKind.FloorLamp, position = new Vector2(lx, lz), variant = lampVariant, lit = lampLit, roomColor = r.color });
                 i++;
             }
         }
@@ -1030,7 +1038,7 @@ namespace Backrooms.Generation
             float C = OfficeBiome.CellSize;
             foreach (var r in L.rooms)
             {
-                if (r.landmark != null || r.noFloor || r.feature == RoomFeature.Pit) continue;
+                if (r.landmark != null || r.noFloor || r.feature == RoomFeature.Pit || r.special != GoodRoom.None) continue;
                 double chance = r.kind == RoomKind.Office ? 0.22 : r.kind == RoomKind.BigOffice ? 0.35 : r.kind == RoomKind.Hallway ? 0.04 : 0.0;
                 if (rng.NextDouble() >= chance) continue;
                 var rc = r.rect;
@@ -1104,7 +1112,7 @@ namespace Backrooms.Generation
             }
         }
 
-        static bool NearPillarOrHalfWall(OfficeLayout L, int x, int z)
+        internal static bool NearPillarOrHalfWall(OfficeLayout L, int x, int z)
         {
             foreach (var p in L.pillars) if (p.vertex.x >= x - 1 && p.vertex.x <= x + 2 && p.vertex.y >= z - 1 && p.vertex.y <= z + 2) return true;
             foreach (var h in L.halfWalls)
@@ -1115,7 +1123,7 @@ namespace Backrooms.Generation
             return false;
         }
 
-        static bool CellHasDoor(OfficeLayout L, int x, int z)
+        internal static bool CellHasDoor(OfficeLayout L, int x, int z)
         {
             for (int s = 0; s < 4; s++) { var e = L.EdgeOf(x, z, s); if (e == EdgeKind.Door || e == EdgeKind.DoorHeader) return true; }
             // (Steps down into a sunken room, and a pit room's lattice, keep clear too.)
@@ -1172,7 +1180,7 @@ namespace Backrooms.Generation
                 if (best < 0) continue;
                 float along = best < 2 ? fz : fx;
                 float t = along < 0.5f ? Mathf.Min(0.85f, along + 0.4f) : Mathf.Max(0.15f, along - 0.4f);
-                L.plates.Add(new WallPlate { cell = new Vector2Int(lx, lz), side = best, t = t, height = 0.3f, roomColor = p.roomColor });
+                L.plates.Add(new WallPlate { cell = new Vector2Int(lx, lz), side = best, t = t, height = 0.3f, roomColor = p.roomColor, live = L.RoomAt(lx, lz).live });
             }
             for (int x = 0; x < L.N; x++)
             for (int z = 0; z < L.N; z++)
@@ -1189,8 +1197,8 @@ namespace Backrooms.Generation
                         if (L.InChunk(ax, az) && L.RoomAt(ax, az).role != AnnexRole.None) continue;
                     }
                     if (e == EdgeKind.Wall && rng.NextDouble() < L.RulesAt(x, z).outletChance)
-                        L.plates.Add(new WallPlate { cell = new Vector2Int(x, z), side = side, t = 0.2f + (float)rng.NextDouble() * 0.6f, height = 0.3f, roomColor = room.color });
-                    else if ((e == EdgeKind.Door || e == EdgeKind.DoorHeader) && rng.NextDouble() < 0.35)
+                        L.plates.Add(new WallPlate { cell = new Vector2Int(x, z), side = side, t = 0.2f + (float)rng.NextDouble() * 0.6f, height = 0.3f, roomColor = room.color, live = room.live });
+                    else if ((e == EdgeKind.Door || e == EdgeKind.DoorHeader) && (rng.NextDouble() < 0.35 || room.special != GoodRoom.None))
                     {
                         // Light switch on the wall beside the door, if there is one.
                         int perp = side < 2 ? 2 : 0;
@@ -1205,6 +1213,25 @@ namespace Backrooms.Generation
                             break;
                         }
                     }
+                }
+            }
+            // A good room has at least two outlets (they have power).
+            foreach (var r in L.rooms)
+            {
+                if (r.special == GoodRoom.None) continue;
+                int have = 0;
+                foreach (var p in L.plates) if (!p.isSwitch && r.rect.Contains(p.cell)) have++;
+                for (int tries = 0; have < 2 && tries < 30; tries++)
+                {
+                    int x = rng.Next(r.rect.xMin, r.rect.xMax), z = rng.Next(r.rect.yMin, r.rect.yMax), side = rng.Next(4);
+                    if (L.EdgeOf(x, z, side) != EdgeKind.Wall || L.roomOf[x, z] != r.id) continue;
+                    int ax = x + (side == 0 ? -1 : side == 1 ? 1 : 0), az = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
+                    if (L.InChunk(ax, az) && L.roomOf[ax, az] == r.id) continue;
+                    bool taken = false;
+                    foreach (var p in L.plates) if (p.cell.x == x && p.cell.y == z && p.side == side) taken = true;
+                    if (taken) continue;
+                    L.plates.Add(new WallPlate { cell = new Vector2Int(x, z), side = side, t = 0.25f + (float)rng.NextDouble() * 0.5f, height = 0.3f, roomColor = r.color, live = true });
+                    have++;
                 }
             }
         }

@@ -53,11 +53,11 @@ namespace Backrooms.Generation
 
         // ---------------- Sunken wing ----------------
 
-        static bool SpawnHall(OfficeLayout L, Room r) => L.coord == Vector2Int.zero && L.storey == 0 && r.rect.Overlaps(new RectInt(0, 0, OfficeBiome.ChunkCells, OfficeBiome.ChunkCells));
+        internal static bool SpawnHall(OfficeLayout L, Room r) => L.coord == Vector2Int.zero && L.storey == 0 && r.rect.Overlaps(new RectInt(0, 0, OfficeBiome.ChunkCells, OfficeBiome.ChunkCells));
 
         static bool Ordinary(OfficeLayout L, Room r) =>
             r.Walkable && r.landmark == null && !r.custom && !r.noFloor && !r.openAbove && r.role == AnnexRole.None && !r.spiral
-            && r.feature == RoomFeature.None && !SpawnHall(L, r);
+            && r.feature == RoomFeature.None && r.special == GoodRoom.None && !SpawnHall(L, r);
 
         static bool SunkenOk(OfficeLayout L, Room r)
         {

@@ -24,6 +24,9 @@ namespace Backrooms.Interaction
 
         [NotTuned] public bool switchOn = true;
         [Tooltip("Furthest outlet you can plug into from your eye (m).")] public float reach = 2.2f;
+        /// <summary>Placed by the world plugged in (a security office's desk lamp): its plug goes into the nearest outlet in reach.</summary>
+        [System.NonSerialized] public bool startPlugged;
+        float _plugTries;
 
         Plug _plug;
         Cord _cord;
@@ -324,8 +327,30 @@ namespace Backrooms.Interaction
             if (_plug.Plugged && !Held && !h.HeldItem && !h.Fetching && Time.time - _takeBackAt < 8f) h.PickUp(this);
         }
 
+        /// <summary>Once the outlets round it are loaded, its plug goes into the nearest wall socket in reach (or it stays wound up).</summary>
+        void TryStartPlugged()
+        {
+            if (!startPlugged || !_plug) return;
+            _plugTries += Time.deltaTime;
+            if (_plugTries > 5f) { startPlugged = false; return; }
+            var exit = transform.TransformPoint(CordExit);
+            Socket best = null; float bd = CordLength * 0.85f;
+            foreach (var s in Sockets.Around(exit))
+            {
+                if (!s.IsWall || s.occupant != null || !_plug.CanUse(s)) continue;
+                float d = Vector3.Distance(s.Position, exit);
+                if (d < bd) { bd = d; best = s; }
+            }
+            if (best == null) return;
+            startPlugged = false;
+            Unbundle();
+            _plug.PlugInto(best);
+            if (_cord) _cord.Lay();
+        }
+
         void LateUpdate()
         {
+            if (startPlugged) TryStartPlugged();
             if (_takeBack) TakeBackAfterPlug();
             UpdateDust();
             // The filament warms up and cools down in a moment; a lamp far from the camera keeps no shadow map.

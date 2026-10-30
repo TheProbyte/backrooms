@@ -6,22 +6,24 @@ namespace Backrooms.Interaction
 {
     /// <summary>
     /// A place a plug goes: one of the two sockets of a wall outlet, or one of the three on an extension cord's box.
-    /// Wall sockets are fixed in the world and powered when their zone has power (Level 0 does, the Poolrooms do not);
-    /// a box's sockets are powered when its own plug is in a powered socket.
+    /// Wall sockets are fixed in the world and powered when their room has power of its own (good rooms and a few others:
+    /// SpecialRooms.SetLive) or their district's breaker is on (<see cref="PowerGrid"/>); a box's sockets are powered when
+    /// its own plug is in a powered socket.
     /// </summary>
     public class Socket
     {
         public Transform anchor;            // null: a wall socket (position and normal are in world space)
         public Vector3 local, localNormal;
         public CordBox box;                 // the extension cord it belongs to, or null (wall)
-        public bool wallPowered;
+        public bool wallLive;               // its room has power without the breaker
+        public Vector3Int circuit;          // its district and storey (PowerGrid)
         public bool dead;                   // its chunk unloaded
         public Plug occupant;
 
         public bool IsWall => box == null;
         public Vector3 Position => anchor ? anchor.TransformPoint(local) : local;
         public Vector3 Normal => anchor ? anchor.TransformDirection(localNormal) : localNormal;
-        public bool Powered => !dead && (box ? box.Powered : wallPowered);
+        public bool Powered => !dead && (box ? box.Powered : wallLive || PowerGrid.On(circuit));
         /// <summary>Extension cords between this socket and the wall.</summary>
         public int Depth => box ? box.Depth : 0;
 
@@ -118,14 +120,16 @@ namespace Backrooms.Interaction
         readonly List<Socket> _sockets = new List<Socket>();
         bool _registered;
 
-        /// <summary>Outlets at world positions (the face of the plate) facing out of their walls.</summary>
-        public void Set(Vector3Int chunk, List<(Vector3 pos, Vector3 normal)> outlets, bool powered)
+        /// <summary>Outlets at world positions (the face of the plate) facing out of their walls, and whether each has power
+        /// of its own (else only with its district's breaker on).</summary>
+        public void Set(Vector3Int chunk, List<(Vector3 pos, Vector3 normal, bool live)> outlets)
         {
             _key = chunk;
             _sockets.Clear();
-            foreach (var (pos, n) in outlets)
+            var circuit = PowerGrid.CircuitOf(chunk);
+            foreach (var (pos, n, live) in outlets)
                 for (int k = -1; k <= 1; k += 2)
-                    _sockets.Add(new Socket { local = pos + Vector3.up * (0.019f * k), localNormal = n, wallPowered = powered });
+                    _sockets.Add(new Socket { local = pos + Vector3.up * (0.019f * k), localNormal = n, wallLive = live, circuit = circuit });
             Sockets.AddChunk(_key, _sockets);
             _registered = true;
         }

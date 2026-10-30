@@ -21,6 +21,7 @@ namespace Backrooms.Generation
             public string key;
             public DoorEdges.Edge edge;   // the doorway in world cells (shut, it is a wall to light and sound)
             public int roomFront, roomBack; // rooms on the +z (swing) side and the other side (this chunk's indices)
+            public int boltSide;          // a good room's door: the face its slide bolt is on (+1 the +z face, -1 the other), 0 none
         }
 
         readonly List<DoorSpec> _doors = new List<DoorSpec>();
@@ -57,13 +58,16 @@ namespace Backrooms.Generation
                     int bx = vertical ? line : along, bz = vertical ? along : line;
                     if (!DoorRoom(ax, az) || !DoorRoom(bx, bz) || _L.roomOf[ax, az] == _L.roomOf[bx, bz]) continue;
                     float chance = Mathf.Min(_L.RulesAt(ax, az).doorChance, _L.RulesAt(bx, bz).doorChance) * DetailRates.Doors;
+                    // A good room's one way in always has a door, shut when you find it (SpecialRooms).
+                    bool good = _L.RoomAt(ax, az).special != GoodRoom.None || _L.RoomAt(bx, bz).special != GoodRoom.None;
+                    if (good) chance = 1f;
                     int wx = _L.coord.x * n + (vertical ? line : along), wz = _L.coord.y * n + (vertical ? along : line);
                     uint h = DoorHash(wx, wz, vertical, _L.storey);
                     if ((h & 0xFFFF) / 65535f >= chance) continue;
                     // Swing into one room or the other; mostly shut, some ajar, a few wide open.
                     bool toB = (h & 0x10000u) != 0;
                     float pick = ((h >> 17) & 0xFF) / 255f, amount = ((h >> 25) & 0x7F) / 127f;
-                    float angle = pick < 0.62f ? 0f : pick < 0.88f ? Mathf.Lerp(8f, 35f, amount) : Mathf.Lerp(70f, 88f, amount);
+                    float angle = good || pick < 0.62f ? 0f : pick < 0.88f ? Mathf.Lerp(8f, 35f, amount) : Mathf.Lerp(70f, 88f, amount);
                     Vector3 pos = vertical ? new Vector3(line * C, 0f, (along + 0.5f) * C) : new Vector3((along + 0.5f) * C, 0f, line * C);
                     // Model +z toward room B (+x or +z of the edge) or room A.
                     float yaw = vertical ? (toB ? 90f : -90f) : (toB ? 0f : 180f);
@@ -82,6 +86,8 @@ namespace Backrooms.Generation
                         },
                         roomFront = toB ? _L.roomOf[bx, bz] : _L.roomOf[ax, az],
                         roomBack = toB ? _L.roomOf[ax, az] : _L.roomOf[bx, bz],
+                        // The bolt on the good room's side (the inside).
+                        boltSide = !good ? 0 : ((toB ? rb : ra).special != GoodRoom.None ? 1 : -1),
                     });
                 }
             }
@@ -97,7 +103,9 @@ namespace Backrooms.Generation
                 go.transform.localRotation = Quaternion.Euler(0f, d.yaw, 0f);
                 var model = DoorModels.Make(go.transform, d.mask);
                 if (!model) { Object.Destroy(go); continue; }
-                go.AddComponent<Interaction.Door>().Init(model, d.angle, d.key, d.edge, d.roomFront, d.roomBack);
+                var door = go.AddComponent<Interaction.Door>();
+                door.Init(model, d.angle, d.key, d.edge, d.roomFront, d.roomBack);
+                if (d.boltSide != 0) door.AddBolt(d.boltSide);
                 DoorMarks(model, d, root.GetComponent<GeneratedChunkResources>());
             }
         }

@@ -15,6 +15,15 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 03:30  Claude Code  Rooms worth making a base, power you switch on, homes, bolts (Docs/BaseRoomsPlan.md, all phases)
+- Asked for: the whole base-room plan, all phases. Decisions: automatic claiming, unlimited homes, no map help home, most outlets dead.
+- Good rooms (`Generation/SpecialRooms.cs`, `Room.special`, `OfficeChunkBuilder.Special.cs`, `FurnitureMaterials.cs`): janitor's closet (shelving, mop sink, breaker panel), security office (desk, CRT monitors, keyboard, desk lamp plugged in and lit, chair, shelving), break room (counter with sink and microwave, fridge, table, chairs), stock room (shelving round the walls and a back-to-back middle row). One way in (others walled up only if the district stays connected), a wooden door shut when found with a slide bolt inside, dead tubes, a switch by the door, two live outlets at least. About 1.35 per district (HOW OFTEN > Good rooms). World version 16.
+- Power: `Room.live` / `WallPlate.live` (about 15 % of rooms, HOW OFTEN > Rooms with power), `Interaction/Power/PowerGrid.cs` (district breakers, saved), `BreakerPanel.cs` (handle up, green lamp). Sockets: `wallLive || PowerGrid.On(circuit)`. Floor lamps lit only in live rooms. DeskLamp gained `startPlugged`.
+- Home (`Interaction/Homes.cs`): a carried lamp left lit in a room whose every doorway holds a shut door, 3 s: home, OSD stamps HOME (`CamcorderOSD.Notice`), hum and room tone at half inside (`BuildingAudio.HomeQuiet`). Saved (`WorldSaveData.homes`, `breakersOn`, `doorBolts`).
+- Bolts (`Interaction/DoorBolt.cs`, `Door.Bolted`): bolted, lever, shove and pull only rattle the door.
+- Checked: EditMode 148/148 (new GoodRoomTests: one way in with a header, district connected, furnished and powered, most rooms dead, saves). 49 districts of seed 553893173: 66 good rooms, 0 with more than one doorway, every closet has its panel. World 3 (erased after): each kind rendered; the security lamp plugged itself in; the breaker took a district's nearby sockets from 4/104 to 104/104; a carried lamp in the shut security office made it home (HOME stamp, hum eased to half, saved); bolted door stayed shut through a shove and a pull, opened to 80 degrees unbolted. Build run: no errors; zip rebuilt.
+- Open: not built: chain-link storage cage (needs see-through walls), mezzanine office, carrying furniture through doors, wedging a door with a chair, ceiling lights on breakers. Floor lamps are now mostly dark (only 14 % of rooms have power). Existing saves' worlds shift a little (good rooms close doorways). Not played by the user.
+
 ## 2026-10-30 02:30  Claude Code  Fewer doors (and a Doors slider); plan for base rooms
 - Asked for: control over doors, and fewer of them; a plan to start adding rooms worth making a base.
 - Doors: new `WorldGenSettings.doors` (multiplies each biome's door chance; 0.5 by default) through `DetailRates.Doors` into `OfficeChunkBuilder.Doors`; slider F5 > WORLD > HOW OFTEN > Doors (0-2x). Saved settings without it get the half default.

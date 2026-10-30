@@ -50,6 +50,8 @@ namespace Backrooms.Audio
         public static BuildingAudio Instance { get; private set; }
         /// <summary>The beds' level, 1 normally: the tension director lowers it for a quiet moment (the building goes silent).</summary>
         public static float Duck = 1f;
+        /// <summary>The beds' level in a home (Interaction.HomeTracker eases it to half inside one): your own quiet room.</summary>
+        public static float HomeQuiet = 1f;
 
         public WorldStreamer streamer;
         public FixtureLightManager lights;
@@ -589,7 +591,7 @@ namespace Backrooms.Audio
 
         void UpdateBeds(float dt)
         {
-            float amb = Mathf.Clamp(Dev.ambience, 0f, 2f) * Mathf.Clamp01(Duck);
+            float amb = Mathf.Clamp(Dev.ambience, 0f, 2f) * Mathf.Clamp01(Duck) * Mathf.Clamp01(HomeQuiet);
             float bedK = 1f - Mathf.Exp(-dt / 1.5f);
 
             _distantSmoothed = Mathf.Lerp(_distantSmoothed, DistantLevel, bedK);

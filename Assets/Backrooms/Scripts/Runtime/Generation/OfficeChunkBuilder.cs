@@ -53,7 +53,7 @@ namespace Backrooms.Generation
         public readonly List<LightSource> lights = new List<LightSource>();
         public readonly List<Doorway> doorways = new List<Doorway>();
         /// <summary>Wall outlets (world position of the plate's face, its normal): sockets for plugs (Interaction.ChunkOutlets).</summary>
-        public readonly List<(Vector3 pos, Vector3 normal)> outlets = new List<(Vector3, Vector3)>();
+        public readonly List<(Vector3 pos, Vector3 normal, bool live)> outlets = new List<(Vector3, Vector3, bool)>();
         readonly List<(MeshWriter w, bool dome, int room)> faultyLenses = new List<(MeshWriter, bool, int)>();
         /// <summary>The lit lenses of each room (so a wall switch can put one room out): key room * 4 + kind.</summary>
         readonly Dictionary<int, (MeshWriter w, Material on, Material off, uint mask, int room)> _roomLenses = new Dictionary<int, (MeshWriter, Material, Material, uint, int)>();
@@ -130,7 +130,7 @@ namespace Backrooms.Generation
         public void BuildData(OfficeLayout layout, OfficeLayout[] neighbours)
         {
             _neighbours = neighbours;
-            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); _lampItems.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
+            _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); _lampItems.Clear(); _breakers.Clear(); _deskLamps.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
             _capsules.Clear(); poolMap = null;
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
@@ -311,11 +311,33 @@ namespace Backrooms.Generation
                 yield return root;
             }
 
+            // A security office's desk lamp (plugged in when lit), made like the floor lamps.
+            foreach (var (at, yaw, lit, id) in _deskLamps)
+            {
+                ulong lootId = (id * 0x9E3779B97F4A7C15ul) ^ 0x2D5Bu;
+                if (lootId == 0) lootId = 1;
+                if (Saves.LootRegistry.IsTaken(lootId)) continue;
+                var lamp = Interaction.DeskLamp.Create(_origin + at, Quaternion.Euler(0f, yaw, 0f));
+                lamp.lootId = lootId;
+                lamp.startPlugged = lit;
+                lamp.transform.SetParent(root.transform, true);
+                yield return root;
+            }
+            // Breaker panels: the district's main switch (PowerGrid).
+            foreach (var (pos, rot, color) in _breakers)
+            {
+                var go = new GameObject("BreakerPanel");
+                go.transform.SetParent(root.transform, false);
+                go.transform.localPosition = pos;
+                go.transform.localRotation = rot;
+                go.AddComponent<Interaction.BreakerPanel>().Init(Interaction.PowerGrid.CircuitOf(chunkKey), LayerBit(color));
+            }
+
             InstantiatePortals(root.transform);
             InstantiateCrawlSpaces(root.transform);
             InstantiateNoclipDoors(root.transform);
             InstantiateDoors(root.transform);
-            if (outlets.Count > 0) root.AddComponent<Interaction.ChunkOutlets>().Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), outlets, true);
+            if (outlets.Count > 0) root.AddComponent<Interaction.ChunkOutlets>().Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), outlets);
             if (poolMap != null) root.AddComponent<PoolChunk>().Set(_L.coord, _L.storey, poolMap);
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
@@ -1175,7 +1197,7 @@ namespace Backrooms.Generation
                 Vector3 right = Vector3.Cross(Vector3.up, n);   // horizontal axis on the wall
                 float hw = 0.035f, hh = 0.0575f;
                 Vector3 f = pos + n * depth;
-                if (!p.isSwitch) outlets.Add((_origin + f, n));
+                if (!p.isSwitch) outlets.Add((_origin + f, n, p.live));
                 else if (!Pool) SwitchGrime(pos, n, right, p.cell, p.side);
                 // The modelled plate (WallPlateModels), or the flat atlas plate if the models are not loaded.
                 var parts = p.isSwitch ? WallPlateModels.Switch : WallPlateModels.Outlet;
@@ -1247,6 +1269,7 @@ namespace Backrooms.Generation
                 // On the floor of the room it stands in (a sunken room's is lower).
                 int pcx = Mathf.Clamp(Mathf.FloorToInt(p.position.x / C), 0, _L.N - 1), pcz = Mathf.Clamp(Mathf.FloorToInt(p.position.y / C), 0, _L.N - 1);
                 var at = new Vector3(p.position.x, _L.FloorAt(pcx, pcz), p.position.y);
+                if (p.kind >= PropKind.Counter) { SpecialProp(p, at, rot); continue; }     // the good rooms' furniture
                 if (modelled) { PlaceModelled(p, at, rot, lights); continue; }
                 switch (p.kind)
                 {

@@ -322,6 +322,20 @@ has no seam. Chunk coordinates are `Vector3Int (x, storey, z)`; storeys are `sto
 Storey 0 streams everywhere; upper storeys stream only within a chunk of a multi-storey volume.
 `WorldStreamer.ChunkLoaded / ChunkUnloaded` fire per chunk (the hook for Steam Audio geometry later).
 
+## Good rooms and power (world version 16)
+
+- `SpecialRooms.Choose` runs after `DepthPlan.Apply`, with its own dice: per district about 0.45 janitor's closets, 0.3
+  security offices, 0.3 break rooms and 0.4 stock rooms (times HOW OFTEN > Good rooms). A candidate is a plain, flat,
+  ordinary-height office, lounge or meeting room of the kind's size (stock rooms beside a concrete-floored hall or in the
+  warehouse biome). Every doorway but one is walled up and the one left given a header; if the district would no longer be
+  fully connected (`DistrictGenerator.Flood`), or a doorway is on the district edge, the room is left as it was.
+- A good room: `Room.special`, lights `Dark`, dressed by `SpecialRooms.Dress` instead of the ordinary dressing (no pillars,
+  half walls, boxes, crawl holes, noclip doors or cut corners in it), a switch by its door, at least two outlets. Its door
+  always has a leaf (`OfficeChunkBuilder.Doors`), shut, with a slide bolt on the inside.
+- `SpecialRooms.SetLive` sets `Room.live` (good rooms, and about 15 % of others by a hash: HOW OFTEN > Rooms with power);
+  each outlet plate carries it (`WallPlate.live`) to its sockets. Other sockets have power only with their district's
+  breaker on (`Interaction.PowerGrid`, circuit = district x, storey, district z). Floor lamps are lit only in live rooms.
+
 ## Lighting (light grid mode, the default)
 
 - The nearest fixtures (F5 "Shadow-casting lights", capped at ~38 to fit the 4096 shadow atlas), faulty

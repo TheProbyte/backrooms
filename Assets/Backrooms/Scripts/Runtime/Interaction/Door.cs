@@ -27,6 +27,11 @@ namespace Backrooms.Interaction
         /// <summary>Degrees open (0 shut, toward +z).</summary>
         public float Angle { get; private set; }
         public bool Latched { get; private set; } = true;
+        /// <summary>Slide-bolted shut from the inside (good rooms' doors: DoorBolt). The lever turns but the door stays shut.</summary>
+        public bool Bolted { get; private set; }
+        /// <summary>The face the bolt is on (+1 the +z face, -1 the other), or 0: no bolt.</summary>
+        public int BoltSide { get; private set; }
+        float _rattleAt = -1f;
         public bool Held { get; private set; }
         public float Speed => _vel;
 
@@ -223,13 +228,52 @@ namespace Backrooms.Interaction
         {
             float was = _side > 0 ? _turnFront : _turnBack;
             if (_side > 0) _turnFront = turn; else _turnBack = turn;
-            if (was < 0.6f && turn >= 0.6f) { if (Latched) Fx(SoundBank.DoorLatch, 0.7f); Latched = false; }
+            if (was < 0.6f && turn >= 0.6f)
+            {
+                if (Bolted) Rattle();                                             // the latch frees, the bolt holds
+                else { if (Latched) Fx(SoundBank.DoorLatch, 0.7f); Latched = false; }
+            }
             Pose();
+        }
+
+        // ---------------- The bolt ----------------
+
+        /// <summary>Gives the door a slide bolt on one face (the chunk builder, for a good room's door).</summary>
+        public void AddBolt(int side)
+        {
+            if (side == 0 || BoltSide != 0 || !_leaf) return;
+            BoltSide = side > 0 ? 1 : -1;
+            Bolted = DoorStates.IsBolted(Key) && Angle < 0.5f;
+            var handle = BoltSide > 0 ? _front : _back;
+            if (!handle) return;
+            var go = new GameObject("Bolt");
+            go.transform.SetParent(_leaf, true);
+            go.transform.position = handle.position + transform.up * 0.33f;
+            go.transform.rotation = Swing(Angle) * transform.rotation * Quaternion.Euler(0f, BoltSide > 0 ? 0f : 180f, 0f);
+            go.AddComponent<DoorBolt>().Init(this);
+        }
+
+        /// <summary>Slides the bolt across (only while the door is shut) or back.</summary>
+        public void ToggleBolt()
+        {
+            if (BoltSide == 0 || (!Bolted && Angle >= 0.5f)) return;
+            Bolted = !Bolted;
+            if (Bolted) Latched = true;
+            DoorStates.SetBolted(Key, Bolted);
+            Fx(SoundBank.DoorLatch, Bolted ? 0.9f : 0.6f);
+        }
+
+        void Rattle()
+        {
+            if (Time.time - _rattleAt < 0.35f) return;
+            _rattleAt = Time.time;
+            Fx(SoundBank.DoorLatch, 0.85f);
         }
 
         /// <summary>The held door goes where the hand takes it (as far as its hinge allows, never through the player).</summary>
         public void Drive(Vector3 hand, float dt)
         {
+            if (Bolted && Angle < 0.5f) { Rattle(); return; }
             Vector3 up = transform.up;
             Vector3 r0 = Vector3.ProjectOnPlane(transform.TransformVector(GripLocal(_side, 1f)), up);
             Vector3 rt = Vector3.ProjectOnPlane(hand - HingeWorld, up);
@@ -265,6 +309,7 @@ namespace Backrooms.Interaction
         public void Shove(int side, Vector3 at, Vector3 facing, bool pull)
         {
             if (Held) return;
+            if (Bolted && Angle < 0.5f) { Rattle(); return; }
             if (Latched)
             {
                 Fx(SoundBank.DoorLatch, 0.6f);
@@ -305,6 +350,7 @@ namespace Backrooms.Interaction
         public void Tug(float speed)
         {
             if (Held) return;
+            if (Bolted && Angle < 0.5f) { Rattle(); return; }
             if (Latched) { Latched = false; }
             if (_vel < speed) _vel = speed;
             _moved = true;
@@ -491,19 +537,24 @@ namespace Backrooms.Interaction
     public static class DoorStates
     {
         static readonly Dictionary<string, float> s_angles = new Dictionary<string, float>();
+        static readonly HashSet<string> s_bolted = new HashSet<string>();
         public static bool TryGet(string key, out float angle) => s_angles.TryGetValue(key ?? "", out angle);
         public static void Set(string key, float angle) { if (!string.IsNullOrEmpty(key)) s_angles[key] = angle; }
-        public static void Clear() => s_angles.Clear();
+        public static bool IsBolted(string key) => s_bolted.Contains(key ?? "");
+        public static void SetBolted(string key, bool bolted) { if (string.IsNullOrEmpty(key)) return; if (bolted) s_bolted.Add(key); else s_bolted.Remove(key); }
+        public static void Clear() { s_angles.Clear(); s_bolted.Clear(); }
 
-        public static void Save(List<string> keys, List<float> angles)
+        public static void Save(List<string> keys, List<float> angles, List<string> bolts)
         {
-            keys.Clear(); angles.Clear();
+            keys.Clear(); angles.Clear(); bolts?.Clear();
             foreach (var kv in s_angles) { keys.Add(kv.Key); angles.Add(Mathf.Round(kv.Value * 10f) / 10f); }
+            if (bolts != null) bolts.AddRange(s_bolted);
         }
 
-        public static void Load(List<string> keys, List<float> angles)
+        public static void Load(List<string> keys, List<float> angles, List<string> bolts)
         {
             Clear();
+            if (bolts != null) foreach (var b in bolts) s_bolted.Add(b);
             if (keys == null || angles == null) return;
             for (int i = 0; i < keys.Count && i < angles.Count; i++) s_angles[keys[i]] = angles[i];
         }
