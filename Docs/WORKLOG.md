@@ -15,6 +15,17 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Furniture: no more shaking while held
+
+- The owner found holding furniture shook fast side to side. Measured with a new probe (`Debug/HoldJitterProbe.cs`):
+  the camera was smooth, the armchair flipped 2-3 degrees every physics step. The hands' springs (tuned for the whole
+  mass) pulled far from its middle, where it weighs much less, and overshot every step; the wrist's rough inertia was
+  several times too big. Each pull is now scaled to the mass felt at its point (`PointMass`), the wrist uses the real
+  inertia. Held still: 0.01 rad/s (was 5.7).
+- The wrist gives freely only on facing; on tilt only past 60 degrees (a quick turn used to roll an armchair over and
+  keep it there). The strap camera rises out of the way more gently.
+- Checked in World 3 (erased): still, walking, turning, swinging, walking while turning. EditMode 148/148. Build rebuilt.
+
 ## 2026-10-30 06:00  Claude Code  Furniture: the camera hangs by itself when you take hold, and you can see what you are doing
 - Owner: no need for an H key, taking furniture should lower the camera; visibility too low (face in the furniture or through it, no idea how to manoeuvre).
 - `PropGrabber.Furniture.UpdateStrap`: the strap comes on while the hands take or hold furniture, off 0.35 s after letting go (H removed). `HandheldCameraShake`: strap camera higher (0.34 m under the eye, 0.1 out), 10 degrees down plus a quarter of the look; `avoid` + `KeepClear`: the camera keeps 30 cm clear of the held thing, rising toward the eye (eased). `PropGrabber.ClampOffset`: furniture held at least 0.38 m out while the camera hangs.

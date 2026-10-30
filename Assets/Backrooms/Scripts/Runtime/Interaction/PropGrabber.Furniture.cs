@@ -205,6 +205,34 @@ namespace Backrooms.Interaction
             _secondFarT = 0f;
         }
 
+        /// <summary>How heavy the body feels pushed at a point along a direction (kg): its mass, less where a push there
+        /// mostly turns it (a chair taken by the top of its back).</summary>
+        static float PointMass(Rigidbody rb, Vector3 p, Vector3 dir)
+        {
+            Vector3 c = Vector3.Cross(p - rb.worldCenterOfMass, dir);
+            Vector3 l = Quaternion.Inverse(rb.rotation * rb.inertiaTensorRotation) * c, I = rb.inertiaTensor;
+            float inv = 1f / rb.mass + l.x * l.x / Mathf.Max(I.x, 1e-4f) + l.y * l.y / Mathf.Max(I.y, 1e-4f) + l.z * l.z / Mathf.Max(I.z, 1e-4f);
+            return 1f / inv;
+        }
+
+        /// <summary>The body's moment of inertia about a world axis through its centre of mass (kg m^2).</summary>
+        static float InertiaAbout(Rigidbody rb, Vector3 axis)
+        {
+            Vector3 l = Quaternion.Inverse(rb.rotation * rb.inertiaTensorRotation) * axis, I = rb.inertiaTensor;
+            return l.x * l.x * I.x + l.y * l.y * I.y + l.z * l.z * I.z;
+        }
+
+        /// <summary>A hand's spring force worked out for mass <paramref name="mEff"/>, scaled down to what the body really
+        /// weighs at that point, so a step never overshoots (springs tuned for the whole mass, pulling far from its middle,
+        /// flipped it back and forth every physics step).</summary>
+        static Vector3 AtPointMass(Rigidbody rb, Vector3 p, Vector3 F, float mEff)
+        {
+            float f = F.magnitude;
+            if (f < 1e-4f) return F;
+            float mp = PointMass(rb, p, F / f);
+            return mp < mEff ? F * (mp / mEff) : F;
+        }
+
         /// <summary>The second hand's pull and the wrist's (or two hands') turn, after the first hand's pull (FixedUpdate).</summary>
         void FurnitureForces(Rigidbody rb, Vector3 T, bool carry)
         {
@@ -216,6 +244,7 @@ namespace Backrooms.Interaction
                 Vector3 B = rb.position + rb.rotation * _gripLocalB;
                 Vector3 vB = rb.GetPointVelocity(B);
                 Vector3 F = mEff * (w * w * (TB - B) + 2f * w * (_player.PlanarVelocity - vB));
+                F = AtPointMass(rb, B, F, mEff);
                 Vector3 h = new Vector3(F.x, 0f, F.z);
                 if (h.magnitude > maxPush) h = h.normalized * maxPush;
                 F = h + Vector3.up * Mathf.Clamp(F.y, -200f, maxLift);
@@ -233,9 +262,19 @@ namespace Backrooms.Interaction
             if (ang > 180f) ang -= 360f;
             if (axis.sqrMagnitude < 0.5f || float.IsNaN(axis.x)) return;
             // Past what it can hold, the wrist gives: the angle it wants comes round to where the thing is.
+            // Only which way it faces gives freely: how far it is tipped gives only once it is well over (knocked down), so
+            // swinging round on the spot with it does not let it roll over and stay over.
             if (Mathf.Abs(ang) > 35f && !Twisting)
-                _wristRel = Quaternion.Slerp(_wristRel, Quaternion.Inverse(transform.rotation) * rb.rotation, Time.fixedDeltaTime * 3f);
-            float I = m * 0.12f;                            // a rough moment of inertia (kg m^2) for a chair-sized thing
+            {
+                Quaternion actual = Quaternion.Inverse(transform.rotation) * rb.rotation;
+                Vector3 upWant = _wristRel * Vector3.up, upHas = actual * Vector3.up;
+                Quaternion faced = Quaternion.FromToRotation(upHas, upWant) * actual;     // its angle, tipped back as held
+                Quaternion to = Vector3.Angle(upWant, upHas) > 60f ? actual : faced;
+                _wristRel = Quaternion.Slerp(_wristRel, to, Time.fixedDeltaTime * 3f);
+            }
+            // Its real resistance to turning about this axis (a rough m * 0.12 was several times too much for a chair
+            // and made the wrist overshoot every step: the chair shook).
+            float I = Mathf.Min(m * 0.12f, InertiaAbout(rb, axis.normalized));
             float wr = 9f;
             Vector3 tau = I * (wr * wr * (ang * Mathf.Deg2Rad) * axis.normalized - 2f * wr * rb.angularVelocity);
             float cap = TwoHanded ? twoHandTorque : wristTorque;

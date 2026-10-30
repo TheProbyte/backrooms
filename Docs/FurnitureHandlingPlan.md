@@ -29,6 +29,8 @@ plus a quarter of the look, and keeps 30 cm clear of the held thing (rising towa
 least 0.38 m out. Checked: the room is in view while holding, tipping and rolling an armchair; both hands show. Open:
 the left hand can float short of its grip when the chair is turned away from it.
 
+Owner's second look: holding shook fast side to side. Measured (`Debug/HoldJitterProbe.cs`, a CSV of the camera, body and furniture each frame): the camera was smooth; the armchair flipped 2-3 degrees back and forth every physics step (spinning up to 5.7 rad/s while held still). The hands' springs were sized for the whole mass but pull far from its middle, where it mostly turns and weighs a few kilos, and the wrist's rough inertia was several times the chair's. Now each pull is scaled to the mass felt at its point and the wrist uses the real inertia: held still it does not move (0.01 rad/s), nothing moves more than about 1 mm a frame. Also: the wrist gives freely only on which way the thing faces, on its tilt only past 60 degrees (a quick turn on the spot used to roll an armchair over onto its back and keep it there); the strap camera rises more gently out of the way.
+
 ## Why it is hard now
 
 - **One spring at one point.** `PropGrabber.FixedUpdate` pulls the grip point toward the hand with a strength limit

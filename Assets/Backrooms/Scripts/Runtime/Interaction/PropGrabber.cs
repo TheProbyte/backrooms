@@ -529,6 +529,7 @@ namespace Backrooms.Interaction
             bool carry = m <= carryMass && Held.Spec.kind == MovableKind.Box;
             float mEff = Mathf.Min(m, 30f), w = stiffness;
             Vector3 F = mEff * (w * w * (T - G) + 2f * w * (vT - vG));
+            if (!carry) F = AtPointMass(rb, G, F, mEff);
             if (carry) F -= Physics.gravity * m;                 // a box is carried, not dragged
             // A hand is only so strong.
             Vector3 h = new Vector3(F.x, 0f, F.z);

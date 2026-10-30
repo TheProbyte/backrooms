@@ -227,7 +227,7 @@ namespace Backrooms
                 Vector3 wp = pivot.position + body.rotation * (new Vector3(0f, -0.34f, 0.1f) + pos * shakeIntensity * 1.3f);
                 // Not inside what you hold: up toward the eye until clear of it (eased, so it does not jump).
                 Vector3 clearTo = KeepClear(pivot.position, wp) - wp;
-                _clear = Vector3.Lerp(_clear, clearTo, 1f - Mathf.Exp(-dt / (clearTo.sqrMagnitude > _clear.sqrMagnitude ? 0.05f : 0.3f)));
+                _clear = Vector3.Lerp(_clear, clearTo, 1f - Mathf.Exp(-dt / (clearTo.sqrMagnitude > _clear.sqrMagnitude ? 0.12f : 0.4f)));
                 wp += _clear;
                 Quaternion wr = body.rotation * Quaternion.Euler(tip + _swing.x, _swing.y, _swing.z) * Quaternion.Euler(rot * shakeIntensity * 0.7f + _jolt);
                 Vector3 sp = Quaternion.Inverse(pivot.rotation) * (wp - pivot.position);
@@ -246,9 +246,9 @@ namespace Backrooms
         {
             if (avoid == null || avoid.Length == 0) return at;
             const float room = 0.3f;                           // (12 cm left only the fabric in view)
-            for (int step = 0; step <= 10; step++)
+            for (int step = 0; step <= 20; step++)
             {
-                Vector3 p = Vector3.Lerp(at, eye, step / 10f);
+                Vector3 p = Vector3.Lerp(at, eye, step / 20f);
                 bool clear = true;
                 foreach (var c in avoid)
                 {
@@ -263,6 +263,9 @@ namespace Backrooms
 
         /// <summary>How far down onto its strap the camcorder is (0 in the hand, 1 hanging).</summary>
         public float StrapAmount => _strapT;
+        /// <summary>For probes: the strap pendulum (degrees) and how far the camera rose to stay clear (m).</summary>
+        public Vector3 StrapSwing => _swing;
+        public Vector3 StrapClear => _clear;
 
         Vector3 _jolt, _joltVel;
 
