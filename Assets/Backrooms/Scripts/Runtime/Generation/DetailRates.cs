@@ -19,12 +19,14 @@ namespace Backrooms.Generation
         public static volatile float CarpetTileRooms = 0.05f;
         /// <summary>Chance multiplier for sunken wings, pit rooms, sloping rooms, stairs to nowhere, mezzanines, cut corners and ceilings that come down.</summary>
         public static volatile float Depth = 1f;
+        /// <summary>Multiplier on each biome's chance of a wooden door in a doorway.</summary>
+        public static volatile float Doors = 0.5f;
 
         public static void From(WorldGenSettings s)
         {
             if (s == null) return;
             Dirt = s.dirt; WallWear = s.wallWear; CeilingWear = s.ceilingWear; FloorMarks = s.floorMarks;
-            CarpetTileRooms = s.carpetTileRooms; Depth = s.depthAmount;
+            CarpetTileRooms = s.carpetTileRooms; Depth = s.depthAmount; Doors = s.doors;
         }
     }
 }

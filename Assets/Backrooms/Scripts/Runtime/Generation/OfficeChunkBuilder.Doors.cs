@@ -56,7 +56,7 @@ namespace Backrooms.Generation
                     int ax = vertical ? line - 1 : along, az = vertical ? along : line - 1;
                     int bx = vertical ? line : along, bz = vertical ? along : line;
                     if (!DoorRoom(ax, az) || !DoorRoom(bx, bz) || _L.roomOf[ax, az] == _L.roomOf[bx, bz]) continue;
-                    float chance = Mathf.Min(_L.RulesAt(ax, az).doorChance, _L.RulesAt(bx, bz).doorChance);
+                    float chance = Mathf.Min(_L.RulesAt(ax, az).doorChance, _L.RulesAt(bx, bz).doorChance) * DetailRates.Doors;
                     int wx = _L.coord.x * n + (vertical ? line : along), wz = _L.coord.y * n + (vertical ? along : line);
                     uint h = DoorHash(wx, wz, vertical, _L.storey);
                     if ((h & 0xFFFF) / 65535f >= chance) continue;

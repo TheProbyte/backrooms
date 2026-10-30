@@ -15,6 +15,12 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 02:30  Claude Code  Fewer doors (and a Doors slider); plan for base rooms
+- Asked for: control over doors, and fewer of them; a plan to start adding rooms worth making a base.
+- Doors: new `WorldGenSettings.doors` (multiplies each biome's door chance; 0.5 by default) through `DetailRates.Doors` into `OfficeChunkBuilder.Doors`; slider F5 > WORLD > HOW OFTEN > Doors (0-2x). Saved settings without it get the half default.
+- Plan: Docs/BaseRoomsPlan.md (good rooms, home, power as something to find, making it yours; three decisions for the user).
+- Checked: World 3 (seed 553893173, erased after): 20 doors over 49 chunks at 0.5, 47 at 1.0 (same chunks). The user's saved world settings were not changed.
+
 ## 2026-10-30 02:00  Claude Code  First build for friends: the camcorder picture fixed in builds, window and size settings in the main menu, editor settings shipped
 - Asked for: a build to test and send to friends; then (from the build) "colors go wild" with any camcorder preset but Clean, display settings (resolution, borderless, windowed) and the F5 settings in the main menu.
 - Colours: the camcorder look switches URP to HDR colour grading while it plays, but the URP assets are set to LDR, so URP left the HDR post-processing shaders out of the build (the editor has them all). New `Editor/HdrGradingForBuild.cs` sets the assets to HDR grading only for the length of a build (nothing in Assets/Settings changes).

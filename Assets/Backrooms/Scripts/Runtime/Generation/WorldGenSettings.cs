@@ -63,6 +63,8 @@ namespace Backrooms.Generation
         public float carpetTileRooms = 0.05f;
         [Tooltip("How often the floor and ceiling are not flat: sunken wings, pit rooms, sloping rooms, stairs to nowhere, mezzanines, cut corners, ceilings that come down. 1 normal.")]
         public float depthAmount = 1f;
+        [Tooltip("How many doorways between rooms have a wooden door in them: multiplies each biome's door chance. 1 is the biome rules' amount; 0.5 (half) by default.")]
+        public float doors = 0.5f;
 
         /// <summary>Bump when generation code changes how a seed plays out.
         /// 2: fixture spacing, strips, open plan. 3: arches. 4: zones, landmarks, districts, storeys.</summary>

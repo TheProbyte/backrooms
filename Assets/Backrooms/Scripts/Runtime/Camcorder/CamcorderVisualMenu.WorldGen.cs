@@ -55,6 +55,8 @@ namespace Backrooms.Camcorder
             Section("HOW OFTEN", "How much of the world's smaller things there are, in every biome. Changing one rebuilds the world around you (not the chunk you stand in). Per-biome chances are in the biome rules further down.");
             WG(Slider("Vent crawl spaces", "Square vents at the foot of walls, each leading to a small room above the ceiling. How many per district (a district is about 58 m square). Was 3.",
                 0f, 6f, "0.0", " per district", () => how.crawlPortals * 2f, v => how.crawlPortals = v * 0.5f));
+            WG(Slider("Doors", "How many doorways between rooms have a wooden door in them, as a share of each biome's door chance (Offices 30 %, Hallways 40 %, Warehouse 12 % of square doorways). 1 is that full amount; 0.5 by default; 0 none.",
+                0f, 2f, "0.00", "x", () => how.doors, v => how.doors = v));
             WG(Slider("Carpet-tile rooms", "Share of rooms (not hallways) laid in square carpet tiles, a checker of two shades, instead of wall-to-wall carpet. Was 16 %.",
                 0f, 50f, "0", " %", () => how.carpetTileRooms * 100f, v => how.carpetTileRooms = v / 100f));
             WG(Slider("Uneven floors and ceilings", "How often there are sunken wings, pit rooms, sloping rooms, stairs to nowhere, mezzanines, cut corners and ceilings coming down. 1 is normal, 0 none.",
