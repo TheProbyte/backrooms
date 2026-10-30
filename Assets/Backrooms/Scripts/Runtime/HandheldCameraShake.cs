@@ -72,6 +72,9 @@ namespace Backrooms
         /// <summary>1: the camcorder hangs on its strap at the chest (both hands free: PropGrabber H), still recording. It
         /// looks ahead and down from there, swings like a pendulum when you start, stop and turn, and bobs with the steps.</summary>
         [System.NonSerialized] public float strap;
+        /// <summary>What the hands hold while it hangs: the camera keeps out of it (pulled up toward the eye, over it).</summary>
+        [System.NonSerialized] public Collider[] avoid;
+        Vector3 _clear;
         float _strapT;
         Vector3 _swing, _swingVel, _lastVel, _velF;
         float _lastYaw;
@@ -220,8 +223,12 @@ namespace Backrooms
                     _swing += _swingVel * h;
                 }
                 _swing = Vector3.ClampMagnitude(_swing, 30f);
-                float tip = 18f + 0.3f * player.Pitch;
-                Vector3 wp = pivot.position + body.rotation * (new Vector3(0f, -0.42f, 0.17f) + pos * shakeIntensity * 1.3f);
+                float tip = 10f + 0.25f * player.Pitch;
+                Vector3 wp = pivot.position + body.rotation * (new Vector3(0f, -0.34f, 0.1f) + pos * shakeIntensity * 1.3f);
+                // Not inside what you hold: up toward the eye until clear of it (eased, so it does not jump).
+                Vector3 clearTo = KeepClear(pivot.position, wp) - wp;
+                _clear = Vector3.Lerp(_clear, clearTo, 1f - Mathf.Exp(-dt / (clearTo.sqrMagnitude > _clear.sqrMagnitude ? 0.05f : 0.3f)));
+                wp += _clear;
                 Quaternion wr = body.rotation * Quaternion.Euler(tip + _swing.x, _swing.y, _swing.z) * Quaternion.Euler(rot * shakeIntensity * 0.7f + _jolt);
                 Vector3 sp = Quaternion.Inverse(pivot.rotation) * (wp - pivot.position);
                 Quaternion sr = Quaternion.Inverse(pivot.rotation) * wr;
@@ -229,9 +236,29 @@ namespace Backrooms
                 lp = Vector3.Lerp(lp, sp, s);
                 lr = Quaternion.Slerp(lr, sr, s);
             }
-            else if (player) { _velF = _lastVel = Quaternion.Inverse(player.transform.rotation) * player.PlanarVelocity; _lastYaw = player.transform.eulerAngles.y; _swing = _swingVel = Vector3.zero; }
+            else if (player) { _clear = Vector3.zero; _velF = _lastVel = Quaternion.Inverse(player.transform.rotation) * player.PlanarVelocity; _lastYaw = player.transform.eulerAngles.y; _swing = _swingVel = Vector3.zero; }
             transform.localPosition = lp;
             transform.localRotation = lr;
+        }
+
+        /// <summary>The camera's spot, moved along the line up to the eye until it is 30 cm clear of what the hands hold.</summary>
+        Vector3 KeepClear(Vector3 eye, Vector3 at)
+        {
+            if (avoid == null || avoid.Length == 0) return at;
+            const float room = 0.3f;                           // (12 cm left only the fabric in view)
+            for (int step = 0; step <= 10; step++)
+            {
+                Vector3 p = Vector3.Lerp(at, eye, step / 10f);
+                bool clear = true;
+                foreach (var c in avoid)
+                {
+                    if (!c || !c.enabled || c.isTrigger) continue;
+                    if (c is MeshCollider mc && !mc.convex) continue;
+                    if ((c.ClosestPoint(p) - p).sqrMagnitude < room * room) { clear = false; break; }
+                }
+                if (clear) return p;
+            }
+            return eye;
         }
 
         /// <summary>How far down onto its strap the camcorder is (0 in the hand, 1 hanging).</summary>

@@ -62,7 +62,6 @@ namespace Backrooms.DebugTools
             yield return new WaitForSeconds(1f);
 
             // 2. The camcorder onto its strap.
-            _grab.botStrap = true;
             yield return new WaitForSeconds(1.5f);
             Log("camcorder on strap");
             Shot("4_strap");
@@ -126,7 +125,6 @@ namespace Backrooms.DebugTools
             yield return new WaitForSeconds(1.5f);
             Log("set down");
             Shot("11_set");
-            _grab.botStrap = true;
             yield return new WaitForSeconds(1f);
             Finish("ok");
         }

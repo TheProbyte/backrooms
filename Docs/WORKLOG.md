@@ -15,6 +15,12 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 06:00  Claude Code  Furniture: the camera hangs by itself when you take hold, and you can see what you are doing
+- Owner: no need for an H key, taking furniture should lower the camera; visibility too low (face in the furniture or through it, no idea how to manoeuvre).
+- `PropGrabber.Furniture.UpdateStrap`: the strap comes on while the hands take or hold furniture, off 0.35 s after letting go (H removed). `HandheldCameraShake`: strap camera higher (0.34 m under the eye, 0.1 out), 10 degrees down plus a quarter of the look; `avoid` + `KeepClear`: the camera keeps 30 cm clear of the held thing, rising toward the eye (eased). `PropGrabber.ClampOffset`: furniture held at least 0.38 m out while the camera hangs.
+- Checked in World 3 (erased after), armchair probe with screenshots: the room is in view while holding, tipping and rolling; both hands show. EditMode tests.
+- Open: the left hand can float short of its grip when the chair is turned away from it; lowering a rolled chair still often slips.
+
 ## 2026-10-30 05:00  Claude Code  Furniture by physics: a wrist, R to turn, H for the camcorder strap and two-handed holds (first try)
 - Asked for: the revised Docs/FurnitureHandlingPlan.md (all physics, no placement mode) and the two-handed strap look ("try the two handed look drop").
 - New `Interaction/PropGrabber.Furniture.cs`: wrist torque toward the angle held (14 N m, two hands 60, gives past 35 degrees); R + mouse turns it (about the foot's edge on the floor; lifted: the balance point one-handed, the hands two-handed); H hangs the camcorder on its strap and takes furniture with both hands (second grip from every grab edge; both targets from one wanted pose; steps toward a turn out of reach; no slip while turning). `HandheldCameraShake.strap`: chest camera, smoothed pendulum swing. `FirstPersonBody.Full`: the free left arm drawn, on the second grip or hanging. `MovableSpec`: grab edges round sides and undersides of every kind; `MovableProp.FindGrip` prefers edges facing up and toward you. Probe `Debug/FurnitureProbe.cs`.

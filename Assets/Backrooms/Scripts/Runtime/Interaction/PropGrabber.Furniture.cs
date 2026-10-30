@@ -12,9 +12,9 @@ namespace Backrooms.Interaction
     /// <item><b>Turning on purpose.</b> Hold <b>R</b> while holding: the mouse turns it about your grip instead of moving your
     /// end (up and down tip it toward or away from you, left and right roll it onto a side). Gravity and the floor do the
     /// rest: past its balance point it goes over by itself.</item>
-    /// <item><b>Two hands.</b> <b>H</b> lets the camcorder hang on its strap at your chest (the picture drops and swings:
-    /// HandheldCameraShake.strap) and frees the left hand: furniture is then taken with both, a second grip across from the
-    /// first. Twice the strength, and two grips make a lever, so it can be lifted and turned. H again takes the camcorder up.</item>
+    /// <item><b>Two hands.</b> Taking furniture lets the camcorder hang on its strap at your chest (the picture drops and
+    /// swings: HandheldCameraShake.strap) and frees the left hand: it is taken with both, a second grip across from the
+    /// first. Twice the strength, and two grips make a lever, so it can be lifted and turned. Let go and it comes back up.</item>
     /// </list>
     /// </summary>
     public partial class PropGrabber
@@ -29,11 +29,10 @@ namespace Backrooms.Interaction
         [Tooltip("Second hand: how far from the first grip it looks for its own (m).")]
         public float secondGripSpread = 0.42f;
 
-        /// <summary>Tests: R held this frame (twist), and H pressed (the strap).</summary>
+        /// <summary>Tests: R held this frame (twist).</summary>
         [System.NonSerialized] public bool? botTwist;
-        [System.NonSerialized] public bool botStrap;
 
-        /// <summary>The camcorder hangs on its strap at the chest: the left hand is free (H).</summary>
+        /// <summary>The camcorder hangs on its strap at the chest (while furniture is taken or held): the left hand is free.</summary>
         public bool CamcorderOnStrap { get; private set; }
         /// <summary>Holding furniture with both hands right now (the left on <see cref="SecondGrip"/>).</summary>
         public bool TwoHanded { get; private set; }
@@ -47,19 +46,31 @@ namespace Backrooms.Interaction
         Vector3 _gripLocalB, _normalLocalB;
         float _secondFarT;
 
-        /// <summary>H: the camcorder down onto its strap, or back up into the hand.</summary>
-        void UpdateStrapKey(bool focus)
+        float _strapOffAt;
+        Collider[] _heldColliders;
+
+        /// <summary>
+        /// The camcorder goes onto its strap by itself while the hands take or hold furniture (both hands are needed), and
+        /// comes back up a moment after letting go. While it hangs, the camera keeps out of what you hold.
+        /// </summary>
+        void UpdateStrap()
         {
-            var kb = Keyboard.current;
-            bool pressed = botStrap || (focus && kb != null && kb.hKey.wasPressedThisFrame);
-            botStrap = false;
-            if (!pressed || HeldItem) return;
-            CamcorderOnStrap = !CamcorderOnStrap;
-            if (_shake) _shake.strap = CamcorderOnStrap ? 1f : 0f;
-            MicThump();
-            // Taking it up again: the left hand leaves the furniture.
-            if (!CamcorderOnStrap && TwoHanded) TwoHanded = false;
-            else if (CamcorderOnStrap && Current == State.Holding && Held) TakeSecondGrip();
+            bool want = !HeldItem && _target && (Current == State.Reaching || Current == State.Holding);
+            if (want) _strapOffAt = Time.time + 0.35f;
+            bool on = want || (CamcorderOnStrap && Time.time < _strapOffAt);
+            if (on != CamcorderOnStrap)
+            {
+                CamcorderOnStrap = on;
+                MicThump();
+                if (!on) TwoHanded = false;
+            }
+            if (Held && (_heldColliders == null || _heldColliders.Length == 0 || !_heldColliders[0] || !_heldColliders[0].transform.IsChildOf(Held.transform)))
+                _heldColliders = Held.GetComponentsInChildren<Collider>();
+            if (_shake)
+            {
+                _shake.strap = on ? 1f : 0f;
+                _shake.avoid = on && Held ? _heldColliders : on && _target ? _target.GetComponentsInChildren<Collider>() : null;
+            }
         }
 
         bool TwistHeld(bool focus)

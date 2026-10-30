@@ -13,10 +13,11 @@
     roll it onto a side). Standing on the floor it rocks over the edge of its foot; lifted, one hand turns it about its
     balance point, two about the hands. The hand also holds the angle it took it at, as a wrist would (14 N m: a chair by
     its frame stays put, by a leg it swings, a sofa barely notices; past what it can hold it gives). `PropGrabber.Furniture.cs`.
-- **H** lets the camcorder hang on its strap at your chest (and H again takes it up): the picture drops to chest height,
-  looks ahead and down, swings as you start, stop and turn, and bobs with your steps (`HandheldCameraShake.strap`). The
-  left hand is free and seen: furniture is then taken with both hands, the left on the best grab edge across from the
-  right. Twice the strength and a lever between the grips, so a chair can be lifted and rolled over; a turn that needs
+- **Taking furniture** lets the camcorder hang on its strap at your chest by itself (it comes back up a moment after you
+  let go): the picture drops to chest height, looks ahead and a little down, swings as you start, stop and turn, bobs
+  with your steps, and keeps 30 cm clear of what you hold, rising toward the eye to look over it
+  (`HandheldCameraShake.strap`, `avoid`). Furniture is held at least 0.38 m out from you. The left hand is free and
+  seen: furniture is taken with both hands, the left on the best grab edge across from the right. Twice the strength and a lever between the grips, so a chair can be lifted and rolled over; a turn that needs
   more reach steps you toward it. Grab edges now go round the sides and undersides too, so a chair is taken however it lies.
 - **Right mouse** without holding: a quick push. Walking into light props nudges them.
 - The left hand holds the camcorder: it dips and trembles a little while the right hand works, more for

@@ -5,8 +5,8 @@ namespace Backrooms.Interaction
 {
     /// <summary>
     /// The player's free (right) hand: grab, drag, tip and shove movable props, hold items (see
-    /// PropGrabber.Items.cs). The left hand keeps the camcorder, unless it hangs on its strap (H: PropGrabber.Furniture),
-    /// when furniture is taken with both hands; R held turns what the hand holds.
+    /// PropGrabber.Items.cs). The left hand keeps the camcorder; taking furniture hangs it on its strap and the left hand
+    /// helps (PropGrabber.Furniture); R held turns what the hands hold.
     ///
     /// Hold left mouse on a prop within reach (step in automatically if it is a little too far). The hand
     /// takes the nearest grab edge to where you look (with a little variation, never the identical spot).
@@ -184,7 +184,7 @@ namespace Backrooms.Interaction
             bool shovePressed = botShove || (focus && mouse != null && mouse.rightButton.wasPressedThisFrame);
             botShove = false;
             Vector2 md = botHold.HasValue ? botMouse : focus && mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
-            UpdateStrapKey(focus || botStrap);
+            UpdateStrap();
 
             bool free = !HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && focus;
             AimedPoke = free ? LookPoke() : null;
@@ -462,7 +462,7 @@ namespace Backrooms.Interaction
             // Further out on the hand's own side than across the body.
             o.x = Side > 0f ? Mathf.Clamp(o.x, -0.42f, 0.62f) : Mathf.Clamp(o.x, -0.62f, 0.42f);
             o.y = Mathf.Clamp(o.y, floor, 0.5f);
-            o.z = Mathf.Clamp(o.z, 0.15f, 0.8f);
+            o.z = Mathf.Clamp(o.z, CamcorderOnStrap ? 0.38f : 0.15f, 0.8f);   // (on the strap: kept out from the chest camera)
             float flat = Mathf.Sqrt(o.x * o.x + o.z * o.z);
             if (flat > 0.82f) { o.x *= 0.82f / flat; o.z *= 0.82f / flat; }
             return o;

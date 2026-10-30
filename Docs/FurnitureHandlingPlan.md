@@ -22,6 +22,13 @@ Decided: two hands with the camcorder on its strap (option A).
   on its side is not reliable yet; strain sits near full most of the time (the hands' targets are held near the arm's
   limits); the hands are mostly out of the strap camera's view.
 
+Owner's first look (2026-10-30): no H key needed (taking furniture should lower the camera by itself), and nothing
+could be seen while moving it (the face in the furniture, or through it). Now: the strap comes on with every
+furniture grab and off after letting go; the strap camera sits higher (0.34 m under the eye), looks down 10 degrees
+plus a quarter of the look, and keeps 30 cm clear of the held thing (rising toward the eye); furniture is held at
+least 0.38 m out. Checked: the room is in view while holding, tipping and rolling an armchair; both hands show. Open:
+the left hand can float short of its grip when the chair is turned away from it.
+
 ## Why it is hard now
 
 - **One spring at one point.** `PropGrabber.FixedUpdate` pulls the grip point toward the hand with a strength limit
