@@ -59,9 +59,15 @@ namespace Backrooms.Interaction
         /// <summary>The second hand's grip (world) and the surface's normal there, while two-handed.</summary>
         public Vector3 SecondGrip => TwoHanded && Held ? Held.transform.TransformPoint(_gripLocalB) : Vector3.zero;
         public Vector3 SecondNormal => TwoHanded && Held ? Held.transform.TransformDirection(_normalLocalB) : Vector3.up;
+        /// <summary>Which way the second hand's fingers lie (world), or zero to leave it to the body.</summary>
+        public Vector3 SecondFingers => TwoHanded && Held && _fingersLocalB.sqrMagnitude > 0.5f ? Held.transform.TransformDirection(_fingersLocalB) : Vector3.zero;
+        /// <summary>How far the second hand's fingers close: round an edge they hook over, nearly flat on a face (round 14: always
+        /// 0.8, the fingers went into a box's side and a couch's top).</summary>
+        public float SecondCurl => !TwoHanded ? 0.3f : (_hookB ? 0.75f : 0.08f) + 0.08f * Strain;
 
         Quaternion _wristRel;            // the held thing's rotation relative to the body that the hands keep
-        Vector3 _gripLocalB, _normalLocalB;
+        Vector3 _gripLocalB, _normalLocalB, _fingersLocalB;
+        bool _hookB;
         float _secondFarT;
 
         float _strapOffAt;
@@ -81,7 +87,8 @@ namespace Backrooms.Interaction
         /// </summary>
         void UpdateStrap()
         {
-            bool want = !HeldItem && _target && (Current == State.Holding || (Current == State.Reaching && IsLight(_target)));
+            // (Not for an empty pallet: one hand takes it under the arm, the camcorder stays at the eye, round 14.)
+            bool want = !HeldItem && _target && (Current == State.Holding || (Current == State.Reaching && IsLight(_target))) && !UnderArm;
             if (want) _strapOffAt = Time.time + 0.35f;
             bool on = want || (CamcorderOnStrap && Time.time < _strapOffAt);
             if (on != CamcorderOnStrap)
@@ -96,6 +103,8 @@ namespace Backrooms.Interaction
             {
                 _shake.strap = on ? 1f : 0f;
                 _shake.avoid = on && Held ? _heldColliders : on && _target ? _target.GetComponentsInChildren<Collider>() : null;
+                // A box lifted above the hips: the strap camera tips up to keep it in the picture (to stack it).
+                _shake.strapLook = on && Carrying && Held.Spec.kind == MovableKind.Box && _carryLift > 0.12f ? Held.WorldBounds.center : (Vector3?)null;
             }
         }
 
@@ -215,9 +224,8 @@ namespace Backrooms.Interaction
             edge.Normalize();
             if (Vector3.Dot(edge, -transform.right * Side) < 0f) edge = -edge;
             Vector3 bp = ClosestOnHeld(a + edge * 0.4f);
-            _gripLocalB = t.InverseTransformPoint(bp);
-            _normalLocalB = _normalLocal;
-            TwoHanded = (bp - a).magnitude > 0.15f;
+            PlaceSecond(bp, t.TransformDirection(_normalLocal));
+            TwoHanded = (t.TransformPoint(_gripLocalB) - a).magnitude > 0.15f;
         }
 
         Vector3 ClosestOnHeld(Vector3 p)
@@ -301,9 +309,9 @@ namespace Backrooms.Interaction
             Vector3 ls = StandShoulder + left * 0.4f;
             float best = float.MinValue; Vector3 bp = default, bn = default;
             foreach (var e in Held.Shape.edges)
+            for (int side2 = 0; side2 < (e.normal2.sqrMagnitude > 0.5f ? 2 : 1); side2++)
             {
-                Vector3 ea = Held.transform.TransformPoint(e.a), eb = Held.transform.TransformPoint(e.b);
-                Vector3 n = Held.transform.TransformDirection(e.normal);
+                Held.EdgeSide(e, side2 == 1, out Vector3 ea, out Vector3 eb, out Vector3 n);
                 int steps = Mathf.Max(1, Mathf.CeilToInt(Vector3.Distance(ea, eb) / 0.04f));
                 for (int i = 0; i <= steps; i++)
                 {
@@ -318,11 +326,27 @@ namespace Backrooms.Interaction
                 }
             }
             if (best == float.MinValue) return;
-            _gripLocalB = Held.transform.InverseTransformPoint(bp);
-            _normalLocalB = Held.transform.InverseTransformDirection(bn);
+            PlaceSecond(bp, bn);
             _wristRel = Quaternion.Inverse(transform.rotation) * Held.transform.rotation;
             TwoHanded = true;
             _secondFarT = 0f;
+        }
+
+        /// <summary>
+        /// The left hand put on the model as the right one is (MovableProp.PlaceHand): on its real surface, the fingers the
+        /// way that fits there, hooked only over an edge (round 14: it was left on the collider box, in the cushions, its
+        /// fingers closed into whatever it held).
+        /// </summary>
+        void PlaceSecond(Vector3 p, Vector3 n)
+        {
+            n = n.normalized;
+            if (Held.PlaceHand(p, n, LeftShoulder, out var palm, out var fingers, out bool hook))
+            {
+                p = palm; _fingersLocalB = Held.transform.InverseTransformDirection(fingers); _hookB = hook;
+            }
+            else { p = Held.OnSurface(p, n); _fingersLocalB = Vector3.zero; _hookB = false; }
+            _gripLocalB = Held.transform.InverseTransformPoint(p);
+            _normalLocalB = Held.transform.InverseTransformDirection(n);
         }
 
         // ---------------- Forces ----------------

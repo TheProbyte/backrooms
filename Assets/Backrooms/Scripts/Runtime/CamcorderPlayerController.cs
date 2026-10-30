@@ -109,6 +109,8 @@ namespace Backrooms
         // Set by other systems each frame (e.g. PropGrabber while holding something).
         /// <summary>Multiplier on mouse look (the grabber takes most of the mouse while holding).</summary>
         [System.NonSerialized] public float lookScale = 1f;
+        /// <summary>Multiplier on looking up and down alone (a carried box takes most of the mouse's up and down to lift it).</summary>
+        [System.NonSerialized] public float pitchScale = 1f;
         /// <summary>Multiplier on walking speed (heavy things slow you down).</summary>
         [System.NonSerialized] public float moveScale = 1f;
         /// <summary>No running (e.g. while dragging something).</summary>
@@ -326,7 +328,7 @@ namespace Backrooms
         {
             float py = _pitch;
             _yaw += delta.x * mouseSensitivity;
-            _pitch += (invertY ? delta.y : -delta.y) * mouseSensitivity;
+            _pitch += (invertY ? delta.y : -delta.y) * mouseSensitivity * pitchScale;
             float dp = Mathf.Clamp(_pitch, -pitchLimit, pitchLimitDown) - py;
             _lookDelta = new Vector2(delta.x * mouseSensitivity, dp);
             _lookFrame = Time.frameCount;

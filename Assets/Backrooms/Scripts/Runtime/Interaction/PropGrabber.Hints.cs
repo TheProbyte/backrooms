@@ -14,6 +14,8 @@ namespace Backrooms.Interaction
     {
         /// <summary>The line shown now (for tests), or null.</summary>
         public string HintText => Time.time < _noteUntil ? _note : _hint;
+        /// <summary>For probes: which grab edge the marks show now (-1: none).</summary>
+        public int MarkEdge => _hintMark.HasValue ? _markEdge : -1;
         string _hint, _note;
         float _noteUntil = -10f;
         Vector3? _hintMark;
@@ -49,18 +51,30 @@ namespace Backrooms.Interaction
         {
             grip = default; verb = null;
             if (!Look(lookRange, out var hit, out prop) || !prop || prop.Shape == null) return false;
+            // (The edge shown last wins a near tie: the marks popped from one chair leg to the other, round 14.)
+            int prefer = prop == _markProp ? _markEdge : -1;
             _aimedMarkProp = prop;
-            prop.FindGrip(hit.point, hit.normal, Shoulder, s_hintRng, out grip, out var n, out _);
+            prop.FindGrip(hit.point, hit.normal, Shoulder, s_hintRng, prefer, out grip, out var n, out _, out _markEdge);
             verb = PropVerb(prop, grip, n);
+            // Shown where the palm will go on the model itself, as the grab does (round 14: on the collider box a couch's
+            // bottom edge was on the carpet in front of its legs). Worked out again only when the spot moves.
+            if (prop != _placedProp || (grip - _placedFrom).sqrMagnitude > 0.02f * 0.02f)
+            {
+                _placedProp = prop; _placedFrom = grip;
+                _placedAt = prop.PlaceHand(grip, n, Shoulder, out var palm, out _, out _) ? palm : prop.OnSurface(grip, n.normalized);
+            }
+            grip = _placedAt;
             return true;
         }
+        MovableProp _placedProp;
+        Vector3 _placedFrom, _placedAt;
 
         void UpdateHint()
         {
             _hint = null; _hintMark = null;
             if (Current == State.Holding && Held)
             {
-                _hint = Carrying ? "LET GO TO PUT IT DOWN"
+                _hint = Carrying ? (Held.Spec.kind == MovableKind.Box ? "MOUSE UP LIFTS IT · DOWN LOWERS IT · LET GO TO PUT IT DOWN" : "LET GO TO PUT IT DOWN")
                       : Tipping ? "MOUSE UP TIPS IT UP · DOWN LOWERS IT · LET GO TO DROP"
                       : "W PUSH · S PULL · MOUSE TURNS IT · MOUSE UP LIFTS";
                 return;
@@ -91,6 +105,7 @@ namespace Backrooms.Interaction
             _markShown = Vector3.Lerp(_markShown, _hintMark.Value, 1f - Mathf.Exp(-Time.deltaTime / 0.09f));
         }
         MovableProp _aimedMarkProp;
+        int _markEdge = -1;
 
         void HintGUI()
         {

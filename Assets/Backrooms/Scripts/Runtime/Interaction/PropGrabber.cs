@@ -220,7 +220,7 @@ namespace Backrooms.Interaction
                     if (shovePressed) { ShoveAndRelease(); break; }
                     // Light things are carried, heavy ones pushed by the top or tipped from underneath (PropGrabber.Carry,
                     // PropGrabber.Furniture).
-                    if (Carrying) UpdateCarry();
+                    if (Carrying) UpdateCarry(md);
                     else if (Tipping) UpdateTip(md);
                     else UpdatePush(md);
                     break;
@@ -241,7 +241,7 @@ namespace Backrooms.Interaction
             else if (_shake && !HeldItem)
             {
                 float m = Held ? Held.Mass : 0f;
-                _shake.dip = Current == State.Holding ? Mathf.Lerp(0.2f, 1f, Mathf.Clamp01((m - 4f) / 40f)) : Current == State.Reaching ? 0.15f : Poking ? 0.08f : 0f;
+                _shake.dip = Current == State.Holding ? (CarryingPallet ? 0.12f : Mathf.Lerp(0.2f, 1f, Mathf.Clamp01((m - 4f) / 40f))) : Current == State.Reaching ? 0.15f : Poking ? 0.08f : 0f;
                 _shake.effort = Current == State.Holding ? Strain * Mathf.Clamp01(m / 25f) : 0f;
             }
         }
@@ -310,7 +310,8 @@ namespace Backrooms.Interaction
         void TryStart()
         {
             if (!Look(lookRange, out var hit, out var prop)) return;
-            prop.FindGrip(hit.point, hit.normal, Shoulder, _rng, out var grip, out var normal, out var edge);
+            // (The edge the marks show, so the hand goes where they said.)
+            prop.FindGrip(hit.point, hit.normal, Shoulder, _rng, prop == _markProp ? _markEdge : -1, out var grip, out var normal, out var edge, out _);
             // On the model, not the collider box: the hand placed on its real surface, fingers the best way round.
             if (prop.PlaceHand(grip, normal, Shoulder, out var palm, out var fingers, out bool hook))
             {
@@ -445,7 +446,7 @@ namespace Backrooms.Interaction
             if (_player)
             {
                 _player.botInput = null;
-                _player.lookScale = 1f; _player.moveScale = 1f; _player.noRun = false;
+                _player.lookScale = 1f; _player.pitchScale = 1f; _player.moveScale = 1f; _player.noRun = false;
             }
             Strain = 0f;
             Current = State.Idle;

@@ -19,6 +19,8 @@ namespace Backrooms.DebugTools
         public string folder;
         public string couch = "Chesterfield sofa";
         public bool done;
+        [Tooltip("Only the round 14 checks: any edge of a chair on its side, crouched low grabs, a box lifted, a pallet under the arm, hand depths.")]
+        public bool round14;
 
         readonly StringBuilder _log = new StringBuilder();
         WorldStreamer _ws;
@@ -35,6 +37,7 @@ namespace Backrooms.DebugTools
             if (!FindOpen(out var at, out float yaw)) { Finish("no open floor"); yield break; }
             _ctrl.Teleport(at, yaw);
             yield return new WaitForSeconds(0.5f);
+            if (round14) { yield return Round14(catalog); Finish("ok"); yield break; }
             Vector3 fwd = Flat(_ctrl.transform.forward).normalized;
 
             // ---- The couch, its back toward you ----
@@ -157,6 +160,154 @@ namespace Backrooms.DebugTools
             yield return Pockets(sofa);
             Finish("ok");
         }
+
+        IEnumerator Round14(System.Collections.Generic.List<ItemCatalog.Entry> catalog)
+        {
+            var body = _ws.player.GetComponent<FirstPersonBody>();
+            Vector3 home = _ctrl.transform.position;
+            float homeYaw = _ctrl.transform.eulerAngles.y;
+            Vector3 fwd = Flat(_ctrl.transform.forward).normalized;
+
+            // ---- An office chair on its side: how many of its edges can be taken, and do the marks hop about ----
+            var chair = catalog.Find(x => x.name == "Office chair").spawn(home + fwd * 1.15f + Vector3.up * 0.3f,
+                Quaternion.LookRotation(Vector3.Cross(Vector3.up, fwd)) * Quaternion.Euler(0f, 0f, 90f), false).GetComponent<MovableProp>();
+            yield return null;
+            chair.transform.position += Vector3.up * (home.y - chair.WorldBounds.min.y);
+            Physics.SyncTransforms();
+            yield return new WaitForSeconds(0.5f);
+            _log.AppendLine($"chair on its side: tilt {Tilt(chair):F0}, {chair.Shape.edges.Count} grab edges in all");
+            var wb = chair.WorldBounds;
+            Vector3 eye = Camera.main.transform.position, to = Flat(wb.center - eye).normalized, across = Vector3.Cross(Vector3.up, to);
+            var seen = new System.Collections.Generic.HashSet<int>();
+            int aims = 0, hinted = 0;
+            for (int v = 0; v < 6; v++)
+            for (int u = 0; u < 7; u++)
+            {
+                Vector3 p = wb.center + across * ((u / 6f - 0.5f) * wb.size.magnitude * 0.55f) + Vector3.up * ((v / 5f - 0.5f) * wb.size.y);
+                yield return AimDirect(p);
+                aims++;
+                if (_grab.MarkEdge >= 0) { hinted++; seen.Add(_grab.MarkEdge); }
+            }
+            _log.AppendLine($"swept {aims} aims over it: {hinted} offered a grab, on {seen.Count} different edges, hint '{_grab.HintText}'");
+            // A slow sweep across it at the middle's height: how often the marks change edge.
+            int changes = 0, last = -2;
+            for (int k = 0; k <= 40; k++)
+            {
+                Vector3 p = wb.center + across * ((k / 40f - 0.5f) * wb.size.magnitude * 0.5f);
+                Vector3 d = p - Camera.main.transform.position;
+                _ctrl.TeleportSafe(_ctrl.transform.position, Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg, -Mathf.Atan2(d.y, new Vector2(d.x, d.z).magnitude) * Mathf.Rad2Deg);
+                yield return null; yield return null;
+                int e = _grab.MarkEdge;
+                if (e != last && last != -2) changes++;
+                last = e;
+            }
+            _log.AppendLine($"slow sweep across it (41 steps): the marks changed edge {changes} times");
+            yield return AimDirect(wb.center);
+            Shot("r14_1_chair_side_aimed");
+            yield return Hold();
+            yield return new WaitForSeconds(0.6f);
+            Log($"chair on its side taken: {Carry(chair)}, {Depths(body)}");
+            Shot("r14_2_chair_side_carried");
+            _grab.botHold = false; yield return null; _grab.botHold = null;
+            yield return new WaitForSeconds(1f);
+            yield return Home(chair, home, homeYaw);
+
+            // ---- The couch, crouched, taken at the bottom of its front: it tips ----
+            fwd = Flat(_ctrl.transform.forward).normalized;
+            var sofa = catalog.Find(x => x.name.StartsWith(couch)).spawn(_ctrl.transform.position + fwd * 1.25f, Quaternion.LookRotation(-fwd), false).GetComponent<MovableProp>();
+            yield return new WaitForSeconds(1.2f);
+            _ctrl.SetStance(CamcorderPlayerController.Stance.Crouch);
+            yield return new WaitForSeconds(0.8f);
+            var sb = sofa.Shape.bounds;
+            yield return AimDirect(sofa.transform.TransformPoint(new Vector3(sb.center.x + 0.2f, sb.min.y + 0.07f, sb.max.z)));
+            _log.AppendLine($"crouched, aimed at the bottom of the couch's front: hint '{_grab.HintText}', edge {_grab.MarkEdge}");
+            Shot("r14_3_couch_low_aimed");
+            yield return Hold();
+            Log($"couch taken low, crouched: {Depths(body)}");
+            for (int i = 0; i < 200; i++) { _grab.botMouse = new Vector2(0f, 5f); if (i % 50 == 0) Log($"  tipping {i}: tilt {Tilt(sofa):F0}"); yield return null; }
+            _grab.botMouse = Vector2.zero;
+            yield return new WaitForSeconds(0.8f);
+            Log($"tipped: tilt {Tilt(sofa):F0}, {Depths(body)}");
+            Shot("r14_4_couch_tipped");
+            _grab.botHold = false; yield return null; _grab.botHold = null;
+            yield return new WaitForSeconds(1.5f);
+            _ctrl.SetStance(CamcorderPlayerController.Stance.Stand);
+            yield return new WaitForSeconds(0.6f);
+            yield return Home(sofa, home, homeYaw);
+
+            // ---- An armchair by the top, two hands: how deep are the hands ----
+            fwd = Flat(_ctrl.transform.forward).normalized;
+            var arm = catalog.Find(x => x.name.StartsWith("Armchair")).spawn(_ctrl.transform.position + fwd * 1.2f, Quaternion.LookRotation(fwd), false).GetComponent<MovableProp>();
+            yield return new WaitForSeconds(1f);
+            sb = arm.Shape.bounds;
+            yield return AimDirect(arm.transform.TransformPoint(new Vector3(sb.center.x, sb.max.y - 0.03f, sb.min.z + 0.06f)));
+            yield return Hold();
+            yield return new WaitForSeconds(0.4f);
+            Log($"armchair by the top: {Depths(body)}");
+            Shot("r14_5_armchair_top");
+            yield return Walk(new Vector2(0f, 0.8f), 1.2f);
+            Log($"armchair pushed: {Depths(body)}");
+            _grab.botHold = false; yield return null; _grab.botHold = null;
+            yield return new WaitForSeconds(1f);
+            yield return Home(arm, home, homeYaw);
+
+            // ---- A box, carried, lifted up to stack height and lowered to the floor ----
+            fwd = Flat(_ctrl.transform.forward).normalized;
+            var box = catalog.Find(x => x.name == "Cardboard box (medium)").spawn(_ctrl.transform.position + fwd * 0.9f, Quaternion.LookRotation(fwd), false).GetComponent<MovableProp>();
+            yield return new WaitForSeconds(1f);
+            yield return AimDirect(box.WorldBounds.center + Vector3.up * box.WorldBounds.extents.y * 0.9f);
+            yield return Hold();
+            yield return new WaitForSeconds(0.8f);
+            Log($"box carried: {Carry(box)}, {Depths(body)}");
+            float pitch0 = _ctrl.Pitch;
+            for (int i = 0; i < 90; i++) { _grab.botMouse = new Vector2(0f, 6f); yield return null; }
+            _grab.botMouse = Vector2.zero;
+            yield return new WaitForSeconds(0.5f);
+            Log($"box lifted: {Carry(box)}, view pitch {pitch0:F0} -> {_ctrl.Pitch:F0}, {Depths(body)}");
+            Shot("r14_6_box_lifted");
+            for (int i = 0; i < 200; i++) { _grab.botMouse = new Vector2(0f, -6f); yield return null; }
+            _grab.botMouse = Vector2.zero;
+            yield return new WaitForSeconds(0.6f);
+            Log($"box lowered: {Carry(box)}, {Depths(body)}");
+            Shot("r14_7_box_lowered");
+            _grab.botHold = false; yield return null; _grab.botHold = null;
+            yield return new WaitForSeconds(1f);
+            Log($"box let go: bottom {box.WorldBounds.min.y - _ctrl.transform.position.y:F2} m up, tilt {Tilt(box):F0}");
+
+            // ---- An empty pallet: under the arm, the camcorder at the eye ----
+            yield return Home(box, home, homeYaw);
+            fwd = Flat(_ctrl.transform.forward).normalized;
+            var pal = catalog.Find(x => x.name == "Pallet").spawn(_ctrl.transform.position + fwd * 1.0f, Quaternion.LookRotation(fwd), false).GetComponent<MovableProp>();
+            yield return new WaitForSeconds(1f);
+            var pb = pal.Shape.bounds;
+            yield return AimDirect(pal.transform.TransformPoint(new Vector3(0.1f, pb.max.y, pb.min.z + 0.04f)));
+            _log.AppendLine($"aimed at the pallet: hint '{_grab.HintText}'");
+            yield return Hold();
+            yield return new WaitForSeconds(0.8f);
+            Log($"pallet: {Carry(pal)}, {Depths(body)}");
+            yield return Walk(new Vector2(0f, 0.8f), 1.5f);
+            Log($"pallet walked: {Carry(pal)}");
+            Shot("r14_8_pallet");
+            _grab.botHold = false; yield return null; _grab.botHold = null;
+            yield return new WaitForSeconds(1f);
+        }
+
+        /// <summary>Back to the open spot the checks started at, the last prop out of the way.</summary>
+        IEnumerator Home(MovableProp done, Vector3 home, float yaw)
+        {
+            if (done) Destroy(done.gameObject);
+            yield return null;
+            _ctrl.Teleport(home, yaw);
+            yield return new WaitForSeconds(0.5f);
+        }
+
+        string Depths(FirstPersonBody body)
+        {
+            if (!body) return "no body";
+            body.HandDepths(out float r, out float l);
+            return $"hands in it: right {r * 100f:F1} cm, left {l * 100f:F1} cm";
+        }
+
 
         IEnumerator Pockets(MovableProp sofa)
         {

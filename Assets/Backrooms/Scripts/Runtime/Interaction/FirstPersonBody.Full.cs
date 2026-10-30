@@ -136,6 +136,21 @@ namespace Backrooms.Interaction
             }
         }
 
+        /// <summary>
+        /// For probes: how far the deepest finger joint (and the wrist) of each hand is inside what the hands hold (m, 0 if
+        /// none is), by its colliders (PropGrabber.ContactDistance). The left hand only while it holds too.
+        /// </summary>
+        public void HandDepths(out float right, out float left)
+        {
+            right = left = 0f;
+            if (!_grab || !_grab.HasContact) return;
+            if (_hand) right = Mathf.Max(right, -_grab.ContactDistance(_hand.position));
+            foreach (var j in _fingerJoints) if (j.t) right = Mathf.Max(right, -_grab.ContactDistance(j.t.position));
+            if (_lRig == null || !_grab.TwoHanded) return;
+            if (_lRig.hand) left = Mathf.Max(left, -_grab.ContactDistance(_lRig.hand.position));
+            foreach (var j in _lRig.joints) if (j.t) left = Mathf.Max(left, -_grab.ContactDistance(j.t.position));
+        }
+
         readonly System.Collections.Generic.List<Renderer> _camArm = new System.Collections.Generic.List<Renderer>();
         bool _camArmShown;
 
@@ -156,6 +171,7 @@ namespace Backrooms.Interaction
         }
 
         Vector3 _freeGrip;
+        float _leftOut;                  // how far the left hand is kept out from its grip, off what it holds (m)
         Quaternion _freeRot = Quaternion.identity;
         bool _freeInit;
 
@@ -174,12 +190,14 @@ namespace Backrooms.Interaction
             if (_grab.TwoHanded)
             {
                 Vector3 n = _grab.SecondNormal.normalized;
-                grip = _grab.SecondGrip + n * 0.012f;
-                // Fingers away from the body along the surface, the back of the hand out of it.
-                Vector3 fingers = Vector3.ProjectOnPlane(grip - shoulder, n);
+                grip = _grab.SecondGrip + n * (0.012f + _leftOut);
+                // Fingers the way the grip found fits the surface (PropGrabber.PlaceSecond), else away from the body along it;
+                // the back of the hand out of it. Closed round an edge they hook over, nearly flat on a face.
+                Vector3 fingers = Vector3.ProjectOnPlane(_grab.SecondFingers, n);
+                if (fingers.sqrMagnitude < 1e-4f) fingers = Vector3.ProjectOnPlane(grip - shoulder, n);
                 if (fingers.sqrMagnitude < 1e-4f) fingers = Vector3.ProjectOnPlane(yaw * Vector3.forward, n);
                 handRot = Quaternion.LookRotation(fingers.normalized, n);
-                curl = 0.8f;
+                curl = _grab.SecondCurl;
             }
             else
             {
@@ -210,6 +228,15 @@ namespace Backrooms.Interaction
             Orient(r.hand, r.handFingers, r.handBack, _freeRot * Vector3.forward, handBack);
             r.hand.position = wristAt;
             foreach (var j in r.joints) j.t.localRotation = j.rest * Quaternion.AngleAxis(curl * 62f * j.weight, j.axis);
+            // Out of what it holds: kept out by as far as any finger joint or the wrist went in, then let back slowly, so it
+            // rests on the surface (round 14: 3-7 cm into a box's side and an armchair's back; this arm has no finger contact).
+            if (_grab.TwoHanded)
+            {
+                float deep = r.hand ? -_grab.ContactDistance(r.hand.position) : 0f;
+                foreach (var j in r.joints) if (j.t) deep = Mathf.Max(deep, -_grab.ContactDistance(j.t.position));
+                _leftOut = deep > 0.002f ? Mathf.Min(_leftOut + deep * 0.6f, 0.08f) : Mathf.MoveTowards(_leftOut, 0f, Time.deltaTime * 0.02f);
+            }
+            else _leftOut = 0f;
         }
 
         /// <summary>

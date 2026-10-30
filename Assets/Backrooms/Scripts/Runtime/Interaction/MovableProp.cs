@@ -20,6 +20,7 @@ namespace Backrooms.Interaction
         [System.NonSerialized] public bool held;
 
         float _still;
+        BoxCollider _casters;             // an office chair's base: rolls only while it stands on it
         Vector3 _lastGoodPos;
         Quaternion _lastGoodRot;
 
@@ -89,11 +90,13 @@ namespace Backrooms.Interaction
             if (spec.kind == MovableKind.Pallet && spec.materials != null && spec.materials.Length > 0) BuildPallet(root, spec, builtMeshes);
 
             var shape = MovableShapes.Build(spec, root);
-            var mat = shape.rolls ? Rolling : Sliding(shape.friction);
+            // (Casters: only the base rolls, and only while it stands on them: MovableProp.FixedUpdate.)
+            BoxCollider baseCollider = null;
             foreach (var (c, s) in shape.boxes)
             {
                 var bc = root.AddComponent<BoxCollider>();
-                bc.center = c; bc.size = s; bc.sharedMaterial = mat;
+                bc.center = c; bc.size = s; bc.sharedMaterial = shape.rolls && !baseCollider ? Rolling : Sliding(shape.friction);
+                if (!baseCollider) baseCollider = bc;
                 if (spec.proxyMaterial && !OwnShadow(spec))
                 {
                     var px = new GameObject("ShadowProxy");
@@ -128,6 +131,7 @@ namespace Backrooms.Interaction
             root.AddComponent<Audio.ImpactSounder>();             // knocks, thumps and scraping (Audio/ImpactAudio)
             var mp = root.AddComponent<MovableProp>();
             mp.Spec = spec; mp.Shape = shape; mp.Body = rb;
+            if (shape.rolls) mp._casters = baseCollider;
             mp._ownedMeshes = builtMeshes;
             mp._lastGoodPos = position; mp._lastGoodRot = rotation;
             RuntimeIndoorReflections.Instance?.Prepare(root);
@@ -239,6 +243,13 @@ namespace Backrooms.Interaction
             {
                 Body.linearVelocity = Vector3.zero; Body.angularVelocity = Vector3.zero;
                 Body.position = _lastGoodPos; Body.rotation = _lastGoodRot;
+            }
+            // A chair on its side or upside down slides like anything else (round 14: on its casters' friction everywhere, one
+            // knocked over skated 10 m across the carpet).
+            if (_casters)
+            {
+                var want = transform.up.y > 0.8f ? Rolling : Sliding(Shape.friction);
+                if (_casters.sharedMaterial != want) _casters.sharedMaterial = want;
             }
             if (held) { _still = 0f; return; }
             bool still = Body.linearVelocity.sqrMagnitude < 0.0025f && Body.angularVelocity.sqrMagnitude < 0.01f;
@@ -432,8 +443,6 @@ namespace Backrooms.Interaction
             return best == float.MinValue ? grip : grip + normal * best;
         }
 
-        /// <summary>Closest grab spot to a point the player is looking at: on one of the prop's edges, or the
-        /// surface itself if no edge is near. A little randomness keeps grabs from looking identical.</summary>
         /// <summary>Its colliders' bounds in the world.</summary>
         public Bounds WorldBounds
         {
@@ -448,32 +457,71 @@ namespace Backrooms.Interaction
         }
 
         public bool FindGrip(Vector3 hitPoint, Vector3 hitNormal, Vector3 shoulder, System.Random rng, out Vector3 point, out Vector3 surfaceNormal, out Vector3 edgeDir)
+            => FindGrip(hitPoint, hitNormal, shoulder, rng, -1, out point, out surfaceNormal, out edgeDir, out _);
+
+        /// <summary>
+        /// The grab spot nearest where you look, on any of its edges (MovableShapes.BoxEdges: every open edge of its boxes,
+        /// whichever way it lies). The palm goes on the face beside the edge that is on top (fingers over the edge), else under
+        /// it, else on the face you look at, else the one toward you. The edges of the face you look at come first. <paramref name="prefer"/>
+        /// (the edge shown last) wins a near tie, so the marks do not flip between two edges about as near (round 14: they
+        /// popped from leg to leg).
+        /// </summary>
+        public bool FindGrip(Vector3 hitPoint, Vector3 hitNormal, Vector3 shoulder, System.Random rng, int prefer,
+                             out Vector3 point, out Vector3 surfaceNormal, out Vector3 edgeDir, out int edgeIndex)
         {
             float best = float.MaxValue;
-            point = hitPoint; surfaceNormal = hitNormal; edgeDir = Vector3.zero;
-            foreach (var e in Shape.edges)
+            point = hitPoint; surfaceNormal = hitNormal; edgeDir = Vector3.zero; edgeIndex = -1;
+            var edges = Shape.edges;
+            for (int i = 0; i < edges.Count; i++)
             {
+                var e = edges[i];
                 Vector3 a = transform.TransformPoint(e.a), b = transform.TransformPoint(e.b);
                 Vector3 ab = b - a;
                 float t = Mathf.Clamp01(Vector3.Dot(hitPoint - a, ab) / Mathf.Max(ab.sqrMagnitude, 1e-6f));
                 Vector3 c = a + ab * t;
                 float d = Vector3.Distance(c, hitPoint);
                 if (d > 0.5f) continue;
-                float score = d + 0.25f * Vector3.Distance(c, shoulder);
-                // Edges facing down, or away from you, only when clearly nearest (the hand goes under or round only then:
-                // the undersides are there for a chair lying on its side or upside down).
-                Vector3 wn = transform.TransformDirection(e.normal);
-                score += 0.3f * Mathf.Max(0f, -wn.y) + 0.2f * Mathf.Max(0f, Vector3.Dot(wn, (c - shoulder).normalized));
+                Vector3 n1 = transform.TransformDirection(e.normal), n2 = transform.TransformDirection(e.normal2);
+                bool twoFaced = n2.sqrMagnitude > 0.5f;
+                bool adjacent = Vector3.Dot(n1, hitNormal) > 0.7f || (twoFaced && Vector3.Dot(n2, hitNormal) > 0.7f);
+                float score = d + 0.1f * Vector3.Distance(c, shoulder) + (adjacent ? 0f : 0.1f) - (i == prefer ? 0.05f : 0f);
                 if (score >= best) continue;
                 best = score;
+                edgeIndex = i;
+                bool palmOn2 = twoFaced && PalmOnSecond(n1, n2, hitNormal, c - shoulder);
+                Vector3 n = palmOn2 ? n2 : n1, other = palmOn2 ? n1 : n2;
+                float inset = palmOn2 ? e.inset2 : e.inset;
                 // Not the exact same spot every time: a few centimetres either way along the edge.
                 float len = ab.magnitude;
                 float jitter = len > 0.1f ? (float)(rng.NextDouble() - 0.5) * Mathf.Min(0.1f, len * 0.3f) / len : 0f;
-                point = a + ab * Mathf.Clamp01(t + jitter);
-                surfaceNormal = transform.TransformDirection(e.normal);
+                point = a + ab * Mathf.Clamp01(t + jitter) - other * inset;
+                surfaceNormal = n;
                 edgeDir = ab / Mathf.Max(len, 1e-4f);
             }
             return best < float.MaxValue;
+        }
+
+        /// <summary>Which of an edge's two faces the palm goes on: the one on top (fingers over the edge); else the one
+        /// underneath (the hand goes under it, to lift or tip it: round 14, low grabs were hard to get); else the one looked
+        /// at; else toward you.</summary>
+        static bool PalmOnSecond(Vector3 n1, Vector3 n2, Vector3 looked, Vector3 fromShoulder)
+        {
+            if (n1.y > 0.7f || n2.y > 0.7f) return n2.y > n1.y;
+            if (n1.y < -0.7f || n2.y < -0.7f) return n2.y < n1.y;
+            float l1 = Vector3.Dot(n1, looked), l2 = Vector3.Dot(n2, looked);
+            if (Mathf.Max(l1, l2) > 0.7f) return l2 > l1;
+            return Vector3.Dot(n2, -fromShoulder) > Vector3.Dot(n1, -fromShoulder);
+        }
+
+        /// <summary>Where a hand goes on one face beside an edge (world): the segment in from the edge, and the face's normal.</summary>
+        public void EdgeSide(GrabEdge e, bool second, out Vector3 a, out Vector3 b, out Vector3 normal)
+        {
+            Vector3 n1 = transform.TransformDirection(e.normal), n2 = transform.TransformDirection(e.normal2);
+            Vector3 other = second ? n1 : n2;
+            float inset = second ? e.inset2 : e.inset;
+            a = transform.TransformPoint(e.a) - other * inset;
+            b = transform.TransformPoint(e.b) - other * inset;
+            normal = second ? n2 : n1;
         }
     }
 }

@@ -9,9 +9,11 @@ namespace Backrooms.Interaction
     /// its kind and is held there steady (moved to where the hands hold it; a wall or a door frame stops it, and held back
     /// half a second it is dropped). Nothing else is in the hands meanwhile. Let go and it drops.
     /// <list type="bullet">
-    /// <item>A box: upright in front of you, low (its bottom at the hips), a hand on each side.</item>
-    /// <item>An empty pallet: on its long edge at your side, the top edge at hip height, a little ahead of you, so you see
-    /// past it and it goes through doors. A loaded one (anything resting on it) is heavy: pushed (PropGrabber.Furniture).</item>
+    /// <item>A box: upright in front of you, low (its bottom at the hips), a hand on each side. Mouse up lifts it (up to
+    /// above your head, to stack it), down lowers it (to the floor); the view follows a little.</item>
+    /// <item>An empty pallet: on its long edge under your arm, the top edge at hip height, a little ahead of you, so you see
+    /// past it and it goes through doors; one hand, the camcorder stays up at the eye. A loaded one (anything resting on it)
+    /// is heavy: pushed (PropGrabber.Furniture).</item>
     /// <item>An office chair: upright, a little off the floor, ahead of you on the hand's side, by the top of its back.</item>
     /// </list>
     /// </summary>
@@ -25,6 +27,11 @@ namespace Backrooms.Interaction
         public bool IsLight(MovableProp p) => p && ((p.Spec.kind == MovableKind.Box && p.Mass <= carryMass)
                                                      || p.Spec.kind == MovableKind.OfficeChair
                                                      || (p.Spec.kind == MovableKind.Pallet && !PalletLoaded(p)));
+
+        /// <summary>An empty pallet, taken or being taken under the arm: one hand, the camcorder kept at the eye (round 14:
+        /// it went down onto its strap, though the pallet is under one arm).</summary>
+        bool UnderArm => Current == State.Holding ? CarryingPallet
+                       : Current == State.Reaching && _target && _target.Spec.kind == MovableKind.Pallet && IsLight(_target);
 
         /// <summary>Pushing something as low as a pallet: the hands are not kept within the arm's reach (they push where the
         /// body is bent over it), nor does the body bend all the way down to it.</summary>
@@ -44,6 +51,7 @@ namespace Backrooms.Interaction
         Vector3 _carryCentre;           // where its middle is carried (body frame) and how it is turned
         Quaternion _carryRot;
         float _carryT, _carryCaughtT, _carryArc;
+        float _carryLift;               // a box: how far the mouse has lifted (+) or lowered (-) it from the carry (m)
         float _palTopSide;              // a pallet: +1 or -1, which long edge (its local z) is on top
         Collider[] _carryColliders;
         CharacterController _cc;
@@ -72,7 +80,7 @@ namespace Backrooms.Interaction
         {
             if (!IsLight(Held)) return false;
             Handling = Hold.Carry;
-            _carryT = 0f; _carryCaughtT = 0f;
+            _carryT = 0f; _carryCaughtT = 0f; _carryLift = 0f;
             var inv = Quaternion.Inverse(transform.rotation);
             _carryFromPos = inv * (Held.Body.position - transform.position);
             _carryFromRot = inv * Held.Body.rotation;
@@ -119,7 +127,7 @@ namespace Backrooms.Interaction
                     break;
                 }
             }
-            TwoHanded = true;
+            TwoHanded = !UnderArm;
             _secondFarT = 0f;
             Held.Body.useGravity = false;
             // It swings past the body, not into it.
@@ -132,7 +140,7 @@ namespace Backrooms.Interaction
             void SetGrips(Vector3 a, Vector3 na, Vector3 bb, Vector3 nb)
             {
                 _gripLocal = a; _normalLocal = na; _edgeLocal = Vector3.zero; _fingersLocal = Vector3.zero;
-                _gripLocalB = bb; _normalLocalB = nb;
+                _gripLocalB = bb; _normalLocalB = nb; _fingersLocalB = Vector3.zero; _hookB = false;
             }
         }
 
@@ -178,7 +186,7 @@ namespace Backrooms.Interaction
         void CarryTarget(out Vector3 pos, out Quaternion rot)
         {
             Vector3 boundsMid = Held.Shape.bounds.center;
-            Vector3 p = _carryCentre - _carryRot * boundsMid;
+            Vector3 p = _carryCentre + CarryLiftOffset - _carryRot * boundsMid;
             float s = Mathf.SmoothStep(0f, 1f, _carryT);
             // (Up first, then over: lifted in an arc so it clears the floor as it turns.)
             Vector3 lp = Vector3.Lerp(_carryFromPos, p, s) + Vector3.up * (_carryArc * 4f * s * (1f - s));
@@ -187,10 +195,33 @@ namespace Backrooms.Interaction
             rot = transform.rotation * lr;
         }
 
-        /// <summary>Each frame while carrying: the mouse turns you as when walking; held back too long, it drops.</summary>
-        void UpdateCarry()
+        /// <summary>
+        /// A box lifted or lowered from its carry (body frame): up as far as its bottom 1.5 m above the feet (onto a stack),
+        /// down to the floor; further out as it goes up or down, clear of the head and the knees. Measured from the eye, so
+        /// crouched it is carried lower.
+        /// </summary>
+        Vector3 CarryLiftOffset => Held && Held.Spec.kind == MovableKind.Box ? new Vector3(0f, _carryLift + (_player.BaseEye - 1.58f), Mathf.Abs(_carryLift) * 0.18f) : Vector3.zero;
+
+        /// <summary>The range of the lift for the box held: its bottom from 3 cm to 1.5 m above the feet.</summary>
+        void CarryLiftRange(out float lo, out float hi)
+        {
+            float bottom = _carryCentre.y - Held.Spec.size.y * 0.5f + (_player.BaseEye - 1.58f);
+            lo = 0.03f - bottom; hi = Mathf.Max(lo, 1.5f - bottom);
+        }
+
+        /// <summary>Each frame while carrying: the mouse turns you as when walking (a box: mouse up and down lifts and
+        /// lowers it); held back too long, it drops.</summary>
+        void UpdateCarry(Vector2 md)
         {
             _carryT = Mathf.Min(1f, _carryT + Time.deltaTime / CarrySwingTime);
+            bool box = Held.Spec.kind == MovableKind.Box;
+            if (box && _carryT >= 1f)
+            {
+                CarryLiftRange(out float lo, out float hi);
+                _carryLift = Mathf.Clamp(_carryLift + md.y * mouseToMetres * 1.2f * _player.FovMultiplier, lo, hi);
+            }
+            // (Round 14, owner: to stack boxes, mouse up raises it. The view follows a third as far.)
+            _player.pitchScale = box ? 0.35f : 1f;
             _player.lookScale = 0.75f;
             _player.moveScale = Mathf.Lerp(0.95f, 0.75f, Mathf.Clamp01(Held.Mass / 20f));
             _player.noRun = true;

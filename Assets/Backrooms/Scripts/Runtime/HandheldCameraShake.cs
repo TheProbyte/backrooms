@@ -74,6 +74,9 @@ namespace Backrooms
         [System.NonSerialized] public float strap;
         /// <summary>What the hands hold while it hangs: the camera keeps out of it (pulled up toward the eye, over it).</summary>
         [System.NonSerialized] public Collider[] avoid;
+        /// <summary>While it hangs: a point it tips up or down to keep in the picture (a box lifted to stack it), or null.</summary>
+        [System.NonSerialized] public Vector3? strapLook;
+        float _strapLookW, _strapLookTip;
         Vector3 _clear;
         float _strapT;
         Vector3 _swing, _swingVel, _lastVel, _velF;
@@ -225,6 +228,14 @@ namespace Backrooms
                 _swing = Vector3.ClampMagnitude(_swing, 30f);
                 float tip = 10f + 0.25f * player.Pitch;
                 Vector3 wp = pivot.position + body.rotation * (new Vector3(0f, -0.34f, 0.1f) + pos * shakeIntensity * 1.3f);
+                // Kept on what the hands lift (round 14: a box raised to stack it went out of the top of the picture).
+                if (strapLook.HasValue)
+                {
+                    Vector3 d = strapLook.Value - wp;
+                    _strapLookTip = Mathf.Clamp(-Mathf.Atan2(d.y, new Vector2(d.x, d.z).magnitude) * Mathf.Rad2Deg + 8f, -50f, 60f);
+                }
+                _strapLookW = Mathf.MoveTowards(_strapLookW, strapLook.HasValue ? 1f : 0f, dt / 0.4f);
+                tip = Mathf.Lerp(tip, _strapLookTip, Mathf.SmoothStep(0f, 1f, _strapLookW));
                 // Not inside what you hold: up toward the eye until clear of it (eased, so it does not jump).
                 Vector3 clearTo = KeepClear(pivot.position, wp) - wp;
                 _clear = Vector3.Lerp(_clear, clearTo, 1f - Mathf.Exp(-dt / (clearTo.sqrMagnitude > _clear.sqrMagnitude ? 0.12f : 0.4f)));

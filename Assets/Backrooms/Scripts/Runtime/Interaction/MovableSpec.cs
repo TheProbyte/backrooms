@@ -46,12 +46,17 @@ namespace Backrooms.Interaction
         public static ulong SubId(ulong id, int n) => id ^ (((ulong)(n + 1) * 0x9E3779B97F4A7C15ul) & ~0xFFFFul);
     }
 
-    /// <summary>A place a hand can hold: a segment (prop-local) along an edge, and the way the surface under the palm faces.</summary>
+    /// <summary>
+    /// A place a hand can hold: a segment (prop-local) along an edge of one of its boxes, and the two faces either side of
+    /// it (the palm lies on one, the fingers go over onto the other), with how far in from the edge the palm lies on each.
+    /// </summary>
     public struct GrabEdge
     {
         public Vector3 a, b;
-        public Vector3 normal;
-        public GrabEdge(Vector3 a, Vector3 b, Vector3 normal) { this.a = a; this.b = b; this.normal = normal; }
+        public Vector3 normal, normal2;
+        public float inset, inset2;
+        public GrabEdge(Vector3 a, Vector3 b, Vector3 normal) { this.a = a; this.b = b; this.normal = normal; normal2 = Vector3.zero; inset = inset2 = 0f; }
+        public GrabEdge(Vector3 a, Vector3 b, Vector3 n1, Vector3 n2, float in1, float in2) { this.a = a; this.b = b; normal = n1; normal2 = n2; inset = in1; inset2 = in2; }
     }
 
     /// <summary>Physical shape of a movable prop: collider boxes (also its shadow proxies), grab edges, mass.</summary>
@@ -81,7 +86,6 @@ namespace Backrooms.Interaction
             }
             s.bounds = B;
             float x0 = B.min.x, x1 = B.max.x, z0 = B.min.z, z1 = B.max.z, top = B.max.y, h = B.size.y;
-            Vector3 up = Vector3.up;
             switch (spec.kind)
             {
                 case MovableKind.Sofa:
@@ -97,15 +101,6 @@ namespace Backrooms.Interaction
                     s.mass = spec.kind == MovableKind.Sofa ? 30f + 12f * B.size.x : 24f;
                     s.friction = 0.38f;
                     s.centreOfMass = new Vector3(B.center.x, B.min.y + h * 0.35f, B.center.z - B.size.z * 0.08f);
-                    s.edges.Add(new GrabEdge(new Vector3(x0 + 0.12f, top, z0 + backD * 0.5f), new Vector3(x1 - 0.12f, top, z0 + backD * 0.5f), up));
-                    s.edges.Add(new GrabEdge(new Vector3(x0 + arm * 0.5f, armTop, z0 + backD), new Vector3(x0 + arm * 0.5f, armTop, z1 - 0.04f), up));
-                    s.edges.Add(new GrabEdge(new Vector3(x1 - arm * 0.5f, armTop, z0 + backD), new Vector3(x1 - arm * 0.5f, armTop, z1 - 0.04f), up));
-                    // Underneath and round the sides (taken however it lies: on its back, its side, upside down).
-                    float yb = B.min.y + 0.03f;
-                    s.edges.Add(new GrabEdge(new Vector3(x0 + 0.1f, yb, z1 - 0.03f), new Vector3(x1 - 0.1f, yb, z1 - 0.03f), Vector3.down));
-                    s.edges.Add(new GrabEdge(new Vector3(x0 + 0.1f, yb, z0 + 0.03f), new Vector3(x1 - 0.1f, yb, z0 + 0.03f), Vector3.down));
-                    s.edges.Add(new GrabEdge(new Vector3(x0 + 0.02f, seatTop, z0 + 0.05f), new Vector3(x0 + 0.02f, top - 0.05f, z0 + 0.05f), Vector3.left));
-                    s.edges.Add(new GrabEdge(new Vector3(x1 - 0.02f, seatTop, z0 + 0.05f), new Vector3(x1 - 0.02f, top - 0.05f, z0 + 0.05f), Vector3.right));
                     break;
                 }
                 case MovableKind.OfficeChair:
@@ -119,16 +114,6 @@ namespace Backrooms.Interaction
                     s.mass = 12f;
                     s.centreOfMass = new Vector3(cx, B.min.y + 0.22f, cz);
                     s.rolls = true;
-                    s.edges.Add(new GrabEdge(new Vector3(cx - sw * 0.75f, top, z0 + 0.045f), new Vector3(cx + sw * 0.75f, top, z0 + 0.045f), up));
-                    s.edges.Add(new GrabEdge(new Vector3(cx - sw, seat1, z0 + 0.15f), new Vector3(cx - sw, seat1, z1 - 0.05f), up));
-                    s.edges.Add(new GrabEdge(new Vector3(cx + sw, seat1, z0 + 0.15f), new Vector3(cx + sw, seat1, z1 - 0.05f), up));
-                    // The back's sides, the seat's front and its underside, the star base: taken however it lies.
-                    s.edges.Add(new GrabEdge(new Vector3(cx - sw * 0.92f, seat1 + 0.05f, z0 + 0.045f), new Vector3(cx - sw * 0.92f, top - 0.04f, z0 + 0.045f), Vector3.left));
-                    s.edges.Add(new GrabEdge(new Vector3(cx + sw * 0.92f, seat1 + 0.05f, z0 + 0.045f), new Vector3(cx + sw * 0.92f, top - 0.04f, z0 + 0.045f), Vector3.right));
-                    s.edges.Add(new GrabEdge(new Vector3(cx - sw * 0.8f, seat1, z1 - 0.01f), new Vector3(cx + sw * 0.8f, seat1, z1 - 0.01f), Vector3.forward));
-                    s.edges.Add(new GrabEdge(new Vector3(cx - sw, seat0, z0 + 0.15f), new Vector3(cx - sw, seat0, z1 - 0.05f), Vector3.down));
-                    s.edges.Add(new GrabEdge(new Vector3(cx + sw, seat0, z0 + 0.15f), new Vector3(cx + sw, seat0, z1 - 0.05f), Vector3.down));
-                    s.edges.Add(new GrabEdge(new Vector3(x0 + 0.05f, B.min.y + 0.08f, cz), new Vector3(x1 - 0.05f, B.min.y + 0.08f, cz), up));
                     break;
                 }
                 case MovableKind.Table:
@@ -140,36 +125,16 @@ namespace Backrooms.Interaction
                     s.mass = 20f + 16f * L;
                     s.friction = 0.4f;
                     s.centreOfMass = new Vector3(0f, T * 0.6f, 0f);
-                    const float e = 0.03f;
-                    s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.1f, T, -D * 0.5f + e), new Vector3(L * 0.5f - 0.1f, T, -D * 0.5f + e), up));
-                    s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.1f, T, D * 0.5f - e), new Vector3(L * 0.5f - 0.1f, T, D * 0.5f - e), up));
-                    s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + e, T, -D * 0.5f + 0.1f), new Vector3(-L * 0.5f + e, T, D * 0.5f - 0.1f), up));
-                    s.edges.Add(new GrabEdge(new Vector3(L * 0.5f - e, T, -D * 0.5f + 0.1f), new Vector3(L * 0.5f - e, T, D * 0.5f - 0.1f), up));
-                    // Under the top's long edges, and down the legs (a table on its side or upside down).
-                    s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.1f, T - 0.05f, -D * 0.5f + e), new Vector3(L * 0.5f - 0.1f, T - 0.05f, -D * 0.5f + e), Vector3.down));
-                    s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.1f, T - 0.05f, D * 0.5f - e), new Vector3(L * 0.5f - 0.1f, T - 0.05f, D * 0.5f - e), Vector3.down));
-                    for (int i = -1; i <= 1; i += 2)
-                        s.edges.Add(new GrabEdge(new Vector3(i * L * 0.32f, 0.08f, -D * 0.4f), new Vector3(i * L * 0.32f, T - 0.1f, -D * 0.4f), Vector3.back));
                     break;
                 }
                 case MovableKind.Pallet:
                 {
-                    // One box round it (the slats are too thin to matter); taken by the deck's edges, or the bottom's (on its side).
+                    // One box round it (the slats are too thin to matter).
                     const float L = Generation.PalletGeometry.Length, W = Generation.PalletGeometry.Width, H = Generation.PalletGeometry.Height;
                     Box(s, -L * 0.5f, L * 0.5f, 0f, H, -W * 0.5f, W * 0.5f);
                     s.mass = 20f;
                     s.friction = 0.5f;
                     s.centreOfMass = new Vector3(0f, H * 0.5f, 0f);
-                    const float e = 0.03f;
-                    for (int k = 0; k < 2; k++)
-                    {
-                        float y = k == 0 ? H : 0f;
-                        Vector3 n = k == 0 ? up : Vector3.down;
-                        s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.08f, y, -W * 0.5f + e), new Vector3(L * 0.5f - 0.08f, y, -W * 0.5f + e), n));
-                        s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.08f, y, W * 0.5f - e), new Vector3(L * 0.5f - 0.08f, y, W * 0.5f - e), n));
-                        s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + e, y, -W * 0.5f + 0.08f), new Vector3(-L * 0.5f + e, y, W * 0.5f - 0.08f), n));
-                        s.edges.Add(new GrabEdge(new Vector3(L * 0.5f - e, y, -W * 0.5f + 0.08f), new Vector3(L * 0.5f - e, y, W * 0.5f - 0.08f), n));
-                    }
                     break;
                 }
                 default:
@@ -180,20 +145,77 @@ namespace Backrooms.Interaction
                     s.mass = (full ? 14f : 1.5f) + z.x * z.y * z.z * (full ? 60f : 25f);
                     s.centreOfMass = new Vector3(0f, z.y * 0.45f, 0f);
                     s.friction = 0.45f;
-                    const float e = 0.025f;
-                    s.edges.Add(new GrabEdge(new Vector3(-z.x * 0.5f + 0.04f, z.y, -z.z * 0.5f + e), new Vector3(z.x * 0.5f - 0.04f, z.y, -z.z * 0.5f + e), up));
-                    s.edges.Add(new GrabEdge(new Vector3(-z.x * 0.5f + 0.04f, z.y, z.z * 0.5f - e), new Vector3(z.x * 0.5f - 0.04f, z.y, z.z * 0.5f - e), up));
-                    s.edges.Add(new GrabEdge(new Vector3(-z.x * 0.5f + e, z.y, -z.z * 0.5f + 0.04f), new Vector3(-z.x * 0.5f + e, z.y, z.z * 0.5f - 0.04f), up));
-                    s.edges.Add(new GrabEdge(new Vector3(z.x * 0.5f - e, z.y, -z.z * 0.5f + 0.04f), new Vector3(z.x * 0.5f - e, z.y, z.z * 0.5f - 0.04f), up));
-                    // The bottom's edges (on its side or upside down they are on top).
-                    s.edges.Add(new GrabEdge(new Vector3(-z.x * 0.5f + 0.04f, 0f, -z.z * 0.5f + e), new Vector3(z.x * 0.5f - 0.04f, 0f, -z.z * 0.5f + e), Vector3.down));
-                    s.edges.Add(new GrabEdge(new Vector3(-z.x * 0.5f + 0.04f, 0f, z.z * 0.5f - e), new Vector3(z.x * 0.5f - 0.04f, 0f, z.z * 0.5f - e), Vector3.down));
-                    s.edges.Add(new GrabEdge(new Vector3(-z.x * 0.5f + e, 0f, -z.z * 0.5f + 0.04f), new Vector3(-z.x * 0.5f + e, 0f, z.z * 0.5f - 0.04f), Vector3.down));
-                    s.edges.Add(new GrabEdge(new Vector3(z.x * 0.5f - e, 0f, -z.z * 0.5f + 0.04f), new Vector3(z.x * 0.5f - e, 0f, z.z * 0.5f - 0.04f), Vector3.down));
                     break;
                 }
             }
+            BoxEdges(s);
             return s;
+        }
+
+        /// <summary>
+        /// Grab edges from the collider boxes themselves (round 14, owner: "I want to be able to grab any edge of something";
+        /// a chair on its side could only be taken by a leg, the edges were a hand-written list for it standing up). Every
+        /// edge of every box where both faces beside it are open (not against another of its boxes), in runs: a sofa's seat
+        /// front between its arms, a table's legs and the underside of its top, every edge of a box or a pallet. Whichever
+        /// way it lies, whatever is on top has edges to take.
+        /// </summary>
+        static void BoxEdges(MovableShape s)
+        {
+            s.edges.Clear();
+            for (int bi = 0; bi < s.boxes.Count; bi++)
+            {
+                var (c, size) = s.boxes[bi];
+                Vector3 h = size * 0.5f;
+                for (int k = 0; k < 3; k++)
+                {
+                    int i = (k + 1) % 3, j = (k + 2) % 3;
+                    float len = size[k];
+                    if (len < 0.06f) continue;
+                    Vector3 ek = Axis(k), ei = Axis(i), ej = Axis(j);
+                    for (int si = -1; si <= 1; si += 2)
+                    for (int sj = -1; sj <= 1; sj += 2)
+                    {
+                        Vector3 n1 = ei * si, n2 = ej * sj;
+                        Vector3 mid = c + n1 * h[i] + n2 * h[j];
+                        // Palm on face n1: in from the edge across that face (a thin board: less), and the same for n2.
+                        float in1 = Mathf.Min(0.03f, size[j] * 0.4f), in2 = Mathf.Min(0.03f, size[i] * 0.4f);
+                        float trim = Mathf.Min(0.04f, len * 0.15f);
+                        Vector3 a = mid - ek * (h[k] - trim), b = mid + ek * (h[k] - trim);
+                        int n = Mathf.Max(2, Mathf.CeilToInt((b - a).magnitude / 0.04f));
+                        int runStart = -1;
+                        for (int q = 0; q <= n + 1; q++)
+                        {
+                            bool open = q <= n && Open(s, Vector3.Lerp(a, b, q / (float)n), n1, n2, in1, in2);
+                            if (open && runStart < 0) runStart = q;
+                            if (!open && runStart >= 0)
+                            {
+                                Vector3 ra = Vector3.Lerp(a, b, runStart / (float)n), rb = Vector3.Lerp(a, b, (q - 1) / (float)n);
+                                if ((rb - ra).magnitude >= 0.05f || len < 0.12f) s.edges.Add(new GrabEdge(ra, rb, n1, n2, in1, in2));
+                                runStart = -1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        static Vector3 Axis(int k) => k == 0 ? Vector3.right : k == 1 ? Vector3.up : Vector3.forward;
+
+        /// <summary>Both faces beside an edge are open there (just off each face, and just round the corner, no other box).</summary>
+        static bool Open(MovableShape s, Vector3 p, Vector3 n1, Vector3 n2, float in1, float in2)
+        {
+            const float off = 0.012f;
+            return !InAny(s, p + n1 * off - n2 * in1) && !InAny(s, p + n2 * off - n1 * in2) && !InAny(s, p + (n1 + n2) * off);
+        }
+
+        static bool InAny(MovableShape s, Vector3 p)
+        {
+            foreach (var (c, size) in s.boxes)
+            {
+                Vector3 d = p - c, h = size * 0.5f + Vector3.one * 0.002f;
+                if (Mathf.Abs(d.x) < h.x && Mathf.Abs(d.y) < h.y && Mathf.Abs(d.z) < h.z) return true;
+            }
+            return false;
         }
 
         static void Box(MovableShape s, float x0, float x1, float y0, float y1, float z0, float z1)

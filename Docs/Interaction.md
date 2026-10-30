@@ -3,7 +3,10 @@
 ## Controls
 - **Hold left mouse** on furniture or a box within about 2.4 m. If it is a little too far you step in; if it
   is low you bend down. The right hand takes the nearest grab edge to where you look, a few centimetres
-  different each time.
+  different each time. Every open edge of a prop's collider boxes is a grab edge, whichever way it lies (round 14:
+  `MovableShapes.BoxEdges`; a chair on its side could only be taken by a leg). The palm goes on the face beside the edge
+  that is on top (fingers over the edge), else under it (to lift or tip it), else on the face you look at. The edges of
+  the face you look at come first, and the edge the marks show keeps them in a near tie, so they do not hop between two.
 - **Heavy things** (a couch, an armchair, a table, a heavy paper-filled box, a loaded pallet; round 12, owner's design,
   `PropGrabber.Furniture.cs`), taken by where you hold left mouse on them:
   - **By the top** (anywhere on top: the back, an arm, a side, a pallet's deck edge): both hands on the edge, the
@@ -20,11 +23,16 @@
   - The old heave (a sharp mouse flick up) and R to twist are gone.
 - **Light things** (a box light enough, an empty pallet, an office chair; `PropGrabber.Carry.cs`): taken up like an item,
   by themselves, with both hands (the camcorder on its strap), and held steady in a place for each kind: a box upright,
-  low in front of you (its bottom at the hips), a hand each side; an empty pallet on its long edge at your side; an office
+  low in front of you (its bottom at the hips), a hand each side, **mouse up lifts it** (its bottom up to 1.5 m, to stack
+  boxes), **down lowers it** to the floor, the view following a third as far; an empty pallet on its long edge under
+  your arm, one hand, the camcorder staying up at the eye (round 14); an office
   chair upright ahead on the hand's side, 8 cm off the floor, by the top of its back. It follows you as you walk and turn;
   a wall or door frame stops it, and held back half a second it is dropped ("IT CAUGHT ON SOMETHING"). Let go and it
   drops (a pallet often stays standing on its edge). A pallet with anything on it is heavy: pushed, the boxes riding on
   it. While the hands go for a pallet or hold it, the feet do not step up onto it.
+- **The second hand** goes on the model's real surface, its fingers the way that fits there (`MovableProp.PlaceHand`, as
+  the right hand), hooked round an edge or nearly flat on a face (round 14: it was on the collider box, in the cushions,
+  its fingers always closed into what it held).
 - **Grabs never silently do nothing**: if the hand cannot get onto the spot as planned it takes it anyway when the palm is
   near enough (within the arm's reach and 35 cm), else the hint line says "CAN'T REACH" (items too).
 - **The hint line** (`PropGrabber.Hints.cs`): small camcorder lettering at the bottom of the picture, always: what a click
@@ -242,7 +250,7 @@ Movable kinds: sofa, armchair, office chair (casters, low friction), conference 
 (new in world version 5: a few against walls in offices). Floor lamps, clocks and racks stay fixed.
 
 Tuning: `PropGrabber` (reach, maxPush, maxLift, stiffness, mouseToMetres, shove), masses and frictions in
-`MovableShapes.Build`, grab edges per kind there too.
+`MovableShapes.Build`; grab edges come from its collider boxes (`MovableShapes.BoxEdges`).
 
 ## Body model
 `Tools/Blender/make_player_rig.py` builds the skinned arm (a modelled hand with tapered fingers, knuckles, creases,

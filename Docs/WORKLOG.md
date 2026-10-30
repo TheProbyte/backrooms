@@ -15,6 +15,31 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Handling round 14: any edge, box lift, pallet under the arm, hands out of things
+
+- Owner: a chair on its side could only be taken by a leg, the marks hopping from one leg to the other. Grab edges were
+  a hand-written list per kind, for it standing up. Now every open edge of its collider boxes is one, in runs where both
+  faces beside it are clear of its other boxes (`MovableShapes.BoxEdges`), whichever way it lies. The palm goes on the
+  face beside the edge that is on top (fingers over it), else the one underneath (the hand goes under to lift or tip),
+  else the one looked at; the edges of the face you look at come first, and the edge the marks show keeps them in a near
+  tie (`MovableProp.FindGrip`). The marks are drawn where the palm will go on the model (on the collider, a couch's
+  bottom edge showed on the carpet in front of its legs).
+- Owner: grabbing low was hard. Down-facing edges used to count against an edge; now the face you look at decides, so
+  crouched at a couch's low front you get its bottom edge and tip it (to 91 degrees, camera 0.53 to 0.68 m crouched).
+- Owner: an empty pallet no longer puts the camcorder on its strap: one hand, under the arm, the camera at the eye.
+- Owner: a carried box is lifted by mouse up (its bottom up to 1.5 m, to stack) and lowered by mouse down (to the
+  floor, the body bending), the view following a third as far (`CamcorderPlayerController.pitchScale`); the strap
+  camera tips up to keep a lifted box in the picture (`HandheldCameraShake.strapLook`).
+- Owner: hands went into things. The left hand was left on the collider box and its fingers always closed to 0.8 (a
+  fist) into whatever it held: 3.4 to 7.2 cm into a box's side and an armchair's back. It is now placed on the model as
+  the right one is (`PropGrabber.PlaceSecond`, `PlaceHand`), hooked only over an edge, nearly flat on a face, and kept
+  out by as far as any of its joints went in (`FirstPersonBody.HandDepths` measures): 0 cm everywhere checked.
+- An office chair's casters roll only while it stands on them (knocked over, it skated 10-16 m across the carpet).
+- Checked with `Debug/HandlingProbe.cs` (`round14`, World 3, erased): chair on its side, 31 of 42 aims offered a grab on
+  7 edges, a slow sweep across it changed edge 6 times, taken and carried; couch crouched tipped; armchair pushed; box
+  lifted to 1.43 m and lowered to 0.03 m; pallet under the arm, camera 1.52 m. EditMode 149/149.
+- Open: not played by the owner; a long couch tipped onto its end still leaves the hands a little off its edge.
+
 ## 2026-10-30 - Handling fixes: camera rises, no spinning, steady grab marks
 
 - Owner: the camera stayed at the floor after taking something low (a pallet, a couch's underside) and did not rise as
