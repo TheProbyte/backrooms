@@ -100,6 +100,12 @@ namespace Backrooms.Interaction
                     s.edges.Add(new GrabEdge(new Vector3(x0 + 0.12f, top, z0 + backD * 0.5f), new Vector3(x1 - 0.12f, top, z0 + backD * 0.5f), up));
                     s.edges.Add(new GrabEdge(new Vector3(x0 + arm * 0.5f, armTop, z0 + backD), new Vector3(x0 + arm * 0.5f, armTop, z1 - 0.04f), up));
                     s.edges.Add(new GrabEdge(new Vector3(x1 - arm * 0.5f, armTop, z0 + backD), new Vector3(x1 - arm * 0.5f, armTop, z1 - 0.04f), up));
+                    // Underneath and round the sides (taken however it lies: on its back, its side, upside down).
+                    float yb = B.min.y + 0.03f;
+                    s.edges.Add(new GrabEdge(new Vector3(x0 + 0.1f, yb, z1 - 0.03f), new Vector3(x1 - 0.1f, yb, z1 - 0.03f), Vector3.down));
+                    s.edges.Add(new GrabEdge(new Vector3(x0 + 0.1f, yb, z0 + 0.03f), new Vector3(x1 - 0.1f, yb, z0 + 0.03f), Vector3.down));
+                    s.edges.Add(new GrabEdge(new Vector3(x0 + 0.02f, seatTop, z0 + 0.05f), new Vector3(x0 + 0.02f, top - 0.05f, z0 + 0.05f), Vector3.left));
+                    s.edges.Add(new GrabEdge(new Vector3(x1 - 0.02f, seatTop, z0 + 0.05f), new Vector3(x1 - 0.02f, top - 0.05f, z0 + 0.05f), Vector3.right));
                     break;
                 }
                 case MovableKind.OfficeChair:
@@ -116,6 +122,13 @@ namespace Backrooms.Interaction
                     s.edges.Add(new GrabEdge(new Vector3(cx - sw * 0.75f, top, z0 + 0.045f), new Vector3(cx + sw * 0.75f, top, z0 + 0.045f), up));
                     s.edges.Add(new GrabEdge(new Vector3(cx - sw, seat1, z0 + 0.15f), new Vector3(cx - sw, seat1, z1 - 0.05f), up));
                     s.edges.Add(new GrabEdge(new Vector3(cx + sw, seat1, z0 + 0.15f), new Vector3(cx + sw, seat1, z1 - 0.05f), up));
+                    // The back's sides, the seat's front and its underside, the star base: taken however it lies.
+                    s.edges.Add(new GrabEdge(new Vector3(cx - sw * 0.92f, seat1 + 0.05f, z0 + 0.045f), new Vector3(cx - sw * 0.92f, top - 0.04f, z0 + 0.045f), Vector3.left));
+                    s.edges.Add(new GrabEdge(new Vector3(cx + sw * 0.92f, seat1 + 0.05f, z0 + 0.045f), new Vector3(cx + sw * 0.92f, top - 0.04f, z0 + 0.045f), Vector3.right));
+                    s.edges.Add(new GrabEdge(new Vector3(cx - sw * 0.8f, seat1, z1 - 0.01f), new Vector3(cx + sw * 0.8f, seat1, z1 - 0.01f), Vector3.forward));
+                    s.edges.Add(new GrabEdge(new Vector3(cx - sw, seat0, z0 + 0.15f), new Vector3(cx - sw, seat0, z1 - 0.05f), Vector3.down));
+                    s.edges.Add(new GrabEdge(new Vector3(cx + sw, seat0, z0 + 0.15f), new Vector3(cx + sw, seat0, z1 - 0.05f), Vector3.down));
+                    s.edges.Add(new GrabEdge(new Vector3(x0 + 0.05f, B.min.y + 0.08f, cz), new Vector3(x1 - 0.05f, B.min.y + 0.08f, cz), up));
                     break;
                 }
                 case MovableKind.Table:
@@ -132,6 +145,11 @@ namespace Backrooms.Interaction
                     s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.1f, T, D * 0.5f - e), new Vector3(L * 0.5f - 0.1f, T, D * 0.5f - e), up));
                     s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + e, T, -D * 0.5f + 0.1f), new Vector3(-L * 0.5f + e, T, D * 0.5f - 0.1f), up));
                     s.edges.Add(new GrabEdge(new Vector3(L * 0.5f - e, T, -D * 0.5f + 0.1f), new Vector3(L * 0.5f - e, T, D * 0.5f - 0.1f), up));
+                    // Under the top's long edges, and down the legs (a table on its side or upside down).
+                    s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.1f, T - 0.05f, -D * 0.5f + e), new Vector3(L * 0.5f - 0.1f, T - 0.05f, -D * 0.5f + e), Vector3.down));
+                    s.edges.Add(new GrabEdge(new Vector3(-L * 0.5f + 0.1f, T - 0.05f, D * 0.5f - e), new Vector3(L * 0.5f - 0.1f, T - 0.05f, D * 0.5f - e), Vector3.down));
+                    for (int i = -1; i <= 1; i += 2)
+                        s.edges.Add(new GrabEdge(new Vector3(i * L * 0.32f, 0.08f, -D * 0.4f), new Vector3(i * L * 0.32f, T - 0.1f, -D * 0.4f), Vector3.back));
                     break;
                 }
                 default:
@@ -147,6 +165,11 @@ namespace Backrooms.Interaction
                     s.edges.Add(new GrabEdge(new Vector3(-z.x * 0.5f + 0.04f, z.y, z.z * 0.5f - e), new Vector3(z.x * 0.5f - 0.04f, z.y, z.z * 0.5f - e), up));
                     s.edges.Add(new GrabEdge(new Vector3(-z.x * 0.5f + e, z.y, -z.z * 0.5f + 0.04f), new Vector3(-z.x * 0.5f + e, z.y, z.z * 0.5f - 0.04f), up));
                     s.edges.Add(new GrabEdge(new Vector3(z.x * 0.5f - e, z.y, -z.z * 0.5f + 0.04f), new Vector3(z.x * 0.5f - e, z.y, z.z * 0.5f - 0.04f), up));
+                    // The bottom's edges (on its side or upside down they are on top).
+                    s.edges.Add(new GrabEdge(new Vector3(-z.x * 0.5f + 0.04f, 0f, -z.z * 0.5f + e), new Vector3(z.x * 0.5f - 0.04f, 0f, -z.z * 0.5f + e), Vector3.down));
+                    s.edges.Add(new GrabEdge(new Vector3(-z.x * 0.5f + 0.04f, 0f, z.z * 0.5f - e), new Vector3(z.x * 0.5f - 0.04f, 0f, z.z * 0.5f - e), Vector3.down));
+                    s.edges.Add(new GrabEdge(new Vector3(-z.x * 0.5f + e, 0f, -z.z * 0.5f + 0.04f), new Vector3(-z.x * 0.5f + e, 0f, z.z * 0.5f - 0.04f), Vector3.down));
+                    s.edges.Add(new GrabEdge(new Vector3(z.x * 0.5f - e, 0f, -z.z * 0.5f + 0.04f), new Vector3(z.x * 0.5f - e, 0f, z.z * 0.5f - 0.04f), Vector3.down));
                     break;
                 }
             }

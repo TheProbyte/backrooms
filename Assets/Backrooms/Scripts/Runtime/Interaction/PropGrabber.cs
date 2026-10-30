@@ -5,7 +5,8 @@ namespace Backrooms.Interaction
 {
     /// <summary>
     /// The player's free (right) hand: grab, drag, tip and shove movable props, hold items (see
-    /// PropGrabber.Items.cs). The left hand keeps the camcorder, so it is always one-handed.
+    /// PropGrabber.Items.cs). The left hand keeps the camcorder, unless it hangs on its strap (H: PropGrabber.Furniture),
+    /// when furniture is taken with both hands; R held turns what the hand holds.
     ///
     /// Hold left mouse on a prop within reach (step in automatically if it is a little too far). The hand
     /// takes the nearest grab edge to where you look (with a little variation, never the identical spot).
@@ -183,6 +184,7 @@ namespace Backrooms.Interaction
             bool shovePressed = botShove || (focus && mouse != null && mouse.rightButton.wasPressedThisFrame);
             botShove = false;
             Vector2 md = botHold.HasValue ? botMouse : focus && mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
+            UpdateStrapKey(focus || botStrap);
 
             bool free = !HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && focus;
             AimedPoke = free ? LookPoke() : null;
@@ -213,7 +215,9 @@ namespace Backrooms.Interaction
                 case State.Holding:
                     if (!hold || !Held) { Release(!hold ? "let go" : "prop gone"); break; }
                     if (shovePressed) { ShoveAndRelease(); break; }
-                    UpdateHold(md);
+                    // R held: the mouse turns it about the grip (PropGrabber.Furniture) instead of moving your end.
+                    if (TwistHeld(focus || botTwist.HasValue)) { UpdateTwist(md); UpdateHold(Vector2.zero); }
+                    else { EndTwistSteps(); UpdateHold(md); }
                     break;
             }
             if (_poke != PokePhase.None) UpdatePoke();
@@ -225,8 +229,9 @@ namespace Backrooms.Interaction
             UpdateReachHinge();
             UpdateHandPose();
 
-            // Camcorder hand: dips while the other hand works, trembles with effort.
-            if (_shake && !HeldItem)
+            // Camcorder hand: dips while the other hand works, trembles with effort (not on its strap: no hand holds it).
+            if (_shake && !HeldItem && CamcorderOnStrap) { _shake.dip = 0f; _shake.effort = 0f; }
+            else if (_shake && !HeldItem)
             {
                 float m = Held ? Held.Mass : 0f;
                 _shake.dip = Current == State.Holding ? Mathf.Lerp(0.2f, 1f, Mathf.Clamp01((m - 4f) / 40f)) : Current == State.Reaching ? 0.15f : Poking ? 0.08f : 0f;
@@ -384,6 +389,7 @@ namespace Backrooms.Interaction
             _offset = ClampOffset(Quaternion.Inverse(transform.rotation) * (grip - StandShoulder));
             _carryRel = Quaternion.Inverse(transform.rotation) * Held.transform.rotation;
             _slipT = 0f;
+            AttachFurniture();
         }
 
         void Cancel()
@@ -411,6 +417,7 @@ namespace Backrooms.Interaction
                 Held.held = false;
                 Held.Body.angularDamping = _savedAngularDamping;
             }
+            ReleaseFurniture();
             Held = null;
             _target = null;
             if (_player)
@@ -504,7 +511,8 @@ namespace Backrooms.Interaction
             // Lost grip: the prop got stuck or was pulled out of reach, or the hand cannot stay on it.
             float d = Vector3.Distance(grip, ReachShoulder);
             bool off = d > ArmReach + 0.15f || PalmError > 0.1f;
-            _slipT = off ? _slipT + Time.deltaTime : 0f;
+            // (Not while the hands work it round: the grip lags the turn a moment.)
+            _slipT = off && !TurningNow ? _slipT + Time.deltaTime : off ? _slipT : 0f;
             if (_slipT > 0.4f) Release($"slipped (grip {d:F2} m from the shoulder, palm {PalmError * 100f:F0} cm off it)");
         }
 
@@ -529,6 +537,7 @@ namespace Backrooms.Interaction
             F = h + Vector3.up * up;
             rb.AddForceAtPosition(F, G);
             _force = F;
+            FurnitureForces(rb, T, carry);
             if (carry)
             {
                 // Carried: it keeps its angle in the hand.

@@ -69,6 +69,12 @@ namespace Backrooms
         [System.NonSerialized] public float effort;
         /// <summary>How far the camcorder hand dips while the other hand works (0..1, set by PropGrabber).</summary>
         [System.NonSerialized] public float dip;
+        /// <summary>1: the camcorder hangs on its strap at the chest (both hands free: PropGrabber H), still recording. It
+        /// looks ahead and down from there, swings like a pendulum when you start, stop and turn, and bobs with the steps.</summary>
+        [System.NonSerialized] public float strap;
+        float _strapT;
+        Vector3 _swing, _swingVel, _lastVel, _velF;
+        float _lastYaw;
         /// <summary>How hard the operator is breathing (set by Interaction.BodyPresence): above 0 deeper, below 0 shallower.</summary>
         [System.NonSerialized] public float exertion;
         /// <summary>Where the breath is (radians; in from 0, out from pi).</summary>
@@ -189,9 +195,47 @@ namespace Backrooms
             if (float.IsNaN(_jolt.x + _jolt.y + _jolt.z) || float.IsNaN(_joltVel.x + _joltVel.y + _joltVel.z)) _jolt = _joltVel = Vector3.zero;
             _jolt = Vector3.ClampMagnitude(_jolt, 20f);
             // Held a little out in front of the eye (CamcorderPlayerController.CamcorderHold), the shake on top.
-            transform.localPosition = (player ? player.CamcorderHold : Vector3.zero) + pos * shakeIntensity;
-            transform.localRotation = Quaternion.Euler(rot * shakeIntensity + _jolt);
+            Vector3 lp = (player ? player.CamcorderHold : Vector3.zero) + pos * shakeIntensity;
+            Quaternion lr = Quaternion.Euler(rot * shakeIntensity + _jolt);
+            _strapT = Mathf.MoveTowards(_strapT, Mathf.Clamp01(strap), dt / 0.7f);
+            var pivot = transform.parent;
+            if (_strapT > 0f && player && pivot)
+            {
+                // On the strap: at the chest, facing the way the body does, tipped down; the look moves it only as far as
+                // the chest leans. A pendulum: it swings back as you set off, forward as you stop, out as you turn.
+                var body = player.transform;
+                // (From the body's smoothed velocity: frame-to-frame acceleration is noise, and shook it.)
+                Vector3 v = Quaternion.Inverse(body.rotation) * player.PlanarVelocity;
+                _velF = Vector3.Lerp(_velF, v, 1f - Mathf.Exp(-dt / 0.12f));
+                Vector3 acc = dt > 1e-4f ? (_velF - _lastVel) / dt : Vector3.zero;
+                float yawRate = dt > 1e-4f ? Mathf.DeltaAngle(_lastYaw, body.eulerAngles.y) / dt : 0f;
+                if (Mathf.Abs(yawRate) > 400f) yawRate = 0f;                                   // a teleport, not a turn
+                _lastVel = _velF; _lastYaw = body.eulerAngles.y;
+                Vector3 drive = new Vector3(-acc.z * 1.6f, -yawRate * 0.03f, acc.x * 2f);
+                const float k = 75f, c = 2.8f;
+                for (float rem = Mathf.Min(dt, 0.1f); rem > 1e-5f; rem -= 1f / 120f)
+                {
+                    float h = Mathf.Min(rem, 1f / 120f);
+                    _swingVel += (k * (Vector3.ClampMagnitude(drive, 25f) - _swing) - c * _swingVel) * h;
+                    _swing += _swingVel * h;
+                }
+                _swing = Vector3.ClampMagnitude(_swing, 30f);
+                float tip = 18f + 0.3f * player.Pitch;
+                Vector3 wp = pivot.position + body.rotation * (new Vector3(0f, -0.42f, 0.17f) + pos * shakeIntensity * 1.3f);
+                Quaternion wr = body.rotation * Quaternion.Euler(tip + _swing.x, _swing.y, _swing.z) * Quaternion.Euler(rot * shakeIntensity * 0.7f + _jolt);
+                Vector3 sp = Quaternion.Inverse(pivot.rotation) * (wp - pivot.position);
+                Quaternion sr = Quaternion.Inverse(pivot.rotation) * wr;
+                float s = Mathf.SmoothStep(0f, 1f, _strapT);
+                lp = Vector3.Lerp(lp, sp, s);
+                lr = Quaternion.Slerp(lr, sr, s);
+            }
+            else if (player) { _velF = _lastVel = Quaternion.Inverse(player.transform.rotation) * player.PlanarVelocity; _lastYaw = player.transform.eulerAngles.y; _swing = _swingVel = Vector3.zero; }
+            transform.localPosition = lp;
+            transform.localRotation = lr;
         }
+
+        /// <summary>How far down onto its strap the camcorder is (0 in the hand, 1 hanging).</summary>
+        public float StrapAmount => _strapT;
 
         Vector3 _jolt, _joltVel;
 

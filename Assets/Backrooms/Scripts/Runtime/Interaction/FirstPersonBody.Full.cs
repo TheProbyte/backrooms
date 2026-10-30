@@ -126,7 +126,90 @@ namespace Backrooms.Interaction
             }
             if (_leftArm) _leftArm.gameObject.SetActive(show);
             bool onBody = _lRig != null && !_leftArm;
-            if (_lRig != null && show && (!onBody || (_body && _body.gameObject.activeSelf))) UpdateLeftArm(pivot, _camT);
+            // The camcorder on its strap (PropGrabber H): the left arm is free, and seen.
+            bool strap = _grab && _grab.CamcorderOnStrap;
+            SetCamArmShown(strap);
+            if (_lRig != null && show && (!onBody || (_body && _body.gameObject.activeSelf)))
+            {
+                if (strap) UpdateFreeLeftArm(pivot);
+                else UpdateLeftArm(pivot, _camT);
+            }
+        }
+
+        readonly System.Collections.Generic.List<Renderer> _camArm = new System.Collections.Generic.List<Renderer>();
+        bool _camArmShown;
+
+        /// <summary>The camcorder arm drawn (the camcorder on its strap, the hand free) or only in the shadows (holding it).</summary>
+        void SetCamArmShown(bool shown)
+        {
+            if (shown == _camArmShown) return;
+            _camArmShown = shown;
+            var mode = shown ? ShadowCastingMode.On : ShadowCastingMode.ShadowsOnly;
+            foreach (var r in _camArm) if (r) r.shadowCastingMode = mode;
+            if (_leftArm) foreach (var r in _leftArm.GetComponentsInChildren<Renderer>()) r.shadowCastingMode = mode;
+        }
+
+        bool CamArmPart(string rendererName)
+        {
+            float side = _grab ? _grab.Side : 1f;
+            return rendererName.EndsWith(side > 0f ? ".ArmL" : ".ArmR");
+        }
+
+        Vector3 _freeGrip;
+        Quaternion _freeRot = Quaternion.identity;
+        bool _freeInit;
+
+        /// <summary>
+        /// The left hand free of the camcorder: on the furniture's second grip (palm on its surface, fingers round it) while
+        /// both hands hold it, else hanging at the side. Eased between the two so it reaches rather than jumps.
+        /// </summary>
+        void UpdateFreeLeftArm(Transform eye)
+        {
+            var r = _lRig;
+            float side = _grab ? -_grab.Side : -1f;
+            Quaternion yaw = transform.rotation;
+            Vector3 shoulder = eye.position + yaw * new Vector3(0.2f * side, -0.28f, -0.08f);
+            if (!r.root && !_leftArm) shoulder = CarryShoulder(r.clavicle, r.clavicleRest, r.upper, shoulder, 10f);
+            Vector3 grip; Quaternion handRot; float curl;
+            if (_grab.TwoHanded)
+            {
+                Vector3 n = _grab.SecondNormal.normalized;
+                grip = _grab.SecondGrip + n * 0.012f;
+                // Fingers away from the body along the surface, the back of the hand out of it.
+                Vector3 fingers = Vector3.ProjectOnPlane(grip - shoulder, n);
+                if (fingers.sqrMagnitude < 1e-4f) fingers = Vector3.ProjectOnPlane(yaw * Vector3.forward, n);
+                handRot = Quaternion.LookRotation(fingers.normalized, n);
+                curl = 0.8f;
+            }
+            else
+            {
+                grip = shoulder + yaw * new Vector3(0.06f * side, -0.62f, 0.04f);
+                handRot = Quaternion.LookRotation(Vector3.down, yaw * new Vector3(side, 0f, 0f));
+                curl = 0.3f;
+            }
+            float ease = 1f - Mathf.Exp(-Time.deltaTime / 0.12f);
+            if (!_freeInit) { _freeGrip = grip; _freeRot = handRot; _freeInit = true; }
+            _freeGrip = Vector3.Lerp(_freeGrip, grip, ease);
+            _freeRot = Quaternion.Slerp(_freeRot, handRot, ease);
+            Vector3 wrist = _freeGrip - _freeRot * new Vector3(0f, -0.02f, 0.065f);
+            Vector3 d = wrist - shoulder;
+            float a = r.upperLen, b = r.foreLen, len = Mathf.Clamp(Gait.SoftReach(d.magnitude, a + b, (a + b) * 0.03f), Mathf.Abs(a - b) + 0.02f, (a + b) * 0.999f);
+            Vector3 dir = d.normalized;
+            Vector3 pole = Vector3.ProjectOnPlane(yaw * new Vector3(0.6f * side, -1f, -0.2f), dir).normalized;
+            float cosA = Mathf.Clamp((a * a + len * len - b * b) / (2f * a * len), -1f, 1f);
+            Vector3 elbow = shoulder + dir * (cosA * a) + pole * (Mathf.Sqrt(1f - cosA * cosA) * a);
+            Vector3 wristAt = shoulder + dir * len;
+            if (_leftArm) _leftArm.SetPositionAndRotation(shoulder, Quaternion.identity);
+            Vector3 handBack = _freeRot * Vector3.up;
+            Vector3 hinge = -side * Vector3.Cross(elbow - shoulder, wristAt - elbow);
+            Orient(r.upper, r.upperAxis, r.upperBack, elbow - shoulder, hinge.sqrMagnitude > 1e-8f ? hinge : -pole);
+            Vector3 f = (wristAt - elbow).normalized;
+            Vector3 thumb = Vector3.ProjectOnPlane(side * Vector3.Cross(_freeRot * Vector3.forward, handBack), f);
+            Vector3 foreBack = thumb.sqrMagnitude > 1e-6f ? side * Vector3.Cross(thumb.normalized, f) : handBack;
+            Orient(r.fore, r.foreAxis, r.foreBack, wristAt - elbow, foreBack);
+            Orient(r.hand, r.handFingers, r.handBack, _freeRot * Vector3.forward, handBack);
+            r.hand.position = wristAt;
+            foreach (var j in r.joints) j.t.localRotation = j.rest * Quaternion.AngleAxis(curl * 62f * j.weight, j.axis);
         }
 
         /// <summary>

@@ -398,6 +398,19 @@ namespace Backrooms.Interaction
 
         /// <summary>Closest grab spot to a point the player is looking at: on one of the prop's edges, or the
         /// surface itself if no edge is near. A little randomness keeps grabs from looking identical.</summary>
+        /// <summary>Its colliders' bounds in the world.</summary>
+        public Bounds WorldBounds
+        {
+            get
+            {
+                var cs = GetComponentsInChildren<Collider>();
+                if (cs.Length == 0) return new Bounds(transform.position, Vector3.zero);
+                var b = cs[0].bounds;
+                for (int i = 1; i < cs.Length; i++) b.Encapsulate(cs[i].bounds);
+                return b;
+            }
+        }
+
         public bool FindGrip(Vector3 hitPoint, Vector3 hitNormal, Vector3 shoulder, System.Random rng, out Vector3 point, out Vector3 surfaceNormal, out Vector3 edgeDir)
         {
             float best = float.MaxValue;
@@ -411,6 +424,10 @@ namespace Backrooms.Interaction
                 float d = Vector3.Distance(c, hitPoint);
                 if (d > 0.5f) continue;
                 float score = d + 0.25f * Vector3.Distance(c, shoulder);
+                // Edges facing down, or away from you, only when clearly nearest (the hand goes under or round only then:
+                // the undersides are there for a chair lying on its side or upside down).
+                Vector3 wn = transform.TransformDirection(e.normal);
+                score += 0.3f * Mathf.Max(0f, -wn.y) + 0.2f * Mathf.Max(0f, Vector3.Dot(wn, (c - shoulder).normalized));
                 if (score >= best) continue;
                 best = score;
                 // Not the exact same spot every time: a few centimetres either way along the edge.

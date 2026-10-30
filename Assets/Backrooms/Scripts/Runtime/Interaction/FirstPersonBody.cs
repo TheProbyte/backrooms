@@ -154,6 +154,7 @@ namespace Backrooms.Interaction
                 r.shadowCastingMode = mpfb && ShadowOnlyPart(r.name) ? ShadowCastingMode.ShadowsOnly
                                     : castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
                 if (mpfb && WorkingArmPart(r.name)) _workArm.Add(r);
+                if (mpfb && CamArmPart(r.name)) _camArm.Add(r);
                 // Skinned (Tools/Blender/make_player_rig.py): bounds follow the pose, or a reaching arm or a squat
                 // would be culled while on screen (its imported bounds fit only the rest pose).
                 if (r is SkinnedMeshRenderer sk) { sk.updateWhenOffscreen = true; sk.quality = SkinQuality.Bone4; }

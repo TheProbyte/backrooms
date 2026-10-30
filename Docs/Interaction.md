@@ -9,6 +9,15 @@
   - **Mouse up/down** lifts or lowers your end. Lift a long thing high enough and walk into it to stand it on end.
   - **WASD** walks and drags it with you, slower the heavier it is (and very slowly away from something stuck).
   - **Right mouse** shoves it and lets go. **Release left mouse** to let go.
+  - **Hold R** while holding: the mouse turns it instead of moving your end (up/down tip it away or toward you, left/right
+    roll it onto a side). Standing on the floor it rocks over the edge of its foot; lifted, one hand turns it about its
+    balance point, two about the hands. The hand also holds the angle it took it at, as a wrist would (14 N m: a chair by
+    its frame stays put, by a leg it swings, a sofa barely notices; past what it can hold it gives). `PropGrabber.Furniture.cs`.
+- **H** lets the camcorder hang on its strap at your chest (and H again takes it up): the picture drops to chest height,
+  looks ahead and down, swings as you start, stop and turn, and bobs with your steps (`HandheldCameraShake.strap`). The
+  left hand is free and seen: furniture is then taken with both hands, the left on the best grab edge across from the
+  right. Twice the strength and a lever between the grips, so a chair can be lifted and rolled over; a turn that needs
+  more reach steps you toward it. Grab edges now go round the sides and undersides too, so a chair is taken however it lies.
 - **Right mouse** without holding: a quick push. Walking into light props nudges them.
 - The left hand holds the camcorder: it dips and trembles a little while the right hand works, more for
   heavy things. (`PropGrabber.rightHanded` off brings back the old left-handed setup and left arm model.)

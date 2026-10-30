@@ -15,6 +15,12 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 05:00  Claude Code  Furniture by physics: a wrist, R to turn, H for the camcorder strap and two-handed holds (first try)
+- Asked for: the revised Docs/FurnitureHandlingPlan.md (all physics, no placement mode) and the two-handed strap look ("try the two handed look drop").
+- New `Interaction/PropGrabber.Furniture.cs`: wrist torque toward the angle held (14 N m, two hands 60, gives past 35 degrees); R + mouse turns it (about the foot's edge on the floor; lifted: the balance point one-handed, the hands two-handed); H hangs the camcorder on its strap and takes furniture with both hands (second grip from every grab edge; both targets from one wanted pose; steps toward a turn out of reach; no slip while turning). `HandheldCameraShake.strap`: chest camera, smoothed pendulum swing. `FirstPersonBody.Full`: the free left arm drawn, on the second grip or hanging. `MovableSpec`: grab edges round sides and undersides of every kind; `MovableProp.FindGrip` prefers edges facing up and toward you. Probe `Debug/FurnitureProbe.cs`.
+- Checked in World 3 (erased after), ten probe runs with screenshots: one hand tips an armchair 20-24 degrees; two hands lift and roll it about 45 degrees; an office chair slides on its castors instead; the strap view is steady at rest (blur only while it drops). EditMode tests.
+- Open: lowering a rolled chair often slips the right hand before it lands (lying on its side not reliable yet); strain near full most of the time; the hands mostly out of the strap camera's view; not played by the user.
+
 ## 2026-10-30 03:30  Claude Code  Rooms worth making a base, power you switch on, homes, bolts (Docs/BaseRoomsPlan.md, all phases)
 - Asked for: the whole base-room plan, all phases. Decisions: automatic claiming, unlimited homes, no map help home, most outlets dead.
 - Good rooms (`Generation/SpecialRooms.cs`, `Room.special`, `OfficeChunkBuilder.Special.cs`, `FurnitureMaterials.cs`): janitor's closet (shelving, mop sink, breaker panel), security office (desk, CRT monitors, keyboard, desk lamp plugged in and lit, chair, shelving), break room (counter with sink and microwave, fridge, table, chairs), stock room (shelving round the walls and a back-to-back middle row). One way in (others walled up only if the district stays connected), a wooden door shut when found with a slide bolt inside, dead tubes, a switch by the door, two live outlets at least. About 1.35 per district (HOW OFTEN > Good rooms). World version 16.
