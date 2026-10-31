@@ -22,6 +22,54 @@ namespace Backrooms.Generation
         bool _occludersValid;
         float _contactPrevious = -1;
 
+        // Which boxes are near is found by a search over every furniture owner in the world (1,500 and more where boxes
+        // fill a warehouse: it was 1.7 ms a frame, the most expensive script). It now runs in slices of ScanSlice owners a
+        // frame, and only once the eye has moved ScanMove metres or ScanEvery seconds have passed; the chosen boxes are still
+        // read every frame (a carried box keeps its occlusion with it).
+        const int ScanSlice = 256;
+        const float ScanMove = 0.5f, ScanEvery = 0.5f;
+        readonly List<LightingOccluder> _scanOwners = new List<LightingOccluder>(2048);
+        readonly List<(BoxCollider box, float distance)> _scanFound = new List<(BoxCollider, float)>(512);
+        int _scanAt = -1;
+        Vector3 _scanEye, _selectedEye = new Vector3(float.MaxValue, 0f, 0f);
+        float _selectedAt = -999f;
+        /// <summary>Owner searches finished (for tests).</summary>
+        public int OccluderScans { get; private set; }
+
+        /// <summary>
+        /// One slice of the search for boxes near the eye (all of it at once when complete is set). True when a search has
+        /// just finished and its boxes are in _nearBoxes, nearest first, at most MaxOccluders.
+        /// </summary>
+        bool ScanOccluders(Vector3 eye, bool complete)
+        {
+            if (_scanAt < 0)
+            {
+                _scanOwners.Clear(); _scanOwners.AddRange(LightingOccluder.All);
+                _scanFound.Clear(); _scanAt = 0; _scanEye = eye;
+            }
+            int end = complete ? _scanOwners.Count : Mathf.Min(_scanOwners.Count, _scanAt + ScanSlice);
+            for (; _scanAt < end; _scanAt++)
+            {
+                var owner = _scanOwners[_scanAt];
+                if (!owner || (owner.transform.position - _scanEye).sqrMagnitude > 22f * 22f) continue;
+                foreach (var box in owner.Boxes)
+                {
+                    if (!box || !box.enabled || box.isTrigger) continue;
+                    float distance = box.bounds.SqrDistance(_scanEye);
+                    if (distance < 14f * 14f) _scanFound.Add((box, distance));
+                }
+            }
+            if (_scanAt < _scanOwners.Count) return false;
+            _scanAt = -1;
+            _nearBoxes.Clear(); _nearBoxes.AddRange(_scanFound);
+            _nearBoxes.Sort(BoxDistance);
+            if (_nearBoxes.Count > MaxOccluders) _nearBoxes.RemoveRange(MaxOccluders, _nearBoxes.Count - MaxOccluders);
+            _nearBoxes.Sort(BoxId); // selection may change, but distance ranking alone must not invalidate bounce
+            _selectedEye = _scanEye; _selectedAt = Time.time;
+            OccluderScans++;
+            return true;
+        }
+
         void InitOccluders()
         {
             _occluders = new ComputeBuffer(MaxOccluders, 48);
@@ -35,26 +83,21 @@ namespace Backrooms.Generation
         {
             _occluders?.Release(); _occluderTiles?.Release(); _occluderIndices?.Release();
             _occluders = _occluderTiles = _occluderIndices = null;
-            _nearBoxes.Clear(); OccluderCount = 0; _occludersValid = false;
+            _nearBoxes.Clear(); OccluderCount = 0; _occludersValid = false; _scanAt = -1;
         }
 
         void UpdateOccluders(Vector3 eye)
         {
-            _nearBoxes.Clear();
-            if (contactOcclusion > 0)
-                foreach (var owner in LightingOccluder.All)
-                {
-                    if (!owner || (owner.transform.position - eye).sqrMagnitude > 22f * 22f) continue;
-                    foreach (var box in owner.Boxes)
-                    {
-                        if (!box || !box.enabled || box.isTrigger) continue;
-                        float distance = box.bounds.SqrDistance(eye);
-                        if (distance < 14f * 14f) _nearBoxes.Add((box, distance));
-                    }
-                }
-            _nearBoxes.Sort(BoxDistance);
-            if (_nearBoxes.Count > MaxOccluders) _nearBoxes.RemoveRange(MaxOccluders, _nearBoxes.Count - MaxOccluders);
-            _nearBoxes.Sort(BoxId); // selection may change, but distance ranking alone must not invalidate bounce
+            if (contactOcclusion <= 0) { _nearBoxes.Clear(); _scanAt = -1; }
+            else if (!_occludersValid || _contactPrevious != contactOcclusion) { _scanAt = -1; ScanOccluders(eye, true); }
+            else if (_scanAt >= 0 || (eye - _selectedEye).sqrMagnitude > ScanMove * ScanMove || Time.time - _selectedAt > ScanEvery)
+                ScanOccluders(eye, false);
+            // Boxes gone since they were chosen (a prop unloaded, broken or switched off) drop out at once.
+            for (int i = _nearBoxes.Count - 1; i >= 0; i--)
+            {
+                var b = _nearBoxes[i].box;
+                if (!b || !b.enabled) _nearBoxes.RemoveAt(i);
+            }
             int count = _nearBoxes.Count;
             bool changed = !_occludersValid || count != OccluderCount || _contactPrevious != contactOcclusion;
             for (int i = 0; i < count; i++)

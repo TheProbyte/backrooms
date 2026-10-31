@@ -53,7 +53,7 @@ namespace Backrooms.Interaction
 
         [Tooltip("0 full body. 1 hands only: no legs or body drawn, the arm only while it does something. 2 none: nothing of " +
                  "the body, no arm reaches (things are taken from up to bodilessReach), a crosshair. Camera menu > HANDHELD > Body.")]
-        public int bodyMode;
+        public int bodyMode = 2;
         [Tooltip("With no body: how far from the shoulder things are taken and held (m).")] public float bodilessReach = 1.6f;
         /// <summary>No body (Body: None): nothing drawn, no arm to reach with.</summary>
         public bool Bodiless => bodyMode == 2;

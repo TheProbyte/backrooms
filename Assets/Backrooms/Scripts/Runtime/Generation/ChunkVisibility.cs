@@ -19,6 +19,8 @@ namespace Backrooms.Generation
     public class ChunkVisibility : MonoBehaviour
     {
         public static bool Enabled = true;
+        /// <summary>Hidden chunks keep casting shadows (shadows-only). Off: switched off entirely (a benchmark A/B).</summary>
+        public static bool HiddenCastShadows = true;
         public WorldStreamer streamer;
         [Tooltip("Degrees between rays (finer = safer for thin gaps far away).")] public float rayStep = 0.35f;
         [Tooltip("Extra degrees on each side of the view.")] public float margin = 10f;
@@ -61,6 +63,9 @@ namespace Backrooms.Generation
             if (_chunks.TryGetValue(key, out var e) && e.go == go) { Show(e); _chunks.Remove(key); }
             _dirty = true;
         }
+
+        /// <summary>Shows every hidden chunk again (before a setting that changes how chunks are hidden).</summary>
+        public void ShowAll() { foreach (var e in _chunks.Values) if (e.hidden) Show(e); _dirty = true; }
 
         /// <summary>Recomputes now (tests: after moving the camera by hand).</summary>
         public void ForceUpdate(Camera view = null) { _dirty = true; Refresh(view ? view : Camera.main); }
@@ -204,7 +209,7 @@ namespace Backrooms.Generation
                 var mode = r.shadowCastingMode;
                 if (mode == ShadowCastingMode.ShadowsOnly) continue;                       // shadow proxies: as they are
                 if (r.GetComponentInParent<Interaction.WorldItem>()) continue;               // items (loot can be carried off)
-                if (mode == ShadowCastingMode.Off) { r.forceRenderingOff = true; e.changed.Add((r, mode, true)); }
+                if (mode == ShadowCastingMode.Off || !HiddenCastShadows) { r.forceRenderingOff = true; e.changed.Add((r, mode, true)); }
                 else { r.shadowCastingMode = ShadowCastingMode.ShadowsOnly; e.changed.Add((r, mode, false)); }
             }
             e.hidden = true;

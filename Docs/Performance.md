@@ -17,6 +17,59 @@
   editor in Play Mode (it halved the build's frame rate); an idle editor is fine. Back-to-back runs on a hot GPU are
   ~1.5 ms slower at 5120x1440 than the first run on a cool one.
 
+## Measuring what limits a frame (2026-10-31)
+
+- The benchmark now **plays** (a session of its own, saved in a folder of its own: `SaveSlots.FolderOverride`, the
+  player's saves untouched). It used to run behind the title menu, which switches the player off (walking, body, hands,
+  footsteps, camera shake): the walk did not walk and the frame missed what playing costs.
+- Add `-benchmark-set frameCap=0`: in play the saved 60 fps cap applies (every spot read 16.7 ms).
+- Each spot prints main thread, GPU, SetPass calls and triangles beside the frame time (frame timing stats must be on in
+  the build: `PlayerSettings.enableFrameTimingStats`, switched on only for benchmark builds).
+- `-benchmark-ab "label:key=value|key=value;label2:..."`: at the corridor, each setting in turn, three rounds, median frame,
+  main-thread work (without waiting to present), render thread and GPU per setting. Keys: GraphicsOptions fields,
+  `camcorderLook`, `hiddenShadows` (hidden chunks cast shadows or are switched off), `farClip`.
+- `-benchmark-markers` (a development build): every profiler marker's time and a 90-frame profiler capture
+  (`<results>_profile.raw`; open in the Profiler, or `ProfilerDriver.LoadProfile` and read each thread's hierarchy).
+- `-benchmark-shots`: a picture of each spot next to the results, to compare two builds.
+
+Read the three numbers together: the frame is as slow as the slowest of main thread, render thread and GPU. A GPU time
+that does not move when the pixels change (full resolution, AO off) means the GPU is waiting to be fed, not working.
+
+## The main-thread pass (2026-10-31, RTX 4070, 1080p, seed 1234 corridor, in play)
+
+| | frame | main thread work | render thread | GPU |
+| --- | --- | --- | --- | --- |
+| Before | 8.82 ms (113 fps) | 8.55 ms | 8.15 ms | 7.53 ms |
+| After | 7.02 ms (142 fps) | 3.59 ms | 6.63 ms | 6.16 ms |
+
+Spots after: corridor 7.1 ms (140 fps), crawl hole 6.8 ms (147), walk 7.3 ms (137), crawl through 8.6-8.8 ms. The main
+thread was the limit; it is now the render thread (submitting draw calls), the GPU close behind.
+
+What was slow (a development-build capture, main thread, per frame):
+- **The furniture contact-occlusion search** (`LightGrid.UpdateOccluders`): 1.7 ms. Every frame it walked every furniture
+  owner in the world (1,546 in a warehouse area: every box on the racks) to find the boxes within 14 m. It now searches in
+  slices of 256 owners a frame, and only after the eye has moved 0.5 m or 0.5 s has passed; the chosen boxes (at most 160)
+  are still read every frame, so a carried box keeps its occlusion: 0.04 ms.
+- **Steam Audio** (`SteamAudioManager.LateUpdate`): 1.7 ms. It simulates occlusion and transmission (8 volumetric rays and a
+  wall test) for every registered source every frame, sounding or not: 68 registered, 1 playing. `Audio.SteamAudioSleep`
+  takes a source out of the simulation after a second of silence and puts it back the frame it plays (it runs early in
+  LateUpdate, before Steam Audio's own, so a new sound is simulated that frame): 0 awake while nothing sounds.
+- **The fixture lights** (`FixtureLightManager.LateUpdate`): the candidate sort worked out two distances at every compare
+  (about 15,000 square roots a frame): now each once, and the arrays sorted by them. Every real light had eight properties
+  set every frame (each a call into the engine): now only what changed (`Slot.c*`, cleared on release).
+- Profiler markers: `FixtureLights.*`, `LightGrid.*`.
+
+Measured and left alone: switching hidden chunks fully off instead of shadows-only (no change), a 35 m draw distance (no
+change), the contact shadows' depth (they read the camera's depth texture; no extra scene draw).
+
+### GPU Resident Drawer (tried, not on)
+
+Unity's own first recommendation for draw-submission cost (BatchRendererGroup instancing, set in the URP asset). A test
+build with it (URP asset: Instanced Drawing; Graphics settings: BatchRendererGroup variants Keep All; static batching off)
+ran the corridor in 7.4 ms against 11.9, but rendered the world black (only the camcorder's noise): Backrooms/Lit's DOTS
+instancing path does not draw correctly yet. Turning it on needs that fixed, and the two settings changed (the Graphics one
+is in ProjectSettings). Its first build compiled 2,560 Backrooms/Lit variants (about 20 minutes).
+
 ## Editor vs build
 
 The editor adds its own work every frame (its windows, inspector, safety checks), and if the **Scene view** is visible

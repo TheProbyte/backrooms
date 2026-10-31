@@ -229,8 +229,8 @@ tactile with a crosshair"):
 - **Full**: as before.
 - **Hands only**: no legs, trunk or shoes drawn (their shadow stays); an arm comes into view only while it does
   something, as it already did.
-- **None** (Amnesia, Penumbra): nothing of the body is drawn, nor its shadow. A camcorder's centre mark (a small cross,
-  brighter when a click would take something) sits in the middle of the picture. With no arm there is no reaching or
+- **None** (Amnesia, Penumbra; the default since 2026-10-31): nothing of the body is drawn, nor its shadow. No centre mark
+  (the owner: "maybe no crosshair"): the focus marks and the hint line say what a click takes. With no arm there is no reaching or
   stepping in: things are taken from up to 1.6 m from the shoulder (`PropGrabber.bodilessReach`) at once (0.2 s), and a
   held thing has more give before it slips (0.65 m past the reach). Holding something heavy, a dot sits where it is held;
   when it lags (dragged, caught), a faint dotted line runs from the hold to it. No hand touches walls in passing.

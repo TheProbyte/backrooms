@@ -15,6 +15,25 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - No body by default, no crosshair; the main-thread pass: 113 to 142 fps in the corridor
+
+- Body: None is the default (`CamcorderSettings.body`, `PropGrabber.bodyMode`); the centre cross is gone (the owner: "maybe
+  no crosshair, but no hands might be better"); held things stay low and out of view as before.
+- Research first: Unity's own guidance (GPU Resident Drawer and the SRP Batcher for draw submission; profile first; no
+  managed allocations or repeated engine calls in hot paths).
+- The benchmark now plays (it ran behind the title menu, the player switched off), and reports main thread, render thread
+  and GPU per spot; new modes: A/B (`-benchmark-ab`), markers and a profiler capture (`-benchmark-markers`), screenshots.
+- Found: the frame was limited by the main thread (8.55 ms of work); the slowest scripts were the furniture contact-
+  occlusion search over every prop in the world (1.7 ms), Steam Audio simulating 68 sources with 1 playing (1.7 ms) and
+  the fixture lights (sorting and setting every light every frame).
+- Fixed: the search runs in slices and only after moving (`LightGrid.Occlusion`), silent Steam Audio sources sleep
+  (`SteamAudioSleep`), lights sorted by precomputed distance and set only when changed. Release build, 1080p, corridor:
+  8.82 -> 7.02 ms (113 -> 142 fps), main-thread work 8.55 -> 3.59 ms. The render thread now sets the pace.
+- Tried and left off: the GPU Resident Drawer (the corridor at 7.4 ms against 11.9 in a test build, but the world drew
+  black: Backrooms/Lit's instanced path needs fixing first, and it needs a ProjectSettings change). Hidden chunks off
+  instead of shadow-only, and a shorter draw distance: no change.
+- Docs: Performance.md "Measuring what limits a frame" and "The main-thread pass".
+
 ## 2026-10-31 - A no-body switch to compare; crouch slide; run into a door to slam it open; climbing to 1.8 m
 
 - Research first (now in the user's CLAUDE.md): Frictional's Amnesia/Penumbra (no body, mouse-driven physics), Scorn and

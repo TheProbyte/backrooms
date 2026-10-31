@@ -79,7 +79,6 @@ namespace Backrooms.Generation
         };
         int _gridFrame;
         LightingMode _activeMode = (LightingMode)(-1);
-        System.Comparison<LightSource> _byPoolDistance;
 
         bool UseGrid => mode == LightingMode.LightGrid && LightGrid.Supported;
 
@@ -210,6 +209,23 @@ namespace Backrooms.Generation
             return _haveAhead ? Mathf.Min(d, Vector3.Distance(p, _ahead)) : d;
         }
 
+        float[] _candKeys = new float[512];
+        LightSource[] _candSorted = new LightSource[512];
+
+        /// <summary>
+        /// The candidates nearest first (by PoolDistance). Each distance worked out once and the two arrays sorted by it,
+        /// instead of a comparison that worked out both distances at every step (about 15,000 square roots a frame among
+        /// several hundred fixtures).
+        /// </summary>
+        void SortCandidatesByPoolDistance()
+        {
+            int n = _candidates.Count;
+            if (_candKeys.Length < n) { _candKeys = new float[Mathf.NextPowerOfTwo(n)]; _candSorted = new LightSource[_candKeys.Length]; }
+            for (int i = 0; i < n; i++) { var c = _candidates[i]; _candSorted[i] = c; _candKeys[i] = PoolDistance(c.position); }
+            System.Array.Sort(_candKeys, _candSorted, 0, n);
+            for (int i = 0; i < n; i++) _candidates[i] = _candSorted[i];
+        }
+
         void Gather(Vector3 centre, float distance)
         {
             var cc = WorldStreamer.ChunkOf(centre);
@@ -226,9 +242,14 @@ namespace Backrooms.Generation
             }
         }
 
+        static readonly Unity.Profiling.ProfilerMarker s_pGather = new Unity.Profiling.ProfilerMarker("FixtureLights.Gather"),
+            s_pShares = new Unity.Profiling.ProfilerMarker("FixtureLights.Shares"), s_pLights = new Unity.Profiling.ProfilerMarker("FixtureLights.Lights"),
+            s_pTick = new Unity.Profiling.ProfilerMarker("FixtureLights.GridTick");
+
         void LateUpdateGrid(Vector3 eye, float now)
         {
             _gridFrame++;
+            var pGather = s_pGather.Auto();
             // Strength, reach and tall-room boost change every fixture's grid light: recompute the whole grid.
             int fp = System.HashCode.Combine(tubeIntensity, tubeRange, domeHeightBoost, lampIntensity, lampRange, spread);
             if (_haveFixtureParams && fp != _fixtureParams && grid) { grid.MarkAllDirty(); if (siteGrid && siteGrid.enabled) siteGrid.MarkAllDirty(); }
@@ -246,8 +267,9 @@ namespace Backrooms.Generation
             _gathered.Clear();
             Gather(eye, gridDistance);
             if (_haveSite) Gather(_site, siteGridDistance);
-            if (_byPoolDistance == null) _byPoolDistance = (a, b) => PoolDistance(a.position).CompareTo(PoolDistance(b.position));
-            _candidates.Sort(_byPoolDistance);
+            SortCandidatesByPoolDistance();
+            pGather.Dispose();
+            var pShares = s_pShares.Auto();
 
             // Which fixtures are real lights: the nearest tubes (with hysteresis), faulty tubes, nearest lamps.
             // Every real light casts shadows, so the count stays within the 4096 shadow atlas: 64 spot maps at
@@ -312,6 +334,8 @@ namespace Backrooms.Generation
                 ? new Vector4(Mathf.Cos((shadowCone * 0.5f - 2f) * Mathf.Deg2Rad), Mathf.Tan(shadowCone * 0.5f * Mathf.Deg2Rad), 1f, 0f)
                 : Vector4.zero);
 
+            pShares.Dispose();
+            var pLights = s_pLights.Auto();
             // Grid lights (with change tracking) and real lights.
             _gridLights.Clear();
             int enabled = 0, shadowed = 0;
@@ -366,43 +390,53 @@ namespace Backrooms.Generation
                     if (sh.slot == null) continue;                          // pool exhausted (should not happen)
                     var slot = sh.slot;
                     slot.busy = true; slot.src = c; slot.sourcePos = c.position;
+                    slot.ForgetSet();
                     slot.main.transform.position = pos;
                     slot.main.GetUniversalAdditionalLightData().renderingLayers = 0xFFFFFFFFu;
                     if (slot.bounce) slot.bounce.enabled = false;
                     if (slot.spill) slot.spill.enabled = false;
                 }
                 var L = sh.slot.main;
+                var S = sh.slot;
                 float k = sh.w * power;
-                L.enabled = k > 0.002f;
-                L.intensity = intensity * k * Mains;                   // the building's supply sags now and then
-                L.range = range;
-                L.color = col;
+                // (Each setter is a call into the engine, every light every frame: only what changed is set. S.c* hold
+                // what was set last; Release clears them.)
+                bool on = k > 0.002f;
+                if (S.cEnabled != (on ? 1 : 0)) { L.enabled = on; S.cEnabled = on ? 1 : 0; }
+                float lit = intensity * k * Mains;                       // the building's supply sags now and then
+                if (lit != S.cIntensity) { L.intensity = lit; S.cIntensity = lit; }
+                if (range != S.cRange) { L.range = range; S.cRange = range; }
+                if (col != S.cColor) { L.color = col; S.cColor = col; }
                 if (!c.isLamp)
                 {
-                    L.spotAngle = narrow ? Mathf.Min(outer, shadowCone) : outer;   // the shadow map's cone (see shadowCone)
-                    L.innerSpotAngle = Mathf.Min(inner, L.spotAngle);
+                    float spot = narrow ? Mathf.Min(outer, shadowCone) : outer;   // the shadow map's cone (see shadowCone)
+                    float innerAngle = Mathf.Min(inner, spot);
+                    if (spot != S.cSpot) { L.spotAngle = spot; S.cSpot = spot; }
+                    if (innerAngle != S.cInner) { L.innerSpotAngle = innerAngle; S.cInner = innerAngle; }
                 }
                 // Keep outgoing shadow maps until their strength reaches zero; only then give that
                 // atlas capacity to an incoming map. Fast movement cannot oversubscribe the atlas.
                 int maps = c.isLamp ? 6 : 1;
                 float distanceFade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(shadowDistance * 0.65f, shadowDistance, PoolDistance(pos)));
-                float wantedShadow = L.enabled && sh.shadowed && sh.target > 0f ? distanceFade : 0f;
+                float wantedShadow = on && sh.shadowed && sh.target > 0f ? distanceFade : 0f;
                 bool hadShadow = sh.slot.shadowK > 0.001f;
                 if (!hadShadow && shadowMaps + maps > atlasMaps) wantedShadow = 0f;
                 sh.slot.shadowK = Mathf.MoveTowards(sh.slot.shadowK, wantedShadow, dt / Mathf.Max(0.01f, shadowFade));
                 bool hasShadow = sh.slot.shadowK > 0.001f;
                 if (hasShadow != hadShadow) shadowMaps += hasShadow ? maps : -maps;
-                var sm = L.enabled && hasShadow ? LightShadows.Soft : LightShadows.None;
-                if (L.shadows != sm) L.shadows = sm;
-                L.shadowStrength = shadowStrength * Mathf.SmoothStep(0f, 1f, sh.slot.shadowK);
-                L.shadowBias = c.dome || c.strip ? 0.08f : 0.03f;
-                L.shadowNormalBias = 0.15f;
-                if (L.enabled) { enabled++; if (sm != LightShadows.None) shadowed++; }
+                var sm = on && hasShadow ? LightShadows.Soft : LightShadows.None;
+                if (S.cShadows != (int)sm) { L.shadows = sm; S.cShadows = (int)sm; }
+                float strength = shadowStrength * Mathf.SmoothStep(0f, 1f, sh.slot.shadowK);
+                if (strength != S.cStrength) { L.shadowStrength = strength; S.cStrength = strength; }
+                float bias = c.dome || c.strip ? 0.08f : 0.03f;
+                if (bias != S.cBias) { L.shadowBias = bias; L.shadowNormalBias = 0.15f; S.cBias = bias; }
+                if (on) { enabled++; if (sm != LightShadows.None) shadowed++; }
             }
             EnabledLights = enabled; ShadowedLights = shadowed;
             ActiveLights = enabled;
             _gridLights.Sort(GridOrder); // distance rank changes must not invalidate unchanged full-power bounce
-            if (grid) grid.Tick(eye, _gridLights);
+            pLights.Dispose();
+            using (s_pTick.Auto()) if (grid) grid.Tick(eye, _gridLights);
             if (_haveSite && siteGrid && siteGrid.enabled && grid)
             {
                 CopyGridSettings(grid, siteGrid);

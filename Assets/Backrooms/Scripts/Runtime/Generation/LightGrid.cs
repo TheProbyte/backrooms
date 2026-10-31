@@ -302,6 +302,11 @@ namespace Backrooms.Generation
         // ---------------- Per frame ----------------
 
         /// <summary>Moves the window, uploads this frame's lights, refreshes occupancy, recomputes dirty boxes and the bounce field.</summary>
+        static readonly Unity.Profiling.ProfilerMarker s_pOcc = new Unity.Profiling.ProfilerMarker("LightGrid.Occupancy"),
+            s_pLights = new Unity.Profiling.ProfilerMarker("LightGrid.SetLights"), s_pHaze = new Unity.Profiling.ProfilerMarker("LightGrid.Haze"),
+            s_pOccluders = new Unity.Profiling.ProfilerMarker("LightGrid.Occluders"), s_pProbes = new Unity.Profiling.ProfilerMarker("LightGrid.Probes"),
+            s_pBind = new Unity.Profiling.ProfilerMarker("LightGrid.Bind");
+
         public void Tick(Vector3 viewer, List<LightGridMath.GridLight> lights)
         {
             if (!Ready || _kDirect < 0) return;
@@ -332,11 +337,11 @@ namespace Backrooms.Generation
                 _texMin = newMin;
                 _occDirty = true;
             }
-            if (_occDirty) { RebuildOccupancy(); _bounceDirty = true; }
+            using (s_pOcc.Auto()) if (_occDirty) { RebuildOccupancy(); _bounceDirty = true; }
             UpdateHoles();
-            SetLights(lights);
-            TrackHazeLights(lights);
-            UpdateOccluders(viewer);
+            using (s_pLights.Auto()) SetLights(lights);
+            using (s_pHaze.Auto()) TrackHazeLights(lights);
+            using (s_pOccluders.Auto()) UpdateOccluders(viewer);
             var bounceParameters = new Vector4(floorAlbedo, bounceSpread, bounceSteps, _pitch);
             if (!_bounceParameters.Equals(bounceParameters)) { _bounceDirty = true; _bounceParameters = bounceParameters; }
 
@@ -389,7 +394,7 @@ namespace Backrooms.Generation
             // Bounce: traced probes, or (the older way) floor light from every powered fixture, then a few diffusion steps.
             if (tracedBounce)
             {
-                if (_lightCount > 0 && bounceGain > 0f) TickProbes();
+                if (_lightCount > 0 && bounceGain > 0f) using (s_pProbes.Auto()) TickProbes();
             }
             else if (_bounceDirty && _lightCount > 0 && bounceGain > 0f)
             {
@@ -418,7 +423,7 @@ namespace Backrooms.Generation
             // Bind the real resources every frame. Something else (the editor's stand-in binder after a domain reload,
             // another system calling BindFallbacks) can point these globals at empty stand-ins; the shader then sees
             // no walls at all and every wall-aware test (real lights, sample clamps, bounce clamps) silently passes.
-            if (bindGlobals) BindGlobals();
+            using (s_pBind.Auto()) if (bindGlobals) BindGlobals();
             LastGpuSubmitMs = (float)sw.Elapsed.TotalMilliseconds;
         }
 

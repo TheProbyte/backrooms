@@ -108,6 +108,16 @@ namespace Backrooms.Generation
             public float shadowK;          // 0..1 shadow strength ramp
             public bool allLayers;         // (lamps) shadowed lamps light every room
             public float spillW;           // 0 = all light from the room-only main, 1 = from the shadowed spill
+            // What the grid mode last set on main (each Light setter is a call into the engine: set only what changed).
+            // Cleared whenever anything else sets the light (Release, a mode switch).
+            public float cIntensity = float.NaN, cRange = float.NaN, cSpot = float.NaN, cInner = float.NaN, cStrength = float.NaN, cBias = float.NaN;
+            public Color cColor = new Color(-1f, -1f, -1f, -1f);
+            public int cEnabled = -1, cShadows = -1;
+            public void ForgetSet()
+            {
+                cIntensity = cRange = cSpot = cInner = cStrength = cBias = float.NaN;
+                cColor = new Color(-1f, -1f, -1f, -1f); cEnabled = cShadows = -1;
+            }
         }
 
         class ChunkPower
@@ -283,6 +293,11 @@ namespace Backrooms.Generation
 
         // ---------------- Per frame ----------------
 
+        // Profiler markers for the parts of a frame (cheap; seen in the Profiler and by the benchmark's marker run).
+        static readonly Unity.Profiling.ProfilerMarker s_pMains = new Unity.Profiling.ProfilerMarker("FixtureLights.Mains"),
+            s_pGrid = new Unity.Profiling.ProfilerMarker("FixtureLights.Grid"), s_pTiers = new Unity.Profiling.ProfilerMarker("FixtureLights.ShadowTiers"),
+            s_pLens = new Unity.Profiling.ProfilerMarker("FixtureLights.Lens");
+
         void LateUpdate()
         {
             if (!viewer) return;
@@ -290,15 +305,15 @@ namespace Backrooms.Generation
             Vector3 eye = viewer.position;
             float now = Time.time;
             _eye = eye;
-            UpdateMains(now);
+            using (s_pMains.Auto()) UpdateMains(now);
 
             ApplyMode();
             if (UseGrid)
             {
                 ApplyShadowTier();
-                LateUpdateGrid(eye, now);
-                NearShadowTiers(eye);
-                UpdateLensEmission(now);
+                using (s_pGrid.Auto()) LateUpdateGrid(eye, now);
+                using (s_pTiers.Auto()) NearShadowTiers(eye);
+                using (s_pLens.Auto()) UpdateLensEmission(now);
                 LastUpdateMs = Mathf.Lerp(LastUpdateMs, (float)_timer.Elapsed.TotalMilliseconds, 0.1f);
                 return;
             }
@@ -559,6 +574,7 @@ namespace Backrooms.Generation
         {
             s.busy = false; s.fade = 0f; s.target = 0f; s.shadowK = 0f; s.wantShadow = false; s.allLayers = false; s.spillW = 0f;
             s.main.enabled = false; s.main.shadows = LightShadows.None;
+            s.ForgetSet();
             if (s.spill) { s.spill.enabled = false; s.spill.shadows = LightShadows.None; }
             if (s.bounce) s.bounce.enabled = false;
         }

@@ -282,6 +282,8 @@ namespace Backrooms.Audio
             s.transmissionType = SteamAudio.TransmissionType.FrequencyDependent;
             s.transmissionInput = SteamAudio.TransmissionInput.SimulationDefined;
             s.maxTransmissionSurfaces = 2;
+            // Out of the simulation while it is silent (it cost every frame whether it sounded or not).
+            src.gameObject.AddComponent<SteamAudioSleep>().Bind(src, s);
         }
     }
 }
