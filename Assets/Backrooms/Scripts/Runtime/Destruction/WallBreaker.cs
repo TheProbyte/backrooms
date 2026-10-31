@@ -64,10 +64,63 @@ namespace Backrooms.Destruction
 
         void Start()
         {
+            StartCoroutine(Prewarm());
             _debrisRoot = new GameObject("WallDebris").transform;
             _debrisRoot.SetParent(transform, false);
             // Walls broken in this world before (the save) whose chunks are already in.
             foreach (var kv in WallDamage.All) if (Loaded(kv.Key)) Ensure(kv.Key);
+        }
+
+        /// <summary>
+        /// A few seconds into the world, one small step a frame: the blows' sounds made, the wall's materials (their textures
+        /// are drawn in code), the dust, and a panel built and thrown away near the player (WallDamage.Rehearse), so the first
+        /// blow does none of it for the first time. (The first blow took 194 ms against 57 for a later one on a fresh wall:
+        /// 95 ms of sounds, 127 of materials, the rest the breaking code's first run.)
+        /// </summary>
+        System.Collections.IEnumerator Prewarm()
+        {
+            yield return new WaitForSeconds(3f);
+            var steps = new List<System.Action>
+            {
+                () => { for (int i = 0; i < 3; i++) SoundBank.HammerSwing(i); },
+                () => { for (int i = 0; i < 3; i++) SoundBank.DrywallHit(i); },
+                () => { for (int i = 0; i < 2; i++) SoundBank.DrywallCrumble(i); },
+                () => { for (int i = 0; i < 3; i++) SoundBank.SteelStudHit(i); },
+                () => { for (int i = 0; i < 3; i++) SoundBank.WoodStudHit(i); },
+                () => { for (int i = 0; i < 3; i++) SoundBank.HardThud(i); },
+                () => { for (int i = 0; i < 2; i++) SoundBank.MetalClank(i); },
+                () => { for (int k = 0; k < 3; k++) for (int i = 0; i < 3; i++) SoundBank.DebrisLand(k, i); },
+                () => { _ = SoundBank.SteelTear; _ = SoundBank.WoodCrack; _ = SoundBank.BattWhump; },
+                () => { _ = DemolitionMaterials.GypsumEdge; _ = DemolitionMaterials.BackPaper; },
+                () => { _ = DemolitionMaterials.SteelStud; _ = DemolitionMaterials.Steel; },
+                () => { _ = DemolitionMaterials.Wood; _ = DemolitionMaterials.EndGrain; },
+                () => { _ = DemolitionMaterials.BattYellow; _ = DemolitionMaterials.BattPink; },
+                () => { _ = DemolitionMaterials.BoxPlastic; _ = DemolitionMaterials.CableYellow; _ = DemolitionMaterials.CableMetal; _ = DemolitionMaterials.Copper; },
+                () => { _ = DemolitionMaterials.Dust; if (!_puffs) _puffs = MakeSystem("WallDust", false); if (!_crumbs) _crumbs = MakeSystem("WallCrumbs", true); },
+                RehearseNearby,
+            };
+            foreach (var s in steps)
+            {
+                try { s(); } catch (System.Exception e) { Debug.LogWarning("[Backrooms] Wall warm-up step: " + e.Message); }
+                yield return null;
+            }
+        }
+
+        /// <summary>A breakable wall near the player, its panel built and thrown away (nothing kept, nothing changed).</summary>
+        void RehearseNearby()
+        {
+            var cam = Camera.main;
+            if (!cam) return;
+            Vector3 eye = cam.transform.position;
+            for (int a = 0; a < 360; a += 30)
+            {
+                var dir = Quaternion.Euler(0f, a, 0f) * Vector3.forward;
+                if (!Physics.Raycast(eye, dir, out var h, 30f, ~0, QueryTriggerInteraction.Ignore) || Mathf.Abs(h.normal.y) > 0.3f) continue;
+                if (!h.collider.GetComponent<GeneratedChunkResources>()) continue;
+                if (!WallKey.At(h.point, h.normal, Mathf.FloorToInt((h.point.y + 0.05f) / WallDamage.Pitch), out var key)) continue;
+                if (WallDamage.Find(key) != null) return;                         // one is already broken: nothing to warm
+                if (WallDamage.Rehearse(key)) return;
+            }
         }
 
         Collider Player
@@ -320,8 +373,9 @@ namespace Backrooms.Destruction
         // ---------------- Sound ----------------
 
         /// <summary>
-        /// Plays a wall sound. Plain 3D voices, not Steam Audio ones: a pool of spatialised voices still playing as the
-        /// editor left Play Mode crashed Steam Audio's mixer thread (2026-10-27); blows are close and loud anyway.
+        /// Plays a wall sound, through Steam Audio as every world sound is (heard muffled from the next room). (They were
+        /// plain voices after a pool of Steam Audio voices still playing as the editor left Play Mode crashed its mixer
+        /// thread, 2026-10-27: Audio.WorldSound now stops them all on quitting.)
         /// </summary>
         void Play(AudioClip clip, Vector3 at, float volume, float pitch)
         {
@@ -330,9 +384,8 @@ namespace Backrooms.Destruction
             {
                 var go = new GameObject("WallSound");
                 go.transform.SetParent(transform, false);
-                var a = go.AddComponent<AudioSource>();
-                a.playOnAwake = false; a.spatialBlend = 1f; a.minDistance = 0.6f; a.maxDistance = 30f; a.dopplerLevel = 0f;
-                a.rolloffMode = AudioRolloffMode.Logarithmic;
+                var a = Interaction.ItemModels.Source(go, 30f);
+                a.minDistance = 0.6f;
                 _voices.Add(a);
             }
             var src = _voices[_voice];

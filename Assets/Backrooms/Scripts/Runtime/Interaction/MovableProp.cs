@@ -138,6 +138,8 @@ namespace Backrooms.Interaction
             if (shape.rolls) mp._casters = baseCollider;
             mp._ownedMeshes = builtMeshes;
             mp._lastGoodPos = position; mp._lastGoodRot = rotation;
+            s_live[spec.id] = mp;
+            NailWork.Attach(mp);                                  // nails driven into it before (this session or a save)
             RuntimeIndoorReflections.Instance?.Prepare(root);
             PoolLitSwitch.Attach(root);                           // lit by the Poolrooms' light while it is in them
             return mp;
@@ -161,6 +163,32 @@ namespace Backrooms.Interaction
         void OnDestroy()
         {
             if (_ownedMeshes != null) foreach (var m in _ownedMeshes) if (m) Destroy(m);
+            if (Spec != null && s_live.TryGetValue(Spec.id, out var me) && me == this) s_live.Remove(Spec.id);
+        }
+
+        static readonly System.Collections.Generic.Dictionary<ulong, MovableProp> s_live = new System.Collections.Generic.Dictionary<ulong, MovableProp>();
+
+        /// <summary>The prop with this id, if it is in the world now.</summary>
+        public static MovableProp Find(ulong id) => s_live.TryGetValue(id, out var p) && p ? p : null;
+
+        /// <summary>
+        /// Nailed into the building (a wall, the floor) where it is: stuck there from now on (saved so), as build mode's props
+        /// with physics off are. It joins the moved list so its pose and its being nailed are kept.
+        /// </summary>
+        public void NailDown()
+        {
+            MovablePropManager.Instance?.Detach(this);
+            if (!Body.isKinematic) { Body.linearVelocity = Vector3.zero; Body.angularVelocity = Vector3.zero; Body.isKinematic = true; Body.interpolation = RigidbodyInterpolation.None; }
+            Spec.pinned = true; Pinned = true;
+            _lastGoodPos = transform.position; _lastGoodRot = transform.rotation;
+            MovablePropManager.Instance?.Store(this);
+        }
+
+        /// <summary>Its last nail pulled out: free again (it stays where it is until something moves it).</summary>
+        public void Unnail()
+        {
+            Spec.pinned = false; Pinned = false;
+            MovablePropManager.Instance?.Store(this);
         }
 
         /// <summary>Builds the box visuals (board, tape, print) as one mesh with a part for each, casting its own shadow.</summary>

@@ -216,12 +216,16 @@ namespace Backrooms.Interaction
             }
             _pose = Mathf.MoveTowards(_pose, _pulling || (_aiming && _aimValid) ? 1f : 0f, i.dt * 5f);
             _holder = i.hand;
-            // Out of the arm's reach (low on a wall, the floor): the body bends toward it.
+            // Out of the arm's reach (low on a wall, the floor): the body bends toward it; pulling, it also steps in, so the
+            // end can be laid from wherever it could be aimed (aimed from up to 1.6 m away, the strip was only laid within
+            // the arm's 0.7: from further off a drag laid nothing).
             if (_pose > 0.3f && i.hand)
             {
                 UseTarget(out Vector3 p, out Quaternion r);
                 Vector3 palm = p + r * GripLocal;
-                if ((palm - i.hand.ReachShoulder).magnitude > i.hand.ArmReach * 0.92f) i.hand.ReachToward(palm, false);
+                Vector3 end = _pulling && _pts.Count > 0 ? _pts[_pts.Count - 1] + _nrm[_nrm.Count - 1] * 0.06f : palm;
+                if (_pulling) i.hand.ReachToward(end, true, 0.9f);
+                else if ((palm - i.hand.ReachShoulder).magnitude > i.hand.ArmReach * 0.92f) i.hand.ReachToward(palm, false);
             }
         }
 

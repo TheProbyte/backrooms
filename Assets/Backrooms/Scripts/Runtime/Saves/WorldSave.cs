@@ -47,6 +47,16 @@ namespace Backrooms.Saves
         public Vector3 noclipOrigin, noclipOriginNormal;
         /// <summary>Walls broken with the sledgehammer (Destruction.WallDamage): what is left of each, and its rubble.</summary>
         public List<WallData> walls = new List<WallData>();
+        /// <summary>Nails driven in with the hammer (Interaction.NailWork).</summary>
+        public List<NailData> nails = new List<NailData>();
+    }
+
+    /// <summary>A nail: in the building (prop empty: world space) or in a prop (its id, hex: the prop's space).</summary>
+    [Serializable]
+    public class NailData
+    {
+        public string prop = "";
+        public Vector3 position, direction;
     }
 
     /// <summary>
@@ -83,6 +93,9 @@ namespace Backrooms.Saves
         public float originYaw;
         public Vector3 position;
         public Quaternion rotation;
+        /// <summary>Stuck where it is (nailed in, or build mode's physics off); its size (0: as made).</summary>
+        public bool pinned;
+        public float scale;
     }
 
     [Serializable]

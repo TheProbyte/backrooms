@@ -500,7 +500,7 @@ namespace Backrooms.Interaction
             float speed = Mathf.Lerp(throwSpeed.x, throwSpeed.y, charge);
             item.Body.linearVelocity = _player.PlanarVelocity + (cam.forward + Vector3.up * 0.12f).normalized * speed;
             item.Body.angularVelocity = Random.insideUnitSphere * (4f + 8f * charge);
-            AudioSource.PlayClipAtPoint(Audio.SoundBank.CordWhip, item.transform.position, (0.15f + 0.25f * charge) * Audio.SoundCatalog.Volume(Audio.SoundIds.Cords));
+            Audio.WorldSound.PlayAt(Audio.SoundBank.CordWhip, item.transform.position, (0.15f + 0.25f * charge) * Audio.SoundCatalog.Volume(Audio.SoundIds.Cords));
         }
 
         void UpdateHeldItem(bool focus, Mouse mouse)

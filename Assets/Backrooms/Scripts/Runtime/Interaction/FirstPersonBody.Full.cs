@@ -128,7 +128,8 @@ namespace Backrooms.Interaction
             bool onBody = _lRig != null && !_leftArm;
             // The camcorder on its strap (PropGrabber H): the left arm is free, and seen.
             bool strap = _grab && _grab.CamcorderOnStrap;
-            SetCamArmShown(strap);
+            // (Drawn only once it is well out: at the camcorder the hand is right in front of the lens, palm up.)
+            SetCamArmShown(strap || leftReachW > 0.45f);
             if (_lRig != null && show && (!onBody || (_body && _body.gameObject.activeSelf)))
             {
                 if (strap) UpdateFreeLeftArm(pivot);
@@ -294,6 +295,14 @@ namespace Backrooms.Interaction
             if (!r.root && !_leftArm) shoulder = CarryShoulder(r.clavicle, r.clavicleRest, r.upper, shoulder, 20f);
             Quaternion handRot = Quaternion.LookRotation(cam.forward * 0.85f - cam.right * side * 0.35f, -cam.up * 0.9f + cam.right * side * 0.3f);
             Vector3 grip = cam.position + cam.rotation * new Vector3(0.0f, -0.075f, 0.08f);
+            // Sent off the camcorder for a moment by the held item (LeftReach): there and back as a blend of the two.
+            if (Time.time - _leftReachSet > 0.05f) leftReachW = Mathf.MoveTowards(leftReachW, 0f, Time.deltaTime / 0.2f);
+            float reachW = Mathf.SmoothStep(0f, 1f, leftReachW);
+            if (reachW > 0f)
+            {
+                grip = Vector3.Lerp(grip, leftReachAt, reachW);
+                handRot = Quaternion.Slerp(handRot, leftReachRot, reachW);
+            }
             Vector3 wrist = grip - handRot * new Vector3(0f, -0.02f, 0.065f);
             Vector3 d = wrist - shoulder;
             // (Soft IK: going up stairs the body's height trails the eye's and the arm comes near straight; eased, it
@@ -318,7 +327,24 @@ namespace Backrooms.Interaction
             Orient(r.fore, r.foreAxis, r.foreBack, wristAt - elbow, foreBack);
             Orient(r.hand, r.handFingers, r.handBack, handRot * Vector3.forward, handBack);
             r.hand.position = wristAt;
-            CloseOnCamcorder(r, cam);
+            if (reachW > 0.5f) foreach (var j in r.joints) j.t.localRotation = j.rest * Quaternion.AngleAxis(leftReachCurl * 62f * j.weight, j.axis);
+            else CloseOnCamcorder(r, cam);
+        }
+
+        /// <summary>
+        /// A held item sends the camcorder hand somewhere for a moment (the hammer: a nail held to the wall between finger and
+        /// thumb): where the palm goes, turned how (fingers forward, back of the hand up), how far the fingers close, and how
+        /// far it is there (0: on the camcorder, 1: there). Set every frame while it is wanted; it eases back by itself.
+        /// </summary>
+        [System.NonSerialized] public Vector3 leftReachAt;
+        [System.NonSerialized] public Quaternion leftReachRot = Quaternion.identity;
+        [System.NonSerialized] public float leftReachCurl = 0.5f, leftReachW;
+        float _leftReachSet;
+
+        /// <summary>Sends the camcorder hand to a palm point and turn this frame, w of the way there (see <see cref="leftReachAt"/>).</summary>
+        public void LeftReach(Vector3 at, Quaternion rot, float curl, float w)
+        {
+            leftReachAt = at; leftReachRot = rot; leftReachCurl = curl; leftReachW = Mathf.Clamp01(w); _leftReachSet = Time.time;
         }
 
         static readonly Vector3 CamBodyCentre = new Vector3(-0.004f, -0.022f, 0.075f), CamBodyHalf = new Vector3(0.036f, 0.041f, 0.095f);

@@ -122,10 +122,10 @@ namespace Backrooms.Interaction
             _nozzle.SetParent(transform, false);
             _nozzle.localPosition = new Vector3(0f, top - 0.008f, 0.0115f);
 
-            _hiss = gameObject.AddComponent<AudioSource>();
+            _hiss = ItemModels.Source(gameObject, 12f);
             _hiss.clip = SoundBank.SprayHiss; _hiss.loop = true; _hiss.playOnAwake = false; _hiss.volume = 0f;
             _hiss.spatialBlend = 1f; _hiss.minDistance = 0.4f; _hiss.maxDistance = 12f; _hiss.dopplerLevel = 0f;
-            _clank = gameObject.AddComponent<AudioSource>();
+            _clank = ItemModels.Source(gameObject, 10f);
             _clank.playOnAwake = false; _clank.spatialBlend = 1f; _clank.minDistance = 0.4f; _clank.maxDistance = 10f;
             BuildMist();
         }

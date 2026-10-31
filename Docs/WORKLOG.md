@@ -15,6 +15,25 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Hammer and nails; tape drags again; the first wall blow's stutter; every world sound through Steam Audio
+
+- Hammer and nails (owner's design): nails in a pocket, hold right mouse to raise the hammer and see where the nail goes,
+  tap left: the left hand leaves the camcorder with a nail, the hammer drives it flush, the hand goes back. Through a prop
+  into the building it nails the prop there (pinned, saved); into another prop it joins them; the claw pulls nails out.
+  Low or a step away, the body steps in and bends first. `Hammer`, `NailWork`, `Nails` (a count), `FirstPersonBody.LeftReach`,
+  `MovableProp.NailDown / Unnail / Find`, `WorldSaveData.nails`; moved props keep `pinned` and `scale` in the save.
+- Tape: pulling laid tape only within the arm's 0.7 m though the end can be stuck from 1.6 m, and the step-in was off for
+  it: from further than arm's length a drag laid nothing. The body steps in while pulling now.
+- The first sledgehammer blow of a session took 194 ms (a later one on a fresh wall 57): 95 ms making its sounds, 127 its
+  materials (textures drawn in code), the rest the breaking code's first run. A warm-up 3 s into the world does these a step
+  a frame and builds one panel and throws it away (`WallDamage.Rehearse`): the first blow measured 74 ms.
+- All world sounds through Steam Audio (`Audio.WorldSound`): the wall breaking (it was kept plain after a crash on leaving
+  Play Mode: every Steam Audio voice is now stopped on quitting), chalk, cords, the spray can, hand touches, build mode's
+  room sounds (PlayClipAtPoint replaced).
+- Checked in World 3 (driven by code): a strip of tape dragged from arm's length and beyond; a nail into a wall (the left
+  hand at it, the hammer cocked over it, the nail flush, 80 to 79); a pallet on the floor nailed down (pinned, in the save
+  list); a nail pulled. New tests `NailTests` (2). 170/170. Not played by the owner.
+
 ## 2026-10-30 - Build mode round 18: the whole list (walls, shapes, feel, sharing, Backrooms touches, models) and the ceiling hidden fully
 
 - Ceiling: everything above a cut under the lowest ceiling hidden (renderers above it off; the Lit shader's clip plane

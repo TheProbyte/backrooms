@@ -204,6 +204,27 @@
 - **Weight**: a heavy item in the hand (the lamp, a coiled cord) slows your steps and turns a little and lags the view
   more. Picking something up off the floor, you bend down for it first.
 
+## Hammer and nails (2026-10-30)
+
+With a box of nails (`Nails`, 80 in a box, its count saved as the item's amount) in a pocket and the claw hammer in the
+hand (`Hammer`):
+- **Right mouse held:** the hammer comes up at the right; a see-through nail and a ring show where the nail will go (red:
+  no nails, or too far). Low down or a step away, the click first has the body step in and bend to it (2.5 s, then the nail
+  goes back in the box).
+- **Left click:** the left hand leaves the camcorder with a nail (`FirstPersonBody.LeftReach`), holds it to the spot, the
+  hammer comes back over the hand and down onto it, drives it flush, and the hand goes back to the camcorder (0.62 s).
+- **What a nail does** (`NailWork`): through a prop into the building within 25 cm behind it (a pallet stood against a wall,
+  a box on the floor), the prop is nailed there (`MovableProp.NailDown`: pinned, saved so); into another prop, the two are
+  joined (a FixedJoint, this session only); else it is a nail in the wall or the prop. Nails in props are kept in the
+  prop's space and come back with it.
+- **Aimed at a nail:** the claw pulls it out (back into the box); a prop's last nail out, it comes free.
+- Saved in `WorldSaveData.nails`; moved props now also keep `pinned` and `scale`.
+
+Sounds of things in the world all go through Steam Audio now (`Audio.WorldSound`): the wall breaking, chalk, cords, the
+spray can, the hand on a wall, build mode's room sounds; one-shots through a pool of Steam Audio voices. On quitting every
+Steam Audio voice is stopped first (a voice still playing as Play Mode ended once crashed its mixer). The player's own body
+and the screens stay plain; the building's hum and ventilation keep their own walking-path model (`BuildingAudio`).
+
 ## Item tuning (F2)
 F2 with an item in your hand, or looking at one (within 4 m), opens a small panel of that kind of item's settings on the
 right of the screen (`Items/ItemTuningMenu.cs`, the F5 menu's look). Sliders for numbers (or type an exact value in the

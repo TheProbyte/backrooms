@@ -152,7 +152,7 @@ namespace Backrooms.Interaction
             if (left <= 0f)
             {
                 // Used up: the last crumb is gone.
-                AudioSource.PlayClipAtPoint(SoundBank.Tick(1), transform.position, 0.4f * SoundCatalog.Volume(SoundIds.Chalk));
+                WorldSound.PlayAt(SoundBank.Tick(1), transform.position, 0.4f * SoundCatalog.Volume(SoundIds.Chalk), 8f);
                 i.hand.ItemGone(this);
                 Destroy(gameObject);
             }

@@ -138,6 +138,26 @@ namespace Backrooms.Destruction
 
         static OfficeLayout LayoutOf(WallKey k, int side) => Layouts?.Invoke(k.Chunk(side));
 
+        /// <summary>
+        /// Builds a wall's panel (its fracture, framing and mesh) and throws it away, keeping nothing: WallBreaker's warm-up,
+        /// so the first blow of a session does not build all this (and compile its code) for the first time (owner: "there
+        /// always seems to be one lag spike when you first hammer a wall hole").
+        /// </summary>
+        public static bool Rehearse(WallKey k)
+        {
+            var l0 = LayoutOf(k, 0); var l1 = LayoutOf(k, 1);
+            if (!WallPanelModel.Breakable(k, l0, l1, out float height)) return false;
+            var m = new WallPanelModel(k, WorldSeed, height, WallPanelModel.SteelFor(l0, l1), new[] { l0, l1 }, Assets);
+            var st = new WallPanelState(m);
+            OpenAt(m, st, 0.6f, 1f);
+            Loose(m, st, 0);
+            var mb = new PanelMesh(PanelGeometry.Slots);
+            PanelGeometry.View(mb, m, st, Pitch);
+            var mesh = mb.Apply(new Mesh(), PanelGeometry.Materials(m), out _, "Rehearsal");
+            if (mesh) UnityEngine.Object.Destroy(mesh);
+            return true;
+        }
+
         /// <summary>Can the wall be broken (and what would it be built of)?</summary>
         public static bool Breakable(WallKey k)
         {

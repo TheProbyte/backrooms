@@ -60,8 +60,8 @@ namespace Backrooms.Interaction
             {
                 var go = new GameObject("HandTouch");
                 go.transform.SetParent(transform, false);
-                _touchFx = go.AddComponent<AudioSource>();
-                _touchFx.playOnAwake = false; _touchFx.spatialBlend = 1f; _touchFx.minDistance = 0.3f; _touchFx.maxDistance = 6f;
+                _touchFx = ItemModels.Source(go, 6f);
+                _touchFx.minDistance = 0.3f;
             }
             _touchFx.transform.position = p;
             _touchFx.PlayOneShot(SoundBank.WallPat(Random.Range(0, 3)), 0.35f * SoundCatalog.Volume(SoundIds.Touch));

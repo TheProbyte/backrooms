@@ -134,9 +134,10 @@ namespace Backrooms.CustomRooms
             }
         }
 
+        /// <summary>A 3D voice through Steam Audio (walls muffle it), fading out linearly by range.</summary>
         public static AudioSource Source(GameObject go, float volume, float range, bool loop)
         {
-            var a = go.AddComponent<AudioSource>();
+            var a = Interaction.ItemModels.Source(go, Mathf.Max(1.5f, range));
             a.spatialBlend = 1f; a.rolloffMode = AudioRolloffMode.Linear; a.minDistance = 0.6f; a.maxDistance = Mathf.Max(1.5f, range);
             a.volume = volume; a.loop = loop; a.playOnAwake = false; a.dopplerLevel = 0f;
             return a;

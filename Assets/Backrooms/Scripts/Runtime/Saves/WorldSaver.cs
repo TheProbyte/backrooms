@@ -70,6 +70,7 @@ namespace Backrooms.Saves
         public void RestoreProps(WorldGenerator world)
         {
             if (_data != null) Destruction.WallDamage.Import(_data.walls);
+            NailWork.Import(_data?.nails);                  // (a new world: none)
             var mgr = MovablePropManager.Instance;
             if (_data == null || !mgr) return;
             var list = new List<MovablePropManager.Saved>();
@@ -261,6 +262,7 @@ namespace Backrooms.Saves
             d.takenLoot = LootRegistry.Export();
             // Broken walls, with their rubble (and the bits still falling, where they are now).
             d.walls = Destruction.WallDamage.Export();
+            d.nails = NailWork.Export();
             foreach (var deb in FindObjectsByType<Destruction.WallDebris>())
             {
                 var w = d.walls.Find(x => x.vertical == deb.key.vertical && x.line == deb.key.line && x.along == deb.key.along && x.storey == deb.key.storey);
@@ -314,7 +316,7 @@ namespace Backrooms.Saves
             {
                 id = s.id.ToString("X16"), kind = (int)s.kind, renderMask = s.renderMask, proxy = AssetKeys.Key(s.proxyMaterial),
                 size = s.size, variant = s.variant, cardboard = s.cardboard, origin = s.position, originYaw = s.yaw,
-                position = position, rotation = rotation,
+                position = position, rotation = rotation, pinned = s.pinned, scale = s.scale,
             };
             if (s.materials != null) { d.materials = new string[s.materials.Length]; for (int i = 0; i < s.materials.Length; i++) d.materials[i] = AssetKeys.Key(s.materials[i]); }
             foreach (var p in s.parts)
@@ -329,6 +331,7 @@ namespace Backrooms.Saves
             {
                 id = id, kind = (MovableKind)d.kind, renderMask = (uint)d.renderMask, proxyMaterial = AssetKeys.Find<Material>(d.proxy),
                 size = d.size, variant = d.variant, cardboard = d.cardboard, position = d.origin, yaw = d.originYaw,
+                pinned = d.pinned, scale = d.scale > 0.01f ? d.scale : 1f,
             };
             if (d.materials != null) { s.materials = new Material[d.materials.Length]; for (int i = 0; i < d.materials.Length; i++) s.materials[i] = AssetKeys.Find<Material>(d.materials[i]); }
             foreach (var p in d.parts)
