@@ -15,6 +15,19 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - The shadow is a shadow: a long tall silhouette on the walls, keeps its distance, red eyes as it angers
+
+- The owner: the figure was good barely seen but not walking in full view; make it an actual long tall shadow on walls,
+  keeping its distance until enraged, red eyes glowing in the dark at the end.
+- `Resources/Shaders/ShadowFigure.shader` (new, unlit, multiplied like FloorWear; eyes an added pass): a soft human shadow
+  drawn as a distance field, wall-tall, wavering. `ShadowStalker.Sheet` lays it on a wall 1-5 m from the shadow that faces
+  you (a lit one first), slides it along, fades it to move. The 3D figure is gone.
+- It keeps 7.5 m (4.5 m at the peak) and draws back if you come close; it can no longer catch you from behind: only angry.
+  Anger slower (a 5 s stare up close), builds by itself at the peak. Eyes from anger 0.45, glowing from 0.75, burning
+  when it charges (it stands up off the wall, a faint darkness).
+- Checked in World 3 (pictures: faint shadow in a lit office, the same with red eyes, the charge in the dark; the stare
+  made it charge and catch). EditMode tests pass. Not played by the owner.
+
 ## 2026-10-31 - The shadow (a Bracken-like stalker that puts out the lights around it); round textured ceiling lights; the director's sounds gone
 
 - Research: Lethal Company's Bracken (stalks from behind, flees when looked at, anger from looks and stares, charges),

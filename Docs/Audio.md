@@ -228,16 +228,23 @@ where you look.
 - **Lights**: the room it is in and the room it is about to step into go dark, tube by tube with a stutter
   (`LightZones.Drain`: not a switch, not saved); a room it has left strikes again 2.5-4 s later. It makes no sound: you
   hear the building's hum cut out and tubes strike behind it.
-- **Seen only in the dark**: a tall (2 m), thin, black figure, long arms, a slight hunch, facing you; drawn only where its
-  room has gone dark and more than 1.3 m off.
-- **Stalk**: cell by cell through the building (through doors: it is not solid), toward a spot 5.5 m behind you (1.1 m
-  when bold); it never steps into view: its route goes round what you can see, and if there is none it waits behind the
-  corner and leans out now and then. Not bold, it keeps 4.5 m off.
-- **Looked at** (in view, in its dark, within 22 m): it freezes 0.4 s, then flees out of sight. Each look adds anger
-  (0.3 within 6 m, else 0.15), staring adds 0.3/s close or 0.1/s far; it ebbs 0.03/s. Full: **angry**, it comes straight
-  at you at 5.6 m/s for 2.5-5 s, lights dying ahead of it.
-- **Caught** (bold and right behind you, unseen, or angry and on you): the tape breaks up and cuts (the last frame held,
-  crackle), and the recording picks up 20-45 m away in a room whose lights are off (saved: find its switch). The director
-  goes to its fade.
+- **What you see is its shadow** (the owner, 2026-10-31: "like an actual long tall shadow, against walls, keeping its
+  distance until enraged enough; in the final stages redder eyes glowing in the dark"): a long, tall human shadow on a wall
+  with nobody to cast it, as tall as the wall (head at the ceiling line), soft-edged, wavering a little
+  (`Resources/Shaders/ShadowFigure.shader`, multiplied onto the wall like the wear marks: it takes the wall's light; no
+  lit-shader variants). It lies on a wall 1-5 m from where the shadow is, facing you, a lit one where it can, slides along
+  that wall as it moves and fades out to move to another. Faint at first (0.42), darker as it angers.
+- **Eyes**: from anger 0.45 two dull red points in the shadow's head; from 0.75 they glow; charging, they burn (an added
+  pass of the same shader).
+- **Stalk**: cell by cell through the building (through doors: it is not solid), toward a spot 9 m behind you (5 m when
+  bold); it never steps into view: its route goes round what you can see, and if there is none it waits behind the corner
+  and leans out now and then (its shadow leans with it). It keeps its distance: 7.5 m (4.5 m bold); come within 2 m of
+  that and it draws back.
+- **Looked at** (its shadow in view within 22 m): it freezes 0.4 s, then draws back out of sight. Each look adds anger
+  (0.15 within 6 m, else 0.08), staring adds 0.15/s close or 0.06/s far (about 5 s up close fills it); at the peak it
+  works itself up by itself (0.012/s); it ebbs 0.015/s. Full: **angry**, it comes straight at you at 5.6 m/s for 2.5-5 s,
+  standing up off the wall: a vague darkness with burning red eyes; lights die ahead of it.
+- **Caught** (only when angry and on you): the tape breaks up and cuts (the last frame held, crackle), and the recording
+  picks up 20-45 m away in a room whose lights are off (saved: find its switch). The director goes to its fade.
 - Near it the picture breaks up (`CamcorderRig.Interference`, through the noclip glitch: tracking, tearing, sound
   dropouts) and the power sags. Route planning: about 1.5 ms in the editor, every 0.8 s.

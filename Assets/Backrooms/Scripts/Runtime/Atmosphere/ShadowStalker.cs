@@ -9,22 +9,28 @@ namespace Backrooms.Atmosphere
 {
     /// <summary>
     /// The shadow (owner, 2026-10-31: "like Lethal Company's Bracken"; "maybe not a physical thing; in the shadows, when it
-    /// nears, lights turn off in its path"). A tall thin figure of darker-than-dark that is only there where the light has
-    /// gone: the tubes of the room it is in, and of the room it is about to step into, stutter out as it comes and strike
-    /// again a few seconds after it has gone (<see cref="LightZones.Drain"/>). It makes no sound of its own: what you hear
-    /// is the building's own (the hum of a room cutting out, tubes striking behind it).
+    /// nears, lights turn off in its path"; then: "like an actual long tall shadow, against walls, keeping its distance until
+    /// enraged enough; in the final stages redder eyes glowing in the dark"). Nobody is ever seen: what you see is a long,
+    /// tall human shadow on a wall near where it is, with no one there to cast it (<see cref="Sheet"/>,
+    /// Backrooms/ShadowFigure). The tubes of the room it is in, and of the room it is about to step into, stutter out as
+    /// it comes and strike again a few seconds after it has gone (<see cref="LightZones.Drain"/>). It makes no sound of
+    /// its own: what you hear is the building's own (the hum of a room cutting out, tubes striking behind it).
     ///
-    /// Its rules, after the Bracken (stalks from behind, backs off when looked at, every look angers it, a long stare makes
-    /// it charge) and Alien: Isolation's two brains (the <see cref="TensionDirector"/> decides when it comes, how bold it
-    /// may be and when it goes; the shadow itself only knows where you are and where you are looking):
+    /// Its rules, after the Bracken (stalks, backs off when looked at, every look angers it, a long stare makes it
+    /// charge) and Alien: Isolation's two brains (the <see cref="TensionDirector"/> decides when it comes, how bold it may
+    /// be and when it goes; the shadow itself only knows where you are and where you are looking):
     ///  - Stalk: it moves cell by cell through the building (through doors: it is not solid), toward a spot behind you,
-    ///    and never steps into view: it waits behind the corner instead, and now and then leans out (a glimpse). It keeps
-    ///    a few metres off, except at the director's peak (<see cref="Bold"/>), when it comes right up behind you.
-    ///  - Seen (in view, in the dark where it can be seen, within 22 m): it freezes a moment, then flees out of sight.
-    ///    Every look adds to its anger (more up close), staring adds more; anger ebbs slowly.
-    ///  - Angry (anger full): it comes straight at you, fast, for a few seconds; lights die ahead of it.
-    ///  - Caught (it reaches you from behind at the peak, or while angry): the tape breaks up and cuts; the recording
-    ///    picks up somewhere else 20-45 m away, in a room whose lights are off. Then it is gone for a while.
+    ///    never stepping into view (its route goes round what you can see; it waits behind the corner and leans out now
+    ///    and then), and keeps its distance: 7.5 m, or 4.5 m at the director's peak (<see cref="Bold"/>). Its shadow falls
+    ///    on a wall 1-5 m from it that faces you, a lit one where it can; it slides along the wall as it moves, and fades
+    ///    to move to another.
+    ///  - Seen (its shadow in view within 22 m): it freezes a moment, then draws back out of sight. Every look adds to its
+    ///    anger (more up close), staring adds more; at the peak anger also builds by itself; it ebbs slowly.
+    ///  - Its anger shows: from 0.45 two dull red points in the shadow's head, from 0.75 they glow and the shadow darkens.
+    ///  - Angry (anger full): it comes straight at you, fast, for a few seconds, standing up out of the wall: a darkness
+    ///    in the dark with two red eyes; lights die ahead of it.
+    ///  - Caught (only when angry): the tape breaks up and cuts; the recording picks up somewhere else 20-45 m away, in a
+    ///    room whose lights are off. Then it is gone for a while.
     /// Near it the camcorder's picture breaks up (<see cref="CamcorderRig.Interference"/>) and the power sags.
     /// </summary>
     public class ShadowStalker : MonoBehaviour
@@ -42,7 +48,7 @@ namespace Backrooms.Atmosphere
         /// <summary>The power sag it causes near you (0..1 of the supply lost; the director adds it to its own).</summary>
         public float Sag { get; private set; }
         public Vector3 Position => _pos;
-        public string Status => $"{Current}{(Bold ? " bold" : "")} {Distance:0.0} m anger {Anger:0.00}{(_seenLast ? " SEEN" : "")}";
+        public string Status => $"{Current}{(Bold ? " bold" : "")} {Distance:0.0} m anger {Anger:0.00}{(_seenLast ? " SEEN" : "")}{(_sheet != null ? _sheet.Status : "")}";
 
         const float C = OfficeBiome.CellSize;
         const int N = OfficeBiome.ChunkCells;
@@ -55,7 +61,7 @@ namespace Backrooms.Atmosphere
         Vector2Int _cell;
         readonly List<Vector2Int> _path = new List<Vector2Int>();
         int _pathAt;
-        float _think, _wait, _peek, _peekT, _angryLeft, _evadeLeft, _show, _interference;
+        float _think, _wait, _peek, _peekT, _angryLeft, _evadeLeft, _interference;
         bool _seenLast;
         readonly HashSet<(Vector3Int, int)> _drained = new HashSet<(Vector3Int, int)>(), _want = new HashSet<(Vector3Int, int)>();
         readonly List<(Vector3Int, int)> _scratch = new List<(Vector3Int, int)>();
@@ -63,10 +69,8 @@ namespace Backrooms.Atmosphere
         readonly Dictionary<Vector2Int, int> _steps = new Dictionary<Vector2Int, int>();
         readonly Queue<Vector2Int> _queue = new Queue<Vector2Int>();
         readonly System.Random _rng = new System.Random();
-        Transform _figure;
-        Renderer[] _parts;
-        Material _black;
         AudioSource _crackle;
+        Sheet _sheet;
 
         void Awake()
         {
@@ -80,7 +84,7 @@ namespace Backrooms.Atmosphere
             if (Instance == this) Instance = null;
             ReleaseLights();
             CamcorderRig.Interference = 0f;
-            if (_black) Destroy(_black);
+            _sheet?.Dispose();
         }
 
         // ---------------- The director's calls ----------------
@@ -121,7 +125,7 @@ namespace Backrooms.Atmosphere
             Current = Mode.Absent; Bold = false;
             _path.Clear();
             ReleaseLights();
-            Show(0f);
+            _sheet?.Hide();
         }
 
         // ---------------- Each frame ----------------
@@ -146,12 +150,13 @@ namespace Backrooms.Atmosphere
             Vector3 d = pp - _pos; d.y = 0f;
             Distance = d.magnitude;
 
-            // Seen? (it has to be seeable: in the dark, far enough from the lens.)
-            bool seen = _show > 0.5f && Distance < 22f && Visible(Shown() + Vector3.up * 1.3f, 0.2f);
+            // Seen? (its shadow on the wall, or, charging, its eyes.)
+            bool seen = _sheet != null && _sheet.Seen();
             if (seen)
             {
-                if (!_seenLast) Anger += Distance < 6f ? 0.3f : 0.15f;
-                Anger += dt * (Distance < 6f ? 0.3f : 0.1f);
+                bool close = _sheet.DistanceToEye < 6f;
+                if (!_seenLast) Anger += close ? 0.15f : 0.08f;
+                Anger += dt * (close ? 0.15f : 0.06f);                 // (a stare of about 5 s up close fills it)
                 if (Anger >= 1f && Current != Mode.Angry && Current != Mode.Leave)
                 {
                     Current = Mode.Angry; _angryLeft = 2.5f + 2f * Anger; _think = 0f; _wait = 0.25f;
@@ -162,7 +167,8 @@ namespace Backrooms.Atmosphere
                     _peekT = 0f;
                 }
             }
-            else Anger = Mathf.Max(0f, Anger - dt * 0.03f);
+            else if (Bold && Current == Mode.Stalk) Anger += dt * 0.012f;          // the peak: it works itself up
+            else Anger = Mathf.Max(0f, Anger - dt * 0.015f);
             Anger = Mathf.Min(Anger, 1.5f);
             _seenLast = seen;
 
@@ -176,18 +182,12 @@ namespace Backrooms.Atmosphere
                     {
                         _think = 0.8f;
                         Vector3 back = Back();
-                        PathTo(pp - back * (Bold ? 1.1f : 5.5f), true, 24);       // (about 1.5 ms in the editor at 30)
+                        PathTo(pp - back * (Bold ? 5f : 9f), true, 24);       // (about 1.5 ms in the editor at 30)
                     }
-                    float keep = Bold ? 0f : 4.5f;
-                    // Bold, behind you and nothing between: the last step straight at you (off the grid).
-                    if (Bold && _wait <= 0f && Distance < 2.6f && !seen && Clear(pp))
-                    {
-                        Vector3 aim = pp; aim.y = _pos.y;
-                        _pos = Vector3.MoveTowards(_pos, aim, 1.6f * dt);
-                        if (CellOf(_pos) != _cell && Walkable(CellOf(_pos))) _cell = CellOf(_pos);
-                    }
-                    else if (_wait <= 0f && Distance > keep) Walk(Bold ? 1.9f : 1.3f, true, dt);
-                    if (Bold && Distance < 0.75f && !seen) { StartCoroutine(Catch()); return; }
+                    // It keeps its distance until it is angry.
+                    float keep = Bold ? 4.5f : 7.5f;
+                    if (Distance < keep - 2f && !seen) { Current = Mode.Evade; _evadeLeft = 4f; _think = 0f; }   // you came close: it draws back
+                    else if (_wait <= 0f && Distance > keep) Walk(Bold ? 1.7f : 1.3f, true, dt);
                     break;
                 }
                 case Mode.Evade:
@@ -224,7 +224,8 @@ namespace Backrooms.Atmosphere
             }
 
             UpdateLights();
-            UpdateFigure(dt);
+            if (_sheet == null) _sheet = new Sheet(this);
+            _sheet.Update(dt);
             float near = Mathf.Clamp01(1f - Distance / 9f);
             float want = near * near * 0.4f + (seen ? 0.12f : 0f) + (Current == Mode.Angry ? 0.25f : 0f);
             _interference = Mathf.MoveTowards(_interference, Mathf.Clamp01(want), dt * 0.8f);
@@ -311,71 +312,195 @@ namespace Backrooms.Atmosphere
             return (new Vector3Int(L.coord.x, L.storey, L.coord.y), L.roomOf[x, z]);
         }
 
-        // ---------------- The figure ----------------
+        // ---------------- The shadow on the wall ----------------
 
-        void UpdateFigure(float dt)
+        /// <summary>
+        /// What you see of it: a long, tall human shadow on a wall, with nobody there to cast it (Backrooms/ShadowFigure,
+        /// multiplied onto the wall: it takes the wall's light), as tall as the wall, its edge soft. It lies on a wall 1-5 m
+        /// from where the shadow is, facing you (a lit one where it can), slides along that wall as it moves, and fades out
+        /// to move to another. Its eyes (from anger 0.45) are a second, added pass. Charging, it stands up off the wall at
+        /// its own place, turned to you.
+        /// </summary>
+        sealed class Sheet
         {
-            // Seeable only where the light has gone, and not right on top of the lens.
-            var z = ZoneOf(CellOf(Shown()));
-            bool dark = z.HasValue && LightZones.Level(z.Value.Item1, z.Value.Item2, Time.time, 0.5f) < 0.05f;
-            Show(dark && Distance > 1.3f ? 1f : 0f);
-            if (!_figure) return;
-            var cam = Camera.main;
-            Vector3 at = Shown();
-            Vector3 look = (cam ? cam.transform.position : _player.transform.position) - at; look.y = 0f;
-            Quaternion face = look.sqrMagnitude > 1e-4f ? Quaternion.LookRotation(look) : _figure.rotation;
-            _figure.SetPositionAndRotation(at + Vector3.up * (0.01f + 0.012f * Mathf.Sin(Time.time * 0.9f)),
-                Quaternion.Slerp(_figure.rotation, face, dt * 3f) * Quaternion.Euler(0f, 0f, 1.5f * Mathf.Sin(Time.time * 0.37f)));
-        }
+            readonly ShadowStalker _s;
+            readonly GameObject _root;
+            readonly Material _shadowMat, _eyeMat;
+            float _strength, _wantStrength, _find, _glow;
+            bool _onWall, _has;
+            Vector3 _at, _n, _pendingAt, _pendingN;
+            float _h = 2.6f, _pendingH;
+            static Mesh s_quad;
+            static readonly int StrengthId = Shader.PropertyToID("_Strength"), GlowId = Shader.PropertyToID("_Glow"),
+                                AspectId = Shader.PropertyToID("_Aspect"), SeedId = Shader.PropertyToID("_Seed"), ModeId = Shader.PropertyToID("_Mode"),
+                                SrcId = Shader.PropertyToID("_SrcBlend"), DstId = Shader.PropertyToID("_DstBlend");
+            const float Aspect = 0.32f;
+            public float DistanceToEye { get; private set; } = 999f;
+            public string Status => _root && _root.activeSelf ? $" shadow {(_onWall ? "on a wall" : "standing")} {_strength:0.00} {_h:0.0} m eyes {_glow:0.00}" : "";
 
-        void Show(float k)
-        {
-            _show = k;
-            if (k > 0.5f && !_figure) Build();
-            if (_parts == null) return;
-            foreach (var r in _parts) if (r && r.enabled != k > 0.5f) r.enabled = k > 0.5f;
-        }
-
-        /// <summary>Tall (2 m), thin, long arms to mid-thigh, a slight hunch: a silhouette in black that takes no light.</summary>
-        void Build()
-        {
-            var a = WorldStreamer.Current ? WorldStreamer.Current.assets : null;
-            var src = a && a.fixtureHousing ? a.fixtureHousing : a ? a.lampMetal : null;
-            if (src)
+            public Sheet(ShadowStalker s)
             {
-                _black = new Material(src) { name = "Shadow", hideFlags = HideFlags.DontSave };
-                if (_black.HasProperty("_BaseColor")) _black.SetColor("_BaseColor", new Color(0.004f, 0.004f, 0.005f, 1f));
-                if (_black.HasProperty("_Color")) _black.SetColor("_Color", new Color(0.004f, 0.004f, 0.005f, 1f));
-                if (_black.HasProperty("_Smoothness")) _black.SetFloat("_Smoothness", 0f);
-                if (_black.HasProperty("_Metallic")) _black.SetFloat("_Metallic", 0f);
+                _s = s;
+                var sh = Shader.Find("Backrooms/ShadowFigure");
+                if (!sh) return;
+                if (!s_quad)
+                {
+                    s_quad = new Mesh { name = "ShadowQuad", hideFlags = HideFlags.DontSave };
+                    s_quad.SetVertices(new[] { new Vector3(-0.5f, 0f, 0f), new Vector3(0.5f, 0f, 0f), new Vector3(0.5f, 1f, 0f), new Vector3(-0.5f, 1f, 0f) });
+                    s_quad.SetUVs(0, new[] { new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f) });
+                    s_quad.SetTriangles(new[] { 0, 2, 1, 0, 3, 2 }, 0);
+                    s_quad.RecalculateBounds();
+                }
+                _shadowMat = new Material(sh) { name = "Shadow", hideFlags = HideFlags.DontSave };
+                _shadowMat.SetFloat(ModeId, 0f);
+                _shadowMat.SetFloat(SrcId, (float)UnityEngine.Rendering.BlendMode.DstColor); _shadowMat.SetFloat(DstId, (float)UnityEngine.Rendering.BlendMode.Zero);
+                _eyeMat = new Material(sh) { name = "Shadow eyes", hideFlags = HideFlags.DontSave, renderQueue = 2000 + 461 };
+                _eyeMat.SetFloat(ModeId, 1f);
+                _eyeMat.SetFloat(SrcId, (float)UnityEngine.Rendering.BlendMode.One); _eyeMat.SetFloat(DstId, (float)UnityEngine.Rendering.BlendMode.One);
+                float seed = Random.value * 10f;
+                _shadowMat.SetFloat(SeedId, seed); _eyeMat.SetFloat(SeedId, seed);
+                _shadowMat.SetFloat(AspectId, Aspect); _eyeMat.SetFloat(AspectId, Aspect);
+                _root = new GameObject("Shadow");
+                _root.transform.SetParent(s.transform, false);
+                Part("Shadow", _shadowMat, 0f);
+                Part("Eyes", _eyeMat, 0.004f);
+                _root.SetActive(false);
             }
-            _figure = new GameObject("Shadow").transform;
-            _figure.SetParent(transform, false);
-            var parts = new List<Renderer>();
-            void Part(PrimitiveType t, Vector3 p, Vector3 s, Vector3 euler)
+
+            void Part(string name, Material m, float forward)
             {
-                var g = GameObject.CreatePrimitive(t);
-                DestroyImmediate(g.GetComponent<Collider>());       // (now: a sight line this frame must not hit it)
-                g.transform.SetParent(_figure, false);
-                g.transform.localPosition = p; g.transform.localScale = s; g.transform.localEulerAngles = euler;
-                var r = g.GetComponent<Renderer>();
-                if (_black) r.sharedMaterial = _black;
-                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                r.receiveShadows = false;
-                r.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
-                r.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+                var g = new GameObject(name);
+                g.transform.SetParent(_root.transform, false);
+                g.transform.localPosition = new Vector3(0f, 0f, -forward);
+                g.AddComponent<MeshFilter>().sharedMesh = s_quad;
+                var r = g.AddComponent<MeshRenderer>();
+                r.sharedMaterial = m;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; r.receiveShadows = false;
+                r.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off; r.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
                 r.renderingLayerMask = uint.MaxValue;
-                parts.Add(r);
             }
-            Part(PrimitiveType.Capsule, new Vector3(-0.09f, 0.47f, 0f), new Vector3(0.12f, 0.47f, 0.12f), new Vector3(0f, 0f, -1.5f));
-            Part(PrimitiveType.Capsule, new Vector3(0.09f, 0.47f, 0f), new Vector3(0.12f, 0.47f, 0.12f), new Vector3(0f, 0f, 1.5f));
-            Part(PrimitiveType.Capsule, new Vector3(0f, 1.25f, 0.02f), new Vector3(0.34f, 0.37f, 0.19f), new Vector3(8f, 0f, 0f));
-            Part(PrimitiveType.Capsule, new Vector3(0f, 1.67f, 0.07f), new Vector3(0.08f, 0.09f, 0.08f), new Vector3(20f, 0f, 0f));
-            Part(PrimitiveType.Sphere, new Vector3(0f, 1.86f, 0.1f), new Vector3(0.2f, 0.27f, 0.22f), new Vector3(10f, 0f, 0f));
-            Part(PrimitiveType.Capsule, new Vector3(-0.22f, 1.15f, 0.04f), new Vector3(0.075f, 0.45f, 0.075f), new Vector3(4f, 0f, -5f));
-            Part(PrimitiveType.Capsule, new Vector3(0.22f, 1.15f, 0.04f), new Vector3(0.075f, 0.45f, 0.075f), new Vector3(4f, 0f, 5f));
-            _parts = parts.ToArray();
-            _figure.position = _pos;
+
+            public void Hide()
+            {
+                _strength = _wantStrength = 0f; _has = false; _onWall = false;
+                if (_root) _root.SetActive(false);
+            }
+
+            public void Dispose()
+            {
+                if (_root) Object.Destroy(_root);
+                if (_shadowMat) Object.Destroy(_shadowMat);
+                if (_eyeMat) Object.Destroy(_eyeMat);
+            }
+
+            public void Update(float dt)
+            {
+                if (!_root) return;
+                var cam = Camera.main;
+                if (!cam) return;
+                float anger = _s.Anger;
+                bool angry = _s.Current == Mode.Angry;
+                float stage = anger >= 0.75f ? 2f : anger >= 0.45f ? 1f : 0f;
+                _glow = Mathf.MoveTowards(_glow, angry ? 4f : stage >= 2f ? 1.6f : stage >= 1f ? 0.45f : 0f, dt * 2f);
+
+                if (angry)
+                {
+                    // Up off the wall: standing where it is, turned to you, a darkness with two red eyes.
+                    Vector3 look = cam.transform.position - _s._pos; look.y = 0f;
+                    _onWall = false; _has = true;
+                    _at = _s._pos; _n = look.sqrMagnitude > 1e-4f ? look.normalized : Vector3.forward;
+                    _h = 2.3f;
+                    _wantStrength = 0.55f;                     // a vague darkness: it is the eyes you see
+                    _strength = Mathf.MoveTowards(_strength, _wantStrength, dt * 3f);
+                }
+                else
+                {
+                    _find -= dt;
+                    if (_find <= 0f)
+                    {
+                        _find = 0.25f;
+                        if (FindWall(out var p, out var n, out float h))
+                        {
+                            bool samePlane = _has && _onWall && Vector3.Dot(n, _n) > 0.99f && Mathf.Abs(Vector3.Dot(p - _at, _n)) < 0.05f;
+                            if (samePlane || !_has || _strength < 0.03f) { _pendingAt = p; _pendingN = n; _pendingH = h; if (!samePlane) { _at = p; _n = n; _h = h; } _has = true; _onWall = true; }
+                            else { _pendingAt = p; _pendingN = n; _pendingH = h; }        // fade out here, then over there
+                            _wantStrength = 0.42f + 0.12f * stage;      // faint at first, darker as it angers
+                        }
+                        else _wantStrength = 0f;
+                    }
+                    bool moving = _has && (Vector3.Dot(_pendingN, _n) < 0.99f || Mathf.Abs(Vector3.Dot(_pendingAt - _at, _n)) > 0.05f);
+                    if (moving)
+                    {
+                        _strength = Mathf.MoveTowards(_strength, 0f, dt * 2f);
+                        if (_strength <= 0.001f) { _at = _pendingAt; _n = _pendingN; _h = _pendingH; }
+                    }
+                    else
+                    {
+                        _at = Vector3.MoveTowards(_at, _pendingAt, dt * 1.4f);     // sliding along the wall
+                        _h = Mathf.MoveTowards(_h, _pendingH, dt);
+                        _strength = Mathf.MoveTowards(_strength, _wantStrength, dt * 1.2f);
+                    }
+                }
+
+                bool show = _has && (_strength > 0.005f || _glow > 0.01f);
+                if (_root.activeSelf != show) _root.SetActive(show);
+                if (!show) { DistanceToEye = 999f; return; }
+                _shadowMat.SetFloat(StrengthId, _strength);
+                _eyeMat.SetFloat(GlowId, _glow * Mathf.Clamp01(_strength * 2f));
+                Vector3 basePos = new Vector3(_at.x, _s._baseY, _at.z) + (_onWall ? _n * 0.012f : Vector3.zero);
+                _root.transform.SetPositionAndRotation(basePos, Quaternion.LookRotation(-_n, Vector3.up));
+                _root.transform.localScale = new Vector3(_h * Aspect, _h, 1f);
+                DistanceToEye = Vector3.Distance(cam.transform.position, basePos + Vector3.up * _h * 0.9f);
+            }
+
+            /// <summary>Is it in view: its middle or its head, within 22 m, dark enough to see?</summary>
+            public bool Seen()
+            {
+                if (!_root || !_root.activeSelf || _strength < 0.3f || DistanceToEye > 22f) return false;
+                Vector3 off = _onWall ? _n * 0.06f : Vector3.zero;
+                Vector3 b = new Vector3(_at.x, _s._baseY, _at.z) + off;
+                return Visible(b + Vector3.up * _h * 0.55f, 0.05f) || Visible(b + Vector3.up * _h * 0.9f, 0.05f);
+            }
+
+            /// <summary>
+            /// A wall 1-5 m from it, facing the camera, clear for the shadow's width, as tall as the room: the lit one nearest
+            /// 2.5 m away, keeping the one it is on if it still will do.
+            /// </summary>
+            bool FindWall(out Vector3 at, out Vector3 normal, out float height)
+            {
+                at = normal = default; height = 0f;
+                var cam = Camera.main;
+                Vector3 from = _s.Shown() + Vector3.up * 1.2f;      // (leaning out: its shadow leans out with it)
+                float best = float.MaxValue;
+                for (int i = 0; i < 16; i++)
+                {
+                    float ang = i * Mathf.PI * 2f / 16f;
+                    var dir = new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang));
+                    if (!Physics.Raycast(from, dir, out var hit, 5f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                    var n = hit.normal; n.y = 0f;
+                    if (Mathf.Abs(hit.normal.y) > 0.2f || hit.distance < 1f || hit.collider.attachedRigidbody || n.sqrMagnitude < 0.5f) continue;
+                    n.Normalize();
+                    if (_s._player && hit.collider.transform.IsChildOf(_s._player.transform)) continue;
+                    if (Vector3.Dot(n, cam.transform.position - hit.point) <= 0f) continue;        // the face you can see
+                    // Room for it: the wall goes on half its width either way, and down to the floor.
+                    if (!Physics.Raycast(hit.point + n * 0.1f, Vector3.up, out var up, 3f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                    float ceiling = up.point.y;
+                    float h = Mathf.Min(ceiling - _s._baseY - 0.03f, 3.4f);
+                    if (h < 1.9f) continue;
+                    Vector3 t = Vector3.Cross(Vector3.up, n);
+                    float w = h * Aspect * 0.45f;
+                    bool room = true;
+                    foreach (var probe in new[] { t * w + Vector3.up * 0f, -t * w, Vector3.up * -0.9f, t * w * 0.8f + Vector3.up * 0.9f, -t * w * 0.8f + Vector3.up * 0.9f })
+                        if (!Physics.Raycast(hit.point + n * 0.1f + probe, -n, 0.2f, ~0, QueryTriggerInteraction.Ignore)) { room = false; break; }
+                    if (!room) continue;
+                    float score = Mathf.Abs(hit.distance - 2.5f);
+                    var z = _s.ZoneOf(CellOf(hit.point + n * 0.3f));
+                    if (z.HasValue && LightZones.Level(z.Value.Item1, z.Value.Item2, Time.time, 0.5f) > 0.5f) score -= 2f;     // shadows show on a lit wall
+                    if (_has && _onWall && Vector3.Dot(n, _n) > 0.99f && Mathf.Abs(Vector3.Dot(hit.point - _at, _n)) < 0.05f) score -= 1.5f;
+                    if (score < best) { best = score; at = hit.point; normal = n; height = h; }
+                }
+                return best < float.MaxValue;
+            }
         }
 
         // ---------------- Caught ----------------
@@ -383,7 +508,7 @@ namespace Backrooms.Atmosphere
         IEnumerator Catch()
         {
             Current = Mode.Caught;
-            Show(0f);
+            _sheet?.Hide();
             // The tape breaks up and cuts: the last frame held, the sound gone to crackle.
             CamcorderRig.Interference = _interference = 1f;
             CamcorderFrameHold.Freeze = true;
