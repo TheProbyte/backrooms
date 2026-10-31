@@ -79,6 +79,7 @@ namespace Backrooms.CustomRooms
         [Tooltip("Size (1 = as made).")] public float scale = 1f;
         [Tooltip("Physics off: stuck exactly where it is put, never moves, cannot be taken. May sit half inside a wall.")]
         public bool pinned;
+        [Tooltip("Which model the catalog chose (0: the dice choose).")] public int style;
     }
 
     /// <summary>

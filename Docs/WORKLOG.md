@@ -15,6 +15,24 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Build mode reworked, steps B to E: click anything, a catalog, walk, checks that fix
+
+- Step B (`BuilderApp.Picking.cs`): in SELECT a click takes a prop, loot spot, pillar, ceiling light, door or window, a run
+  of wall, or a room's floor, nearest first; walls, lights and pillars have inspectors (a wall: wall, half, railing, a
+  door or window where clicked, remove; a light: working, flickers, dead; a pillar: size, dragged to another corner). A
+  box dragged on the floor or Shift-clicks make a group of props: moved together, physics off for all, duplicated,
+  deleted.
+- Step C (`BuilderCatalog.cs`): FURNISH is a picture catalog in categories with a search box; every sofa model and fabric,
+  the floral sofa, each armchair fabric and the rest; a pick places that model (`style` on `PropDef` and `Prop`; the
+  floral sofa is in `OfficeBiomeAssets` now). Pictures are rendered from Update (a camera in OnGUI rendered nothing), each
+  piece hidden at once after its picture (deferred destroying left it in the next one).
+- Step D (`BuilderApp.Walk.cs`, `BuilderApp.Checks.cs`): WALK (V) walks the room in first person inside the builder;
+  checks with fixes: ADD DOOR, ADD LIGHTS, cells no way in reaches (flashed red), props in front of a door (selected).
+- Step E: PUT IN THE WORLD also weights the variants.
+- Checked in the builder (driven by code): a wall, a pillar picked; two boxes boxed into a group and dragged 1 m
+  together; 17 of 19 catalog pieces pictured (rack and clock have labels); the floral sofa placed from the catalog; 4
+  walled-off cells found; walking. New test: a catalog pick places that model. Not played by the owner.
+
 ## 2026-10-30 - Build mode reworked, step A: five modes, an inspector, a world dialog
 
 - Owner: the builder improved fully, cleaner, easier, making more sense (plan steps A-E, all approved). Step A: the

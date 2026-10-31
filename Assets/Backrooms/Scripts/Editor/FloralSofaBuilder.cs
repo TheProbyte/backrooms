@@ -56,8 +56,11 @@ namespace Backrooms.EditorTools
                 r.lightProbeUsage = LightProbeUsage.Off;
                 r.reflectionProbeUsage = ReflectionProbeUsage.Off;
             }
-            PrefabUtility.SaveAsPrefabAsset(go, PrefabPath);
+            var prefab = PrefabUtility.SaveAsPrefabAsset(go, PrefabPath);
             Object.DestroyImmediate(go);
+            // The biome's assets know it (build mode's catalog places it in rooms; saves find it by that name).
+            var biome = Load<Generation.OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
+            if (biome) { biome.floralSofaPrefab = prefab; EditorUtility.SetDirty(biome); }
             AssetDatabase.SaveAssets();
             Debug.Log("[Backrooms] Floral sofa built: " + PrefabPath);
         }

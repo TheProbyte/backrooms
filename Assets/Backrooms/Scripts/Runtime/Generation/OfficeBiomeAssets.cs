@@ -56,6 +56,8 @@ namespace Backrooms.Generation
         [Header("Blender-built props (Tools/Blender/build_props.py)")]
         [Tooltip("Sofas: [model * fabricCount + fabric]. Models: chesterfield, modern.")]
         public GameObject[] sofaPrefabs;
+        [Tooltip("The floral sofa (Tools/Blender/build_floral_sofa.py, Editor/FloralSofaBuilder): only where build mode's catalog puts it.")]
+        public GameObject floralSofaPrefab;
         public GameObject[] armchairPrefabs;
         public GameObject floorLampPrefab, officeChairPrefab, tableModulePrefab, tableLegPrefab, wallClockPrefab;
     }

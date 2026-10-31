@@ -47,6 +47,24 @@ Ctrl+D duplicates the selected prop, loot spot, door or window. Room files are f
 doorways become doors of their own size when it is loaded. Copy and paste of a room carries its doors and windows and
 its props' lift, tip, size and physics-off.
 
+**Everything clickable** (step B, `BuilderApp.Picking.cs`): in SELECT a click takes, nearest first, a prop or loot spot,
+a pillar, a ceiling light (on the ceiling in SOLID, its marker on the floor in the other views), a door or window (and
+slides it), a run of wall (its inspector: WALL / HALF / RAILING, + DOOR HERE, + WINDOW HERE, REMOVE), else the room whose
+floor it is. Drag on the floor for a box round props; Shift-click adds or takes away one. A group moves together and has
+PHYSICS OFF FOR ALL, DUPLICATE and DELETE. Lights: WORKING, FLICKERS, DEAD, REMOVE. Pillars: size, drag to another corner.
+
+**The catalog** (step C, `BuilderCatalog.cs`): FURNISH shows every piece as a picture (rendered once from the developer
+menu's furniture), in categories (seating, tables, storage, lights, wall) with a search box: each sofa model in each
+fabric, the floral sofa, each armchair fabric, the office chair, the table, three box sizes, the pallet, the rack, the floor
+lamp, the clock. A pick places exactly that model (`PropDef.style` / `Prop.style`; the floral sofa through
+`OfficeBiomeAssets.floralSofaPrefab`). Its footprint shows at the pointer.
+
+**Walk and checks** (step D, `BuilderApp.Walk.cs`, `BuilderApp.Checks.cs`): WALK (or V) puts you in the room in first
+person at once (WASD, Shift faster, Space hops, Esc back). The checks fix what they find: no way in (ADD DOOR), no working
+lights (ADD LIGHTS), cells no way in reaches (SHOW flashes them red), props in front of a door (SHOW selects them).
+
+**PUT IN THE WORLD** (step E) also sets how often each variant is picked.
+
 **Hands-on editing** (round 16, owner: "more like a Sims builder or Tiny Glade"; `BuilderApp.Handles.cs`):
 - **Doors, arches and windows of any size.** With OPENING, point at a wall and click: it goes where you point (the
   preview is white where it fits, red where it does not: it must sit on solid wall, clear of other openings). Then drag

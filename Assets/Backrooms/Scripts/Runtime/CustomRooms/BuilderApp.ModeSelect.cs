@@ -28,8 +28,11 @@ namespace Backrooms.CustomRooms
                     case SelKind.Opening: return "Drag its sides, top or bottom to size it; its middle slides it along the wall. Delete removes it.";
                     case SelKind.Loot: return "Drag to move it. Delete removes it.";
                     case SelKind.Room: return "This room's ceiling, walls, floor and lights are on the right. PAINT adds cells to it.";
+                    case SelKind.Wall: return "Make it a wall, half wall or railing on the right, put a door or window in it, or remove it.";
+                    case SelKind.Light: return "Working, flickering or dead (right). Delete removes it.";
+                    case SelKind.Pillar: return "Drag it to another grid corner. Its size is on the right. Delete removes it.";
                 }
-                return "Click a prop, door, window or floor to select it. Drag the arrows outside the walls to grow or shrink the room.";
+                return "Click anything to select it; drag on the floor for a box round props (Shift-click adds). Arrows outside the walls grow the room.";
             }
         }
 
@@ -65,6 +68,15 @@ namespace Backrooms.CustomRooms
         {
             if (!_dragging || !_hoverGround) return;
             var v = V;
+            // A pillar: to the grid corner nearest the pointer.
+            if (_selected.kind == SelKind.Pillar && _selected.index < v.pillars.Count)
+            {
+                var pl = v.pillars[_selected.index];
+                int px = Mathf.Clamp(Mathf.RoundToInt(_hoverMetres.x / C), 0, v.width), pz = Mathf.Clamp(Mathf.RoundToInt(_hoverMetres.y / C), 0, v.depth);
+                if ((px != pl.x || pz != pl.z) && !v.pillars.Exists(q => q != pl && q.x == px && q.z == pz))
+                { pl.x = px; pl.z = pz; _strokeChanged = true; BuilderSounds.Play(BuilderSounds.Sfx.Tick, 0.9f); RequestRebuild(); }
+                return;
+            }
             // Smooth: where it was taken stays under the pointer; 5 cm steps (Alt: none). A prop with physics off may go
             // anywhere, into a wall or out of the room.
             var raw = _hoverMetres + _grabDelta;
@@ -76,6 +88,10 @@ namespace Backrooms.CustomRooms
                 var pr = v.props[_selected.index];
                 if (pr.x != m.x || pr.z != m.y)
                 {
+                    // The rest of a group goes the same way.
+                    float gdx = m.x - pr.x, gdz = m.y - pr.z;
+                    foreach (int gi in _group)
+                        if (gi < v.props.Count && gi != _selected.index && !WallProp(v.props[gi].kind)) { v.props[gi].x += gdx; v.props[gi].z += gdz; if (!HasView(gi)) RequestRebuild(); }
                     pr.x = m.x; pr.z = m.y; _strokeChanged = true;
                     BuilderSounds.Play(BuilderSounds.Sfx.Tick, 0.9f + 0.15f * Random.value, 0.6f);
                     if (!HasView(_selected.index)) RequestRebuild();         // (a movable glides there: UpdatePropViews)
@@ -98,7 +114,20 @@ namespace Backrooms.CustomRooms
         void DuplicateSelected()
         {
             var v = V;
-            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count)
+            if (Grouped)
+            {
+                PushUndo();
+                var copies = new List<int>();
+                foreach (int i in GroupAll())
+                {
+                    var q = JsonUtility.FromJson<PropDef>(JsonUtility.ToJson(v.props[i]));
+                    q.x += 0.6f; q.z += 0.3f; q.variant = Random.Range(0, 1 << 16);
+                    v.props.Add(q); copies.Add(v.props.Count - 1);
+                }
+                _selected = new Selection { kind = SelKind.Prop, index = copies[0] };
+                _group.Clear(); for (int k = 1; k < copies.Count; k++) _group.Add(copies[k]);
+            }
+            else if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count)
             {
                 PushUndo();
                 var q = JsonUtility.FromJson<PropDef>(JsonUtility.ToJson(v.props[_selected.index]));
@@ -134,7 +163,17 @@ namespace Backrooms.CustomRooms
         void DeleteSelected()
         {
             var v = V;
-            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count) { PushUndo(); v.props.RemoveAt(_selected.index); }
+            if (_selected.kind == SelKind.Wall) { SetWallRun(EdgeCode.Open); return; }
+            if (Grouped)
+            {
+                PushUndo();
+                var all = GroupAll(); all.Sort(); all.Reverse();
+                foreach (int i in all) v.props.RemoveAt(i);
+                _group.Clear();
+            }
+            else if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count) { PushUndo(); v.props.RemoveAt(_selected.index); }
+            else if (_selected.kind == SelKind.Light && _selected.index < v.fixtures.Count) { PushUndo(); v.fixtures.RemoveAt(_selected.index); }
+            else if (_selected.kind == SelKind.Pillar && _selected.index < v.pillars.Count) { PushUndo(); v.pillars.RemoveAt(_selected.index); }
             else if (_selected.kind == SelKind.Loot && _selected.index < v.loot.Count) { PushUndo(); v.loot.RemoveAt(_selected.index); }
             else if (_selected.kind == SelKind.Opening && _selected.index < v.openings.Count) { PushUndo(); v.openings.RemoveAt(_selected.index); }
             else return;

@@ -47,7 +47,7 @@ namespace Backrooms.CustomRooms
             ImUi.Begin();
             ImUi.Tip = "";
             if (_screen == ScreenKind.Library) DrawLibrary();
-            else if (_bp != null) { DrawEditor(); DrawHandleLabels(); }
+            else if (_bp != null) { if (_walking) DrawWalkGui(); else { DrawEditor(); DrawHandleLabels(); DrawBox(); } }
             DrawModal();
             if (_showHelp) DrawHelp();
             else ImUi.DrawTooltip();
@@ -166,13 +166,18 @@ namespace Backrooms.CustomRooms
             rx -= 74; if (ImUi.Button(new Rect(rx, 8, 70, 36), "HELP", _showHelp, "Controls and a short guide. [F1]")) _showHelp = !_showHelp;
             rx -= 104; if (ImUi.Button(new Rect(rx, 8, 100, 36), "LIBRARY", false, "Back to all your rooms.")) { if (_dirty) _modal = Modal.Back; else ShowLibrary(); }
             rx -= 154; if (ImUi.Button(new Rect(rx, 8, 150, 36), "TEST IN WORLD", false, "Walks you into the room inside the real procedural world, with the camcorder filters on.")) TestInWorld();
+            rx -= 84; if (ImUi.Button(new Rect(rx, 8, 80, 36), "WALK", false, "Walk round the room right here, in first person (Esc back).  [V]")) BeginWalk();
             rx -= 94; if (ImUi.Button(new Rect(rx, 8, 90, 36), "SAVE", _dirty, "Saves the room to your library.  [Ctrl+S]")) SaveBlueprint(false);
         }
+
+        Vector2 _leftScroll;
+        float _leftContentH = 900f;
 
         void DrawLeftBar()
         {
             var r = LeftRect;
-            var col = new ImUi.Column(r.x + 12, r.y + 12, r.width - 24, 34, 5);
+            _leftScroll = GUI.BeginScrollView(r, _leftScroll, new Rect(0, 0, r.width - 16, _leftContentH), false, false, GUIStyle.none, GUIStyle.none);
+            var col = new ImUi.Column(12, 12, r.width - 24 - 6, 34, 5);
             ImUi.Header(col.Row(24), "Mode");
             var cur = CurrentMode;
             for (int i = 0; i < Modes.Length; i++)
@@ -203,6 +208,8 @@ namespace Backrooms.CustomRooms
                 col.Space(8);
             }
             cur.Options(ref col);
+            _leftContentH = col.y + 24;
+            GUI.EndScrollView();
         }
 
         static readonly string[] _kindNames = { "OFFICE", "BIG OFFICE", "HALLWAY", "LOUNGE", "CONFERENCE" };
@@ -218,11 +225,13 @@ namespace Backrooms.CustomRooms
             var content = new Rect(0, 0, r.width - 18, _rightContentH);
             _rightScroll = GUI.BeginScrollView(view, _rightScroll, content, false, false, GUIStyle.none, GUIStyle.none);
             var col = new ImUi.Column(12, 12, r.width - 24 - 14, 30, 6);
-            if (_selected.kind == SelKind.Prop || _selected.kind == SelKind.Loot || _selected.kind == SelKind.Opening)
+            if (_selected.kind == SelKind.Prop || _selected.kind == SelKind.Loot || _selected.kind == SelKind.Opening
+                || _selected.kind == SelKind.Wall || _selected.kind == SelKind.Light || _selected.kind == SelKind.Pillar)
             {
-                if (ImUi.Button(col.Row(28), "‹  WHOLE ROOM", false, "Deselect. [Esc]")) _selected = Selection.None;
+                if (ImUi.Button(col.Row(28), "‹  WHOLE ROOM", false, "Deselect. [Esc]")) { _selected = Selection.None; _group.Clear(); }
                 col.Space(4);
-                DrawSelected(ref col);
+                if (Grouped) DrawGroupInspector(ref col);
+                if (!DrawPickInspector(ref col)) DrawSelected(ref col);
             }
             else if (_selected.kind == SelKind.Room || CurrentMode is PaintMode) DrawRoomInspector(ref col);
             else DrawOverview(ref col);
@@ -286,19 +295,6 @@ namespace Backrooms.CustomRooms
             if (ImUi.Button(col.Row(40), "PUT IN THE WORLD…", _bp.enabled, "Whether and where this room spawns in the procedural world.")) _modal = Modal.World;
             ImUi.Dimmed(col.Row(24), _bp.enabled ? "Spawns in the world." : "Not in the world yet: only in your library.");
             if (ImUi.Button(col.Row(32), "DISCARD CHANGES", false, "Back to the saved version of this room.")) _modal = Modal.Discard;
-        }
-
-        void DrawChecks(ref ImUi.Column col)
-        {
-            var v = V;
-            ImUi.Header(col.Row(24), "Checks");
-            int exits = v.CountExits();
-            ImUi.Fill(new Rect(col.x, col.y + 6, 10, 10), exits > 0 ? ImUi.Good : ImUi.Bad);
-            GUI.Label(new Rect(col.x + 14, col.y, col.w - 14, 22), exits > 0 ? $"{exits} way{(exits == 1 ? "" : "s")} in" : "No way in: put a door in an outer wall", ImUi.Label); col.Advance(22);
-            bool lit = v.fixtures.Exists(f => f.on);
-            ImUi.Fill(new Rect(col.x, col.y + 6, 10, 10), lit ? ImUi.Good : ImUi.Bad);
-            GUI.Label(new Rect(col.x + 14, col.y, col.w - 14, 22), lit ? $"{v.fixtures.FindAll(f => f.on).Count} lights" : "No working lights", ImUi.Label); col.Advance(22);
-            ImUi.Dimmed(col.Row(22), $"{v.openings.Count} doors and windows, {v.props.Count} props, {v.loot.Count} loot spots, {v.pillars.Count} pillars");
         }
 
         /// <summary>One room (an area of cells): its name, ceiling, walls, floor, lights; copy and paste; remove.</summary>
@@ -367,6 +363,16 @@ namespace Backrooms.CustomRooms
             _bp.chance = Slide(col.Row(), "How often", _bp.chance, 0.02f, 1f, "0.00", "Chance that a spot that picks this room really holds it.");
             _bp.weight = Slide(col.Row(), "Weight", _bp.weight, 0.1f, 10f, "0.0", "Against the other set pieces that could take the same spot.");
             Toggled(ref _bp.allowRotate, col.Row(), "May be turned 90°");
+            if (_bp.variants.Count > 1)
+            {
+                col.Space(8);
+                ImUi.Text_(col.Row(24), "Variants (how often each is picked):");
+                foreach (var vv in _bp.variants)
+                {
+                    float vw = Slide(col.Row(), vv.name, vv.weight, 0f, 10f, "0.0");
+                    if (vw != vv.weight) { vv.weight = vw; _dirty = true; BuildSession.Dirty = true; }
+                }
+            }
             EnsureNames();
             var col2 = new ImUi.Column(box.x + box.width * 0.5f + 12, box.y + 108, box.width * 0.5f - 36, 26, 4);
             ImUi.Text_(col2.Row(24), "Biomes (none ticked = any):");
@@ -418,7 +424,7 @@ namespace Backrooms.CustomRooms
             if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count)
             {
                 var p = v.props[_selected.index];
-                ImUi.Header(col.Row(24), "Selected prop: " + p.kind);
+                ImUi.Header(col.Row(24), PropName(p));
                 if (WallProp(p.kind)) ImUi.Dimmed(col.Row(34), "Wall-aligned: drag beside a wall to reposition.");
                 float yaw = WallProp(p.kind) ? p.yaw : Slide(col.Row(), "Turn (°)", p.yaw, 0f, 359f, "0");
                 if (Mathf.Abs(yaw - p.yaw) > 0.01f) { p.yaw = Mathf.Round(yaw / 5f) * 5f; _dirty = true; _needRebuild = true; }

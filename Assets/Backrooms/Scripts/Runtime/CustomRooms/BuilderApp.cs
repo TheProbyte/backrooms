@@ -83,6 +83,7 @@ namespace Backrooms.CustomRooms
 
         void Start()
         {
+            BuilderCatalog.Reset();
             SetupCamera();
             RoomLibrary.Reload();
             RenderSettings.skybox = null;
@@ -356,7 +357,7 @@ namespace Backrooms.CustomRooms
 
         void OnEndCamera(ScriptableRenderContext ctx, Camera cam)
         {
-            if (cam != _cam || _screen != ScreenKind.Editor || _bp == null || _showHelp || _modal != Modal.None) return;
+            if (cam != _cam || _screen != ScreenKind.Editor || _bp == null || _showHelp || _modal != Modal.None || _walking) return;
             EnsureLineMaterial();
             _lineMat.SetInt("_ZTest", (int)CompareFunction.LessEqual);
             _lineMat.SetPass(0);

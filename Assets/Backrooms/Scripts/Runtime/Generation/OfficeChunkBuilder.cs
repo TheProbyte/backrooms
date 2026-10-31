@@ -1336,7 +1336,10 @@ namespace Backrooms.Generation
             {
                 case PropKind.Armchair:
                     if (_a.armchairPrefabs != null && _a.armchairPrefabs.Length > 0)
-                        Movable(p.id, MovableKind.Armchair, at, p.yaw, col).AddPrefab(_a.armchairPrefabs[(p.variant & int.MaxValue) % _a.armchairPrefabs.Length], Vector3.zero);
+                    {
+                        int pick = p.style > 0 && p.style <= _a.armchairPrefabs.Length ? p.style - 1 : (p.variant & int.MaxValue) % _a.armchairPrefabs.Length;
+                        Movable(p.id, MovableKind.Armchair, at, p.yaw, col).AddPrefab(_a.armchairPrefabs[pick], Vector3.zero);
+                    }
                     else Sofa(p, at, rot);
                     break;
                 case PropKind.OfficeChair:
@@ -1345,6 +1348,9 @@ namespace Backrooms.Generation
                     break;
                 case PropKind.Sofa:
                 {
+                    // Build mode's catalog chose the model (and fabric).
+                    if (p.style == Prop.FloralSofaStyle && _a.floralSofaPrefab) { Movable(p.id, MovableKind.Sofa, at, p.yaw, col).AddPrefab(_a.floralSofaPrefab, Vector3.zero); break; }
+                    if (p.style > 0 && p.style <= _a.sofaPrefabs.Length) { Movable(p.id, MovableKind.Sofa, at, p.yaw, col).AddPrefab(_a.sofaPrefabs[p.style - 1], Vector3.zero); break; }
                     // Variant picks the model and fabric; small rooms and every fourth seat get an armchair.
                     int fabricCount = _a.sofaFabrics.Length;
                     bool arm = _a.armchairPrefabs != null && _a.armchairPrefabs.Length > 0 && (p.variant % 4 == 3);

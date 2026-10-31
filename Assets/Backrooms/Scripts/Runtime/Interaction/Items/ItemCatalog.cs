@@ -89,7 +89,7 @@ namespace Backrooms.Interaction
                 }
             }
             // The floral sofa (round 15, the owner's reference; Tools/Blender/build_floral_sofa.py, Editor/FloralSofaBuilder).
-            var floralSofa = Resources.Load<GameObject>("Furniture/Sofa_Floral");
+            var floralSofa = a.floralSofaPrefab ? a.floralSofaPrefab : Resources.Load<GameObject>("Furniture/Sofa_Floral");
             if (floralSofa)
                 list.Add(new Entry { name = "Floral sofa", category = "FURNITURE", clearance = 1.7f,
                     spawn = (p, r, pv) => Movable(MovableKind.Sofa, p, r, pv, s => s.AddPrefab(floralSofa, Vector3.zero)) });

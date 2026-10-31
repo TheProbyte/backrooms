@@ -269,6 +269,10 @@ namespace Backrooms.Generation
         public float elevation, pitch, roll;
         public float scale;           // 0 means 1
         public bool pinned;
+        /// <summary>Build mode's catalog pick: which model (a sofa's or armchair's prefab index + 1, <see cref="FloralSofaStyle"/>
+        /// for the floral sofa); 0 lets the dice choose as for the generator's own.</summary>
+        public int style;
+        public const int FloralSofaStyle = 100;
     }
 
     /// <summary>

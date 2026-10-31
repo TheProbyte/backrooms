@@ -56,6 +56,7 @@ MonoBehaviour:
   - {fileID: 4701842766541106809, guid: 71cbf4074c1e20540b484fb6200fe2b3, type: 3}
   - {fileID: 399105565311276212, guid: 935fc315425504641be54af96f96d2ce, type: 3}
   - {fileID: 9093423828257751637, guid: daeff9d134050e546a2a6d99dc7a6781, type: 3}
+  floralSofaPrefab: {fileID: 7697338499787535633, guid: 045bc967afc398d4d9b2bd6bb647915f, type: 3}
   armchairPrefabs:
   - {fileID: 1465132664645981300, guid: 1ee131ca5ebc26147958a8bf4d1ae513, type: 3}
   - {fileID: 147283916221190926, guid: c4894b7b538b83e40913bb7eefe1332e, type: 3}

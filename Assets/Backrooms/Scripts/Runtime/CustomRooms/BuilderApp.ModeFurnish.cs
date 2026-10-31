@@ -16,10 +16,8 @@ namespace Backrooms.CustomRooms
             public override int Icon => 8;
             public override string Tip => "Furniture, racks, lamps, clocks and loot.";
             public override BuilderTool[] Tools => new[] { BuilderTool.Prop, BuilderTool.Loot };
-            public override string ToolName(BuilderTool t) => t == BuilderTool.Prop ? "PROPS" : "LOOT SPOT";
+            public override string ToolName(BuilderTool t) => t == BuilderTool.Prop ? "PROPS" : "LOOT";
             public override string ToolTip(BuilderTool t) => t == BuilderTool.Prop ? "Furniture and things." : "A spot where an item can be found.";
-            static readonly PropKind[] Kinds = { PropKind.Box, PropKind.Pallet, PropKind.Sofa, PropKind.Armchair, PropKind.OfficeChair, PropKind.ConferenceTable, PropKind.FloorLamp, PropKind.StorageRack, PropKind.WallClock };
-            static readonly string[] Names = { "BOX", "PALLET", "SOFA", "ARMCHAIR", "OFFICE CHAIR", "TABLE", "FLOOR LAMP", "STORAGE RACK", "WALL CLOCK" };
             public override void Options(ref ImUi.Column col)
             {
                 if (app._tool == BuilderTool.Loot)
@@ -29,17 +27,47 @@ namespace Backrooms.CustomRooms
                     ImUi.Dimmed(col.Row(40), "Spawns as a loose box until the game has loot of its own.");
                     return;
                 }
-                ImUi.Header(col.Row(24), "Prop");
-                for (int i = 0; i < Kinds.Length; i++)
-                    if (ImUi.Button(col.Row(30), Names[i], app._propKind == Kinds[i], WallProp(Kinds[i]) ? "Click beside a solid wall." : "Click the floor to place it."))
-                        app._propKind = Kinds[i];
+                var items = BuilderCatalog.Items(app.assets);
+                // Categories (three rows of two), search, then the pictures, two to a row.
+                var cats = BuilderCatalog.Categories;
+                for (int row = 0; row < 3; row++)
+                {
+                    var r = col.Row(26);
+                    for (int k = 0; k < 2; k++)
+                    {
+                        int ci = row * 2 + k;
+                        if (ImUi.Button(new Rect(r.x + k * (r.width / 2f), r.y, r.width / 2f - 3, r.height), cats[ci], app._catalogCategory == ci)) app._catalogCategory = ci;
+                    }
+                }
+                app._catalogSearch = ImUi.TextField(col.Row(28), app._catalogSearch, "catalogsearch", 30);
+                if (string.IsNullOrEmpty(app._catalogSearch)) GUI.Label(new Rect(col.x + 8, col.y - 34, col.w, 28), "search…", ImUi.Small);
+                string cat = cats[app._catalogCategory], q = (app._catalogSearch ?? "").Trim().ToLowerInvariant();
+                var shown = items.FindAll(it => (cat == "ALL" || it.category == cat) && (q.Length == 0 || it.name.ToLowerInvariant().Contains(q)));
+                float cw = (col.w - 6f) * 0.5f, ch = 112f;
+                for (int n = 0; n < shown.Count; n += 2)
+                {
+                    var r = col.Row(ch);
+                    for (int k = 0; k < 2 && n + k < shown.Count; k++)
+                    {
+                        var it = shown[n + k];
+                        var cell = new Rect(r.x + k * (cw + 6f), r.y, cw, ch);
+                        bool on = app._catalogPick == it;
+                        if (GUI.Button(cell, new GUIContent("", it.name), GUIStyle.none)) { app._catalogPick = it; app._propKind = it.kind; BuilderSounds.Play(BuilderSounds.Sfx.Tick, 1.1f); }
+                        ImUi.Fill(cell, on ? ImUi.Accent : ImUi.Raised);
+                        var pic = new Rect(cell.x + 3, cell.y + 3, cell.width - 6, cell.height - 34);
+                        if (it.picture) GUI.DrawTexture(pic, it.picture, ScaleMode.ScaleAndCrop);
+                        else { ImUi.Fill(pic, new Color(0.16f, 0.16f, 0.17f, 1f)); GUI.Label(pic, it.kind == PropKind.StorageRack ? "RACK" : "CLOCK", new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleCenter }); }
+                        GUI.Label(new Rect(cell.x + 4, cell.yMax - 31, cell.width - 8, 30), it.name, new GUIStyle(ImUi.Small) { fontSize = 11, wordWrap = true, alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip, normal = { textColor = on ? Color.black : ImUi.Text } });
+                    }
+                }
+                if (shown.Count == 0) ImUi.Dimmed(col.Row(30), "Nothing matches.");
             }
             public override string Hint()
             {
                 if (app._tool == BuilderTool.Loot) return $"Click the floor to mark where '{app._lootItem}' can be found.";
-                int i = System.Array.IndexOf(Kinds, app._propKind);
-                string what = i >= 0 ? Names[i].ToLowerInvariant() : "prop";
-                return WallProp(app._propKind) ? $"Click the floor beside a solid wall to put a {what} against it." : $"Click the floor to put a {what} there, then drag it or its handles.";
+                var it = app._catalogPick;
+                if (it == null) return "Pick something on the left, then click the floor to put it there.";
+                return WallProp(it.kind) ? $"Click the floor beside a solid wall to put the {it.name.ToLowerInvariant()} against it." : $"Click the floor to put the {it.name.ToLowerInvariant()} there; then drag it or its handles.";
             }
         }
 
@@ -68,13 +96,14 @@ namespace Backrooms.CustomRooms
             if (!_hoverGround) return;
             var m = Snap(_hoverMetres);
             if (!InsideRoom(m)) { SetStatus("Place props inside the room."); return; }
-            var size = DefaultSize(_propKind);
+            if (_catalogPick == null) { SetStatus("Pick something from the catalog on the left first."); BuilderSounds.Play(BuilderSounds.Sfx.Error); return; }
+            var size = _catalogPick.size;
             float yaw = 0f;
             if (WallProp(_propKind) && !V.TryWallPlacement(_hoverMetres, size, out m, out yaw))
             { SetStatus("Click near a solid wall with enough space. Openings cannot support this prop."); return; }
             PushUndo();
             var v = V;
-            v.props.Add(new PropDef { kind = _propKind, x = m.x, z = m.y, yaw = yaw, size = size, lit = true, variant = Random.Range(0, 1 << 16) });
+            v.props.Add(new PropDef { kind = _catalogPick.kind, style = _catalogPick.style, x = m.x, z = m.y, yaw = yaw, size = size, lit = true, variant = Random.Range(0, 1 << 16) });
             _selected = new Selection { kind = SelKind.Prop, index = v.props.Count - 1 };
             _tool = BuilderTool.Select;
             BuilderSounds.Play(BuilderSounds.Sfx.Place, 0.85f + Random.value * 0.2f);
@@ -93,6 +122,17 @@ namespace Backrooms.CustomRooms
             _tool = BuilderTool.Select;
             BuilderSounds.Play(BuilderSounds.Sfx.Place, 1.2f);
             Changed();
+        }
+
+        BuilderCatalog.Item _catalogPick;
+        int _catalogCategory;
+        string _catalogSearch = "";
+
+        /// <summary>The catalog's name for a placed prop (its kind and style), or its kind.</summary>
+        string PropName(PropDef p)
+        {
+            var it = BuilderCatalog.Items(assets).Find(x => x.kind == p.kind && x.style == p.style && (p.kind != PropKind.Box || Mathf.Abs(x.size.x - p.size.x) < 0.01f));
+            return it != null ? it.name : p.kind.ToString();
         }
 
         static bool WallProp(PropKind kind) => kind == PropKind.WallClock || kind == PropKind.StorageRack;

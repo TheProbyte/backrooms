@@ -14,7 +14,7 @@ namespace Backrooms.CustomRooms
         bool _textFocus;
 
         // Selection and per-tool options
-        enum SelKind { None, Prop, Loot, Opening, Room }
+        enum SelKind { None, Prop, Loot, Opening, Room, Wall, Light, Pillar }
         struct Selection { public SelKind kind; public int index; public static Selection None => new Selection { kind = SelKind.None, index = -1 }; }
         Selection _selected = Selection.None;
         PropKind _propKind = PropKind.Box;
@@ -48,6 +48,13 @@ namespace Backrooms.CustomRooms
         {
             // The 3D view fills the space between the panels (so nothing is drawn under them).
             float sc = ImUi.Scale;
+            if (_walking)
+            {
+                _cam.pixelRect = new Rect(0, 0, Screen.width, Screen.height);
+                UpdateWalk();
+                if (_needRebuild) Rebuild();
+                return;
+            }
             _cam.pixelRect = _screen == ScreenKind.Editor && _bp != null
                 ? new Rect(LeftW * sc, BottomH * sc, Screen.width - (LeftW + RightW) * sc, Screen.height - (TopH + BottomH) * sc)
                 : new Rect(0, 0, Screen.width, Screen.height);
@@ -75,6 +82,7 @@ namespace Backrooms.CustomRooms
             if (_stroking && (mouse.leftButton.wasReleasedThisFrame || !mouse.leftButton.isPressed)) EndStroke();
             UpdatePropViews();
             UpdateRebuildThrottle();
+            if (_tool == BuilderTool.Prop && assets) BuilderCatalog.Picture(assets);
 
             // Views that depend on where the camera is need a new build when the cut-down walls change.
             if (_view == BuilderView.Cutout && !_needRebuild)
@@ -94,7 +102,7 @@ namespace Backrooms.CustomRooms
                 else if (_pastingArea) _pastingArea = false;
                 else if (_modal != Modal.None) _modal = Modal.None;
                 else if (_stroking) EndStroke();
-                else if (_selected.kind != SelKind.None) _selected = Selection.None;
+                else if (_selected.kind != SelKind.None) { _selected = Selection.None; _group.Clear(); }
                 else PauseMenu.Instance?.Open();
             }
             if (_textFocus || _modal != Modal.None || PauseMenu.IsOpen) return;
@@ -109,6 +117,7 @@ namespace Backrooms.CustomRooms
             if (ctrl && kb.dKey.wasPressedThisFrame) DuplicateSelected();
             if (kb.tabKey.wasPressedThisFrame) CycleView();
             if (kb.gKey.wasPressedThisFrame) _showGrid = !_showGrid;
+            if (kb.vKey.wasPressedThisFrame && !ctrl) BeginWalk();
             if (kb.deleteKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame) DeleteSelected();
             if (kb.rKey.wasPressedThisFrame) RotateSelected();
             Key[] keys = { Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4, Key.Digit5 };
@@ -232,13 +241,7 @@ namespace Backrooms.CustomRooms
             if (_hoverHandle != Handle.None) { BeginHandleDrag(screen); return; }
             switch (_tool)
             {
-                case BuilderTool.Select:
-                    SelectAt();
-                    // Nothing on the floor there: a door or window on the wall, taken by its middle to slide it.
-                    if (_selected.kind == SelKind.None && SelectOpeningAt(screen)) { _hoverHandle = Handle.Move; BeginHandleDrag(screen); }
-                    // Else the floor: the room it belongs to.
-                    else if (_selected.kind == SelKind.None && _hoverCellValid) { SelectRoom(V.RoomOf(_hoverCell.x, _hoverCell.y)); BuilderSounds.Play(BuilderSounds.Sfx.Pick, 0.9f); }
-                    break;
+                case BuilderTool.Select: SelectClick(screen); break;
                 case BuilderTool.Opening when _opening != OpeningKind.Gap: PlaceOpening(); _stroking = false; break;
                 case BuilderTool.Prop: PlaceProp(); _stroking = false; break;
                 case BuilderTool.Loot: PlaceLoot(); _stroking = false; break;
@@ -255,7 +258,12 @@ namespace Backrooms.CustomRooms
         void ContinueStroke(Vector2 screen)
         {
             if (_dragHandle != Handle.None) { DragHandle(screen); _lastMouse = screen; return; }
-            if (_tool == BuilderTool.Select) { DragSelected(); _lastMouse = screen; return; }
+            if (_tool == BuilderTool.Select)
+            {
+                if (_boxing) { _boxNow = screen; if ((screen - _boxStart).magnitude > 8f) _boxActive = true; }
+                else DragSelected();
+                _lastMouse = screen; return;
+            }
             // Sample along the pointer's path so a fast drag does not skip edges or cells.
             int steps = Mathf.Clamp(Mathf.CeilToInt((screen - _lastMouse).magnitude / 8f), 1, 24);
             for (int i = 1; i <= steps; i++)
@@ -271,6 +279,7 @@ namespace Backrooms.CustomRooms
         {
             _stroking = false; _strokeLocked = false;
             if (_dragHandle != Handle.None) { EndHandleDrag(); _dragging = false; return; }
+            if (_boxing) { EndBox(); return; }
             if (_dragging && _selected.kind != SelKind.None) BuilderSounds.Play(BuilderSounds.Sfx.Drop, 0.95f);
             _dragging = false;
             if (_strokeChanged) { Changed(); }
@@ -295,6 +304,7 @@ namespace Backrooms.CustomRooms
                     Quad(W3(x0, z0, 0.08f), W3(x0 + C, z0, 0.08f), W3(x0 + C, z0 + C, 0.08f), W3(x0, z0 + C, 0.08f), colour);
                 }
             }
+            DrawFlash();
             if (_hoverCellValid && (_tool == BuilderTool.Floor || _tool == BuilderTool.Light))
             {
                 float x0 = _hoverCell.x * C, z0 = _hoverCell.y * C;
@@ -316,8 +326,9 @@ namespace Backrooms.CustomRooms
             foreach (var f in v.fixtures)
             {
                 float cx = (f.x + 0.5f) * C - 0.3f, cz = (f.z + 0.5f) * C, h = 0.27f;
-                var col = f.on ? new Color(1f, 0.95f, 0.5f, 0.55f) : new Color(0.5f, 0.5f, 0.5f, 0.45f);
-                if (_tool == BuilderTool.Light || f.on == false) Quad(W3(cx - h, cz - h), W3(cx + h, cz - h), W3(cx + h, cz + h), W3(cx - h, cz + h), col);
+                float fade = _tool == BuilderTool.Light ? 1f : 0.45f;
+                var col = f.on ? new Color(1f, 0.95f, 0.5f, 0.55f * fade) : new Color(0.5f, 0.5f, 0.5f, 0.45f * fade);
+                if (_tool == BuilderTool.Light || f.on == false || (_tool == BuilderTool.Select && _view != BuilderView.Solid)) Quad(W3(cx - h, cz - h), W3(cx + h, cz - h), W3(cx + h, cz + h), W3(cx - h, cz + h), col);
             }
             GL.End();
 
@@ -354,10 +365,21 @@ namespace Backrooms.CustomRooms
             {
                 var m = Snap(_hoverMetres);
                 float yaw = 0f;
-                bool valid = _tool != BuilderTool.Prop || !WallProp(_propKind) || v.TryWallPlacement(_hoverMetres, DefaultSize(_propKind), out m, out yaw);
-                Marker(W3(m.x, m.y, 0.06f), 0.22f, yaw, valid ? new Color(1f, 1f, 1f, 0.7f) : ImUi.Bad, _tool == BuilderTool.Prop);
+                var size = _catalogPick != null ? _catalogPick.size : DefaultSize(_propKind);
+                bool valid = _tool != BuilderTool.Prop || (_catalogPick != null && (!WallProp(_catalogPick.kind) || v.TryWallPlacement(_hoverMetres, size, out m, out yaw)));
+                var c = valid ? new Color(1f, 1f, 1f, 0.75f) : ImUi.Bad;
+                if (_tool == BuilderTool.Prop)
+                {
+                    // Its footprint where it would go, and which way it faces.
+                    var q = Quaternion.Euler(0f, yaw, 0f); var p0 = W3(m.x, m.y, 0.05f);
+                    Vector3 hx = q * new Vector3(size.x * 0.5f, 0f, 0f), hz = q * new Vector3(0f, 0f, size.z * 0.5f);
+                    Line(p0 - hx - hz, p0 + hx - hz, c); Line(p0 + hx - hz, p0 + hx + hz, c); Line(p0 + hx + hz, p0 - hx + hz, c); Line(p0 - hx + hz, p0 - hx - hz, c);
+                    Line(p0, p0 + hz * 1.4f, c);
+                }
+                else Marker(W3(m.x, m.y, 0.06f), 0.22f, yaw, c, false);
             }
             DrawHandleGizmos();
+            DrawPickGizmos();
             // Exits: arrows on the outside of perimeter openings
             DrawExits(v);
             GL.End();

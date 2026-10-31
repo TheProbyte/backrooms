@@ -291,7 +291,7 @@ namespace Backrooms.CustomRooms
                 var pos = m + new Vector2(origin.x * C, origin.y * C);
                 int cx = Mathf.Clamp(Mathf.FloorToInt(pos.x / C), 0, L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(pos.y / C), 0, L.N - 1);
                 L.props.Add(new Prop { kind = d.kind, position = pos, yaw = xf.Yaw(d.yaw), size = d.size, variant = d.variant, lit = d.lit, roomColor = L.roomOf[cx, cz],
-                                       elevation = d.elevation, pitch = d.pitch, roll = d.roll, scale = d.scale, pinned = d.pinned });
+                                       elevation = d.elevation, pitch = d.pitch, roll = d.roll, scale = d.scale, pinned = d.pinned, style = d.style });
             }
             for (int i = 0; i < v.loot.Count; i++)
             {

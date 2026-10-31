@@ -214,6 +214,23 @@ namespace Backrooms.Tests
         }
 
         [Test]
+        public void CatalogStylePlacesThatModel()
+        {
+            var assets = UnityEditor.AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
+            Assert.IsNotNull(assets.floralSofaPrefab, "the floral sofa is in the biome's assets");
+            var bp = RoomBlueprint.CreateNew();
+            bp.variants[0].props.Add(new PropDef { kind = PropKind.Sofa, style = Prop.FloralSofaStyle, x = 3f, z = 3f, size = new Vector3(2.25f, 0.94f, 0.93f) });
+            bp.variants[0].props.Add(new PropDef { kind = PropKind.Armchair, style = 2, x = 5f, z = 5f, size = new Vector3(0.95f, 0.85f, 0.9f) });
+            var L = CustomRoomHarness.BuildLayout(bp, 0, 0, out _);
+            var builder = new OfficeChunkBuilder(assets);
+            builder.BuildData(L);
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var specs = ((System.Collections.IList)typeof(OfficeChunkBuilder).GetField("_movables", flags).GetValue(builder)).Cast<Backrooms.Interaction.MovableSpec>().ToList();
+            Assert.IsTrue(specs.Any(m => m.kind == Backrooms.Interaction.MovableKind.Sofa && m.parts[0].prefab == assets.floralSofaPrefab), "the floral sofa, not a random one");
+            Assert.IsTrue(specs.Any(m => m.kind == Backrooms.Interaction.MovableKind.Armchair && m.parts[0].prefab == assets.armchairPrefabs[1]), "the second armchair fabric");
+        }
+
+        [Test]
         public void StuckPropsKeepTheirPose()
         {
             var assets = UnityEditor.AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
