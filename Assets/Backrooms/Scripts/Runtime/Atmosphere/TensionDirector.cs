@@ -10,15 +10,16 @@ namespace Backrooms.Atmosphere
     /// <summary>
     /// Paces the dread (2026-10-28), the way Left 4 Dead's AI Director and Alien: Isolation's director do: it keeps a
     /// running estimate of how tense the player is, and moves through a cycle of phases so that quiet stretches make the
-    /// next sound count.
+    /// next thing count. It is the shadow's (<see cref="ShadowStalker"/>) "macro brain": it sends it, lets it come close at
+    /// the peak, and calls it off.
     ///
-    ///  - Relax: nothing of its own (the building still creaks and hums by itself).
-    ///  - Build-up: unexplained things happen out of sight, rarely at first and nearer and stranger as it goes on: a knock
-    ///    inside a wall, something shifting in a duct above the ceiling, footsteps in the next room, a door swinging shut,
-    ///    the lights of a room nearby going out, the power sagging.
-    ///  - Peak: one set piece: footsteps coming toward you that stop just behind a wall, the lights next door dying, a door
-    ///    slamming, a deep sag in the power.
-    ///  - Fade: the building goes quiet (the ambience drops away), then back to Relax.
+    ///  - Relax: nothing of its own (the building still creaks and hums by itself). The shadow is gone.
+    ///  - Build-up: the shadow comes, out of sight, and stalks; and now and then, rarely at first: the lights where you are
+    ///    blink, a room nearby goes dark, a door out of sight swings shut, the power sags.
+    ///  - Peak: the shadow is bold (it may come right up behind you); the lights of a room nearby die, a deep sag.
+    ///  - Fade: the shadow leaves, the building goes quiet (the ambience drops away), then back to Relax.
+    /// (2026-10-31: no more sounds of its own: the knocks in walls, things in ducts and footsteps are gone; the owner did
+    /// not like them. What you hear now is the building itself: hum cutting out, tubes striking, a door.)
     ///
     /// Tension rises with what you hear (closer counts more), in the dark, and while you run; it falls while nothing
     /// happens. When you are already on edge (running, a lot just happened) it backs off rather than piling on; when you
@@ -47,14 +48,16 @@ namespace Backrooms.Atmosphere
         public Phase Current { get; private set; } = Phase.Relax;
         public string LastEvent { get; private set; } = "";
         /// <summary>One line for debugging: phase, tension and the last event.</summary>
-        public string Status => $"{Current} {Tension:0.00} (next in {Mathf.Max(0f, _nextEvent - Time.time):0}s) last: {LastEvent}";
+        public string Status => $"{Current} {Tension:0.00} (next in {Mathf.Max(0f, _nextEvent - Time.time):0}s) last: {LastEvent}"
+                                + (_stalker ? " | shadow: " + _stalker.Status : "");
+        /// <summary>Is it running now (on, in a level, not in a menu, the Poolrooms or noclip)?</summary>
+        public bool Active { get; private set; }
+        ShadowStalker _stalker;
 
         CamcorderPlayerController _player;
         CamcorderAutoExposure _exposure;
         float _phaseStart, _phaseEnd, _nextEvent, _duck = 1f, _sag;
         float _lastSeen;          // when a director event was last heard / seen happening (time)
-        readonly List<AudioSource> _sources = new List<AudioSource>();
-        int _src;
         Door[] _doors = new Door[0];
         float _nextDoorScan;
         readonly System.Random _rng = new System.Random();
@@ -74,12 +77,7 @@ namespace Backrooms.Atmosphere
         void Awake()
         {
             Instance = this;
-            for (int i = 0; i < 4; i++)
-            {
-                var go = new GameObject("DirectorSound" + i);
-                go.transform.SetParent(transform, false);
-                _sources.Add(ItemModels.Source(go, 24f));
-            }
+            _stalker = gameObject.AddComponent<ShadowStalker>();
             Enter(Phase.Relax, 30f, 60f);
         }
 
@@ -96,13 +94,28 @@ namespace Backrooms.Atmosphere
             var ws = WorldStreamer.Current;
             if (!_player) _player = FindAnyObjectByType<CamcorderPlayerController>();
             bool active = Strength > 0.01f && ws && !ws.MenuMode && _player && !_player.noclip && !InPool(ws, _player.transform.position);
+            Active = active;
             // The quiet and the power dip ease back whatever happens.
             float duckWant = active && Current == Phase.Fade ? 0.3f : 1f;
             _duck = Mathf.MoveTowards(_duck, duckWant, dt * (duckWant < _duck ? 0.5f : 0.15f));
             BuildingAudio.Duck = _duck;
             _sag = Mathf.MoveTowards(_sag, 0f, dt * 0.12f);
-            FixtureLightManager.DirectorSag = _sag;
+            FixtureLightManager.DirectorSag = Mathf.Max(_sag, _stalker ? _stalker.Sag : 0f);
             if (!active) return;
+            // The shadow, by phase: it comes with the build-up (once a little of it has passed), is bold at the peak, goes.
+            if (_stalker)
+            {
+                if (Current == Phase.BuildUp && _stalker.Current == ShadowStalker.Mode.Absent && Time.time - _phaseStart > 12f && Time.time >= _stalkerRetry)
+                {
+                    if (!_stalker.Begin(false)) _stalkerRetry = Time.time + 5f;
+                    else { LastEvent = "the shadow came"; _stalkerRetry = _phaseEnd; }
+                }
+                if (Current == Phase.Peak && !_stalker.Bold && _stalker.Current != ShadowStalker.Mode.Caught)
+                {
+                    if (_stalker.Current != ShadowStalker.Mode.Absent || _stalker.Begin(true)) _stalker.Bold = true;
+                }
+                if ((Current == Phase.Fade || Current == Phase.Relax) && _stalker.Current != ShadowStalker.Mode.Absent) _stalker.Leave();
+            }
 
             UpdateTension(dt);
             if (Time.time >= _phaseEnd) NextPhase();
@@ -121,6 +134,16 @@ namespace Backrooms.Atmosphere
             float floor = 0.12f * dark;
             Tension = Mathf.Max(floor, Tension - dt * Tension * 0.012f);
             Tension = Mathf.Clamp01(Tension);
+        }
+
+        float _stalkerRetry;
+
+        /// <summary>The shadow caught you: everything stops a while (it backs off, the building goes quiet).</summary>
+        public void Caught()
+        {
+            Tension = 1f;
+            LastEvent = "the shadow caught you";
+            Enter(Phase.Fade, 10f, 14f);
         }
 
         void Enter(Phase p, float minS, float maxS)
@@ -168,40 +191,29 @@ namespace Backrooms.Atmosphere
 
         bool Subtle()
         {
-            switch (_rng.Next(4))
+            switch (_rng.Next(3))
             {
-                case 0: return WallKnocks(1 + _rng.Next(2), 6f, 12f);
-                case 1: return DuctThumps(5f, 12f);
-                case 2: return Footsteps(4 + _rng.Next(4), 12f, 20f, false);
+                case 0: Sag(0.06f); LastEvent = "the power dipped"; Heard(0.03f); return true;
                 default: return Flicker(false);
             }
         }
 
         bool Medium()
         {
-            switch (_rng.Next(6))
+            switch (_rng.Next(4))
             {
-                case 0: return Footsteps(6 + _rng.Next(6), 8f, 15f, false);
-                case 1: return DoorSwingsShut(false);
-                case 2: return RoomGoesDark(false);
-                case 3: return WallKnocks(2 + _rng.Next(2), 3.5f, 8f);
-                case 4: Sag(0.12f); LastEvent = "power sag"; Heard(0.05f); return true;
+                case 0: return DoorSwingsShut(false);
+                case 1: return RoomGoesDark(false);
+                case 2: Sag(0.12f); LastEvent = "power sag"; Heard(0.05f); return true;
                 default: return Flicker(true);
             }
         }
 
+        /// <summary>The peak (the shadow is bold now): the lights of a room nearby die with a deep sag.</summary>
         void SetPiece()
         {
-            switch (_rng.Next(3))
-            {
-                case 0:
-                    if (Footsteps(10 + _rng.Next(5), 9f, 14f, true)) return;
-                    break;
-                case 1:
-                    if (RoomGoesDark(true)) { Sag(0.25f); return; }
-                    break;
-            }
-            if (!DoorSwingsShut(true)) { Sag(0.3f); WallKnocks(3, 3f, 6f); }
+            if (RoomGoesDark(true)) Sag(0.25f);
+            else Sag(0.3f);
         }
 
         void Heard(float amount, float distance = 8f)
@@ -211,92 +223,6 @@ namespace Backrooms.Atmosphere
         }
 
         // ---------------- Events ----------------
-
-        /// <summary>One to three knocks from inside a wall near you (out of sight), a moment apart.</summary>
-        bool WallKnocks(int count, float minR, float maxR)
-        {
-            var ear = Ear();
-            for (int tries = 0; tries < 10; tries++)
-            {
-                Vector3 dir = Quaternion.Euler(0f, Range(0f, 360f), 0f) * Vector3.forward;
-                if (Physics.Raycast(ear, dir, out var hit, maxR, ~0, QueryTriggerInteraction.Ignore) && hit.distance >= minR
-                    && Mathf.Abs(hit.normal.y) < 0.3f && !hit.collider.attachedRigidbody && !Visible(hit.point, 0.3f))
-                {
-                    Vector3 at = hit.point - hit.normal * 0.08f + Vector3.up * Range(-0.5f, 0.6f);
-                    StartCoroutine(Knocks(at, count));
-                    LastEvent = count + " knock(s) in a wall " + hit.distance.ToString("0") + " m away";
-                    Heard(0.08f * count, hit.distance);
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        IEnumerator Knocks(Vector3 at, int count)
-        {
-            for (int i = 0; i < count; i++)
-            {
-                Play(Clips.Knock(_rng.Next(3)), at, Range(0.55f, 0.8f), Range(0.92f, 1.06f));
-                yield return new WaitForSeconds(Range(0.38f, 0.75f));
-            }
-        }
-
-        /// <summary>Something shifting in a duct over a room near you.</summary>
-        bool DuctThumps(float minR, float maxR)
-        {
-            Vector3 p = default; OfficeLayout L = null; Room room = default;
-            bool found = false;
-            for (int i = 0; i < 6 && !found; i++)
-                found = Spot(minR, maxR, true, out p, out L, out room) && !room.PlasterCeiling && !room.openAbove;   // a drop ceiling
-            if (!found) return false;
-            p.y = L.BaseY + room.ceiling + 0.25f;
-            Play(Clips.Duct(_rng.Next(3)), p, Range(0.45f, 0.65f), Range(0.9f, 1.08f));
-            LastEvent = "something in a duct";
-            Heard(0.1f, Vector3.Distance(p, Ear()));
-            return true;
-        }
-
-        /// <summary>
-        /// Footsteps out of sight: someone walking across a room nearby, on what that floor is. approach: they come toward
-        /// you and stop (out of view, a few metres away, usually behind a wall).
-        /// </summary>
-        bool Footsteps(int steps, float minR, float maxR, bool approach)
-        {
-            if (!Spot(minR, maxR, true, out var p, out _, out _)) return false;
-            StartCoroutine(Walk(p, steps, approach));
-            LastEvent = approach ? "footsteps coming closer" : "footsteps nearby";
-            Heard(approach ? 0.3f : 0.12f, Vector3.Distance(p, Ear()));
-            return true;
-        }
-
-        IEnumerator Walk(Vector3 at, int steps, bool approach)
-        {
-            Vector3 dir = Quaternion.Euler(0f, Range(0f, 360f), 0f) * Vector3.forward;
-            float pace = Range(0.52f, 0.64f) * (approach ? 1.08f : 1f);
-            for (int i = 0; i < steps; i++)
-            {
-                if (approach)
-                {
-                    Vector3 to = Ear() - at; to.y = 0f;
-                    if (to.magnitude < 4.5f) break;                       // it stops: just behind the wall, waiting
-                    dir = Vector3.Slerp(dir, to.normalized, 0.6f).normalized;
-                }
-                Vector3 next = at + dir * 0.68f;
-                // Not through walls: turn along it (a person walks round).
-                if (Physics.Raycast(at + Vector3.up * 0.5f, dir, out var h, 0.9f, ~0, QueryTriggerInteraction.Ignore))
-                {
-                    dir = Vector3.ProjectOnPlane(dir, h.normal).normalized;
-                    if (dir.sqrMagnitude < 0.1f) dir = Quaternion.Euler(0f, 90f, 0f) * h.normal;
-                    next = at + dir * 0.68f;
-                }
-                if (Visible(next + Vector3.up * 1f, 0.6f)) break;          // never seen
-                at = next;
-                var floor = Surfaces.At(at + Vector3.up * 0.1f, null);
-                var clip = floor == ProceduralSounds.Floor.Carpet ? SoundBank.Step(_rng.Next(SoundBank.StepCount)) : SoundBank.HardStep(floor, _rng.Next(6));
-                Play(clip, at + Vector3.up * 0.05f, Range(0.5f, 0.68f) * (approach ? 0.85f + 0.2f * i / steps : 1f), Range(0.94f, 1.04f));
-                yield return new WaitForSeconds(pace * Range(0.9f, 1.1f));
-            }
-        }
 
         /// <summary>An open door out of sight swings shut (slam: hard, with a bang).</summary>
         bool DoorSwingsShut(bool slam)
@@ -424,29 +350,19 @@ namespace Backrooms.Atmosphere
             return L != null && L.style == ZoneStyle.Pool;
         }
 
-        void Play(AudioClip clip, Vector3 at, float volume, float pitch)
-        {
-            if (!clip) return;
-            var s = _sources[_src];
-            _src = (_src + 1) % _sources.Count;
-            s.transform.position = at;
-            s.pitch = pitch;
-            s.PlayOneShot(clip, Mathf.Clamp01(volume * SoundCatalog.Volume(SoundIds.Director)));
-        }
-
         float Range(float a, float b) => a + (float)_rng.NextDouble() * (b - a);
 
-        /// <summary>Makes something happen now (testing): "knock", "duct", "steps", "approach", "door", "slam", "dark", "flicker", "sag", "peak".</summary>
+        /// <summary>Makes something happen now (testing): "door", "slam", "dark", "flicker", "sag", "peak", and the shadow:
+        /// "shadow" (comes), "bold" (comes, bold), "leave".</summary>
         public bool Force(string what)
         {
             if (!_player) _player = FindAnyObjectByType<CamcorderPlayerController>();
             if (!_player) return false;
             switch (what)
             {
-                case "knock": return WallKnocks(2, 3f, 9f);
-                case "duct": return DuctThumps(3f, 10f);
-                case "steps": return Footsteps(8, 8f, 15f, false);
-                case "approach": return Footsteps(12, 9f, 14f, true);
+                case "shadow": return _stalker && _stalker.Begin(false);
+                case "bold": if (!_stalker) return false; if (_stalker.Current == ShadowStalker.Mode.Absent && !_stalker.Begin(true)) return false; _stalker.Bold = true; return true;
+                case "leave": if (_stalker) _stalker.Leave(); return _stalker;
                 case "door": return DoorSwingsShut(false);
                 case "slam": return DoorSwingsShut(true);
                 case "dark": return RoomGoesDark(false);
@@ -455,13 +371,6 @@ namespace Backrooms.Atmosphere
                 case "peak": Enter(Phase.Peak, 10f, 14f); return true;
             }
             return false;
-        }
-
-        static class Clips
-        {
-            static AudioClip[] s_knock, s_duct;
-            public static AudioClip Knock(int i) { if (s_knock == null) { s_knock = new AudioClip[3]; for (int k = 0; k < 3; k++) s_knock[k] = ProceduralSounds.WallKnock(k); } return s_knock[i % 3]; }
-            public static AudioClip Duct(int i) { if (s_duct == null) { s_duct = new AudioClip[3]; for (int k = 0; k < 3; k++) s_duct[k] = ProceduralSounds.DuctThumps(k); } return s_duct[i % 3]; }
         }
     }
 }

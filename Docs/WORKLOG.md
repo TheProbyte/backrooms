@@ -15,6 +15,21 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - The shadow (a Bracken-like stalker that puts out the lights around it); round textured ceiling lights; the director's sounds gone
+
+- Research: Lethal Company's Bracken (stalks from behind, flees when looked at, anger from looks and stares, charges),
+  Alien: Isolation's two-brain AI (director + creature), Alan Wake's darkness, light-gated monsters in indie horror.
+- New `Atmosphere/ShadowStalker.cs`: sent by the tension director in a build-up, bold at the peak, gone in the fade. The
+  rooms it is in and stepping into go dark (`LightZones.Drain`, not saved) and strike again after it; a black figure only
+  in its dark; never steps into view (routes round it, waits, leans out); looked at it flees and angers; full anger, it
+  charges; catching you cuts the tape and you come to 20-45 m away in a dark room. Camcorder interference near it
+  (`CamcorderRig.Interference` through NoclipTravel's glitch), power sag.
+- `TensionDirector`: the knocks, duct thumps and footsteps are gone (the owner did not like them), and its sound sources.
+- Round fittings (`Generation/DomeFitting.cs`): smooth frosted bowl, band and finial, textured glass (bulbs, etched ring,
+  bugs) with a steep glow so the camcorder does not clip it to a white disc; secret rooms use it too.
+- Checked in World 3: the figure seen at 1.3 m (picture), it fled and angered, a bold approach from behind caught the
+  player and moved them 26 m into a dark room, the light from below (pictures). EditMode tests pass. Not played by the owner.
+
 ## 2026-10-31 - Home baseboards to the jamb; carpet strips unbroken; switches click at once (no body)
 
 - Living rooms: a baseboard now runs to the doorway's edge at a jamb (it stopped 6 cm short) and is never worn or

@@ -68,7 +68,9 @@ now Hallways (to 0.3), Offices (0.55), **Living rooms** (0.78), Warehouse (1) (`
   with `Textures/Home/OrangePeel_*`, generated: droplets 2-6 mm over a gentle wave, 0.6 m tiles) or, in 12 % of rooms
   (`cloudWallpaper`), `WallFinish.SkyWallpaper` (the owner's blue-sky clouds pattern, `Textures/Home/SkyClouds`, 1.6 m
   repeat, a little faded); `FloorFinish.HomeCarpet` in one of four shades by room (sage, beige, mushroom, slate); a flat
-  plaster ceiling (`Room.PlasterCeiling`) with round flush-mount fittings every 3 cells (`Fixture.flush`: the dome model
+  plaster ceiling (`Room.PlasterCeiling`) with round flush-mount fittings every 3 cells (`Fixture.flush`: the dome model, `DomeFitting` since 2026-10-31: a frosted
+  glass bowl in a metal band with a finial, 48 sides, textured: two bulbs burning through the middle, an etched ring, dead
+  bugs in the bottom; the old 16-sided drum showed its corners
   at an ordinary room's brightness); off-white baseboards, continuous over the wall joints and up to the doorway's edge at
   a jamb, never worn or missing (`MaterialMaps.HomeBaseboard`, `HomeBaseboardReach`; the rest of the world still has
   none). Lights: 30 % of rooms all on, 40 % some, the rest dark.

@@ -114,7 +114,7 @@ namespace Backrooms.Interaction
         void Apply()
         {
             float dt = Time.unscaledDeltaTime;
-            float g = Mathf.Max(_glitch, _approach * 0.65f);
+            float g = Mathf.Max(Mathf.Max(_glitch, _approach * 0.65f), Mathf.Clamp01(CamcorderRig.Interference));
             // The picture rolls while it is broken, and settles back to frame as it recovers.
             if (g > 0.5f) _rollSpeed = Mathf.MoveTowards(_rollSpeed, 2.4f * g, dt * 6f);
             else _rollSpeed = Mathf.MoveTowards(_rollSpeed, 0f, dt * 3f);
@@ -124,7 +124,7 @@ namespace Backrooms.Interaction
             CamcorderRig.GlitchRoll = Mathf.Repeat(_roll, 1f);
             if (!_rig && Camera.main) _rig = Camera.main.GetComponent<CamcorderRig>();
             var chain = _rig ? _rig.Audio : null;
-            if (chain) chain.dropout = Mathf.Max(_drop, _approach * 0.35f);
+            if (chain) chain.dropout = Mathf.Max(Mathf.Max(_drop, _approach * 0.35f), Mathf.Clamp01(CamcorderRig.Interference) * 0.5f);
         }
 
         IEnumerator Go(NoclipPassage door, float fromSide)

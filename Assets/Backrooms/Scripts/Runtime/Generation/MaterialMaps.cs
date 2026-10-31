@@ -59,6 +59,7 @@ namespace Backrooms.Generation
                 else if (v is GameObject[] gs) foreach (var x in gs) AddPrefab(x, Add);
             }
             Troffers(a);
+            DomeFitting.Materials(a);
             Ceilings(a);
             Floors(a);
             Homes(a);

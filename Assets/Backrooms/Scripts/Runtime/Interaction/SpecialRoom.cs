@@ -21,6 +21,8 @@ namespace Backrooms.Interaction
         public Vector3 min, max, back, vent;
         public int template;
         Light _light;
+        readonly List<Mesh> _meshes = new List<Mesh>();      // the ceiling light's (made here, freed with the room)
+        void OnDestroy() { foreach (var m in _meshes) if (m) Destroy(m); }
         float _next;
 
         public Vector3 Centre => (min + max) * 0.5f;
@@ -214,17 +216,25 @@ namespace Backrooms.Interaction
         /// room's light just under it.</summary>
         void CeilingLight(OfficeBiomeAssets a)
         {
-            var fit = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            Destroy(fit.GetComponent<Collider>());
-            fit.name = "CeilingLight";
-            fit.transform.SetParent(transform, false);
             Vector3 top = At(Depth * 0.5f, 0f, max.y - min.y);
-            fit.transform.position = top - Vector3.up * 0.02f;
-            fit.transform.localScale = new Vector3(0.32f, 0.07f, 0.32f);
-            var r = fit.GetComponent<Renderer>();
-            r.sharedMaterial = a && a.domeOn ? a.domeOn : a && a.lensOn ? a.lensOn : SpecialRoomMaterials.Ceiling;
-            r.shadowCastingMode = ShadowCastingMode.Off;
-            r.renderingLayerMask = 1u;
+            // The homes' fitting (DomeFitting): the frosted bowl lit, its band and finial.
+            var glass = new MeshWriter(); var metal = new MeshWriter();
+            DomeFitting.Build(glass, metal, Vector3.zero);
+            var glassMat = DomeFitting.On ? DomeFitting.On : a && a.domeOn ? a.domeOn : a && a.lensOn ? a.lensOn : SpecialRoomMaterials.Ceiling;
+            var metalMat = a && a.lampMetal ? a.lampMetal : glassMat;
+            foreach (var (w, mat, name) in new[] { (glass, glassMat, "CeilingLight"), (metal, metalMat, "CeilingLightBand") })
+            {
+                var fit = new GameObject(name);
+                fit.transform.SetParent(transform, false);
+                fit.transform.position = top;
+                var mesh = w.ToMesh(name);
+                _meshes.Add(mesh);
+                fit.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var r = fit.AddComponent<MeshRenderer>();
+                r.sharedMaterial = mat;
+                r.shadowCastingMode = ShadowCastingMode.Off;
+                r.renderingLayerMask = 1u;
+            }
             AddLight(top - Vector3.up * 0.3f, new Color(1f, 0.9f, 0.74f), 1.8f);   // (far enough down to light the tiles too)
         }
 

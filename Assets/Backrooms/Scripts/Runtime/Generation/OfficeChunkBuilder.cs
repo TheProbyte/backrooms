@@ -257,9 +257,9 @@ namespace Backrooms.Generation
                 go.transform.SetParent(root.transform, false);
                 go.AddComponent<MeshFilter>().sharedMesh = resources.Own(w.ToMesh(go.name));
                 var r = go.AddComponent<MeshRenderer>();
-                r.sharedMaterial = dome && _a.domeOn ? _a.domeOn : MaterialMaps.TrofferOn ? MaterialMaps.TrofferOn : _a.lensOn;
+                r.sharedMaterial = dome && DomeOn ? DomeOn : MaterialMaps.TrofferOn ? MaterialMaps.TrofferOn : _a.lensOn;
                 var rl = go.AddComponent<RoomLens>();
-                rl.room = room; rl.on = r.sharedMaterial; rl.off = dome && _a.domeOff ? _a.domeOff : MaterialMaps.TrofferOff ? MaterialMaps.TrofferOff : _a.lensOff;
+                rl.room = room; rl.on = r.sharedMaterial; rl.off = dome && DomeOff ? DomeOff : MaterialMaps.TrofferOff ? MaterialMaps.TrofferOff : _a.lensOff;
                 r.shadowCastingMode = ShadowCastingMode.Off;
                 r.lightProbeUsage = LightProbeUsage.Off;
                 r.reflectionProbeUsage = ReflectionProbeUsage.Off;
@@ -1133,6 +1133,10 @@ namespace Backrooms.Generation
         /// <summary>A square panel fills the tile just west of its cell's centre (centre of a 0.6 m ceiling tile).</summary>
         static readonly Vector3 SquareFixtureShift = new Vector3(-0.3f, 0f, 0f);
 
+        /// <summary>The round fitting's glass, lit and unlit: the frosted bowl (DomeFitting), or the biome's plain dome lens.</summary>
+        Material DomeOn => DomeFitting.On ? DomeFitting.On : _a.domeOn;
+        Material DomeOff => DomeFitting.Off ? DomeFitting.Off : _a.domeOff;
+
         /// <summary>A square panel's lens: the copy with the tubes behind its diffuser (MaterialMaps), or the plain one.</summary>
         Material TrofferLens(bool on) => on ? (MaterialMaps.TrofferOn ? MaterialMaps.TrofferOn : _a.lensOn)
                                             : (MaterialMaps.TrofferOff ? MaterialMaps.TrofferOff : _a.lensOff);
@@ -1176,9 +1180,9 @@ namespace Backrooms.Generation
                 else if (f.on)
                 {
                     int kind = f.strip ? 2 : f.dome ? 1 : 0;
-                    var on = f.strip ? _a.stripOn ?? _a.lensOn : f.dome ? _a.domeOn ?? _a.lensOn
+                    var on = f.strip ? _a.stripOn ?? _a.lensOn : f.dome ? DomeOn ?? _a.lensOn
                            : age == 1 ? MaterialMaps.TrofferDead : age == 2 ? MaterialMaps.TrofferPink : age == 3 ? MaterialMaps.TrofferBugs : age == 4 ? MaterialMaps.TrofferYellow : age == 5 ? MaterialMaps.TrofferGreen : age == 6 ? MaterialMaps.TrofferCool : TrofferLens(true);
-                    var off = f.strip ? _a.stripOff ?? _a.lensOff : f.dome ? _a.domeOff ?? _a.lensOff : TrofferLens(false);
+                    var off = f.strip ? _a.stripOff ?? _a.lensOff : f.dome ? DomeOff ?? _a.lensOff : TrofferLens(false);
                     int key = room * 32 + age * 4 + kind;
                     if (!_roomLenses.TryGetValue(key, out var rl))
                     {
@@ -1188,7 +1192,7 @@ namespace Backrooms.Generation
                     lens = rl.w;
                 }
                 else if (f.strip) lens = W(_a.stripOff ?? _a.lensOff, f.roomColor);
-                else lens = W(f.dome ? _a.domeOff ?? _a.lensOff : TrofferLens(false), f.roomColor);
+                else lens = W(f.dome ? DomeOff ?? _a.lensOff : TrofferLens(false), f.roomColor);
 
                 if (f.strip)
                 {
@@ -1206,9 +1210,9 @@ namespace Backrooms.Generation
                 }
                 else if (f.dome)
                 {
-                    // Round surface-mounted fitting: shallow drum with a glowing diffuser.
-                    lens.Frustum(c + Vector3.down * 0.07f, 0.2f, 0.23f, 0.07f, 16, true, MeshWriter.MetreUV);
-                    lens.Disc(c + Vector3.down * 0.07f, 0.2f, 16, Vector3.down, MeshWriter.MetreUV);
+                    // Round surface-mounted fitting: a frosted glass bowl in a metal band (DomeFitting; it was a 16-sided drum
+                    // whose corners showed, 2026-10-31).
+                    DomeFitting.Build(lens, W(_a.lampMetal ? _a.lampMetal : _a.fixtureHousing, f.roomColor), c);
                 }
                 else
                 {

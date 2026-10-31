@@ -211,10 +211,33 @@ is (rises with what they hear, nearer counts more, in the dark and while running
 of its own; 70-160 s) -> Build-up (50-110 s: rarer and fainter at first, then nearer) -> Peak (one set piece) -> Fade (the
 ambience drops away, `BuildingAudio.Duck`) -> Relax. Already on edge: it backs off or ends the build-up early.
 
-Events, never in plain sight (out of view or behind a wall; sounds through Steam Audio): knocks inside a wall, something
-shifting in a duct over a drop ceiling, footsteps in a nearby room on that floor's surface (at the peak, coming toward you
-and stopping a few metres off behind a wall), an open door out of sight swinging shut or slamming, the lights of a nearby
-room going out (`LightZones`: saved, it stays dark until you find the switch), your room's lights blinking or stuttering,
-the power sagging (`FixtureLightManager.DirectorSag`). Off in the Poolrooms, the menus and noclip. Strength: audio menu >
-ATMOSPHERE > Tension director (0 off, 1 normal, 2 intense; saved). `TensionDirector.Instance.Force("steps")` etc. for testing;
-`Status` for a one-line state.
+Events, never in plain sight: an open door out of sight swinging shut, the lights of a nearby room going out
+(`LightZones`: saved, it stays dark until you find the switch), your room's lights blinking or stuttering, the power
+sagging (`FixtureLightManager.DirectorSag`). (2026-10-31: the knocks in walls, things in ducts and footsteps are gone, the
+owner did not like them; the director makes no sound of its own now.) Off in the Poolrooms, the menus and noclip.
+Strength: audio menu > ATMOSPHERE > Tension director (0 off, 1 normal, 2 intense; saved).
+`TensionDirector.Instance.Force("shadow" | "bold" | "leave" | "dark" | "flicker" | "door" | "sag" | "peak")` for testing;
+`Status` for a one-line state (with the shadow's).
+
+## The shadow (2026-10-31)
+
+`Atmosphere/ShadowStalker.cs`. The owner: "like Lethal Company's Bracken", "maybe not a physical thing; in the shadows,
+when it nears, lights turn off in its path". The director is its macro brain (Alien: Isolation's split): it sends it 12 s
+into a build-up, makes it **bold** at the peak, calls it off in the fade. The shadow itself only knows where you are and
+where you look.
+- **Lights**: the room it is in and the room it is about to step into go dark, tube by tube with a stutter
+  (`LightZones.Drain`: not a switch, not saved); a room it has left strikes again 2.5-4 s later. It makes no sound: you
+  hear the building's hum cut out and tubes strike behind it.
+- **Seen only in the dark**: a tall (2 m), thin, black figure, long arms, a slight hunch, facing you; drawn only where its
+  room has gone dark and more than 1.3 m off.
+- **Stalk**: cell by cell through the building (through doors: it is not solid), toward a spot 5.5 m behind you (1.1 m
+  when bold); it never steps into view: its route goes round what you can see, and if there is none it waits behind the
+  corner and leans out now and then. Not bold, it keeps 4.5 m off.
+- **Looked at** (in view, in its dark, within 22 m): it freezes 0.4 s, then flees out of sight. Each look adds anger
+  (0.3 within 6 m, else 0.15), staring adds 0.3/s close or 0.1/s far; it ebbs 0.03/s. Full: **angry**, it comes straight
+  at you at 5.6 m/s for 2.5-5 s, lights dying ahead of it.
+- **Caught** (bold and right behind you, unseen, or angry and on you): the tape breaks up and cuts (the last frame held,
+  crackle), and the recording picks up 20-45 m away in a room whose lights are off (saved: find its switch). The director
+  goes to its fade.
+- Near it the picture breaks up (`CamcorderRig.Interference`, through the noclip glitch: tracking, tearing, sound
+  dropouts) and the power sags. Route planning: about 1.5 ms in the editor, every 0.8 s.

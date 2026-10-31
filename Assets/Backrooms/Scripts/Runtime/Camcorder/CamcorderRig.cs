@@ -50,6 +50,9 @@ namespace Backrooms.Camcorder
 
         /// <summary>The tape breaking up (noclip doors): 0 clean .. 1 tracking lost, tearing, rolling. Set by NoclipTravel.</summary>
         public static float Glitch;
+        /// <summary>The tape breaking up near the shadow (Atmosphere.ShadowStalker), 0..1: joins the noclip glitch (the larger
+        /// of the two is shown; NoclipTravel applies it), and half of it breaks up the sound.</summary>
+        public static float Interference;
         /// <summary>How far the picture has rolled (0..1 of the frame) while the glitch lasts.</summary>
         public static float GlitchRoll;
 
