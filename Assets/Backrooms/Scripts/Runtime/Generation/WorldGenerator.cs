@@ -247,7 +247,8 @@ namespace Backrooms.Generation
                 // Every chunk the line runs through and the hole reaches (both chunks of a border line build their side).
                 int lo = c.vertical ? ox : oz, alo = c.vertical ? oz : ox;
                 if (c.line < lo || c.line > lo + N) continue;
-                if (c.to <= alo * C || c.from >= (alo + N) * C) continue;
+                // (and those a cell past it: a post on the chunk's edge needs to know of a hole just beyond it)
+                if (c.to <= (alo - 1) * C || c.from >= (alo + N + 1) * C) continue;
                 var g = c; g.line -= lo; g.from -= alo * C; g.to -= alo * C;
                 S.cutouts.Add(g);
             }

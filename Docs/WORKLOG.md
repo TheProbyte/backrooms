@@ -15,6 +15,17 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Paper-thin wall ends round build-mode doors and windows
+
+- Owner: some walls came out flat, paper thin with no edge, in the builder and tested in the world. A door or window of
+  its own size leaves wall beside it on its edges, but a post was only built where a plain wall edge met the vertex: a
+  short wall ending in a door, or two doors either side of a post, had wall pieces ending in nothing (two faces, no end).
+  And a door or window cut through where another wall joins left that wall's end open through the hole.
+- `OfficeChunkBuilder.BuildPosts`: a vertex any cutout's edge reaches gets its post. `CutPost`: a wall joining the line
+  there has its end closed from the sill to the hole's top. `WorldGenerator`: a chunk is given the cutouts a cell past it,
+  so a post on its edge knows of a hole just beyond.
+- Checked in renders of a test room (each case before and after). New test `CutoutsLeaveNoOpenWallEnds` passes; the other 156 still pass.
+
 ## 2026-10-30 - Build mode reworked, steps B to E: click anything, a catalog, walk, checks that fix
 
 - Step B (`BuilderApp.Picking.cs`): in SELECT a click takes a prop, loot spot, pillar, ceiling light, door or window, a run

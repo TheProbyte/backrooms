@@ -841,6 +841,9 @@ namespace Backrooms.Generation
                     header = true;
                 }
                 Check(up); Check(down); Check(right); Check(left);
+                // A door or window of its own size leaves wall beside it on its edges: its end needs the post too (else a
+                // wall stub ending in a door, or two doors either side of a post, showed paper-thin wall ends).
+                if (!wall && CutEdgeAtVertex(x, z)) wall = true;
                 if (header) blockBottom = _L.headerHeight;
                 Soffit(up, c01, c11);       // vertical edge above the vertex: cells (x-1, z) | (x, z)
                 Soffit(down, c00, c10);     // below: (x-1, z-1) | (x, z-1)

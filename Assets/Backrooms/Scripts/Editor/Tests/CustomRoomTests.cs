@@ -731,5 +731,55 @@ namespace Backrooms.Tests
             }
             Assert.Fail("no noclip door found");
         }
+
+        /// <summary>
+        /// Doors and windows of their own size leave no paper-thin wall ends: a short wall ending in a door gets its end post,
+        /// two doors either side of a post keep it, and a wall meeting the line where a door is cut through has its end closed.
+        /// </summary>
+        [Test]
+        public void CutoutsLeaveNoOpenWallEnds()
+        {
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            const float C = OfficeBiome.CellSize, T = 0.15f;
+            var bp = RoomBlueprint.CreateNew("Thin ends");
+            var v = bp.variants[0];
+            v.Resize(10, 8);
+            v.ConvertGridOpenings();
+            v.openings.Clear();
+            v.SetV(3, 0, EdgeCode.Wall); v.SetV(3, 1, EdgeCode.Wall);                                                  // a stub off the south wall
+            v.openings.Add(new OpeningDef { vertical = true, line = 3, from = 1.3f, to = 2.2f, top = 2.1f });             // a door near its free end
+            v.openings.Add(new OpeningDef { vertical = false, line = 0, from = 4.0f, to = 4.72f, top = 2.1f });           // two doors either side
+            v.openings.Add(new OpeningDef { vertical = false, line = 0, from = 4.88f, to = 5.9f, top = 2.1f });           // of the post at 4.8 m
+            for (int x = 6; x < 10; x++) v.SetH(x, 4, EdgeCode.Wall);                                                    // a wall meeting the east wall
+            v.openings.Add(new OpeningDef { vertical = true, line = 10, from = 4.2f, to = 5.4f, top = 2.1f });            // a door cut through there
+            bp.Validate();
+            Assert.IsTrue(v.openings.All(o => v.OpeningFits(o)), "the builder allows each of them");
+            var L = CustomRoomHarness.BuildLayout(bp, 0, 0, out var placement);
+            var assets = UnityEditor.AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
+            var builder = new OfficeChunkBuilder(assets);
+            builder.BuildData(L);
+            var root = new GameObject("ThinEndsTest");
+            try
+            {
+                builder.Instantiate(root.transform);
+                var faces = new List<(Vector3 p, Vector3 n)>();
+                foreach (var mf in root.GetComponentsInChildren<MeshFilter>())
+                {
+                    var m = mf.sharedMesh; if (m == null) continue;
+                    var vs = m.vertices; var ns = m.normals;
+                    for (int i = 0; i < vs.Length && i < ns.Length; i++) faces.Add((mf.transform.localToWorldMatrix.MultiplyPoint3x4(vs[i]) - root.transform.position, ns[i]));
+                }
+                float ox = placement.rect.x * C, oz = placement.rect.y * C;
+                bool Face(Vector3 normal, System.Func<Vector3, bool> where) => faces.Any(f => Vector3.Dot(f.n, normal) > 0.99f && where(f.p - new Vector3(ox, 0f, oz)));
+                Assert.IsTrue(Face(Vector3.forward, p => Mathf.Abs(p.z - (2 * C + T * 0.5f)) < 0.003f && Mathf.Abs(p.x - 3 * C) < T * 0.5f + 0.003f && p.y > 1f),
+                    "the stub's free end is a post, not two faces with nothing between");
+                Assert.IsTrue(Face(Vector3.left, p => Mathf.Abs(p.x - (4 * C - T * 0.5f)) < 0.003f && Mathf.Abs(p.z) < T * 0.5f + 0.003f && p.y > 1f)
+                              && Face(Vector3.right, p => Mathf.Abs(p.x - (4 * C + T * 0.5f)) < 0.003f && Mathf.Abs(p.z) < T * 0.5f + 0.003f && p.y > 1f),
+                    "the post between the two doors stands");
+                Assert.IsTrue(Face(Vector3.right, p => Mathf.Abs(p.x - (10 * C - T * 0.5f)) < 0.003f && Mathf.Abs(p.z - 4 * C) < T * 0.5f + 0.003f && p.y > 0.5f && p.y < 2.2f),
+                    "the joining wall's end is closed where the door cuts through");
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
     }
 }

@@ -34,6 +34,29 @@ namespace Backrooms.Generation
 
         bool CutAt(bool vertical, int line, int along) => _cuts.Count > 0 && _cuts.ContainsKey((vertical, line, along));
 
+        /// <summary>
+        /// Does a cutout reach this edge (along may lie in a neighbouring chunk: the plan's cutouts reach a cell past the
+        /// chunk)? Such an edge has wall beside its hole, whatever its kind.
+        /// </summary>
+        bool CutEdge(bool vertical, int line, int along)
+        {
+            float e0 = along * C, e1 = (along + 1) * C;
+            foreach (var c in _L.cutouts)
+                if (c.vertical == vertical && c.line == line && Mathf.Min(c.to, e1) - Mathf.Max(c.from, e0) > 0.005f) return true;
+            return false;
+        }
+
+        /// <summary>Is any of the four edges round this vertex cut by a door or window of its own size?</summary>
+        bool CutEdgeAtVertex(int x, int z) =>
+            _L.cutouts.Count > 0 && (CutEdge(true, x, z) || CutEdge(true, x, z - 1) || CutEdge(false, z, x) || CutEdge(false, z, x - 1));
+
+        /// <summary>A wall edge, or one with a hole of its own size (wall beside it), here or in a neighbouring chunk.</summary>
+        bool SolidEdge(bool vertical, int line, int along)
+        {
+            var e = vertical ? VEdgeAt(line, along) : HEdgeAt(along, line);
+            return e == EdgeKind.Wall || (e != null && e != EdgeKind.Open && CutEdge(vertical, line, along));
+        }
+
         /// <summary>Height of a cutout's top at a point along its line (an arch: the half circle across its width).</summary>
         static float TopAt(in WallCutout c, float at)
         {
@@ -197,6 +220,20 @@ namespace Backrooms.Generation
                     float sy = Mathf.Min(FB + c.sill, FH);
                     w.Quad(P(f, a0, FB), P(f, a1, FB), P(f, a1, sy), P(f, a0, sy), n, uv);
                     w.Quad(P(l, a0, sy), P(f, a0, sy), P(f, a1, sy), P(l, a1, sy), Vector3.up, uv);
+                }
+                // A wall meeting the line from this side at this post (a door cut through where another wall joins): its
+                // end, seen through the hole, closed from the sill to the hole's top (it was open, a paper-thin edge).
+                bool joins = vertical ? SolidEdge(false, z, side < 0 ? x - 1 : x) : SolidEdge(true, x, side < 0 ? z - 1 : z);
+                if (joins)
+                {
+                    float bottom = FB + Mathf.Max(0f, c.sill);
+                    for (int i = 0; i < K; i++)
+                    {
+                        float x0 = Mathf.Lerp(a0, a1, i / (float)K), x1 = Mathf.Lerp(a0, a1, (i + 1) / (float)K);
+                        float y0 = Mathf.Min(FB + TopAt(c, x0), FH), y1 = Mathf.Min(FB + TopAt(c, x1), FH);
+                        if (Mathf.Max(y0, y1) > bottom + 0.001f)
+                            w.Quad(P(f, x0, bottom), P(f, x1, bottom), P(f, x1, Mathf.Max(y1, bottom)), P(f, x0, Mathf.Max(y0, bottom)), -n, uv);
+                    }
                 }
             }
             // Colliders over (from the arch's springing line) and under it.
