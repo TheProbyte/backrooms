@@ -9,7 +9,7 @@ namespace Backrooms.CustomRooms
     /// <summary>Build mode: the library screen and the editor's panels.</summary>
     public partial class BuilderApp
     {
-        const float TopH = 52f, BottomH = 64f, LeftW = 232f, RightW = 372f;
+        const float TopH = 52f, BottomH = 40f, LeftW = 232f, RightW = 372f;
 
         Vector2 _rightScroll, _libScroll;
         float _rightContentH = 900f;
@@ -122,31 +122,16 @@ namespace Backrooms.CustomRooms
         }
 
         // ---------------- Editor ----------------
-
-        static readonly string[] ToolNames = { "SELECT", "WALL", "OPENING", "HALF WALL", "ERASE", "FLOOR AREAS", "PILLAR", "LIGHT", "PROP", "LOOT" };
-        static readonly string[] ToolTips =
-        {
-            "Click a prop, loot marker, door or window to select it; drag to move it. Drag a selected thing's handles to lift, turn, size or widen it; drag the arrows outside the room to grow or shrink it. Delete removes, Alt drags without snapping.",
-            "Click or drag along the grid lines to build walls. A wall runs from floor to ceiling. Drag to build long walls.",
-            "Point at a wall and click to put a door, arch or window there; then drag its handles to any size. Doors in the outer wall are the room's entrances and exits. OPEN GAP: drag along grid edges to take the wall away.",
-            "A half-height partition (1.15 m): you can see and reach over it. Drag along edges.",
-            "Click or drag to remove walls and openings. On the outer wall this closes an exit again.",
-            "Paint which area each cell belongs to. Areas have their own ceiling height, wall finish and lights (right panel).",
-            "Click a grid corner to put a pillar there, or remove it.",
-            "Click a cell to cycle its ceiling light: on, off (dead tube), none.",
-            "Pick a kind of prop, then click inside the room.",
-            "Place a spot where an item can be found. The item name and chance are set when selected.",
-        };
+        // (Round 17: the screen made simpler. Top: the room, undo, views, test, save. Left: five modes and the chosen one's
+        // tools and options. Right: an inspector that shows only what is selected, or the room as a whole. Bottom: one line
+        // saying what a click does now. Where the room spawns in the world is its own dialog, PUT IN THE WORLD.)
 
         void DrawEditor()
         {
-            var v = V;
-            // Bars
             ImUi.Fill(TopRect, ImUi.Back);
             ImUi.Fill(LeftRect, ImUi.Panel);
             ImUi.Fill(RightRect, ImUi.Panel);
             ImUi.Fill(BottomRect, ImUi.Back);
-
             DrawTopBar();
             DrawLeftBar();
             DrawRightBar();
@@ -155,100 +140,77 @@ namespace Backrooms.CustomRooms
 
         void DrawTopBar()
         {
-            GUI.Label(new Rect(14, 8, 420, 36), "BUILD MODE", ImUi.Title);
-            float x = 230;
-            GUI.Label(new Rect(x, 12, 360, 28), _bp.name + (_dirty ? "  •  unsaved" : ""), ImUi.Label);
-            x = ImUi.Width * 0.5f - 280;
+            GUI.Label(new Rect(14, 8, 120, 36), "BUILD", ImUi.Title);
+            GUI.Label(new Rect(136, 12, 300, 28), _bp.name + (_dirty ? "  •  unsaved" : ""), ImUi.Label);
+            float x = 440;
+            if (ImUi.Button(new Rect(x, 8, 70, 36), "UNDO", false, "Undo  [Ctrl+Z]")) Undo(); x += 74;
+            if (ImUi.Button(new Rect(x, 8, 70, 36), "REDO", false, "Redo  [Ctrl+Y]")) Redo(); x += 90;
             string[] names = { "SOLID", "ROOM", "CUTOUT", "WALLS DOWN", "TOP" };
             string[] tips =
             {
                 "Walls and ceiling as the world builds them.",
                 "Ceiling off, so you can see in from above.",
-                "Walls between you and the room are cut down as you turn the camera (like Tiny Glade).",
+                "Walls between you and the room are cut down as you turn the camera.",
                 "Every wall lowered, to see the whole plan.",
-                "Straight down on the plan. (Camera turning is off here.)",
+                "Straight down on the plan.",
             };
             for (int i = 0; i < 5; i++)
             {
-                float w = i == 3 ? 124 : 84;
+                float w = i == 3 ? 134 : i == 2 ? 96 : 80;
                 if (ImUi.Button(new Rect(x, 8, w, 36), names[i], _view == ViewCycle[i], tips[i] + "  [Tab]")) SetView(ViewCycle[i]);
-                x += w + 6;
+                x += w + 4;
             }
-            if (ImUi.Button(new Rect(x + 10, 8, 64, 36), "GRID", _showGrid, "Show or hide the grid. [G]")) _showGrid = !_showGrid;
-            if (ImUi.Button(new Rect(ImUi.Width - 110, 8, 98, 36), "MENU")) PauseMenu.Instance?.Open();
-            if (ImUi.Button(new Rect(ImUi.Width - 204, 8, 86, 36), "HELP", _showHelp, "Controls and placement guide. [F1]")) _showHelp = !_showHelp;
+            if (ImUi.Button(new Rect(x + 6, 8, 60, 36), "GRID", _showGrid, "Show or hide the grid. [G]")) _showGrid = !_showGrid;
+            float rx = ImUi.Width - 12;
+            rx -= 80; if (ImUi.Button(new Rect(rx, 8, 80, 36), "MENU")) PauseMenu.Instance?.Open();
+            rx -= 74; if (ImUi.Button(new Rect(rx, 8, 70, 36), "HELP", _showHelp, "Controls and a short guide. [F1]")) _showHelp = !_showHelp;
+            rx -= 104; if (ImUi.Button(new Rect(rx, 8, 100, 36), "LIBRARY", false, "Back to all your rooms.")) { if (_dirty) _modal = Modal.Back; else ShowLibrary(); }
+            rx -= 154; if (ImUi.Button(new Rect(rx, 8, 150, 36), "TEST IN WORLD", false, "Walks you into the room inside the real procedural world, with the camcorder filters on.")) TestInWorld();
+            rx -= 94; if (ImUi.Button(new Rect(rx, 8, 90, 36), "SAVE", _dirty, "Saves the room to your library.  [Ctrl+S]")) SaveBlueprint(false);
         }
 
         void DrawLeftBar()
         {
             var r = LeftRect;
             var col = new ImUi.Column(r.x + 12, r.y + 12, r.width - 24, 34, 5);
-            ImUi.Header(col.Row(24), "Tools");
-            for (int i = 0; i < ToolNames.Length; i++)
+            ImUi.Header(col.Row(24), "Mode");
+            var cur = CurrentMode;
+            for (int i = 0; i < Modes.Length; i++)
             {
-                var b = col.Row();
-                if (ImUi.ToolButton(b, ToolNames[i], i, _tool == (BuilderTool)i, ToolTips[i] + $"  [{(i + 1) % 10}]")) SetTool((BuilderTool)i);
-                GUI.Label(new Rect(b.xMax - 30, b.y, 26, b.height), ((i + 1) % 10).ToString(), new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleRight, normal = { textColor = _tool == (BuilderTool)i ? Color.black : ImUi.Dim } });
+                var m = Modes[i];
+                var b = col.Row(40);
+                if (ImUi.ToolButton(b, m.Name, m.Icon, m == cur, m.Tip + $"  [{i + 1}]")) SetMode(m);
+                GUI.Label(new Rect(b.xMax - 26, b.y, 22, b.height), (i + 1).ToString(), new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleRight, normal = { textColor = m == cur ? Color.black : ImUi.Dim } });
             }
-            col.Space(10);
-            switch (_tool)
+            col.Space(12);
+            if (cur.Tools.Length > 1)
             {
-                case BuilderTool.Opening:
+                ImUi.Header(col.Row(24), "Tool");
+                var tr = col.Row(30);
+                int n = cur.Tools.Length;
+                if (n <= 2)
+                    for (int i = 0; i < n; i++)
+                    { var t = cur.Tools[i]; if (ImUi.Button(new Rect(tr.x + i * (tr.width / n), tr.y, tr.width / n - 3, tr.height), cur.ToolName(t), _tool == t, cur.ToolTip(t))) SetTool(t); }
+                else
                 {
-                    ImUi.Header(col.Row(24), "Door / window");
-                    string[] n = { "DOOR", "DOUBLE DOOR", "ARCH", "WINDOW", "TALL OPENING", "OPEN GAP" };
-                    string[] t =
+                    for (int i = 0; i < n; i++)
                     {
-                        "0.9 × 2.1 m to start; drag its handles to any size.", "1.7 m wide.", "A round-topped opening.",
-                        "A hole with a sill (0.9 m up). Drag its bottom handle down to the floor to make it a door.",
-                        "Up to the ceiling.", "Takes the wall between cells away (drag along grid edges). On the outer wall it makes a tall exit.",
-                    };
-                    for (int i = 0; i < n.Length; i++) if (ImUi.Button(col.Row(30), n[i], _opening == (OpeningKind)i, t[i])) _opening = (OpeningKind)i;
-                    ImUi.Dimmed(col.Row(54), "Point at a wall and click. Then drag: sides wider, top taller, bottom for a sill, middle along the wall.");
-                    break;
-                }
-                case BuilderTool.Prop:
-                {
-                    ImUi.Header(col.Row(24), "Prop");
-                    PropKind[] kinds = { PropKind.Box, PropKind.Pallet, PropKind.Sofa, PropKind.Armchair, PropKind.OfficeChair, PropKind.ConferenceTable, PropKind.FloorLamp, PropKind.StorageRack };
-                    string[] n = { "BOX", "PALLET", "SOFA", "ARMCHAIR", "OFFICE CHAIR", "TABLE", "FLOOR LAMP", "STORAGE RACK" };
-                    for (int i = 0; i < kinds.Length; i++) if (ImUi.Button(col.Row(30), n[i], _propKind == kinds[i], WallProp(kinds[i]) ? "Click beside a solid wall. Drag after placing to choose another wall." : "Click the floor to place. Select and drag to move; R rotates.")) _propKind = kinds[i];
-                    break;
-                }
-                case BuilderTool.Loot:
-                {
-                    ImUi.Header(col.Row(24), "Item name");
-                    _lootItem = ImUi.TextField(col.Row(30), _lootItem, "lootitem", 40);
-                    ImUi.Dimmed(col.Row(40), "Spawns as a loose box until the game has loot of its own.");
-                    break;
-                }
-                case BuilderTool.Pillar:
-                {
-                    ImUi.Header(col.Row(24), "Pillar size");
-                    if (ImUi.Button(col.Row(30), "SLIM  0.45 m", _pillarSize < 0.5f)) _pillarSize = 0.45f;
-                    if (ImUi.Button(col.Row(30), "NORMAL  0.6 m", _pillarSize >= 0.5f)) _pillarSize = 0.6f;
-                    break;
-                }
-                case BuilderTool.Floor:
-                {
-                    ImUi.Header(col.Row(24), "Paint area");
-                    var v = V;
-                    for (int i = 0; i < v.rooms.Count; i++)
-                    {
-                        var b = col.Row(30);
-                        ImUi.Fill(new Rect(b.x, b.y + 4, 10, b.height - 8), RoomColor(i));
-                        if (ImUi.Button(new Rect(b.x + 14, b.y, b.width - 14, b.height), v.rooms[i].name, _activeRoom == i)) _activeRoom = i;
+                        var t = cur.Tools[i];
+                        var br = i == 0 ? tr : col.Row(30);
+                        if (ImUi.Button(br, cur.ToolName(t), _tool == t, cur.ToolTip(t))) SetTool(t);
                     }
-                    break;
                 }
+                col.Space(8);
             }
+            cur.Options(ref col);
         }
 
-        string[] _kindNames = { "OFFICE", "BIG OFFICE", "HALLWAY", "LOUNGE", "CONFERENCE" };
+        static readonly string[] _kindNames = { "OFFICE", "BIG OFFICE", "HALLWAY", "LOUNGE", "CONFERENCE" };
         static readonly string[] WallFinishNames = { "DEFAULT", "WALLPAPER", "PAINTED PLASTER", "REFERENCE CREAM", "REFERENCE OLIVE" };
         static readonly string[] FloorFinishNames = { "DEFAULT CARPET", "REFERENCE CARPET", "DARK WOOD", "LAMINATE" };
-        RoomKind[] _kinds = { RoomKind.Office, RoomKind.BigOffice, RoomKind.Hallway, RoomKind.Lounge, RoomKind.Conference };
+        static readonly RoomKind[] _kinds = { RoomKind.Office, RoomKind.BigOffice, RoomKind.Hallway, RoomKind.Lounge, RoomKind.Conference };
 
+        /// <summary>The inspector: what is selected; in PAINT (or with a room's floor clicked) that room; else the whole room.</summary>
         void DrawRightBar()
         {
             var r = RightRect;
@@ -256,33 +218,45 @@ namespace Backrooms.CustomRooms
             var content = new Rect(0, 0, r.width - 18, _rightContentH);
             _rightScroll = GUI.BeginScrollView(view, _rightScroll, content, false, false, GUIStyle.none, GUIStyle.none);
             var col = new ImUi.Column(12, 12, r.width - 24 - 14, 30, 6);
-            var v = V;
+            if (_selected.kind == SelKind.Prop || _selected.kind == SelKind.Loot || _selected.kind == SelKind.Opening)
+            {
+                if (ImUi.Button(col.Row(28), "‹  WHOLE ROOM", false, "Deselect. [Esc]")) _selected = Selection.None;
+                col.Space(4);
+                DrawSelected(ref col);
+            }
+            else if (_selected.kind == SelKind.Room || CurrentMode is PaintMode) DrawRoomInspector(ref col);
+            else DrawOverview(ref col);
+            col.Space(30);
+            _rightContentH = col.y + 20;
+            GUI.EndScrollView();
+        }
 
-            // ---- Room ----
-            ImUi.Header(col.Row(24), "Room");
+        /// <summary>The room as a whole: its name and size, the rooms painted in it, its variants, its checks.</summary>
+        void DrawOverview(ref ImUi.Column col)
+        {
+            var v = V;
+            ImUi.Header(col.Row(24), "This room");
             string nm = ImUi.TextField(col.Row(32), _bp.name, "bpname", 40);
             if (nm != _bp.name) { _bp.name = nm; _dirty = true; BuildSession.Dirty = true; }
-            col.Space(2);
-
-            // ---- Spawn ----
-            ImUi.Header(col.Row(24), "Spawning in the world");
-            Toggled(ref _bp.enabled, col.Row(), "Spawns in the world", "Off: the room is saved but the world ignores it. Save to game turns this on.");
-            _bp.chance = Slide(col.Row(), "How often", _bp.chance, 0.02f, 1f, "0.00", "Chance that a landmark spot that picks this room really holds it. Landmark spots are rare (about one per 3 × 3 districts), so even 1.00 is a rare find.");
-            _bp.weight = Slide(col.Row(), "Weight", _bp.weight, 0.1f, 10f, "0.0", "Against the colonnade halls, atriums and other rooms of yours that could take the same spot.");
-            Toggled(ref _bp.allowRotate, col.Row(), "May be turned 90°", "The world can place the room turned in quarter steps.");
-            EnsureNames();
-            ImUi.Text_(col.Row(24), "Biomes (none ticked = any):");
-            foreach (var b in _biomeNames) ToggleList(_bp.biomes, b, col.Row(26));
-            if (_zoneNames.Count > 1)
-            {
-                ImUi.Text_(col.Row(24), "Zones (none ticked = any):");
-                foreach (var z in _zoneNames) ToggleList(_bp.zones, z, col.Row(26));
-            }
+            SizeRow(col.Row(), "Width", v.width, true);
+            SizeRow(col.Row(), "Depth", v.depth, false);
+            ImUi.Dimmed(col.Row(34), $"{v.width * OfficeBiome.CellSize:0.0} × {v.depth * OfficeBiome.CellSize:0.0} m. Or drag the arrows outside its walls (SELECT).");
             col.Space(4);
 
-            // ---- Variants ----
+            ImUi.Header(col.Row(24), "Rooms inside it");
+            for (int i = 0; i < v.rooms.Count; i++)
+            {
+                var b = col.Row(30);
+                ImUi.Fill(new Rect(b.x, b.y + 4, 10, b.height - 8), RoomColor(i));
+                string info = $"{v.rooms[i].name}   ·   {v.rooms[i].ceiling:0.0} m";
+                if (ImUi.Button(new Rect(b.x + 14, b.y, b.width - 14, b.height), info, false, "Its ceiling, walls, floor and lights.")) { SelectRoom(i); BuilderSounds.Play(BuilderSounds.Sfx.Pick); }
+            }
+            if (ImUi.Button(col.Row(30), "+ NEW ROOM", false, "A new room to paint cells into (PAINT)."))
+            { PushUndo(); v.rooms.Add(new RoomSettings { name = "Room " + (v.rooms.Count + 1) }); SetMode(Modes[4]); SelectRoom(v.rooms.Count - 1); Changed(); }
+            col.Space(4);
+
             ImUi.Header(col.Row(24), "Variants");
-            ImUi.Dimmed(col.Row(34), "Each variant is its own layout. The world picks one when it places the room.");
+            ImUi.Dimmed(col.Row(34), "Each variant is its own layout of this room; the world picks one.");
             for (int i = 0; i < _bp.variants.Count; i++)
             {
                 var b = col.Row(30);
@@ -297,85 +271,116 @@ namespace Backrooms.CustomRooms
                 _bp.variants.Add(c); _vi = _bp.variants.Count - 1; Changed(); FrameRoom();
             }
             if (ImUi.Button(new Rect(vr.x + vr.width * 0.5f + 3, vr.y, vr.width * 0.5f - 3, vr.height), "DELETE", false) && _bp.variants.Count > 1)
+            { PushUndo(); _bp.variants.RemoveAt(_vi); _vi = Mathf.Clamp(_vi, 0, _bp.variants.Count - 1); Changed(); }
+            if (_bp.variants.Count > 1)
             {
-                PushUndo(); _bp.variants.RemoveAt(_vi); _vi = Mathf.Clamp(_vi, 0, _bp.variants.Count - 1); Changed();
+                string vname = ImUi.TextField(col.Row(30), v.name, "vname", 30);
+                if (vname != v.name) { v.name = vname; _dirty = true; }
+                float vw = Slide(col.Row(), "Weight", v.weight, 0f, 10f, "0.0", "How often the world picks this variant against the others.");
+                if (vw != v.weight) { v.weight = vw; _dirty = true; }
             }
-            string vname = ImUi.TextField(col.Row(30), v.name, "vname", 30);
-            if (vname != v.name) { v.name = vname; _dirty = true; }
-            float vw = Slide(col.Row(), "Weight", v.weight, 0f, 10f, "0.0", "How often the world picks this variant against the others.");
-            if (vw != v.weight) { v.weight = vw; _dirty = true; }
-            col.Space(2);
+            col.Space(4);
 
-            // ---- Size ----
-            ImUi.Header(col.Row(24), "Size");
-            SizeRow(col.Row(), "Width", v.width, true);
-            SizeRow(col.Row(), "Depth", v.depth, false);
-            ImUi.Dimmed(col.Row(22), $"{v.width * OfficeBiome.CellSize:0.0} × {v.depth * OfficeBiome.CellSize:0.0} m  (cells are 1.2 m)");
-            col.Space(2);
+            DrawChecks(ref col);
+            col.Space(8);
+            if (ImUi.Button(col.Row(40), "PUT IN THE WORLD…", _bp.enabled, "Whether and where this room spawns in the procedural world.")) _modal = Modal.World;
+            ImUi.Dimmed(col.Row(24), _bp.enabled ? "Spawns in the world." : "Not in the world yet: only in your library.");
+            if (ImUi.Button(col.Row(32), "DISCARD CHANGES", false, "Back to the saved version of this room.")) _modal = Modal.Discard;
+        }
 
-            // ---- Areas ----
-            ImUi.Header(col.Row(24), "Areas");
-            ImUi.Dimmed(col.Row(34), "Paint areas with the FLOOR AREAS tool. Each has its own ceiling, walls and lighting.");
-            var copyRow = col.Row();
-            if (ImUi.Button(new Rect(copyRow.x, copyRow.y, copyRow.width * 0.5f - 3, copyRow.height), "COPY AREA", false, "Copy the selected area's shape, settings, boundary walls, lights, props and loot. [Ctrl+C]")) CopyArea();
-            if (ImUi.Button(new Rect(copyRow.center.x + 3, copyRow.y, copyRow.width * 0.5f - 3, copyRow.height), "PASTE AREA", _pastingArea, "Click a destination cell after pasting. Replaces that footprint in one undoable action. [Ctrl+V]")) BeginPasteArea();
-            for (int i = 0; i < v.rooms.Count; i++)
+        void DrawChecks(ref ImUi.Column col)
+        {
+            var v = V;
+            ImUi.Header(col.Row(24), "Checks");
+            int exits = v.CountExits();
+            ImUi.Fill(new Rect(col.x, col.y + 6, 10, 10), exits > 0 ? ImUi.Good : ImUi.Bad);
+            GUI.Label(new Rect(col.x + 14, col.y, col.w - 14, 22), exits > 0 ? $"{exits} way{(exits == 1 ? "" : "s")} in" : "No way in: put a door in an outer wall", ImUi.Label); col.Advance(22);
+            bool lit = v.fixtures.Exists(f => f.on);
+            ImUi.Fill(new Rect(col.x, col.y + 6, 10, 10), lit ? ImUi.Good : ImUi.Bad);
+            GUI.Label(new Rect(col.x + 14, col.y, col.w - 14, 22), lit ? $"{v.fixtures.FindAll(f => f.on).Count} lights" : "No working lights", ImUi.Label); col.Advance(22);
+            ImUi.Dimmed(col.Row(22), $"{v.openings.Count} doors and windows, {v.props.Count} props, {v.loot.Count} loot spots, {v.pillars.Count} pillars");
+        }
+
+        /// <summary>One room (an area of cells): its name, ceiling, walls, floor, lights; copy and paste; remove.</summary>
+        void DrawRoomInspector(ref ImUi.Column col)
+        {
+            var v = V;
+            _activeRoom = Mathf.Clamp(_activeRoom, 0, v.rooms.Count - 1);
+            var rs = v.rooms[_activeRoom];
+            if (ImUi.Button(col.Row(28), "‹  WHOLE ROOM", false, "Back to the room as a whole. [Esc]")) { _selected = Selection.None; if (CurrentMode is PaintMode) SetMode(Modes[0]); }
+            col.Space(4);
+            var hr = col.Row(24);
+            ImUi.Fill(new Rect(hr.x, hr.y + 5, 12, 14), RoomColor(_activeRoom));
+            ImUi.Header(new Rect(hr.x + 18, hr.y, hr.width - 18, hr.height), "Room");
+            string rname = ImUi.TextField(col.Row(30), rs.name, "areaname", 24);
+            if (rname != rs.name) { rs.name = rname; _dirty = true; }
+            int cells = 0; foreach (int c in v.cellRoom) if (c == _activeRoom) cells++;
+            ImUi.Dimmed(col.Row(22), $"{cells} cells ({cells * OfficeBiome.CellSize * OfficeBiome.CellSize:0.#} m²). PAINT adds cells to it.");
+            float ceil = Slide(col.Row(), "Ceiling (m)", rs.ceiling, OfficeBiome.CeilingHeight, 5.4f, "0.0", "Normal offices are 2.7 m. Taller ceilings get plaster walls and round lights.");
+            ceil = Mathf.Round((ceil - OfficeBiome.CeilingHeight) / 0.3f) * 0.3f + OfficeBiome.CeilingHeight;
+            if (Mathf.Abs(ceil - rs.ceiling) > 0.001f) { PushUndo(); rs.ceiling = ceil; if (ceil > 2.8f) rs.painted = true; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick, 0.8f + ceil / 10f); }
+            if (ImUi.Button(col.Row(), "WALLS: " + WallFinishNames[Mathf.Clamp((int)rs.wallFinish, 0, WallFinishNames.Length - 1)], false, "Cycle the wall finishes. DEFAULT follows 'Painted plaster' below; tall rooms are always plaster unless chosen here."))
+            { PushUndo(); rs.wallFinish = (WallFinish)(((int)rs.wallFinish + 1) % System.Enum.GetValues(typeof(WallFinish)).Length); Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick); }
+            if (rs.wallFinish == WallFinish.Default)
             {
-                var b = col.Row(30);
-                ImUi.Fill(new Rect(b.x, b.y + 4, 10, b.height - 8), RoomColor(i));
-                if (ImUi.Button(new Rect(b.x + 14, b.y, b.width - 14, b.height), v.rooms[i].name, _activeRoom == i)) _activeRoom = i;
+                bool painted = rs.painted;
+                Toggled(ref painted, col.Row(), "Painted plaster (not wallpaper)");
+                if (painted != rs.painted) { PushUndo(); rs.painted = painted; Changed(); }
             }
-            var ar = col.Row();
-            if (ImUi.Button(new Rect(ar.x, ar.y, ar.width * 0.5f - 3, ar.height), "+ NEW AREA"))
-            {
-                PushUndo(); v.rooms.Add(new RoomSettings { name = "Area " + (v.rooms.Count + 1) }); _activeRoom = v.rooms.Count - 1; _tool = BuilderTool.Floor; Changed();
-            }
-            if (ImUi.Button(new Rect(ar.x + ar.width * 0.5f + 3, ar.y, ar.width * 0.5f - 3, ar.height), "REMOVE") && v.rooms.Count > 1)
+            if (ImUi.Button(col.Row(), "FLOOR: " + FloorFinishNames[Mathf.Clamp((int)rs.floorFinish, 0, FloorFinishNames.Length - 1)], false, "Cycle the floors: carpet, Reference Match carpet, dark wood, laminate."))
+            { PushUndo(); rs.floorFinish = (FloorFinish)(((int)rs.floorFinish + 1) % System.Enum.GetValues(typeof(FloorFinish)).Length); Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick); }
+            ImUi.Text_(col.Row(22), "Lights");
+            var lr = col.Row();
+            string[] ln = { "ALL ON", "MIXED", "DARK" };
+            for (int i = 0; i < 3; i++)
+                if (ImUi.Button(new Rect(lr.x + i * (lr.width / 3f), lr.y, lr.width / 3f - 3, lr.height), ln[i], (int)rs.lights == i, "Which of its ceiling lights work. PAINT > LIGHTS sets each one."))
+                { PushUndo(); rs.lights = (LightMode)i; foreach (var f in v.fixtures) if (v.RoomAt(f.x, f.z) == rs) f.on = rs.lights != LightMode.Dark && (rs.lights == LightMode.AllOn || (f.x + f.z) % 2 == 0); Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick); }
+            int ki = System.Array.IndexOf(_kinds, rs.kind); if (ki < 0) ki = 0;
+            if (ImUi.Button(col.Row(), "KIND: " + _kindNames[ki], false, "The kind of room: how the world dresses and lights around it."))
+            { PushUndo(); rs.kind = _kinds[(ki + 1) % _kinds.Length]; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick); }
+            col.Space(6);
+            var cr = col.Row();
+            if (ImUi.Button(new Rect(cr.x, cr.y, cr.width * 0.5f - 3, cr.height), "COPY ROOM", false, "Copy its cells, settings, walls, doors, lights and things. [Ctrl+C]")) CopyArea();
+            if (ImUi.Button(new Rect(cr.center.x + 3, cr.y, cr.width * 0.5f - 3, cr.height), "PASTE", _pastingArea, "Then click where its lower-left cell goes. [Ctrl+V]")) BeginPasteArea();
+            var pr = col.Row();
+            if (ImUi.Button(new Rect(pr.x, pr.y, pr.width * 0.5f - 3, pr.height), "PAINT CELLS", CurrentMode is PaintMode && _tool == BuilderTool.Floor, "Paint more cells into this room.")) { SetTool(BuilderTool.Floor); SelectRoom(_activeRoom); }
+            if (ImUi.Button(new Rect(pr.center.x + 3, pr.y, pr.width * 0.5f - 3, pr.height), "REMOVE", false, "Its cells go back to the first room.") && v.rooms.Count > 1)
             {
                 PushUndo();
                 int gone = _activeRoom;
                 for (int i = 0; i < v.cellRoom.Length; i++) { if (v.cellRoom[i] == gone) v.cellRoom[i] = 0; else if (v.cellRoom[i] > gone) v.cellRoom[i]--; }
-                v.rooms.RemoveAt(gone); _activeRoom = Mathf.Clamp(_activeRoom, 0, v.rooms.Count - 1); Changed();
+                v.rooms.RemoveAt(gone); _activeRoom = 0; _selected = Selection.None; Changed();
+                BuilderSounds.Play(BuilderSounds.Sfx.Delete);
             }
-            _activeRoom = Mathf.Clamp(_activeRoom, 0, v.rooms.Count - 1);
-            var rs = v.rooms[_activeRoom];
-            string rname = ImUi.TextField(col.Row(30), rs.name, "areaname", 24);
-            if (rname != rs.name) { rs.name = rname; _dirty = true; }
-            float ceil = Slide(col.Row(), "Ceiling (m)", rs.ceiling, OfficeBiome.CeilingHeight, 5.4f, "0.0", "Normal offices are 2.7 m. Taller ceilings get plaster walls and round lights.");
-            ceil = Mathf.Round((ceil - OfficeBiome.CeilingHeight) / 0.3f) * 0.3f + OfficeBiome.CeilingHeight;
-            if (Mathf.Abs(ceil - rs.ceiling) > 0.001f) { PushUndo(); rs.ceiling = ceil; if (ceil > 2.8f) rs.painted = true; Changed(); }
-            bool painted = rs.painted;
-            Toggled(ref painted, col.Row(), "Painted walls (not wallpaper)", "Plaster instead of the wallpaper. Tall ceilings always use plaster.");
-            if (painted != rs.painted) { PushUndo(); rs.painted = painted; Changed(); }
-            if (ImUi.Button(col.Row(), "WALL: " + WallFinishNames[Mathf.Clamp((int)rs.wallFinish, 0, WallFinishNames.Length - 1)], false, "Cycle existing wall materials. Default follows Painted walls; an explicit choice also works in tall rooms."))
-            { PushUndo(); rs.wallFinish = (WallFinish)(((int)rs.wallFinish + 1) % System.Enum.GetValues(typeof(WallFinish)).Length); Changed(); }
-            if (ImUi.Button(col.Row(), "FLOOR: " + FloorFinishNames[Mathf.Clamp((int)rs.floorFinish, 0, FloorFinishNames.Length - 1)], false, "Cycle existing carpet, Reference Match carpet, dark wood and table laminate materials. No new textures."))
-            { PushUndo(); rs.floorFinish = (FloorFinish)(((int)rs.floorFinish + 1) % System.Enum.GetValues(typeof(FloorFinish)).Length); Changed(); }
-            var lr = col.Row();
-            string[] ln = { "ALL ON", "MIXED", "DARK" };
-            for (int i = 0; i < 3; i++)
-                if (ImUi.Button(new Rect(lr.x + i * (lr.width / 3f), lr.y, lr.width / 3f - 3, lr.height), ln[i], (int)rs.lights == i, "Which ceiling lights work in this area."))
-                { PushUndo(); rs.lights = (LightMode)i; foreach (var f in v.fixtures) if (v.RoomAt(f.x, f.z) == rs) f.on = rs.lights != LightMode.Dark && (rs.lights == LightMode.AllOn || (f.x + f.z) % 2 == 0); Changed(); }
-            var kr = col.Row();
-            int ki = System.Array.IndexOf(_kinds, rs.kind); if (ki < 0) ki = 0;
-            if (ImUi.Button(kr, "KIND: " + _kindNames[ki], false, "The kind of room (affects how the world dresses and lights around it)."))
-            { PushUndo(); rs.kind = _kinds[(ki + 1) % _kinds.Length]; Changed(); }
-            col.Space(2);
+        }
 
-            // ---- Selected ----
-            DrawSelected(ref col);
-
-            // ---- Checks ----
-            ImUi.Header(col.Row(24), "Checks");
-            int exits = v.CountExits();
-            ImUi.Fill(new Rect(col.x, col.y + 6, 10, 10), exits > 0 ? ImUi.Good : ImUi.Bad);
-            GUI.Label(new Rect(col.x + 14, col.y, col.w - 14, 22), exits > 0 ? $"{exits} entrance{(exits == 1 ? "" : "s")} / exit{(exits == 1 ? "" : "s")}" : "No exit: the world will cut one", ImUi.Label); col.Advance(22);
-            ImUi.Fill(new Rect(col.x, col.y + 6, 10, 10), v.fixtures.Exists(f => f.on) ? ImUi.Good : ImUi.Bad);
-            GUI.Label(new Rect(col.x + 14, col.y, col.w - 14, 22), v.fixtures.Exists(f => f.on) ? $"{v.fixtures.FindAll(f => f.on).Count} lights" : "No working lights", ImUi.Label); col.Advance(22);
-            ImUi.Dimmed(col.Row(22), $"{v.props.Count} props, {v.loot.Count} loot spots, {v.pillars.Count} pillars");
-            col.Space(30);
-            _rightContentH = col.y + 20;
-            GUI.EndScrollView();
+        /// <summary>PUT IN THE WORLD: whether the room spawns, how often, where.</summary>
+        void DrawWorldDialog()
+        {
+            float w = Mathf.Min(760f, ImUi.Width - 40f), h = 720f;
+            var box = new Rect((ImUi.Width - w) * 0.5f, (ImUi.Height - h) * 0.5f, w, h);
+            ImUi.PanelBox(box);
+            GUI.Label(new Rect(box.x + 24, box.y + 18, box.width - 48, 40), "PUT IN THE WORLD", ImUi.Title);
+            ImUi.Dimmed(new Rect(box.x + 24, box.y + 60, box.width - 48, 40), "Rooms you put in the world turn up as rare set pieces in new worlds (about one spot per 3 × 3 districts is open to rooms like this).");
+            var col = new ImUi.Column(box.x + 24, box.y + 108, box.width * 0.5f - 36, 30, 6);
+            Toggled(ref _bp.enabled, col.Row(), "Spawns in the world");
+            _bp.chance = Slide(col.Row(), "How often", _bp.chance, 0.02f, 1f, "0.00", "Chance that a spot that picks this room really holds it.");
+            _bp.weight = Slide(col.Row(), "Weight", _bp.weight, 0.1f, 10f, "0.0", "Against the other set pieces that could take the same spot.");
+            Toggled(ref _bp.allowRotate, col.Row(), "May be turned 90°");
+            EnsureNames();
+            var col2 = new ImUi.Column(box.x + box.width * 0.5f + 12, box.y + 108, box.width * 0.5f - 36, 26, 4);
+            ImUi.Text_(col2.Row(24), "Biomes (none ticked = any):");
+            foreach (var b in _biomeNames) ToggleList(_bp.biomes, b, col2.Row());
+            if (_zoneNames.Count > 1)
+            {
+                col2.Space(6);
+                ImUi.Text_(col2.Row(24), "Zones (none ticked = any):");
+                foreach (var z in _zoneNames) ToggleList(_bp.zones, z, col2.Row());
+            }
+            float by = box.yMax - 62;
+            if (ImUi.Button(new Rect(box.x + 24, by, 220, 40), "SAVE TO GAME", true, "Saves the room and turns spawning on."))
+            { _modal = Modal.None; SaveBlueprint(true); }
+            if (ImUi.Button(new Rect(box.xMax - 24 - 140, by, 140, 40), "DONE")) _modal = Modal.None;
         }
 
         void DrawSelected(ref ImUi.Column col)
@@ -511,19 +516,14 @@ namespace Backrooms.CustomRooms
             if (_biomeNames.Count == 0) _biomeNames.AddRange(new[] { "Offices", "Hallways", "Warehouse" });
         }
 
+        /// <summary>The hint line: a message just shown, else the control under the pointer, else what a click does now.</summary>
         void DrawBottomBar()
         {
             var r = BottomRect;
-            float x = 14, y = r.y + 12, h = 40;
-            if (ImUi.Button(new Rect(x, y, 120, h), "SAVE", _dirty, "Saves the room to your library. It spawns only if 'Spawns in the world' is on.  [Ctrl+S]")) SaveBlueprint(false); x += 126;
-            if (ImUi.Button(new Rect(x, y, 170, h), "SAVE TO GAME", false, "Saves the room and turns spawning on: the next procedural world will contain it.")) SaveBlueprint(true); x += 176;
-            if (ImUi.Button(new Rect(x, y, 170, h), "TEST IN WORLD", false, "Walks you into the room inside the real procedural world, with the camcorder filters on.")) TestInWorld(); x += 176;
-            if (ImUi.Button(new Rect(x, y, 170, h), "DISCARD CHANGES", false, "Goes back to the saved version of this room.")) { _modal = Modal.Discard; } x += 176;
-            if (ImUi.Button(new Rect(x, y, 140, h), "LIBRARY", false, "Back to all your rooms.")) { if (_dirty) _modal = Modal.Back; else ShowLibrary(); }
-            string msg = Time.unscaledTime < _statusUntil ? _status : ImUi.Tip;
-            if (string.IsNullOrEmpty(msg)) msg = "RMB turn   MMB / Shift+RMB or WASD pan   wheel zoom   Q E rotate   F frame   Tab view   Ctrl+Z undo";
-            var col = Time.unscaledTime < _statusUntil ? ImUi.Accent : ImUi.Dim;
-            GUI.Label(new Rect(x + 160, r.y + 8, ImUi.Width - x - 170 - 30, 48), msg, new GUIStyle(ImUi.Small) { wordWrap = true, normal = { textColor = col }, fontSize = 14 });
+            bool status = Time.unscaledTime < _statusUntil;
+            string msg = status ? _status : !string.IsNullOrEmpty(ImUi.Tip) ? ImUi.Tip : CurrentMode.Hint();
+            GUI.Label(new Rect(r.x + 16, r.y + 4, r.width - 460, r.height - 8), msg, new GUIStyle(ImUi.Small) { wordWrap = true, fontSize = 15, alignment = TextAnchor.MiddleLeft, normal = { textColor = status ? ImUi.Accent : ImUi.Text } });
+            GUI.Label(new Rect(r.xMax - 440, r.y + 4, 428, r.height - 8), "RMB turn · MMB/WASD pan · wheel zoom · F frame · Tab view", new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleRight, normal = { textColor = ImUi.Dim } });
         }
 
         // ---------------- Save / test ----------------
@@ -538,18 +538,16 @@ namespace Backrooms.CustomRooms
             GUI.Label(col.Row(42), "BUILD MODE HELP", ImUi.Title);
             string[] lines =
             {
-                "1–0: select tools. Click or drag grid edges for walls and openings.",
-                "Floor areas: paint cells with the selected area's settings.",
-                "Props: select and drag. R rotates floor props; Delete removes the selection.",
-                "Racks / clocks: click the floor beside a solid wall; drag to another wall.",
-                "RMB: orbit. MMB or Shift+RMB: pan. Wheel: zoom.",
-                "WASD: pan. Q / E: rotate. F: frame the room.",
-                "Tab: cycle views. G: show or hide grid.",
-                "Ctrl+Z / Ctrl+Y: undo / redo. Ctrl+S: save.",
-                "Ctrl+C: copy selected area. Ctrl+V, then click: paste; Escape cancels.",
-                "Open an outer wall to give the room an entrance and exit.",
-                "Save to game: enable world spawning. Test in world: play your current edits.",
-                "Escape during a world test: return to the builder with edits intact.",
+                "1 SELECT: click anything to select it; drag to move; drag its handles to size it. Arrows outside the walls grow the room.",
+                "2 BUILD: drag along the grid for walls and half walls; click corners for pillars. Ctrl while drawing erases.",
+                "3 DOORS & WINDOWS: point at a wall and click; drag the sides, top, bottom (sill) or middle.",
+                "4 FURNISH: pick a prop and click the floor (racks and clocks against a wall). Loot spots too.",
+                "5 PAINT: paint cells into rooms (each its own ceiling, walls, floor and lights); click cells for lights.",
+                "Right panel: whatever is selected, or the room as a whole. PUT IN THE WORLD sets where it spawns.",
+                "Alt drags without snapping. R turns a prop. Delete removes. Ctrl+D duplicates. Esc deselects.",
+                "RMB orbit, MMB or Shift+RMB or WASD pan, wheel zoom, Q / E rotate, F frame, Tab views, G grid.",
+                "Ctrl+Z / Ctrl+Y undo / redo. Ctrl+S save. Ctrl+C / Ctrl+V copy and paste a room.",
+                "TEST IN WORLD: play your current edits in the real world (Esc there to come back).",
             };
             foreach (var line in lines) GUI.Label(col.Row(38), line, new GUIStyle(ImUi.Label) { wordWrap = true });
             if (ImUi.Button(new Rect(box.xMax - 170, box.yMax - 62, 146, 40), "CLOSE  [F1]", true)) _showHelp = false;
@@ -591,6 +589,7 @@ namespace Backrooms.CustomRooms
         {
             if (_modal == Modal.None) return;
             ImUi.Fill(new Rect(0, 0, ImUi.Width, ImUi.Height), new Color(0, 0, 0, 0.55f));
+            if (_modal == Modal.World) { DrawWorldDialog(); return; }
             var box = new Rect(ImUi.Width * 0.5f - 250, ImUi.Height * 0.5f - 110, 500, 220);
             ImUi.PanelBox(box);
             string title = "", body = "";

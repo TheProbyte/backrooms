@@ -15,6 +15,18 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Build mode reworked, step A: five modes, an inspector, a world dialog
+
+- Owner: the builder improved fully, cleaner, easier, making more sense (plan steps A-E, all approved). Step A: the
+  screen and the code. Ten overlapping tools became five modes (SELECT, BUILD, DOORS, FURNISH, PAINT; keys 1-5), each a
+  small class in its own file (`BuilderApp.Mode*.cs`: its tools, options, hint line; the tools' code moved there from
+  `BuilderApp.Tools.cs`). The right panel is an inspector: what is selected, a room (an area of cells, clicked on its
+  floor or in PAINT: ceiling, walls, floor, lights, copy, paste, remove), else the room as a whole. Spawning rules moved
+  to a PUT IN THE WORLD dialog. The bottom bar is one hint line. Open gaps are erasing in BUILD (Ctrl while drawing
+  erases); there is one kind of door. Ctrl+D duplicates. Room files are format 2 (older rooms' grid doorways become
+  openings on loading); copy and paste carries doors, windows and props' lift, tip, size, physics-off.
+- EditMode 155/155.
+
 ## 2026-10-30 - Build mode, hands on: doors and windows of any size, drag handles, stuck props, sounds
 
 - Owner: the room builder more like a Sims builder or Tiny Glade: drag doors wider and taller, resize other things, a

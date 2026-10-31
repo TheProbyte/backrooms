@@ -29,6 +29,20 @@ namespace Backrooms.CustomRooms
         bool SourcePoint(float x, float z) => SourceCell(Mathf.FloorToInt(x / Generation.OfficeBiome.CellSize), Mathf.FloorToInt(z / Generation.OfficeBiome.CellSize));
         bool SourceVertex(int x, int z) => SourceCell(x, z) || SourceCell(x - 1, z) || SourceCell(x, z - 1) || SourceCell(x - 1, z - 1);
 
+        /// <summary>Is an opening on a wall of the copied cells (shifted by dx, dz cells into the target when target)?</summary>
+        bool OnFootprint(OpeningDef o, int dx, int dz, bool target)
+        {
+            const float c = Generation.OfficeBiome.CellSize;
+            int line = o.line - (target ? (o.vertical ? dx : dz) : 0);
+            float shift = target ? (o.vertical ? dz : dx) * c : 0f;
+            int a0 = Mathf.FloorToInt((o.from - shift) / c), a1 = Mathf.CeilToInt((o.to - shift) / c) - 1;
+            for (int a = a0; a <= a1; a++)
+            {
+                if (o.vertical ? (SourceCell(line - 1, a) || SourceCell(line, a)) : (SourceCell(a, line - 1) || SourceCell(a, line))) return true;
+            }
+            return false;
+        }
+
         public bool Fits(RoomVariant target, Vector2Int anchor) => anchor.x >= 0 && anchor.y >= 0
             && anchor.x + bounds.width <= target.width && anchor.y + bounds.height <= target.depth;
 
@@ -77,7 +91,23 @@ namespace Backrooms.CustomRooms
             foreach (var p in _source.pillars)
                 if (SourceVertex(p.x, p.z)) target.pillars.Add(new PillarDef { x = p.x + dx, z = p.z + dz, size = p.size });
             foreach (var p in _source.props)
-                if (SourcePoint(p.x, p.z)) target.props.Add(new PropDef { kind = p.kind, x = p.x + dx * c, z = p.z + dz * c, yaw = p.yaw, variant = p.variant, lit = p.lit, size = p.size, chance = p.chance });
+                if (SourcePoint(p.x, p.z))
+                {
+                    // (All of it: lift, tip, size, physics off too.)
+                    var q = JsonUtility.FromJson<PropDef>(JsonUtility.ToJson(p)); q.x += dx * c; q.z += dz * c;
+                    target.props.Add(q);
+                }
+            // Doors and windows on the walls of the copied cells (round 17).
+            target.openings.RemoveAll(o => OnFootprint(o, dx, dz, true));
+            foreach (var o in _source.openings)
+                if (OnFootprint(o, 0, 0, false))
+                {
+                    var q = o.Clone();
+                    q.line += q.vertical ? dx : dz;
+                    float slide = (q.vertical ? dz : dx) * c; q.from += slide; q.to += slide;
+                    target.ClampOpening(q);
+                    if (target.OpeningFits(q)) target.openings.Add(q);
+                }
             foreach (var p in _source.loot)
                 if (SourcePoint(p.x, p.z)) target.loot.Add(new LootDef { item = p.item, x = p.x + dx * c, z = p.z + dz * c, chance = p.chance, note = p.note });
             return true;

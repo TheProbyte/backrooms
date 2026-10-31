@@ -320,7 +320,7 @@ namespace Backrooms.CustomRooms
                 float scroll = mouse.scroll.ReadValue().y;
                 if (Mathf.Abs(scroll) > 0.01f) _dist = Mathf.Clamp(_dist * (1f - Mathf.Sign(scroll) * 0.1f), 2.5f, 90f);
             }
-            if (!_textFocus)
+            if (!_textFocus && !kb.leftCtrlKey.isPressed && !kb.rightCtrlKey.isPressed)       // (Ctrl+D, Ctrl+S: not a pan)
             {
                 float s = _dist * 0.9f * Time.unscaledDeltaTime;
                 float fx = (kb.dKey.isPressed ? 1 : 0) - (kb.aKey.isPressed ? 1 : 0), fz = (kb.wKey.isPressed ? 1 : 0) - (kb.sKey.isPressed ? 1 : 0);

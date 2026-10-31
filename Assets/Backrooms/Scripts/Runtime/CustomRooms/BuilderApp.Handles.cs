@@ -40,21 +40,6 @@ namespace Backrooms.CustomRooms
         bool Alt => Keyboard.current != null && (Keyboard.current.leftAltKey.isPressed || Keyboard.current.rightAltKey.isPressed);
         bool Shift => Keyboard.current != null && (Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed);
 
-        // ---------------- Presets ----------------
-
-        /// <summary>The Opening tool's kinds as openings of their own size (OPEN GAP stays an edge tool).</summary>
-        OpeningDef Preset(OpeningKind k, float ceiling)
-        {
-            switch (k)
-            {
-                case OpeningKind.DoubleDoor: return new OpeningDef { from = 0f, to = 1.7f, top = 2.1f };
-                case OpeningKind.Arch: return new OpeningDef { from = 0f, to = 1.0f, top = 2.35f, arch = true };
-                case OpeningKind.Window: return new OpeningDef { from = 0f, to = 1.2f, sill = 0.9f, top = 2.0f };
-                case OpeningKind.Tall: return new OpeningDef { from = 0f, to = 1.0f, top = ceiling };
-                default: return new OpeningDef { from = 0f, to = 0.9f, top = 2.1f };
-            }
-        }
-
         // ---------------- Picking on walls ----------------
 
         Ray PointerRay(Vector2 screen) => _cam.ScreenPointToRay(new Vector3(screen.x, screen.y, 0f));
@@ -165,7 +150,7 @@ namespace Backrooms.CustomRooms
                 PropHandlePoints(p, out var lift, out var turn, out var scale);
                 Try(Handle.PropLift, lift); Try(Handle.PropTurn, turn); Try(Handle.PropScale, scale);
             }
-            if (_tool == BuilderTool.Select && o == null)
+            if (_tool == BuilderTool.Select && o == null && p == null)
             {
                 var v = V; float w = v.width * C, d = v.depth * C;
                 Try(Handle.RoomW, W3(-0.45f, d * 0.5f, 0.05f)); Try(Handle.RoomE, W3(w + 0.45f, d * 0.5f, 0.05f));
@@ -182,41 +167,6 @@ namespace Backrooms.CustomRooms
             lift = W3(p.x, p.z, p.elevation + p.size.y * s + 0.35f);
             turn = W3(p.x, p.z, p.elevation + 0.04f) + q * new Vector3(0f, 0f, r);
             scale = W3(p.x, p.z, p.elevation + 0.04f) + q * new Vector3(p.size.x * 0.5f * s + 0.12f, 0f, -p.size.z * 0.5f * s - 0.12f);
-        }
-
-        // ---------------- Opening tool ----------------
-
-        void PlaceOpening()
-        {
-            if (_ghost == null) { SetStatus("Point at a wall to put it there."); BuilderSounds.Play(BuilderSounds.Sfx.Error); return; }
-            if (!_ghostFits) { SetStatus("It does not fit there: it must sit on solid wall, clear of other openings."); BuilderSounds.Play(BuilderSounds.Sfx.Error); return; }
-            PushUndo();
-            V.openings.Add(_ghost);
-            _selected = new Selection { kind = SelKind.Opening, index = V.openings.Count - 1 };
-            _dispFor = null;
-            _tool = BuilderTool.Select;
-            _ghost = null;
-            BuilderSounds.Play(BuilderSounds.Sfx.Place, 0.9f + Random.value * 0.15f);
-            SetStatus("Drag its sides to widen it, its top to make it taller, its bottom up for a window, its middle along the wall. Alt: no snapping.", 8f);
-            Changed();
-        }
-
-        /// <summary>Selects the opening the pointer is on (through its hole, or the wall round it). True if one was.</summary>
-        bool SelectOpeningAt(Vector2 screen)
-        {
-            if (!RayWall(PointerRay(screen), false, out bool vert, out int line, out float along, out float height)) return false;
-            var v = V;
-            for (int i = 0; i < v.openings.Count; i++)
-            {
-                var o = v.openings[i];
-                if (o.vertical != vert || o.line != line) continue;
-                if (along < o.from - 0.08f || along > o.to + 0.08f || height > o.top + 0.15f) continue;
-                _selected = new Selection { kind = SelKind.Opening, index = i };
-                _dispFor = null;
-                BuilderSounds.Play(BuilderSounds.Sfx.Pick);
-                return true;
-            }
-            return false;
         }
 
         // ---------------- Dragging handles ----------------

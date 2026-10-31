@@ -8,13 +8,13 @@ namespace Backrooms.CustomRooms
     /// <summary>Build mode: input, picking, the editing tools, selection and undo.</summary>
     public partial class BuilderApp
     {
-        enum Modal { None, Discard, Delete, Back, NoExit }
+        enum Modal { None, Discard, Delete, Back, NoExit, World }
         Modal _modal = Modal.None;
         string _modalTarget;
         bool _textFocus;
 
         // Selection and per-tool options
-        enum SelKind { None, Prop, Loot, Opening }
+        enum SelKind { None, Prop, Loot, Opening, Room }
         struct Selection { public SelKind kind; public int index; public static Selection None => new Selection { kind = SelKind.None, index = -1 }; }
         Selection _selected = Selection.None;
         PropKind _propKind = PropKind.Box;
@@ -106,35 +106,21 @@ namespace Backrooms.CustomRooms
             if (ctrl && kb.zKey.wasPressedThisFrame) Undo();
             if (ctrl && kb.yKey.wasPressedThisFrame) Redo();
             if (ctrl && kb.sKey.wasPressedThisFrame) SaveBlueprint(false);
+            if (ctrl && kb.dKey.wasPressedThisFrame) DuplicateSelected();
             if (kb.tabKey.wasPressedThisFrame) CycleView();
             if (kb.gKey.wasPressedThisFrame) _showGrid = !_showGrid;
             if (kb.deleteKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame) DeleteSelected();
             if (kb.rKey.wasPressedThisFrame) RotateSelected();
-            Key[] keys = { Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4, Key.Digit5, Key.Digit6, Key.Digit7, Key.Digit8, Key.Digit9, Key.Digit0 };
-            for (int i = 0; i < keys.Length; i++) if (kb[keys[i]].wasPressedThisFrame && !ctrl) SetTool((BuilderTool)i);
+            Key[] keys = { Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4, Key.Digit5 };
+            for (int i = 0; i < keys.Length; i++) if (kb[keys[i]].wasPressedThisFrame && !ctrl) SetMode(Modes[i]);
         }
 
-        void SetTool(BuilderTool t) { _tool = t; _pastingArea = false; if (t != BuilderTool.Select) _selected = Selection.None; }
-
-        void CopyArea()
+        void SetTool(BuilderTool t)
         {
-            _areaClipboard = AreaClipboard.Capture(V, _activeRoom);
-            SetStatus(_areaClipboard == null ? "This area has no painted cells to copy." : $"Copied '{_areaClipboard.Name}'. Ctrl+V, then click its new lower-left cell. Paste replaces that footprint; Ctrl+Z undoes it.", 8f);
-        }
-
-        void BeginPasteArea()
-        {
-            if (_areaClipboard == null) { SetStatus("Select an area and copy it first. [Ctrl+C]"); return; }
-            _pastingArea = true; _selected = Selection.None; _stroking = false;
-            SetStatus("Click the copied area's lower-left destination cell. Red means it will not fit. Escape cancels. Existing contents in the footprint are replaced.", 12f);
-        }
-
-        void PasteArea()
-        {
-            if (!_hoverCellValid || !_areaClipboard.Fits(V, _hoverCell)) { SetStatus("The complete area must fit inside this room. Resize the room or choose another cell."); return; }
-            PushUndo();
-            if (_areaClipboard.Paste(V, _hoverCell, out int area))
-            { _activeRoom = area; _pastingArea = false; Changed(); SetStatus("Area pasted. Ctrl+Z undoes the whole paste."); }
+            _tool = t; _pastingArea = false;
+            ModeOf(t).last = t;
+            if (t != BuilderTool.Select && !(t == BuilderTool.Floor && _selected.kind == SelKind.Room)) _selected = Selection.None;
+            if (t == BuilderTool.Floor) SelectRoom(_activeRoom);
         }
 
         void SetView(BuilderView v)
@@ -250,6 +236,8 @@ namespace Backrooms.CustomRooms
                     SelectAt();
                     // Nothing on the floor there: a door or window on the wall, taken by its middle to slide it.
                     if (_selected.kind == SelKind.None && SelectOpeningAt(screen)) { _hoverHandle = Handle.Move; BeginHandleDrag(screen); }
+                    // Else the floor: the room it belongs to.
+                    else if (_selected.kind == SelKind.None && _hoverCellValid) { SelectRoom(V.RoomOf(_hoverCell.x, _hoverCell.y)); BuilderSounds.Play(BuilderSounds.Sfx.Pick, 0.9f); }
                     break;
                 case BuilderTool.Opening when _opening != OpeningKind.Gap: PlaceOpening(); _stroking = false; break;
                 case BuilderTool.Prop: PlaceProp(); _stroking = false; break;
@@ -288,245 +276,6 @@ namespace Backrooms.CustomRooms
             if (_strokeChanged) { Changed(); }
         }
 
-        void StrokeEdge(Vector2 screen)
-        {
-            if (!GroundAt(screen, out var lm)) return;
-            var v = V;
-            float gx = lm.x / C, gz = lm.y / C;
-            if (!_strokeLocked)
-            {
-                PickEdge(gx, gz, out bool ok, out bool vertical, out int x, out int z);
-                if (!ok) return;
-                _strokeLocked = true; _strokeVertical = vertical; _strokeLine = vertical ? x : z;
-                _lastAlong = int.MinValue;
-            }
-            int along = _strokeVertical ? Mathf.FloorToInt(gz) : Mathf.FloorToInt(gx);
-            int max = _strokeVertical ? v.depth : v.width;
-            if (along < 0 || along >= max || along == _lastAlong) return;
-            // Close to the line being drawn, not just anywhere on screen.
-            float off = _strokeVertical ? Mathf.Abs(gx - _strokeLine) : Mathf.Abs(gz - _strokeLine);
-            if (off > 0.9f) return;
-            _lastAlong = along;
-            if (_strokeVertical) ApplyEdge(true, _strokeLine, along); else ApplyEdge(false, along, _strokeLine);
-        }
-
-        // ---------------- Edge tools ----------------
-
-        int CodeForTool(bool perimeter)
-        {
-            switch (_tool)
-            {
-                case BuilderTool.Wall: return EdgeCode.Wall;
-                case BuilderTool.Half: return perimeter ? -1 : EdgeCode.Half;
-                case BuilderTool.Erase: return perimeter ? EdgeCode.Wall : EdgeCode.Open;
-                case BuilderTool.Opening:
-                    switch (_opening)
-                    {
-                        case OpeningKind.Arch: return EdgeCode.Header | EdgeCode.Arch;
-                        case OpeningKind.Tall: return EdgeCode.Tall;
-                        case OpeningKind.Gap: return perimeter ? EdgeCode.Tall : EdgeCode.Open;
-                        default: return EdgeCode.Header;
-                    }
-            }
-            return -1;
-        }
-
-        void ApplyEdge(bool vertical, int x, int z)
-        {
-            var v = V;
-            bool perimeter = vertical ? (x == 0 || x == v.width) : (z == 0 || z == v.depth);
-            int code = CodeForTool(perimeter);
-            if (code < 0) { SetStatus("Half walls go inside the room; the outer edge is a wall or an exit."); return; }
-            int old = vertical ? v.V(x, z) : v.H(x, z);
-            if (old == code) return;
-            if (vertical) v.SetV(x, z, code); else v.SetH(x, z, code);
-            // A door or window on a wall that is no longer there goes with it.
-            if (EdgeCode.Kind(code) != EdgeCode.Wall)
-            {
-                float a0 = (vertical ? z : x) * C, a1 = a0 + C; int line = vertical ? x : z;
-                v.openings.RemoveAll(o => o.vertical == vertical && o.line == line && o.from < a1 && o.to > a0);
-                if (_selected.kind == SelKind.Opening) _selected = Selection.None;
-            }
-            BuilderSounds.Play(_tool == BuilderTool.Erase ? BuilderSounds.Sfx.Shrink : BuilderSounds.Sfx.Wall, 0.9f + 0.2f * Random.value);
-            _strokeChanged = true;
-            _needRebuild = true;
-        }
-
-        // ---------------- Cells, pillars, lights ----------------
-
-        void PaintCell()
-        {
-            if (!_hoverCellValid) return;
-            var v = V;
-            int idx = _hoverCell.y * v.width + _hoverCell.x;
-            _activeRoom = Mathf.Clamp(_activeRoom, 0, v.rooms.Count - 1);
-            if (v.cellRoom[idx] == _activeRoom) return;
-            v.cellRoom[idx] = _activeRoom;
-            BuilderSounds.Play(BuilderSounds.Sfx.Tick, 0.9f + 0.2f * Random.value);
-            _strokeChanged = true; _needRebuild = true;
-        }
-
-        void TogglePillar()
-        {
-            if (!_hoverVertexValid) return;
-            PushUndo();
-            var v = V;
-            int i = v.pillars.FindIndex(p => p.x == _hoverVertex.x && p.z == _hoverVertex.y);
-            if (i >= 0) { v.pillars.RemoveAt(i); BuilderSounds.Play(BuilderSounds.Sfx.Delete); }
-            else { v.pillars.Add(new PillarDef { x = _hoverVertex.x, z = _hoverVertex.y, size = _pillarSize }); BuilderSounds.Play(BuilderSounds.Sfx.Place); }
-            Changed();
-        }
-
-        void CycleLight()
-        {
-            if (!_hoverCellValid) return;
-            PushUndo();
-            var v = V;
-            int i = v.fixtures.FindIndex(f => f.x == _hoverCell.x && f.z == _hoverCell.y);
-            if (i < 0) v.fixtures.Add(new FixtureDef { x = _hoverCell.x, z = _hoverCell.y, on = true });
-            else if (v.fixtures[i].on) v.fixtures[i].on = false;
-            else v.fixtures.RemoveAt(i);
-            BuilderSounds.Play(BuilderSounds.Sfx.Tick, 1.2f);
-            Changed();
-        }
-
-        // ---------------- Props and loot ----------------
-
-        static Vector3 DefaultSize(PropKind k)
-        {
-            switch (k)
-            {
-                case PropKind.Sofa: return new Vector3(1.9f, 0.8f, 0.9f);
-                case PropKind.ConferenceTable: return new Vector3(2.4f, 0.74f, 1.1f);
-                case PropKind.Pallet: return new Vector3(1.2f, 1.6f, 1.0f);
-                case PropKind.FloorLamp: return new Vector3(0.4f, 1.6f, 0.4f);
-                case PropKind.WallClock: return new Vector3(0.36f, 2.1f, 0.06f);
-                case PropKind.StorageRack: return new Vector3(2.3f, 2.4f, 0.95f);
-                case PropKind.Armchair: return new Vector3(0.9f, 0.85f, 0.9f);
-                case PropKind.OfficeChair: return new Vector3(0.6f, 1.0f, 0.6f);
-                default: return new Vector3(0.6f, 0.5f, 0.5f);
-            }
-        }
-
-        Vector2 Snap(Vector2 m) => new Vector2(Mathf.Round(m.x / 0.15f) * 0.15f, Mathf.Round(m.y / 0.15f) * 0.15f);
-
-        bool InsideRoom(Vector2 m) { var s = V.SizeMetres; return m.x > 0.05f && m.y > 0.05f && m.x < s.x - 0.05f && m.y < s.y - 0.05f; }
-
-        void PlaceProp()
-        {
-            if (!_hoverGround) return;
-            var m = Snap(_hoverMetres);
-            if (!InsideRoom(m)) { SetStatus("Place props inside the room."); return; }
-            var size = DefaultSize(_propKind);
-            float yaw = 0f;
-            if (WallProp(_propKind) && !V.TryWallPlacement(_hoverMetres, size, out m, out yaw))
-            { SetStatus("Click near a solid wall with enough space. Openings cannot support this prop."); return; }
-            PushUndo();
-            var v = V;
-            v.props.Add(new PropDef { kind = _propKind, x = m.x, z = m.y, yaw = yaw, size = size, lit = true, variant = Random.Range(0, 1 << 16) });
-            _selected = new Selection { kind = SelKind.Prop, index = v.props.Count - 1 };
-            _tool = BuilderTool.Select;
-            BuilderSounds.Play(BuilderSounds.Sfx.Place, 0.85f + Random.value * 0.2f);
-            Changed();
-        }
-
-        void PlaceLoot()
-        {
-            if (!_hoverGround) return;
-            var m = Snap(_hoverMetres);
-            if (!InsideRoom(m)) { SetStatus("Place loot inside the room."); return; }
-            PushUndo();
-            var v = V;
-            v.loot.Add(new LootDef { item = string.IsNullOrWhiteSpace(_lootItem) ? "Loot" : _lootItem, x = m.x, z = m.y });
-            _selected = new Selection { kind = SelKind.Loot, index = v.loot.Count - 1 };
-            _tool = BuilderTool.Select;
-            BuilderSounds.Play(BuilderSounds.Sfx.Place, 1.2f);
-            Changed();
-        }
-
-        void SelectAt()
-        {
-            _selected = Selection.None;
-            if (!_hoverGround) return;
-            var v = V;
-            float best = 0.6f;
-            for (int i = 0; i < v.props.Count; i++)
-            {
-                float d = Vector2.Distance(new Vector2(v.props[i].x, v.props[i].z), _hoverMetres);
-                if (d < best) { best = d; _selected = new Selection { kind = SelKind.Prop, index = i }; }
-            }
-            for (int i = 0; i < v.loot.Count; i++)
-            {
-                float d = Vector2.Distance(new Vector2(v.loot[i].x, v.loot[i].z), _hoverMetres);
-                if (d < best) { best = d; _selected = new Selection { kind = SelKind.Loot, index = i }; }
-            }
-            if (_selected.kind != SelKind.None) { PushUndo(); _dragging = true; _grabDelta = SelectedPos() - _hoverMetres; BuilderSounds.Play(BuilderSounds.Sfx.Pick); }
-        }
-
-        Vector2 _grabDelta;
-        Vector2 SelectedPos()
-        {
-            var v = V;
-            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count) return new Vector2(v.props[_selected.index].x, v.props[_selected.index].z);
-            if (_selected.kind == SelKind.Loot && _selected.index < v.loot.Count) return new Vector2(v.loot[_selected.index].x, v.loot[_selected.index].z);
-            return _hoverMetres;
-        }
-
-        void DragSelected()
-        {
-            if (!_dragging || !_hoverGround) return;
-            var v = V;
-            // Smooth: where it was taken stays under the pointer; 5 cm steps (Alt: none). A prop with physics off may go
-            // anywhere, into a wall or out of the room.
-            var raw = _hoverMetres + _grabDelta;
-            var m = Alt ? raw : new Vector2(Mathf.Round(raw.x / 0.05f) * 0.05f, Mathf.Round(raw.y / 0.05f) * 0.05f);
-            bool free = _selected.kind == SelKind.Prop && _selected.index < v.props.Count && v.props[_selected.index].pinned;
-            if (!free && !InsideRoom(m)) return;
-            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count && !WallProp(v.props[_selected.index].kind))
-            {
-                var pr = v.props[_selected.index];
-                if (pr.x != m.x || pr.z != m.y)
-                {
-                    pr.x = m.x; pr.z = m.y; _strokeChanged = true;
-                    BuilderSounds.Play(BuilderSounds.Sfx.Tick, 0.9f + 0.15f * Random.value, 0.6f);
-                    if (!HasView(_selected.index)) RequestRebuild();         // (a movable glides there: UpdatePropViews)
-                }
-                return;
-            }
-            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count && WallProp(v.props[_selected.index].kind))
-            {
-                var p = v.props[_selected.index];
-                if (!v.TryWallPlacement(_hoverMetres, p.size, out m, out float yaw)) return;
-                if (p.x != m.x || p.z != m.y || p.yaw != yaw)
-                { p.x = m.x; p.z = m.y; p.yaw = yaw; _strokeChanged = true; _needRebuild = true; }
-                return;
-            }
-            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count) { if (v.props[_selected.index].x != m.x || v.props[_selected.index].z != m.y) { v.props[_selected.index].x = m.x; v.props[_selected.index].z = m.y; _strokeChanged = true; _needRebuild = true; } }
-            if (_selected.kind == SelKind.Loot && _selected.index < v.loot.Count) { if (v.loot[_selected.index].x != m.x || v.loot[_selected.index].z != m.y) { v.loot[_selected.index].x = m.x; v.loot[_selected.index].z = m.y; _strokeChanged = true; _needRebuild = true; } }
-        }
-
-        static bool WallProp(PropKind kind) => kind == PropKind.WallClock || kind == PropKind.StorageRack;
-
-        void DeleteSelected()
-        {
-            var v = V;
-            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count) { PushUndo(); v.props.RemoveAt(_selected.index); }
-            else if (_selected.kind == SelKind.Loot && _selected.index < v.loot.Count) { PushUndo(); v.loot.RemoveAt(_selected.index); }
-            else if (_selected.kind == SelKind.Opening && _selected.index < v.openings.Count) { PushUndo(); v.openings.RemoveAt(_selected.index); }
-            else return;
-            BuilderSounds.Play(BuilderSounds.Sfx.Delete);
-            _selected = Selection.None;
-            Changed();
-        }
-
-        void RotateSelected()
-        {
-            var v = V;
-            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count && WallProp(v.props[_selected.index].kind))
-            { SetStatus("Drag this prop to another wall to change its facing."); return; }
-            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count) { PushUndo(); v.props[_selected.index].yaw = (v.props[_selected.index].yaw + 45f) % 360f; Changed(); }
-        }
-
         // ---------------- Gizmos ----------------
 
         void DrawGizmos()
@@ -556,9 +305,10 @@ namespace Backrooms.CustomRooms
             for (int x = 0; x < v.width; x++)
             {
                 int r = v.RoomOf(x, z);
-                if (v.rooms.Count > 1 || _tool == BuilderTool.Floor)
+                bool chosen = _selected.kind == SelKind.Room && _selected.index == r;
+                if (v.rooms.Count > 1 || _tool == BuilderTool.Floor || chosen)
                 {
-                    var col = RoomColor(r); col.a = _tool == BuilderTool.Floor ? 0.22f : 0.09f;
+                    var col = RoomColor(r); col.a = chosen ? 0.3f : _tool == BuilderTool.Floor ? 0.2f : 0.08f;
                     Quad(W3(x * C, z * C), W3((x + 1) * C, z * C), W3((x + 1) * C, (z + 1) * C), W3(x * C, (z + 1) * C), col);
                 }
             }

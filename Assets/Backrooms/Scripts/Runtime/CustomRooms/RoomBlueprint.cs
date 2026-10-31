@@ -487,7 +487,9 @@ namespace Backrooms.CustomRooms
     [Serializable]
     public class RoomBlueprint
     {
-        public int format = 1;
+        /// <summary>2: doors and arches are openings of their own size (<see cref="OpeningDef"/>); a format 1 room's grid
+        /// doorways are turned into them when it is loaded.</summary>
+        public int format = 2;
         public string id = "";
         public string name = "New room";
         [Tooltip("Spawns in the procedural world (Save to game turns this on).")] public bool enabled;
@@ -526,7 +528,13 @@ namespace Backrooms.CustomRooms
         public static RoomBlueprint FromJson(string json)
         {
             var b = JsonUtility.FromJson<RoomBlueprint>(json);
-            b?.Validate();
+            if (b == null) return null;
+            b.Validate();
+            if (b.format < 2)
+            {
+                foreach (var v in b.variants) v.ConvertGridOpenings();
+                b.format = 2;
+            }
             return b;
         }
 

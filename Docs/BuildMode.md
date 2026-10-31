@@ -28,9 +28,24 @@ builder, so the preview is what the world will generate.
 
 **Screens:** the room library (cards with plan thumbnails: edit, spawn on/off, copy, delete) and the editor.
 
-**Tools** (hotkeys 1-0): select, wall, opening (door, double door, arch, window, tall opening, open gap), half wall,
-erase, floor areas, pillar, light, prop, loot. Drag along grid lines for long walls. Doors in the outer wall are the
-room's entrances and exits.
+**The screen** (round 17, `BuilderApp.UI.cs`, `BuilderApp.Modes.cs`): top, the room's name, UNDO / REDO, the views, SAVE,
+TEST IN WORLD, LIBRARY, HELP, MENU. Left, five **modes** (keys 1-5), each a small class in its own file
+(`BuilderApp.Mode*.cs`) with its tools and options under the mode buttons:
+- **SELECT** (1): click a prop, loot spot, door or window, or a room's floor; drag to move; handles size it.
+- **BUILD** (2): WALL, HALF WALL, PILLAR, ERASE. Drag along grid lines; Ctrl while drawing erases.
+- **DOORS** (3): door, double door, arch, window, tall opening, put where you point on a wall.
+- **FURNISH** (4): props (box, pallet, sofa, armchair, office chair, table, floor lamp, storage rack, wall clock) and
+  loot spots.
+- **PAINT** (5): ROOMS (paint cells into a room; each room has its own ceiling, walls, floor and lights) and LIGHTS
+  (click a cell: working, dead, none).
+
+Right, the **inspector**: only what is selected (a prop, loot spot, door or window), or with a room's floor clicked (or
+in PAINT) that room, else the room as a whole (name, size, the rooms inside it, variants, checks, PUT IN THE WORLD…,
+DISCARD CHANGES). Where the room spawns (spawning on, how often, weight, turning, biomes, zones, SAVE TO GAME) is the
+**PUT IN THE WORLD** dialog. Bottom, one line saying what a click does now (or the control under the pointer).
+Ctrl+D duplicates the selected prop, loot spot, door or window. Room files are format 2: a format 1 room's grid
+doorways become doors of their own size when it is loaded. Copy and paste of a room carries its doors and windows and
+its props' lift, tip, size and physics-off.
 
 **Hands-on editing** (round 16, owner: "more like a Sims builder or Tiny Glade"; `BuilderApp.Handles.cs`):
 - **Doors, arches and windows of any size.** With OPENING, point at a wall and click: it goes where you point (the
@@ -104,7 +119,6 @@ previews. No match is reported rather than placing an ungenerated room. Moved ru
 - Walls are on the 1.2 m cell grid, full height or half height. Free-angle walls and custom wall heights are not
   supported by the world's plan format yet. Doors and windows are any size (`WallCutout` in the plan,
   `OfficeChunkBuilder.Cutouts.cs`: the wall round the hole, its reveals, colliders, and the posts it spans cut).
-- Copy/paste of areas does not carry doors and windows of their own size yet.
 - Materials: existing finishes per area; individual wall faces and free-form texture imports are not supported.
 - Loot spots are stored with an item name, chance and note, and spawn as loose cardboard boxes until the game has loot.
 - Rooms only on the ground storey. Up to 24 x 24 cells.
