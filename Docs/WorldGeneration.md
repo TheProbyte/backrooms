@@ -69,8 +69,9 @@ now Hallways (to 0.3), Offices (0.55), **Living rooms** (0.78), Warehouse (1) (`
   (`cloudWallpaper`), `WallFinish.SkyWallpaper` (the owner's blue-sky clouds pattern, `Textures/Home/SkyClouds`, 1.6 m
   repeat, a little faded); `FloorFinish.HomeCarpet` in one of four shades by room (sage, beige, mushroom, slate); a flat
   plaster ceiling (`Room.PlasterCeiling`) with round flush-mount fittings every 3 cells (`Fixture.flush`: the dome model
-  at an ordinary room's brightness); off-white baseboards, continuous over the wall joints (`MaterialMaps.HomeBaseboard`;
-  the rest of the world still has none). Lights: 30 % of rooms all on, 40 % some, the rest dark.
+  at an ordinary room's brightness); off-white baseboards, continuous over the wall joints and up to the doorway's edge at
+  a jamb, never worn or missing (`MaterialMaps.HomeBaseboard`, `HomeBaseboardReach`; the rest of the world still has
+  none). Lights: 30 % of rooms all on, 40 % some, the rest dark.
 - Furniture (`DistrictGenerator.FurnishHome`): mostly none. Now and then the one sofa left against a wall or an armchair,
   rarely an unplugged floor lamp; loose boxes as anywhere.
 
@@ -188,7 +189,8 @@ the same from either chunk), and costs almost nothing: a few hundred triangles a
 - **Doors**: 35 % have black kick marks low on one face, 45 % grime round the handle and along the free edge, as a small
   overlay on the leaf (it swings with it).
 - **Carpet**: coffee spills (1.8 % of cells: a round stain with a darker dried rim, sometimes drips) and an aluminium
-  threshold strip across any opening where the floor changes (drawn once per edge).
+  threshold strip across any opening where the floor changes (drawn once per edge; along an open boundary each cell's
+  strip reaches the next one's, so the line runs unbroken to the wall: `StripRuns`).
 
 ### Realism pass (2026-10-29, Docs/RealismPlan.md)
 

@@ -415,10 +415,14 @@ namespace Backrooms.Generation
             }
             if (other == _a.FloorMaterial(r)) return;
             var w = WMask(MaterialMaps.Aluminium, CellMask(x, z));
+            // To the wall at an end with one (a doorway), else all the way to the next cell's strip: along an open boundary
+            // the strips ran short at every cell, a gap every 1.2 m (2026-10-31).
             float half = C * 0.5f - T * 0.5f;
+            int ax = Mathf.RoundToInt(along.x), az = Mathf.RoundToInt(along.z);
+            float end0 = StripRuns(x, z, side, -ax, -az) ? C * 0.5f : half, end1 = StripRuns(x, z, side, ax, az) ? C * 0.5f : half;
             Vector3 across = Vector3.Cross(Vector3.up, along);
             const float bw = 0.0225f, tw = 0.011f, ht = 0.006f, y0 = 0.0004f;
-            Vector3 a0 = edge - along * half, a1 = edge + along * half;
+            Vector3 a0 = edge - along * end0, a1 = edge + along * end1;
             Vector3 Lb(Vector3 p) => p - across * bw + Vector3.up * y0;
             Vector3 Rb(Vector3 p) => p + across * bw + Vector3.up * y0;
             Vector3 Lt(Vector3 p) => p - across * tw + Vector3.up * ht;
@@ -428,6 +432,15 @@ namespace Backrooms.Generation
             w.Quad(Rt(a0), Rb(a0), Rb(a1), Rt(a1), (across + Vector3.up).normalized, MeshWriter.MetreUV);
             w.Quad(Lb(a0), Rb(a0), Rt(a0), Lt(a0), -along, MeshWriter.MetreUV);
             w.Quad(Lb(a1), Rb(a1), Rt(a1), Lt(a1), along, MeshWriter.MetreUV);
+        }
+
+        /// <summary>Does the edge on this side go on, open, into the next cell along (dx, dz), with no wall between the two?</summary>
+        bool StripRuns(int x, int z, int side, int dx, int dz)
+        {
+            int nx = x + dx, nz = z + dz;
+            if ((dx == 0 && dz == 0) || !_L.InChunk(nx, nz)) return false;
+            int toward = dx < 0 ? 0 : dx > 0 ? 1 : dz < 0 ? 2 : 3;
+            return _L.EdgeOf(x, z, toward) != EdgeKind.Wall && _L.EdgeOf(nx, nz, side) != EdgeKind.Wall;
         }
 
         /// <summary>Crumbs of a crumbled tile on the floor under it, if nothing stands there.</summary>

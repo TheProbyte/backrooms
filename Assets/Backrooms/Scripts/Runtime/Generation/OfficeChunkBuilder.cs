@@ -577,11 +577,12 @@ namespace Backrooms.Generation
                     if (!room.noFloor)
                     {
                         // (Plain cells: now and then pulled off the wall, a piece missing, the caulk cracked: .Paper.cs.)
-                        // (A home's run reaches half a wall's thickness past each end, over the joint: the world's posts
-                        // have no baseboard, and it broke at every cell.)
-                        float bx = room.home ? T * 0.5f : 0f;
-                        if (Pool || room.ramp != 0 || !_L.Plain(cx, cz)) Baseboard(cm, A(f, a0 - bx) + Vector3.up * fa, A(f, a1 + bx) + Vector3.up * fb, n);
-                        else BaseboardRun(cm, A(f, a0 - bx), A(f, a1 + bx), n, GX(cx), GZ(cz), (vertical ? 0 : 2) + s);
+                        // (A home's run reaches over the joints at its ends (the world's posts have no baseboard, and it broke
+                        // at every cell), to the doorway's edge at a jamb; and has no wear: no piece pulled off or missing.)
+                        float b0 = room.home ? HomeBaseboardReach(vertical, line, along, vertical ? cx : cz, false) : 0f;
+                        float b1 = room.home ? HomeBaseboardReach(vertical, line, along, vertical ? cx : cz, true) : 0f;
+                        if (Pool || room.ramp != 0 || !_L.Plain(cx, cz) || room.home) Baseboard(cm, A(f, a0 - b0) + Vector3.up * fa, A(f, a1 + b1) + Vector3.up * fb, n);
+                        else BaseboardRun(cm, A(f, a0), A(f, a1), n, GX(cx), GZ(cz), (vertical ? 0 : 2) + s);
                     }
                     continue;
                 }
@@ -721,6 +722,31 @@ namespace Backrooms.Generation
         void WallFace(Room room, uint mask, Vector3 a, Vector3 b, float y0, float y1, Vector3 n)
         {
             WMask(WallMat(room), mask).Quad(a + Vector3.up * y0, b + Vector3.up * y0, b + Vector3.up * y1, a + Vector3.up * y1, n, Pool ? MeshWriter.MetreUV : MeshWriter.WallUV);
+        }
+
+        /// <summary>
+        /// How far past one end of its wall face a home's baseboard runs (m). The face stops half a wall short of the vertex:
+        /// against a wall coming across (a corner), or where the same wall goes on (the next cell's run meets it at the
+        /// vertex), half a wall; at a jamb (the wall ends at an opening) the whole wall, to the doorway's edge (it stopped
+        /// 6 cm short of the casing, 2026-10-31). cell: the column (vertical) or row the face is seen from.
+        /// </summary>
+        float HomeBaseboardReach(bool vertical, int line, int along, int cell, bool atEnd)
+        {
+            int N = _L.N, v = atEnd ? along + 1 : along, next = atEnd ? along + 1 : along - 1;
+            if (next < 0 || next >= N) return T * 0.5f;
+            EdgeKind across, onward;
+            if (vertical)
+            {
+                if (cell < 0 || cell >= N) return T * 0.5f;
+                across = _L.hEdges[cell, v]; onward = _L.vEdges[line, next];
+            }
+            else
+            {
+                if (cell < 0 || cell >= N) return T * 0.5f;
+                across = _L.vEdges[v, cell]; onward = _L.hEdges[next, line];
+            }
+            if (across == EdgeKind.Wall || onward == EdgeKind.Wall) return T * 0.5f;
+            return T;
         }
 
         void Baseboard(uint mask, Vector3 a, Vector3 b, Vector3 n)

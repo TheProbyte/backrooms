@@ -15,6 +15,16 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - Home baseboards to the jamb; carpet strips unbroken; switches click at once (no body)
+
+- Living rooms: a baseboard now runs to the doorway's edge at a jamb (it stopped 6 cm short) and is never worn or
+  missing (`OfficeChunkBuilder.HomeBaseboardReach`); the owner's picture showed gaps at a jamb and mid-wall.
+- Carpet threshold strips along an open boundary reach the next cell's strip (they stopped short every 1.2 m):
+  `OfficeChunkBuilder.Details.StripRuns`.
+- With no body a click on a light switch or button presses it at once (`PropGrabber.TryStartPoke`).
+- Checked in World 3 (a strip picture, a jamb picture, a switch pressed through `TryStartPoke`). EditMode tests pass.
+  Not played by the owner.
+
 ## 2026-10-31 - Living rooms biome; ordinary secret rooms; galvanised vents; fast crawl; quick plug-in; camera menu folds; streaming stutter
 
 - Research: Unity's GPU Resident Drawer requirements for custom shaders (DOTS instancing block, the keyword, matrix packing),

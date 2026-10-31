@@ -71,6 +71,9 @@ namespace Backrooms.Interaction
         {
             var btn = LookPoke();
             if (btn == null) return false;
+            // No body (Body: None, the default): no arm to send. The click presses it at once (owner, 2026-10-31: "remove
+            // the close step to lightswitches, just immediate click is better").
+            if (Bodiless) { btn.Press(); return true; }
             _pokeButton = btn;
             _pokeObject = btn as Object;
             _pokeNormal = btn.PokeNormal;

@@ -909,7 +909,8 @@ Left click on a button (`ElevatorButton`, an elevator call button or the cab's b
 the index finger extended (the other fingers curl), and the fingertip makes the target's stroke (`IPokeTarget`): a
 button is pushed in, a switch's toggle is flicked from above (down) or below (up). Then it pulls back
 (`PropGrabber.Poke.cs`; the body keeps the pointing pose while the arm lowers). A button lights briefly when pressed,
-and stays lit while its elevator is on the way.
+and stays lit while its elevator is on the way. With no body (Body: None, the default) the click presses it at
+once: no stepping in, no arm (2026-10-31).
 
 `Debug/WalkTrace.cs`: a bot that walks (or stands) while recording height, grounding and bumps, used to check
 stairs and the elevator are smooth.
