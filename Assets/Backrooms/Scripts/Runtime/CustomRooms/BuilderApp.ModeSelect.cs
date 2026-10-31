@@ -52,6 +52,11 @@ namespace Backrooms.CustomRooms
                 float d = Vector2.Distance(new Vector2(v.loot[i].x, v.loot[i].z), _hoverMetres);
                 if (d < best) { best = d; _selected = new Selection { kind = SelKind.Loot, index = i }; }
             }
+            for (int i = 0; i < v.sounds.Count; i++)
+            {
+                float d = Vector2.Distance(new Vector2(v.sounds[i].x, v.sounds[i].z), _hoverMetres);
+                if (d < Mathf.Min(best, 0.35f)) { best = d; _selected = new Selection { kind = SelKind.Sound, index = i }; }
+            }
             if (_selected.kind != SelKind.None) { PushUndo(); _dragging = true; _grabDelta = SelectedPos() - _hoverMetres; BuilderSounds.Play(BuilderSounds.Sfx.Pick); }
         }
 
@@ -61,6 +66,7 @@ namespace Backrooms.CustomRooms
             var v = V;
             if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count) return new Vector2(v.props[_selected.index].x, v.props[_selected.index].z);
             if (_selected.kind == SelKind.Loot && _selected.index < v.loot.Count) return new Vector2(v.loot[_selected.index].x, v.loot[_selected.index].z);
+            if (_selected.kind == SelKind.Sound && _selected.index < v.sounds.Count) return new Vector2(v.sounds[_selected.index].x, v.sounds[_selected.index].z);
             return _hoverMetres;
         }
 
@@ -83,9 +89,17 @@ namespace Backrooms.CustomRooms
             var m = Alt ? raw : new Vector2(Mathf.Round(raw.x / 0.05f) * 0.05f, Mathf.Round(raw.y / 0.05f) * 0.05f);
             bool free = _selected.kind == SelKind.Prop && _selected.index < v.props.Count && v.props[_selected.index].pinned;
             if (!free && !InsideRoom(m)) return;
+            if (_selected.kind == SelKind.Sound && _selected.index < v.sounds.Count)
+            {
+                var s = v.sounds[_selected.index];
+                if (s.x != m.x || s.z != m.y) { s.x = m.x; s.z = m.y; _strokeChanged = true; BuilderSounds.Play(BuilderSounds.Sfx.Tick, 1f, 0.5f); }
+                return;
+            }
             if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count && !WallProp(v.props[_selected.index].kind))
             {
                 var pr = v.props[_selected.index];
+                // Smart placing: flat against a wall, lined up with a neighbour (Alt: off; a group moves as it is).
+                if (!Alt && !Grouped && !pr.pinned) { float yaw = pr.yaw; m = SmartPlace(m, pr.size, pr.scale > 0.01f ? pr.scale : 1f, ref yaw, _selected.index); if (!Mathf.Approximately(yaw, pr.yaw)) { pr.yaw = yaw; _strokeChanged = true; } }
                 if (pr.x != m.x || pr.z != m.y)
                 {
                     // The rest of a group goes the same way.
@@ -175,7 +189,10 @@ namespace Backrooms.CustomRooms
             else if (_selected.kind == SelKind.Light && _selected.index < v.fixtures.Count) { PushUndo(); v.fixtures.RemoveAt(_selected.index); }
             else if (_selected.kind == SelKind.Pillar && _selected.index < v.pillars.Count) { PushUndo(); v.pillars.RemoveAt(_selected.index); }
             else if (_selected.kind == SelKind.Loot && _selected.index < v.loot.Count) { PushUndo(); v.loot.RemoveAt(_selected.index); }
-            else if (_selected.kind == SelKind.Opening && _selected.index < v.openings.Count) { PushUndo(); v.openings.RemoveAt(_selected.index); }
+            else if (_selected.kind == SelKind.Opening && _selected.index < v.openings.Count) { PushUndo(); v.openings.RemoveAt(_selected.index); v.Validate(); }
+            else if (_selected.kind == SelKind.Decal && _selected.index < v.decals.Count) { PushUndo(); v.decals.RemoveAt(_selected.index); }
+            else if (_selected.kind == SelKind.Sound && _selected.index < v.sounds.Count) { PushUndo(); v.sounds.RemoveAt(_selected.index); }
+            else if (_selected.kind == SelKind.Trigger && _selected.index < v.triggers.Count) { PushUndo(); v.triggers.RemoveAt(_selected.index); }
             else return;
             BuilderSounds.Play(BuilderSounds.Sfx.Delete);
             _selected = Selection.None;

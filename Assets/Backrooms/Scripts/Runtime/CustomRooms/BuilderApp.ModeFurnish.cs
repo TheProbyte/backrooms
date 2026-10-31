@@ -14,12 +14,24 @@ namespace Backrooms.CustomRooms
             public FurnishMode(BuilderApp app) : base(app) { }
             public override string Name => "FURNISH";
             public override int Icon => 8;
-            public override string Tip => "Furniture, racks, lamps, clocks and loot.";
-            public override BuilderTool[] Tools => new[] { BuilderTool.Prop, BuilderTool.Loot };
-            public override string ToolName(BuilderTool t) => t == BuilderTool.Prop ? "PROPS" : "LOOT";
-            public override string ToolTip(BuilderTool t) => t == BuilderTool.Prop ? "Furniture and things." : "A spot where an item can be found.";
+            public override string Tip => "Furniture, your own models, loot spots and sounds.";
+            public override BuilderTool[] Tools => new[] { BuilderTool.Prop, BuilderTool.Loot, BuilderTool.Sound };
+            public override string ToolName(BuilderTool t) => t == BuilderTool.Prop ? "PROPS" : t == BuilderTool.Loot ? "LOOT" : "SOUNDS";
+            public override string ToolTip(BuilderTool t) => t == BuilderTool.Prop ? "Furniture and things." : t == BuilderTool.Loot ? "A spot where an item can be found." : "A sound that plays there all the time: a hum, a buzz, a drip...";
             public override void Options(ref ImUi.Column col)
             {
+                if (app._tool == BuilderTool.Sound)
+                {
+                    ImUi.Header(col.Row(24), "Sound");
+                    for (int i = 0; i < SoundNames.Length; i += 2)
+                    {
+                        var r = col.Row(30);
+                        for (int k = 0; k < 2 && i + k < SoundNames.Length; k++)
+                            if (ImUi.Button(new Rect(r.x + k * r.width * 0.5f, r.y, r.width * 0.5f - 3, r.height), SoundNames[i + k], (int)app._soundKind == i + k)) { app._soundKind = (SoundKind)(i + k); BuilderSounds.Play(BuilderSounds.Sfx.Tick); }
+                    }
+                    ImUi.Dimmed(col.Row(60), "Click the floor to put it there. You hear it when you WALK (V) or in the world.");
+                    return;
+                }
                 if (app._tool == BuilderTool.Loot)
                 {
                     ImUi.Header(col.Row(24), "Item name");
@@ -30,14 +42,20 @@ namespace Backrooms.CustomRooms
                 var items = BuilderCatalog.Items(app.assets);
                 // Categories (three rows of two), search, then the pictures, two to a row.
                 var cats = BuilderCatalog.Categories;
-                for (int row = 0; row < 3; row++)
+                for (int row = 0; row * 2 < cats.Length; row++)
                 {
                     var r = col.Row(26);
-                    for (int k = 0; k < 2; k++)
+                    for (int k = 0; k < 2 && row * 2 + k < cats.Length; k++)
                     {
                         int ci = row * 2 + k;
                         if (ImUi.Button(new Rect(r.x + k * (r.width / 2f), r.y, r.width / 2f - 3, r.height), cats[ci], app._catalogCategory == ci)) app._catalogCategory = ci;
                     }
+                }
+                if (cats[app._catalogCategory] == "MODELS")
+                {
+                    if (ImUi.Button(col.Row(28), "OPEN MODELS FOLDER", false, "Put .glb or .obj files here (with their .mtl and textures), then RELOAD.")) { System.IO.Directory.CreateDirectory(CustomModels.Dir); Application.OpenURL("file:///" + CustomModels.Dir.Replace('\\', '/')); }
+                    if (ImUi.Button(col.Row(28), "RELOAD MODELS")) { CustomModels.Reload(app.assets); BuilderCatalog.Reset(); app._catalogPick = null; app.Changed(false); }
+                    foreach (var kv in CustomModels.Errors) ImUi.Dimmed(col.Row(34), kv.Key + ": " + kv.Value);
                 }
                 app._catalogSearch = ImUi.TextField(col.Row(28), app._catalogSearch, "catalogsearch", 30);
                 if (string.IsNullOrEmpty(app._catalogSearch)) GUI.Label(new Rect(col.x + 8, col.y - 34, col.w, 28), "search…", ImUi.Small);
@@ -56,11 +74,11 @@ namespace Backrooms.CustomRooms
                         ImUi.Fill(cell, on ? ImUi.Accent : ImUi.Raised);
                         var pic = new Rect(cell.x + 3, cell.y + 3, cell.width - 6, cell.height - 34);
                         if (it.picture) GUI.DrawTexture(pic, it.picture, ScaleMode.ScaleAndCrop);
-                        else { ImUi.Fill(pic, new Color(0.16f, 0.16f, 0.17f, 1f)); GUI.Label(pic, it.kind == PropKind.StorageRack ? "RACK" : "CLOCK", new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleCenter }); }
+                        else { ImUi.Fill(pic, new Color(0.16f, 0.16f, 0.17f, 1f)); GUI.Label(pic, it.name.ToUpperInvariant(), new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleCenter, wordWrap = true }); }
                         GUI.Label(new Rect(cell.x + 4, cell.yMax - 31, cell.width - 8, 30), it.name, new GUIStyle(ImUi.Small) { fontSize = 11, wordWrap = true, alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip, normal = { textColor = on ? Color.black : ImUi.Text } });
                     }
                 }
-                if (shown.Count == 0) ImUi.Dimmed(col.Row(30), "Nothing matches.");
+                if (shown.Count == 0) ImUi.Dimmed(col.Row(60), cats[app._catalogCategory] == "MODELS" ? "No models yet. Put .glb or .obj files in the models folder, then RELOAD." : "Nothing matches.");
             }
             public override string Hint()
             {
@@ -103,7 +121,8 @@ namespace Backrooms.CustomRooms
             { SetStatus("Click near a solid wall with enough space. Openings cannot support this prop."); return; }
             PushUndo();
             var v = V;
-            v.props.Add(new PropDef { kind = _catalogPick.kind, style = _catalogPick.style, x = m.x, z = m.y, yaw = yaw, size = size, lit = true, variant = Random.Range(0, 1 << 16) });
+            if (!WallProp(_propKind) && !Alt) m = SmartPlace(m, size, 1f, ref yaw, -1);
+            v.props.Add(new PropDef { kind = _catalogPick.kind, style = _catalogPick.style, model = _catalogPick.model ?? "", x = m.x, z = m.y, yaw = yaw, size = size, lit = true, variant = Random.Range(0, 1 << 16), pinned = _catalogPick.kind == PropKind.Custom });
             _selected = new Selection { kind = SelKind.Prop, index = v.props.Count - 1 };
             _tool = BuilderTool.Select;
             BuilderSounds.Play(BuilderSounds.Sfx.Place, 0.85f + Random.value * 0.2f);
@@ -131,6 +150,7 @@ namespace Backrooms.CustomRooms
         /// <summary>The catalog's name for a placed prop (its kind and style), or its kind.</summary>
         string PropName(PropDef p)
         {
+            if (p.kind == PropKind.Custom) return string.IsNullOrEmpty(p.model) ? "Model" : System.IO.Path.GetFileNameWithoutExtension(p.model);
             var it = BuilderCatalog.Items(assets).Find(x => x.kind == p.kind && x.style == p.style && (p.kind != PropKind.Box || Mathf.Abs(x.size.x - p.size.x) < 0.01f));
             return it != null ? it.name : p.kind.ToString();
         }

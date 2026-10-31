@@ -50,7 +50,7 @@ namespace Backrooms.CustomRooms
                     var room = DistrictGenerator.MakeRoom(L, spec.rect, spec.kind);
                     room.ceiling = spec.ceiling; room.painted = spec.painted; room.lights = spec.lights;
                     room.wallFinish = spec.wallFinish; room.floorFinish = spec.floorFinish;
-                    room.noDoors = spec.noDoors; room.landmark = bp.name; room.custom = true;
+                    room.noDoors = spec.noDoors; room.landmark = spec.outside ? null : bp.name; room.custom = !spec.outside;
                     rooms.Add(room);
                 }
 

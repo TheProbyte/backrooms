@@ -131,7 +131,7 @@ namespace Backrooms.Generation
         {
             _neighbours = neighbours;
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); _lampItems.Clear(); _breakers.Clear(); _deskLamps.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
-            _capsules.Clear(); poolMap = null;
+            _capsules.Clear(); poolMap = null; _sounds.Clear();
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             // Square panels sit inside a ceiling tile and need no gap in the grid; only round domes sit on a cross tee.
@@ -163,6 +163,7 @@ namespace Backrooms.Generation
             BuildProps(lights);
             BuildAnnex();
             BuildWear();
+            BuildCustomRoomExtras();
             BuildCeilingColliders();
         }
 
@@ -270,12 +271,14 @@ namespace Backrooms.Generation
             {
                 if (!pi.prefab) continue;
                 var go = Object.Instantiate(pi.prefab, root.transform, false);
+                if (!go.activeSelf) go.SetActive(true);           // (a brought-in model's template is kept hidden)
+                go.hideFlags = HideFlags.None;
                 MaterialMaps.Apply(go);
                 go.transform.localPosition = pi.position;
                 go.transform.localRotation = pi.rotation * pi.prefab.transform.localRotation;   // keep the model's own axis fix
                 go.transform.localScale = pi.scale;
                 var col = go.GetComponent<Collider>();
-                if (col && pi.prefab.GetComponent<BoxCollider>() && pi.scale == Vector3.one) { /* keep prefab collider */ }
+                if (col && (pi.keepCollider || pi.prefab.GetComponent<BoxCollider>() && pi.scale == Vector3.one)) { /* keep prefab collider */ }
                 else if (col) Object.Destroy(col);
                 foreach (var r in go.GetComponentsInChildren<MeshRenderer>(true))
                 {
@@ -338,6 +341,7 @@ namespace Backrooms.Generation
             InstantiateCrawlSpaces(root.transform);
             InstantiateNoclipDoors(root.transform);
             InstantiateDoors(root.transform);
+            InstantiateCustomRoomExtras(root.transform);
             if (outlets.Count > 0) root.AddComponent<Interaction.ChunkOutlets>().Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), outlets);
             if (poolMap != null) root.AddComponent<PoolChunk>().Set(_L.coord, _L.storey, poolMap);
 
@@ -386,9 +390,10 @@ namespace Backrooms.Generation
             for (int x = 0; x < n && !any; x++) for (int z = 0; z < n; z++) if (_L.Has(x, z, CellFlags.NoFloor) || !_L.Plain(x, z)) { any = true; break; }
             if (!any)
             {
+                // (The layout's own size: a chunk is ChunkSize, build mode's preview of a long room more.)
                 var floor = root.AddComponent<BoxCollider>();
-                floor.center = new Vector3(OfficeBiome.ChunkSize * 0.5f, -0.25f, OfficeBiome.ChunkSize * 0.5f);
-                floor.size = new Vector3(OfficeBiome.ChunkSize, 0.5f, OfficeBiome.ChunkSize);
+                floor.center = new Vector3(n * C * 0.5f, -0.25f, n * C * 0.5f);
+                floor.size = new Vector3(n * C, 0.5f, n * C);
                 return;
             }
             // Runs of one floor height per row (a sunken room's floor is lower; a well and a pit room have none here: the pit
@@ -1124,6 +1129,17 @@ namespace Backrooms.Generation
                     if (age == 5 || age == 6) Saw(c + SquareFixtureShift, Vector3.down, "tube_tint");
                     if (age == 4) Saw(c + SquareFixtureShift, Vector3.down, "lens_yellow");
                 }
+                // Build mode's light moods: the same aged tubes, chosen (1 dim, 2 sickly green, 3 yellowed, 4 cold, 5 pink).
+                if (f.mood > 0 && f.on && !f.faulty)
+                {
+                    int want = f.mood == 1 ? 1 : f.mood == 2 ? 5 : f.mood == 3 ? 4 : f.mood == 4 ? 6 : 2;
+                    bool has = want == 1 ? MaterialMaps.TrofferDead : want == 5 ? MaterialMaps.TrofferGreen : want == 4 ? MaterialMaps.TrofferYellow : want == 6 ? MaterialMaps.TrofferCool : MaterialMaps.TrofferPink;
+                    age = !f.strip && !f.dome && has ? want : 0;
+                    dim = want == 1 ? 0.45f : want == 2 ? 0.25f : want == 4 ? 0.18f : want == 5 ? 0.12f : 0.04f;
+                    tint = want == 2 ? new Color(1f, 0.82f, 0.88f, 1f) : want == 4 ? new Color(1f, 0.86f, 0.62f, 1f)
+                         : want == 5 ? new Color(0.84f, 1f, 0.74f, 1f) : want == 6 ? new Color(0.84f, 0.94f, 1.12f, 1f) : default;
+                }
+                if (f.buzz && f.on) _sounds.Add(new RoomSound { position = c + Vector3.down * 0.1f, kind = 1, volume = f.faulty ? 0.55f : 0.35f, range = 6f });
                 if (f.faulty) { lens = new MeshWriter { worldOffset = _origin }; faultyLenses.Add((lens, f.dome, room)); }
                 else if (f.on)
                 {
@@ -1253,6 +1269,7 @@ namespace Backrooms.Generation
             public uint mask;
             public bool litShade;
             public bool noShadow;         // shadows come from a few proxy boxes instead of the full mesh
+            public bool keepCollider;     // its own (scaled) collider stays (a model the player brought in)
         }
 
         readonly List<PropInstance> _instances = new List<PropInstance>();
@@ -1295,6 +1312,7 @@ namespace Backrooms.Generation
             // On the floor of the room it stands in (a sunken room's is lower).
             int pcx = Mathf.Clamp(Mathf.FloorToInt(p.position.x / C), 0, _L.N - 1), pcz = Mathf.Clamp(Mathf.FloorToInt(p.position.y / C), 0, _L.N - 1);
             var at = new Vector3(p.position.x, _L.FloorAt(pcx, pcz), p.position.y);
+            if (p.kind == PropKind.Custom) { CustomModelProp(p, at); return; }        // a model the player brought in
             if (p.kind >= PropKind.Counter) { SpecialProp(p, at, rot); return; }     // the good rooms' furniture
             if (modelled) { PlaceModelled(p, at, rot, lights); return; }
             switch (p.kind)

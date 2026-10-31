@@ -42,6 +42,11 @@ namespace Backrooms.CustomRooms
             _walker.height = 1.75f; _walker.radius = 0.28f; _walker.center = new Vector3(0f, 0.875f, 0f); _walker.stepOffset = 0.3f;
             _walkYaw = _yaw; _walkPitch = 0f; _walkVy = 0f;
             _walking = true;
+            ApplyCeiling();
+            // Triggers and linked doors act on the walker here (as on the player in the world).
+            RoomTriggerZone.ResetAll();
+            RoomPlayer.Override = _walker.transform;
+            RoomPlayer.WarpOverride = (pos, yawDelta) => { _walker.enabled = false; _walker.transform.position = pos; _walker.enabled = true; _walkYaw += yawDelta; };
             _selected = Selection.None; _group.Clear();
             _cam.fieldOfView = 68f;
             Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false;
@@ -52,6 +57,10 @@ namespace Backrooms.CustomRooms
         {
             if (!_walking) return;
             _walking = false;
+            ApplyCeiling();
+            RoomPlayer.Override = null; RoomPlayer.WarpOverride = null;
+            UpdatePreviewLightZones(true);
+            _needRebuild = true;                     // (a slammed door, lights put out: back as built)
             if (_walker) Destroy(_walker.gameObject);
             _walker = null;
             _cam.fieldOfView = _walkFromFov;
@@ -87,6 +96,7 @@ namespace Backrooms.CustomRooms
             }
             float bob = input.sqrMagnitude > 0.01f && _walker.isGrounded ? Mathf.Sin(Time.unscaledTime * speed * 5.5f) * 0.012f : 0f;
             _cam.transform.SetPositionAndRotation(_walker.transform.position + Vector3.up * (1.58f + bob), Quaternion.Euler(_walkPitch, _walkYaw, 0f));
+            UpdatePreviewLightZones(false);
         }
 
         /// <summary>While walking: only a small line saying how to get back.</summary>

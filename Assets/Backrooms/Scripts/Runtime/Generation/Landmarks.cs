@@ -126,6 +126,8 @@ namespace Backrooms.Generation
             public bool painted, openAbove, noFloor, noDoors;
             public AnnexRole role;
             public LightMode lights;
+            /// <summary>A custom room's cut-away cells (an L-shaped room's notch): the world's own, not the room's.</summary>
+            public bool outside;
         }
 
         /// <summary>The rooms that make up a landmark on one storey (empty if it does not reach that storey).</summary>

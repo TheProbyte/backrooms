@@ -22,10 +22,11 @@ namespace Backrooms.CustomRooms
             public int style;
             public Vector3 size;
             public string source;              // the ItemCatalog entry it is pictured with
+            public string model;               // PropKind.Custom: the file in CustomModels
             public Texture picture;
         }
 
-        public static readonly string[] Categories = { "ALL", "SEATING", "TABLES", "STORAGE", "LIGHTS", "WALL" };
+        public static readonly string[] Categories = { "ALL", "SEATING", "TABLES", "STORAGE", "LIGHTS", "WALL", "MODELS" };
         static List<Item> _items;
         static bool _pictured;
 
@@ -63,6 +64,12 @@ namespace Backrooms.CustomRooms
             _items.Add(new Item { name = "Storage rack", category = "STORAGE", kind = PropKind.StorageRack, size = new Vector3(2.3f, 2.4f, 0.95f) });
             _items.Add(new Item { name = "Floor lamp", category = "LIGHTS", kind = PropKind.FloorLamp, size = new Vector3(0.4f, 1.6f, 0.4f), source = "Floor lamp" });
             _items.Add(new Item { name = "Wall clock", category = "WALL", kind = PropKind.WallClock, size = new Vector3(0.36f, 2.1f, 0.06f) });
+            foreach (var name in CustomModels.Names)
+            {
+                var g = CustomModels.Get(name);
+                var box = g ? g.GetComponent<BoxCollider>() : null;
+                _items.Add(new Item { name = System.IO.Path.GetFileNameWithoutExtension(name), category = "MODELS", kind = PropKind.Custom, model = name, size = box ? box.size : Vector3.one * 0.5f });
+            }
             return _items;
         }
 
@@ -93,16 +100,20 @@ namespace Backrooms.CustomRooms
             foreach (var it in items)
             {
                 var e = it.source == null ? null : entries.Find(x => x.name == it.source);
-                if (e == null) continue;
                 GameObject go = null;
-                try { go = e.spawn(origin, Quaternion.Euler(0f, 205f, 0f), true); }
+                try
+                {
+                    if (e != null) go = e.spawn(origin, Quaternion.Euler(0f, 205f, 0f), true);
+                    else if (it.kind == PropKind.Custom && CustomModels.Get(it.model)) { go = Object.Instantiate(CustomModels.Get(it.model)); go.hideFlags = HideFlags.None; go.SetActive(true); go.transform.SetPositionAndRotation(origin, Quaternion.Euler(0f, 205f, 0f)); }
+                    else go = BuiltPicture(a, it, origin);
+                }
                 catch (System.Exception ex) { Debug.LogWarning("[Backrooms] Catalog picture for " + it.name + ": " + ex.Message); }
                 if (!go) continue;
                 foreach (var rb in go.GetComponentsInChildren<Rigidbody>()) rb.isKinematic = true;
                 var b = new Bounds(origin, Vector3.zero); bool first = true;
                 foreach (var r in go.GetComponentsInChildren<Renderer>())
                 {
-                    if (r.shadowCastingMode == ShadowCastingMode.ShadowsOnly) continue;
+                    if (r.shadowCastingMode == ShadowCastingMode.ShadowsOnly || !r.enabled) continue;
                     r.renderingLayerMask = 0xFFFFFFFFu;
                     if (first) { b = r.bounds; first = false; } else b.Encapsulate(r.bounds);
                 }
@@ -119,6 +130,41 @@ namespace Backrooms.CustomRooms
             }
             foreach (var l in lights) l.enabled = false;              // (gone at the end of the frame: no flash on the room)
             Object.Destroy(studio);
+        }
+
+        /// <summary>
+        /// A piece with no showroom model (the storage rack, the wall clock): built by the world's own chunk builder on a little
+        /// stage (a wall behind it), only its own meshes kept for the picture, turned to the three-quarter view.
+        /// </summary>
+        static GameObject BuiltPicture(OfficeBiomeAssets a, Item it, Vector3 origin)
+        {
+            const float C = OfficeBiome.CellSize;
+            var L = new OfficeLayout(4, Vector2Int.zero);
+            var room = DistrictGenerator.MakeRoom(L, new RectInt(0, 0, 4, 4), RoomKind.Office);
+            room.lights = LightMode.Dark;
+            for (int x = 0; x <= 4; x++) for (int z = 0; z < 4; z++) L.vEdges[x, z] = x == 0 || x == 4 ? EdgeKind.Wall : EdgeKind.Open;
+            for (int x = 0; x < 4; x++) for (int z = 0; z <= 4; z++) L.hEdges[x, z] = z == 0 || z == 4 ? EdgeKind.Wall : EdgeKind.Open;
+            var size = it.size;
+            // Against the north wall, facing south (its front +Z toward the room).
+            var pos = new Vector2(2f * C, 4f * C - OfficeBiome.WallThickness * 0.5f - size.z * 0.5f - 0.02f);
+            L.props.Add(new Prop { kind = it.kind, position = pos, yaw = 180f, size = size, variant = 3, lit = true, roomColor = room.id, id = 77 });
+            var b = new OfficeChunkBuilder(a);
+            b.BuildData(L);
+            var go = b.Instantiate(null);
+            // Keep only what stands where the piece is (the room's floor, walls and posts are merged meshes elsewhere).
+            var want = new Bounds(new Vector3(pos.x, size.y * 0.5f + (it.kind == PropKind.WallClock ? 0f : 0f), pos.y), new Vector3(size.x + 0.3f, it.kind == PropKind.WallClock ? 4f : size.y + 0.3f, size.z + 0.3f));
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                var rb = r.bounds; rb.center -= go.transform.position;
+                if (!want.Contains(rb.center) || rb.size.x > size.x + 1f || rb.size.z > size.z + 1f) r.enabled = false;
+            }
+            foreach (var c in go.GetComponentsInChildren<Collider>(true)) c.enabled = false;
+            // Its middle over the stage's origin, turned as the other pictures are.
+            var pivot = new GameObject("BuiltPicture");
+            go.transform.SetParent(pivot.transform, false);
+            go.transform.localPosition = -new Vector3(pos.x, 0f, pos.y);
+            pivot.transform.SetPositionAndRotation(origin, Quaternion.Euler(0f, 25f, 0f));
+            return pivot;
         }
     }
 }

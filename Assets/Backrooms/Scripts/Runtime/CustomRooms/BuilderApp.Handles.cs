@@ -15,7 +15,29 @@ namespace Backrooms.CustomRooms
     /// </summary>
     public partial class BuilderApp
     {
-        enum Handle { None, Left, Right, Top, Bottom, Move, RoomW, RoomE, RoomS, RoomN, PropLift, PropTurn, PropScale }
+        enum Handle { None, Left, Right, Top, Bottom, Move, RoomW, RoomE, RoomS, RoomN, PropLift, PropTurn, PropScale, WallMove, WallEnd0, WallEnd1 }
+
+        /// <summary>A selected run of wall inside the room (not its outer line) can be moved and stretched.</summary>
+        bool WallRunEditable(out int kind)
+        {
+            kind = 0;
+            if (_selected.kind != SelKind.Wall) return false;
+            var v = V; var w = _selWall;
+            if (w.line <= 0 || w.line >= v.LineCount(w.vertical) || w.a0 < 0 || w.a1 > v.AlongCount(w.vertical) || w.a1 <= w.a0) return false;
+            kind = EdgeCode.Kind(v.Edge(w.vertical, w.line, w.a0));
+            return kind == EdgeCode.Wall || kind == EdgeCode.Half || kind == EdgeCode.Railing;
+        }
+
+        void WallHandlePoints(out Vector3 move, out Vector3 end0, out Vector3 end1)
+        {
+            var w = _selWall;
+            float mid = (w.a0 + w.a1) * 0.5f * C;
+            move = w.vertical ? W3(w.line * C, mid, 0.08f) : W3(mid, w.line * C, 0.08f);
+            end0 = w.vertical ? W3(w.line * C, w.a0 * C, 0.08f) : W3(w.a0 * C, w.line * C, 0.08f);
+            end1 = w.vertical ? W3(w.line * C, w.a1 * C, 0.08f) : W3(w.a1 * C, w.line * C, 0.08f);
+        }
+
+        (bool vertical, int line, int a0, int a1, float at) _wallDragStart;
 
         Handle _hoverHandle = Handle.None, _dragHandle = Handle.None;
         OpeningDef _ghost;               // the Opening tool's preview where you point
@@ -150,6 +172,11 @@ namespace Backrooms.CustomRooms
                 PropHandlePoints(p, out var lift, out var turn, out var scale);
                 Try(Handle.PropLift, lift); Try(Handle.PropTurn, turn); Try(Handle.PropScale, scale);
             }
+            if (WallRunEditable(out _))
+            {
+                WallHandlePoints(out var mv, out var e0, out var e1);
+                Try(Handle.WallMove, mv); Try(Handle.WallEnd0, e0); Try(Handle.WallEnd1, e1);
+            }
             if (_tool == BuilderTool.Select && o == null && p == null)
             {
                 var v = V; float w = v.width * C, d = v.depth * C;
@@ -200,6 +227,11 @@ namespace Backrooms.CustomRooms
             {
                 _dragStart = o.Clone();
                 if (_dragHandle == Handle.Move && OnOpeningPlane(ray, o, out float a, out _)) _grabOffset = a - o.Centre;
+            }
+            else if (_dragHandle >= Handle.WallMove)
+            {
+                _frameSnapshot = V.Clone();
+                _wallDragStart = _selWall;
             }
             else if (_dragHandle >= Handle.RoomW && _dragHandle <= Handle.RoomN)
             {
@@ -265,6 +297,7 @@ namespace Backrooms.CustomRooms
                 return;
             }
             if (_dragHandle >= Handle.RoomW && _dragHandle <= Handle.RoomN) { DragFrame(ray); return; }
+            if (_dragHandle >= Handle.WallMove) { DragWallRun(ray); return; }
             var p = SelectedProp;
             if (p == null) return;
             switch (_dragHandle)
@@ -363,6 +396,39 @@ namespace Backrooms.CustomRooms
             BuilderSounds.Play(grew ? BuilderSounds.Sfx.Grow : BuilderSounds.Sfx.Shrink, 0.85f + 0.3f * Mathf.Clamp01((f.width + f.height) / 30f));
             _strokeChanged = true;
             _needRebuild = true;
+        }
+
+        /// <summary>A wall run's handle dragged: moved to another line, or an end stretched along its line, a cell at a time,
+        /// each step done again from how the room was at the start of the drag.</summary>
+        void DragWallRun(Ray ray)
+        {
+            if (!GroundAtHeight(ray, 0f, out var g) || _frameSnapshot == null) return;
+            var s = _wallDragStart;
+            var nv = _frameSnapshot.Clone();
+            int lines = nv.LineCount(s.vertical), max = nv.AlongCount(s.vertical);
+            var next = s;
+            bool ok;
+            if (_dragHandle == Handle.WallMove)
+            {
+                int line = Mathf.Clamp(Mathf.RoundToInt((s.vertical ? g.x : g.y) / C), 1, lines - 1);
+                next.line = line;
+                ok = line == s.line || nv.MoveRun(s.vertical, s.line, s.a0, s.a1, line);
+            }
+            else
+            {
+                int at = Mathf.RoundToInt((s.vertical ? g.y : g.x) / C);
+                if (_dragHandle == Handle.WallEnd0) next.a0 = Mathf.Clamp(at, 0, s.a1 - 1); else next.a1 = Mathf.Clamp(at, s.a0 + 1, max);
+                ok = (next.a0 == s.a0 && next.a1 == s.a1) || nv.StretchRun(s.vertical, s.line, s.a0, s.a1, next.a0, next.a1);
+            }
+            if (!ok) { if (!_dragInvalid) { BuilderSounds.Play(BuilderSounds.Sfx.Error); _dragInvalid = true; } return; }
+            _dragInvalid = false;
+            if (next.line == _selWall.line && next.a0 == _selWall.a0 && next.a1 == _selWall.a1) return;
+            bool grew = next.a1 - next.a0 > _selWall.a1 - _selWall.a0;
+            _bp.variants[Mathf.Clamp(_vi, 0, _bp.variants.Count - 1)] = nv;
+            _selWall = next;
+            BuilderSounds.Play(_dragHandle == Handle.WallMove ? BuilderSounds.Sfx.Wall : grew ? BuilderSounds.Sfx.Grow : BuilderSounds.Sfx.Shrink, 0.9f + 0.05f * (next.a1 - next.a0));
+            _strokeChanged = true;
+            RequestRebuild();
         }
 
         void EndHandleDrag()
@@ -477,6 +543,14 @@ namespace Backrooms.CustomRooms
                 Line(foot, scale, new Color(1f, 0.7f, 0.4f, 0.7f));
                 Knob(Handle.PropLift, lift); Knob(Handle.PropTurn, turn); Knob(Handle.PropScale, scale);
                 if (Mathf.Abs(sp.elevation) > 0.01f) Line(W3(sp.x, sp.z, 0.02f), W3(sp.x, sp.z, sp.elevation), new Color(1f, 1f, 1f, 0.35f));
+            }
+            if (WallRunEditable(out _))
+            {
+                WallHandlePoints(out var mv, out var e0, out var e1);
+                var across = _selWall.vertical ? Vector3.right : Vector3.forward;
+                Arrow(Handle.WallMove, mv + across * 0.12f, across);
+                Arrow(Handle.WallMove, mv - across * 0.12f, -across);
+                Knob(Handle.WallEnd0, e0); Knob(Handle.WallEnd1, e1);
             }
             if (_tool == BuilderTool.Select && so == null)
             {

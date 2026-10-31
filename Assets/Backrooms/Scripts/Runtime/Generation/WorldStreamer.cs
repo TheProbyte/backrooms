@@ -165,6 +165,8 @@ namespace Backrooms.Generation
             WallPlateModels.Ensure();                     // outlet and switch models, copied into the chunk meshes
             DoorModels.Ensure(assets);                    // the wooden doors in some doorways
             MaterialMaps.Ensure(assets);                  // normal maps for the materials that had none
+            CustomRooms.CustomModels.Ensure(assets);      // models the player brought in (build mode)
+            CustomRooms.RoomTriggerZone.ResetAll();
             if (!GetComponent<PoolWorld>()) gameObject.AddComponent<PoolWorld>().streamer = this;
             // Developer menu: items and furniture (L).
             if (!GetComponent<Interaction.ItemsMenu>()) gameObject.AddComponent<Interaction.ItemsMenu>().streamer = this;

@@ -31,7 +31,7 @@ namespace Backrooms.CustomRooms
         }
 
         Mode[] _modes;
-        Mode[] Modes => _modes ?? (_modes = new Mode[] { new SelectMode(this), new BuildMode(this), new DoorsMode(this), new FurnishMode(this), new PaintMode(this) });
+        Mode[] Modes => _modes ?? (_modes = new Mode[] { new SelectMode(this), new BuildMode(this), new DoorsMode(this), new FurnishMode(this), new PaintMode(this), new WeirdMode(this) });
 
         Mode ModeOf(BuilderTool t)
         {
@@ -41,7 +41,7 @@ namespace Backrooms.CustomRooms
 
         Mode CurrentMode => ModeOf(_tool);
 
-        void SetMode(Mode m) { if (m != CurrentMode) { SetTool(m.last); BuilderSounds.Play(BuilderSounds.Sfx.Tick, 1.1f); } }
+        void SetMode(Mode m) { if (m != CurrentMode) { SetTool(m.last); _linkFirst = null; BuilderSounds.Play(BuilderSounds.Sfx.Tick, 1.1f); } }
 
         /// <summary>A room (an area of cells) chosen: the inspector shows it, PAINT paints into it.</summary>
         void SelectRoom(int i)

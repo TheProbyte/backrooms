@@ -252,6 +252,40 @@ namespace Backrooms.Generation
                 var g = c; g.line -= lo; g.from -= alo * C; g.to -= alo * C;
                 S.cutouts.Add(g);
             }
+            // Build mode's marks, sounds, triggers and linked doors.
+            foreach (var d in plan.decals)
+            {
+                int lo = d.vertical ? ox : oz, alo = d.vertical ? oz : ox;
+                if (d.line < lo || d.line > lo + N) continue;
+                int cellAlong = Mathf.FloorToInt(d.along / C), cellAcross = d.line - (d.side < 0 ? 1 : 0);
+                if (cellAlong < alo || cellAlong >= alo + N || cellAcross < lo || cellAcross >= lo + N) continue;     // by the chunk of the cell it faces
+                var g = d; g.line -= lo; g.along -= alo * C;
+                S.decals.Add(g);
+            }
+            foreach (var s in plan.sounds)
+            {
+                int sx = Mathf.FloorToInt(s.position.x / C), sz = Mathf.FloorToInt(s.position.z / C);
+                if (!Mine(sx, sz)) continue;
+                var g = s; g.position -= new Vector3(ox * C, 0f, oz * C);
+                S.sounds.Add(g);
+            }
+            foreach (var t in plan.triggers)
+            {
+                if (!t.cells.Overlaps(chunkRect)) continue;
+                var g = t; var clip = Intersect(t.cells, chunkRect);
+                g.cells = new RectInt(clip.x - ox, clip.y - oz, clip.width, clip.height);
+                if (g.hasDoor) { if (g.door.vertical) { g.door.line -= ox; g.door.from -= oz * C; g.door.to -= oz * C; } else { g.door.line -= oz; g.door.from -= ox * C; g.door.to -= ox * C; } }
+                S.triggers.Add(g);
+            }
+            foreach (var l in plan.links)
+            {
+                float ax = l.a.vertical ? l.a.line * C : (l.a.from + l.a.to) * 0.5f, az = l.a.vertical ? (l.a.from + l.a.to) * 0.5f : l.a.line * C;
+                if (!Mine(Mathf.FloorToInt(ax / C - (l.a.vertical ? 0.5f : 0f)), Mathf.FloorToInt(az / C - (l.a.vertical ? 0f : 0.5f)))) continue;
+                var g = l;
+                void Shift(ref WallCutout w) { if (w.vertical) { w.line -= ox; w.from -= oz * C; w.to -= oz * C; } else { w.line -= oz; w.from -= ox * C; w.to -= ox * C; } }
+                Shift(ref g.a); Shift(ref g.b);
+                S.links.Add(g);
+            }
             return S;
         }
 

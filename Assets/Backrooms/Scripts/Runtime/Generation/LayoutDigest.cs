@@ -25,6 +25,7 @@ namespace Backrooms.Generation
             {
                 h.Add(f.cell.x); h.Add(f.cell.y); h.Add(f.on ? 1 : 0); h.Add(f.roomColor); h.Add(f.dome ? 1 : 0);
                 h.Add(f.strip ? 1 : 0); h.Add(f.height); h.Add(f.faulty ? 1 : 0);
+                if (f.mood != 0 || f.buzz) { h.Add(f.mood); h.Add(f.buzz ? 1 : 0); }      // (build mode's; none in generated layouts)
             }
             foreach (var p in L.pillars) { h.Add(p.vertex.x); h.Add(p.vertex.y); h.Add(p.size); }
             foreach (var w in L.halfWalls) { h.Add(w.alongX ? 1 : 0); h.Add(w.line); h.Add(w.start); h.Add(w.length); }
@@ -36,6 +37,10 @@ namespace Backrooms.Generation
                 h.Add(p.elevation); h.Add(p.pitch); h.Add(p.roll); h.Add(p.scale); h.Add(p.pinned ? 1 : 0); h.Add(p.style);
             }
             foreach (var c in L.cutouts) { h.Add(c.vertical ? 1 : 0); h.Add(c.line); h.Add(c.from); h.Add(c.to); h.Add(c.sill); h.Add(c.top); h.Add(c.arch ? 1 : 0); }
+            foreach (var d in L.decals) { h.Add(d.vertical ? 1 : 0); h.Add(d.line); h.Add(d.side); h.Add(d.kind); h.Add(d.along); h.Add(d.height); h.Add(d.size); h.Add(d.seed); }
+            foreach (var s in L.sounds) { h.Add(s.kind); h.Add(s.position.x); h.Add(s.position.y); h.Add(s.position.z); h.Add(s.volume); h.Add(s.range); }
+            foreach (var t in L.triggers) { h.Add(t.cells.x); h.Add(t.cells.y); h.Add(t.cells.width); h.Add(t.cells.height); h.Add(t.action); h.Add((int)t.id); }
+            foreach (var l in L.links) { h.Add(l.a.line); h.Add(l.a.from); h.Add(l.b.line); h.Add(l.b.from); h.Add(l.flip ? 1 : 0); }
             return h.Value;
         }
 

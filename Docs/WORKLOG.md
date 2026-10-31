@@ -15,6 +15,29 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Build mode round 18: the whole list (walls, shapes, feel, sharing, Backrooms touches, models) and the ceiling hidden fully
+
+- Ceiling: everything above a cut under the lowest ceiling hidden (renderers above it off; the Lit shader's clip plane
+  for the rest, only while the builder's camera draws). The space above the tiles (joists, deck, ducts, batts) and the
+  world's normal-mapped ceiling copies covered rooms once the world had run.
+- Part 1: walls drawn point to point with their length; ROOM draws a walled room; a selected inside run moved (doors
+  along; onto empty edges only) and stretched by handles; cells cut away for any-shaped rooms (the world has the notch).
+- Part 2: autosave and restore; right-click menu; hover outlines; measurements; smart placing against walls and in line;
+  a small map.
+- Part 3: wall marks (stains, damp, mould, peeling, notices, handprints, scorch, working switches, outlets), light moods
+  and buzz, sound spots, triggers (lights out, flicker, door slams, sound), linked doors (endless hallway), mess, props on
+  the ceiling. All stamped into the world (turned with the room) and working in the builder's WALK.
+- Part 4: seven templates, FURNISH FOR ME, rack and clock pictures. Part 5: export / import (file and share code), tags
+  and search, .glb / .obj models (our own reader).
+- Fixed on the way: the floor collider of a layout bigger than a chunk (the builder's preview of a long room) was a
+  chunk's size (fell through at the far end); sound spots started before their chunk was shown.
+- Not done: a pool-tiled template (custom rooms have no pool tiles); linked doors jump you without showing the far side
+  (no portal view through them); brought-in models are static (cannot be picked up); pictures of models render once.
+- Checked in the builder (driven by code): the ceiling and the space above it hidden; a half wall drawn by a drag, moved
+  and stretched; the L-shaped room in the world; the right-click menu; 19 of 19 catalog pictures; a trigger slamming the
+  door and putting the lights out on walking in; the endless hallway sending the walker back; FURNISH FOR ME. New tests
+  `BuilderRound18Tests` (11). 168/168. Not played by the owner.
+
 ## 2026-10-30 - Paper-thin wall ends round build-mode doors and windows
 
 - Owner: some walls came out flat, paper thin with no edge, in the builder and tested in the world. A door or window of

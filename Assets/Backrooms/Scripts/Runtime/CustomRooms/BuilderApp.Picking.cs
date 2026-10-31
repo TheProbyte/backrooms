@@ -52,6 +52,8 @@ namespace Backrooms.CustomRooms
             _group.Clear();
             if (_selected.kind != SelKind.None) return;
             if (PickPillar() || PickLight(screen)) { BuilderSounds.Play(BuilderSounds.Sfx.Pick); return; }
+            int decal = DecalUnder(screen);
+            if (decal >= 0) { _selected = new Selection { kind = SelKind.Decal, index = decal }; PushUndo(); _draggingDecal = true; BuilderSounds.Play(BuilderSounds.Sfx.Pick); return; }
             // A door or window on a wall nearer than the floor there: taken by its middle to slide it.
             if (SelectOpeningAt(screen)) { _hoverHandle = Handle.Move; BeginHandleDrag(screen); return; }
             if (PickWall(screen)) { BuilderSounds.Play(BuilderSounds.Sfx.Pick, 0.8f); return; }
@@ -306,6 +308,7 @@ namespace Backrooms.CustomRooms
                 if (ImUi.Button(new Rect(r.x, r.y, bw - 3, r.height), "WORKING", f.on && !f.faulty)) { PushUndo(); f.on = true; f.faulty = false; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick, 1.2f); }
                 if (ImUi.Button(new Rect(r.x + bw, r.y, bw - 3, r.height), "FLICKERS", f.on && f.faulty, "On, but failing.")) { PushUndo(); f.on = true; f.faulty = true; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick, 1.0f); }
                 if (ImUi.Button(new Rect(r.x + 2 * bw, r.y, bw - 3, r.height), "DEAD", !f.on, "A dead tube.")) { PushUndo(); f.on = false; f.faulty = false; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick, 0.8f); }
+                if (f.on) DrawLightMood(ref col, f);
                 if (ImUi.Button(col.Row(), "REMOVE  [Del]")) DeleteSelected();
                 return true;
             }

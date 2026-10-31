@@ -8,13 +8,13 @@ namespace Backrooms.CustomRooms
     /// <summary>Build mode: input, picking, the editing tools, selection and undo.</summary>
     public partial class BuilderApp
     {
-        enum Modal { None, Discard, Delete, Back, NoExit, World }
+        enum Modal { None, Discard, Delete, Back, NoExit, World, Import, Templates }
         Modal _modal = Modal.None;
         string _modalTarget;
         bool _textFocus;
 
         // Selection and per-tool options
-        enum SelKind { None, Prop, Loot, Opening, Room, Wall, Light, Pillar }
+        enum SelKind { None, Prop, Loot, Opening, Room, Wall, Light, Pillar, Decal, Sound, Trigger }
         struct Selection { public SelKind kind; public int index; public static Selection None => new Selection { kind = SelKind.None, index = -1 }; }
         Selection _selected = Selection.None;
         PropKind _propKind = PropKind.Box;
@@ -68,6 +68,8 @@ namespace Backrooms.CustomRooms
 
             bool overUi = OverUi(ImUi.Pointer) || _modal != Modal.None || PauseMenu.IsOpen;
             HandleKeys(kb);
+            UpdateAutosave();
+            UpdateContextClick(mouse, overUi);
             if (PauseMenu.IsOpen || _showHelp) return;
             UpdateCamera(overUi);
 
@@ -75,10 +77,11 @@ namespace Backrooms.CustomRooms
             if (!overUi && !_textFocus)
             {
                 UpdateHover(mouse.position.ReadValue());
+                UpdateHoverPick(mouse.position.ReadValue());
                 if (mouse.leftButton.wasPressedThisFrame) BeginStroke(mouse.position.ReadValue());
                 else if (_stroking && mouse.leftButton.isPressed) ContinueStroke(mouse.position.ReadValue());
             }
-            else if (!_stroking) { _hoverEdgeValid = _hoverVertexValid = _hoverCellValid = _hoverGround = false; }
+            else if (!_stroking) { _hoverEdgeValid = _hoverVertexValid = _hoverCellValid = _hoverGround = false; _hoverPick = Selection.None; }
             if (_stroking && (mouse.leftButton.wasReleasedThisFrame || !mouse.leftButton.isPressed)) EndStroke();
             UpdatePropViews();
             UpdateRebuildThrottle();
@@ -100,6 +103,9 @@ namespace Backrooms.CustomRooms
                 if (PauseMenu.IsOpen) PauseMenu.Instance.Close();
                 else if (_showHelp) _showHelp = false;
                 else if (_pastingArea) _pastingArea = false;
+                else if (_contextOpen) _contextOpen = false;
+                else if (_linkFirst != null) { _linkFirst = null; SetStatus("Cancelled."); }
+                else if (_lining) _lining = false;
                 else if (_modal != Modal.None) _modal = Modal.None;
                 else if (_stroking) EndStroke();
                 else if (_selected.kind != SelKind.None) { _selected = Selection.None; _group.Clear(); }
@@ -117,10 +123,12 @@ namespace Backrooms.CustomRooms
             if (ctrl && kb.dKey.wasPressedThisFrame) DuplicateSelected();
             if (kb.tabKey.wasPressedThisFrame) CycleView();
             if (kb.gKey.wasPressedThisFrame) _showGrid = !_showGrid;
+            if (kb.hKey.wasPressedThisFrame && !ctrl) ToggleCeiling();
             if (kb.vKey.wasPressedThisFrame && !ctrl) BeginWalk();
             if (kb.deleteKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame) DeleteSelected();
             if (kb.rKey.wasPressedThisFrame) RotateSelected();
-            Key[] keys = { Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4, Key.Digit5 };
+            if (kb.mKey.wasPressedThisFrame && !ctrl) _showMap = !_showMap;
+            Key[] keys = { Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4, Key.Digit5, Key.Digit6 };
             for (int i = 0; i < keys.Length; i++) if (kb[keys[i]].wasPressedThisFrame && !ctrl) SetMode(Modes[i]);
         }
 
@@ -136,6 +144,7 @@ namespace Backrooms.CustomRooms
         {
             if (_view == v) return;
             _view = v;
+            ApplyCeiling();
             if (v == BuilderView.Top) _pitch = 90f; else if (_pitch > 85f) _pitch = 52f;
             _needRebuild = true;
         }
@@ -231,7 +240,7 @@ namespace Backrooms.CustomRooms
 
         // ---------------- Strokes ----------------
 
-        bool EdgeTool => _tool == BuilderTool.Wall || _tool == BuilderTool.Opening || _tool == BuilderTool.Half || _tool == BuilderTool.Erase;
+        bool EdgeTool => _tool == BuilderTool.Opening;
 
         void BeginStroke(Vector2 screen)
         {
@@ -245,9 +254,14 @@ namespace Backrooms.CustomRooms
                 case BuilderTool.Opening when _opening != OpeningKind.Gap: PlaceOpening(); _stroking = false; break;
                 case BuilderTool.Prop: PlaceProp(); _stroking = false; break;
                 case BuilderTool.Loot: PlaceLoot(); _stroking = false; break;
+                case BuilderTool.Sound: PlaceSound(); _stroking = false; break;
                 case BuilderTool.Pillar: TogglePillar(); _stroking = false; break;
                 case BuilderTool.Light: CycleLight(); _stroking = false; break;
-                case BuilderTool.Floor: PushUndo(); PaintCell(); break;
+                case BuilderTool.Floor: case BuilderTool.Outside: PushUndo(); PaintCell(); break;
+                case BuilderTool.Wall: case BuilderTool.Half: case BuilderTool.Erase: case BuilderTool.RoomBox: BeginLine(screen); break;
+                case BuilderTool.Decal: PlaceDecal(screen); break;
+                case BuilderTool.Link: LinkClick(screen); _stroking = false; break;
+                case BuilderTool.Trigger: TriggerFloorClick(); _stroking = false; break;
                 default:
                     if (EdgeTool) { PushUndo(); StrokeEdge(screen); }
                     else _stroking = false;
@@ -258,6 +272,8 @@ namespace Backrooms.CustomRooms
         void ContinueStroke(Vector2 screen)
         {
             if (_dragHandle != Handle.None) { DragHandle(screen); _lastMouse = screen; return; }
+            if (_lining) { ContinueLine(screen); _lastMouse = screen; return; }
+            if (_draggingDecal) { DragDecal(screen); _lastMouse = screen; return; }
             if (_tool == BuilderTool.Select)
             {
                 if (_boxing) { _boxNow = screen; if ((screen - _boxStart).magnitude > 8f) _boxActive = true; }
@@ -270,7 +286,7 @@ namespace Backrooms.CustomRooms
             {
                 var p = Vector2.Lerp(_lastMouse, screen, i / (float)steps);
                 if (EdgeTool) StrokeEdge(p);
-                else if (_tool == BuilderTool.Floor) { if (GroundAt(p, out var lm)) { int cx = Mathf.FloorToInt(lm.x / C), cz = Mathf.FloorToInt(lm.y / C); if (V.InBounds(cx, cz)) { _hoverCell = new Vector2Int(cx, cz); _hoverCellValid = true; PaintCell(); } } }
+                else if (_tool == BuilderTool.Floor || _tool == BuilderTool.Outside) { if (GroundAt(p, out var lm)) { int cx = Mathf.FloorToInt(lm.x / C), cz = Mathf.FloorToInt(lm.y / C); if (V.InBounds(cx, cz)) { _hoverCell = new Vector2Int(cx, cz); _hoverCellValid = true; PaintCell(); } } }
             }
             _lastMouse = screen;
         }
@@ -279,6 +295,8 @@ namespace Backrooms.CustomRooms
         {
             _stroking = false; _strokeLocked = false;
             if (_dragHandle != Handle.None) { EndHandleDrag(); _dragging = false; return; }
+            if (_lining) { EndLine(); return; }
+            if (_draggingDecal) { _draggingDecal = false; if (_strokeChanged) Changed(); else if (_undo.Count > 0) _undo.Pop(); _strokeChanged = false; return; }
             if (_boxing) { EndBox(); return; }
             if (_dragging && _selected.kind != SelKind.None) BuilderSounds.Play(BuilderSounds.Sfx.Drop, 0.95f);
             _dragging = false;
@@ -305,7 +323,7 @@ namespace Backrooms.CustomRooms
                 }
             }
             DrawFlash();
-            if (_hoverCellValid && (_tool == BuilderTool.Floor || _tool == BuilderTool.Light))
+            if (_hoverCellValid && (_tool == BuilderTool.Floor || _tool == BuilderTool.Light || _tool == BuilderTool.Outside))
             {
                 float x0 = _hoverCell.x * C, z0 = _hoverCell.y * C;
                 Quad(W3(x0, z0), W3(x0 + C, z0), W3(x0 + C, z0 + C), W3(x0, z0 + C), new Color(0.93f, 0.78f, 0.28f, 0.28f));
@@ -333,15 +351,19 @@ namespace Backrooms.CustomRooms
             GL.End();
 
             GL.Begin(GL.LINES);
+            DrawLineGizmo();
+            DrawExtraGizmos();
+            DrawHoverGizmos();
+            DrawMeasureGizmos();
             // Hover on edges
-            if (_hoverEdgeValid && EdgeTool)
+            if (_hoverEdgeValid && (EdgeTool || (LineTool && !_lining)) && !(LineTool && _hoverVertexValid))
             {
                 Vector3 a, b;
                 if (_hoverEdgeVertical) { a = W3(_hoverEdgeX * C, _hoverEdgeZ * C, 0.05f); b = W3(_hoverEdgeX * C, (_hoverEdgeZ + 1) * C, 0.05f); }
                 else { a = W3(_hoverEdgeX * C, _hoverEdgeZ * C, 0.05f); b = W3((_hoverEdgeX + 1) * C, _hoverEdgeZ * C, 0.05f); }
                 Thick(a, b, new Color(1f, 0.9f, 0.3f, 1f));
             }
-            if (_hoverVertexValid && _tool == BuilderTool.Pillar)
+            if (_hoverVertexValid && (_tool == BuilderTool.Pillar || (LineTool && !_lining)))
             {
                 float s = 0.3f; var c = new Color(1f, 0.9f, 0.3f, 1f);
                 var p = W3(_hoverVertex.x * C, _hoverVertex.y * C, 0.05f);
@@ -412,6 +434,9 @@ namespace Backrooms.CustomRooms
             var c = new Color(0.45f, 0.95f, 0.5f, 1f);
             void Arrow(float mx, float mz, float dx, float dz)
             {
+                // (Only out of the room: not along a cut-away notch's own edge, which is the world's.)
+                int cx = Mathf.Clamp(Mathf.FloorToInt((mx - dx * 0.1f) / C), 0, v.width - 1), cz = Mathf.Clamp(Mathf.FloorToInt((mz - dz * 0.1f) / C), 0, v.depth - 1);
+                if (v.Outside(cx, cz)) return;
                 var p = W3(mx, mz, 0.05f); var d = new Vector3(dx, 0, dz); var s = new Vector3(-dz, 0, dx);
                 Line(p, p + d * 0.9f, c); Line(p + d * 0.9f, p + d * 0.55f + s * 0.3f, c); Line(p + d * 0.9f, p + d * 0.55f - s * 0.3f, c);
             }

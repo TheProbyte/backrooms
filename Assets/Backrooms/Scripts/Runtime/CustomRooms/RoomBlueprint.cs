@@ -63,7 +63,13 @@ namespace Backrooms.CustomRooms
     }
 
     [Serializable] public class PillarDef { public int x, z; public float size = 0.6f; }
-    [Serializable] public class FixtureDef { public int x, z; public bool on = true; public bool faulty; }
+    [Serializable]
+    public class FixtureDef
+    {
+        public int x, z; public bool on = true; public bool faulty;
+        [Tooltip("Its mood: 0 as made, 1 dim, 2 sickly green, 3 yellowed, 4 cold blue, 5 pink.")] public int mood;
+        [Tooltip("It buzzes.")] public bool buzz;
+    }
     [Serializable]
     public class PropDef
     {
@@ -80,6 +86,7 @@ namespace Backrooms.CustomRooms
         [Tooltip("Physics off: stuck exactly where it is put, never moves, cannot be taken. May sit half inside a wall.")]
         public bool pinned;
         [Tooltip("Which model the catalog chose (0: the dice choose).")] public int style;
+        [Tooltip("A model you brought in (file name in CustomModels), for PropKind.Custom.")] public string model = "";
     }
 
     /// <summary>
@@ -95,6 +102,10 @@ namespace Backrooms.CustomRooms
         public float sill;            // 0: a doorway; above: a window
         public float top = 2.1f;
         public bool arch;
+        [Tooltip("Its own number in the variant (links and triggers name it); 0: not given yet.")] public int id;
+        [Tooltip("Linked doorway: walk through this one and you come out of the one with this id (0: none).")]
+        public int link;
+        [Tooltip("Linked: come out facing the other way.")] public bool flip;
 
         public float Width => to - from;
         public float Centre => (from + to) * 0.5f;
@@ -115,7 +126,7 @@ namespace Backrooms.CustomRooms
     /// dressing on it. A room can have several variants; the world picks one when it places the room.
     /// </summary>
     [Serializable]
-    public class RoomVariant
+    public partial class RoomVariant
     {
         public string name = "Variant";
         public float weight = 1f;
@@ -132,6 +143,9 @@ namespace Backrooms.CustomRooms
         public List<PropDef> props = new List<PropDef>();
         public List<LootDef> loot = new List<LootDef>();
         public List<OpeningDef> openings = new List<OpeningDef>();
+        public List<DecalDef> decals = new List<DecalDef>();
+        public List<SoundDef> sounds = new List<SoundDef>();
+        public List<TriggerDef> triggers = new List<TriggerDef>();
 
         public const int MinSize = 2, MaxSize = 24;
         /// <summary>Smallest door or window (m), and the room left above one (m).</summary>
@@ -175,6 +189,8 @@ namespace Backrooms.CustomRooms
         public void SetV(int x, int z, int code) => vEdges[x * depth + z] = code;
         public void SetH(int x, int z, int code) => hEdges[x * (depth + 1) + z] = code;
         public int RoomOf(int x, int z) => cellRoom[z * width + x];
+        /// <summary>A cell cut away from the room (an L-shaped room's notch): not part of it; the world has it.</summary>
+        public bool Outside(int x, int z) => cellRoom[z * width + x] < 0;
         public bool InBounds(int x, int z) => x >= 0 && z >= 0 && x < width && z < depth;
         public RoomSettings RoomAt(int x, int z) => rooms[Mathf.Clamp(RoomOf(x, z), 0, rooms.Count - 1)];
 
@@ -249,7 +265,8 @@ namespace Backrooms.CustomRooms
                 Allocate();
                 if (old.cellRoom == null) WallPerimeter();
             }
-            for (int i = 0; i < cellRoom.Length; i++) cellRoom[i] = Mathf.Clamp(cellRoom[i], 0, rooms.Count - 1);
+            for (int i = 0; i < cellRoom.Length; i++) cellRoom[i] = Mathf.Clamp(cellRoom[i], -1, rooms.Count - 1);
+            if (Array.TrueForAll(cellRoom, c => c < 0)) cellRoom[0] = 0;            // at least one cell is the room
             for (int i = 0; i < vEdges.Length; i++) vEdges[i] = Mathf.Clamp(vEdges[i], 0, 15);
             for (int i = 0; i < hEdges.Length; i++) hEdges[i] = Mathf.Clamp(hEdges[i], 0, 15);
             foreach (var r in rooms) r.ceiling = Mathf.Clamp(r.ceiling, OfficeBiome.CeilingHeight, OfficeBiome.MaxCeilingHeight);
@@ -259,7 +276,19 @@ namespace Backrooms.CustomRooms
             if (openings == null) openings = new List<OpeningDef>();
             openings.RemoveAll(o => o == null || o.line < 0 || o.line > (o.vertical ? width : depth) || o.from >= LineLength(o.vertical) - 0.05f);
             foreach (var o in openings) ClampOpening(o);
-            foreach (var p in props) { if (p.scale <= 0.01f) p.scale = 1f; p.scale = Mathf.Clamp(p.scale, 0.25f, 4f); }
+            foreach (var p in props) { if (p.scale <= 0.01f) p.scale = 1f; p.scale = Mathf.Clamp(p.scale, 0.25f, 4f); if (p.model == null) p.model = ""; }
+            if (decals == null) decals = new List<DecalDef>();
+            if (sounds == null) sounds = new List<SoundDef>();
+            if (triggers == null) triggers = new List<TriggerDef>();
+            decals.RemoveAll(d => d == null || d.line < 0 || d.line > (d.vertical ? width : depth));
+            // Every opening its own id (a copy gets a new one); links to an opening that is gone, or to itself, are dropped.
+            var ids = new HashSet<int>(); int next = 1;
+            foreach (var o in openings) next = Mathf.Max(next, o.id + 1);
+            foreach (var o in openings) { if (o.id <= 0 || !ids.Add(o.id)) { o.id = next++; ids.Add(o.id); } }
+            foreach (var o in openings) if (o.link != 0 && (o.link == o.id || !ids.Contains(o.link))) o.link = 0;
+            foreach (var t in triggers ?? new List<TriggerDef>()) if (t != null && t.door != 0 && !ids.Contains(t.door)) t.door = 0;
+            triggers.RemoveAll(t => t == null || t.area >= rooms.Count);
+            FixOutsideEdges();
         }
 
         /// <summary>
@@ -477,9 +506,13 @@ namespace Backrooms.CustomRooms
         public int CountExits()
         {
             int n = 0;
-            for (int z = 0; z < depth; z++) { if (EdgeCode.Walkthrough(V(0, z))) n++; if (EdgeCode.Walkthrough(V(width, z))) n++; }
-            for (int x = 0; x < width; x++) { if (EdgeCode.Walkthrough(H(x, 0))) n++; if (EdgeCode.Walkthrough(H(x, depth))) n++; }
-            foreach (var o in openings) if (o.Door && PerimeterLine(o.vertical, o.line)) n++;
+            bool In(int x, int z) => InBounds(x, z) && !Outside(x, z);
+            for (int z = 0; z < depth; z++) { if (In(0, z) && EdgeCode.Walkthrough(V(0, z))) n++; if (In(width - 1, z) && EdgeCode.Walkthrough(V(width, z))) n++; }
+            for (int x = 0; x < width; x++) { if (In(x, 0) && EdgeCode.Walkthrough(H(x, 0))) n++; if (In(x, depth - 1) && EdgeCode.Walkthrough(H(x, depth))) n++; }
+            foreach (var o in openings) if (o.Door && LeadsOut(o)) n++;
+            // Into a cut-away notch (the world's): a way in too.
+            for (int x = 1; x < width; x++) for (int z = 0; z < depth; z++) if (Outside(x - 1, z) != Outside(x, z) && EdgeCode.Walkthrough(V(x, z))) n++;
+            for (int x = 0; x < width; x++) for (int z = 1; z < depth; z++) if (Outside(x, z - 1) != Outside(x, z) && EdgeCode.Walkthrough(H(x, z))) n++;
             return n;
         }
     }
@@ -502,6 +535,7 @@ namespace Backrooms.CustomRooms
         [Tooltip("The world may turn the room by 90 degree steps.")] public bool allowRotate = true;
         public string notes = "";
         public string modified = "";
+        [Tooltip("Your own labels, to find rooms in the library.")] public List<string> tags = new List<string>();
         public List<RoomVariant> variants = new List<RoomVariant>();
 
         public static RoomBlueprint CreateNew(string name = "New room")
@@ -519,6 +553,7 @@ namespace Backrooms.CustomRooms
             chance = Mathf.Clamp01(chance); weight = Mathf.Max(0f, weight);
             if (biomes == null) biomes = new List<string>();
             if (zones == null) zones = new List<string>();
+            if (tags == null) tags = new List<string>();
             if (string.IsNullOrWhiteSpace(name)) name = "Room";
         }
 

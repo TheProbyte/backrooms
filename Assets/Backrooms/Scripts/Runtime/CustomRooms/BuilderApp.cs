@@ -8,7 +8,7 @@ using UnityEngine.SceneManagement;
 
 namespace Backrooms.CustomRooms
 {
-    public enum BuilderTool { Select, Wall, Opening, Half, Erase, Floor, Pillar, Light, Prop, Loot }
+    public enum BuilderTool { Select, Wall, Opening, Half, Erase, Floor, Pillar, Light, Prop, Loot, RoomBox, Outside, Decal, Sound, Trigger, Link }
     public enum BuilderView { Solid, Room, Cutout, WallsDown, Top }
     public enum OpeningKind { Doorway, DoubleDoor, Arch, Window, Tall, Gap }
 
@@ -49,6 +49,7 @@ namespace Backrooms.CustomRooms
         Transform _previewRoot;
         GameObject _previewObject;
         readonly List<Light> _previewLights = new List<Light>();
+        readonly List<int> _previewLightRooms = new List<int>();
         Vector2 _origin;                 // blueprint (0,0) in layout metres
         LandmarkPlacement _placement;
         int _cutHash = -1;
@@ -66,8 +67,8 @@ namespace Backrooms.CustomRooms
             Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
         }
 
-        void OnEnable() { RenderPipelineManager.endCameraRendering += OnEndCamera; }
-        void OnDisable() { RenderPipelineManager.endCameraRendering -= OnEndCamera; }
+        void OnEnable() { RenderPipelineManager.beginCameraRendering += OnBeginCamera; RenderPipelineManager.endCameraRendering += OnEndCamera; }
+        void OnDisable() { RenderPipelineManager.beginCameraRendering -= OnBeginCamera; RenderPipelineManager.endCameraRendering -= OnEndCamera; ClearClip(); }
         void OnDestroy()
         {
             if (Current == this) Current = null;
@@ -84,6 +85,7 @@ namespace Backrooms.CustomRooms
         void Start()
         {
             BuilderCatalog.Reset();
+            if (assets) { MaterialMaps.Ensure(assets); CustomModels.Ensure(assets); }   // the world's own look (and the player's models)
             SetupCamera();
             RoomLibrary.Reload();
             RenderSettings.skybox = null;
@@ -126,6 +128,7 @@ namespace Backrooms.CustomRooms
         {
             RoomLibrary.Reload();
             _screen = ScreenKind.Library;
+            _recoverable = null;
             ClearPreview();
             ClearThumbnails();
             BuildSession.Editing = null;
@@ -186,11 +189,9 @@ namespace Backrooms.CustomRooms
         {
             if (_previewObject) Destroy(_previewObject);
             foreach (var l in _previewLights) if (l) Destroy(l.gameObject);
-            _previewLights.Clear();
+            _previewLights.Clear(); _previewLightRooms.Clear();
             _previewObject = null;
         }
-
-        bool HidesCeiling => _view != BuilderView.Solid;
 
         /// <summary>Which edges of the preview are cut down for this view, as a hash (rebuild when it changes).</summary>
         int ComputeCutHash(out List<(bool vertical, int line, int along)> cuts)
@@ -240,8 +241,7 @@ namespace Backrooms.CustomRooms
             builder.BuildData(L);
             _previewObject = builder.Instantiate(_previewRoot);
             foreach (var rb in _previewObject.GetComponentsInChildren<Rigidbody>()) rb.isKinematic = true;
-            foreach (var r in _previewObject.GetComponentsInChildren<Renderer>())
-                if (HidesCeiling && IsCeilingMaterial(r.sharedMaterial)) r.enabled = false;
+            IndexAboveCut();
             foreach (var ls in builder.lights) AddPreviewLight(ls);
             IndexPropViews();
             _lastRebuild = Time.unscaledTime;
@@ -275,6 +275,9 @@ namespace Backrooms.CustomRooms
         bool IsCeilingMaterial(Material m)
         {
             if (!m) return false;
+            if (m.name.Contains(" (normal map)"))                  // the world's normal-mapped copies (MaterialMaps.For)
+                foreach (var a in new[] { assets.ceilingTile, assets.ceilingGrid, assets.ceilingPlaster })
+                    if (a && m == MaterialMaps.For(a)) return true;
             return m == assets.ceilingTile || m == assets.ceilingGrid || m == assets.ceilingPlaster || m == assets.lensOn || m == assets.lensOff
                 || m == assets.domeOn || m == assets.domeOff || m == assets.stripOn || m == assets.stripOff || m == assets.fixtureHousing;
         }
@@ -295,9 +298,26 @@ namespace Backrooms.CustomRooms
                 l.type = LightType.Spot; l.spotAngle = 150f; l.innerSpotAngle = 110f;
                 l.range = ls.dome || ls.strip ? 12f : 8f; l.intensity = ls.dome ? 4.5f : 3.2f; l.color = ls.strip ? new Color(0.9f, 0.95f, 1f) : new Color(1f, 0.95f, 0.8f);
             }
+            // A light's mood (an aged tube): less of it, its colour.
+            if (ls.dim > 0f) l.intensity *= 1f - ls.dim;
+            if (ls.tint.a > 0f) l.color *= ls.tint;
             l.shadows = LightShadows.None;
             go.AddComponent<UniversalAdditionalLightData>().renderingLayers = 0xFFFFFFFFu;
             _previewLights.Add(l);
+            _previewLightRooms.Add(ls.isLamp ? -1 : ls.room);
+        }
+
+        /// <summary>WALK: the preview's ceiling lights follow their rooms' switches (a trigger putting them out).</summary>
+        void UpdatePreviewLightZones(bool reset)
+        {
+            var chunk = new Vector3Int(0, 0, 0);
+            for (int i = 0; i < _previewLights.Count; i++)
+            {
+                int room = _previewLightRooms[i];
+                if (room < 0 || !_previewLights[i]) continue;
+                if (reset) LightZones.Set(chunk, room, false, true);
+                _previewLights[i].enabled = reset || LightZones.Level(chunk, room, Time.time, i * 0.37f) > 0.5f;
+            }
         }
 
         // ---------------- Camera ----------------
@@ -357,6 +377,7 @@ namespace Backrooms.CustomRooms
 
         void OnEndCamera(ScriptableRenderContext ctx, Camera cam)
         {
+            if (cam == _cam) ClearClip();
             if (cam != _cam || _screen != ScreenKind.Editor || _bp == null || _showHelp || _modal != Modal.None || _walking) return;
             EnsureLineMaterial();
             _lineMat.SetInt("_ZTest", (int)CompareFunction.LessEqual);

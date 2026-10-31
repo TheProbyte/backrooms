@@ -218,7 +218,8 @@ namespace Backrooms.Generation
                 room.wallFinish = spec.wallFinish; room.floorFinish = spec.floorFinish;
                 room.openAbove = spec.openAbove; room.noFloor = spec.noFloor; room.landmark = placements[lm].name;
                 room.noDoors = spec.noDoors; room.role = spec.role;
-                room.custom = placements[lm].kind == LandmarkKind.Custom;
+                room.custom = placements[lm].kind == LandmarkKind.Custom && !spec.outside;
+                if (spec.outside) { room.landmark = null; room.noDoors = false; }
                 for (int x = spec.rect.xMin; x < spec.rect.xMax; x++)
                 for (int z = spec.rect.yMin; z < spec.rect.yMax; z++)
                     L.flags[x, z] |= (spec.openAbove ? CellFlags.OpenAbove : 0) | (spec.noFloor ? CellFlags.NoFloor : 0);
@@ -917,6 +918,28 @@ namespace Backrooms.Generation
             foreach (var h in L.halfWalls)
                 if (h.alongX == alongX && Mathf.Abs(h.line - ln) <= 1 && h.start <= s + length + 1 && s <= h.start + h.length + 1) return;
             L.halfWalls.Add(new HalfWall { alongX = alongX, line = ln, start = s, length = length, roomColor = r.color });
+        }
+
+        /// <summary>
+        /// Build mode's FURNISH FOR ME: these rooms dressed as the generator dresses its own (sofas against walls, armchairs,
+        /// lamps in corners, boxes by the walls; racks and pallets on concrete). Adds to L.props.
+        /// </summary>
+        public static void DressLikeTheWorld(OfficeLayout L, System.Random rng, List<Room> rooms)
+        {
+            var occupied = new HashSet<Vector2Int>();
+            float C = OfficeBiome.CellSize;
+            foreach (var p in L.props) occupied.Add(new Vector2Int(Mathf.FloorToInt(p.position.x / C), Mathf.FloorToInt(p.position.y / C)));
+            var keep = new List<(Room r, string landmark)>();
+            foreach (var r in L.rooms) { keep.Add((r, r.landmark)); r.landmark = "-"; }
+            foreach (var r in rooms)
+            {
+                r.landmark = null;
+                if (StyleOf(r) == RoomStyle.Warehouse) { PlaceRacks(L, rng, r); PlacePallets(L, rng, r); continue; }
+                int before = L.props.Count;
+                for (int i = 0; i < 6 && L.props.Count == before; i++) Furnish(L, rng, r, occupied);
+            }
+            PlaceBoxes(L, rng);
+            foreach (var (r, lm) in keep) r.landmark = lm;
         }
 
         static void PlaceProps(OfficeLayout L, System.Random rng)

@@ -26,7 +26,7 @@ namespace Backrooms.CustomRooms
         bool OverUi(Vector2 p)
         {
             if (_screen == ScreenKind.Library) return true;
-            return _showHelp || LeftRect.Contains(p) || RightRect.Contains(p) || TopRect.Contains(p) || BottomRect.Contains(p);
+            return _showHelp || LeftRect.Contains(p) || RightRect.Contains(p) || TopRect.Contains(p) || BottomRect.Contains(p) || OverMiniMap(p) || OverContextMenu(p);
         }
 
         void HandleLibraryKeys()
@@ -47,7 +47,7 @@ namespace Backrooms.CustomRooms
             ImUi.Begin();
             ImUi.Tip = "";
             if (_screen == ScreenKind.Library) DrawLibrary();
-            else if (_bp != null) { if (_walking) DrawWalkGui(); else { DrawEditor(); DrawHandleLabels(); DrawBox(); } }
+            else if (_bp != null) { if (_walking) DrawWalkGui(); else { DrawEditor(); DrawHandleLabels(); DrawLineLabel(); DrawMeasureLabels(); DrawBox(); DrawMiniMap(); DrawContextMenu(); } }
             DrawModal();
             if (_showHelp) DrawHelp();
             else ImUi.DrawTooltip();
@@ -75,8 +75,10 @@ namespace Backrooms.CustomRooms
             ImUi.Dimmed(new Rect(42, 66, 1200, 24), "Rooms you build here join the procedural world as set pieces. Pick one to edit, or start a new room.");
             if (ImUi.Button(new Rect(ImUi.Width - 190, 28, 150, 40), "MENU  (Esc)")) PauseMenu.Instance?.Open();
 
-            var list = RoomLibrary.All;
-            float cardW = 300, cardH = 276, gap = 24, x0 = 40, y0 = 112;
+            float barY = DrawLibraryBar(104f);
+            if (_screen != ScreenKind.Library) return;
+            var list = FilteredRooms();
+            float cardW = 300, cardH = 296, gap = 24, x0 = 40, y0 = barY + 4f;
             int perRow = Mathf.Max(1, Mathf.FloorToInt((ImUi.Width - 2 * x0 + gap) / (cardW + gap)));
             int count = list.Count + 1;
             int rows = Mathf.CeilToInt(count / (float)perRow);
@@ -91,7 +93,7 @@ namespace Backrooms.CustomRooms
                 else DrawRoomCard(r, list[i - 1]);
             }
             GUI.EndScrollView();
-            if (list.Count == 0) ImUi.Dimmed(new Rect(x0 + cardW + gap + 10, y0 + 100, 600, 60), "No rooms yet. Click NEW ROOM to build your first one.");
+            if (list.Count == 0) ImUi.Dimmed(new Rect(x0 + cardW + gap + 10, y0 + 100, 600, 60), RoomLibrary.All.Count == 0 ? "No rooms yet. Click NEW ROOM to build your first one." : "No room matches. Clear the search or the tag.");
         }
 
         void DrawNewCard(Rect r)
@@ -99,8 +101,8 @@ namespace Backrooms.CustomRooms
             ImUi.Fill(r, new Color(0.1f, 0.1f, 0.11f, 1f));
             ImUi.Fill(new Rect(r.x, r.y, r.width, 3), ImUi.Accent);
             GUI.Label(new Rect(r.x, r.y + 70, r.width, 60), "+", new GUIStyle(ImUi.Title) { fontSize = 64, alignment = TextAnchor.MiddleCenter });
-            if (ImUi.Button(new Rect(r.x + 40, r.y + r.height - 90, r.width - 80, 44), "NEW ROOM", true)) StartNew();
-            ImUi.Dimmed(new Rect(r.x + 10, r.y + r.height - 40, r.width - 20, 26), "Four walls, a floor, a ceiling and a door.");
+            if (ImUi.Button(new Rect(r.x + 40, r.y + r.height - 90, r.width - 80, 44), "NEW ROOM", true)) _modal = Modal.Templates;
+            ImUi.Dimmed(new Rect(r.x + 10, r.y + r.height - 40, r.width - 20, 26), "From nothing, or from a template.");
         }
 
         void DrawRoomCard(Rect r, RoomBlueprint bp)
@@ -113,6 +115,8 @@ namespace Backrooms.CustomRooms
             GUI.Label(new Rect(r.xMax - 94, r.y + 164, 88, 26), bp.enabled ? "SPAWNS" : "OFF", new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleRight, normal = { textColor = bp.enabled ? ImUi.Good : ImUi.Dim } });
             string info = $"{v.width}×{v.depth} cells ({v.width * OfficeBiome.CellSize:0.#}×{v.depth * OfficeBiome.CellSize:0.#} m)   {bp.variants.Count} variant{(bp.variants.Count == 1 ? "" : "s")}";
             ImUi.Dimmed(new Rect(r.x + 6, r.y + 190, r.width - 12, 22), info);
+            if (bp.tags != null && bp.tags.Count > 0) GUI.Label(new Rect(r.x + 6, r.y + 214, r.width - 110, 20), string.Join("  ·  ", bp.tags), new GUIStyle(ImUi.Small) { normal = { textColor = ImUi.Accent } });
+            if (ImUi.Button(new Rect(r.xMax - 92, r.y + 212, 82, 26), "SHARE", false, "Export it as a file, and put its share code on the clipboard.")) ExportRoom(bp);
             float bw = (r.width - 20 - 12) / 4f;
             if (ImUi.Button(new Rect(r.x + 10, r.y + r.height - 50, bw, 38), "EDIT", true)) StartEdit(bp.id);
             if (ImUi.Button(new Rect(r.x + 10 + (bw + 4), r.y + r.height - 50, bw, 38), bp.enabled ? "OFF" : "ON", false, "Turn spawning in the procedural world on or off for this room."))
@@ -143,6 +147,7 @@ namespace Backrooms.CustomRooms
             GUI.Label(new Rect(14, 8, 120, 36), "BUILD", ImUi.Title);
             GUI.Label(new Rect(136, 12, 300, 28), _bp.name + (_dirty ? "  •  unsaved" : ""), ImUi.Label);
             float x = 440;
+            if (_autosavedAt > 0f && Time.unscaledTime - _autosavedAt < 2.5f) GUI.Label(new Rect(136, 30, 300, 20), "autosaved", ImUi.Small);
             if (ImUi.Button(new Rect(x, 8, 70, 36), "UNDO", false, "Undo  [Ctrl+Z]")) Undo(); x += 74;
             if (ImUi.Button(new Rect(x, 8, 70, 36), "REDO", false, "Redo  [Ctrl+Y]")) Redo(); x += 90;
             string[] names = { "SOLID", "ROOM", "CUTOUT", "WALLS DOWN", "TOP" };
@@ -161,6 +166,8 @@ namespace Backrooms.CustomRooms
                 x += w + 4;
             }
             if (ImUi.Button(new Rect(x + 6, 8, 60, 36), "GRID", _showGrid, "Show or hide the grid. [G]")) _showGrid = !_showGrid;
+            if (ImUi.Button(new Rect(x + 70, 8, 92, 36), "CEILING", !HidesCeiling, "Show or hide the ceiling and everything above it (the drop ceiling's hidden space too). SOLID always shows it. [H]")) ToggleCeiling();
+            if (ImUi.Button(new Rect(x + 166, 8, 56, 36), "MAP", _showMap, "A small map of the room in the corner: click it to look there. [M]")) _showMap = !_showMap;
             float rx = ImUi.Width - 12;
             rx -= 80; if (ImUi.Button(new Rect(rx, 8, 80, 36), "MENU")) PauseMenu.Instance?.Open();
             rx -= 74; if (ImUi.Button(new Rect(rx, 8, 70, 36), "HELP", _showHelp, "Controls and a short guide. [F1]")) _showHelp = !_showHelp;
@@ -193,7 +200,9 @@ namespace Backrooms.CustomRooms
                 ImUi.Header(col.Row(24), "Tool");
                 var tr = col.Row(30);
                 int n = cur.Tools.Length;
-                if (n <= 2)
+                bool shortNames = true;
+                foreach (var t in cur.Tools) if (cur.ToolName(t).Length > 7) shortNames = false;
+                if (n <= 2 && shortNames)
                     for (int i = 0; i < n; i++)
                     { var t = cur.Tools[i]; if (ImUi.Button(new Rect(tr.x + i * (tr.width / n), tr.y, tr.width / n - 3, tr.height), cur.ToolName(t), _tool == t, cur.ToolTip(t))) SetTool(t); }
                 else
@@ -226,12 +235,13 @@ namespace Backrooms.CustomRooms
             _rightScroll = GUI.BeginScrollView(view, _rightScroll, content, false, false, GUIStyle.none, GUIStyle.none);
             var col = new ImUi.Column(12, 12, r.width - 24 - 14, 30, 6);
             if (_selected.kind == SelKind.Prop || _selected.kind == SelKind.Loot || _selected.kind == SelKind.Opening
-                || _selected.kind == SelKind.Wall || _selected.kind == SelKind.Light || _selected.kind == SelKind.Pillar)
+                || _selected.kind == SelKind.Wall || _selected.kind == SelKind.Light || _selected.kind == SelKind.Pillar
+                || _selected.kind == SelKind.Decal || _selected.kind == SelKind.Sound || _selected.kind == SelKind.Trigger)
             {
                 if (ImUi.Button(col.Row(28), "‹  WHOLE ROOM", false, "Deselect. [Esc]")) { _selected = Selection.None; _group.Clear(); }
                 col.Space(4);
                 if (Grouped) DrawGroupInspector(ref col);
-                if (!DrawPickInspector(ref col)) DrawSelected(ref col);
+                if (!DrawPickInspector(ref col) && !DrawExtraInspector(ref col)) DrawSelected(ref col);
             }
             else if (_selected.kind == SelKind.Room || CurrentMode is PaintMode) DrawRoomInspector(ref col);
             else DrawOverview(ref col);
@@ -291,6 +301,8 @@ namespace Backrooms.CustomRooms
             col.Space(4);
 
             DrawChecks(ref col);
+            col.Space(8);
+            DrawRoomTools(ref col);
             col.Space(8);
             if (ImUi.Button(col.Row(40), "PUT IN THE WORLD…", _bp.enabled, "Whether and where this room spawns in the procedural world.")) _modal = Modal.World;
             ImUi.Dimmed(col.Row(24), _bp.enabled ? "Spawns in the world." : "Not in the world yet: only in your library.");
@@ -417,6 +429,7 @@ namespace Backrooms.CustomRooms
                 { PushUndo(); so.sill = so.Door ? Mathf.Min(0.9f, so.top - 0.3f) : 0f; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Place); }
                 if (ImUi.Button(new Rect(br.x + br.width * 0.5f + 3, br.y, br.width * 0.5f - 3, br.height), "TO CEILING", false, "Its top right up to the ceiling."))
                 { PushUndo(); so.top = ceil; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Place); }
+                DrawOpeningLink(ref col, so);
                 if (ImUi.Button(col.Row(), "DELETE  [Del]")) DeleteSelected();
                 col.Space(4);
                 return;
@@ -456,6 +469,14 @@ namespace Backrooms.CustomRooms
                     int cx = Mathf.Clamp(Mathf.FloorToInt(p.x / C), 0, v.width - 1), cz = Mathf.Clamp(Mathf.FloorToInt(p.z / C), 0, v.depth - 1);
                     float height = Slide(col.Row(), "Height (m)", p.size.y, 0.4f, v.RoomAt(cx, cz).ceiling - 0.25f, "0.00", "Clock centre above the floor.");
                     if (Mathf.Abs(height - p.size.y) > 0.001f) { PushUndo(); p.size.y = height; Changed(); }
+                }
+                if (!WallProp(p.kind))
+                {
+                    var cr = col.Row();
+                    if (ImUi.Button(new Rect(cr.x, cr.y, cr.width * 0.5f - 3, cr.height), "PUT ON CEILING", false, "Upside down on the ceiling over where it stands, stuck there."))
+                    { PushUndo(); v.ToCeiling(p); Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Grow); }
+                    if (ImUi.Button(new Rect(cr.center.x + 3, cr.y, cr.width * 0.5f - 3, cr.height), "BACK ON FLOOR", false, "Upright on the floor again."))
+                    { PushUndo(); p.elevation = 0f; p.pitch = 0f; p.roll = 0f; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Drop); }
                 }
                 if (ImUi.Button(col.Row(), "DELETE PROP  [Del]")) DeleteSelected();
                 col.Space(4);
@@ -544,16 +565,16 @@ namespace Backrooms.CustomRooms
             GUI.Label(col.Row(42), "BUILD MODE HELP", ImUi.Title);
             string[] lines =
             {
-                "1 SELECT: click anything to select it; drag to move; drag its handles to size it. Arrows outside the walls grow the room.",
-                "2 BUILD: drag along the grid for walls and half walls; click corners for pillars. Ctrl while drawing erases.",
+                "1 SELECT: click anything; drag to move; drag its handles. A selected wall: drag its arrows to move it, its ends to stretch it.",
+                "2 BUILD: press on a corner and drag for a wall (its length shows); ROOM: drag a box for a walled room. Ctrl erases.",
                 "3 DOORS & WINDOWS: point at a wall and click; drag the sides, top, bottom (sill) or middle.",
-                "4 FURNISH: pick a prop and click the floor (racks and clocks against a wall). Loot spots too.",
-                "5 PAINT: paint cells into rooms (each its own ceiling, walls, floor and lights); click cells for lights.",
-                "Right panel: whatever is selected, or the room as a whole. PUT IN THE WORLD sets where it spawns.",
-                "Alt drags without snapping. R turns a prop. Delete removes. Ctrl+D duplicates. Esc deselects.",
-                "RMB orbit, MMB or Shift+RMB or WASD pan, wheel zoom, Q / E rotate, F frame, Tab views, G grid.",
-                "Ctrl+Z / Ctrl+Y undo / redo. Ctrl+S save. Ctrl+C / Ctrl+V copy and paste a room.",
-                "TEST IN WORLD: play your current edits in the real world (Esc there to come back).",
+                "4 FURNISH: props (and MY MODELS: your .glb / .obj files), loot spots, sounds. Pushed up to a wall it sits flat to it.",
+                "5 PAINT: rooms, CUT AWAY (any-shaped room), lights (select one for its mood), WALL MARKS (stains, notices, switches).",
+                "6 WEIRD: triggers (walk in: lights out, flicker, door slams, sound), linked doors, MESS IT UP. Props: PUT ON CEILING.",
+                "Right-click anything for its menu. Alt: no snapping. R turns. Delete removes. Ctrl+D duplicates. Esc deselects.",
+                "RMB-drag orbit, MMB/WASD pan, wheel zoom, Q/E turn, F frame, Tab views, G grid, H ceiling, M map, V walk.",
+                "Ctrl+Z / Ctrl+Y undo / redo. Ctrl+S save (it also autosaves). Ctrl+C / Ctrl+V copy and paste a room.",
+                "TEST IN WORLD: play your edits in the real world (Esc there to come back). The library shares and imports rooms.",
             };
             foreach (var line in lines) GUI.Label(col.Row(38), line, new GUIStyle(ImUi.Label) { wordWrap = true });
             if (ImUi.Button(new Rect(box.xMax - 170, box.yMax - 62, 146, 40), "CLOSE  [F1]", true)) _showHelp = false;
@@ -574,6 +595,7 @@ namespace Backrooms.CustomRooms
             try
             {
                 RoomLibrary.Save(_bp);
+                DropAutosave(_bp.id); _lastAutosave = null;
                 _dirty = false; BuildSession.Dirty = false;
                 SetStatus(toGame || _bp.enabled ? $"Saved '{_bp.name}'. It will spawn in the next procedural world." : $"Saved '{_bp.name}'. Turn on 'Spawns in the world' (or Save to game) to make it appear in the world.");
             }
@@ -596,6 +618,8 @@ namespace Backrooms.CustomRooms
             if (_modal == Modal.None) return;
             ImUi.Fill(new Rect(0, 0, ImUi.Width, ImUi.Height), new Color(0, 0, 0, 0.55f));
             if (_modal == Modal.World) { DrawWorldDialog(); return; }
+            if (_modal == Modal.Import) { DrawImportDialog(); return; }
+            if (_modal == Modal.Templates) { DrawTemplateDialog(); return; }
             var box = new Rect(ImUi.Width * 0.5f - 250, ImUi.Height * 0.5f - 110, 500, 220);
             ImUi.PanelBox(box);
             string title = "", body = "";
@@ -612,7 +636,7 @@ namespace Backrooms.CustomRooms
             if (_modal == Modal.Back)
             {
                 if (ImUi.Button(new Rect(box.x + 24, by, bw, 40), "SAVE", true)) { _modal = Modal.None; DoSave(false); ShowLibrary(); }
-                if (ImUi.Button(new Rect(box.x + 24 + bw + 8, by, bw, 40), "DON'T SAVE")) { _modal = Modal.None; _dirty = false; BuildSession.Dirty = false; ShowLibrary(); }
+                if (ImUi.Button(new Rect(box.x + 24 + bw + 8, by, bw, 40), "DON'T SAVE")) { _modal = Modal.None; DropAutosave(_bp.id); _dirty = false; BuildSession.Dirty = false; ShowLibrary(); }
                 if (ImUi.Button(new Rect(box.xMax - 24 - bw, by, bw, 40), "CANCEL")) _modal = Modal.None;
                 return;
             }
@@ -621,6 +645,7 @@ namespace Backrooms.CustomRooms
                 var m = _modal; _modal = Modal.None;
                 if (m == Modal.Discard)
                 {
+                    DropAutosave(_bp.id);
                     var saved = RoomLibrary.Get(_bp.id);
                     if (saved != null) { _bp = saved.Clone(); BuildSession.Editing = _bp; _vi = Mathf.Clamp(_vi, 0, _bp.variants.Count - 1); _undo.Clear(); _redo.Clear(); _selected = Selection.None; _dirty = false; BuildSession.Dirty = false; _needRebuild = true; }
                     else { _bp = RoomBlueprint.CreateNew("New room"); _bp.id = RoomLibrary.NewId(); _vi = 0; BuildSession.Editing = _bp; _dirty = true; _needRebuild = true; }

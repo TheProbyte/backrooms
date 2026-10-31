@@ -88,7 +88,8 @@ namespace Backrooms.CustomRooms
 
         // ---------------- Rooms ----------------
 
-        /// <summary>One RoomSpec per rectangle of cells of each blueprint room (a room of any shape is covered by rectangles).</summary>
+        /// <summary>One RoomSpec per rectangle of cells of each blueprint room (a room of any shape is covered by rectangles);
+        /// cut-away cells (an L-shaped room's notch) become hallway the world has (<see cref="Landmarks.RoomSpec.outside"/>).</summary>
         public static void Rooms(in LandmarkPlacement p, List<Landmarks.RoomSpec> list)
         {
             if (!TryResolve(p, out var bp, out var v, out var xf)) return;
@@ -111,16 +112,42 @@ namespace Backrooms.CustomRooms
 
                 var a = xf.Cell(x, z); var b = xf.Cell(x + w - 1, z + h - 1);
                 int x0 = Mathf.Min(a.x, b.x), z0 = Mathf.Min(a.y, b.y), x1 = Mathf.Max(a.x, b.x), z1 = Mathf.Max(a.y, b.y);
+                var rect = new RectInt(p.rect.x + x0, p.rect.y + z0, x1 - x0 + 1, z1 - z0 + 1);
+                if (room < 0)
+                {
+                    list.Add(new Landmarks.RoomSpec { rect = rect, kind = RoomKind.Hallway, ceiling = OfficeBiome.CeilingHeight, lights = LightMode.AllOn, outside = true });
+                    continue;
+                }
                 var rs = v.rooms[Mathf.Clamp(room, 0, v.rooms.Count - 1)];
                 var kind = rs.kind == RoomKind.Crawl ? RoomKind.Office : rs.kind;
                 list.Add(new Landmarks.RoomSpec
                 {
-                    rect = new RectInt(p.rect.x + x0, p.rect.y + z0, x1 - x0 + 1, z1 - z0 + 1),
+                    rect = rect,
                     kind = kind, ceiling = Mathf.Max(OfficeBiome.CeilingHeight, rs.ceiling), painted = rs.painted || rs.ceiling > OfficeBiome.CeilingHeight + 0.01f,
                     lights = rs.lights, noDoors = true,     // doors come from the blueprint, never at random
                     wallFinish = rs.wallFinish, floorFinish = rs.floorFinish,
                 });
             }
+        }
+
+        /// <summary>The placed room's cells (layout coordinates): those of the room, and the cut-away ones.</summary>
+        static void Cells(RoomVariant v, Xf xf, Vector2Int origin, HashSet<Vector2Int> inside, HashSet<Vector2Int> notch)
+        {
+            for (int z = 0; z < v.depth; z++)
+            for (int x = 0; x < v.width; x++)
+                (v.Outside(x, z) ? notch : inside).Add(xf.Cell(x, z) + origin);
+        }
+
+        /// <summary>An opening as a hole in the placed room's wall line (layout coordinates).</summary>
+        public static WallCutout ToCutout(OpeningDef o, Xf xf, Vector2Int origin)
+        {
+            Vector2 pa = o.vertical ? new Vector2(o.line * C, o.from) : new Vector2(o.from, o.line * C);
+            Vector2 pb = o.vertical ? new Vector2(o.line * C, o.to) : new Vector2(o.to, o.line * C);
+            pa = xf.Metres(pa.x, pa.y) + (Vector2)origin * C; pb = xf.Metres(pb.x, pb.y) + (Vector2)origin * C;
+            bool vertical = Mathf.Abs(pa.x - pb.x) < 0.001f;
+            int line = Mathf.RoundToInt((vertical ? pa.x : pa.y) / C);
+            float from = Mathf.Min(vertical ? pa.y : pa.x, vertical ? pb.y : pb.x), to = Mathf.Max(vertical ? pa.y : pa.x, vertical ? pb.y : pb.x);
+            return new WallCutout { vertical = vertical, line = line, from = from, to = to, sill = o.sill, top = o.top, arch = o.arch };
         }
 
         // ---------------- Edges ----------------
@@ -133,20 +160,33 @@ namespace Backrooms.CustomRooms
             var origin = new Vector2Int(rect.x, rect.y);
             int exits = 0;
             var fallback = new List<(int x, int z, bool vertical)>();
+            var inside = new HashSet<Vector2Int>(); var notch = new HashSet<Vector2Int>();
+            Cells(v, xf, origin, inside, notch);
+            bool Walkable(int x, int z) => L.InChunk(x, z) && L.RoomAt(x, z).Walkable && !L.RoomAt(x, z).custom;
 
-            void Apply(Vector2Int a, Vector2Int b, int code, bool perimeter)
+            void Apply(Vector2Int a, Vector2Int b, int code)
             {
                 a += origin; b += origin;
                 bool vertical = a.x == b.x;
                 int line = vertical ? a.x : a.y, along = vertical ? Mathf.Min(a.y, b.y) : Mathf.Min(a.x, b.x);
+                var c0 = vertical ? new Vector2Int(line - 1, along) : new Vector2Int(along, line - 1);
+                var c1 = vertical ? new Vector2Int(line, along) : new Vector2Int(along, line);
+                bool in0 = inside.Contains(c0), in1 = inside.Contains(c1);
                 int kind = EdgeCode.Kind(code);
-                if (perimeter)
+                if (!in0 && !in1)
                 {
-                    // Cells on both sides: this one, and the neighbour that must be walkable and inside the district.
-                    int ix = vertical ? (line == rect.x ? line : line - 1) : along, iz = vertical ? along : (line == rect.y ? line : line - 1);
-                    int ox = vertical ? (line == rect.x ? line - 1 : line) : along, oz = vertical ? along : (line == rect.y ? line - 1 : line);
+                    // The notch: one open space with the world round it.
+                    bool n0 = notch.Contains(c0), n1 = notch.Contains(c1);
+                    if (n0 && n1) Set(L, vertical, line, along, EdgeKind.Open, false);
+                    else if ((n0 && Walkable(c1.x, c1.y)) || (n1 && Walkable(c0.x, c0.y))) Set(L, vertical, line, along, EdgeKind.Open, false);
+                    return;
+                }
+                if (in0 != in1)
+                {
+                    // The room's edge (its outer line, or onto the notch): a wall, or a way out if there is somewhere to go.
+                    var ic = in0 ? c0 : c1; var oc = in0 ? c1 : c0;
                     bool wantsOut = kind == EdgeCode.Tall || kind == EdgeCode.Header;
-                    bool canOut = L.InChunk(ox, oz) && L.RoomAt(ox, oz).Walkable && !L.RoomAt(ox, oz).custom && L.InChunk(ix, iz);
+                    bool canOut = Walkable(oc.x, oc.y) && L.InChunk(ic.x, ic.y);
                     if (!wantsOut || !canOut)
                     {
                         Set(L, vertical, line, along, EdgeKind.Wall, false);
@@ -171,39 +211,35 @@ namespace Backrooms.CustomRooms
 
             for (int x = 0; x <= v.width; x++)
             for (int z = 0; z < v.depth; z++)
-                Apply(xf.Vertex(x, z), xf.Vertex(x, z + 1), v.V(x, z), x == 0 || x == v.width);
+                Apply(xf.Vertex(x, z), xf.Vertex(x, z + 1), v.V(x, z));
             for (int x = 0; x < v.width; x++)
             for (int z = 0; z <= v.depth; z++)
-                Apply(xf.Vertex(x, z), xf.Vertex(x + 1, z), v.H(x, z), z == 0 || z == v.depth);
+                Apply(xf.Vertex(x, z), xf.Vertex(x + 1, z), v.H(x, z));
 
             // Doors, arches and windows of their own size: holes in the wall lines; the edges under a doorway open.
             foreach (var o in v.openings)
             {
-                Vector2 pa = o.vertical ? new Vector2(o.line * C, o.from) : new Vector2(o.from, o.line * C);
-                Vector2 pb = o.vertical ? new Vector2(o.line * C, o.to) : new Vector2(o.to, o.line * C);
-                pa = xf.Metres(pa.x, pa.y) + (Vector2)origin * C; pb = xf.Metres(pb.x, pb.y) + (Vector2)origin * C;
-                bool vertical = Mathf.Abs(pa.x - pb.x) < 0.001f;
-                int line = Mathf.RoundToInt((vertical ? pa.x : pa.y) / C);
-                float from = Mathf.Min(vertical ? pa.y : pa.x, vertical ? pb.y : pb.x), to = Mathf.Max(vertical ? pa.y : pa.x, vertical ? pb.y : pb.x);
+                var cut = ToCutout(o, xf, origin);
+                bool vertical = cut.vertical; int line = cut.line; float from = cut.from, to = cut.to;
                 int a0 = Mathf.FloorToInt(from / C), a1 = Mathf.CeilToInt(to / C) - 1;
                 if (o.Door)
                 {
-                    if (v.PerimeterLine(o.vertical, o.line))
+                    if (v.LeadsOut(o))
                     {
-                        // An entrance: the edge it covers most must lead onto somewhere walkable, as for a doorway.
+                        // A way out: the edge it covers most must lead onto somewhere walkable, as for a doorway.
                         int best = a0; float most = -1f;
                         for (int a = a0; a <= a1; a++) { float cover = Mathf.Min(to, (a + 1) * C) - Mathf.Max(from, a * C); if (cover > most) { most = cover; best = a; } }
-                        bool west = vertical ? line == rect.x : line == rect.y;
-                        int ix = vertical ? (west ? line : line - 1) : best, iz = vertical ? best : (west ? line : line - 1);
-                        int ox = vertical ? (west ? line - 1 : line) : best, oz = vertical ? best : (west ? line - 1 : line);
-                        bool canOut = L.InChunk(ox, oz) && L.RoomAt(ox, oz).Walkable && !L.RoomAt(ox, oz).custom && L.InChunk(ix, iz);
-                        if (!canOut) continue;              // the wall stays whole
+                        var c0 = vertical ? new Vector2Int(line - 1, best) : new Vector2Int(best, line - 1);
+                        var c1 = vertical ? new Vector2Int(line, best) : new Vector2Int(best, line);
+                        bool in0 = inside.Contains(c0);
+                        var ic = in0 ? c0 : c1; var oc = in0 ? c1 : c0;
+                        if (!(Walkable(oc.x, oc.y) && L.InChunk(ic.x, ic.y))) continue;              // the wall stays whole
                         exits++;
                     }
                     for (int a = a0; a <= a1; a++)
                         if (Mathf.Min(to, (a + 1) * C) - Mathf.Max(from, a * C) > 0.01f) Set(L, vertical, line, a, EdgeKind.Door, false);
                 }
-                L.cutouts.Add(new WallCutout { vertical = vertical, line = line, from = from, to = to, sill = o.sill, top = o.top, arch = o.arch });
+                L.cutouts.Add(cut);
             }
 
             if (exits == 0 && fallback.Count > 0)
@@ -274,7 +310,7 @@ namespace Backrooms.CustomRooms
                 var c = xf.Cell(f.x, f.z) + origin;
                 if (!L.InChunk(c.x, c.y)) continue;
                 var room = L.RoomAt(c.x, c.y);
-                L.fixtures.Add(new Fixture { cell = c, on = f.on, roomColor = room.id, dome = room.Tall, height = room.ceiling, faulty = f.on && f.faulty });
+                L.fixtures.Add(new Fixture { cell = c, on = f.on, roomColor = room.id, dome = room.Tall, height = room.ceiling, faulty = f.on && f.faulty, mood = (byte)Mathf.Clamp(f.mood, 0, 5), buzz = f.buzz });
             }
             foreach (var pl in v.pillars)
             {
@@ -291,7 +327,7 @@ namespace Backrooms.CustomRooms
                 var pos = m + new Vector2(origin.x * C, origin.y * C);
                 int cx = Mathf.Clamp(Mathf.FloorToInt(pos.x / C), 0, L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(pos.y / C), 0, L.N - 1);
                 L.props.Add(new Prop { kind = d.kind, position = pos, yaw = xf.Yaw(d.yaw), size = d.size, variant = d.variant, lit = d.lit, roomColor = L.roomOf[cx, cz],
-                                       elevation = d.elevation, pitch = d.pitch, roll = d.roll, scale = d.scale, pinned = d.pinned, style = d.style });
+                                       elevation = d.elevation, pitch = d.pitch, roll = d.roll, scale = d.scale, pinned = d.pinned, style = d.style, model = d.model });
             }
             for (int i = 0; i < v.loot.Count; i++)
             {
@@ -302,6 +338,79 @@ namespace Backrooms.CustomRooms
                 int cx = Mathf.Clamp(Mathf.FloorToInt(pos.x / C), 0, L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(pos.y / C), 0, L.N - 1);
                 // For now loot is a loose cardboard box; the item name travels in the blueprint for the systems that will use it.
                 L.props.Add(new Prop { kind = PropKind.Box, position = pos, yaw = (float)(rng.NextDouble() * 360.0), size = new Vector3(0.5f, 0.38f, 0.4f), variant = rng.Next(1 << 16), roomColor = L.roomOf[cx, cz] });
+            }
+            Extras(L, p, v, xf, origin);
+        }
+
+        /// <summary>Build mode's Backrooms touches: marks on the walls (outlets and switches as the world's own plates), sounds,
+        /// triggers and linked doorways, turned with the room.</summary>
+        static void Extras(OfficeLayout L, in LandmarkPlacement p, RoomVariant v, Xf xf, Vector2Int origin)
+        {
+            var o2 = (Vector2)origin * C;
+            foreach (var d in v.decals)
+            {
+                // The point on its face and its normal, turned with the room.
+                var at = d.vertical ? new Vector2(d.line * C, d.along) : new Vector2(d.along, d.line * C);
+                var nrm = d.vertical ? new Vector2(d.side, 0f) : new Vector2(0f, d.side);
+                var pm = xf.Metres(at.x, at.y) + o2;
+                var dir = xf.Metres(at.x + nrm.x * 0.1f, at.y + nrm.y * 0.1f) + o2 - pm;
+                bool vertical = Mathf.Abs(dir.x) > Mathf.Abs(dir.y);
+                int line = Mathf.RoundToInt((vertical ? pm.x : pm.y) / C), side = (vertical ? dir.x : dir.y) > 0f ? 1 : -1;
+                float along = vertical ? pm.y : pm.x;
+                if (d.kind == DecalKind.Outlet || d.kind == DecalKind.Switch)
+                {
+                    int ac = Mathf.FloorToInt(along / C);
+                    var cell = vertical ? new Vector2Int(side > 0 ? line : line - 1, ac) : new Vector2Int(ac, side > 0 ? line : line - 1);
+                    if (!L.InChunk(cell.x, cell.y)) continue;
+                    int wallSide = vertical ? (side > 0 ? 0 : 1) : (side > 0 ? 2 : 3);
+                    L.plates.Add(new WallPlate { cell = cell, side = wallSide, t = Mathf.Clamp(along / C - ac, 0.1f, 0.9f), height = d.kind == DecalKind.Switch ? Mathf.Clamp(d.height, 0.9f, 1.5f) : Mathf.Clamp(d.height, 0.2f, 1.2f),
+                                                 isSwitch = d.kind == DecalKind.Switch, roomColor = L.roomOf[cell.x, cell.y], live = true });
+                    continue;
+                }
+                L.decals.Add(new WallDecal { vertical = vertical, line = line, side = side, along = along, height = d.height, size = d.size, kind = (int)d.kind, seed = d.seed + p.seed });
+            }
+            foreach (var s in v.sounds)
+            {
+                var m = xf.Metres(s.x, s.z) + o2;
+                L.sounds.Add(new RoomSound { position = new Vector3(m.x, s.y, m.y), kind = (int)s.kind, volume = s.volume, range = s.range });
+            }
+            for (int i = 0; i < v.triggers.Count; i++)
+            {
+                var t = v.triggers[i];
+                ulong id = (ulong)(uint)DistrictGenerator.Hash(p.seed, p.district.x, p.district.y, 0x7716 + i) | ((ulong)(uint)i << 32);
+                var slam = t.action == TriggerAction.DoorSlam ? v.openings.Find(o => o.id == t.door && o.Door) : null;
+                bool hasDoor = slam != null;
+                var door = hasDoor ? ToCutout(slam, xf, origin) : default;
+                bool first = true;
+                // The area's cells as rectangles (an area of any shape), each its own zone with the trigger's id.
+                var done = new bool[v.width * v.depth];
+                for (int z = 0; z < v.depth; z++)
+                for (int x = 0; x < v.width; x++)
+                {
+                    if (done[z * v.width + x] || v.RoomOf(x, z) != t.area) continue;
+                    int w = 1;
+                    while (x + w < v.width && !done[z * v.width + x + w] && v.RoomOf(x + w, z) == t.area) w++;
+                    int h = 1;
+                    for (; z + h < v.depth; h++)
+                    {
+                        bool row = true;
+                        for (int k = 0; k < w && row; k++) row = !done[(z + h) * v.width + x + k] && v.RoomOf(x + k, z + h) == t.area;
+                        if (!row) break;
+                    }
+                    for (int j = 0; j < h; j++) for (int k = 0; k < w; k++) done[(z + j) * v.width + x + k] = true;
+                    var a = xf.Cell(x, z) + origin; var b = xf.Cell(x + w - 1, z + h - 1) + origin;
+                    var cells = new RectInt(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y), Mathf.Abs(a.x - b.x) + 1, Mathf.Abs(a.y - b.y) + 1);
+                    L.triggers.Add(new RoomTrigger { cells = cells, id = id, action = (int)t.action, sound = (int)t.sound, once = t.once, delay = t.delay, hasDoor = hasDoor && first, door = door });
+                    first = false;
+                }
+            }
+            foreach (var o in v.openings)
+            {
+                if (o.link == 0 || !o.Door) continue;
+                var other = v.openings.Find(q => q.id == o.link);
+                if (other == null || !other.Door || (other.link == o.id && other.id < o.id)) continue;      // each pair once
+                L.links.Add(new DoorLink { a = ToCutout(o, xf, origin), b = ToCutout(other, xf, origin), flip = o.flip || other.flip,
+                                           id = (ulong)(uint)DistrictGenerator.Hash(p.seed, o.id, other.id, 0x11D) });
             }
         }
     }

@@ -47,6 +47,37 @@ Ctrl+D duplicates the selected prop, loot spot, door or window. Room files are f
 doorways become doors of their own size when it is loaded. Copy and paste of a room carries its doors and windows and
 its props' lift, tip, size and physics-off.
 
+**Round 18** (the owner's list, all of it):
+
+- *Ceiling hidden fully* (`BuilderApp.Ceiling.cs`): everything above a cut just under the lowest ceiling goes: renderers
+  lying wholly above it are switched off and the world's wall shader clips the rest (its portal clip plane, set only while
+  the builder's camera draws). Once the world had run, the chunk builder used normal-mapped and stained ceiling copies and
+  built the space above the tiles (joists, deck, ducts, insulation), which the old material check missed. CEILING [H].
+- *Walls drawn point to point* (`BuilderApp.ModeBuild.cs`): press on a corner, drag, let go; length shown; ROOM draws a
+  box with walls round it and its cells a new room. *Wall runs moved and stretched* (`BuilderApp.Handles.cs`): a selected
+  inside run has arrows (move it to another line: its doors go with it, the swept cells join the room it left) and end
+  knobs (longer or shorter). `RoomVariant.DrawLine / DrawRoom / MoveRun / StretchRun` (`RoomBlueprint.Edit.cs`).
+- *Any-shaped rooms*: PAINT > CUT AWAY makes cells `-1` (outside); walls close round the rest (`FixOutsideEdges`); the
+  stamp gives the cut-away cells to the world as hallway (`RoomSpec.outside`), joined to what is round them; a door onto
+  them is a way out.
+- *Feel* (`BuilderApp.Assist.cs`): what the pointer is over is outlined; a selected prop shows its box and its distance to
+  the walls round it; the room's size is shown; a prop pushed within 22 cm of a wall sits flat to it (turned square if
+  nearly so) and lines up with a neighbour's middle (guides show; Alt: off); a small map (M) you click to look there; a
+  right-click menu on anything (a quick right click; a right drag still orbits).
+- *Safety and sharing* (`BuilderApp.Library.cs`): an autosave 3 s after changes (`CustomRooms/Autosave`), offered back in
+  the library; templates (`RoomTemplates.cs`); tags and a search; SHARE writes `SharedRooms/<name>.room.json` and puts a
+  share code (`SRROOM1:` + gzip + base 64) on the clipboard; IMPORT reads either.
+- *Backrooms touches* (`BuilderApp.Weird.cs`, the world side `OfficeChunkBuilder.Custom.cs`, `RoomEffects.cs`): WALL MARKS
+  (water stain, damp, mould, peeling paper, notice, handprints, scorch: the wear overlay and the wear's own peel; outlet and
+  switch: the world's own plates, the switch works); light moods (the aged-tube looks: dim, sickly, yellowed, cold, pink)
+  and a buzz; SOUNDS (hum, buzz, drip, static, knocking, air, made in code); WEIRD (6): triggers on a room (lights out,
+  flicker, a door hung open slams, a sound; once or every time), linked doors (walk through one, come out of the other:
+  `LinkedDoorway`, the player's `Warp`), MESS IT UP, PUT ON CEILING. In the builder's WALK the walker sets them off.
+- *Faster starts*: FURNISH FOR ME (`DistrictGenerator.DressLikeTheWorld`), the rack and clock pictured (built by the
+  chunk builder on a little stage).
+- *Your own models* (`CustomModels.cs`): .glb and .obj (+ .mtl, textures) from `CustomModels/`, read by our own small
+  reader; MODELS in the catalog; placed as static props (`PropKind.Custom`, `Prop.model`).
+
 **Everything clickable** (step B, `BuilderApp.Picking.cs`): in SELECT a click takes, nearest first, a prop or loot spot,
 a pillar, a ceiling light (on the ceiling in SOLID, its marker on the floor in the other views), a door or window (and
 slides it), a run of wall (its inspector: WALL / HALF / RAILING, + DOOR HERE, + WINDOW HERE, REMOVE), else the room whose

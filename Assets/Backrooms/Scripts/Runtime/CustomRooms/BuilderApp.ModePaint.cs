@@ -14,15 +14,36 @@ namespace Backrooms.CustomRooms
             public PaintMode(BuilderApp app) : base(app) { }
             public override string Name => "PAINT";
             public override int Icon => 5;
-            public override string Tip => "Rooms (ceiling, walls, floor, lights) and ceiling lights.";
-            public override BuilderTool[] Tools => new[] { BuilderTool.Floor, BuilderTool.Light };
-            public override string ToolName(BuilderTool t) => t == BuilderTool.Floor ? "ROOMS" : "LIGHTS";
-            public override string ToolTip(BuilderTool t) => t == BuilderTool.Floor ? "Paint cells into a room." : "Click a ceiling cell: light on, dead, none.";
+            public override string Tip => "Rooms, the room's shape, ceiling lights and marks on the walls.";
+            public override BuilderTool[] Tools => new[] { BuilderTool.Floor, BuilderTool.Outside, BuilderTool.Light, BuilderTool.Decal };
+            public override string ToolName(BuilderTool t) => t == BuilderTool.Floor ? "ROOMS" : t == BuilderTool.Outside ? "CUT AWAY" : t == BuilderTool.Light ? "LIGHTS" : "WALL MARKS";
+            public override string ToolTip(BuilderTool t) => t == BuilderTool.Floor ? "Paint cells into a room."
+                : t == BuilderTool.Outside ? "Paint cells out of the room (an L-shaped or any-shaped room): walls go round what is left; the world has the rest. Ctrl gives cells back."
+                : t == BuilderTool.Light ? "Click a ceiling cell: light on, dead, none. Click a light in SELECT for its mood."
+                : "Stains, damp, mould, peeling paper, notices, handprints, scorch marks, outlets and switches: click a wall.";
             public override void Options(ref ImUi.Column col)
             {
                 if (app._tool == BuilderTool.Light)
                 {
-                    ImUi.Dimmed(col.Row(60), "Click a cell to cycle its ceiling light: working, dead, none. A room's light mode is on the right.");
+                    ImUi.Dimmed(col.Row(80), "Click a cell to cycle its ceiling light: working, dead, none. Select a light (SELECT) for its mood (dim, sickly, yellowed, cold, pink) and buzz.");
+                    return;
+                }
+                if (app._tool == BuilderTool.Outside)
+                {
+                    ImUi.Dimmed(col.Row(110), "Drag over cells to cut them away: the room loses them and walls close round what is left (an L, a U, any shape). The cut-away part joins the world's hallways. Hold Ctrl to give cells back.");
+                    return;
+                }
+                if (app._tool == BuilderTool.Decal)
+                {
+                    ImUi.Header(col.Row(24), "Mark");
+                    for (int i = 0; i < DecalNames.Length; i += 2)
+                    {
+                        var r = col.Row(28);
+                        for (int k = 0; k < 2 && i + k < DecalNames.Length; k++)
+                            if (ImUi.Button(new Rect(r.x + k * r.width * 0.5f, r.y, r.width * 0.5f - 3, r.height), DecalNames[i + k], (int)app._decalKind == i + k)) app._decalKind = (DecalKind)(i + k);
+                    }
+                    if (app._decalKind != DecalKind.Outlet && app._decalKind != DecalKind.Switch) app._decalSize = ImUi.Slider(col.Row(), "Size (m)", app._decalSize, 0.08f, 1.2f, "0.00");
+                    ImUi.Dimmed(col.Row(76), app._decalKind == DecalKind.Switch ? "A working light switch: it puts this room's lights out." : app._decalKind == DecalKind.Outlet ? "A live outlet: lamps plugged in there light." : "Click a wall from inside the room. Click a mark to select it; drag to move it.");
                     return;
                 }
                 var v = app.V;
@@ -42,6 +63,8 @@ namespace Backrooms.CustomRooms
             }
             public override string Hint() =>
                 app._tool == BuilderTool.Light ? "Click a cell: light on, dead, none."
+                : app._tool == BuilderTool.Outside ? "Drag over cells to cut them away from the room. Ctrl gives them back."
+                : app._tool == BuilderTool.Decal ? $"Click a wall to put a {DecalNames[(int)app._decalKind].ToLowerInvariant()} there; drag to place it."
                 : $"Drag over the floor to paint cells into '{app.V.rooms[Mathf.Clamp(app._activeRoom, 0, app.V.rooms.Count - 1)].name}'. Its settings are on the right.";
         }
 
@@ -51,8 +74,17 @@ namespace Backrooms.CustomRooms
             var v = V;
             int idx = _hoverCell.y * v.width + _hoverCell.x;
             _activeRoom = Mathf.Clamp(_activeRoom, 0, v.rooms.Count - 1);
-            if (v.cellRoom[idx] == _activeRoom) return;
-            v.cellRoom[idx] = _activeRoom;
+            var kb = Keyboard.current;
+            bool giveBack = kb != null && (kb.leftCtrlKey.isPressed || kb.rightCtrlKey.isPressed);
+            int want = _tool == BuilderTool.Outside && !giveBack ? -1 : _activeRoom;
+            if (v.cellRoom[idx] == want) return;
+            if (want < 0)
+            {
+                int left = 0; foreach (int c in v.cellRoom) if (c >= 0) left++;
+                if (left <= 1) { SetStatus("A room needs at least one cell."); return; }
+            }
+            v.cellRoom[idx] = want;
+            v.FixOutsideEdges();
             BuilderSounds.Play(BuilderSounds.Sfx.Tick, 0.9f + 0.2f * Random.value);
             _strokeChanged = true; _needRebuild = true;
         }

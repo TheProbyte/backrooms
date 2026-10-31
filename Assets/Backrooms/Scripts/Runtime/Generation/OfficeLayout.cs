@@ -123,6 +123,10 @@ namespace Backrooms.Generation
         public bool strip;            // warehouse: cool-white twin-tube batten hung on chains
         public float height;          // ceiling height at the fixture (above this storey's floor)
         public bool faulty;           // tube that occasionally stutters
+        /// <summary>Build mode's light moods: 0 as made, 1 dim, 2 sickly green, 3 yellowed, 4 cold blue, 5 pink.</summary>
+        public byte mood;
+        /// <summary>Build mode: the fitting buzzes (a sound at the light).</summary>
+        public bool buzz;
     }
 
     public struct Pillar { public Vector2Int vertex; public float size; public int roomColor; }
@@ -208,6 +212,8 @@ namespace Backrooms.Generation
         // The good rooms' furniture (SpecialRooms; built in OfficeChunkBuilder.Special): position is the middle of the foot,
         // yaw turns the front (local +Z) toward the room, size is width x height x depth.
         Counter, Fridge, Shelving, Desk, Monitor, BreakerPanel, MopSink, Microwave, DiningTable, DeskLamp,
+        /// <summary>Build mode: a model the player brought in (.glb / .obj, <see cref="Prop.model"/>), static scenery.</summary>
+        Custom,
     }
 
     /// <summary>Level 0's kinds of room (DistrictGenerator.StyleOf): the backrooms (wallpaper), living rooms (painted,
@@ -273,6 +279,8 @@ namespace Backrooms.Generation
         /// for the floral sofa); 0 lets the dice choose as for the generator's own.</summary>
         public int style;
         public const int FloralSofaStyle = 100;
+        /// <summary>A model the player brought in (<see cref="PropKind.Custom"/>): its file name in CustomModels.</summary>
+        public string model;
     }
 
     /// <summary>
@@ -288,6 +296,45 @@ namespace Backrooms.Generation
         public float from, to;        // along the line, layout-local metres
         public float sill, top;       // metres above the floor (sill 0: a doorway)
         public bool arch;             // round-topped: a half circle across its width up to top
+    }
+
+    /// <summary>Build mode: a mark painted on one face of a wall line (a water stain, a damp patch, mould, peeling paper, a
+    /// faded notice, an outlet or a switch). side: +1 the face toward +X / +Z, -1 the other.</summary>
+    public struct WallDecal
+    {
+        public bool vertical;
+        public int line, side, kind, seed;
+        public float along, height, size;      // layout-local metres along the line; centre height; half size
+    }
+
+    /// <summary>Build mode: a sound that plays there all the time (a hum, a buzz, a drip...). Layout-local metres.</summary>
+    public struct RoomSound
+    {
+        public Vector3 position;
+        public int kind;
+        public float volume, range;
+    }
+
+    /// <summary>Build mode: when the player walks into these cells, something happens (lights cut out, flicker, a door slams,
+    /// a sound). cells: layout-local. A door to slam is a cutout (its hole gets a door leaf that swings shut).</summary>
+    public struct RoomTrigger
+    {
+        public RectInt cells;
+        public ulong id;
+        public int action, sound;
+        public bool once;
+        public float delay;
+        public bool hasDoor;
+        public WallCutout door;
+    }
+
+    /// <summary>Build mode: two doorways linked (walk through one and you come out of the other). Layout-local; built by the
+    /// chunk door a is in.</summary>
+    public struct DoorLink
+    {
+        public WallCutout a, b;
+        public bool flip;
+        public ulong id;
     }
 
     /// <summary>
@@ -323,6 +370,12 @@ namespace Backrooms.Generation
         public readonly List<CrawlPortal> portals = new List<CrawlPortal>();
         public readonly List<NoclipDoor> noclipDoors = new List<NoclipDoor>();
         public readonly List<WallCutout> cutouts = new List<WallCutout>();
+        public readonly List<WallDecal> decals = new List<WallDecal>();
+        public readonly List<RoomSound> sounds = new List<RoomSound>();
+        public readonly List<RoomTrigger> triggers = new List<RoomTrigger>();
+        public readonly List<DoorLink> links = new List<DoorLink>();
+        /// <summary>Cells of a custom room's plan that are not part of it (an L-shaped room's notch): given back to the world.</summary>
+        public readonly List<RectInt> outsideCells = new List<RectInt>();
         /// <summary>Biome rules of this chunk (blended across biome transitions). District plans use <see cref="RulesAt"/>.</summary>
         public BiomeRules rules = BiomeRules.Offices();
         public string biomeName = "Offices";
