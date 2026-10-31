@@ -28,9 +28,29 @@ builder, so the preview is what the world will generate.
 
 **Screens:** the room library (cards with plan thumbnails: edit, spawn on/off, copy, delete) and the editor.
 
-**Tools** (hotkeys 1-0): select, wall, opening (doorway, arch, tall opening, open gap), half wall, erase, floor areas,
-pillar, light, prop, loot. Drag along grid lines for long walls and wide openings. Openings in the outer wall are the
+**Tools** (hotkeys 1-0): select, wall, opening (door, double door, arch, window, tall opening, open gap), half wall,
+erase, floor areas, pillar, light, prop, loot. Drag along grid lines for long walls. Doors in the outer wall are the
 room's entrances and exits.
+
+**Hands-on editing** (round 16, owner: "more like a Sims builder or Tiny Glade"; `BuilderApp.Handles.cs`):
+- **Doors, arches and windows of any size.** With OPENING, point at a wall and click: it goes where you point (the
+  preview is white where it fits, red where it does not: it must sit on solid wall, clear of other openings). Then drag
+  its handles: the sides to widen it, the top to make it taller, the bottom up to give it a sill (a window) or down to
+  the floor (a door), the middle to slide it along the wall. Click a door or window with SELECT and drag to slide it.
+  The right panel has its width, top, sill, a round top (arch), MAKE WINDOW / MAKE DOOR and TO CEILING. A grid doorway
+  (from an older room) becomes one of these when the room is opened. OPEN GAP still takes the wall between cells away.
+- **The room's size by its walls.** In SELECT, with nothing selected, an arrow stands outside each outer wall: drag it
+  out or in a cell at a time. Growing west or south keeps everything where it was in the room; an outer wall keeps its
+  doors and windows.
+- **Props, freely.** Select a prop: drag it (it glides, 5 cm steps); the green handle lifts it (or sinks it into the
+  floor), the ring turns it (15 degree steps, Shift 1), the orange corner handle sizes it. The panel adds tip forward and
+  sideways, and **Physics off: stuck in place**: such a prop never moves and cannot be taken (the hand: "IT WON'T BUDGE"),
+  so it can sit half inside a wall, float, or lie tipped over. A stuck prop may be dragged anywhere, into walls and out
+  of the room. (With physics on, a lifted or tipped prop drops when anything touches it.)
+- **Feel.** Everything snaps in small steps and ticks as it does (the tick's pitch follows the size); Alt drags with no
+  snapping; ends snap onto the posts, heights to 0.9, 2.1 m and the ceiling. Sizes show next to what you drag. Little
+  sounds, made in code (`BuilderSounds.cs`): ticks, a knock for placing, pops for picking up and putting down, a whoosh
+  for deleting, knocks for each cell a room grows or shrinks, a buzz when it does not fit, a tap for each wall.
 
 **Views** (Tab): solid, room (ceiling off), cutout (walls between you and the room are cut down), walls down, top.
 
@@ -81,8 +101,10 @@ previews. No match is reported rather than placing an ungenerated room. Moved ru
 
 ## Limits of this first version
 
-- Walls are on the 1.2 m cell grid, full height or half height. Free-angle walls, custom wall heights and window
-  openings are not supported by the world's plan format yet.
+- Walls are on the 1.2 m cell grid, full height or half height. Free-angle walls and custom wall heights are not
+  supported by the world's plan format yet. Doors and windows are any size (`WallCutout` in the plan,
+  `OfficeChunkBuilder.Cutouts.cs`: the wall round the hole, its reveals, colliders, and the posts it spans cut).
+- Copy/paste of areas does not carry doors and windows of their own size yet.
 - Materials: existing finishes per area; individual wall faces and free-form texture imports are not supported.
 - Loot spots are stored with an item name, chance and note, and spawn as loose cardboard boxes until the game has loot.
 - Rooms only on the ground storey. Up to 24 x 24 cells.

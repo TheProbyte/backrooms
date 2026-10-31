@@ -15,6 +15,34 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-30 - Build mode, hands on: doors and windows of any size, drag handles, stuck props, sounds
+
+- Owner: the room builder more like a Sims builder or Tiny Glade: drag doors wider and taller, resize other things, a
+  smooth drag with nice sounds, full control; things placed in walls with physics off, stuck the Backrooms way.
+- The world builds holes of any size in walls now (`WallCutout` in `OfficeLayout`, sliced per chunk, in the digest):
+  `OfficeChunkBuilder.Cutouts.cs` builds each edge a hole reaches as the wall round it (full height beside, above, below
+  a window's sill; an arch's head in 4 cm strips), the reveals (half the thickness from each face), colliders, and the
+  posts it spans cut to above and below it (an arch's crown follows the curve across the post). The edges under a
+  doorway are Door (light, sound, walking); a window's stay Wall. Outlets and switches and wall wear keep out of holes.
+- Blueprints: `OpeningDef` (line, from, to, sill, top, arch) per variant, stamped by `CustomRoomStamp` at any turn (an
+  outer doorway is an exit when it leads somewhere walkable); `RoomVariant.Reframe` grows or shrinks a room from any
+  side with everything kept in place; `ConvertGridOpenings` turns older rooms' grid doorways into openings on opening.
+- Builder (`BuilderApp.Handles.cs`): OPENING places a door, double door, arch, window or tall opening where you point
+  (white fits, red not); handles on its sides, top, bottom and middle; arrows outside each outer wall drag the room's
+  size a cell at a time (the view stays still as it re-centres); a selected prop's handles lift, turn and size it, and
+  it glides as dragged (its preview object moved live; the room is rebuilt, 15 ms, at most ten times a second while
+  dragging and on letting go). Snapping 5 cm / 15 degrees (Alt free), ends onto posts, heights to 0.9, 2.1 m and the
+  ceiling; sizes shown beside what is dragged. Sounds made in code (`BuilderSounds.cs`).
+- Props: lift, tip (pitch, roll), size and **physics off** (`PropDef`, `Prop`, `MovableSpec`): a stuck prop never wakes,
+  cannot be taken ("IT WON'T BUDGE"), may be dragged into walls and out of the room.
+- Checked: in the builder (handles dragged by code: a 2 m doorway widened onto a post face, raised to 2.6 m; a window
+  placed by pointing; the room grown east two cells, its east window going with the wall; a sofa turned and lifted),
+  and in the world by TEST IN WORLD (no save slot): walked through the 2 m doorway, a window with sill and reveals, an
+  arch, a sofa and a box stuck tipped in the air, the box not taken. EditMode tests below (new: openings at every turn,
+  grid doorways converted and a room grown west, stuck props' pose).
+- Open: not played by the owner; copy/paste of areas does not carry openings; free-angle walls and per-wall heights are
+  not in the plan format.
+
 ## 2026-10-30 - Floral sofa; box-carry hands out of the box, the left hand on it
 
 - Owner: a new couch from their reference photo and tileable floral pattern, as realistic as can be, spawnable. Built

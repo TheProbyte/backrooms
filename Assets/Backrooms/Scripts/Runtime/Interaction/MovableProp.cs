@@ -18,6 +18,8 @@ namespace Backrooms.Interaction
         public float Mass => Body ? Body.mass : 0f;
         /// <summary>Held by the player's hand right now (never frozen while held).</summary>
         [System.NonSerialized] public bool held;
+        /// <summary>Stuck where it was put (build mode's physics off): never simulated, never taken; may be half in a wall.</summary>
+        public bool Pinned { get; private set; }
 
         float _still;
         BoxCollider _casters;             // an office chair's base: rolls only while it stands on it
@@ -126,11 +128,13 @@ namespace Backrooms.Interaction
 
             root.transform.SetParent(parent, false);
             root.transform.SetPositionAndRotation(position, rotation);
+            if (spec.scale > 0.01f && Mathf.Abs(spec.scale - 1f) > 0.001f) root.transform.localScale = Vector3.one * spec.scale;
             // (Not upholstery: its collision boxes darkened the wall behind it in a box above its back; it casts its own shadow.)
             if (!OwnShadow(spec.kind)) root.AddComponent<LightingOccluder>();
             root.AddComponent<Audio.ImpactSounder>();             // knocks, thumps and scraping (Audio/ImpactAudio)
             var mp = root.AddComponent<MovableProp>();
             mp.Spec = spec; mp.Shape = shape; mp.Body = rb;
+            mp.Pinned = spec.pinned;
             if (shape.rolls) mp._casters = baseCollider;
             mp._ownedMeshes = builtMeshes;
             mp._lastGoodPos = position; mp._lastGoodRot = rotation;
@@ -215,6 +219,7 @@ namespace Backrooms.Interaction
         /// <summary>Starts simulating (and marks the prop as moved, so its pose is saved from now on).</summary>
         public void Wake()
         {
+            if (Pinned) return;                                   // stuck where build mode put it: never moves
             _still = 0f;
             if (!Body.isKinematic) { Body.WakeUp(); return; }
             MovablePropManager.Instance?.Detach(this);

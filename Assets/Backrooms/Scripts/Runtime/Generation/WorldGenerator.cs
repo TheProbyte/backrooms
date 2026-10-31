@@ -242,6 +242,15 @@ namespace Backrooms.Generation
                 }
             foreach (var nd in plan.noclipDoors)
                 if (Mine(nd.cell.x, nd.cell.y)) { var g = nd; g.cell -= new Vector2Int(ox, oz); S.noclipDoors.Add(g); }
+            foreach (var c in plan.cutouts)
+            {
+                // Every chunk the line runs through and the hole reaches (both chunks of a border line build their side).
+                int lo = c.vertical ? ox : oz, alo = c.vertical ? oz : ox;
+                if (c.line < lo || c.line > lo + N) continue;
+                if (c.to <= alo * C || c.from >= (alo + N) * C) continue;
+                var g = c; g.line -= lo; g.from -= alo * C; g.to -= alo * C;
+                S.cutouts.Add(g);
+            }
             return S;
         }
 

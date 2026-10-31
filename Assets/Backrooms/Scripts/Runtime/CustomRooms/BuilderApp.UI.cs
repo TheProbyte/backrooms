@@ -47,7 +47,7 @@ namespace Backrooms.CustomRooms
             ImUi.Begin();
             ImUi.Tip = "";
             if (_screen == ScreenKind.Library) DrawLibrary();
-            else if (_bp != null) DrawEditor();
+            else if (_bp != null) { DrawEditor(); DrawHandleLabels(); }
             DrawModal();
             if (_showHelp) DrawHelp();
             else ImUi.DrawTooltip();
@@ -126,9 +126,9 @@ namespace Backrooms.CustomRooms
         static readonly string[] ToolNames = { "SELECT", "WALL", "OPENING", "HALF WALL", "ERASE", "FLOOR AREAS", "PILLAR", "LIGHT", "PROP", "LOOT" };
         static readonly string[] ToolTips =
         {
-            "Click a prop or loot marker to select it, drag to move it. R turns it, Delete removes it.",
+            "Click a prop, loot marker, door or window to select it; drag to move it. Drag a selected thing's handles to lift, turn, size or widen it; drag the arrows outside the room to grow or shrink it. Delete removes, Alt drags without snapping.",
             "Click or drag along the grid lines to build walls. A wall runs from floor to ceiling. Drag to build long walls.",
-            "Click or drag along walls to cut doorways, arches and openings. Drag along several edges for a wider opening. Openings in the outer wall are the room's entrances and exits.",
+            "Point at a wall and click to put a door, arch or window there; then drag its handles to any size. Doors in the outer wall are the room's entrances and exits. OPEN GAP: drag along grid edges to take the wall away.",
             "A half-height partition (1.15 m): you can see and reach over it. Drag along edges.",
             "Click or drag to remove walls and openings. On the outer wall this closes an exit again.",
             "Paint which area each cell belongs to. Areas have their own ceiling height, wall finish and lights (right panel).",
@@ -195,10 +195,16 @@ namespace Backrooms.CustomRooms
             {
                 case BuilderTool.Opening:
                 {
-                    ImUi.Header(col.Row(24), "Opening type");
-                    string[] n = { "DOORWAY", "ARCH", "TALL OPENING", "OPEN GAP" };
-                    string[] t = { "A one-cell doorway with a 2.1 m header.", "A round-topped doorway.", "An opening one cell wide that goes up to the ceiling.", "Removes the wall between cells (inside the room). On the outer wall it makes a tall exit." };
-                    for (int i = 0; i < 4; i++) if (ImUi.Button(col.Row(30), n[i], _opening == (OpeningKind)i, t[i])) _opening = (OpeningKind)i;
+                    ImUi.Header(col.Row(24), "Door / window");
+                    string[] n = { "DOOR", "DOUBLE DOOR", "ARCH", "WINDOW", "TALL OPENING", "OPEN GAP" };
+                    string[] t =
+                    {
+                        "0.9 × 2.1 m to start; drag its handles to any size.", "1.7 m wide.", "A round-topped opening.",
+                        "A hole with a sill (0.9 m up). Drag its bottom handle down to the floor to make it a door.",
+                        "Up to the ceiling.", "Takes the wall between cells away (drag along grid edges). On the outer wall it makes a tall exit.",
+                    };
+                    for (int i = 0; i < n.Length; i++) if (ImUi.Button(col.Row(30), n[i], _opening == (OpeningKind)i, t[i])) _opening = (OpeningKind)i;
+                    ImUi.Dimmed(col.Row(54), "Point at a wall and click. Then drag: sides wider, top taller, bottom for a sill, middle along the wall.");
                     break;
                 }
                 case BuilderTool.Prop:
@@ -375,6 +381,35 @@ namespace Backrooms.CustomRooms
         void DrawSelected(ref ImUi.Column col)
         {
             var v = V;
+            var so = SelectedOpening;
+            if (so != null)
+            {
+                ImUi.Header(col.Row(24), so.Door ? (so.arch ? "Selected arch" : "Selected door") : "Selected window");
+                ImUi.Dimmed(col.Row(34), "Drag its handles in the view, or set it here. Alt: no snapping.");
+                float ceil = v.CeilingAlong(so.vertical, so.line, so.from, so.to);
+                var before = so.Clone();
+                float width = Slide(col.Row(), "Width (m)", so.Width, RoomVariant.MinOpening, Mathf.Min(v.LineLength(so.vertical), 9f), "0.00");
+                if (Mathf.Abs(width - so.Width) > 0.004f) { float c = so.Centre; so.from = c - width * 0.5f; so.to = c + width * 0.5f; }
+                float top = Slide(col.Row(), "Top (m)", so.top, 0.6f, ceil, "0.00", "Height of its top above the floor.");
+                if (Mathf.Abs(top - so.top) > 0.004f) so.top = top;
+                float sill = Slide(col.Row(), "Sill (m)", so.sill, 0f, Mathf.Max(0f, so.top - 0.3f), "0.00", "0 is a door you can walk through; above that it is a window.");
+                if (Mathf.Abs(sill - so.sill) > 0.004f) so.sill = sill < 0.03f ? 0f : sill;
+                bool arch = so.arch;
+                Toggled(ref arch, col.Row(), "Round top (arch)");
+                so.arch = arch;
+                v.ClampOpening(so);
+                bool changed = so.from != before.from || so.to != before.to || so.top != before.top || so.sill != before.sill || so.arch != before.arch;
+                if (changed && !v.OpeningFits(so, so)) { so.from = before.from; so.to = before.to; so.top = before.top; so.sill = before.sill; so.arch = before.arch; changed = false; }
+                if (changed) { _dirty = true; BuildSession.Dirty = true; BuilderSounds.Play(BuilderSounds.Sfx.Tick); RequestRebuild(); }
+                var br = col.Row();
+                if (ImUi.Button(new Rect(br.x, br.y, br.width * 0.5f - 3, br.height), so.Door ? "MAKE WINDOW" : "MAKE DOOR", false, "A door reaches the floor; a window has a sill."))
+                { PushUndo(); so.sill = so.Door ? Mathf.Min(0.9f, so.top - 0.3f) : 0f; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Place); }
+                if (ImUi.Button(new Rect(br.x + br.width * 0.5f + 3, br.y, br.width * 0.5f - 3, br.height), "TO CEILING", false, "Its top right up to the ceiling."))
+                { PushUndo(); so.top = ceil; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Place); }
+                if (ImUi.Button(col.Row(), "DELETE  [Del]")) DeleteSelected();
+                col.Space(4);
+                return;
+            }
             if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count)
             {
                 var p = v.props[_selected.index];
@@ -384,6 +419,25 @@ namespace Backrooms.CustomRooms
                 if (Mathf.Abs(yaw - p.yaw) > 0.01f) { p.yaw = Mathf.Round(yaw / 5f) * 5f; _dirty = true; _needRebuild = true; }
                 float ch = Slide(col.Row(), "Chance", p.chance, 0.05f, 1f, "0.00", "Chance this prop is there each time the room is placed.");
                 if (Mathf.Abs(ch - p.chance) > 0.001f) { p.chance = ch; _dirty = true; }
+                if (!WallProp(p.kind) && p.kind != PropKind.FloorLamp)
+                {
+                    bool pinned = p.pinned;
+                    Toggled(ref pinned, col.Row(), "Physics off: stuck in place", "It never moves and cannot be taken: it can sit half inside a wall, float, or lie tipped over (the Backrooms way).");
+                    if (pinned != p.pinned) { PushUndo(); p.pinned = pinned; Changed(); BuilderSounds.Play(pinned ? BuilderSounds.Sfx.Place : BuilderSounds.Sfx.Pick); }
+                    float lift = Slide(col.Row(), "Lift (m)", p.elevation, -p.size.y, 3.5f, "0.00", "Up off the floor (or down into it). Its green handle does the same.");
+                    float pitch = Slide(col.Row(), "Tip forward (°)", p.pitch, -180f, 180f, "0");
+                    float roll = Slide(col.Row(), "Tip sideways (°)", p.roll, -180f, 180f, "0");
+                    float scl = Slide(col.Row(), "Size (×)", p.scale > 0.01f ? p.scale : 1f, 0.25f, 4f, "0.00", "Its orange handle does the same.");
+                    if (Mathf.Abs(lift - p.elevation) > 0.004f || Mathf.Abs(pitch - p.pitch) > 0.4f || Mathf.Abs(roll - p.roll) > 0.4f || Mathf.Abs(scl - p.scale) > 0.004f)
+                    {
+                        p.elevation = Mathf.Round(lift / 0.01f) * 0.01f; p.pitch = Mathf.Round(pitch); p.roll = Mathf.Round(roll); p.scale = Mathf.Round(scl / 0.01f) * 0.01f;
+                        _dirty = true; BuildSession.Dirty = true;
+                        BuilderSounds.Play(BuilderSounds.Sfx.Tick);
+                        if (!HasView(_selected.index)) RequestRebuild(); else _rebuildPending = true;
+                        if (!p.pinned && (Mathf.Abs(p.elevation) > 0.01f || Mathf.Abs(p.pitch) > 1f || Mathf.Abs(p.roll) > 1f))
+                            ImUi.Dimmed(col.Row(34), "With physics on it drops as soon as anything touches it. Tick 'Physics off' to keep it like this.");
+                    }
+                }
                 if (p.kind == PropKind.ConferenceTable) { float len = Slide(col.Row(), "Length (m)", p.size.x, 1.2f, 4.8f, "0.0"); if (Mathf.Abs(len - p.size.x) > 0.01f) { p.size.x = len; _dirty = true; _needRebuild = true; } }
                 if (p.kind == PropKind.FloorLamp) { bool lit = p.lit; Toggled(ref lit, col.Row(), "Lit"); if (lit != p.lit) { p.lit = lit; _dirty = true; _needRebuild = true; } }
                 if (p.kind == PropKind.WallClock)

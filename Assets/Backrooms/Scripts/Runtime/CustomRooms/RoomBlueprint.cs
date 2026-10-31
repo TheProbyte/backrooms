@@ -74,6 +74,31 @@ namespace Backrooms.CustomRooms
         public bool lit = true;       // floor lamps
         public Vector3 size = new Vector3(0.6f, 0.5f, 0.5f);
         [Range(0f, 1f)] public float chance = 1f;
+        [Tooltip("Lifted off the floor (m).")] public float elevation;
+        [Tooltip("Tipped over: degrees about its own sideways and front axes.")] public float pitch, roll;
+        [Tooltip("Size (1 = as made).")] public float scale = 1f;
+        [Tooltip("Physics off: stuck exactly where it is put, never moves, cannot be taken. May sit half inside a wall.")]
+        public bool pinned;
+    }
+
+    /// <summary>
+    /// A door, arch or window of its own size on a wall line (build mode). It cuts the walls along its line; a doorway (sill
+    /// 0) on the outer wall is an entrance. Positions are metres from the blueprint's south-west corner.
+    /// </summary>
+    [Serializable]
+    public class OpeningDef
+    {
+        public bool vertical;         // on the line X = line (else Z = line)
+        public int line;
+        public float from = 0.15f, to = 1.05f;   // along the line (m)
+        public float sill;            // 0: a doorway; above: a window
+        public float top = 2.1f;
+        public bool arch;
+
+        public float Width => to - from;
+        public float Centre => (from + to) * 0.5f;
+        public bool Door => sill < 0.01f;
+        public OpeningDef Clone() => (OpeningDef)MemberwiseClone();
     }
     [Serializable]
     public class LootDef
@@ -105,8 +130,44 @@ namespace Backrooms.CustomRooms
         public List<FixtureDef> fixtures = new List<FixtureDef>();
         public List<PropDef> props = new List<PropDef>();
         public List<LootDef> loot = new List<LootDef>();
+        public List<OpeningDef> openings = new List<OpeningDef>();
 
         public const int MinSize = 2, MaxSize = 24;
+        /// <summary>Smallest door or window (m), and the room left above one (m).</summary>
+        public const float MinOpening = 0.4f, HeadRoom = 0.05f;
+
+        /// <summary>Length of a wall line (m).</summary>
+        public float LineLength(bool vertical) => (vertical ? depth : width) * OfficeBiome.CellSize;
+        public bool PerimeterLine(bool vertical, int line) => line == 0 || line == (vertical ? width : depth);
+
+        /// <summary>The lowest ceiling of the areas either side of a wall line between two points (m).</summary>
+        public float CeilingAlong(bool vertical, int line, float from, float to)
+        {
+            const float c = OfficeBiome.CellSize;
+            float ceil = OfficeBiome.MaxCeilingHeight;
+            int a0 = Mathf.Max(0, Mathf.FloorToInt(from / c)), a1 = Mathf.Min((vertical ? depth : width) - 1, Mathf.CeilToInt(to / c) - 1);
+            for (int a = a0; a <= a1; a++)
+                for (int s = -1; s <= 0; s++)
+                {
+                    int cx = vertical ? line + s : a, cz = vertical ? a : line + s;
+                    if (InBounds(cx, cz)) ceil = Mathf.Min(ceil, RoomAt(cx, cz).ceiling);
+                }
+            return ceil == OfficeBiome.MaxCeilingHeight ? OfficeBiome.CeilingHeight : ceil;
+        }
+
+        /// <summary>Keeps an opening on its line, at least the smallest size, under the ceiling, a sill below its top.</summary>
+        public void ClampOpening(OpeningDef o)
+        {
+            float len = LineLength(o.vertical);
+            o.line = Mathf.Clamp(o.line, 0, o.vertical ? width : depth);
+            if (o.to - o.from < MinOpening) o.to = o.from + MinOpening;
+            if (o.from < 0f) { o.to -= o.from; o.from = 0f; }
+            if (o.to > len) { o.from -= o.to - len; o.to = len; }
+            o.from = Mathf.Max(0f, o.from);
+            float ceil = CeilingAlong(o.vertical, o.line, o.from, o.to);
+            o.top = Mathf.Clamp(o.top, 0.5f, ceil);
+            o.sill = Mathf.Clamp(o.sill, 0f, o.top - 0.3f);
+        }
 
         public int V(int x, int z) => vEdges[x * depth + z];
         public int H(int x, int z) => hEdges[x * (depth + 1) + z];
@@ -194,6 +255,10 @@ namespace Backrooms.CustomRooms
             fixtures.RemoveAll(f => !InBounds(f.x, f.z));
             pillars.RemoveAll(p => p.x < 0 || p.z < 0 || p.x > width || p.z > depth);
             weight = Mathf.Max(0f, weight);
+            if (openings == null) openings = new List<OpeningDef>();
+            openings.RemoveAll(o => o == null || o.line < 0 || o.line > (o.vertical ? width : depth) || o.from >= LineLength(o.vertical) - 0.05f);
+            foreach (var o in openings) ClampOpening(o);
+            foreach (var p in props) { if (p.scale <= 0.01f) p.scale = 1f; p.scale = Mathf.Clamp(p.scale, 0.25f, 4f); }
         }
 
         /// <summary>
@@ -237,12 +302,151 @@ namespace Backrooms.CustomRooms
             pillars = old.pillars.FindAll(p => p.x <= width && p.z <= depth);
             props = old.props.FindAll(p => p.x < width * OfficeBiome.CellSize && p.z < depth * OfficeBiome.CellSize);
             loot = old.loot.FindAll(l => l.x < width * OfficeBiome.CellSize && l.z < depth * OfficeBiome.CellSize);
+            // Openings stay on their line; one on an outer line that moved goes with it.
+            openings = new List<OpeningDef>();
+            foreach (var o in old.openings)
+            {
+                var c = o.Clone();
+                int oldMax = c.vertical ? old.width : old.depth;
+                if (c.line == oldMax) c.line = c.vertical ? width : depth;
+                if (c.line > (c.vertical ? width : depth) || c.from >= LineLength(c.vertical) - MinOpening) continue;
+                ClampOpening(c);
+                openings.Add(c);
+            }
             fixtures = old.fixtures.FindAll(f => f.x < width && f.z < depth);
             // New area gets the usual light spacing.
             var grid = AutoFixtureCells();
             foreach (var c in grid)
                 if ((c.x >= old.width || c.y >= old.depth) && !fixtures.Exists(f => f.x == c.x && f.z == c.y))
                     fixtures.Add(new FixtureDef { x = c.x, z = c.y, on = RoomAt(c.x, c.y).lights != LightMode.Dark });
+        }
+
+        /// <summary>
+        /// Re-frames the grid on the old cells [x0, x0 + w) x [z0, z0 + d) (it may reach past them: growing west or south is
+        /// a negative x0 or z0). As <see cref="Resize"/> does for the east and north: each outer wall keeps its own doorways
+        /// and moves out or in with that side, a wall line that ends up inside is opened, new cells copy the nearest old one,
+        /// and everything else keeps its place in the room.
+        /// </summary>
+        public void Reframe(int x0, int z0, int w, int d)
+        {
+            w = Mathf.Clamp(w, MinSize, MaxSize); d = Mathf.Clamp(d, MinSize, MaxSize);
+            var old = Clone();
+            width = w; depth = d;
+            Allocate();
+            const float c = OfficeBiome.CellSize;
+            for (int x = 0; x < width; x++)
+            for (int z = 0; z < depth; z++)
+                cellRoom[z * width + x] = old.cellRoom[Mathf.Clamp(z + z0, 0, old.depth - 1) * old.width + Mathf.Clamp(x + x0, 0, old.width - 1)];
+            int Perimeter(int code) { int k = EdgeCode.Kind(code); return k == EdgeCode.Tall || k == EdgeCode.Header ? code : EdgeCode.Wall; }
+            for (int x = 0; x <= width; x++)
+            for (int z = 0; z < depth; z++)
+            {
+                int ox = x + x0, oz = Mathf.Clamp(z + z0, 0, old.depth - 1);
+                int code;
+                if (x == 0) code = Perimeter(old.V(0, oz));
+                else if (x == width) code = Perimeter(old.V(old.width, oz));
+                else code = ox > 0 && ox < old.width && z + z0 >= 0 && z + z0 < old.depth ? old.V(ox, oz) : EdgeCode.Open;
+                SetV(x, z, code);
+            }
+            for (int x = 0; x < width; x++)
+            for (int z = 0; z <= depth; z++)
+            {
+                int ox = Mathf.Clamp(x + x0, 0, old.width - 1), oz = z + z0;
+                int code;
+                if (z == 0) code = Perimeter(old.H(ox, 0));
+                else if (z == depth) code = Perimeter(old.H(ox, old.depth));
+                else code = oz > 0 && oz < old.depth && x + x0 >= 0 && x + x0 < old.width ? old.H(ox, oz) : EdgeCode.Open;
+                SetH(x, z, code);
+            }
+            rooms = old.rooms.ConvertAll(r => r.Clone());
+            float dx = -x0 * c, dz = -z0 * c, wm = width * c, dm = depth * c;
+            bool Inside(float x, float z) => x > 0f && z > 0f && x < wm && z < dm;
+            pillars = new List<PillarDef>();
+            foreach (var p in old.pillars) { int px = p.x - x0, pz = p.z - z0; if (px >= 0 && pz >= 0 && px <= width && pz <= depth) pillars.Add(new PillarDef { x = px, z = pz, size = p.size }); }
+            fixtures = new List<FixtureDef>();
+            foreach (var f in old.fixtures) { int fx = f.x - x0, fz = f.z - z0; if (InBounds(fx, fz)) fixtures.Add(new FixtureDef { x = fx, z = fz, on = f.on, faulty = f.faulty }); }
+            props = new List<PropDef>();
+            foreach (var p in old.props)
+            {
+                var q = JsonUtility.FromJson<PropDef>(JsonUtility.ToJson(p)); q.x += dx; q.z += dz;
+                if (Inside(q.x, q.z) || q.pinned) props.Add(q);
+            }
+            loot = new List<LootDef>();
+            foreach (var l in old.loot) { var q = JsonUtility.FromJson<LootDef>(JsonUtility.ToJson(l)); q.x += dx; q.z += dz; if (Inside(q.x, q.z)) loot.Add(q); }
+            openings = new List<OpeningDef>();
+            foreach (var o in old.openings)
+            {
+                var q = o.Clone();
+                int max = q.vertical ? old.width : old.depth, shift = q.vertical ? x0 : z0;
+                float slide = q.vertical ? dz : dx;
+                // An opening in an outer wall goes with that wall; the others keep their place.
+                q.line = q.line == 0 ? 0 : q.line == max ? (q.vertical ? width : depth) : q.line - shift;
+                q.from += slide; q.to += slide;
+                if ((q.line <= 0 && o.line != 0) || (q.line >= (q.vertical ? width : depth) && o.line != max)) continue;
+                if (q.to <= MinOpening * 0.5f || q.from >= LineLength(q.vertical) - MinOpening * 0.5f) continue;
+                ClampOpening(q);
+                openings.Add(q);
+            }
+            // New cells get the usual light spacing.
+            foreach (var cell in AutoFixtureCells())
+            {
+                int ox = cell.x + x0, oz = cell.y + z0;
+                if ((ox < 0 || oz < 0 || ox >= old.width || oz >= old.depth) && !fixtures.Exists(f => f.x == cell.x && f.z == cell.y))
+                    fixtures.Add(new FixtureDef { x = cell.x, z = cell.y, on = RoomAt(cell.x, cell.y).lights != LightMode.Dark });
+            }
+        }
+
+        /// <summary>
+        /// The grid's own doorways, arches and tall openings (edge codes) as openings of their own size, so they can be
+        /// dragged wider and taller: each run of one kind along a line becomes one opening between its end posts, and its
+        /// edges become wall. Returns how many it made.
+        /// </summary>
+        public int ConvertGridOpenings()
+        {
+            const float c = OfficeBiome.CellSize, t = OfficeBiome.WallThickness;
+            int made = 0;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                bool vertical = pass == 0;
+                int lines = vertical ? width : depth, alongN = vertical ? depth : width;
+                for (int line = 0; line <= lines; line++)
+                {
+                    int a = 0;
+                    while (a < alongN)
+                    {
+                        int code = vertical ? V(line, a) : H(a, line);
+                        int kind = EdgeCode.Kind(code);
+                        if (kind != EdgeCode.Header && kind != EdgeCode.Tall) { a++; continue; }
+                        int b = a + 1;
+                        while (b < alongN && (vertical ? V(line, b) : H(b, line)) == code) b++;
+                        float top = kind == EdgeCode.Tall ? CeilingAlong(vertical, line, a * c, b * c) : EdgeCode.Arched(code) ? 2.3f : 2.1f;
+                        var o = new OpeningDef { vertical = vertical, line = line, from = a * c + t * 0.5f, to = b * c - t * 0.5f, top = top, arch = EdgeCode.Arched(code) };
+                        ClampOpening(o);
+                        openings.Add(o);
+                        for (int k = a; k < b; k++) { if (vertical) SetV(line, k, EdgeCode.Wall); else SetH(k, line, EdgeCode.Wall); }
+                        made++;
+                        a = b;
+                    }
+                }
+            }
+            return made;
+        }
+
+        /// <summary>
+        /// Does an opening fit: on solid wall all along (not open floor or a half wall), clear of the other openings on its
+        /// line (by 5 cm), inside the line, under the ceiling.
+        /// </summary>
+        public bool OpeningFits(OpeningDef o, OpeningDef ignore = null)
+        {
+            const float c = OfficeBiome.CellSize;
+            if (o.from < -0.001f || o.to > LineLength(o.vertical) + 0.001f || o.to - o.from < MinOpening - 0.001f) return false;
+            if (o.line < 0 || o.line > (o.vertical ? width : depth)) return false;
+            int a0 = Mathf.FloorToInt(o.from / c), a1 = Mathf.CeilToInt(o.to / c) - 1;
+            for (int a = Mathf.Max(0, a0); a <= Mathf.Min((o.vertical ? depth : width) - 1, a1); a++)
+                if (EdgeCode.Kind(o.vertical ? V(o.line, a) : H(a, o.line)) != EdgeCode.Wall) return false;
+            foreach (var q in openings)
+                if (q != ignore && q != o && q.vertical == o.vertical && q.line == o.line && q.from < o.to + 0.05f && q.to > o.from - 0.05f) return false;
+            return o.top <= CeilingAlong(o.vertical, o.line, o.from, o.to) + 0.001f;
         }
 
         List<Vector2Int> AutoFixtureCells()
@@ -274,6 +478,7 @@ namespace Backrooms.CustomRooms
             int n = 0;
             for (int z = 0; z < depth; z++) { if (EdgeCode.Walkthrough(V(0, z))) n++; if (EdgeCode.Walkthrough(V(width, z))) n++; }
             for (int x = 0; x < width; x++) { if (EdgeCode.Walkthrough(H(x, 0))) n++; if (EdgeCode.Walkthrough(H(x, depth))) n++; }
+            foreach (var o in openings) if (o.Door && PerimeterLine(o.vertical, o.line)) n++;
             return n;
         }
     }

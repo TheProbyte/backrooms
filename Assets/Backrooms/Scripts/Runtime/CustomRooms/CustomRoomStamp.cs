@@ -176,6 +176,36 @@ namespace Backrooms.CustomRooms
             for (int z = 0; z <= v.depth; z++)
                 Apply(xf.Vertex(x, z), xf.Vertex(x + 1, z), v.H(x, z), z == 0 || z == v.depth);
 
+            // Doors, arches and windows of their own size: holes in the wall lines; the edges under a doorway open.
+            foreach (var o in v.openings)
+            {
+                Vector2 pa = o.vertical ? new Vector2(o.line * C, o.from) : new Vector2(o.from, o.line * C);
+                Vector2 pb = o.vertical ? new Vector2(o.line * C, o.to) : new Vector2(o.to, o.line * C);
+                pa = xf.Metres(pa.x, pa.y) + (Vector2)origin * C; pb = xf.Metres(pb.x, pb.y) + (Vector2)origin * C;
+                bool vertical = Mathf.Abs(pa.x - pb.x) < 0.001f;
+                int line = Mathf.RoundToInt((vertical ? pa.x : pa.y) / C);
+                float from = Mathf.Min(vertical ? pa.y : pa.x, vertical ? pb.y : pb.x), to = Mathf.Max(vertical ? pa.y : pa.x, vertical ? pb.y : pb.x);
+                int a0 = Mathf.FloorToInt(from / C), a1 = Mathf.CeilToInt(to / C) - 1;
+                if (o.Door)
+                {
+                    if (v.PerimeterLine(o.vertical, o.line))
+                    {
+                        // An entrance: the edge it covers most must lead onto somewhere walkable, as for a doorway.
+                        int best = a0; float most = -1f;
+                        for (int a = a0; a <= a1; a++) { float cover = Mathf.Min(to, (a + 1) * C) - Mathf.Max(from, a * C); if (cover > most) { most = cover; best = a; } }
+                        bool west = vertical ? line == rect.x : line == rect.y;
+                        int ix = vertical ? (west ? line : line - 1) : best, iz = vertical ? best : (west ? line : line - 1);
+                        int ox = vertical ? (west ? line - 1 : line) : best, oz = vertical ? best : (west ? line - 1 : line);
+                        bool canOut = L.InChunk(ox, oz) && L.RoomAt(ox, oz).Walkable && !L.RoomAt(ox, oz).custom && L.InChunk(ix, iz);
+                        if (!canOut) continue;              // the wall stays whole
+                        exits++;
+                    }
+                    for (int a = a0; a <= a1; a++)
+                        if (Mathf.Min(to, (a + 1) * C) - Mathf.Max(from, a * C) > 0.01f) Set(L, vertical, line, a, EdgeKind.Door, false);
+                }
+                L.cutouts.Add(new WallCutout { vertical = vertical, line = line, from = from, to = to, sill = o.sill, top = o.top, arch = o.arch });
+            }
+
             if (exits == 0 && fallback.Count > 0)
             {
                 // Nothing leads out (every exit faced something unwalkable): make one so the room is never sealed off.
@@ -260,7 +290,8 @@ namespace Backrooms.CustomRooms
                 var m = xf.Metres(d.x, d.z);
                 var pos = m + new Vector2(origin.x * C, origin.y * C);
                 int cx = Mathf.Clamp(Mathf.FloorToInt(pos.x / C), 0, L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(pos.y / C), 0, L.N - 1);
-                L.props.Add(new Prop { kind = d.kind, position = pos, yaw = xf.Yaw(d.yaw), size = d.size, variant = d.variant, lit = d.lit, roomColor = L.roomOf[cx, cz] });
+                L.props.Add(new Prop { kind = d.kind, position = pos, yaw = xf.Yaw(d.yaw), size = d.size, variant = d.variant, lit = d.lit, roomColor = L.roomOf[cx, cz],
+                                       elevation = d.elevation, pitch = d.pitch, roll = d.roll, scale = d.scale, pinned = d.pinned });
             }
             for (int i = 0; i < v.loot.Count; i++)
             {

@@ -419,7 +419,7 @@ namespace Backrooms.Generation
                     EdgeOfSide(x, z, side, out bool vert, out int line, out int alongI);
                     if (OfficeLayout.IsSolid(e))
                     {
-                        if (!Broken(vert, line, alongI, out _) && !HoleAt(vert, line, alongI, out _))
+                        if (!Broken(vert, line, alongI, out _) && !HoleAt(vert, line, alongI, out _) && !CutAt(vert, line, alongI))
                         {
                             WallDetails(x, z, side, edge - outDir * (T * 0.5f), along, -outDir, r, m, _L.WallTop(r));
                             WallDirt(x, z, side, edge, outDir, along, r, m, _L.WallTop(r));

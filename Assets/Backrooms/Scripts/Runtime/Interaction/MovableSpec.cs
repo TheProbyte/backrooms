@@ -35,6 +35,10 @@ namespace Backrooms.Interaction
 
         public Vector3 position;          // world, where the generator put it
         public float yaw;
+        /// <summary>Build mode: tipped over (degrees about its own X and Z), scaled, and stuck where it is (never moves).</summary>
+        public float pitch, roll;
+        public float scale = 1f;
+        public bool pinned;
 
         public void AddPrefab(GameObject prefab, Vector3 local, float yaw = 0f, Vector3? scale = null)
             => parts.Add(new Part { prefab = prefab, position = local, yaw = yaw, scale = scale ?? Vector3.one });

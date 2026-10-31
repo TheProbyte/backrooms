@@ -50,7 +50,7 @@ namespace Backrooms.Interaction
         bool AimedProp(out MovableProp prop, out Vector3 grip, out string verb)
         {
             grip = default; verb = null;
-            if (!Look(lookRange, out var hit, out prop) || !prop || prop.Shape == null) return false;
+            if (!Look(lookRange, out var hit, out prop) || !prop || prop.Shape == null || prop.Pinned) return false;
             // (The edge shown last wins a near tie: the marks popped from one chair leg to the other, round 14.)
             int prefer = prop == _markProp ? _markEdge : -1;
             _aimedMarkProp = prop;

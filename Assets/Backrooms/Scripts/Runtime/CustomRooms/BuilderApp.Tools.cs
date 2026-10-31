@@ -14,7 +14,7 @@ namespace Backrooms.CustomRooms
         bool _textFocus;
 
         // Selection and per-tool options
-        enum SelKind { None, Prop, Loot }
+        enum SelKind { None, Prop, Loot, Opening }
         struct Selection { public SelKind kind; public int index; public static Selection None => new Selection { kind = SelKind.None, index = -1 }; }
         Selection _selected = Selection.None;
         PropKind _propKind = PropKind.Box;
@@ -64,6 +64,7 @@ namespace Backrooms.CustomRooms
             if (PauseMenu.IsOpen || _showHelp) return;
             UpdateCamera(overUi);
 
+            UpdateHandles(mouse.position.ReadValue(), overUi);
             if (!overUi && !_textFocus)
             {
                 UpdateHover(mouse.position.ReadValue());
@@ -72,6 +73,8 @@ namespace Backrooms.CustomRooms
             }
             else if (!_stroking) { _hoverEdgeValid = _hoverVertexValid = _hoverCellValid = _hoverGround = false; }
             if (_stroking && (mouse.leftButton.wasReleasedThisFrame || !mouse.leftButton.isPressed)) EndStroke();
+            UpdatePropViews();
+            UpdateRebuildThrottle();
 
             // Views that depend on where the camera is need a new build when the cut-down walls change.
             if (_view == BuilderView.Cutout && !_needRebuild)
@@ -160,6 +163,7 @@ namespace Backrooms.CustomRooms
         void Undo()
         {
             if (_undo.Count == 0) { SetStatus("Nothing to undo."); return; }
+            BuilderSounds.Play(BuilderSounds.Sfx.Tick, 0.7f);
             _redo.Push(_bp.ToJson());
             Restore(_undo.Pop());
         }
@@ -238,9 +242,16 @@ namespace Backrooms.CustomRooms
         {
             if (_pastingArea) { PasteArea(); return; }
             _stroking = true; _strokeLocked = false; _lastAlong = int.MinValue; _lastMouse = screen; _strokeChanged = false; _dragging = false;
+            // A handle under the pointer (of what is selected, or the room's sides) is dragged, whatever the tool.
+            if (_hoverHandle != Handle.None) { BeginHandleDrag(screen); return; }
             switch (_tool)
             {
-                case BuilderTool.Select: SelectAt(); break;
+                case BuilderTool.Select:
+                    SelectAt();
+                    // Nothing on the floor there: a door or window on the wall, taken by its middle to slide it.
+                    if (_selected.kind == SelKind.None && SelectOpeningAt(screen)) { _hoverHandle = Handle.Move; BeginHandleDrag(screen); }
+                    break;
+                case BuilderTool.Opening when _opening != OpeningKind.Gap: PlaceOpening(); _stroking = false; break;
                 case BuilderTool.Prop: PlaceProp(); _stroking = false; break;
                 case BuilderTool.Loot: PlaceLoot(); _stroking = false; break;
                 case BuilderTool.Pillar: TogglePillar(); _stroking = false; break;
@@ -255,6 +266,7 @@ namespace Backrooms.CustomRooms
 
         void ContinueStroke(Vector2 screen)
         {
+            if (_dragHandle != Handle.None) { DragHandle(screen); _lastMouse = screen; return; }
             if (_tool == BuilderTool.Select) { DragSelected(); _lastMouse = screen; return; }
             // Sample along the pointer's path so a fast drag does not skip edges or cells.
             int steps = Mathf.Clamp(Mathf.CeilToInt((screen - _lastMouse).magnitude / 8f), 1, 24);
@@ -269,7 +281,10 @@ namespace Backrooms.CustomRooms
 
         void EndStroke()
         {
-            _stroking = false; _strokeLocked = false; _dragging = false;
+            _stroking = false; _strokeLocked = false;
+            if (_dragHandle != Handle.None) { EndHandleDrag(); _dragging = false; return; }
+            if (_dragging && _selected.kind != SelKind.None) BuilderSounds.Play(BuilderSounds.Sfx.Drop, 0.95f);
+            _dragging = false;
             if (_strokeChanged) { Changed(); }
         }
 
@@ -325,6 +340,14 @@ namespace Backrooms.CustomRooms
             int old = vertical ? v.V(x, z) : v.H(x, z);
             if (old == code) return;
             if (vertical) v.SetV(x, z, code); else v.SetH(x, z, code);
+            // A door or window on a wall that is no longer there goes with it.
+            if (EdgeCode.Kind(code) != EdgeCode.Wall)
+            {
+                float a0 = (vertical ? z : x) * C, a1 = a0 + C; int line = vertical ? x : z;
+                v.openings.RemoveAll(o => o.vertical == vertical && o.line == line && o.from < a1 && o.to > a0);
+                if (_selected.kind == SelKind.Opening) _selected = Selection.None;
+            }
+            BuilderSounds.Play(_tool == BuilderTool.Erase ? BuilderSounds.Sfx.Shrink : BuilderSounds.Sfx.Wall, 0.9f + 0.2f * Random.value);
             _strokeChanged = true;
             _needRebuild = true;
         }
@@ -339,6 +362,7 @@ namespace Backrooms.CustomRooms
             _activeRoom = Mathf.Clamp(_activeRoom, 0, v.rooms.Count - 1);
             if (v.cellRoom[idx] == _activeRoom) return;
             v.cellRoom[idx] = _activeRoom;
+            BuilderSounds.Play(BuilderSounds.Sfx.Tick, 0.9f + 0.2f * Random.value);
             _strokeChanged = true; _needRebuild = true;
         }
 
@@ -348,7 +372,8 @@ namespace Backrooms.CustomRooms
             PushUndo();
             var v = V;
             int i = v.pillars.FindIndex(p => p.x == _hoverVertex.x && p.z == _hoverVertex.y);
-            if (i >= 0) v.pillars.RemoveAt(i); else v.pillars.Add(new PillarDef { x = _hoverVertex.x, z = _hoverVertex.y, size = _pillarSize });
+            if (i >= 0) { v.pillars.RemoveAt(i); BuilderSounds.Play(BuilderSounds.Sfx.Delete); }
+            else { v.pillars.Add(new PillarDef { x = _hoverVertex.x, z = _hoverVertex.y, size = _pillarSize }); BuilderSounds.Play(BuilderSounds.Sfx.Place); }
             Changed();
         }
 
@@ -361,6 +386,7 @@ namespace Backrooms.CustomRooms
             if (i < 0) v.fixtures.Add(new FixtureDef { x = _hoverCell.x, z = _hoverCell.y, on = true });
             else if (v.fixtures[i].on) v.fixtures[i].on = false;
             else v.fixtures.RemoveAt(i);
+            BuilderSounds.Play(BuilderSounds.Sfx.Tick, 1.2f);
             Changed();
         }
 
@@ -400,6 +426,7 @@ namespace Backrooms.CustomRooms
             v.props.Add(new PropDef { kind = _propKind, x = m.x, z = m.y, yaw = yaw, size = size, lit = true, variant = Random.Range(0, 1 << 16) });
             _selected = new Selection { kind = SelKind.Prop, index = v.props.Count - 1 };
             _tool = BuilderTool.Select;
+            BuilderSounds.Play(BuilderSounds.Sfx.Place, 0.85f + Random.value * 0.2f);
             Changed();
         }
 
@@ -413,6 +440,7 @@ namespace Backrooms.CustomRooms
             v.loot.Add(new LootDef { item = string.IsNullOrWhiteSpace(_lootItem) ? "Loot" : _lootItem, x = m.x, z = m.y });
             _selected = new Selection { kind = SelKind.Loot, index = v.loot.Count - 1 };
             _tool = BuilderTool.Select;
+            BuilderSounds.Play(BuilderSounds.Sfx.Place, 1.2f);
             Changed();
         }
 
@@ -432,15 +460,39 @@ namespace Backrooms.CustomRooms
                 float d = Vector2.Distance(new Vector2(v.loot[i].x, v.loot[i].z), _hoverMetres);
                 if (d < best) { best = d; _selected = new Selection { kind = SelKind.Loot, index = i }; }
             }
-            if (_selected.kind != SelKind.None) { PushUndo(); _dragging = true; }
+            if (_selected.kind != SelKind.None) { PushUndo(); _dragging = true; _grabDelta = SelectedPos() - _hoverMetres; BuilderSounds.Play(BuilderSounds.Sfx.Pick); }
+        }
+
+        Vector2 _grabDelta;
+        Vector2 SelectedPos()
+        {
+            var v = V;
+            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count) return new Vector2(v.props[_selected.index].x, v.props[_selected.index].z);
+            if (_selected.kind == SelKind.Loot && _selected.index < v.loot.Count) return new Vector2(v.loot[_selected.index].x, v.loot[_selected.index].z);
+            return _hoverMetres;
         }
 
         void DragSelected()
         {
             if (!_dragging || !_hoverGround) return;
             var v = V;
-            var m = Snap(_hoverMetres);
-            if (!InsideRoom(m)) return;
+            // Smooth: where it was taken stays under the pointer; 5 cm steps (Alt: none). A prop with physics off may go
+            // anywhere, into a wall or out of the room.
+            var raw = _hoverMetres + _grabDelta;
+            var m = Alt ? raw : new Vector2(Mathf.Round(raw.x / 0.05f) * 0.05f, Mathf.Round(raw.y / 0.05f) * 0.05f);
+            bool free = _selected.kind == SelKind.Prop && _selected.index < v.props.Count && v.props[_selected.index].pinned;
+            if (!free && !InsideRoom(m)) return;
+            if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count && !WallProp(v.props[_selected.index].kind))
+            {
+                var pr = v.props[_selected.index];
+                if (pr.x != m.x || pr.z != m.y)
+                {
+                    pr.x = m.x; pr.z = m.y; _strokeChanged = true;
+                    BuilderSounds.Play(BuilderSounds.Sfx.Tick, 0.9f + 0.15f * Random.value, 0.6f);
+                    if (!HasView(_selected.index)) RequestRebuild();         // (a movable glides there: UpdatePropViews)
+                }
+                return;
+            }
             if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count && WallProp(v.props[_selected.index].kind))
             {
                 var p = v.props[_selected.index];
@@ -460,7 +512,9 @@ namespace Backrooms.CustomRooms
             var v = V;
             if (_selected.kind == SelKind.Prop && _selected.index < v.props.Count) { PushUndo(); v.props.RemoveAt(_selected.index); }
             else if (_selected.kind == SelKind.Loot && _selected.index < v.loot.Count) { PushUndo(); v.loot.RemoveAt(_selected.index); }
+            else if (_selected.kind == SelKind.Opening && _selected.index < v.openings.Count) { PushUndo(); v.openings.RemoveAt(_selected.index); }
             else return;
+            BuilderSounds.Play(BuilderSounds.Sfx.Delete);
             _selected = Selection.None;
             Changed();
         }
@@ -553,6 +607,7 @@ namespace Backrooms.CustomRooms
                 bool valid = _tool != BuilderTool.Prop || !WallProp(_propKind) || v.TryWallPlacement(_hoverMetres, DefaultSize(_propKind), out m, out yaw);
                 Marker(W3(m.x, m.y, 0.06f), 0.22f, yaw, valid ? new Color(1f, 1f, 1f, 0.7f) : ImUi.Bad, _tool == BuilderTool.Prop);
             }
+            DrawHandleGizmos();
             // Exits: arrows on the outside of perimeter openings
             DrawExits(v);
             GL.End();
@@ -597,6 +652,12 @@ namespace Backrooms.CustomRooms
             {
                 if (EdgeCode.Walkthrough(v.H(x, 0))) Arrow((x + 0.5f) * C, 0, 0, -1);
                 if (EdgeCode.Walkthrough(v.H(x, v.depth))) Arrow((x + 0.5f) * C, v.depth * C, 0, 1);
+            }
+            foreach (var o in v.openings)
+            {
+                if (!o.Door || !v.PerimeterLine(o.vertical, o.line)) continue;
+                bool far = o.line != 0;
+                if (o.vertical) Arrow(o.line * C, o.Centre, far ? 1 : -1, 0); else Arrow(o.Centre, o.line * C, 0, far ? 1 : -1);
             }
         }
 

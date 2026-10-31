@@ -33,7 +33,9 @@ namespace Backrooms.Generation
             {
                 h.Add((int)p.kind); h.Add(p.position.x); h.Add(p.position.y); h.Add(p.yaw);
                 h.Add(p.size.x); h.Add(p.size.y); h.Add(p.size.z); h.Add(p.variant); h.Add(p.lit ? 1 : 0);
+                h.Add(p.elevation); h.Add(p.pitch); h.Add(p.roll); h.Add(p.scale); h.Add(p.pinned ? 1 : 0);
             }
+            foreach (var c in L.cutouts) { h.Add(c.vertical ? 1 : 0); h.Add(c.line); h.Add(c.from); h.Add(c.to); h.Add(c.sill); h.Add(c.top); h.Add(c.arch ? 1 : 0); }
             return h.Value;
         }
 

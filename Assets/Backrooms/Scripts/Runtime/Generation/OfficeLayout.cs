@@ -264,6 +264,26 @@ namespace Backrooms.Generation
         public int roomColor;
         /// <summary>Stable id (district, storey, index in the plan): the key for saved edits such as moved props.</summary>
         public ulong id;
+        // Custom rooms (build mode): lifted off the floor, tipped over, scaled, and stuck where it is (never moves; may be
+        // half inside a wall). All zero / one / false for the generator's own props.
+        public float elevation, pitch, roll;
+        public float scale;           // 0 means 1
+        public bool pinned;
+    }
+
+    /// <summary>
+    /// A rectangular hole through a wall line (custom rooms, build mode): a doorway of any width and height, an arch, or
+    /// a window (a sill above the floor). It may span several edges and the posts between them; the chunk builder builds the
+    /// wall round it (OfficeChunkBuilder.Cutouts). The edges under a doorway are Door (open to light, sound and walking);
+    /// under a window they stay Wall.
+    /// </summary>
+    public struct WallCutout
+    {
+        public bool vertical;         // on the line X = line (else the line Z = line)
+        public int line;
+        public float from, to;        // along the line, layout-local metres
+        public float sill, top;       // metres above the floor (sill 0: a doorway)
+        public bool arch;             // round-topped: a half circle across its width up to top
     }
 
     /// <summary>
@@ -298,6 +318,7 @@ namespace Backrooms.Generation
         public readonly List<Prop> props = new List<Prop>();
         public readonly List<CrawlPortal> portals = new List<CrawlPortal>();
         public readonly List<NoclipDoor> noclipDoors = new List<NoclipDoor>();
+        public readonly List<WallCutout> cutouts = new List<WallCutout>();
         /// <summary>Biome rules of this chunk (blended across biome transitions). District plans use <see cref="RulesAt"/>.</summary>
         public BiomeRules rules = BiomeRules.Offices();
         public string biomeName = "Offices";

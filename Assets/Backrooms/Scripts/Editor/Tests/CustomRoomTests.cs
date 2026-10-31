@@ -150,6 +150,96 @@ namespace Backrooms.Tests
         }
 
         [Test]
+        public void OpeningsCutTheirWallsAtEveryTurn([Values(0, 1, 2, 3)] int rot)
+        {
+            var bp = RoomBlueprint.CreateNew();
+            var v = bp.variants[0];
+            v.Resize(8, 6);
+            v.ConvertGridOpenings();
+            // A 2 m doorway in the south wall over two posts, a window across a post in the east wall.
+            v.openings.Add(new OpeningDef { vertical = false, line = 0, from = 0.6f, to = 2.6f, top = 2.4f });
+            v.openings.Add(new OpeningDef { vertical = true, line = 8, from = 1.8f, to = 4.2f, sill = 0.9f, top = 2.0f });
+            bp.Validate();
+            Assert.AreEqual(2, v.CountExits(), "the converted door and the wide doorway lead out; a window does not");
+            var L = CustomRoomHarness.BuildLayout(bp, 0, rot, out var p);
+            Assert.AreEqual(3, L.cutouts.Count, "every opening is a cutout in the plan");
+            var wide = L.cutouts.First(c => Mathf.Abs(c.to - c.from - 2f) < 0.01f);
+            var window = L.cutouts.First(c => c.sill > 0.5f);
+            Assert.AreEqual(2.4f, wide.top, 1e-4f);
+            // The edges under the doorway open; the window's stay wall.
+            int Open(WallCutout c)
+            {
+                int n = 0;
+                for (int a = Mathf.FloorToInt(c.from / OfficeBiome.CellSize); a < Mathf.CeilToInt(c.to / OfficeBiome.CellSize); a++)
+                    if ((c.vertical ? L.vEdges[c.line, a] : L.hEdges[a, c.line]) == EdgeKind.Door) n++;
+                return n;
+            }
+            Assert.AreEqual(3, Open(wide), $"rot {rot}: the doorway's three edges open");
+            Assert.AreEqual(0, Open(window), $"rot {rot}: the window's edges stay wall");
+            // It builds, on a worker thread as the world does.
+            var assets = UnityEditor.AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
+            var builder = new OfficeChunkBuilder(assets);
+            System.Exception error = null;
+            var worker = new System.Threading.Thread(() => { try { builder.BuildData(L); } catch (System.Exception e) { error = e; } });
+            worker.Start(); worker.Join();
+            Assert.IsNull(error, error?.ToString());
+            // There is wall over the doorway (a collider from its top up) and none across it below.
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var boxes = (List<(Vector3 c, Vector3 s)>)typeof(OfficeChunkBuilder).GetField("_boxes", flags).GetValue(builder);
+            float mid = (wide.from + wide.to) * 0.5f, line = wide.line * OfficeBiome.CellSize;
+            bool Covers((Vector3 c, Vector3 s) b, float y) =>
+                Mathf.Abs((wide.vertical ? b.c.x : b.c.z) - line) < 0.1f && Mathf.Abs((wide.vertical ? b.c.z : b.c.x) - mid) < (wide.vertical ? b.s.z : b.s.x) * 0.5f
+                && Mathf.Abs(b.c.y - y) < b.s.y * 0.5f;
+            Assert.IsTrue(boxes.Any(b => Covers(b, 2.55f)), $"rot {rot}: wall above the doorway");
+            Assert.IsFalse(boxes.Any(b => Covers(b, 1.0f)), $"rot {rot}: nothing across the doorway");
+        }
+
+        [Test]
+        public void GridDoorwaysBecomeOpeningsAndGrowingWestKeepsThingsInPlace()
+        {
+            var v = RoomVariant.CreateDefault(6, 6);
+            Assert.AreEqual(1, v.ConvertGridOpenings(), "the default doorway");
+            var door = v.openings[0];
+            Assert.IsFalse(door.vertical); Assert.AreEqual(0, door.line);
+            Assert.AreEqual(EdgeCode.Wall, v.H(3, 0), "its edge is wall now; the opening cuts it");
+            v.openings.Add(new OpeningDef { vertical = true, line = 0, from = 1f, to = 2f, sill = 1f, top = 2f });
+            v.props.Add(new PropDef { kind = PropKind.Box, x = 2f, z = 2f });
+            float doorFrom = door.from;
+            v.Reframe(-2, 0, 8, 6);
+            Assert.AreEqual(8, v.width);
+            Assert.AreEqual(2f + 2 * OfficeBiome.CellSize, v.props[0].x, 1e-4f, "the prop stays where it was in the room");
+            Assert.AreEqual(doorFrom + 2 * OfficeBiome.CellSize, v.openings.First(o => !o.vertical).from, 1e-4f, "the south door too");
+            Assert.AreEqual(0, v.openings.First(o => o.vertical).line, "the west window goes out with the west wall");
+            Assert.AreEqual(EdgeCode.Open, v.V(2, 3), "the old west wall line is inside now, open");
+        }
+
+        [Test]
+        public void StuckPropsKeepTheirPose()
+        {
+            var assets = UnityEditor.AssetDatabase.LoadAssetAtPath<OfficeBiomeAssets>("Assets/Backrooms/Settings/OfficeBiome_Assets.asset");
+            var bp = RoomBlueprint.CreateNew();
+            bp.variants[0].props.Add(new PropDef { kind = PropKind.Box, x = 2f, z = 2f, yaw = 30f, pitch = 20f, roll = -10f, elevation = 0.5f, scale = 1.5f, pinned = true, size = new Vector3(0.5f, 0.36f, 0.4f) });
+            var L = CustomRoomHarness.BuildLayout(bp, 0, 0, out _);
+            var builder = new OfficeChunkBuilder(assets);
+            builder.BuildData(L);
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var spec = ((System.Collections.IList)typeof(OfficeChunkBuilder).GetField("_movables", flags).GetValue(builder)).Cast<Backrooms.Interaction.MovableSpec>().Single();
+            Assert.IsTrue(spec.pinned);
+            Assert.AreEqual(20f, spec.pitch, 1e-4f); Assert.AreEqual(-10f, spec.roll, 1e-4f); Assert.AreEqual(1.5f, spec.scale, 1e-4f);
+            Assert.AreEqual(0.5f, spec.position.y, 1e-4f, "lifted off the floor");
+            // (Spawning outside play mode logs Unity's "Destroy may not be called from edit mode" for its temporary cube.)
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            var prop = Backrooms.Interaction.MovableProp.Spawn(spec, null, spec.position, Quaternion.Euler(spec.pitch, spec.yaw, spec.roll));
+            try
+            {
+                prop.Wake();
+                Assert.IsTrue(prop.Body.isKinematic, "physics off: it never wakes");
+                Assert.AreEqual(1.5f, prop.transform.localScale.x, 1e-4f);
+            }
+            finally { Object.DestroyImmediate(prop.gameObject); }
+        }
+
+        [Test]
         public void EveryRotationStampsTheSameRoom([Values(0, 1, 2, 3)] int rot)
         {
             var bp = Sample();

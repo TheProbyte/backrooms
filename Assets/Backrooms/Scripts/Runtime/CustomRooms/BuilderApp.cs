@@ -10,7 +10,7 @@ namespace Backrooms.CustomRooms
 {
     public enum BuilderTool { Select, Wall, Opening, Half, Erase, Floor, Pillar, Light, Prop, Loot }
     public enum BuilderView { Solid, Room, Cutout, WallsDown, Top }
-    public enum OpeningKind { Doorway, Arch, Tall, Gap }
+    public enum OpeningKind { Doorway, DoubleDoor, Arch, Window, Tall, Gap }
 
     /// <summary>
     /// Build mode: a dark, effect-free workspace for designing a room on the world's 1.2 m cell grid. The room is built with the
@@ -134,6 +134,10 @@ namespace Backrooms.CustomRooms
         public void OpenEditor(bool frame = true)
         {
             _screen = ScreenKind.Editor;
+            // The grid's doorways become doors of their own size (they can be dragged wider and taller).
+            int made = 0;
+            foreach (var variant in _bp.variants) made += variant.ConvertGridOpenings();
+            if (made > 0) { _dirty = true; BuildSession.Dirty = true; }
             BuildSession.Editing = _bp;
             _undo.Clear(); _redo.Clear();
             _selected = Selection.None;
@@ -238,6 +242,8 @@ namespace Backrooms.CustomRooms
             foreach (var r in _previewObject.GetComponentsInChildren<Renderer>())
                 if (HidesCeiling && IsCeilingMaterial(r.sharedMaterial)) r.enabled = false;
             foreach (var ls in builder.lights) AddPreviewLight(ls);
+            IndexPropViews();
+            _lastRebuild = Time.unscaledTime;
         }
 
         void ApplyViewToLayout(OfficeLayout L, List<(bool vertical, int line, int along)> cuts)

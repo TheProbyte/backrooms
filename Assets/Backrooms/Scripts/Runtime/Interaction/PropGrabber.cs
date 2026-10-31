@@ -311,6 +311,7 @@ namespace Backrooms.Interaction
         void TryStart()
         {
             if (!Look(lookRange, out var hit, out var prop)) return;
+            if (prop.Pinned) { Note("IT WON'T BUDGE"); return; }
             // (The edge the marks show, so the hand goes where they said.)
             prop.FindGrip(hit.point, hit.normal, Shoulder, _rng, prop == _markProp ? _markEdge : -1, out var grip, out var normal, out var edge, out _);
             // On the model, not the collider box: the hand placed on its real surface, fingers the best way round.

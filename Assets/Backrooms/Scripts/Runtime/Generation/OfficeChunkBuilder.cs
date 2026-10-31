@@ -141,6 +141,7 @@ namespace Backrooms.Generation
             _cellMask = LightLayers.CellMasks(_L, Neighbour);
             if (Pool) { for (int x = 0; x < _L.N; x++) for (int z = 0; z < _L.N; z++) _cellMask[x, z] = 1u; }   // no fixture lights here
             IndexHoles();
+            IndexCutouts();
             IndexNoclip();
             if (Pool) { BuildPoolData(); return; }
             BuildFloorAndCeiling();
@@ -294,7 +295,7 @@ namespace Backrooms.Generation
             foreach (var s in _movables)
             {
                 if (!moved || !moved.IsMoved(s.id))
-                    MovableProp.Spawn(s, root.transform, s.position, Quaternion.Euler(0f, s.yaw, 0f));
+                    MovableProp.Spawn(s, root.transform, s.position, Quaternion.Euler(s.pitch, s.yaw, s.roll));
                 yield return root;
             }
 
@@ -546,6 +547,8 @@ namespace Backrooms.Generation
                 float myCeil = _L.WallTop(room);
 
                 uint cm = CellMask(cx, cz);
+                // A door or window of its own size (build mode): the wall round it.
+                if (e != EdgeKind.Open && CutAt(vertical, line, along)) { CutoutFaces(room, cm, vertical, line, along, l, f, a0, a1, n, myCeil); continue; }
                 if (Pool && _L.Basin(cx, cz)) BasinEdge(e, vertical, line, along, s, n, f);
                 if (e == EdgeKind.Wall)
                 {
@@ -769,7 +772,7 @@ namespace Backrooms.Generation
                 int start = -1;
                 for (int z = 0; z <= N; z++)
                 {
-                    bool solid = z < N && _L.vEdges[x, z] == EdgeKind.Wall && !HoleAt(true, x, z, out _) && !NoclipAt(true, x, z) && !Broken(true, x, z, out _);
+                    bool solid = z < N && _L.vEdges[x, z] == EdgeKind.Wall && !HoleAt(true, x, z, out _) && !NoclipAt(true, x, z) && !Broken(true, x, z, out _) && !CutAt(true, x, z);
                     if (solid && start < 0) start = z;
                     if (!solid && start >= 0)
                     {
@@ -787,7 +790,7 @@ namespace Backrooms.Generation
                 int start = -1;
                 for (int x = 0; x <= N; x++)
                 {
-                    bool solid = x < N && _L.hEdges[x, z] == EdgeKind.Wall && !HoleAt(false, z, x, out _) && !NoclipAt(false, z, x) && !Broken(false, z, x, out _);
+                    bool solid = x < N && _L.hEdges[x, z] == EdgeKind.Wall && !HoleAt(false, z, x, out _) && !NoclipAt(false, z, x) && !Broken(false, z, x, out _) && !CutAt(false, z, x);
                     if (solid && start < 0) start = x;
                     if (!solid && start >= 0)
                     {
@@ -800,6 +803,7 @@ namespace Backrooms.Generation
                     }
                 }
             }
+            CutoutColliders();
         }
 
         /// <summary>
@@ -817,6 +821,8 @@ namespace Backrooms.Generation
             for (int x = 0; x <= N; x++)
             for (int z = 0; z <= N; z++)
             {
+                // Inside a door or window that runs on past it: only above and below the hole.
+                if (PostInCutout(x, z, out var cut)) { CutPost(x, z, cut); continue; }
                 // The four cells and four edges around the vertex (possibly in neighbouring chunks).
                 float c00 = CeilAt(x - 1, z - 1), c10 = CeilAt(x, z - 1), c01 = CeilAt(x - 1, z), c11 = CeilAt(x, z);
                 EdgeKind? up = VEdgeAt(x, z), down = VEdgeAt(x, z - 1), right = HEdgeAt(x, z), left = HEdgeAt(x - 1, z);
@@ -1184,6 +1190,7 @@ namespace Backrooms.Generation
             const float depth = 0.006f;
             foreach (var p in _L.plates)
             {
+                if (PlateInCutout(p)) continue;                  // (not in a hole of a door or window of its own size)
                 float x0 = p.cell.x * C, z0 = p.cell.y * C;
                 float py = p.height + _L.FloorAt(p.cell.x, p.cell.y);       // above the room's own floor
                 Vector3 n, pos;
@@ -1265,24 +1272,39 @@ namespace Backrooms.Generation
             bool modelled = _a.sofaPrefabs != null && _a.sofaPrefabs.Length > 0 && _a.floorLampPrefab;
             foreach (var p in _L.props)
             {
-                var rot = Quaternion.Euler(0f, p.yaw, 0f);
-                // On the floor of the room it stands in (a sunken room's is lower).
-                int pcx = Mathf.Clamp(Mathf.FloorToInt(p.position.x / C), 0, _L.N - 1), pcz = Mathf.Clamp(Mathf.FloorToInt(p.position.y / C), 0, _L.N - 1);
-                var at = new Vector3(p.position.x, _L.FloorAt(pcx, pcz), p.position.y);
-                if (p.kind >= PropKind.Counter) { SpecialProp(p, at, rot); continue; }     // the good rooms' furniture
-                if (modelled) { PlaceModelled(p, at, rot, lights); continue; }
-                switch (p.kind)
+                int before = _movables.Count;
+                BuildProp(p, modelled, lights);
+                // Build mode's own: lifted, tipped, scaled, stuck in place (on the movable it made).
+                for (int i = before; i < _movables.Count; i++)
                 {
-                    case PropKind.Sofa: Sofa(p, at, rot); break;
-                    case PropKind.FloorLamp: Lamp(p, at, lights); break;
-                    case PropKind.ConferenceTable: Table(p, at, rot); break;
-                    case PropKind.StorageRack: Rack(p, at); break;
-                    case PropKind.Box: BoxProp(p, at); break;
-                    case PropKind.Pallet: Pallet(p, at, rot); break;
-                    case PropKind.Armchair: Sofa(p, at, rot); break;
-                    case PropKind.OfficeChair: Chair(p.roomColor, at, rot, p.yaw); break;
-                    case PropKind.WallClock: PlaceClock(p, at); break;
+                    var s = _movables[i];
+                    s.position += Vector3.up * p.elevation;
+                    s.pitch = p.pitch; s.roll = p.roll;
+                    s.scale = p.scale > 0.01f ? p.scale : 1f;
+                    s.pinned = p.pinned;
                 }
+            }
+        }
+
+        void BuildProp(Prop p, bool modelled, List<LightSource> lights)
+        {
+            var rot = Quaternion.Euler(0f, p.yaw, 0f);
+            // On the floor of the room it stands in (a sunken room's is lower).
+            int pcx = Mathf.Clamp(Mathf.FloorToInt(p.position.x / C), 0, _L.N - 1), pcz = Mathf.Clamp(Mathf.FloorToInt(p.position.y / C), 0, _L.N - 1);
+            var at = new Vector3(p.position.x, _L.FloorAt(pcx, pcz), p.position.y);
+            if (p.kind >= PropKind.Counter) { SpecialProp(p, at, rot); return; }     // the good rooms' furniture
+            if (modelled) { PlaceModelled(p, at, rot, lights); return; }
+            switch (p.kind)
+            {
+                case PropKind.Sofa: Sofa(p, at, rot); break;
+                case PropKind.FloorLamp: Lamp(p, at, lights); break;
+                case PropKind.ConferenceTable: Table(p, at, rot); break;
+                case PropKind.StorageRack: Rack(p, at); break;
+                case PropKind.Box: BoxProp(p, at); break;
+                case PropKind.Pallet: Pallet(p, at, rot); break;
+                case PropKind.Armchair: Sofa(p, at, rot); break;
+                case PropKind.OfficeChair: Chair(p.roomColor, at, rot, p.yaw); break;
+                case PropKind.WallClock: PlaceClock(p, at); break;
             }
         }
 
