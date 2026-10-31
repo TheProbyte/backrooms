@@ -62,6 +62,32 @@ namespace Backrooms.Audio
             return Clip("Scuff_" + variant, d, 1);
         }
 
+        /// <summary>
+        /// Sliding on the floor after crouching from a run (0 carpet, 1 a hard floor): the shoes and the trousers rubbing
+        /// along, loud at first and dying away as the slide slows (about 0.8 s). Carpet is a dull, low rub with the fibres'
+        /// rasp; a hard floor is brighter, with grit and a squeak or two of rubber.
+        /// </summary>
+        public static AudioClip SlideRub(int floor)
+        {
+            var rng = new System.Random(1450 + floor);
+            int n = (int)(Rate * 0.85f);
+            var d = new float[n];
+            bool hard = floor != 0;
+            var body = Biquad.BandPass(hard ? 900f : 420f, 0.7f); var rasp = Biquad.BandPass(hard ? 3200f : 1600f, 1.1f);
+            var lp = Biquad.LowPass(hard ? 6000f : 2600f);
+            var squeak = Biquad.BandPass(1750f, 9f);
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
+                float env = Mathf.Min(1f, t / 0.025f) * Mathf.Exp(-t / 0.32f) * (0.75f + 0.25f * Mathf.PerlinNoise(t * 22f, floor * 3.3f));
+                float x = White(rng);
+                float sq = hard ? squeak.Run(x) * Mathf.Max(0f, Mathf.PerlinNoise(t * 6f, 7.1f) - 0.6f) * 6f : 0f;
+                d[i] = lp.Run(body.Run(x) * 1.1f + rasp.Run(x) * (hard ? 0.5f : 0.3f) + sq) * env;
+            }
+            Normalize(d, 0.5f);
+            return Clip("SlideRub_" + floor, d, 1);
+        }
+
         /// <summary>Clothes moving: soft broadband fabric noise with little swishes. Loops; its level follows how much you move.</summary>
         public static AudioClip Rustle()
         {
@@ -197,6 +223,9 @@ namespace Backrooms.Audio
         static AudioClip[,] s_hardSteps;
         static AudioClip[] s_scuffs, s_breathIn, s_breathOut, s_pats, s_creaks, s_ticks;
         static AudioClip s_rustle, s_brush;
+        static AudioClip[] s_slides;
+        /// <summary>Sliding after crouching from a run: 0 carpet, 1 a hard floor.</summary>
+        public static AudioClip SlideRub(int floor) => Pick(ref s_slides, 2, floor, ProceduralSounds.SlideRub);
 
         /// <summary>A footstep on a hard floor (tile, wood, concrete, metal): 6 variants each.</summary>
         public static AudioClip HardStep(ProceduralSounds.Floor floor, int variant)

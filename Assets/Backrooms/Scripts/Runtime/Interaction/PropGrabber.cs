@@ -48,8 +48,17 @@ namespace Backrooms.Interaction
         [Tooltip("0 full: held things in view, the hand on them. 1 low: held lower, at the bottom edge of the picture, the hand " +
                  "mostly out of shot. 2 off: no hand drawn (its shadow only). Camera menu > HANDHELD > Hands in view.")]
         public int handsInView = 1;
-        /// <summary>The working hand is drawn in first person (Hands in view is not Off).</summary>
-        public bool HandsShown => handsInView != 2;
+        /// <summary>The working hand is drawn in first person (Hands in view is not Off, and there is a body to draw).</summary>
+        public bool HandsShown => handsInView != 2 && bodyMode != 2;
+
+        [Tooltip("0 full body. 1 hands only: no legs or body drawn, the arm only while it does something. 2 none: nothing of " +
+                 "the body, no arm reaches (things are taken from up to bodilessReach), a crosshair. Camera menu > HANDHELD > Body.")]
+        public int bodyMode;
+        [Tooltip("With no body: how far from the shoulder things are taken and held (m).")] public float bodilessReach = 1.6f;
+        /// <summary>No body (Body: None): nothing drawn, no arm to reach with.</summary>
+        public bool Bodiless => bodyMode == 2;
+        /// <summary>The body's arm does the reaching (there is one, and Body is not None).</summary>
+        bool Armed => _body && _body.HasArm && bodyMode != 2;
         /// <summary>Where held things are carried for Hands in view (view space, m; x mirrored): lower and further out to the
         /// side, so the picture shows the top of what you hold.</summary>
         public Vector3 HandsInViewOffset => handsInView == 1 ? new Vector3(0.035f, -0.075f, 0.01f) : handsInView == 2 ? new Vector3(0.05f, -0.13f, 0f) : Vector3.zero;
@@ -78,13 +87,13 @@ namespace Backrooms.Interaction
         /// The shoulder the hand really reaches from: the body's own (its joint as the body stands and bends; the eye's
         /// fixed offset was 24 cm off it stooping), or the offset when there is no body.
         /// </summary>
-        public Vector3 ReachShoulder => _body && _body.HasArm ? _body.ShoulderNow : Shoulder;
+        public Vector3 ReachShoulder => Armed ? _body.ShoulderNow : Shoulder;
         /// <summary>How far the palm reaches from <see cref="ReachShoulder"/>: the body's arm (0.6 m), or the reach setting.</summary>
-        public float ArmReach => _body && _body.HasArm ? _body.ArmReach : reach;
+        public float ArmReach => Armed ? _body.ArmReach : Bodiless ? bodilessReach : reach;
         /// <summary>The body's arm has the palm (or fingertip) where it was sent: within 2 cm. Nothing is taken before.</summary>
-        public bool HandArrived => !_body || !_body.HasArm || _body.PalmError < 0.02f;
+        public bool HandArrived => !Armed || _body.PalmError < 0.02f;
         /// <summary>How far the solved palm is from where it is wanted (m), or 0 with no body.</summary>
-        public float PalmError => _body && _body.HasArm ? _body.PalmError : 0f;
+        public float PalmError => Armed ? _body.PalmError : 0f;
         float _notThereT, _stoopExtra;
         bool _botHeld, _itemStepping;
         Vector3 _itemReachAt;
@@ -160,7 +169,13 @@ namespace Backrooms.Interaction
         void Awake()
         {
             _player = GetComponent<CamcorderPlayerController>();
+            if (_player) _player.ClimbTooHigh += OnTooHigh;
         }
+
+        void OnDestroy() { if (_player) _player.ClimbTooHigh -= OnTooHigh; }
+
+        /// <summary>Space at a ledge too tall to climb: said in the hint line.</summary>
+        void OnTooHigh(float height) => Note("TOO HIGH TO CLIMB");
 
         void Start()
         {
@@ -228,7 +243,9 @@ namespace Backrooms.Interaction
             }
             if (_poke != PokePhase.None) UpdatePoke();
             UpdatePokeFingers();
-            UpdateTouch(!HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking && !QuickDooring);
+            UpdateTouch(!Bodiless && !HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking && !QuickDooring);
+            // No climbing with the hands full of furniture or a door.
+            _player.noMantle = Current != State.Idle || OnDoor || TwoHanded;
             UpdateCarriedWeight();
             UpdatePassing();
             UpdateCarryPassing();
@@ -335,7 +352,7 @@ namespace Backrooms.Interaction
             // Round 9: the body's way to it planned as for an item (a step, a squat for something low, a bend at the hips),
             // so the elbow is bent when the hand gets there (it reached with the arm straight, the elbow 3-4 degrees).
             ClearPlan();
-            if (_body && _body.HasArm)
+            if (Armed)
             {
                 _reachOwn = prop.GetComponentsInChildren<Collider>();
                 if (PlanFor(grip, null, _reachOwn, PickPlanShare, out _plan, out _) || PlanFor(grip, null, _reachOwn, PickReachShare + 0.04f, out _plan, out _))
@@ -541,7 +558,8 @@ namespace Backrooms.Interaction
 
             // Lost grip: the prop got stuck or was pulled out of reach, or the hand cannot stay on it.
             float d = Vector3.Distance(grip, ReachShoulder);
-            bool off = LowPush ? d > ArmReach + 0.9f : d > ArmReach + 0.15f || PalmError > 0.1f;
+            // (With no body the hold has more give: nothing shows an arm at full stretch, and a heavy thing dragged lags.)
+            bool off = LowPush ? d > ArmReach + 0.9f : d > ArmReach + (Bodiless ? 0.65f : 0.15f) || PalmError > 0.1f;
             // (Not while the hands work it round: the grip lags the turn a moment.)
             _slipT = off ? _slipT + Time.deltaTime : 0f;
             if (_slipT > 0.4f) Release($"slipped (grip {d:F2} m from the shoulder, palm {PalmError * 100f:F0} cm off it)");
@@ -662,7 +680,8 @@ namespace Backrooms.Interaction
             // (Round 11: out in about 0.22 s, back in 0.3: 2.2 a second made every reach start with half a second of the arm
             // coming up.)
             bool goingFor = _fetch || (HeldItem && _itemT <= 0f) || (_planned && Current == State.Reaching);
-            HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (active ? (goingFor ? 4.5f : 4.5f) : letGo ? 5f : 3.4f));
+            // (No body: nothing to watch reach out, so it takes hold at once.)
+            HandBlend = Mathf.MoveTowards(HandBlend, active ? 1f : 0f, Time.deltaTime * (Bodiless ? 14f : active ? (goingFor ? 4.5f : 4.5f) : letGo ? 5f : 3.4f));
             // (Hand over hand on a cord: the grip opens going out and closes on the pull, as the fingers do. Going out to an
             // item it waits for, the hand is open; it closes once the palm is on it.)
             if (HeldItem)
@@ -715,7 +734,7 @@ namespace Backrooms.Interaction
             var door = hit.collider ? hit.collider.GetComponentInParent<Door>() : null;
             if (door)
             {
-                if (door != _door) door.Nudge(hit.point, hit.moveDirection * _player.PlanarVelocity.magnitude);
+                if (door != _door && !TryBash(door, hit)) door.Nudge(hit.point, hit.moveDirection * _player.PlanarVelocity.magnitude);
                 return;
             }
             // Walking into light props nudges them along.

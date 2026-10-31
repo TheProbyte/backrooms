@@ -139,7 +139,7 @@ namespace Backrooms.Interaction
         {
             var pivot = _player ? _player.cameraPitchPivot : null;
             if (!pivot) return;
-            Vector2 e = ReachHinge > 0f && _body && _body.HasArm ? _body.HingeHead(ReachHinge, _player.stoop) : Vector2.zero;
+            Vector2 e = ReachHinge > 0f && Armed ? _body.HingeHead(ReachHinge, _player.stoop) : Vector2.zero;
             if (e == Vector2.zero && _viewFwd == 0f && _viewDrop == 0f) return;
             Vector3 lp = pivot.localPosition;
             // (The controller sets the eye's height every frame; if it has not this frame, what was taken off goes back first.)
@@ -158,7 +158,7 @@ namespace Backrooms.Interaction
         /// </summary>
         Quaternion ReachTurn(Quaternion square, Vector3 grip)
         {
-            if (_body && _body.HasArm && Time.time >= _pickTiltNext)
+            if (Armed && Time.time >= _pickTiltNext)
             {
                 _pickTiltNext = Time.time + 0.15f;
                 float best = float.MaxValue;
@@ -268,7 +268,7 @@ namespace Backrooms.Interaction
         {
             _altItem = null; _altAngle = 0f;
             var round = item as IGripRound;
-            if (round == null || !_body || !_body.HasArm) return PlanFor(GripOf(item), item, null, share, out plan, out b);
+            if (round == null || !Armed) return PlanFor(GripOf(item), item, null, share, out plan, out b);
             round.GripAxis(out Vector3 pt, out Vector3 ax);
             Vector3 mp = Mirror(pt), ma = Mirror(ax).normalized;
             SupportOf(item, out float top);
@@ -332,7 +332,7 @@ namespace Backrooms.Interaction
         /// </summary>
         bool HandGets(Vector3 S, Vector3 p, Quaternion square, float share)
         {
-            if (!_body || !_body.HasArm) return true;
+            if (!Armed) return true;
             if (s_reachRels == null)
             {
                 var list = new System.Collections.Generic.List<RelCost>();
@@ -549,7 +549,7 @@ namespace Backrooms.Interaction
         public bool BodyReaches(WorldItem item)
         {
             if (!item) return false;
-            if (!_body || !_body.HasArm) return (GripOf(item) - Eye).magnitude <= itemRange;
+            if (!Armed) return (GripOf(item) - Eye).magnitude <= itemRange;
             if ((item.transform.position - ReachShoulder).magnitude > ArmReach + PickStep + 0.9f) return false;
             // (Asked every frame for what the view is on: kept a quarter of a second while the body and the item stay put.)
             float yaw = transform.eulerAngles.y;
@@ -655,7 +655,7 @@ namespace Backrooms.Interaction
         {
             _pickTurn = _pickTurnWant = Quaternion.identity; _pickTiltNext = 0f;
             PickGaveUp = false;
-            _planned = _body && _body.HasArm;
+            _planned = Armed;
             ReachBody b = new ReachBody();
             if (_planned && !PlanSide(item, PickPlanShare, out _plan, out b) && !PlanSide(item, PickReachShare + 0.03f, out _plan, out b)
                 && !PlanSideLoose(item, PickPlanShare, out _plan, out b) && !PlanSideLoose(item, PickReachShare + 0.03f, out _plan, out b))
@@ -711,7 +711,7 @@ namespace Backrooms.Interaction
             _pickHandGrip = grip;
             Vector3 S = ReachShoulder;
             float reach = ArmReach;
-            if (!_body || !_body.HasArm) { _pickHandAt = grip; return 1; }
+            if (!Armed) { _pickHandAt = grip; return 1; }
 
             // The step: as far as planned, toward the grip, slowing as it gets there.
             Vector3 moved = transform.position - _pickStart; moved.y = 0f;
@@ -780,7 +780,7 @@ namespace Backrooms.Interaction
         /// <summary>The palm (solved) is taken onto the grip from where it is: the gap closes as the fingers close (TakeGap).</summary>
         int Took(float gap)
         {
-            _takeGap = gap > 0.001f && _body && _body.HasArm ? _body.PalmNow - _pickHandGrip : Vector3.zero;
+            _takeGap = gap > 0.001f && Armed ? _body.PalmNow - _pickHandGrip : Vector3.zero;
             return 1;
         }
         Vector3 _takeGap, _pickHandGrip;
@@ -850,7 +850,7 @@ namespace Backrooms.Interaction
         bool InHandsPlace(WorldItem item, out bool palmOn)
         {
             palmOn = false;
-            if (!_body || !_body.HasArm) { palmOn = true; return true; }
+            if (!Armed) { palmOn = true; return true; }
             float off = (GripOf(item) - HandPosition).magnitude;
             // (Put right where the palm is, turned as the hand holds it: PlaceInHand.)
             palmOn = HandBlend > 0.9f && off < 0.015f && PalmError < 0.02f && Quaternion.Angle(GripTurnOf(item), HandRotation) < 10f;

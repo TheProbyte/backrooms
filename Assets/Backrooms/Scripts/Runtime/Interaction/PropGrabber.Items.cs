@@ -136,6 +136,7 @@ namespace Backrooms.Interaction
             if (Event.current.type != EventType.Repaint || !_cam) return;
             PocketsGUI();
             HintGUI();
+            BodilessGUI();
             if (HeldItem)
             {
                 if (Placing) { PlaceMarks(); return; }
@@ -558,7 +559,7 @@ namespace Backrooms.Interaction
         /// </summary>
         void EaseForArm(WorldItem item, ref Vector3 pos, ref Quaternion rot, float useW, float dt)
         {
-            bool on = _body && _body.HasArm && !(item is Sledgehammer) && useW <= 0f && _placeW <= 0f && ThrowCharge <= 0f && _itemT >= 1f && HandBlend > 0.9f;
+            bool on = Armed && !(item is Sledgehammer) && useW <= 0f && _placeW <= 0f && ThrowCharge <= 0f && _itemT >= 1f && HandBlend > 0.9f;
             Quaternion grip = item.GripRotationLocal;
             Quaternion hand = rot * Quaternion.LookRotation(Mirror(grip * Vector3.forward), Mirror(grip * Vector3.up));
             Vector3 palm = pos + rot * Mirror(item.GripLocal);

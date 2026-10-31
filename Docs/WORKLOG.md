@@ -15,6 +15,28 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - A no-body switch to compare; crouch slide; run into a door to slam it open; climbing to 1.8 m
+
+- Research first (now in the user's CLAUDE.md): Frictional's Amnesia/Penumbra (no body, mouse-driven physics), Scorn and
+  Eclipsium (hands are everything); slides are a burst then friction (Apex, Call of Duty); Fortnite opens a door on a
+  sprint into it with no key, Shadows of Doubt with a key held; mantle systems have a minimum, a split between a low and a
+  high climb, and a maximum (about 2 m).
+- Body: Full / Hands only / None in the camera menu (HANDHELD). None: nothing drawn, a centre cross, things taken from
+  1.6 m at once, a dot where a heavy thing is held and a dotted line while it lags. `FirstPersonBody.Mode.cs`,
+  `PropGrabber.Bodiless.cs`, `PropGrabber.Armed` (the old no-body paths), `CamcorderSettings.body`.
+- Slide: C while running slides on about 1.6 m (burst 1.08x, friction 4.6 m/s per s), lower eye, a small roll, a rub on
+  the floor (`SlideRub`); steer, brake, jump out of it.
+- Door bash: running square into a door from its push side unlatches it and slams it wide; you keep going a little
+  slower. Bolted doors stop you. `PropGrabber.Bash.cs`, `Door.Bash`, `CamcorderPlayerController.KeepMomentum`.
+- Climbing: quick pull up to 1.3 m (a vault from a run under 1 m, keeping some speed), a slower climb to 1.8 m (hang,
+  then haul), too tall above (hint); crouched or crawling on top under a low ceiling; Space held in the air climbs at a
+  ledge; not with the hands full. `mantleMax` (1.35) is now `climbMax` (1.8): the scene open in the editor held the old
+  value in memory and overrode the new default.
+- Checked in World 3 (driven by code): slide from 3.65 m/s went 1.64 m in 0.7 s; a door run into from 3 m swung to 88
+  degrees and the body went through; boxes of 0.9 and 1.2 m pulled up (0.54, 0.59 s), 1.5 and 1.75 m climbed (1.11, 1.26
+  s), 2.1 m too tall; Body None: a couch taken 0.2 s after the click with no step and dragged 2 m, a lamp taken from 2 m.
+  Not played by the owner. No new tests.
+
 ## 2026-10-30 - Hammer and nails; tape drags again; the first wall blow's stutter; every world sound through Steam Audio
 
 - Hammer and nails (owner's design): nails in a pocket, hold right mouse to raise the hammer and see where the nail goes,

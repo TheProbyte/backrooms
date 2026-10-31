@@ -10,7 +10,7 @@ namespace Backrooms.Tests
     {
         static readonly int[] Seeds = { 1, 1234, 98765, 424242 };
         const float C = OfficeBiome.CellSize;
-        /// <summary>The highest pull a shaft asks for: 1.3 m, under the mantle's 1.35 (CamcorderPlayerController.mantleMax).</summary>
+        /// <summary>The highest pull a shaft asks for: 1.3 m, under the quick pull up's 1.3 (CamcorderPlayerController.mantleClimbAbove; climbs go to climbMax, 1.8).</summary>
         const float Mantle = 1.3f + 1e-3f;
         static readonly int[] DX = { -1, 1, 0, 0 }, DZ = { 0, 0, -1, 1 };
 

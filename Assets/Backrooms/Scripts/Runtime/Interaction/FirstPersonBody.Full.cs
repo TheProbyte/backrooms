@@ -794,7 +794,8 @@ namespace Backrooms.Interaction
             float climb = _rootYSet ? (rootNow - _lastRootY) / dt : 0f;
             _lastRootY = rootNow;
             _offGround = grounded ? 0f : _offGround + dt;
-            bool airborne = !grounded && (_offGround > 0.14f || climb > 0.8f);
+            // (Sliding the legs do not step: they go with the body, as off the ground.)
+            bool airborne = (!grounded && (_offGround > 0.14f || climb > 0.8f)) || _player.Sliding;
             _air = Mathf.Clamp01(Springs.Damper(_air, ref _airVel, airborne ? 1f : 0f, 0.05f, dt));
             _walkAmount = Mathf.MoveTowards(_walkAmount, !airborne ? Mathf.Clamp01(speed / 0.5f) : 0f, dt * 3f);
 

@@ -368,6 +368,33 @@ namespace Backrooms.Interaction
         /// <summary>The hand lets go: the lever springs up, the door keeps swinging with what it had.</summary>
         public void Release() { Held = false; }
 
+        /// <summary>
+        /// Run into from the side it opens away from (PropGrabber.Bash): the shoulder knocks the lever's latch out of its
+        /// keep and the door slams open, swinging as fast as the body came (wide, banging on its stop). Bolted, or held, it
+        /// does not give: false (it rattles in its frame).
+        /// </summary>
+        public bool Bash(Vector3 at, float speed)
+        {
+            if (Held) return false;
+            if (Bolted && Angle < 0.5f) { Fx(SoundBank.DoorBump, 0.8f); Rattle(); return false; }
+            bool wasShut = Angle < 3f;
+            if (Latched)
+            {
+                Latched = false;
+                Fx(SoundBank.DoorLatch, 0.75f);
+                _turnBack = _turnFront = 0.6f;               // the levers jolt down and spring back up
+                Pose();
+            }
+            if (wasShut) Fx(SoundBank.DoorBump, Mathf.Clamp01(0.45f + speed * 0.1f));
+            Vector3 r = Vector3.ProjectOnPlane(at - HingeWorld, transform.up);
+            // The leaf at the shoulder goes at the body's speed, and a little more (the shove's follow-through).
+            float want = Mathf.Clamp(speed / Mathf.Max(0.35f, r.magnitude) * Mathf.Rad2Deg * 1.25f, 200f, 360f);
+            if (_vel < want) _vel = want;
+            _moved = true;
+            _shovedAt = Time.time;
+            return true;
+        }
+
         /// <summary>Walked into: an unlatched door is pushed along a little.</summary>
         public void Nudge(Vector3 at, Vector3 push)
         {

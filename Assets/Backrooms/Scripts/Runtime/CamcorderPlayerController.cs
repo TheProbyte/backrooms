@@ -11,7 +11,9 @@ namespace Backrooms
     /// Controls: WASD walk, Shift run, C crouch (toggle), Left Ctrl crawl (toggle), Space jump (tap for a
     /// hop, hold to bend the knees for a higher jump), hold F to zoom in (release to zoom back out).
     /// Stance changes move the eye on a spring, so getting down and up is eased like a person moving;
-    /// dropping into a crouch or crawl from a run is quicker and carries the body forward.
+    /// dropping into a crouch from a run slides a short way on (a burst, then friction), into a crawl it carries the body
+    /// forward. Space at a ledge climbs it: up to 1.3 m a quick pull up (a vault from a run), up to 1.8 m a slower climb,
+    /// higher is too tall. Running into a door from the side it opens away from slams it open (PropGrabber.Bash).
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
     public class CamcorderPlayerController : MonoBehaviour
@@ -143,6 +145,28 @@ namespace Backrooms
         float _airMinVy, _hopCarry;
         float _zoomVel;
 
+        // ---------------- Slide ----------------
+        [Header("Slide")]
+        [Tooltip("Crouching (C) while moving at least this fast (m/s) slides on.")] public float slideMinSpeed = 2.4f;
+        [Tooltip("The slide starts at the speed you had times this.")] public float slideBoost = 1.08f;
+        [Tooltip("How fast the slide slows (m/s each second): with the boost, about 1.5 m from a run.")] public float slideFriction = 4.6f;
+        [Tooltip("Longest a slide lasts (s).")] public float slideMaxTime = 0.85f;
+        [Tooltip("How much lower the eye goes while sliding than crouched (m).")] public float slideEyeDrop = 0.1f;
+        [Tooltip("How far the view rolls while sliding (degrees).")] public float slideRoll = 2.2f;
+        float _slideT = -1f, _slideSpeed, _slideRollNow, _slideRollVel, _keepMomentumUntil = -1f;
+        Vector3 _slideDir;
+        /// <summary>Sliding on after crouching from a run.</summary>
+        public bool Sliding => _slideT >= 0f;
+        /// <summary>Slides started (for tests and sounds).</summary>
+        public int Slides { get; private set; }
+        /// <summary>
+        /// For a moment, running into something does not take the speed away (a door slammed open by running into it gives
+        /// way under the shoulder instead of stopping the body dead).
+        /// </summary>
+        public void KeepMomentum(float seconds) { _keepMomentumUntil = Mathf.Max(_keepMomentumUntil, Time.time + seconds); }
+        /// <summary>Sets the walking speed (level, m/s): a door the body ran into takes some of it.</summary>
+        public void SetPlanarVelocity(Vector3 v) { v.y = 0f; PlanarVelocity = v; _moveAccel = Vector3.zero; if (_slideT >= 0f) _slideSpeed = v.magnitude; }
+
         // ---------------- Momentum ----------------
         [Header("Momentum")]
         [Tooltip("Getting up to speed walking: half-life of the gap (s). A critically damped spring, so speed builds and settles without a corner.")]
@@ -268,8 +292,33 @@ namespace Backrooms
 
         void ApplyPivotRotation()
         {
-            if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, -_leanAmount * leanRoll - _turnLean * turnRoll);
+            _slideRollNow = Springs.Damper(_slideRollNow, ref _slideRollVel, _slideT >= 0f ? 1f : 0f, _slideT >= 0f ? 0.08f : 0.18f, Time.deltaTime);
+            if (cameraPitchPivot) cameraPitchPivot.localRotation = Quaternion.Euler(_pitch, 0f, -_leanAmount * leanRoll - _turnLean * turnRoll + _slideRollNow * slideRoll);
         }
+
+        /// <summary>
+        /// Sliding: the way it was going, slowing by friction (S brakes, A/D steer it a little); over once it is down to a
+        /// crouch's pace, after slideMaxTime, or off the ground (a jump keeps its speed in the air).
+        /// </summary>
+        void UpdateSlide(Vector2 input, Vector3 target)
+        {
+            float dt = Time.deltaTime;
+            _slideT += dt;
+            if (input.sqrMagnitude > 0.01f && target.sqrMagnitude > 1e-4f)
+            {
+                Vector3 want = target.normalized;
+                if (Vector3.Dot(want, _slideDir) > -0.2f) _slideDir = Vector3.RotateTowards(_slideDir, want, 0.7f * dt, 0f);
+            }
+            float friction = slideFriction * (input.y < -0.3f ? 1.8f : 1f);
+            _slideSpeed = Mathf.Max(0f, _slideSpeed - friction * dt);
+            PlanarVelocity = _slideDir * _slideSpeed;
+            _moveAccel = -_slideDir * friction;          // the slowing carries on smoothly into the crouch's walk
+            bool over = _slideSpeed <= crouchSpeed + 0.1f || _slideT >= slideMaxTime || CurrentStance != Stance.Crouch
+                        || (!_controller.isGrounded && Time.time - _lastGrounded > 0.1f);
+            if (over) EndSlide();
+        }
+
+        void EndSlide() { _slideT = -1f; }
 
         // ---------------- Leash ----------------
         Vector3 _leashAnchor;
@@ -290,6 +339,7 @@ namespace Backrooms
         /// <summary>Moves the player instantly (spawning, room transitions) and resets look and velocity.</summary>
         public void Teleport(Vector3 position, float yaw, float pitch = 0f)
         {
+            EndSlide();
             _controller.enabled = false;
             transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
             _controller.enabled = !noclip;
@@ -398,7 +448,8 @@ namespace Backrooms
             // After dropping into a crouch or crawl from a run the body carries forward for a moment.
             if (_hopCarry > 0f) { _hopCarry -= Time.deltaTime; half *= 4f; }
             if (!_controller.isGrounded) half = airHalfLife;
-            PlanarVelocity = Springs.Damper(PlanarVelocity, ref _moveAccel, target, half, Time.deltaTime);
+            if (_slideT >= 0f) UpdateSlide(input, target);
+            else PlanarVelocity = Springs.Damper(PlanarVelocity, ref _moveAccel, target, half, Time.deltaTime);
             _moveAccel.y = 0f;
             // Leaning into a turn: the sideways part of the acceleration (as a body tips into a curve).
             {
@@ -439,11 +490,18 @@ namespace Backrooms
             if (wasGrounded && !_controller.isGrounded && _verticalVelocity <= 0f && SnapToGround(0.32f)) _verticalVelocity = -2f;
 
             // Bleed off velocity into walls so the player doesn't "stick" to them.
-            if ((flags & CollisionFlags.Sides) != 0)
+            if ((flags & CollisionFlags.Sides) != 0 && Time.time >= _keepMomentumUntil)
             {
                 Vector3 actual = _controller.velocity; actual.y = 0f;
                 PlanarVelocity = Vector3.ClampMagnitude(PlanarVelocity, actual.magnitude + 0.05f);
                 _moveAccel = Vector3.ClampMagnitude(_moveAccel, 2f);
+                // A slide into a wall stops there (a glancing one carries on along it, slower).
+                if (_slideT >= 0f)
+                {
+                    _slideSpeed = Mathf.Min(_slideSpeed, actual.magnitude);
+                    if (actual.sqrMagnitude > 0.01f) _slideDir = actual.normalized;
+                    if (_slideSpeed < 0.6f) EndSlide();
+                }
             }
             if ((flags & CollisionFlags.Above) != 0 && _verticalVelocity > 0f) _verticalVelocity = 0f;
 
@@ -525,7 +583,21 @@ namespace Backrooms
             if (HeightFor(want) > HeightFor(CurrentStance) && !RoomToStand(HeightFor(want))) return false;   // ceiling too low
 
             bool fromRun = IsRunning || PlanarVelocity.magnitude > walkSpeed * 1.3f;
-            if (fromRun && want != Stance.Stand)
+            if (want != Stance.Crouch || CurrentStance != Stance.Stand) EndSlide();
+            if (fromRun && want == Stance.Crouch && CurrentStance == Stance.Stand && _controller.isGrounded && _mantleT < 0f
+                && PlanarVelocity.magnitude >= slideMinSpeed)
+            {
+                // Crouching from a run: the body drops and slides on (a burst, then the carpet's friction).
+                _eyeK = 110f; _eyeC = 13f;
+                _eyeVel -= 1.0f;
+                Vector3 v = PlanarVelocity; v.y = 0f;
+                _slideDir = v.normalized;
+                _slideSpeed = v.magnitude * slideBoost;
+                _slideT = 0f;
+                Slides++;
+                _moveAccel = Vector3.zero;
+            }
+            else if (fromRun && want != Stance.Stand)
             {
                 // Sprinting into a crouch or crawl: a quick hop down, body carrying forward.
                 _eyeK = 110f; _eyeC = 13f; _hopCarry = 0.45f;
@@ -569,6 +641,7 @@ namespace Backrooms
             // Knees bend while a jump charges (and briefly before a tap hop).
             float target = EyeTarget - charge * 0.2f - (_launchAt >= 0f ? 0.06f : 0f);
             target -= Mathf.Clamp(stoop, 0f, Mathf.Max(0f, EyeTarget - 0.6f));     // bending down to reach something low
+            if (_slideT >= 0f) target -= slideEyeDrop;                                // lower still, sliding
             // Small fixed substeps keep the spring stable even on a long frame.
             int steps = Mathf.Clamp(Mathf.CeilToInt(dt / (1f / 240f)), 1, 60);
             float h = dt / steps;
@@ -631,36 +704,54 @@ namespace Backrooms
         }
 
         // ---------------- Mantle ----------------
-        // Space at a ledge 0.45-1.35 m above the feet, close ahead, with room on top for the body: it pulls up onto it (up
-        // the face, then over), about half a second; out of a pit room's shaft in two pulls (the block in its corner first).
+        // Space at a ledge close ahead with room on top for the body: 0.45-1.3 m above the feet it pulls up onto it (up the
+        // face, then over), about half a second, quicker as a vault from a run (keeping some of the speed); 1.3-1.8 m a
+        // slower climb (the hands catch the top, the body hangs a moment, then hauls up and over); higher is too tall (an
+        // ordinary jump, and the hint says so). Under a low ceiling it climbs up crouched. Space held in the air at a ledge
+        // climbs it too. Out of a pit room's shaft in two pulls (the block in its corner first).
 
         [Header("Mantle")]
-        [Tooltip("Lowest and highest ledge (m above the feet) Space pulls you up onto; lower is an ordinary jump.")]
-        public float mantleMin = 0.45f, mantleMax = 1.35f;
+        [Tooltip("Lowest ledge (m above the feet) Space climbs; lower is an ordinary jump.")]
+        public float mantleMin = 0.45f;
+        [Tooltip("Highest ledge (m above the feet) Space climbs; higher is too tall. (It was mantleMax, 1.35 m; renamed so a stale" +
+                 " value saved in a scene cannot override the new one.)")]
+        public float climbMax = 1.8f;
+        [Tooltip("Above this (m) it is a slow climb, not a quick pull up.")] public float mantleClimbAbove = 1.3f;
         [Tooltip("How long a pull up takes (s), a little more for a higher ledge.")] public float mantleTime = 0.5f;
-        float _mantleT = -1f, _mantleDur;
-        Vector3 _mantleFrom, _mantleTo;
+        [Tooltip("How long the climb up a high ledge takes (s), at the lowest and highest.")] public float climbTimeLow = 0.95f, climbTimeHigh = 1.25f;
+        float _mantleT = -1f, _mantleDur, _mantleHang;
+        Vector3 _mantleFrom, _mantleTo, _mantleCarry;
         HandheldCameraShake _shakeRef;
         /// <summary>Pulling up onto a ledge now (for the body and tests).</summary>
         public bool Mantling => _mantleT >= 0f;
+        /// <summary>The climb under way is a high one (1.3-1.8 m: the hands catch the top and the body hauls up).</summary>
+        public bool Climbing => _mantleT >= 0f && _mantleHang > 0f;
         /// <summary>Tests: a pull up asked for this frame (as Space).</summary>
         [System.NonSerialized] public bool botMantle;
+        /// <summary>No climbing now (the hands are full: a couch, a door).</summary>
+        [System.NonSerialized] public bool noMantle;
+        /// <summary>Space at a ledge too tall to climb (its height above the feet, m).</summary>
+        public event System.Action<float> ClimbTooHigh;
+        float _tooHighAt = -10f, _mantleTryAt = -10f;
 
-        /// <summary>A ledge ahead to pull up onto: where the feet will stand on top of it.</summary>
-        bool FindLedge(out Vector3 stand)
+        /// <summary>A ledge ahead to climb: where the feet will stand on top of it; crouched: only a crouch fits there.</summary>
+        bool FindLedge(out Vector3 stand) => FindLedge(out stand, out _);
+
+        /// <summary>As above; low: the stance that fits on top (Stand: as now; a crouch or a crawl under a low ceiling).</summary>
+        bool FindLedge(out Vector3 stand, out Stance low)
         {
-            stand = default;
+            stand = default; low = Stance.Stand;
             Vector3 fwd = transform.forward; fwd.y = 0f; fwd.Normalize();
             Vector3 feet = transform.position;
             float r = _controller.radius;
             // Its top, a little way past the front of the body (from above, down to the feet).
             for (float reach = r + 0.2f; reach <= r + 0.5f; reach += 0.15f)
             {
-                Vector3 from = feet + fwd * reach + Vector3.up * (mantleMax + 0.15f);
-                if (!Physics.Raycast(from, Vector3.down, out var hit, mantleMax + 0.15f - mantleMin + 0.05f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                Vector3 from = feet + fwd * reach + Vector3.up * (climbMax + 0.15f);
+                if (!Physics.Raycast(from, Vector3.down, out var hit, climbMax + 0.15f - mantleMin + 0.05f, ~0, QueryTriggerInteraction.Ignore)) continue;
                 if (hit.collider.transform.IsChildOf(transform) || hit.normal.y < 0.75f) continue;
                 float h = hit.point.y - feet.y;
-                if (h < mantleMin || h > mantleMax) continue;
+                if (h < mantleMin || h > climbMax) continue;
                 // A face in front of the body (a ledge, not a slope or a lip of the floor).
                 if (!Physics.Raycast(feet + Vector3.up * (h - 0.12f), fwd, reach + 0.1f, ~0, QueryTriggerInteraction.Ignore)) continue;
                 // Room on top for the standing body a little past the edge: a slimmer body than the controller's, since a
@@ -668,9 +759,42 @@ namespace Backrooms
                 // (The top was found reach ahead, at least 0.2 m past the edge: a step more onto it.)
                 Vector3 top = hit.point + fwd * 0.05f + Vector3.up * (_controller.skinWidth + 0.02f);
                 const float slim = 0.2f;
-                Vector3 a = top + Vector3.up * (slim + 0.02f), b = top + Vector3.up * (_controller.height - slim);
-                if (Physics.CheckCapsule(a, b, slim, ~0, QueryTriggerInteraction.Ignore)) continue;
+                Vector3 a = top + Vector3.up * (slim + 0.02f);
+                // Standing room on top (what the body stands as now); else a crouch's (climbing up under a low ceiling).
+                float standH = Mathf.Max(_controller.height, CurrentStance == Stance.Crawl ? crawlHeight : crouchHeight);
+                bool fits = !Physics.CheckCapsule(a, top + Vector3.up * (standH - slim), slim, ~0, QueryTriggerInteraction.Ignore);
+                bool fitsCrouch = fits || !Physics.CheckCapsule(a, top + Vector3.up * (crouchHeight - slim), slim, ~0, QueryTriggerInteraction.Ignore);
+                bool fitsCrawl = fitsCrouch || !Physics.CheckCapsule(a, top + Vector3.up * Mathf.Max(slim + 0.03f, crawlHeight - slim), slim, ~0, QueryTriggerInteraction.Ignore);
+                if (!fitsCrawl) continue;
                 stand = top;
+                low = fits ? Stance.Stand : fitsCrouch ? Stance.Crouch : Stance.Crawl;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// A face ahead too tall to climb that ends below the ceiling (a high shelf, a partition's top): its height. Felt
+        /// for with level rays going up the face from the highest climb until one passes over it; a wall up to the ceiling
+        /// never ends, so it is not "too tall", just a wall.
+        /// </summary>
+        bool TooTallAhead(out float height)
+        {
+            height = 0f;
+            Vector3 fwd = transform.forward; fwd.y = 0f; fwd.Normalize();
+            Vector3 feet = transform.position;
+            float r = _controller.radius;
+            float ceiling = 3.2f;
+            if (Physics.Raycast(feet + Vector3.up * (_controller.height - 0.1f), Vector3.up, out var c, 3f, ~0, QueryTriggerInteraction.Ignore)
+                && !c.collider.transform.IsChildOf(transform)) ceiling = c.point.y - feet.y;
+            bool face = false;
+            for (float y = climbMax + 0.05f; y < Mathf.Min(2.6f, ceiling - 0.05f); y += 0.1f)
+            {
+                bool hit = Physics.Raycast(feet + Vector3.up * y, fwd, out var f, r + 0.45f, ~0, QueryTriggerInteraction.Ignore)
+                           && !f.collider.transform.IsChildOf(transform) && Mathf.Abs(f.normal.y) < 0.4f;
+                if (hit) { face = true; continue; }
+                if (!face) return false;
+                height = y;
                 return true;
             }
             return false;
@@ -678,15 +802,45 @@ namespace Backrooms
 
         bool TryMantle()
         {
-            if (CurrentStance == Stance.Crawl || !FindLedge(out var stand)) return false;
+            if (CurrentStance == Stance.Crawl || noMantle || noclip) return false;
+            _mantleTryAt = Time.time;
+            if (!FindLedge(out var stand, out Stance fitsAs))
+            {
+                if (Time.time - _tooHighAt > 1.2f && TooTallAhead(out float tall)) { _tooHighAt = Time.time; ClimbTooHigh?.Invoke(tall); }
+                return false;
+            }
+            float h = stand.y - transform.position.y;
+            Vector3 flat = PlanarVelocity; flat.y = 0f;
+            float entry = flat.magnitude;
+            EndSlide();
             _mantleFrom = transform.position; _mantleTo = stand;
-            _mantleDur = mantleTime * Mathf.Lerp(0.85f, 1.2f, Mathf.InverseLerp(mantleMin, mantleMax, stand.y - transform.position.y));
+            _mantleCarry = Vector3.zero;
+            if (h > mantleClimbAbove)
+            {
+                // A high one: the hands catch the top, the body hangs a moment, then hauls up and over.
+                _mantleDur = Mathf.Lerp(climbTimeLow, climbTimeHigh, Mathf.InverseLerp(mantleClimbAbove, climbMax, h));
+                _mantleHang = 0.22f;
+                _eyeVel -= 1.3f;
+            }
+            else
+            {
+                _mantleDur = mantleTime * Mathf.Lerp(0.85f, 1.2f, Mathf.InverseLerp(mantleMin, mantleClimbAbove, h));
+                _mantleHang = 0f;
+                // A vault from a run: quicker, and over the top with some of the speed (a low ledge only).
+                if (entry > walkSpeed * 1.3f && h < 1.0f)
+                {
+                    _mantleDur *= 0.72f;
+                    Vector3 fwd = transform.forward; fwd.y = 0f;
+                    _mantleCarry = fwd.normalized * Mathf.Min(entry * 0.6f, 2.2f);
+                }
+                _eyeVel -= 0.8f;                                 // the arms take the weight
+            }
             _mantleT = 0f;
             _verticalVelocity = 0f; PlanarVelocity = Vector3.zero; _moveAccel = Vector3.zero;
             _chargeT = -1f; _launchAt = -1f; _jumpPressedAt = -10f;
-            _eyeVel -= 0.8f;                                     // the arms take the weight
+            if (fitsAs != Stance.Stand && fitsAs != CurrentStance) SetStanceEased(fitsAs);   // only a crouch (or a crawl) fits up there
             if (!_shakeRef) _shakeRef = FindAnyObjectByType<HandheldCameraShake>();
-            if (_shakeRef) _shakeRef.Jolt(new Vector3(5f, 0f, (Random.value - 0.5f) * 4f));
+            if (_shakeRef) _shakeRef.Jolt(_mantleHang > 0f ? new Vector3(8f, 0f, (Random.value - 0.5f) * 5f) : new Vector3(5f, 0f, (Random.value - 0.5f) * 4f));
             return true;
         }
 
@@ -694,20 +848,26 @@ namespace Backrooms
         {
             _mantleT += Time.deltaTime / Mathf.Max(0.1f, _mantleDur);
             float t = Mathf.Clamp01(_mantleT);
+            // A high climb hangs from the hands first (the body barely rises), then hauls up and over.
+            float tc = _mantleHang > 0f ? Mathf.Clamp01((t - _mantleHang) / (1f - _mantleHang)) : t;
             // Up the face first (the hips over the edge), then over onto the top.
-            float up = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / 0.65f));
-            float over = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.35f) / 0.65f));
+            float up = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(tc / 0.65f));
+            if (_mantleHang > 0f && t < _mantleHang) up = 0.05f * Mathf.Sin(Mathf.PI * t / _mantleHang);
+            float over = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((tc - 0.35f) / 0.65f));
             Vector3 want = new Vector3(Mathf.Lerp(_mantleFrom.x, _mantleTo.x, over), Mathf.Lerp(_mantleFrom.y, _mantleTo.y + 0.03f, up), Mathf.Lerp(_mantleFrom.z, _mantleTo.z, over));
             _controller.enabled = false;
             transform.position = want;
             _controller.enabled = true;
             PlanarVelocity = Vector3.zero; _verticalVelocity = 0f;
+            if (_mantleHang > 0f && t >= _mantleHang && t - Time.deltaTime / Mathf.Max(0.1f, _mantleDur) < _mantleHang) _eyeVel += 0.6f;   // the haul
             if (t >= 1f)
             {
-                _mantleT = -1f;
+                _mantleT = -1f; _mantleHang = 0f;
                 _verticalVelocity = -2f;
                 _airMinVy = 0f; _lastGrounded = Time.time;
                 _eyeVel += 0.5f;
+                // Off a vault, on at some of the run's speed.
+                if (_mantleCarry.sqrMagnitude > 0f) { PlanarVelocity = _mantleCarry; _mantleCarry = Vector3.zero; }
             }
         }
 
@@ -720,8 +880,11 @@ namespace Backrooms
             bool grounded = _controller.isGrounded || (Time.time - _lastGrounded < coyoteTime && _verticalVelocity <= 0f);
             bool pressed = (hasFocus && kb.spaceKey.wasPressedThisFrame) || botMantle;
             botMantle = false;
-            // At a ledge (and in the air just after a jump at it): pull up onto it instead.
+            // At a ledge (and in the air just after a jump at it): pull up onto it instead. Space held in the air, moving at
+            // a ledge: climbs it once it is in reach (a jump at a wall's top).
             if (pressed && TryMantle()) return;
+            if (!pressed && hasFocus && kb.spaceKey.isPressed && !_controller.isGrounded && MoveInput.y > 0.3f && _verticalVelocity < 3f
+                && Time.time - _mantleTryAt > 0.06f && TryMantle()) return;
             if (pressed && !grounded) { _jumpPressedAt = Time.time; _jumpHeldInAir = true; }
             if (_jumpHeldInAir && (!hasFocus || !kb.spaceKey.isPressed)) _jumpHeldInAir = false;
             if (grounded && _chargeT < 0f && _launchAt < 0f && Time.time - _jumpPressedAt < jumpBuffer && CurrentStance != Stance.Crawl)

@@ -135,7 +135,7 @@ namespace Backrooms.Interaction
             Vector3 along = Vector3.ProjectOnPlane(_touchPoint - S, n);
             if (along.sqrMagnitude > 1e-4f) _touchFingers = Vector3.ProjectOnPlane(along.normalized + Vector3.up * 0.5f, n).normalized;
             // Turned round the face's normal to the way the arm can lay the palm flat.
-            if (_body && _body.HasArm) _touchFingers = _body.ReachableFingers(_touchPoint, n, _touchFingers);
+            if (Armed) _touchFingers = _body.ReachableFingers(_touchPoint, n, _touchFingers);
             return moved;
         }
 

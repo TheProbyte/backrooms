@@ -109,7 +109,7 @@ namespace Backrooms.Interaction
         /// </summary>
         Quaternion LeverTurn(Door d, int side, float turn)
         {
-            if (!_body || !_body.HasArm) return Quaternion.identity;
+            if (!Armed) return Quaternion.identity;
             Quaternion r0 = d.GripRotation(side, turn);
             Vector3 bar = d.GripPoint(side, turn);
             Quaternion best = Quaternion.identity; float bestS = float.MaxValue;
@@ -141,7 +141,7 @@ namespace Backrooms.Interaction
         /// </summary>
         Quaternion WithWristSide(Quaternion r)
         {
-            if (!_body || !_body.HasArm || HandBlend < 0.9f) return r;
+            if (!Armed || HandBlend < 0.9f) return r;
             float d = _body.WristSide, excess = d - Mathf.Clamp(d, -WristSideMax, WristSideMax);
             if (excess != 0f) _sideFix = Mathf.Clamp(_sideFix + excess * 0.35f, -30f, 30f);
             else if (Mathf.Abs(d) < WristSideMax - 4f) _sideFix = Mathf.MoveTowards(_sideFix, 0f, Time.deltaTime * 8f);

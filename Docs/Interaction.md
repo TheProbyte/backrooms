@@ -190,9 +190,27 @@
   LightSpill.shader`, strength from `FixtureLightManager.RoomLight`); once the door opens the light comes through the
   gap for real. An unlatched door is never quite still: air moves it a degree or two now and then (a gust a little
   more, with a creak). It never latches itself.
-- **Climbing up** (2026-10-28): **Space** at a ledge 0.45-1.35 m above the feet, close ahead, with room on top, pulls you
-  up onto it (up the face, then over, about half a second; `CamcorderPlayerController.TryMantle`). A pit room's shaft is
-  two pulls (the block in its corner first). Lower, Space is a jump. A drop of about a metre or more jolts the camcorder.
+- **Climbing up** (2026-10-28, tiers 2026-10-31): **Space** at a ledge close ahead with room on top
+  (`CamcorderPlayerController.TryMantle`):
+  - 0.45-1.3 m: a quick pull up (up the face, then over, about half a second). From a run at a ledge under 1 m it is a
+    vault: quicker, and you come off it at some of the run's speed.
+  - 1.3-1.8 m (`climbMax`): a climb: the hands catch the top, the body hangs a moment, then hauls up and over (1-1.3 s).
+  - Higher: too tall. Space is a jump, and the hint says "TOO HIGH TO CLIMB" (a face that ends below the ceiling; a wall
+    up to the ceiling is just a wall).
+  - Under a low ceiling you climb up crouched, or crawling, if only that fits on top.
+  - Space held in the air while moving at a ledge climbs it once it is in reach (jump, then hold).
+  - Not with furniture, a box or a door in the hands. A pit room's shaft is two pulls (the block in its corner first).
+    Lower than 0.45 m, Space is a jump. A drop of about a metre or more jolts the camcorder.
+- **Sliding** (2026-10-31): **C** while running drops into a crouch and slides on: the run's speed and a little more, then
+  the carpet's friction, about 1.6 m and 0.7 s from a full run (`slideMinSpeed` 2.4 m/s, `slideFriction` 4.6 m/s per s).
+  The eye goes 10 cm lower than a crouch and the view rolls 2 degrees; A/D steer it a little, S brakes, a wall stops it,
+  Space jumps out of it with its speed. A rub along the floor is heard (carpet dull, a hard floor brighter;
+  `ProceduralSounds.SlideRub`). The legs do not step while sliding.
+- **Running into a door** (2026-10-31, `PropGrabber.Bash.cs`): running (2.4 m/s or more) square into a shut door from
+  the side it opens away from slams it open, no click: the latch knocks out, it swings wide as fast as you came and bangs
+  on its stop, and you go on through a little slower (the door gives way under the shoulder: `KeepMomentum`). From the
+  side it opens toward you a run just meets it. Bolted, it does not give: a thud, the view jolts, you stop ("IT'S
+  BOLTED").
 - **Leaning**: hold **Z** or **X** to lean the head out to the left or right (0.32 m, the view rolls 9 degrees, the
   torso tilts) to look round a corner. It stops short of walls; not while running or crawling.
 - **Steadying hand**: walking past a door jamb or the end of a wall on the hand's side, the free hand sometimes reaches
@@ -203,6 +221,23 @@
   `WorldItem.ContactDistance`). Nothing is taken until the palm is on it (see "Hands" below).
 - **Weight**: a heavy item in the hand (the lamp, a coiled cord) slows your steps and turns a little and lags the view
   more. Picking something up off the floor, you bend down for it first.
+
+## Body: Full, Hands only, None (2026-10-31)
+
+Camera menu (F5) > HANDHELD > **Body**, to compare (owner: "how would this be if i had no body for my game ... still
+tactile with a crosshair"):
+- **Full**: as before.
+- **Hands only**: no legs, trunk or shoes drawn (their shadow stays); an arm comes into view only while it does
+  something, as it already did.
+- **None** (Amnesia, Penumbra): nothing of the body is drawn, nor its shadow. A camcorder's centre mark (a small cross,
+  brighter when a click would take something) sits in the middle of the picture. With no arm there is no reaching or
+  stepping in: things are taken from up to 1.6 m from the shoulder (`PropGrabber.bodilessReach`) at once (0.2 s), and a
+  held thing has more give before it slips (0.65 m past the reach). Holding something heavy, a dot sits where it is held;
+  when it lags (dragged, caught), a faint dotted line runs from the hold to it. No hand touches walls in passing.
+- The body keeps working underneath (the legs step, so footsteps keep their timing): only what is drawn changes
+  (`FirstPersonBody.Mode.cs`: `Renderer.forceRenderingOff`, shadow-only for Hands only). In code the grabber's old
+  no-body paths are used (`Armed` false: `PropGrabber.Bodiless.cs`).
+- Not done for None: tools still show their own motion with no hand (the hammer's nail floats to the wall on its own).
 
 ## Hammer and nails (2026-10-30)
 

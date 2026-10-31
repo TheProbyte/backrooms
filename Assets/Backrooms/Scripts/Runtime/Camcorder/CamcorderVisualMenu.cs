@@ -351,6 +351,8 @@ namespace Backrooms.Camcorder
                 () => S().recordedWalk, v => S().recordedWalk = v);
             Choice("Hands in view", "How much of your own hand the camera sees. Full: held things in view at the bottom right, the hand on them. Low: held lower, at the bottom edge, the hand mostly out of shot (as a camcorder held to the eye sees it). Off: no hand drawn at all, only its shadow.",
                 new[] { "Full", "Low", "Off" }, () => S().handsInView, v => S().handsInView = v);
+            Choice("Body", "Your own body. Full: legs and shoes looking down, the arms reaching for things. Hands only: no legs or body, an arm comes into view only while it does something (its shadow stays). None: nothing of you is drawn; a small mark in the middle of the picture shows what you would take, things are taken from further away (as in Amnesia), a dot shows where you hold a heavy thing.",
+                new[] { "Full", "Hands only", "None" }, () => S().body, v => S().body = v);
             Slider("Motion blur (shutter)", "Smear from movement while the shutter is open, in light (so lights streak bright), trailing behind the motion, the same at any frame rate. 1 = exactly what the shutter time gives.",
                 0f, 2f, "0.00", "x", () => S().motionBlur, v => S().motionBlur = v);
 

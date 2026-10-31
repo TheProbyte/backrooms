@@ -279,7 +279,7 @@ namespace Backrooms.Interaction
         {
             plan = default;
             Vector3 grip = pos + rot * Mirror(item.GripLocal);
-            if (!_body || !_body.HasArm) return (grip - Eye).magnitude <= PlaceRange;
+            if (!Armed) return (grip - Eye).magnitude <= PlaceRange;
             var b = BodyNow(grip, null);
             b.room = 0f;
             return PlanReach(grip, b, 0.96f, null, out plan);

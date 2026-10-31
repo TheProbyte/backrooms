@@ -171,6 +171,7 @@ namespace Backrooms.Interaction
             UpdateBody();
             UpdateArm();
             UpdateFull();
+            ApplyBodyMode();
         }
 
         /// <summary>The working arm's shoulder joint as the body stands this frame (its collarbone at rest).</summary>

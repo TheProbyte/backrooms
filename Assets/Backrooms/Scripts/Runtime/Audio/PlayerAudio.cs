@@ -25,7 +25,7 @@ namespace Backrooms.Audio
         Vector3 _lastPos;
         Interaction.FirstPersonBody _body;
         float _recentSpeed;
-        int _scuffPick;
+        int _scuffPick, _slidesHeard;
 
         void Start()
         {
@@ -106,6 +106,17 @@ namespace Backrooms.Audio
             _zoom.volume = SoundBank.BaseLevel(SoundIds.ZoomMotor) * SoundCatalog.Volume(SoundIds.ZoomMotor) * _zoomLevel;
             _zoom.pitch = SoundCatalog.Pitch(SoundIds.ZoomMotor) * (0.85f + 0.15f * _zoomLevel);
 
+            // Sliding after crouching from a run: the rub along the floor, dying away with it.
+            if (_player.Slides != _slidesHeard)
+            {
+                _slidesHeard = _player.Slides;
+                var slideOn = Surfaces.At(transform.position, transform);
+                bool soft = slideOn == ProceduralSounds.Floor.Carpet || slideOn == ProceduralSounds.Floor.Water;
+                _feet.transform.localPosition = new Vector3(0f, 0.05f, 0.1f);
+                _feet.PlayOneShot(SoundBank.SlideRub(soft ? 0 : 1), SoundBank.BaseLevel(SoundIds.Footsteps) * SoundCatalog.Volume(SoundIds.Footsteps) * (soft ? 1.4f : 1.2f));
+                if (_chain) _chain.HandlingImpulse();
+            }
+
             // Landing from a jump: a heavier step and a thump on the mic.
             if (_player.LandedThisFrame > 0f)
             {
@@ -123,6 +134,7 @@ namespace Backrooms.Audio
             if (_chain) _chain.handlingMotion = walking ? Mathf.Clamp01(speed / Mathf.Max(0.1f, _player.runSpeed)) : 0f;
             if (!walking || d.magnitude > 2f) { _travel = 0f; return; }       // teleports don't step
             if (_body && _body.FeetActive) { _travel = 0f; return; }           // the feet play their own steps
+            if (_player.Sliding) { _travel = 0f; return; }                     // the slide is its own sound
 
             _travel += d.magnitude;
             float stride = _player.IsCrawling ? 0.42f : _player.IsRunning ? runStride : walkStride;
