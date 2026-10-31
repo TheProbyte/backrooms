@@ -463,7 +463,7 @@ namespace Backrooms.Generation
                 if (free.spill) { free.spill.enabled = false; free.spill.shadows = LightShadows.None; }
                 if (free.bounce)
                 {
-                    float drop = src.dome ? Mathf.Min(src.ceiling * 0.45f, 2.2f) : 1.1f;
+                    float drop = src.dome && !src.flush ? Mathf.Min(src.ceiling * 0.45f, 2.2f) : 1.1f;
                     free.bounce.transform.position = src.position + Vector3.down * drop;
                     free.bounce.GetUniversalAdditionalLightData().renderingLayers = src.roomLayer & ~1u;
                 }
@@ -560,7 +560,7 @@ namespace Backrooms.Generation
                 if (bounces >= bounceCount + 8) bk = 0f;      // safety cap only
                 s.bounce.enabled = k > 0.002f && bounceIntensity > 0f && bk > 0.01f;
                 if (s.bounce.enabled) { bounces++; enabled++; }
-                s.bounce.intensity = bounceIntensity * k * bk * (s.src.dome ? 1.6f : 1f);
+                s.bounce.intensity = bounceIntensity * k * bk * (s.src.dome && !s.src.flush ? 1.6f : 1f);
                 s.bounce.range = s.src.dome || s.src.strip ? bounceRange * 1.6f : bounceRange;
                 s.bounce.color = s.src.strip ? Color.Lerp(stripColor, new Color(0.95f, 0.92f, 0.85f), 0.5f)
                                              : Color.Lerp(tubeColor, new Color(1f, 0.9f, 0.62f), 0.5f);

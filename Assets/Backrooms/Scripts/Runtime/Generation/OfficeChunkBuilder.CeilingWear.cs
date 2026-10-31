@@ -84,7 +84,7 @@ namespace Backrooms.Generation
         {
             int gx = GX(cell.x), gz = GZ(cell.y);
             var room = _L.RoomAt(cell.x, cell.y);
-            bool tiles = !room.Tall && !room.openAbove && room.ceilDrop == 0 && MaterialMaps.PlenumWood;
+            bool tiles = !room.PlasterCeiling && !room.openAbove && room.ceilDrop == 0 && MaterialMaps.PlenumWood;
             if (tiles && Dice(gx, gz, 1320) < 0.025f * DetailRates.CeilingWear)
             {
                 int e = (int)(Dice(gx, gz, 1321) * 4f) & 3;

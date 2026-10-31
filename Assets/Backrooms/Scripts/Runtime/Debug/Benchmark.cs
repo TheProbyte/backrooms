@@ -29,6 +29,31 @@ namespace Backrooms.DebugTools
         }
 
         string _output;
+        bool _testCubes, _spikeLog;
+
+        /// <summary>
+        /// -benchmark-set testcubes=1: two cubes 2.5 m in front of the camera for each spot's picture, a plain URP Lit one
+        /// (left) and one with the world's wall material (Backrooms/Lit, right): a rendering path that draws one and not the
+        /// other (the GPU Resident Drawer drew the world black) shows which shader it is.
+        /// </summary>
+        void TestCubes(bool on)
+        {
+            foreach (var old in GameObject.FindObjectsByType<Transform>(FindObjectsInactive.Exclude)) if (old && old.name == "BenchTestCube") Destroy(old.gameObject);
+            var cam = Camera.main;
+            if (!on || !cam) return;
+            var assets = FindAnyObjectByType<WorldStreamer>()?.assets;
+            for (int i = 0; i < 2; i++)
+            {
+                var c = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                c.name = "BenchTestCube";
+                Destroy(c.GetComponent<Collider>());
+                c.transform.position = cam.transform.position + cam.transform.forward * 2.5f + cam.transform.right * (i == 0 ? -0.6f : 0.6f);
+                c.transform.localScale = Vector3.one * 0.6f;
+                var r = c.GetComponent<Renderer>();
+                if (i == 0) { var m = new Material(Shader.Find("Universal Render Pipeline/Lit")); m.color = Color.white; r.sharedMaterial = m; }
+                else if (assets && assets.paintedWall) r.sharedMaterial = assets.paintedWall;
+            }
+        }
         readonly StringBuilder _report = new StringBuilder();
 
         IEnumerator Start()
@@ -59,6 +84,18 @@ namespace Backrooms.DebugTools
             if (gc) _report.AppendLine("settings " + JsonUtility.ToJson(gc.Options));
             world.SetSeed(1234);
             yield return null;
+
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-benchmark-spikes") >= 0)
+            {
+                // (A development build.) The streaming walk with the profiler recording every frame to <results>_spikes.raw:
+                // the slow frames, step by step, to open in the Profiler or read with ProfilerDriver.LoadProfile.
+                UnityEngine.Profiling.Profiler.logFile = Path.Combine(Path.GetDirectoryName(_output) ?? ".", Path.GetFileNameWithoutExtension(_output) + "_spikes");
+                _spikeLog = true;
+                yield return Spot("walk (streaming)", world, player, new Vector3(-17.76f, 0f, 36.41f), 82f, 0f, 700, new Vector2(0f, 1f));
+                File.WriteAllText(_output, _report.ToString());
+                Application.Quit();
+                yield break;
+            }
 
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-benchmark-markers") >= 0)
             {
@@ -103,6 +140,7 @@ namespace Backrooms.DebugTools
                 var kv = pair.Split('=');
                 if (kv.Length != 2) continue;
                 string key = kv[0].Trim(), value = kv[1].Trim();
+                if (key == "testcubes") { _testCubes = value == "true" || value == "1"; continue; }
                 if (key == "depthPriming")
                 {
                     var urp = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline as UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset;
@@ -366,14 +404,18 @@ namespace Backrooms.DebugTools
             // -benchmark-shots: a picture of each spot next to the results (to compare two builds: nothing missing or changed).
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-benchmark-shots") >= 0)
             {
+                if (_testCubes) { TestCubes(true); yield return null; yield return null; }
                 ScreenCapture.CaptureScreenshot(Path.Combine(Path.GetDirectoryName(_output) ?? ".", Path.GetFileNameWithoutExtension(_output) + "_" + name.Split(' ')[0] + ".png"));
                 yield return null; yield return null;
+                if (_testCubes) TestCubes(false);
             }
             if (walk != Vector2.zero) player.botInput = walk;
+            if (_spikeLog) { UnityEngine.Profiling.Profiler.enableBinaryLog = true; UnityEngine.Profiling.Profiler.enabled = true; }
             var ms = new List<float>(frames);
             var split = new Split();
             for (int i = 0; i < frames; i++) { yield return null; ms.Add(Time.unscaledDeltaTime * 1000f); split.Sample(); }
             player.botInput = null;
+            if (_spikeLog) { UnityEngine.Profiling.Profiler.enabled = false; UnityEngine.Profiling.Profiler.enableBinaryLog = false; UnityEngine.Profiling.Profiler.logFile = ""; _spikeLog = false; }
             ms.Sort();
             float P(float q) => ms[Mathf.Clamp(Mathf.RoundToInt(q * (ms.Count - 1)), 0, ms.Count - 1)];
             _report.AppendLine($"{name,-18} median {P(0.5f):0.0} ms ({1000f / P(0.5f):0} fps)   p95 {P(0.95f):0.0} ms ({1000f / P(0.95f):0} fps)   worst {ms[ms.Count - 1]:0.0} ms   n={ms.Count}");

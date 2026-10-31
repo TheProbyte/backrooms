@@ -80,6 +80,12 @@ namespace Backrooms.Generation
         [Tooltip("Share of rooms that are flooded basins (the rest are dry tiled decks).")] public float flooded = 0f;
         [Tooltip("Chance a flooded room has a raised walkway along one wall.")] public float ledges = 0f;
 
+        [Header("Homes (the living-rooms biome)")]
+        [Tooltip("Chance a room is an emptied-out early-2000s living room: orange-peel painted drywall, carpet, baseboards, " +
+                 "a flat plaster ceiling with round flush-mount lights, little or no furniture.")]
+        public float homeChance = 0f;
+        [Tooltip("Share of those rooms papered with the blue-sky clouds wallpaper instead.")] public float cloudWallpaper = 0f;
+
         public BiomeRules Clone() => (BiomeRules)MemberwiseClone();
 
         static readonly System.Reflection.FieldInfo[] Fields = typeof(BiomeRules).GetFields();
@@ -126,6 +132,27 @@ namespace Backrooms.Generation
             pillarChance = 0.6f, pillarSpacing = 3f, halfWalls = 0f, scatteredSeating = 0f, rackChance = 0f,
             outletChance = 0f, stripLights = 0f,
             skylights = 0.7f, flooded = 0.8f, ledges = 0.35f,
+        };
+
+        /// <summary>
+        /// Living rooms (2026-10-31, the owner's reference photos): the emptied-out living rooms of an early-2000s house, room
+        /// after room. Bigger rooms than the offices, few hallways, a door in most doorways, square headers; orange-peel
+        /// painted drywall (now and then the blue-sky clouds wallpaper), carpet, baseboards, flat plaster ceilings with round
+        /// flush-mount lights, many of them off; outlets and switches; a sofa or a box at most.
+        /// </summary>
+        public static BiomeRules LivingRooms() => new BiomeRules
+        {
+            name = "Living rooms", mapColor = new Color(0.78f, 0.62f, 0.5f),
+            bigHallChance = 0.3f, stopSmall = 0.95f, stopMedium = 0.85f, stopLarge = 0.6f, stopHuge = 0.35f, maxRoomCells = 13f,
+            hallChanceShallow = 0.12f, hallChanceDeep = 0.04f, hallWideChance = 0.4f, crawlChance = 0.12f,
+            openPlanChance = 0.25f, loopChance = 0.55f, loungeChance = 0f, conferenceChance = 0f,
+            tallChanceBig = 0.08f, tallChanceSmall = 0f, tallMin = 3.0f, tallMax = 3.3f, paintedChance = 1f, archedDoors = 0.04f, doorChance = 0.55f,
+            lightsAllOn = 0.3f, lightsMixed = 0.4f, mixedOnFraction = 0.45f, faultyChance = 0.03f,
+            pillarChance = 0f, halfWalls = 0f, scatteredSeating = 0f, rackChance = 0f,
+            outletChance = 0.16f, stripLights = 0f,
+            sunkenChance = 0.1f, pitRoomChance = 0f, chamferChance = 0.05f, ceilingDropChance = 0.1f, tiltedChance = 0.05f,
+            nowhereChance = 0.08f, mezzanineChance = 0f,
+            homeChance = 1f, cloudWallpaper = 0.12f,
         };
 
         /// <summary>Huge, tall, open floors with rows of storage racks and sparse high-bay lights.</summary>

@@ -46,11 +46,22 @@ namespace Backrooms.Generation
             var wall = WMask(SpecialRoomMaterials.Wall, mask);
             var floor = WMask(SpecialRoomMaterials.Floor, mask);
             var ceil = WMask(SpecialRoomMaterials.Ceiling, mask);
+            var grid = WMask(SpecialRoomMaterials.Grid, mask);
+            var board = WMask(SpecialRoomMaterials.Baseboard, mask);
             float x0 = min.x, x1 = max.x, z0 = min.z, z1 = max.z, y0 = min.y, y1 = max.y;
             const float HS = CrawlPortals.HoleSize, wt = 0.12f;
 
-            floor.Quad(new Vector3(x0, y0, z0), new Vector3(x0, y0, z1), new Vector3(x1, y0, z1), new Vector3(x1, y0, z0), Vector3.up, MeshWriter.MetreUV);
-            ceil.Quad(new Vector3(x0, y1, z0), new Vector3(x1, y1, z0), new Vector3(x1, y1, z1), new Vector3(x0, y1, z1), Vector3.down, MeshWriter.MetreUV);
+            // An ordinary small room: carpet (the floor's 3 m repeat), an acoustic drop ceiling on its grid, baseboards.
+            floor.Quad(new Vector3(x0, y0, z0), new Vector3(x0, y0, z1), new Vector3(x1, y0, z1), new Vector3(x1, y0, z0), Vector3.up, MeshWriter.FloorUV);
+            ceil.Quad(new Vector3(x0, y1, z0), new Vector3(x1, y1, z0), new Vector3(x1, y1, z1), new Vector3(x0, y1, z1), Vector3.down, MeshWriter.CeilingUV);
+            {
+                const float gw = 0.024f, gd = 0.012f, off = OfficeBiome.TileGridOffset;
+                float gy = y1 - gd * 0.5f;
+                for (float z = Mathf.Ceil((z0 - off) / 0.6f) * 0.6f + off; z < z1; z += 0.6f)
+                    if (z > z0 + 0.02f) grid.Box(new Vector3((x0 + x1) * 0.5f, gy, z), new Vector3(x1 - x0, gd, gw), 4 | 16 | 32, MeshWriter.MetreUV);
+                for (float x = Mathf.Ceil(x0 / 0.6f) * 0.6f; x < x1; x += 0.6f)
+                    if (x > x0 + 0.02f) grid.Box(new Vector3(x, gy, (z0 + z1) * 0.5f), new Vector3(gw, gd, z1 - z0), 4 | 16 | 32, MeshWriter.MetreUV);
+            }
             _boxes.Add((new Vector3((x0 + x1) * 0.5f, y0 - 0.1f, (z0 + z1) * 0.5f), new Vector3(x1 - x0 + 2 * wt, 0.2f, z1 - z0 + 2 * wt)));
             _boxes.Add((new Vector3((x0 + x1) * 0.5f, y1 + 0.1f, (z0 + z1) * 0.5f), new Vector3(x1 - x0 + 2 * wt, 0.2f, z1 - z0 + 2 * wt)));
 
@@ -72,11 +83,21 @@ namespace Backrooms.Generation
                     var c = Box(b0 - (vertical ? 0f : 0f), b1, c0, c1, out var s);
                     _boxes.Add((c, s));
                 }
-                if (!vent) { Part(a0 - wt, a1 + wt, y0, y1); return; }
+                // A baseboard along the foot of the wall (none across the vent).
+                void Skirting(float b0, float b1)
+                {
+                    if (b1 - b0 < 0.05f) return;
+                    const float bb = OfficeBiome.BaseboardHeight, bd = OfficeBiome.BaseboardDepth;
+                    Vector3 fa = P(b0, y0) + n * bd, fb = P(b1, y0) + n * bd;
+                    board.Quad(fa, fb, fb + Vector3.up * bb, fa + Vector3.up * bb, n, MeshWriter.MetreUV);
+                    board.Quad(fa + Vector3.up * bb, fb + Vector3.up * bb, P(b1, y0) + Vector3.up * bb, P(b0, y0) + Vector3.up * bb, Vector3.up, MeshWriter.MetreUV);
+                }
+                if (!vent) { Part(a0 - wt, a1 + wt, y0, y1); Skirting(a0, a1); return; }
                 float h0 = ventAlong - HS * 0.5f, h1 = ventAlong + HS * 0.5f;
                 Part(a0 - wt, h0, y0, y1);
                 Part(h1, a1 + wt, y0, y1);
                 Part(h0, h1, y0 + HS, y1);
+                Skirting(a0, h0); Skirting(h1, a1);
             }
             Wall(true, x0, z0, z1, Vector3.right, backSide == 0);
             Wall(true, x1, z0, z1, Vector3.left, backSide == 1);
@@ -95,7 +116,7 @@ namespace Backrooms.Generation
                     cell = p.cell, side = p.side, position = p.partnerPosition, normal = p.partnerNormal,
                     partnerPosition = p.position, partnerNormal = p.normal, id = p.id ^ 0x5EC0000000000000ul,
                 };
-                Interaction.CrawlPortalView.Create(root, vent, _a.tunnel ? _a.tunnel : SpecialRoomMaterials.Wall, SpecialRoomMaterials.Floor, null, 1u, 1u);
+                Interaction.CrawlPortalView.Create(root, vent, SpecialRoomMaterials.Wall, SpecialRoomMaterials.Floor, null, 1u, 1u);
                 Interaction.SpecialRoom.Create(root, sr.min + _origin, sr.max + _origin, sr.back, p.partnerPosition, p.template, p.seed, p.id, _a);
             }
         }

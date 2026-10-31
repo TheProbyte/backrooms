@@ -13,7 +13,11 @@ namespace Backrooms.Generation
     public partial class OfficeChunkBuilder
     {
         bool Pool => _L != null && _L.style == ZoneStyle.Pool;
-        bool NoBaseboard => _a.noBaseboard || Pool;
+        bool NoBaseboard => (_a.noBaseboard && !_roomBaseboard) || Pool;
+        /// <summary>The wall faces being built are a home's (they have baseboards; set per face in EdgeFaces).</summary>
+        bool _roomBaseboard;
+        /// <summary>The baseboard's material: a home's is painted off-white (as in the reference photos), the rest the world's.</summary>
+        Material BaseboardMat => _roomBaseboard && MaterialMaps.HomeBaseboard ? MaterialMaps.HomeBaseboard : _a.baseboard;
         Material TileMat => PoolMaterials.Tile ? PoolMaterials.Tile : (_a.paintedWall ? _a.paintedWall : _a.wallpaper);
         Material WaterMat => PoolMaterials.Water ? PoolMaterials.Water : TileMat;
         Material SkyMat => PoolMaterials.Sky ? PoolMaterials.Sky : TileMat;

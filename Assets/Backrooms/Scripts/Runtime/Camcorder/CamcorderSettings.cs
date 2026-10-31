@@ -86,6 +86,7 @@ namespace Backrooms.Camcorder
         public float handheldRoughness = 0f;
         public bool recordedWalk = true;        // walking plays the phone recording of a carried camera (HandheldCameraShake)
         public int handsInView = 1;             // 0 full, 1 low (held things at the bottom edge), 2 off (no hand drawn): PropGrabber
+        public float hangingShake = 1f;         // the camera on its strap (hands busy): its swing and shake, x (HandheldCameraShake.hangingShake)
         public int body = 2;                    // 0 full body, 1 hands only (arms while they do something), 2 none (the default since 2026-10-31): PropGrabber.bodyMode
 
         // Format and playback
@@ -171,6 +172,7 @@ namespace Backrooms.Camcorder
             n.recordedWalk = old.recordedWalk;
             n.handsInView = old.handsInView;
             n.body = old.body;
+            n.hangingShake = old.hangingShake;
             n.recordFps = old.recordFps; n.lineDoubling = old.lineDoubling; n.bottomLine = old.bottomLine;
             if (old.videoLines > 0) n.videoLines = old.videoLines;
             n.CopyAudioFrom(old);

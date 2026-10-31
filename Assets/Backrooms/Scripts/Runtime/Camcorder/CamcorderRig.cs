@@ -237,6 +237,7 @@ namespace Backrooms.Camcorder
                 shake.lookJitter = s.lookJitter;
                 shake.roughness = s.handheldRoughness;
                 shake.recordedWalk = s.recordedWalk;
+                shake.hangingShake = s.hangingShake;
             }
             if (!_hand) _hand = FindAnyObjectByType<Interaction.PropGrabber>();
             if (_hand) { _hand.handsInView = s.handsInView; _hand.bodyMode = s.body; }

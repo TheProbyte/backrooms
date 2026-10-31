@@ -238,7 +238,7 @@ namespace Backrooms.Generation
                 Baseboard(mask, a, a + dir * s0, n);
                 Baseboard(mask, a + dir * s1, b, n);
                 float g0 = 0.002f, g1 = 0.005f + 0.007f * Dice(gx, gz, 1203 + salt);
-                var w = WMask(_a.baseboard, mask);
+                var w = WMask(BaseboardMat, mask);
                 Vector3 p0 = a + dir * s0, p1 = a + dir * s1;
                 Vector3 f0 = p0 + n * (BD + g0), f1 = p1 + n * (BD + g0), t0 = p0 + n * (BD + g1) + up * BB, t1 = p1 + n * (BD + g1) + up * BB;
                 Vector3 bt0 = p0 + n * g1 + up * BB, bt1 = p1 + n * g1 + up * BB, bb0 = p0 + n * g0, bb1 = p1 + n * g0;
@@ -261,7 +261,7 @@ namespace Backrooms.Generation
                 float s0 = 0.08f + (len - 0.16f - ml) * Dice(gx, gz, 1205 + salt), s1 = s0 + ml;
                 Baseboard(mask, a, a + dir * s0, n);
                 Baseboard(mask, a + dir * s1, b, n);
-                var w = WMask(_a.baseboard, mask);
+                var w = WMask(BaseboardMat, mask);
                 foreach (var (s, o) in new[] { (s0, dir), (s1, -dir) })
                 {
                     Vector3 p = a + dir * s;

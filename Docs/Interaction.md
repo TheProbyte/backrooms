@@ -222,6 +222,19 @@
 - **Weight**: a heavy item in the hand (the lamp, a coiled cord) slows your steps and turns a little and lags the view
   more. Picking something up off the floor, you bend down for it first.
 
+## Crawling fast, plugging in, the camera menu (2026-10-31)
+
+- **Shift while crawling forward**: a quicker scramble, 2.1 x the crawl (`CamcorderPlayerController.crawlRush`,
+  `CrawlingFast`); the hands-and-knees sounds come quicker.
+- **Plugging in with no body**: the plug glides from where it is held straight into the socket in 0.14 s
+  (`Plug.QuickSeatTime`), no reaching, squaring up or pushing.
+- **Camera menu (F5), cleaned up**: every section is a fold (click its title; it remembers). CAMERA starts with what you
+  change most, open: YOU (Body, Hands in view) and CAMERA SHAKE (Walking shake, **Shake while hanging**, Breathing, Hand
+  tremor, Real walking recording, Turn overshoot, Turn wobble, Image stabilisation, Motion blur); the technical ones
+  folded: LENS & ZOOM, FOCUS, BRIGHTNESS, COLOUR BALANCE, SENSOR NOISE, PICTURE, TAPE, SCREEN.
+- **Shake while hanging**: how much the camera swings and shakes while it hangs on its strap (hands busy with a box, a
+  couch, a door): 0 steady, 1 as before, 2 double (`CamcorderSettings.hangingShake`, `HandheldCameraShake.hangingShake`).
+
 ## Body: Full, Hands only, None (2026-10-31)
 
 Camera menu (F5) > HANDHELD > **Body**, to compare (owner: "how would this be if i had no body for my game ... still

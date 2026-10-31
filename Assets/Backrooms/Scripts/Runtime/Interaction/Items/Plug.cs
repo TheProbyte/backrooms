@@ -171,6 +171,8 @@ namespace Backrooms.Interaction
         /// <summary>How long a plug let go short of its socket takes to slide the rest of the way in (s); up to 0.2 s from
         /// SeatFrom away.</summary>
         public const float SeatTime = 0.1f;
+        /// <summary>With no body: the glide from the held position into the socket (s).</summary>
+        public const float QuickSeatTime = 0.14f;
         /// <summary>Round 11: a plug let go this near its socket (m) slides in the rest of the way (it had to be within 3 cm).</summary>
         public const float SeatFrom = 0.065f;
         float _seatTime = SeatTime;
@@ -269,6 +271,19 @@ namespace Backrooms.Interaction
             // Not until the hand has it (the fingers closed on it where it was): bending for the socket with the plug still
             // waiting for the hand folded the arm up, the palm 30-35 mm off it (round 8).
             if (i.hand && i.hand.ItemWaitingForHand) return;
+            // No body (Body: None, the default): no arm to carry it there. It goes straight in: a short glide from where it is
+            // held into the socket (owner, 2026-10-31: "now that there's no hands it should be immediate maybe or in between").
+            if (i.hand && i.hand.Bodiless)
+            {
+                _going = null;
+                Vector3 from = transform.position; Quaternion fromRot = transform.rotation;
+                i.hand.LetGo(this);
+                PlugInto(s);
+                _seatFrom = from; _seatFromRot = fromRot; _seatT = 0f;
+                _seatTime = QuickSeatTime;
+                transform.SetPositionAndRotation(from, fromRot);
+                return;
+            }
             _goT += i.dt;
             // (Round 11: square to the socket in about a third of a second; 1.4 a second took 0.7 s before anything else.)
             _goPose = Mathf.MoveTowards(_goPose, 1f, i.dt * 3f);

@@ -58,60 +58,59 @@ namespace Backrooms.Interaction
             float ventX = Vector3.Dot(vent - At(0f, 0f), S);
             var loot = new List<(Vector3 pos, Quaternion rot, string item)>();
             Quaternion facingBack = Quaternion.LookRotation(-F, Vector3.up);
+            // (2026-10-31: the room is an ordinary small room, carpet, drop ceiling, painted walls and baseboards, with a
+            // flush ceiling light: no shelf, boxes, sleeping bag or tally any more. What lies in it is chosen with the same
+            // dice as before, so the same things, and the same ones already taken, but on the floor along the walls.)
+            var spots = new System.Random(unchecked((int)(id ^ (id >> 31))) ^ 0x5F07);
+            Vector3 FloorSpot()
+            {
+                // Along the front or a side wall (not the back one, the vent's), 0.25 m out, clear of the corners.
+                int wall = spots.Next(3);
+                float t = (float)spots.NextDouble() - 0.5f;
+                if (wall == 0) return At(D - 0.25f, t * (W - 0.8f), 0.04f);
+                float s = wall == 1 ? -1f : 1f;
+                return At(0.7f + (t + 0.5f) * Mathf.Max(0.1f, D - 1.2f), s * (W * 0.5f - 0.25f), 0.04f);
+            }
             switch (template)
             {
                 case 0:
                 {
                     // Maintenance closet: a shelf against the front wall, supplies on it.
-                    var shelfPos = At(D - 0.22f, Mathf.Clamp((float)(rng.NextDouble() - 0.5) * (W - 1.1f), -(W - 1.0f) * 0.5f, (W - 1.0f) * 0.5f));
-                    Shelf(shelfPos, facingBack);
+                    rng.NextDouble();                                             // (where the shelf stood)
                     string[] pool = { "spraycan", "chalk", "tape", "extensioncord", "desklamp", "chalk", "tape" };
                     int n = 2 + rng.Next(3);
-                    float[] decks = { 0.10f, 0.62f, 1.14f, 1.70f };
                     for (int i = 0; i < n; i++)
                     {
-                        float deck = decks[1 + rng.Next(2)];
-                        var p = shelfPos + S * ((float)rng.NextDouble() - 0.5f) * 0.65f + Vector3.up * (deck + 0.02f) + F * -0.02f;
-                        loot.Add((p, Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f), pool[rng.Next(pool.Length)]));
+                        rng.Next(2); rng.NextDouble();                            // (its deck and place on the shelf)
+                        loot.Add((FloorSpot(), Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f), pool[rng.Next(pool.Length)]));
                     }
-                    Bulb(At(D * 0.5f, 0f, max.y - min.y - 0.32f), a);
+                    CeilingLight(a);
                     break;
                 }
                 case 1:
                 {
                     // Sealed storage: shelf on a side wall, boxes stacked in the front corners.
-                    float side = rng.Next(2) == 0 ? -1f : 1f;
-                    var shelfPos = At(D * 0.55f, side * (W * 0.5f - 0.22f));
-                    Shelf(shelfPos, Quaternion.LookRotation(-S * side, Vector3.up));
-                    for (int i = 0, n = 2 + rng.Next(4); i < n; i++)
-                    {
-                        float bx = -side * (W * 0.5f - 0.35f - (i % 2) * 0.55f), bd = D - 0.32f - (i / 4) * 0.55f;
-                        Box(At(bd, bx, 0.45f * ((i / 2) % 2)), new Vector3(0.6f, 0.45f, 0.5f), (float)rng.NextDouble() * 12f - 6f);
-                    }
+                    rng.Next(2);                                                  // (the shelf's side)
+                    for (int i = 0, n = 2 + rng.Next(4); i < n; i++) rng.NextDouble();   // (the stacked boxes)
                     string[] pool = { "tape", "chalk", "spraycan", "desklamp", "extensioncord", "rubberchicken" };
                     for (int i = 0, n = 1 + rng.Next(3); i < n; i++)
                     {
-                        var p = shelfPos + F * ((float)rng.NextDouble() - 0.5f) * 0.6f + Vector3.up * (0.62f + 0.52f * rng.Next(2) + 0.02f);
-                        loot.Add((p, Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f), pool[rng.Next(pool.Length)]));
+                        rng.NextDouble(); rng.Next(2);                            // (its place on the shelf)
+                        loot.Add((FloorSpot(), Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f), pool[rng.Next(pool.Length)]));
                     }
-                    Bulb(At(D * 0.4f, 0f, max.y - min.y - 0.32f), a);
+                    CeilingLight(a);
                     break;
                 }
                 default:
                 {
                     // Old camp: a sleeping bag along a side wall, a lantern by its head, a few things, a tally on the wall.
-                    float side = ventX > 0f ? -1f : 1f;                      // away from the vent
-                    var bagPos = At(D * 0.5f + 0.15f, side * (W * 0.5f - 0.45f));
-                    Model("SleepingBag", bagPos, Quaternion.LookRotation(-F, Vector3.up), new Vector3(0.78f, 0.3f, 1.74f));
-                    var lantern = At(D * 0.5f - 0.95f, side * (W * 0.5f - 0.3f));
-                    Lantern(lantern, a);
                     string[] pool = { "rubberchicken", "chalk", "spraycan", "tape", "rubberchicken" };
                     for (int i = 0, n = 1 + rng.Next(3); i < n; i++)
                     {
-                        var p = At(0.6f + (float)rng.NextDouble() * (D - 1.2f), -side * (float)rng.NextDouble() * (W * 0.5f - 0.4f), 0.06f);
-                        loot.Add((p, Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f), pool[rng.Next(pool.Length)]));
+                        rng.NextDouble(); rng.NextDouble();                       // (its place on the floor before)
+                        loot.Add((FloorSpot(), Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f), pool[rng.Next(pool.Length)]));
                     }
-                    Tally(rng, side);
+                    CeilingLight(a);
                     break;
                 }
             }
@@ -209,6 +208,24 @@ namespace Backrooms.Interaction
             }
             var bc = l.AddComponent<BoxCollider>(); bc.center = new Vector3(0f, 0.11f, 0f); bc.size = new Vector3(0.12f, 0.22f, 0.12f);
             AddLight(pos + Vector3.up * 0.103f, new Color(1f, 0.9f, 0.76f), 1.1f);
+        }
+
+        /// <summary>A round flush-mount fitting in the middle of the ceiling (as the other rooms' homes have), lit, and the
+        /// room's light just under it.</summary>
+        void CeilingLight(OfficeBiomeAssets a)
+        {
+            var fit = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            Destroy(fit.GetComponent<Collider>());
+            fit.name = "CeilingLight";
+            fit.transform.SetParent(transform, false);
+            Vector3 top = At(Depth * 0.5f, 0f, max.y - min.y);
+            fit.transform.position = top - Vector3.up * 0.02f;
+            fit.transform.localScale = new Vector3(0.32f, 0.07f, 0.32f);
+            var r = fit.GetComponent<Renderer>();
+            r.sharedMaterial = a && a.domeOn ? a.domeOn : a && a.lensOn ? a.lensOn : SpecialRoomMaterials.Ceiling;
+            r.shadowCastingMode = ShadowCastingMode.Off;
+            r.renderingLayerMask = 1u;
+            AddLight(top - Vector3.up * 0.3f, new Color(1f, 0.9f, 0.74f), 1.8f);   // (far enough down to light the tiles too)
         }
 
         void AddLight(Vector3 pos, Color c, float intensity)

@@ -114,8 +114,9 @@ namespace Backrooms.Generation
             name = "Level 0",
             biomes = new List<BiomeBand>
             {
-                new BiomeBand { rules = BiomeRules.Hallways(), upTo = 0.36f },
-                new BiomeBand { rules = BiomeRules.Offices(), upTo = 0.66f },
+                new BiomeBand { rules = BiomeRules.Hallways(), upTo = 0.3f },
+                new BiomeBand { rules = BiomeRules.Offices(), upTo = 0.55f },
+                new BiomeBand { rules = BiomeRules.LivingRooms(), upTo = 0.78f },
                 new BiomeBand { rules = BiomeRules.Warehouse(), upTo = 1f },
             },
         };

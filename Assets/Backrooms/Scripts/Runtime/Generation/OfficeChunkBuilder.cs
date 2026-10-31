@@ -22,6 +22,7 @@ namespace Backrooms.Generation
         public uint roomLayer;       // rendering-layer bit for bounce light
         public bool dome;            // round fitting on a tall ceiling (longer throw)
         public bool strip;           // hanging cool-white warehouse strip
+        public bool flush;           // a home's flush-mount dome at normal height (an ordinary room's light, not a tall hall's)
         public float ceiling;        // ceiling height at the fixture
         public int faultyId;         // index of this tube's own lens renderer when it stutters, else -1
         public float dim;            // share of its light lost to age (a tube out, old pink tubes, bugs in the lens): 0 = full
@@ -452,7 +453,7 @@ namespace Backrooms.Generation
                     if (z < _L.N - 1 && _L.Has(x, z + 1, CellFlags.NoFloor)) fm.Quad(new Vector3(x0, 0, z1), new Vector3(x0, 0, z1 + e), new Vector3(x1, 0, z1 + e), new Vector3(x1, 0, z1), Vector3.up, MeshWriter.FloorUV);
                 }
                 if (_L.Has(x, z, CellFlags.OpenAbove)) continue;     // the storey above closes it
-                var ceil = r.Tall && _a.ceilingPlaster ? _a.ceilingPlaster : _a.ceilingTile;
+                var ceil = r.PlasterCeiling && _a.ceilingPlaster ? _a.ceilingPlaster : _a.ceilingTile;
                 if (r.ceilDrop != 0 && _L.CeilingLowAt(x, z) < h - 0.001f)
                 {
                     // A ceiling coming down (DepthPlan): the cell's tiles slope, each corner at its own height.
@@ -463,7 +464,7 @@ namespace Backrooms.Generation
                 }
                 if (DressCeiling(x, z, r, h, m, ceil)) continue;          // a stained, sagging, lifted or missing tile here
                 WMask(ceil, m).Quad(new Vector3(x0, h, z0), new Vector3(x1, h, z0), new Vector3(x1, h, z1), new Vector3(x0, h, z1), Vector3.down,
-                    r.Tall ? (MeshWriter.UVProjector)MeshWriter.MetreUV : MeshWriter.CeilingUV);
+                    r.PlasterCeiling ? (MeshWriter.UVProjector)MeshWriter.MetreUV : MeshWriter.CeilingUV);
             }
         }
 
@@ -477,7 +478,7 @@ namespace Backrooms.Generation
             float y = H - gd * 0.5f;
             foreach (var r in _L.rooms)
             {
-                if (r.Tall || r.openAbove) continue;
+                if (r.PlasterCeiling || r.openAbove) continue;
                 var w = W(_a.ceilingGrid, r.color);
                 float x0 = r.rect.xMin * C, x1 = r.rect.xMax * C, z0 = r.rect.yMin * C, z1 = r.rect.yMax * C;
                 // (Where the ceiling comes down there is no grid: only over the flat part.)
@@ -531,6 +532,7 @@ namespace Backrooms.Generation
             for (int x = 0; x < N; x++)
             for (int z = 0; z <= N; z++)
                 EdgeFaces(_L.hEdges[x, z], false, z, x);      // hEdges[x, z] lies on line Z = z, along X = x
+            _roomBaseboard = false;
             BuildWallColliders();
         }
 
@@ -545,6 +547,7 @@ namespace Backrooms.Generation
                 if (!_L.InChunk(cx, cz)) continue;
                 var room = _L.RoomAt(cx, cz);
                 if (room.noFloor && e != EdgeKind.Wall && !room.spiral) continue;     // a well's open sides are railings, built separately; walls around a stair or shaft void are real (a spiral stair's well has a doorway)
+                _roomBaseboard = room.home;                   // homes have baseboards even where the world has none
                 float sign = s == 0 ? -1f : 1f;               // face normal points into the viewing cell
                 float f = l + sign * T * 0.5f;
                 Vector3 n = vertical ? new Vector3(sign, 0, 0) : new Vector3(0, 0, sign);
@@ -574,8 +577,11 @@ namespace Backrooms.Generation
                     if (!room.noFloor)
                     {
                         // (Plain cells: now and then pulled off the wall, a piece missing, the caulk cracked: .Paper.cs.)
-                        if (Pool || room.ramp != 0 || !_L.Plain(cx, cz)) Baseboard(cm, A(f, a0) + Vector3.up * fa, A(f, a1) + Vector3.up * fb, n);
-                        else BaseboardRun(cm, A(f, a0), A(f, a1), n, GX(cx), GZ(cz), (vertical ? 0 : 2) + s);
+                        // (A home's run reaches half a wall's thickness past each end, over the joint: the world's posts
+                        // have no baseboard, and it broke at every cell.)
+                        float bx = room.home ? T * 0.5f : 0f;
+                        if (Pool || room.ramp != 0 || !_L.Plain(cx, cz)) Baseboard(cm, A(f, a0 - bx) + Vector3.up * fa, A(f, a1 + bx) + Vector3.up * fb, n);
+                        else BaseboardRun(cm, A(f, a0 - bx), A(f, a1 + bx), n, GX(cx), GZ(cz), (vertical ? 0 : 2) + s);
                     }
                     continue;
                 }
@@ -720,7 +726,7 @@ namespace Backrooms.Generation
         void Baseboard(uint mask, Vector3 a, Vector3 b, Vector3 n)
         {
             if (NoBaseboard) return;
-            var w = WMask(_a.baseboard, mask);
+            var w = WMask(BaseboardMat, mask);
             Vector3 fa = a + n * BD, fb = b + n * BD;
             w.Quad(fa, fb, fb + Vector3.up * BB, fa + Vector3.up * BB, n, MeshWriter.MetreUV);
             w.Quad(fa + Vector3.up * BB, fb + Vector3.up * BB, b + Vector3.up * BB, a + Vector3.up * BB, Vector3.up, MeshWriter.MetreUV);
@@ -1196,7 +1202,7 @@ namespace Backrooms.Generation
                     lights.Add(new LightSource
                     {
                         position = _origin + c + (f.dome ? Vector3.down * 0.07f : f.strip ? Vector3.down * 0.03f : SquareFixtureShift),
-                        isLamp = false, dome = f.dome, strip = f.strip, ceiling = h, roomLayer = LayerBit(f.roomColor),
+                        isLamp = false, dome = f.dome, strip = f.strip, flush = f.flush, ceiling = h, roomLayer = LayerBit(f.roomColor),
                         faultyId = f.faulty ? faultyLenses.Count - 1 : -1, room = room, dim = dim, tint = tint,
                     });
             }

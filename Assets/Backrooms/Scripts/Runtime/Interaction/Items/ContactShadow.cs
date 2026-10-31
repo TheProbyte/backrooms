@@ -20,6 +20,8 @@ namespace Backrooms.Interaction
         Vector3 _lastPos;
         float _size = 0.1f;
         int _next;
+        const int PerFrame = 4;
+        static int s_frame = -1, s_used;
 
         void Awake()
         {
@@ -70,7 +72,13 @@ namespace Backrooms.Interaction
         {
             if (!_item || _item.Held || !s_mat) { if (_r.enabled) _r.enabled = false; return; }
             // Only re-cast when the item has moved (or now and then).
-            if ((transform.position - _lastPos).sqrMagnitude < 1e-6f && --_next > 0) return;
+            bool moved = (transform.position - _lastPos).sqrMagnitude >= 1e-6f;
+            if (!moved && --_next > 0) return;
+            // A few a frame: a chunk's items all arriving at once re-cast in the same frame (5.4 ms, 2026-10-31). An item
+            // that moved by itself always goes; the rest wait their turn.
+            if (s_frame != Time.frameCount) { s_frame = Time.frameCount; s_used = 0; }
+            if (s_used >= PerFrame && !(moved && _r.enabled)) { _next = 1; return; }
+            s_used++;
             _lastPos = transform.position; _next = 30;
             Measure();
             Vector3 c = transform.position;

@@ -14,16 +14,27 @@ namespace Backrooms.Generation
         public static Material Floor { get; private set; }
         public static Material Ceiling { get; private set; }
         public static Material Board { get; private set; }
+        /// <summary>The drop ceiling's grid runners and the baseboard (the room is an ordinary small room: 2026-10-31).</summary>
+        public static Material Grid { get; private set; }
+        public static Material Baseboard { get; private set; }
 
+        /// <summary>
+        /// The secret rooms (crawl spaces) are small ordinary rooms (owner, 2026-10-31: "a small room with carpet, normal ceiling
+        /// and paint walls (no wallpaper), reusing from other rooms"): the world's carpet, its acoustic drop ceiling and grid,
+        /// its painted wall and baseboard, with their normal maps, as plain URP Lit copies (the room is lit only by its own
+        /// light, never by the fixtures or the light grid below).
+        /// </summary>
         public static void Ensure(OfficeBiomeAssets a)
         {
-            if (Wall && Floor && Ceiling && Board) return;
+            if (Wall && Floor && Ceiling && Board && Grid && Baseboard) return;
             var lit = Shader.Find("Universal Render Pipeline/Lit");
             if (!lit || !a) return;
-            Wall = Copy(lit, a.paintedWall ? a.paintedWall : a.wallpaper, "Special room wall", new Color(0.78f, 0.74f, 0.64f), 0.12f);
-            Floor = Copy(lit, a.wood ? a.wood : a.pallet, "Special room floor", new Color(0.55f, 0.5f, 0.44f), 0.2f);
-            Ceiling = Copy(lit, a.ceilingPlaster ? a.ceilingPlaster : a.paintedWall, "Special room ceiling", new Color(0.72f, 0.7f, 0.64f), 0.05f);
+            Wall = Copy(lit, a.paintedWall ? a.paintedWall : a.wallpaper, "Special room wall", new Color(0.97f, 0.95f, 0.92f), 0.12f);
+            Floor = Copy(lit, a.carpet ? a.carpet : a.wood, "Special room carpet", new Color(0.95f, 0.93f, 0.9f), 0.05f);
+            Ceiling = Copy(lit, a.ceilingTile ? a.ceilingTile : a.ceilingPlaster, "Special room ceiling", Color.white, 0.05f);
             Board = Copy(lit, a.cardboard ? a.cardboard : a.wood, "Special room cardboard", new Color(0.9f, 0.85f, 0.78f), 0.05f);
+            Grid = Copy(lit, a.ceilingGrid ? a.ceilingGrid : a.ceilingTile, "Special room ceiling grid", Color.white, 0.3f);
+            Baseboard = Copy(lit, a.baseboard ? a.baseboard : a.paintedWall, "Special room baseboard", Color.white, 0.25f);
         }
 
         static Material Copy(Shader lit, Material src, string name, Color tint, float smooth)
@@ -36,6 +47,14 @@ namespace Backrooms.Generation
                 {
                     m.SetTexture("_BaseMap", tex);
                     m.SetTextureScale("_BaseMap", src.GetTextureScale(src.HasProperty("_BaseMap") ? "_BaseMap" : "_MainTex"));
+                }
+                // Its normal map too (the carpet's pile, the tiles' fissures, the wall's plaster).
+                var bump = src.HasProperty("_BumpMap") ? src.GetTexture("_BumpMap") : null;
+                if (bump)
+                {
+                    m.SetTexture("_BumpMap", bump);
+                    m.SetFloat("_BumpScale", src.HasProperty("_BumpScale") ? src.GetFloat("_BumpScale") : 1f);
+                    m.EnableKeyword("_NORMALMAP");
                 }
                 if (src.HasProperty("_BaseColor")) tint *= src.GetColor("_BaseColor");
             }

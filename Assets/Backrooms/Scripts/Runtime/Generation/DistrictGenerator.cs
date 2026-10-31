@@ -114,6 +114,15 @@ namespace Backrooms.Generation
                 else r.painted = rng.NextDouble() < R.paintedChance * 0.5f;
                 // Lounges and meeting rooms are living rooms: painted, so furnished (StyleOf).
                 if (r.kind == RoomKind.Lounge || r.kind == RoomKind.Conference) r.painted = true;
+                // The Living rooms biome: an emptied-out early-2000s living room (orange-peel drywall, now and then the clouds
+                // wallpaper; carpet; baseboards; a flat plaster ceiling). Its dice only where the biome is (other rooms keep
+                // theirs as they were).
+                if (R.homeChance > 0f && r.kind != RoomKind.Crawl && rng.NextDouble() < R.homeChance)
+                {
+                    r.home = true; r.painted = true;
+                    r.wallFinish = r.kind != RoomKind.Hallway && rng.NextDouble() < R.cloudWallpaper ? WallFinish.SkyWallpaper : WallFinish.OrangePeel;
+                    r.floorFinish = FloorFinish.HomeCarpet;
+                }
             }
 
             // 4. Walls everywhere rooms differ, plus the district edge.
@@ -779,11 +788,12 @@ namespace Backrooms.Generation
                 if (r.kind == RoomKind.Crawl || r.noFloor || r.role != AnnexRole.None || r.custom) continue;      // custom rooms place their own lights      // a well's light belongs to the storey below; stair halls and shafts light themselves
                 var R = L.RulesAt(r.rect);
                 // Troffers every 2 cells (2.4 m); tall rooms use brighter fittings every 3 cells (3.6 m).
-                int step = r.Tall ? 3 : 2;
+                // (Homes: a round flush-mount fitting every 3 cells, on the flat plaster ceiling.)
+                int step = r.PlasterCeiling ? 3 : 2;
                 bool strips = r.Tall && r.landmark == null && rng.NextDouble() < R.stripLights;
                 int ox = ((r.rect.width - 1) % step + 1) / 2, oz = ((r.rect.height - 1) % step + 1) / 2;
-                if (!r.Tall && r.rect.width == 2) ox = rng.Next(2);
-                if (!r.Tall && r.rect.height == 2) oz = rng.Next(2);
+                if (!r.PlasterCeiling && r.rect.width == 2) ox = rng.Next(2);
+                if (!r.PlasterCeiling && r.rect.height == 2) oz = rng.Next(2);
                 for (int x = r.rect.xMin; x < r.rect.xMax; x++)
                 for (int z = r.rect.yMin; z < r.rect.yMax; z++)
                 {
@@ -795,7 +805,7 @@ namespace Backrooms.Generation
                     // (None where a ceiling comes down: DepthPlan. After the dice, so the rest of the plan stays as it was.)
                     if (DepthPlan.NoLight(L, r, x, z)) { if (on) rng.NextDouble(); continue; }
                     L.fixtures.Add(new Fixture { cell = new Vector2Int(x, z), on = on, roomColor = r.color,
-                        dome = r.Tall && !strips, strip = strips,
+                        dome = r.PlasterCeiling && !strips, strip = strips, flush = r.home && !r.Tall,
                         height = strips ? Mathf.Min(r.ceiling - 0.5f, 4.6f) : r.ceiling,
                         faulty = on && rng.NextDouble() < R.faultyChance });
                 }
@@ -988,6 +998,7 @@ namespace Backrooms.Generation
         public static RoomStyle StyleOf(Room r)
         {
             if (OfficeBiomeAssets.ConcreteFloor(r)) return RoomStyle.Warehouse;
+            if (r.home) return r.kind != RoomKind.Hallway && r.kind != RoomKind.Crawl ? RoomStyle.LivingRoom : RoomStyle.Backrooms;
             bool painted = r.wallFinish == WallFinish.PaintedPlaster || (r.wallFinish == WallFinish.Default && r.painted);
             return painted && r.kind != RoomKind.Hallway && r.kind != RoomKind.Crawl ? RoomStyle.LivingRoom : RoomStyle.Backrooms;
         }
@@ -998,6 +1009,7 @@ namespace Backrooms.Generation
         /// </summary>
         static void Furnish(OfficeLayout L, System.Random rng, Room r, HashSet<Vector2Int> occupied)
         {
+            if (r.home) { FurnishHome(L, rng, r, occupied); return; }
             float C = OfficeBiome.CellSize;
             var rc = r.rect;
             bool small = r.kind == RoomKind.Office;
@@ -1030,6 +1042,29 @@ namespace Backrooms.Generation
                 bool lampLit = rng.NextDouble() < 0.8 && r.live;
                 L.props.Add(new Prop { kind = PropKind.FloorLamp, position = new Vector2(lx, lz), variant = lampVariant, lit = lampLit, roomColor = r.color });
                 i++;
+            }
+        }
+
+        /// <summary>
+        /// A home (the Living rooms biome) after the move-out: mostly empty. Now and then the one sofa left against a wall, or an
+        /// armchair; rarely a floor lamp, unplugged. (Loose boxes come from PlaceBoxes, as anywhere.)
+        /// </summary>
+        static void FurnishHome(OfficeLayout L, System.Random rng, Room r, HashSet<Vector2Int> occupied)
+        {
+            var rc = r.rect;
+            if (rc.width < 2 || rc.height < 2) return;
+            double p = rng.NextDouble();
+            if (p < 0.28) { for (int i = 0; i < 6; i++) if (TrySofa(L, rng, r, rng.Next(4), occupied)) break; }
+            else if (p < 0.42) { for (int i = 0; i < 8; i++) if (TryArmchair(L, rng, r, occupied)) break; }
+            if (rng.NextDouble() < 0.07)
+            {
+                float C = OfficeBiome.CellSize;
+                int corner = rng.Next(4);
+                float lx = (corner & 1) == 0 ? rc.xMin * C + 0.45f : rc.xMax * C - 0.45f;
+                float lz = (corner & 2) == 0 ? rc.yMin * C + 0.45f : rc.yMax * C - 0.45f;
+                int cx = Mathf.Clamp(Mathf.FloorToInt(lx / C), 0, L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(lz / C), 0, L.N - 1);
+                if (!CellHasDoor(L, cx, cz) && occupied.Add(new Vector2Int(cx, cz)))
+                    L.props.Add(new Prop { kind = PropKind.FloorLamp, position = new Vector2(lx, lz), variant = rng.Next(2), lit = false, roomColor = r.color });
             }
         }
 

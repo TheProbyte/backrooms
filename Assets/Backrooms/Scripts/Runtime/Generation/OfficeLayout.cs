@@ -6,8 +6,8 @@ namespace Backrooms.Generation
     public enum RoomKind { Office, BigOffice, Hallway, Crawl, Lounge, Conference }
     public enum LightMode { AllOn, Mixed, Dark }
     public enum EdgeKind : byte { Open, Wall, Door, DoorHeader }
-    public enum WallFinish { Default, Wallpaper, PaintedPlaster, ReferenceCream, ReferenceOlive }
-    public enum FloorFinish { Default, ReferenceCarpet, DarkWood, Laminate }
+    public enum WallFinish { Default, Wallpaper, PaintedPlaster, ReferenceCream, ReferenceOlive, OrangePeel, SkyWallpaper }
+    public enum FloorFinish { Default, ReferenceCarpet, DarkWood, Laminate, HomeCarpet }
 
     /// <summary>
     /// What a room does with its floor (world version 14, Docs/WorldDepthPlan.md; DepthPlan): sunk below the storey's floor
@@ -52,6 +52,9 @@ namespace Backrooms.Generation
         public AnnexRole role;        // stair hall, shaft ... (see AtriumAnnex)
         public bool custom;           // part of a player-built room: its own lights, doors and dressing (see CustomRooms)
         public bool spiral;           // Poolrooms: the tower of a spiral stair (storey 0: the stair; storey 1: its well and landing)
+        /// <summary>An emptied-out early-2000s living room (the Living rooms biome, BiomeRules.homeChance): orange-peel or
+        /// clouds walls, carpet, baseboards, a flat plaster ceiling with flush-mount lights, sparse furniture.</summary>
+        public bool home;
         /// <summary>Floor height above (below: negative) the storey's floor, m (DepthPlan). The ceiling stays where it was, so a
         /// sunken room is that much taller.</summary>
         public float floor;
@@ -102,13 +105,15 @@ namespace Backrooms.Generation
         }
         public bool Walkable => kind != RoomKind.Crawl;
         public bool Tall => ceiling > OfficeBiome.CeilingHeight + 0.01f;
+        /// <summary>A flat plaster ceiling with round fittings (tall rooms, and homes) instead of drop tiles and troffers.</summary>
+        public bool PlasterCeiling => Tall || home;
 
         public Room CloneFor(int newId, RectInt newRect) => new Room
         {
             id = newId, globalId = globalId, rect = newRect, fullRect = fullRect, kind = kind, lights = lights, color = color,
             ceiling = ceiling, painted = painted, wallFinish = wallFinish, floorFinish = floorFinish, landmark = landmark, openAbove = openAbove, noFloor = noFloor, noDoors = noDoors, role = role, custom = custom, spiral = spiral,
             floor = floor, feature = feature, chamfers = chamfers, ramp = ramp, rampCells = rampCells, rampStart = rampStart, ceilDrop = ceilDrop, ceilLow = ceilLow, ceilCells = ceilCells,
-            special = special, live = live,
+            special = special, live = live, home = home,
         };
     }
 
@@ -121,6 +126,7 @@ namespace Backrooms.Generation
         public ulong id;
         public bool dome;             // round surface-mounted fitting on a tall plaster ceiling
         public bool strip;            // warehouse: cool-white twin-tube batten hung on chains
+        public bool flush;            // a home's round flush-mount fitting on a normal-height plaster ceiling (dome: its model)
         public float height;          // ceiling height at the fixture (above this storey's floor)
         public bool faulty;           // tube that occasionally stutters
         /// <summary>Build mode's light moods: 0 as made, 1 dim, 2 sickly green, 3 yellowed, 4 cold blue, 5 pink.</summary>

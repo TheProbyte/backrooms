@@ -37,7 +37,7 @@ namespace Backrooms.Generation
             {
                 floor = Reflectance(a ? a.FloorMaterial(room) : null, 0.25f),
                 wall = Reflectance(a ? a.WallMaterial(room) : null, 0.5f),
-                ceiling = Reflectance(a ? (room.Tall && a.ceilingPlaster ? a.ceilingPlaster : a.ceilingTile) : null, 0.7f),
+                ceiling = Reflectance(a ? (room.PlasterCeiling && a.ceilingPlaster ? a.ceilingPlaster : a.ceilingTile) : null, 0.7f),
             };
             _roomSurfaces[room] = record; return record;
         }

@@ -1,0 +1,61 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c8bfa62aac418ad4fb687b2562e80d5c, type: 3}
+  m_Name: LivingRooms
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.BiomeDefinition
+  rules:
+    name: Living rooms
+    mapColor: {r: 0.78, g: 0.62, b: 0.5, a: 1}
+    bigHallChance: 0.3
+    stopSmall: 0.95
+    stopMedium: 0.85
+    stopLarge: 0.6
+    stopHuge: 0.35
+    maxRoomCells: 13
+    hallChanceShallow: 0.12
+    hallChanceDeep: 0.04
+    hallWideChance: 0.4
+    crawlChance: 0.12
+    openPlanChance: 0.25
+    loopChance: 0.55
+    loungeChance: 0
+    conferenceChance: 0
+    tallChanceBig: 0.08
+    tallChanceSmall: 0
+    tallMin: 3
+    tallMax: 3.3
+    paintedChance: 1
+    archedDoors: 0.04
+    doorChance: 0.55
+    lightsAllOn: 0.3
+    lightsMixed: 0.4
+    mixedOnFraction: 0.45
+    faultyChance: 0.03
+    pillarChance: 0
+    pillarSpacing: 3.5
+    halfWalls: 0
+    scatteredSeating: 0
+    rackChance: 0
+    outletChance: 0.16
+    stripLights: 0
+    sunkenChance: 0.1
+    pitRoomChance: 0
+    chamferChance: 0.05
+    ceilingDropChance: 0.1
+    tiltedChance: 0.05
+    nowhereChance: 0.08
+    mezzanineChance: 0
+    skylights: 0
+    flooded: 0
+    ledges: 0
+    homeChance: 1
+    cloudWallpaper: 0.12

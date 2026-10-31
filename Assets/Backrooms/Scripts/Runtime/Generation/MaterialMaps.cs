@@ -61,6 +61,62 @@ namespace Backrooms.Generation
             Troffers(a);
             Ceilings(a);
             Floors(a);
+            Homes(a);
+        }
+
+        // ---------------- Homes (the Living rooms biome) ----------------
+
+        /// <summary>
+        /// A home's walls (Room.home, WallFinish.OrangePeel): sprayed orange-peel drywall, eggshell off-white paint. A copy of
+        /// the painted wall (its keywords: no new shader variant) with Resources/Textures/Home/OrangePeel_* (generated: fine
+        /// droplets 2-6 mm over a gentle wave, one tile = 0.6 m).
+        /// </summary>
+        public static Material OrangePeel;
+        /// <summary>The rarer papered home (WallFinish.SkyWallpaper): the owner's blue-sky clouds pattern (Textures/Home/SkyClouds,
+        /// one repeat = 1.6 m), on a copy of the wallpaper with a little paper tooth.</summary>
+        public static Material SkyWallpaper;
+        /// <summary>A home's carpet (FloorFinish.HomeCarpet), one of a few early-2000s shades by room: sage, beige, mushroom, slate.</summary>
+        public static Material[] HomeCarpets = new Material[0];
+        /// <summary>A home's baseboard: the world's baseboard painted off-white.</summary>
+        public static Material HomeBaseboard;
+
+        static void Homes(OfficeBiomeAssets a)
+        {
+            OrangePeel = SkyWallpaper = HomeBaseboard = null; HomeCarpets = new Material[0];
+            if (a.baseboard && a.baseboard.HasProperty(BaseColor)) HomeBaseboard = Tinted(For(a.baseboard), " (home, painted)", new Color(0.82f, 0.8f, 0.76f, 1f));
+            var peelN = Resources.Load<Texture2D>("Textures/Home/OrangePeel_Normal");
+            var peelA = Resources.Load<Texture2D>("Textures/Home/OrangePeel_Albedo");
+            var sky = Resources.Load<Texture2D>("Textures/Home/SkyClouds");
+            void Bump(Material m, float strength)
+            {
+                if (!peelN || !m.HasProperty(BumpMap)) return;
+                m.SetTexture(BumpMap, peelN); m.SetFloat(BumpScale, strength); m.EnableKeyword("_NORMALMAP");
+            }
+            var paint = a.paintedWall ? a.paintedWall : a.wallpaper;
+            if (paint && paint.HasProperty(BaseMap))
+            {
+                OrangePeel = Copy(paint, " (orange peel)", peelA);
+                OrangePeel.SetTextureScale(BaseMap, new Vector2(2f, 4.5f));            // 0.6 m tiles (WallUV: 1.2 m by 2.7 m)
+                OrangePeel.SetColor(BaseColor, new Color(0.86f, 0.84f, 0.78f, 1f));      // off-white, a little warm
+                OrangePeel.SetFloat("_Smoothness", 0.2f);                               // eggshell
+                Bump(OrangePeel, 0.55f);
+            }
+            if (a.wallpaper && sky && a.wallpaper.HasProperty(BaseMap))
+            {
+                SkyWallpaper = Copy(a.wallpaper, " (sky clouds)", sky);
+                SkyWallpaper.SetTextureScale(BaseMap, new Vector2(1.2f / 1.6f, 2.7f / 1.6f));   // one repeat = 1.6 m: clouds about 0.45 m across
+                SkyWallpaper.SetTextureOffset(BaseMap, Vector2.zero);
+                SkyWallpaper.SetColor(BaseColor, new Color(0.86f, 0.87f, 0.86f, 1f));      // a little faded
+                SkyWallpaper.SetFloat("_Smoothness", 0.22f);                            // vinyl-coated paper
+                Bump(SkyWallpaper, 0.15f);
+            }
+            if (a.carpet && a.carpet.HasProperty(BaseColor))
+            {
+                // (The carpet's own colour is a yellow 0.8 0.71 0.44; these replace it.)
+                var shades = new[] { new Color(0.56f, 0.6f, 0.5f), new Color(0.78f, 0.72f, 0.6f), new Color(0.6f, 0.53f, 0.45f), new Color(0.5f, 0.53f, 0.55f) };
+                HomeCarpets = new Material[shades.Length];
+                for (int i = 0; i < shades.Length; i++) HomeCarpets[i] = Tinted(a.carpet, " (home " + i + ")", shades[i]);
+            }
         }
 
         // ---------------- Ceiling tiles ----------------

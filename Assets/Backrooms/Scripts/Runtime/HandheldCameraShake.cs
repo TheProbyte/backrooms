@@ -72,6 +72,8 @@ namespace Backrooms
         /// <summary>1: the camcorder hangs on its strap at the chest (both hands free: PropGrabber H), still recording. It
         /// looks ahead and down from there, swings like a pendulum when you start, stop and turn, and bobs with the steps.</summary>
         [System.NonSerialized] public float strap;
+        /// <summary>Camera menu > CAMERA SHAKE > Shake while hanging: the strap's pendulum swing and the shake on it, x (0 steady).</summary>
+        [System.NonSerialized] public float hangingShake = 1f;
         /// <summary>What the hands hold while it hangs: the camera keeps out of it (pulled up toward the eye, over it).</summary>
         [System.NonSerialized] public Collider[] avoid;
         /// <summary>While it hangs: a point it tips up or down to keep in the picture (a box lifted to stack it), or null.</summary>
@@ -217,7 +219,7 @@ namespace Backrooms
                 float yawRate = dt > 1e-4f ? Mathf.DeltaAngle(_lastYaw, body.eulerAngles.y) / dt : 0f;
                 if (Mathf.Abs(yawRate) > 400f) yawRate = 0f;                                   // a teleport, not a turn
                 _lastVel = _velF; _lastYaw = body.eulerAngles.y;
-                Vector3 drive = new Vector3(-acc.z * 1.6f, -yawRate * 0.03f, acc.x * 2f);
+                Vector3 drive = new Vector3(-acc.z * 1.6f, -yawRate * 0.03f, acc.x * 2f) * Mathf.Max(0f, hangingShake);
                 const float k = 75f, c = 2.8f;
                 for (float rem = Mathf.Min(dt, 0.1f); rem > 1e-5f; rem -= 1f / 120f)
                 {
@@ -227,7 +229,8 @@ namespace Backrooms
                 }
                 _swing = Vector3.ClampMagnitude(_swing, 30f);
                 float tip = 10f + 0.25f * player.Pitch;
-                Vector3 wp = pivot.position + body.rotation * (new Vector3(0f, -0.34f, 0.1f) + pos * shakeIntensity * 1.3f);
+                float hs = Mathf.Max(0f, hangingShake);
+                Vector3 wp = pivot.position + body.rotation * (new Vector3(0f, -0.34f, 0.1f) + pos * shakeIntensity * 1.3f * hs);
                 // Kept on what the hands lift (round 14: a box raised to stack it went out of the top of the picture).
                 if (strapLook.HasValue)
                 {
@@ -240,7 +243,7 @@ namespace Backrooms
                 Vector3 clearTo = KeepClear(pivot.position, wp) - wp;
                 _clear = Vector3.Lerp(_clear, clearTo, 1f - Mathf.Exp(-dt / (clearTo.sqrMagnitude > _clear.sqrMagnitude ? 0.12f : 0.4f)));
                 wp += _clear;
-                Quaternion wr = body.rotation * Quaternion.Euler(tip + _swing.x, _swing.y, _swing.z) * Quaternion.Euler(rot * shakeIntensity * 0.7f + _jolt);
+                Quaternion wr = body.rotation * Quaternion.Euler(tip + _swing.x, _swing.y, _swing.z) * Quaternion.Euler(rot * shakeIntensity * 0.7f * hs + _jolt);
                 Vector3 sp = Quaternion.Inverse(pivot.rotation) * (wp - pivot.position);
                 Quaternion sr = Quaternion.Inverse(pivot.rotation) * wr;
                 float s = Mathf.SmoothStep(0f, 1f, _strapT);

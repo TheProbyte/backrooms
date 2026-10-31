@@ -67,7 +67,7 @@ namespace Backrooms.Audio
                 int x = Mathf.FloorToInt(p.x / OfficeBiome.CellSize) - L.coord.x * L.N, z = Mathf.FloorToInt(p.z / OfficeBiome.CellSize) - L.coord.y * L.N;
                 if (!L.InChunk(x, z)) continue;
                 var room = L.RoomAt(x, z);
-                if (room.Tall || room.openAbove || room.noFloor) continue;                    // a drop ceiling only
+                if (room.PlasterCeiling || room.openAbove || room.noFloor) continue;          // a drop ceiling only
                 p.y = L.BaseY + room.ceiling - 0.03f;
                 var s = Free();
                 s.transform.position = p;

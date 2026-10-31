@@ -37,6 +37,9 @@ namespace Backrooms
         [Range(1.5f, 6f)] public float runSpeed = 3.6f;
         [Range(0.2f, 2f)] public float crouchSpeed = 0.8f;
         [Range(0.1f, 1.5f)] public float crawlSpeed = 0.45f;
+        [Tooltip("Shift while crawling: the crawl speed times this.")] [Range(1f, 3f)] public float crawlRush = 2.1f;
+        /// <summary>Crawling with Shift held: the quicker scramble.</summary>
+        public bool CrawlingFast { get; private set; }
         [Tooltip("How quickly the player reaches the target speed (higher = snappier).")]
         [Range(1f, 20f)] public float acceleration = 6f;
         [Tooltip("How quickly the player stops when no keys are held.")]
@@ -433,7 +436,9 @@ namespace Backrooms
 
             // Running only makes sense standing and moving mostly forward.
             IsRunning = !noRun && hasFocus && CurrentStance == Stance.Stand && keyboard.leftShiftKey.isPressed && input.y > 0.1f;
-            float targetSpeed = CurrentStance == Stance.Crawl ? crawlSpeed : CurrentStance == Stance.Crouch ? crouchSpeed : IsRunning ? runSpeed : walkSpeed;
+            // Shift while crawling forward: a quicker scramble on hands and knees (owner, 2026-10-31).
+            CrawlingFast = !noRun && hasFocus && CurrentStance == Stance.Crawl && keyboard.leftShiftKey.isPressed && input.y > 0.1f;
+            float targetSpeed = CurrentStance == Stance.Crawl ? crawlSpeed * (CrawlingFast ? crawlRush : 1f) : CurrentStance == Stance.Crouch ? crouchSpeed : IsRunning ? runSpeed : walkSpeed;
             targetSpeed *= moveScale;
             // Stairs are walked a little slower than the flat (a step a tread at a time each foot, as people do).
             targetSpeed *= Mathf.Lerp(1f, stairSpeed, _onStairs);

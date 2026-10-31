@@ -247,7 +247,7 @@ namespace Backrooms.Atmosphere
             Vector3 p = default; OfficeLayout L = null; Room room = default;
             bool found = false;
             for (int i = 0; i < 6 && !found; i++)
-                found = Spot(minR, maxR, true, out p, out L, out room) && !room.Tall && !room.openAbove;   // a drop ceiling
+                found = Spot(minR, maxR, true, out p, out L, out room) && !room.PlasterCeiling && !room.openAbove;   // a drop ceiling
             if (!found) return false;
             p.y = L.BaseY + room.ceiling + 0.25f;
             Play(Clips.Duct(_rng.Next(3)), p, Range(0.45f, 0.65f), Range(0.9f, 1.08f));

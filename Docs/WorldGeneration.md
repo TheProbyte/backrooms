@@ -56,6 +56,24 @@ than the ceiling there, and you saw above it).
 Wall clocks are not placed anywhere (nor offered in the F-menu items or the room builder's palette; custom rooms that
 have one keep the data).
 
+### Living rooms: the fourth biome of Level 0 (2026-10-31)
+
+The owner's reference photos: the emptied-out living rooms of an early-2000s house, room after room. Level 0's bands are
+now Hallways (to 0.3), Offices (0.55), **Living rooms** (0.78), Warehouse (1) (`Resources/WorldGen/Biomes/LivingRooms`,
+`BiomeRules.LivingRooms`). Settings saved from F5 before it existed get it too (`WorldGenSettings.AddMissingBiomes`).
+- Bigger rooms than the offices (`maxRoomCells` 13, splits stop sooner), few hallways, a door in most doorways, square
+  headers, no pillar grids or half walls, rarely a tall room.
+- Each room is a **home** (`Room.home`, `BiomeRules.homeChance`, blended like every rule, so they fade in from the
+  neighbouring biomes): `WallFinish.OrangePeel` (sprayed orange-peel drywall, eggshell off-white: `MaterialMaps.OrangePeel`
+  with `Textures/Home/OrangePeel_*`, generated: droplets 2-6 mm over a gentle wave, 0.6 m tiles) or, in 12 % of rooms
+  (`cloudWallpaper`), `WallFinish.SkyWallpaper` (the owner's blue-sky clouds pattern, `Textures/Home/SkyClouds`, 1.6 m
+  repeat, a little faded); `FloorFinish.HomeCarpet` in one of four shades by room (sage, beige, mushroom, slate); a flat
+  plaster ceiling (`Room.PlasterCeiling`) with round flush-mount fittings every 3 cells (`Fixture.flush`: the dome model
+  at an ordinary room's brightness); off-white baseboards, continuous over the wall joints (`MaterialMaps.HomeBaseboard`;
+  the rest of the world still has none). Lights: 30 % of rooms all on, 40 % some, the rest dark.
+- Furniture (`DistrictGenerator.FurnishHome`): mostly none. Now and then the one sofa left against a wall or an armchair,
+  rarely an unplugged floor lamp; loose boxes as anywhere.
+
 ### Landmarks
 One landmark at most per landmark cell (`landmarkSpacing` x spacing districts): the cell's dice pick a
 district, a landmark allowed by its zone and biome, a chance roll, and a position (3 cells clear of the

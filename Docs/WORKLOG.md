@@ -15,6 +15,30 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - Living rooms biome; ordinary secret rooms; galvanised vents; fast crawl; quick plug-in; camera menu folds; streaming stutter
+
+- Research: Unity's GPU Resident Drawer requirements for custom shaders (DOTS instancing block, the keyword, matrix packing),
+  Unity 6 InstantiateAsync and collider baking for streaming, orange-peel drywall (fine sprayed droplets).
+- New Level 0 biome, Living rooms (the owner's reference photos of emptied early-2000s living rooms): bigger rooms, doors,
+  orange-peel painted drywall (12 % blue-sky clouds wallpaper, the owner's image), carpet in four shades, flat plaster
+  ceilings with flush-mount lights, off-white baseboards, sparse furniture. `Room.home`, `BiomeRules.homeChance /
+  cloudWallpaper`, `MaterialMaps.OrangePeel / SkyWallpaper / HomeCarpets / HomeBaseboard`, `Room.PlasterCeiling`,
+  `Fixture.flush`, per-room baseboards, saved F5 settings migrated.
+- Secret rooms (crawl spaces): an ordinary small room, carpet, drop ceiling and grid, painted walls, baseboards, a flush
+  light; no shelves, boxes, sleeping bag or tally; the same loot on the floor. Vent ducts lined with the galvanised photo.
+- Shift while crawling: 2.1 x faster. With no body a plug glides straight into the socket (0.14 s).
+- Camera menu: sections fold (remembered); CAMERA starts with YOU and CAMERA SHAKE, plain names, technical ones folded;
+  new Shake while hanging.
+- Streaming stutter: the walk's slow frames were indoor reflection captures; now only in shiny rooms and without shadows;
+  floor lamps plug in one a frame, contact shadows four a frame. Worst walk frame 16-19 ms (was 21-34), crawl-through
+  18-22 (was 64).
+- GPU Resident Drawer: not on. Diagnosed: Backrooms/Lit's forward pass has no variants in builds with it (URP Lit draws
+  fine); next step written in Performance.md. Its settings were only changed for test builds and put back.
+- Benchmark: `-benchmark-spikes`, `testcubes=1`; `BackroomsLitVariantAudit` (editor). Checked in World 3 (pictures of a
+  clouds room, a dark orange-peel room, a secret room). Not played by the owner.
+- The light-leak test samples 12 seeds (its 4 swung from 6 to 12 leaks when the new biome reshuffled the layouts; over
+  600 chunks the rate fell, 4.8 % to 4.0 %). Flush fittings modelled as the game lights them. 170/170.
+
 ## 2026-10-31 - No body by default, no crosshair; the main-thread pass: 113 to 142 fps in the corridor
 
 - Body: None is the default (`CamcorderSettings.body`, `PropGrabber.bodyMode`); the centre cross is gone (the owner: "maybe

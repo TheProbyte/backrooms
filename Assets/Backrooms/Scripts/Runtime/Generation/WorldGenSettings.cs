@@ -335,7 +335,7 @@ namespace Backrooms.Generation
                     var s = JsonUtility.FromJson<WorldGenSettings>(json);
                     // Saved before HOW OFTEN existed: vents were three a district then, now one by default.
                     if (s != null && !json.Contains("\"carpetTileRooms\"")) s.crawlPortals = new WorldGenSettings().crawlPortals;
-                    if (s != null && s.zones != null && s.zones.Count > 0) { s.AddMissingPinnedZones(); return s; }
+                    if (s != null && s.zones != null && s.zones.Count > 0) { s.AddMissingPinnedZones(); s.AddMissingBiomes(); return s; }
                 }
                 string legacy = PlayerPrefs.GetString(LegacyPrefsKey, "");
                 if (!string.IsNullOrEmpty(legacy)) return FromLegacy(JsonUtility.FromJson<LegacyV1>(legacy));
@@ -350,6 +350,30 @@ namespace Backrooms.Generation
         /// Pinned zones (the Poolrooms) always come from the shipped defaults: settings saved from F5 before a zone existed,
         /// or before it changed, get the current one, so its entrance and storeys are what the code expects.
         /// </summary>
+        /// <summary>
+        /// A biome added to a shipped zone since these settings were saved (Living rooms, 2026-10-31) joins it: the zone's
+        /// bands become the shipped ones, each keeping the saved rules of a biome it already had (F5 edits stay).
+        /// </summary>
+        void AddMissingBiomes()
+        {
+            foreach (var dz in Defaults().zones)
+            {
+                int i = ZoneIndex(dz.name);
+                if (i < 0 || dz.pinned) continue;
+                var z = zones[i];
+                bool missing = false;
+                foreach (var b in dz.biomes) if (z.Band(b.rules.name) == null) missing = true;
+                if (!missing) continue;
+                var merged = new List<BiomeBand>();
+                foreach (var b in dz.biomes)
+                {
+                    var mine = z.Band(b.rules.name);
+                    merged.Add(new BiomeBand { rules = mine != null ? mine.rules : b.rules.Clone(), upTo = b.upTo });
+                }
+                z.biomes = merged;
+            }
+        }
+
         void AddMissingPinnedZones()
         {
             foreach (var z in Defaults().zones)

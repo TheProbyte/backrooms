@@ -2,6 +2,14 @@
 
 ## Crawl spaces: vents into special rooms
 
+(2026-10-31) The special room is now an ordinary small room (the owner: "a small room with carpet, normal ceiling and
+paint walls, reusing from other rooms"): the world's carpet, its acoustic drop ceiling on its grid, its painted wall and
+baseboards (URP Lit copies with their normal maps: `SpecialRoomMaterials`), and a round flush-mount light in the middle of
+the ceiling. The shelves, stacked boxes, sleeping bag, lantern and chalk tally are gone; what lies in the room is chosen
+with the same dice as before (the same things, and the same ones already taken), on the floor along the walls. The vent
+ducts (every crawl hole's and the rooms') are lined with the owner's galvanised sheet-metal photo
+(`Textures/Photo/Galvanized_Albedo`).
+
 Every crawl vent is a crawl portal (the existing `CrawlPortalView` / `CrawlPortalSystem`). Crawl in (Ctrl) and you come
 out of the vent of a small special room. Crawl back through that vent and you come out where you went in.
 

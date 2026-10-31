@@ -30,6 +30,8 @@ namespace Backrooms.Generation
                 case WallFinish.PaintedPlaster: return paintedWall ? paintedWall : wallpaper;
                 case WallFinish.ReferenceCream: if (referenceCream) return referenceCream; break;
                 case WallFinish.ReferenceOlive: if (referenceOlive) return referenceOlive; break;
+                case WallFinish.OrangePeel: if (MaterialMaps.OrangePeel) return MaterialMaps.OrangePeel; return paintedWall ? paintedWall : wallpaper;
+                case WallFinish.SkyWallpaper: if (MaterialMaps.SkyWallpaper) return MaterialMaps.SkyWallpaper; return wallpaper;
             }
             return room.painted && paintedWall ? paintedWall : wallpaper;
         }
@@ -49,6 +51,10 @@ namespace Backrooms.Generation
                 case FloorFinish.ReferenceCarpet: if (referenceCarpet) return referenceCarpet; break;
                 case FloorFinish.DarkWood: if (wood) return wood; break;
                 case FloorFinish.Laminate: if (laminate) return laminate; break;
+                case FloorFinish.HomeCarpet:
+                    var shades = MaterialMaps.HomeCarpets;
+                    if (shades != null && shades.Length > 0) return shades[(room.globalId & 0x7FFFFFFF) % shades.Length];
+                    break;
             }
             return carpet;
         }

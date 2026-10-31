@@ -13,6 +13,7 @@ namespace Backrooms.Tests
     public class WorldGenTests
     {
         static readonly int[] Seeds = { 1, 1234, 98765, 424242 };
+        static readonly int[] LeakSeeds = { 1, 1234, 98765, 424242, 7919, 15838, 23757, 31676, 39595, 47514, 55433, 63352 };
         /// <summary>The shipped settings (World asset if present, else code defaults).</summary>
         static WorldGenerator Gen(int seed) => new WorldGenerator(seed, WorldGenSettings.Defaults());
         static RectInt Block(int r) => new RectInt(-r, -r, 2 * r + 1, 2 * r + 1);
@@ -81,7 +82,9 @@ namespace Backrooms.Tests
         {
             int total = 0, cross = 0, chunks = 0;
             var report = new System.Text.StringBuilder();
-            foreach (int seed in Seeds)
+            // (More seeds than the other tests: the count is a rate, and 4 seeds' 100 chunks swung from 6 to 12 leaks when the
+            // Living rooms biome reshuffled every layout, 2026-10-31, while over 600 chunks the rate fell, 4.8 % to 4.0 %.)
+            foreach (int seed in LeakSeeds)
             {
                 var block = Block(3);
                 chunks += (block.width - 2) * (block.height - 2);

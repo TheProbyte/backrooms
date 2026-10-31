@@ -79,7 +79,7 @@ namespace Backrooms.Generation
         /// </summary>
         bool DressCeiling(int x, int z, Room r, float h, uint m, Material ceil)
         {
-            if (ceil != _a.ceilingTile || r.Tall || r.openAbove || MaterialMaps.Plenum == null) return false;
+            if (ceil != _a.ceilingTile || r.PlasterCeiling || r.openAbove || MaterialMaps.Plenum == null) return false;
             var cell = new Vector2Int(x, z);
             _fixtureKinds.TryGetValue(cell, out int fixture);
             bool lit = _fixtureKinds.ContainsKey(cell);

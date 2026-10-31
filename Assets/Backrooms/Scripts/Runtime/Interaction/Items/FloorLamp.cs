@@ -229,9 +229,14 @@ namespace Backrooms.Interaction
         }
 
         /// <summary>Placed lit by the world: once the outlets round it are loaded, its plug goes into the nearest in reach.</summary>
+        // One lamp plugs itself in a frame (laying its cord is the work): a chunk with several lamps made one slow frame
+        // (7.9 ms, 2026-10-31).
+        static int s_plugFrame = -1;
+
         void TryStartPlugged()
         {
             if (!startPlugged || !_plug) return;
+            if (s_plugFrame == Time.frameCount) return;
             _plugTries += Time.deltaTime;
             if (_plugTries > 5f) { startPlugged = false; return; }       // no outlet after all: it stays dark, cord wound up
             var exit = transform.TransformPoint(CordExit);
@@ -244,6 +249,7 @@ namespace Backrooms.Interaction
             }
             if (best == null) return;
             startPlugged = false;
+            s_plugFrame = Time.frameCount;
             Unbundle();
             _plug.PlugInto(best);
             if (_cord) _cord.Lay();

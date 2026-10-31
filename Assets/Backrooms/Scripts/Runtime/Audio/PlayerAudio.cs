@@ -137,7 +137,7 @@ namespace Backrooms.Audio
             if (_player.Sliding) { _travel = 0f; return; }                     // the slide is its own sound
 
             _travel += d.magnitude;
-            float stride = _player.IsCrawling ? 0.42f : _player.IsRunning ? runStride : walkStride;
+            float stride = _player.IsCrawling ? (_player.CrawlingFast ? 0.5f : 0.42f) : _player.IsRunning ? runStride : walkStride;
             if (_travel < stride) return;
             _travel -= stride;
             if (speed < 0.15f) return;

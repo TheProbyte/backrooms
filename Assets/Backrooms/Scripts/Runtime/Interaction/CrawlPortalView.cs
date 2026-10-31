@@ -182,6 +182,9 @@ namespace Backrooms.Interaction
         {
             if (!_ductMaterials.TryGetValue((wall, floor), out var set))
             {
+                // The owner's galvanised sheet-metal photo ("vent style texture", Textures/Photo/Galvanized_Albedo); the older
+                // generated duct metal if it is missing.
+                if (!_ductMetal) _ductMetal = Resources.Load<Texture2D>("Textures/Photo/Galvanized_Albedo");
                 if (!_ductMetal) _ductMetal = Resources.Load<Texture2D>("Textures/DuctMetal");
                 Material Make(Material src, string name, bool inside)
                 {
@@ -190,7 +193,7 @@ namespace Backrooms.Interaction
                     {
                         // A ventilation duct: galvanized sheet metal on all four sides, in 1.1 m sections.
                         m.SetTexture("_BaseMap", _ductMetal);
-                        m.SetColor("_BaseColor", new Color(0.92f, 0.9f, 0.86f, 1f));
+                        m.SetColor("_BaseColor", new Color(0.95f, 0.95f, 0.94f, 1f));
                         m.SetFloat("_Smoothness", 0.42f); m.SetFloat("_Metallic", 0.25f);
                         m.SetFloat("_ObjectUV", 1f);
                     }

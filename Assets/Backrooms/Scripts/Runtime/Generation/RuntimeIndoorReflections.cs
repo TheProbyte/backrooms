@@ -108,7 +108,7 @@ namespace Backrooms.Generation
             if (cell != _lastCell)
             {
                 _lastCell = cell; _currentKey = null;
-                if (TryBounds(cell, out _currentBounds)) _currentKey = _world.GetHashCode() + ":" + cell.y + ":" + _currentBounds.ToString("F2");
+                if (Worth(cell) && TryBounds(cell, out _currentBounds)) _currentKey = _world.GetHashCode() + ":" + cell.y + ":" + _currentBounds.ToString("F2");
             }
             int revision = _chunkRevision;
             var grid = streamer.lightManager ? streamer.lightManager.grid : null;
@@ -124,7 +124,10 @@ namespace Backrooms.Generation
                 if (Physics.CheckSphere(position, 0.12f, ~0, QueryTriggerInteraction.Ignore)) position = eye;
                 current.probe.transform.position = position; current.probe.center = current.bounds.center - position;
                 current.probe.size = current.bounds.size; current.probe.farClipPlane = Mathf.Clamp(current.bounds.size.magnitude + 1, 5, 40);
-                current.probe.shadowDistance = Mathf.Min(20, current.probe.farClipPlane);
+                // No shadows in the capture (2026-10-31): each face rendered every shadow light's map again (16 maps a face), and
+                // a capture's frames were the walk's slowest (3-5 ms more on the render thread); at 128 pixels, blurred on
+                // laminate, the shadows in a reflection do not show.
+                current.probe.shadowDistance = 0f;
                 current.probe.intensity = 0;
             }
             if (current != null) current.used = Time.unscaledTime;
@@ -172,6 +175,19 @@ namespace Backrooms.Generation
             var owner = new Vector3Int(Mathf.Max(a.x, b.x), a.y, Mathf.Max(a.z, b.z));
             if (!Cell(owner, out var layout, out int x, out int z)) return false;
             return (a.x != b.x ? layout.vEdges[x, z] : layout.hEdges[x, z]) == EdgeKind.Open;
+        }
+
+        /// <summary>
+        /// Is a reflection worth capturing in this room? Only where something shiny is (a wood or laminate floor, a good room's
+        /// counters and fittings, a built room). A capture re-draws the scene once for each of six faces, 2.5-4 ms each on the
+        /// render thread (2026-10-31: the walk's slowest frames were all captures), and the carpet-and-wallpaper rooms
+        /// most of the building is made of reflect nothing a camcorder can see.
+        /// </summary>
+        bool Worth(Vector3Int cell)
+        {
+            if (!Cell(cell, out var layout, out int x, out int z)) return false;
+            var room = layout.RoomAt(x, z);
+            return room.floorFinish == FloorFinish.DarkWood || room.floorFinish == FloorFinish.Laminate || room.special != GoodRoom.None || room.custom;
         }
 
         /// <summary>Grow only through matching loaded cells and completely open edges; never enclose a partition.</summary>

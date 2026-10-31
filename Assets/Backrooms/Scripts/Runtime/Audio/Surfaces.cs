@@ -30,7 +30,7 @@ namespace Backrooms.Audio
             int x = Mathf.FloorToInt(p.x / OfficeBiome.CellSize) - L.coord.x * L.N, z = Mathf.FloorToInt(p.z / OfficeBiome.CellSize) - L.coord.y * L.N;
             if (!L.InChunk(x, z)) return ProceduralSounds.Floor.Carpet;
             var room = L.RoomAt(x, z);
-            if (p.y > L.BaseY + room.ceiling + 0.2f) return ProceduralSounds.Floor.Wood;          // above the ceiling: a special room
+            if (p.y > L.BaseY + room.ceiling + 0.2f) return ProceduralSounds.Floor.Carpet;        // above the ceiling: a special room (carpeted)
             if (OfficeBiomeAssets.ConcreteFloor(room)) return ProceduralSounds.Floor.Concrete;
             switch (room.floorFinish)
             {

@@ -108,8 +108,8 @@ namespace Backrooms.Generation
         {
             float extra = f.height - OfficeBiome.CeilingHeight;
             float boost = f.dome || f.strip ? 1f + extra * DomeHeightBoost : 1f;
-            if (f.dome) boost *= 1.6f;
-            float outer = f.dome ? 170f : f.strip ? 160f : 150f, inner = f.dome ? 40f : 60f;
+            if (f.dome) boost *= f.flush ? 0.85f : 1.6f;          // (a home's flush mount: an ordinary room's light; FixtureLightManager.Describe)
+            float outer = f.dome && !f.flush ? 170f : f.strip ? 160f : 150f, inner = f.dome && !f.flush ? 40f : 60f;
             float y = f.height - (f.dome ? 0.07f : f.strip ? 0.03f : 0f) - 0.06f;
             return new Spec
             {
@@ -121,11 +121,12 @@ namespace Backrooms.Generation
         /// <summary>The soft upward bounce fill under a ceiling fixture (same layer as the fixture).</summary>
         public static Spec BounceSpec(in Fixture f, Vector2 centre)
         {
-            float drop = f.dome ? Mathf.Min(f.height * 0.45f, 2.2f) : 1.1f;
+            bool tallDome = f.dome && !f.flush;
+            float drop = tallDome ? Mathf.Min(f.height * 0.45f, 2.2f) : 1.1f;
             return new Spec
             {
                 position = new Vector3(centre.x, f.height - drop, centre.y), direction = Vector3.up,
-                intensity = 0.8f * (f.dome ? 1.6f : 1f), range = f.dome || f.strip ? BounceRange * 1.6f : BounceRange,
+                intensity = 0.8f * (tallDome ? 1.6f : 1f), range = tallDome || f.strip ? BounceRange * 1.6f : BounceRange,
                 cosOuter = Mathf.Cos(86f * Mathf.Deg2Rad), cosInner = Mathf.Cos(55f * Mathf.Deg2Rad),
             };
         }

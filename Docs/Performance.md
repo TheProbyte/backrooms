@@ -62,12 +62,26 @@ What was slow (a development-build capture, main thread, per frame):
 Measured and left alone: switching hidden chunks fully off instead of shadows-only (no change), a 35 m draw distance (no
 change), the contact shadows' depth (they read the camera's depth texture; no extra scene draw).
 
+### Streaming stutter (2026-10-31)
+
+A profiler capture of the streaming walk (development build, `-benchmark-spikes`): every slow frame was the render thread,
+not a script, and every one of them was rendering a face of an indoor reflection probe (`ReflectionProbes.Update`, 2.5-5
+ms on the render thread, six frames for each room walked into). Captures now happen only in rooms with something shiny (a
+wood or laminate floor, a good room, a built room: `RuntimeIndoorReflections.Worth`), and without shadows (16 shadow maps
+a face; invisible at 128 pixels). Two script spikes in the same capture: a chunk's floor lamps all plugging themselves
+in (7.9 ms; now one a frame) and its items' contact shadows all measuring and casting at once (5.4 ms; now four a frame).
+Release build, the same new world: the walk's worst frame 16-19 ms (was 21-34), the crawl-through's 18-22 (was 64).
+(Living rooms reshuffled the benchmark's seed-1234 world, so the spots are other rooms now: compare medians from here on.)
+
 ### GPU Resident Drawer (tried, not on)
 
 Unity's own first recommendation for draw-submission cost (BatchRendererGroup instancing, set in the URP asset). A test
 build with it (URP asset: Instanced Drawing; Graphics settings: BatchRendererGroup variants Keep All; static batching off)
-ran the corridor in 7.4 ms against 11.9, but rendered the world black (only the camcorder's noise): Backrooms/Lit's DOTS
-instancing path does not draw correctly yet. Turning it on needs that fixed, and the two settings changed (the Graphics one
+ran the corridor in 7.4 ms against 11.9, but rendered the world black (only the camcorder's noise). Found (2026-10-31,
+`-benchmark-set testcubes=1` puts a URP Lit and a Backrooms/Lit cube in each picture): the URP Lit cube draws, lit; the
+Backrooms/Lit one does not. The build log has Backrooms/Lit's ForwardLit pass with 0 variants in those builds (70 without
+the drawer), so nothing drawn with it is drawn. Next: a clean shader build (`BuildOptions.CleanBuildCache`) with
+`BackroomsLitVariantAudit` logging each pass's variants before and after stripping, to find which step drops them. Turning it on needs that fixed, and the two settings changed (the Graphics one
 is in ProjectSettings). Its first build compiled 2,560 Backrooms/Lit variants (about 20 minutes).
 
 ## Editor vs build

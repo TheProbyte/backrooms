@@ -198,6 +198,7 @@ namespace Backrooms.Camcorder
             var sv = new ScrollView(ScrollViewMode.Vertical) { horizontalScrollerVisibility = ScrollerVisibility.Hidden, mouseWheelScrollSize = 40f };
             sv.AddToClassList("cc-scroll");
             _panel.Add(sv);
+            _view = sv; _viewIndex++;
             return sv;
         }
 
@@ -244,7 +245,33 @@ namespace Backrooms.Camcorder
             Toggle("Camcorder picture", "The whole camcorder signal chain: sensor, camera processing, recording format and playback. Off shows the plain rendered image (the Clean preset), for comparison.",
                 () => S().camcorderLook, v => S().camcorderLook = v);
 
-            Section("LENS", "Optics in front of the sensor.");
+            Section("YOU", "What of you the camera sees.");
+            Choice("Body", "Your own body. Full: legs and shoes looking down, the arms reaching for things. Hands only: no legs or body, an arm comes into view only while it does something (its shadow stays). None (the default): nothing of you is drawn; things are taken from further away and at once (as in Amnesia), a dot shows where you hold a heavy thing.",
+                new[] { "Full", "Hands only", "None" }, () => S().body, v => S().body = v);
+            Choice("Hands in view", "How much of your own hand the camera sees. Full: held things in view at the bottom right, the hand on them. Low: held lower, at the bottom edge, the hand mostly out of shot (as a camcorder held to the eye sees it). Off: no hand drawn at all, only its shadow.",
+                new[] { "Full", "Low", "Off" }, () => S().handsInView, v => S().handsInView = v);
+
+            Section("CAMERA SHAKE", "How the camera moves in your hand. Hover any line for what it does; 0 turns a line off.");
+            Slider("Walking shake", "How much the camera bobs and sways while you walk and run (all the handheld motion together).",
+                0f, 2f, "0.00", "x", () => S().shakeIntensity, v => S().shakeIntensity = v);
+            Slider("Shake while hanging", "How much the camera swings and shakes while it hangs on its strap at your chest (your hands busy with a box, a couch, a door). 0 = steady, 1 = as built, 2 = double.",
+                0f, 2f, "0.00", "x", () => S().hangingShake, v => S().hangingShake = v);
+            Slider("Breathing (standing still)", "The slow rise and fall of the operator's breathing while standing still.",
+                0f, 3f, "0.00", "x", () => S().breathing, v => S().breathing = v);
+            Slider("Hand tremor", "Fast, irregular hand shake on top of the smooth walking bob, with a small jolt on each step: someone walking with the camera in one hand. 0 = off.",
+                0f, 3f, "0.00", "", () => S().handheldRoughness, v => S().handheldRoughness = v);
+            Toggle("Real walking recording", "Walking moves the camera the way a real camera carried in the hand did: a phone recording (the sway, the bob of each step, the hand's tremor) kept in step with your feet. Off uses the generated walking bob. Shake intensity scales it.",
+                () => S().recordedWalk, v => S().recordedWalk = v);
+            Slider("Turn overshoot", "When you stop turning, the camera carries on a fraction of a degree and settles back, like a hand-held camera. Adds no input delay. 0 = off.",
+                0f, 2f, "0.00", "x", () => S().lookOvershoot, v => S().lookOvershoot = v);
+            Slider("Turn wobble", "A small irregular wobble while you turn the camera. 0 = off.",
+                0f, 2f, "0.00", "x", () => S().lookJitter, v => S().lookJitter = v);
+            Slider("Image stabilisation", "Removes much of the fast shake (running jolts) but keeps slow drift.",
+                0f, 1f, "0.00", "", () => S().stabilization, v => S().stabilization = v);
+            Slider("Motion blur", "Smear from movement while the shutter is open, in light (so lights streak bright), trailing behind the motion, the same at any frame rate. 1 = exactly what the shutter time gives.",
+                0f, 2f, "0.00", "x", () => S().motionBlur, v => S().motionBlur = v);
+
+            Section("LENS & ZOOM", "The glass in front of the sensor: how wide it sees and what it does to light and lines.", false);
             Slider("Field of view (zoom)", "Vertical angle of view. A stock 1/4-inch camcorder sees about 36 degrees vertically (47 across) at its widest; higher values are like a wide-angle converter lens screwed on the front, which was very common.",
                 30f, 90f, "0", "°", () => S().fieldOfView, v => S().fieldOfView = v);
             Slider("Lens distortion", "Bending of straight lines toward the frame edges. Positive bows them outward (barrel: wide lenses and converters, 1 to 5 % on a real camcorder); negative pinches them in (pincushion, which zoomed-in lenses show slightly). It turns toward pincushion as you zoom.",
@@ -260,7 +287,7 @@ namespace Backrooms.Camcorder
             Slider("Purple fringing", "Blue-violet edges hugging blown-out lights against dark surroundings (the lens and sensor focus violet slightly differently).",
                 0f, 1f, "0.00", "", () => S().purpleFringe, v => S().purpleFringe = v);
 
-            Section("FOCUS", "Contrast autofocus. On a small camcorder sensor almost everything is sharp; blur shows on close-ups, at full zoom and while the focus hunts in the dark.");
+            Section("FOCUS", "Contrast autofocus. On a small camcorder sensor almost everything is sharp; blur shows on close-ups, at full zoom and while the focus hunts in the dark.", false);
             Toggle("Autofocus + depth of field", "The camera drives the lens to whatever is in the centre (or your hand, close in front of it). In the dark it has no contrast to lock on to and hunts near and far. Off keeps everything sharp.",
                 () => S().autofocus, v => S().autofocus = v);
             Slider("Widest aperture (f-number)", "The lens's maximum aperture at the wide end (f/1.6-2 on 1990s camcorders). The iris closes from here in brighter light, deepening the focus; zooming in also narrows it.",
@@ -272,7 +299,7 @@ namespace Backrooms.Camcorder
             Slider("Focus breathing", "A video zoom lens's angle of view changes slightly with focus: the frame creeps in as it focuses close (on your hand) and pulses while it hunts. 0 is a lens that does not breathe.",
                 0f, 3f, "0.00", "x", () => S().focusBreathing, v => S().focusBreathing = v);
 
-            Section("EXPOSURE", "The camera meters its own picture. It closes or opens the iris first; once the iris is wide open it turns the gain up (noisier), and drops the gain first when the light comes back.");
+            Section("BRIGHTNESS", "The camera meters its own picture. It closes or opens the iris first; once the iris is wide open it turns the gain up (noisier), and drops the gain first when the light comes back.", false);
             Toggle("Auto exposure", "Automatic iris and gain. Off holds a fixed exposure (right for a lit corridor).",
                 () => S().autoExposure, v => S().autoExposure = v);
             Slider("Exposure bias", "Shifts what the camera thinks is the right brightness, in stops (EV). This is not gain: it adds no noise unless it pushes the camera past its iris.",
@@ -289,7 +316,7 @@ namespace Backrooms.Camcorder
             Slider("Tube flicker depth", "How much the fluorescent tubes flicker at 120 Hz. Invisible at a 1/60 shutter (it averages exactly two flickers); shows as a slow pulse at faster shutters.",
                 0f, 1f, "0.00", "", () => S().fluorescentFlicker, v => S().fluorescentFlicker = v);
 
-            Section("WHITE BALANCE", "Auto white balance pulls the picture slowly toward grey, within limits and mostly along warm/cool, so a room full of yellow keeps much of its yellow.");
+            Section("COLOUR BALANCE", "Auto white balance pulls the picture slowly toward grey, within limits and mostly along warm/cool, so a room full of yellow keeps much of its yellow.", false);
             Toggle("Auto white balance", "Slowly corrects colour casts: walk from tube light into lamp light and the orange fades over a few seconds.",
                 () => S().autoWhiteBalance, v => S().autoWhiteBalance = v);
             Slider("AWB strength", "How far the auto white balance pulls toward grey (1 = fully, which would neutralise the yellow rooms).",
@@ -300,7 +327,7 @@ namespace Backrooms.Camcorder
             Slider("Tint shift", "Green (negative) or magenta (positive) cast on top of the auto white balance. Fluorescent light reads slightly green on camera.",
                 -50f, 50f, "0", "", () => S().whiteBalanceTint, v => S().whiteBalanceTint = v);
 
-            Section("SENSOR", "A CCD's own noise and artefacts. 1 is what a late-1990s 1/4-inch CCD camcorder does.");
+            Section("SENSOR NOISE", "A CCD's own noise and artefacts. 1 is what a late-1990s 1/4-inch CCD camcorder does.", false);
             Slider("Read noise", "The sensor's noise floor, strongest in the shadows. Grows with the gain.",
                 0f, 3f, "0.00", "x", () => S().noise, v => S().noise = v);
             Slider("Noise growth with gain", "How much the noise grows as the gain goes up (1 = doubles every 6 dB, as on a real camera).",
@@ -314,7 +341,7 @@ namespace Backrooms.Camcorder
             Slider("Noise reduction (3D)", "Digital camcorders average each frame with the last one in low light: less noise, but moving things leave faint ghost trails. 0 = none (analog camcorders).",
                 0f, 1f, "0.00", "", () => S().noiseReduction, v => S().noiseReduction = v);
 
-            Section("CAMERA PROCESSING", "The camera's picture processing, on a fixed recording picture (independent of your display).");
+            Section("PICTURE", "The camera's picture processing, on a fixed recording picture (independent of your display).", false);
             Slider("Recording lines", "Height of the recorded picture: 480 lines for NTSC video (640 x 480 for a 4:3 frame). Everything after the lens happens at this size and is scaled to your screen at the end.",
                 240f, 1080f, "0", " lines", () => S().videoLines, v => S().videoLines = Mathf.RoundToInt(v / 8f) * 8, true);
             Slider("Lens + sensor softness", "Blur from the optics and the sensor's anti-alias filter, in recording pixels.",
@@ -334,29 +361,7 @@ namespace Backrooms.Camcorder
             Slider("Contrast (gamma)", "The camera's transfer curve: 0 is the video standard (gamma 0.45); higher gives darker mid-tones and more contrast.",
                 -50f, 50f, "0", "", () => S().contrast, v => S().contrast = v);
 
-            Section("HANDHELD", "How the operator holds the camera.");
-            Slider("Shake intensity", "Overall strength of handheld motion while walking and running.",
-                0f, 2f, "0.00", "x", () => S().shakeIntensity, v => S().shakeIntensity = v);
-            Slider("Breathing sway", "The slow rise and fall of the operator's breathing while standing still.",
-                0f, 3f, "0.00", "x", () => S().breathing, v => S().breathing = v);
-            Slider("Image stabilisation", "Removes much of the fast shake (running jolts) but keeps slow drift.",
-                0f, 1f, "0.00", "", () => S().stabilization, v => S().stabilization = v);
-            Slider("Look overshoot", "When you stop turning, the camera carries on a fraction of a degree and settles back, like a hand-held camera. Adds no input delay. 0 = off.",
-                0f, 2f, "0.00", "x", () => S().lookOvershoot, v => S().lookOvershoot = v);
-            Slider("Look jitter", "A small irregular wobble while you turn the camera. 0 = off.",
-                0f, 2f, "0.00", "x", () => S().lookJitter, v => S().lookJitter = v);
-            Slider("Handheld roughness", "Fast, irregular hand shake on top of the smooth walking bob, with a small jolt on each step: someone walking with the camera in one hand. 0 = off.",
-                0f, 3f, "0.00", "", () => S().handheldRoughness, v => S().handheldRoughness = v);
-            Toggle("Recorded walk", "Walking moves the camera the way a real camera carried in the hand did: a phone recording (the sway, the bob of each step, the hand's tremor) kept in step with your feet. Off uses the generated walking bob. Shake intensity scales it.",
-                () => S().recordedWalk, v => S().recordedWalk = v);
-            Choice("Hands in view", "How much of your own hand the camera sees. Full: held things in view at the bottom right, the hand on them. Low: held lower, at the bottom edge, the hand mostly out of shot (as a camcorder held to the eye sees it). Off: no hand drawn at all, only its shadow.",
-                new[] { "Full", "Low", "Off" }, () => S().handsInView, v => S().handsInView = v);
-            Choice("Body", "Your own body. Full: legs and shoes looking down, the arms reaching for things. Hands only: no legs or body, an arm comes into view only while it does something (its shadow stays). None (the default): nothing of you is drawn; things are taken from further away and at once (as in Amnesia), a dot shows where you hold a heavy thing.",
-                new[] { "Full", "Hands only", "None" }, () => S().body, v => S().body = v);
-            Slider("Motion blur (shutter)", "Smear from movement while the shutter is open, in light (so lights streak bright), trailing behind the motion, the same at any frame rate. 1 = exactly what the shutter time gives.",
-                0f, 2f, "0.00", "x", () => S().motionBlur, v => S().motionBlur = v);
-
-            Section("FORMAT / TAPE", "What the footage was recorded on and played back from. Each format brings its own resolution, colour and artefacts; the sliders below scale them (1 = typical).");
+            Section("TAPE", "What the footage was recorded on and played back from. Each format brings its own resolution, colour and artefacts; the sliders below scale them (1 = typical).", false);
             Choice("Format", "VHS-C SP: soft, smeared colour trailing to the right, tape noise, a slight wobble, head switching at the bottom. EP: the long-play speed, worse in every way. Hi8: sharper, the same colour-under. MiniDV: digital, crisp, no tape artefacts, 4:1:1 colour, faint compression in busy or noisy areas.",
                 CamcorderFormat.Names, () => S().format, v => { S().SetFormat(v); RefreshAll(); });
             Slider("Colour resolution", "Colour detail compared with the format's own (lower = wider colour smear).",
@@ -384,7 +389,7 @@ namespace Backrooms.Camcorder
             Slider("Bottom-edge line", "A thin, steady lilac line along the very bottom of the frame, as in the episode footage (a capture artefact).",
                 0f, 1f, "0.00", "", () => S().bottomLine, v => S().bottomLine = v);
 
-            Section("DISPLAY", "How the footage is shown (not part of the recording).");
+            Section("SCREEN", "How the footage is shown on your screen (not part of the recording).", false);
             Toggle("4:3 frame", "The 4:3 shape of standard-definition video. Only the 4:3 part of the screen is rendered, so it is also faster.",
                 () => S().aspect43, v => S().aspect43 = v);
             Toggle("Viewfinder OSD (REC, date, counter)", "The camcorder's viewfinder display: blinking REC, tape counter, battery and date. Shown on top, not recorded.",
@@ -468,11 +473,38 @@ namespace Backrooms.Camcorder
             return r;
         }
 
-        void Section(string title, string desc)
+        /// <summary>
+        /// A section of a page: a fold with its title (click to open or close; remembered), its explanation and the rows that
+        /// follow until the next section. open: how it starts the first time. (Inside a custom container, such as a biome's
+        /// group, a plain heading as before.)
+        /// </summary>
+        void Section(string title, string desc, bool open = true)
         {
-            AddText(title.ToUpperInvariant(), "cc-section");
+            bool inPage = _view != null && (_list == _view || (_list != null && _list.userData as string == SectionTag));
+            if (!inPage)
+            {
+                AddText(title.ToUpperInvariant(), "cc-section");
+                if (!string.IsNullOrEmpty(desc)) AddText(desc, "cc-desc");
+                return;
+            }
+            string key = "Backrooms.Menu.Fold." + _viewIndex + "." + title;
+            var f = new Foldout { text = title.ToUpperInvariant(), value = PlayerPrefs.GetInt(key, open ? 1 : 0) == 1 };
+            f.AddToClassList("cc-foldout");
+            f.AddToClassList("cc-section-fold");
+            f.RegisterValueChangedCallback(e =>
+            {
+                if (e.target != f) return;
+                PlayerPrefs.SetInt(key, e.newValue ? 1 : 0);
+                HideTip();
+            });
+            _view.Add(f);
+            f.contentContainer.userData = SectionTag;
+            _list = f.contentContainer;
             if (!string.IsNullOrEmpty(desc)) AddText(desc, "cc-desc");
         }
+        const string SectionTag = "cc-section-body";
+        VisualElement _view;
+        int _viewIndex = -1;
 
         SliderRow Slider(string label, string tip, float min, float max, string fmt, string unit, Func<float> get, Action<float> set, bool whole = false)
         {

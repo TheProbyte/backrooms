@@ -124,7 +124,7 @@ namespace Backrooms.Generation
             }
             float extra = src.ceiling - OfficeBiome.CeilingHeight;
             float boost = src.dome || src.strip ? 1f + extra * domeHeightBoost : 1f;
-            if (src.dome) boost *= 1.6f;
+            if (src.dome) boost *= src.flush ? 0.85f : 1.6f;      // (a home's flush mount lights an ordinary room)
             pos = src.position + Vector3.down * 0.06f;
             dir = Vector3.down;
             intensity = tubeIntensity * boost;
