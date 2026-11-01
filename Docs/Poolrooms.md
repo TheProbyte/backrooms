@@ -260,6 +260,19 @@ a round opening) is read only where the first map's opening byte has bit 7 set, 
   the water) in some big pools.
 - Cost: 1920 x 1080 in the editor, a free pool hall with bleachers: GPU ~5.4 ms.
 
+## The player's shadow (2026-10-31)
+
+With no body shown (the default), `PlayerShadow` keeps a stand-in of eight rough capsules (head, torso, two legs, the left
+arm holding the camcorder up at the eye, the right arm down, the camcorder) that never draws itself, only its shadow
+(ShadowsOnly). It bobs and its legs and free arm swing a little with the step (the wading clock in water), it changes
+shape crouching (bent legs, lower hips) and crawling (along the floor), and leans the way the camera points.
+- Level 0: the shadow-casting lights take it as they are (soft and faint under many lights, as a person's shadow is there).
+- The Poolrooms have no shadow maps: the capsules go to the shaders each frame (`_PoolCapA`, `_PoolCapB`,
+  `_PoolCapCount`) and the traced sun is tested against them (`PoolCapsuleSun`, as Unreal's capsule shadows: the sun ray's
+  closest approach to each capsule's axis against its radius, softening with distance), so tiles, water, reflections
+  and things there all get it. Skipped beyond 5 m of the player.
+- Graphics > Player shadow (on by default). The bodies (Camera menu > HANDHELD > Body) cast their own.
+
 ## Known gaps / ideas
 
 - Crawling inside a basin puts the camera under the water surface, which is single-sided (nothing drawn from below).

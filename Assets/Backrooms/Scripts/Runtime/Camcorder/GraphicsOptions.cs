@@ -26,6 +26,7 @@ namespace Backrooms.Camcorder
         public bool ambientOcclusion = true;
         public bool lightGrid = true;         // far fixtures light a 3D grid (off: older room-layer lights)
         public bool antiAliasing = true;
+        public bool playerShadow = true;      // no body shown: a stand-in that casts the player's shadow (PlayerShadow)
 
         // F5 > LIGHTING (multipliers are relative to the scene's own light settings)
         [Look] public float lightStrength = 1f;      // all fixtures

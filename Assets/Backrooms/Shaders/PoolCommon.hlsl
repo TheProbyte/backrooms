@@ -138,8 +138,46 @@ bool PoolPillarHit(int2 c, int storey, float3 p, float t0, float t1)
     return false;
 }
 
-// Sunlight reaching a world point: 0 shade .. 1 full sun (soft only at the edges of the openings).
+// The player's shadow (PlayerShadow.cs, 2026-10-31): a few capsules standing in for a body that is not shown, sent each
+// frame. There are no shadow maps here, so as Unreal's capsule shadows do: the sun's ray from a point passes each
+// capsule's axis at some distance; within its radius it is shadowed, softening the further the capsule is from the point.
+float4 _PoolCapA[8], _PoolCapB[8];   // a.xyz, radius; b.xyz
+float _PoolCapCount;
+
+float PoolCapsuleSun(float3 p)
+{
+    if (_PoolCapCount < 0.5) return 1;
+    // Far from the player: nothing to test (the shadow falls within a few metres).
+    float3 near = _PoolCapA[1].xyz - p;
+    if (dot(near, near) > 25.0) return 1;
+    const float3 L = POOL_SUN;
+    float vis = 1;
+    [loop] for (int i = 0; i < (int)_PoolCapCount; i++)
+    {
+        float3 a = _PoolCapA[i].xyz, d = _PoolCapB[i].xyz - a;
+        float r = _PoolCapA[i].w, dd = dot(d, d);
+        // The point on the axis nearest the ray, then the ray's point nearest that (twice: close enough for capsules).
+        float s = dd > 1e-6 ? saturate(dot(p + L * max(0.0, dot(a - p, L)) - a, d) / dd) : 0;
+        float t = max(0.0, dot(a + d * s - p, L));
+        s = dd > 1e-6 ? saturate(dot(p + L * t - a, d) / dd) : 0;
+        t = max(0.0, dot(a + d * s - p, L));
+        float dist = length(p + L * t - (a + d * s));
+        float pen = 0.012 + t * 0.055;
+        vis *= lerp(1.0, smoothstep(r - pen, r + pen, dist), saturate(t * 8.0));
+    }
+    return vis;
+}
+
+float PoolSunVisibilityMap(float3 pw);
+// Sunlight reaching a world point: the traced sun (below), and the player's shadow.
 float PoolSunVisibility(float3 pw)
+{
+    float v = PoolSunVisibilityMap(pw);
+    return v > 0.001 ? v * PoolCapsuleSun(pw) : v;
+}
+
+// Sunlight reaching a world point: 0 shade .. 1 full sun (soft only at the edges of the openings).
+float PoolSunVisibilityMap(float3 pw)
 {
     const float3 L = POOL_SUN;        // x and z are positive: the ray only steps +x / +z
     int storey = PoolStorey(pw.y);
@@ -494,7 +532,13 @@ PoolHit PoolTrace(float3 pw, float3 R, float maxT)
 }
 
 // The sun on a point as a blurred reflection sees it: the opening's edge softened by blur (m) more.
+float PoolSunVisibilityBlurMap(float3 pw, float blur);
 float PoolSunVisibilityBlur(float3 pw, float blur)
+{
+    float v = PoolSunVisibilityBlurMap(pw, blur);
+    return v > 0.001 ? v * PoolCapsuleSun(pw) : v;
+}
+float PoolSunVisibilityBlurMap(float3 pw, float blur)
 {
     const float3 L = POOL_SUN;
     int storey = PoolStorey(pw.y);

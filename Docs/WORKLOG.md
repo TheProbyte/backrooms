@@ -15,6 +15,18 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - The player's shadow with no body: a capsule stand-in, shadow maps in Level 0, capsule shadows in the Poolrooms' sun
+
+- Queued by the owner in another session: "a player shadow with no visible body": a shadow-only stand-in of rough capsules
+  holding a camcorder up, bobbing with the walk or wading clock, changing shape crouching and crawling, leaning with the
+  camera; normal shadow-casting lights in Level 0; analytic capsule shadows in the Poolrooms (as Unreal and The Last of
+  Us do); a graphics option.
+- `PlayerShadow` (added by the player controller), `PoolCapsuleSun` in PoolCommon.hlsl (PoolSunVisibility and its blurred
+  form multiply it in), GraphicsOptions.playerShadow and its toggle.
+- Checked in World 3: a shadow of a person holding a camcorder up on a sunlit deck (picture); in Level 0 a test capsule's
+  shadow is there but faint under many lights. Crouching and crawling not looked at. EditMode tests pass. Not played by
+  the owner.
+
 ## 2026-10-31 - The Poolrooms: wading motion, and the architecture plan built (free pools, depth, vaults and channels, round halls, galleries, running water, rooms with a purpose, tile detailing)
 
 - The owner: "build all please as planned".

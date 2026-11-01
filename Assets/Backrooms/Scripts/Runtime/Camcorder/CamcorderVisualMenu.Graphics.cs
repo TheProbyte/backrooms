@@ -42,6 +42,8 @@ namespace Backrooms.Camcorder
                 () => O().ambientOcclusion, v => { O().ambientOcclusion = v; O().Save(); });
             Toggle("Anti-aliasing (SMAA)", "Smooths jagged edges.",
                 () => O().antiAliasing, v => { O().antiAliasing = v; O().Save(); });
+            Toggle("Player shadow", "With no body shown, a rough stand-in casts your shadow (holding the camcorder up), in the lights and in the Poolrooms' sun.",
+                () => O().playerShadow, v => { O().playerShadow = v; O().Save(); });
 
             Section("SHADOWS", "Lights hand over smoothly between real (shadowed) and grid light as you move.");
             Toggle("Light grid", "On: the nearest fixtures are real lights with live shadows and every other fixture lights a 3D light grid (light through doorways, bounce on ceilings). Off: the older system, a large pool of unshadowed lights kept inside their own rooms.",

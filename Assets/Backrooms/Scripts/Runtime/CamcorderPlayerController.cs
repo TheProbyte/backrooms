@@ -230,6 +230,7 @@ namespace Backrooms
         {
             _controller = GetComponent<CharacterController>();
             _yaw = transform.eulerAngles.y;
+            if (!GetComponent<PlayerShadow>()) gameObject.AddComponent<PlayerShadow>();
             InputBlocked = false;
             _eye = standEye;
         }
