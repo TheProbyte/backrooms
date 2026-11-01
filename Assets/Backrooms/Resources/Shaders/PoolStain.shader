@@ -44,8 +44,9 @@ Shader "Backrooms/PoolStain"
                 #if defined(BACKROOMS_PORTAL_CLIP)
                     clip(dot(float4(i.positionWS, 1), _PortalClipPlane));
                 #endif
-                float2 uv = i.uv;
-                float seed = dot(floor(i.positionWS * 3.0), float3(1.3, 7.1, 3.7));
+                // Each stain's own seed rides in its u (whole part), so the pattern is one piece across the quad.
+                float2 uv = float2(frac(i.uv.x), i.uv.y);
+                float seed = floor(i.uv.x) * 0.618;
                 float a;
                 if (_Ring > 0.5)
                 {
@@ -55,13 +56,20 @@ Shader "Backrooms/PoolStain"
                 }
                 else
                 {
-                    // Trickles: a few uneven columns, each its own length.
-                    float col = PoolValueNoise(float2(uv.x * 7.0 + seed, 0.5));
-                    float len = 0.35 + 0.65 * PoolValueNoise(float2(uv.x * 5.0 + seed * 1.7, 3.0));
-                    float run = 1.0 - smoothstep(len * 0.6, len, uv.y);
-                    float fine = PoolValueNoise(float2(uv.x * 23.0 + seed, uv.y * 2.0));
-                    float edges = smoothstep(0.0, 0.25, uv.x) * smoothstep(1.0, 0.75, uv.x);
-                    a = smoothstep(0.35, 0.75, col * 0.7 + fine * 0.3) * run * edges * (1.0 - uv.y * 0.5);
+                    // Trickles (2026-11-01, the owner: the rust "cuts off oddly and doesnt look smooth"): a few thin runs, each
+                    // a soft line across with its own width and length, heaviest at the top and thinning out well before the
+                    // quad's bottom; all of it fades in at the sides, so no edge of the quad shows.
+                    a = 0;
+                    [unroll] for (int k = 0; k < 5; k++)
+                    {
+                        float2 h = PoolHash22(float2(seed, k * 7.13));
+                        float x0 = 0.2 + 0.6 * h.x, wdt = 0.025 + 0.05 * h.y, len = 0.3 + 0.6 * frac(h.x * 3.7 + h.y);
+                        float wob = (PoolValueNoise(float2(uv.y * 3.0, seed + k)) - 0.5) * 0.05;
+                        float across = exp(-pow((uv.x - x0 - wob) / wdt, 2.0));
+                        float down = exp(-uv.y / (len * 0.45)) * smoothstep(0.0, 0.04, uv.y);
+                        a = max(a, across * down * (0.55 + 0.45 * h.y));
+                    }
+                    a *= smoothstep(0.0, 0.15, uv.x) * smoothstep(1.0, 0.85, uv.x) * smoothstep(1.0, 0.7, uv.y);
                 }
                 float3 m = lerp(float3(1, 1, 1), _Color.rgb, saturate(a) * _Strength);
                 return half4(m, 1);

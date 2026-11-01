@@ -46,7 +46,8 @@ namespace Backrooms.Generation
         public static bool Solid(byte e) => e == Wall || e == Window;
 
         /// <summary>Sunlight reaching point p (metres in the grid's frame, y above the deck): 0 = shade, 1 = full sun.</summary>
-        public static float Visibility(IPoolCells g, Vector3 p)
+        /// <param name="shaftCap">The highest a light well's top may reach (under another storey; PoolBiome.Shaft).</param>
+        public static float Visibility(IPoolCells g, Vector3 p, float shaftCap = float.MaxValue)
         {
             Vector3 L = PoolBiome.SunDirection;
             int cx = Mathf.FloorToInt(p.x / C), cz = Mathf.FloorToInt(p.z / C);
@@ -71,7 +72,8 @@ namespace Backrooms.Generation
                 {
                     var q = p + L * tCeil;
                     if (!c.InHole(q.x - cx * C, q.z - cz * C)) return 0f;
-                    var q2 = p + L * (tCeil + PoolBiome.ShaftHeight / L.y);
+                    float shaft = Mathf.Clamp(shaftCap - c.ceiling, 0.15f, PoolBiome.ShaftHeight);
+                    var q2 = p + L * (tCeil + shaft / L.y);
                     int qx = Mathf.FloorToInt(q2.x / C), qz = Mathf.FloorToInt(q2.z / C);
                     var c2 = qx == cx && qz == cz ? c : g.Get(qx, qz);
                     return c2.valid && c2.sky == c.sky && c2.InHole(q2.x - qx * C, q2.z - qz * C) ? 1f : 0f;

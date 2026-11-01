@@ -15,6 +15,15 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-01 09:30  Claude Code  Poolrooms realism feedback: light wells under the upper storey, no hum, quieter drips, haze reprojection over water, steps under the surface, contact line only on upright things, smooth rust, no clocks, a real slide
+- Light wells capped under another storey (PoolBiome.Shaft / PoolShaft / PoolSun shaftCap): the upper storey's deep pools hung in tall halls' wells.
+- PoolSounds: hum removed (ProceduralSounds.FilterHum too); drips 0.1, every 9-24 s, 10 m; Plink softer.
+- PoolAir: temporal reprojection over water by the water plane; humid 0.0025.
+- FreePoolSteps: risers by depth (~24 cm); PoolWater contact line suppressed over horizontal surfaces (depth normal).
+- PoolStain: per-stain seed in u; trickles that fade out. Pace clocks removed. Slide rebuilt (flume with wall and rims, platform, legs, ladder, posts); PlasticBlue glossier.
+- Checked in World 3: the slide, a shallow free pool's steps from the deck, rust under a grille, a gallery hall's slot openings with the shorter wells, reflections near a column with the mirror on and off, the haze on and off, the mirror's HDR range; EditMode tests.
+- Open: the reflection complaint was not reproduced as a bug (explained as Fresnel and haze); the owner's world (seed 288152760) was not loaded, so the gallery glitch was confirmed by its cause, not in that exact hall.
+
 ## 2026-11-01 08:00  Claude Code  Poolrooms realism plan built: sun shafts, clouds, planar water reflections, weathering and rust, pool fittings and tiled depth markers, glazed roof lights and glass block, sun-patch bounce, tile acoustics and pool sounds, lens fog, underwater view, circulation
 - New: PoolAir.cs + PoolAir.shader (quarter-res temporal sun shafts, underwater murk), PoolMirror.cs (planar reflection camera; Graphics > Water reflections), PoolCirculation.cs, OfficeChunkBuilder.PoolFittings.cs, PoolSounds.cs, ProceduralSounds.Pool.cs (Plink, Lap, FilterHum), Camcorder/LensFog.cs, shaders PoolGlow, PoolStain, PoolGlassBlock.
 - Changed: PoolCommon.hlsl (clouds, glazing, glass block in the sun trace; PoolPatchBounce; PoolRippleHeight earlier), PoolTile (weathering, puddles, patch bounce), PoolLit (patch bounce), PoolWater (planar, underside), PoolSky (clouds, glazed panes), AirDust (motes in the sun), CamcorderPipeline (lens fog), PoolWorld (clouds, camera state), PoolRipples.compute (jets, sinks), PoolBodies (current), SteamAudioWorld (tile), BuildingAudio (flutter echo), PoolMaterials, PoolChunk (fittings registry), OfficeChunkBuilder.Pool (glass block windows, basin fittings), PoolFeatures (free pool fittings, rust rings).

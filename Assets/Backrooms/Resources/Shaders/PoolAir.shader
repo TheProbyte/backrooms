@@ -98,7 +98,11 @@ Shader "Hidden/Backrooms/PoolAir"
         // Where this pixel's point was on screen last frame.
         float3 cam = _PoolAirCam;
         float3 dir = normalize(WorldAt(uv, 0.5) - cam);
-        float3 wp = cam + dir * min(cur.a, 60.0);
+        // Over the water the haze ends at its surface: reproject by that, not by the pool floor under it (2026-11-01: the
+        // haze over the water smeared as you walked).
+        float wy = PoolBase(PoolStorey(cam.y)) + POOL_WATER;
+        float tw = (cam.y > wy && dir.y < -1e-4) ? (wy - cam.y) / dir.y : 1e5;
+        float3 wp = cam + dir * min(min(cur.a, tw), 60.0);
         float4 pc = mul(_PoolAirPrevVP, float4(wp, 1));
         float2 puv = pc.xy / max(pc.w, 1e-4) * 0.5 + 0.5;
         #if UNITY_UV_STARTS_AT_TOP

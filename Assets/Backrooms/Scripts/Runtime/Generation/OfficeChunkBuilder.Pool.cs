@@ -291,7 +291,7 @@ namespace Backrooms.Generation
                     continue;
                 }
                 int joined = JoinedAt(x, z);
-                float top = h + PoolBiome.ShaftHeight;
+                float top = h + PoolBiome.Shaft(h, _L.storey, PoolWorld.MapStoreys, _L.storeyPitch);
                 if (shape == SkylightShape.Round)
                 {
                     RoundOpening(tile, sky, x0, z0, h, top);
@@ -434,14 +434,14 @@ namespace Backrooms.Generation
                 if (!c.valid) continue;
                 float fy = PoolBiome.FloorY(c.basin) + 0.02f, x0 = (i - N) * C, z0 = (j - N) * C;
                 float sun = 0f;
-                for (int k = 0; k < 4; k++) sun += PoolSun.Visibility(g, new Vector3(x0 + C * (0.25f + 0.5f * (k & 1)), fy, z0 + C * (0.25f + 0.5f * (k >> 1))));
+                for (int k = 0; k < 4; k++) sun += PoolSun.Visibility(g, new Vector3(x0 + C * (0.25f + 0.5f * (k & 1)), fy, z0 + C * (0.25f + 0.5f * (k >> 1))), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue);
                 sun *= 0.25f;
                 // Sun on the walls of the cell (bars of light from slots near a wall bounce as well).
                 float wallSun = 0f;
-                if (PoolSun.Solid(c.west)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + T * 0.5f + 0.02f, 1.4f, z0 + C * 0.5f));
-                if (PoolSun.Solid(c.south)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + T * 0.5f + 0.02f));
-                if (i + 1 < W && PoolSun.Solid(info[i + 1, j].west)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C - T * 0.5f - 0.02f, 1.4f, z0 + C * 0.5f));
-                if (j + 1 < W && PoolSun.Solid(info[i, j + 1].south)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + C - T * 0.5f - 0.02f));
+                if (PoolSun.Solid(c.west)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + T * 0.5f + 0.02f, 1.4f, z0 + C * 0.5f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue);
+                if (PoolSun.Solid(c.south)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + T * 0.5f + 0.02f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue);
+                if (i + 1 < W && PoolSun.Solid(info[i + 1, j].west)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C - T * 0.5f - 0.02f, 1.4f, z0 + C * 0.5f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue);
+                if (j + 1 < W && PoolSun.Solid(info[i, j + 1].south)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + C - T * 0.5f - 0.02f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue);
                 float skyOpen = c.sky == SkylightShape.None ? 0f : c.sky == SkylightShape.Full ? 0.7f : c.sky == SkylightShape.Round ? 0.45f : 0.25f;
                 src[i, j] = sun + 0.6f * wallSun + 0.5f * skyOpen;
             }

@@ -62,7 +62,7 @@ namespace Backrooms.Generation
             if (StainRing) StainRing.SetFloat("_Ring", 1f);
             GlassBlock = Make("Backrooms/PoolGlassBlock", "Pool glass block");
             PlasticWhite = Lit("Pool plastic (white)", new Color(0.9f, 0.9f, 0.86f), 0.62f, 0f);
-            PlasticBlue = Lit("Pool plastic (blue)", new Color(0.22f, 0.5f, 0.78f), 0.7f, 0f);
+            PlasticBlue = Lit("Pool plastic (blue)", new Color(0.13f, 0.38f, 0.68f), 0.88f, 0f);      // glossy gelcoat
         }
 
         static Material Zone(string name, Color wall, Color deck)

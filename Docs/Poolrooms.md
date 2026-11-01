@@ -484,6 +484,32 @@ The owner: "do it all please". All twelve, as follows (the not-done parts at the
    floating things drift with the analytic current (`CurrentAt`) in their water drag (PoolBodies).
 - Cost (editor, a pool hall): GPU 7.75 ms with all of it, 7.44 ms with the shafts and the mirror off.
 
+### Feedback on the realism pass (2026-11-01)
+
+- "Ceiling tile glitches" in a gallery hall's big roof opening: the 1.2 m light well of a 7.2 m hall reached 8.4 m, past
+  the bottoms of the deep pools of the storey above (from about 8.0 m), whose steps, lips and floors then hung in it.
+  Under another storey a well now stops 1.15 m below that storey's floor (`PoolBiome.Shaft`, PoolCommon `PoolShaft`,
+  the same in the C# sun). The roof lights' frame lines are anti-aliased wider (they read as dotted far off).
+- "A humming noise thats loud and annoying, and weird drips that are too loud": the filtration hum is removed (with so
+  many skimmers and grilles one was always in reach); drips a third as loud, half as often (9-24 s), heard over 10 m,
+  and softer (`Plink` lower, low-passed); laps 0.2.
+- Reflections that "change oddly when I move closer or further, in brightness": not reproduced as a fault. Planar and
+  traced reflections match; the mirror is HDR (up to 3.1 in a sunlit hall) and up to date (the camera moves in Update,
+  the mirror renders in LateUpdate). What changes with distance is the water's Fresnel (at a few metres you see the
+  floor, far off the room mirrored) and, in the haze, the columns' shadows over the water. The haze's frame smoothing
+  over water now reprojects by the water's surface (it used the pool floor under it and smeared as you moved) and the
+  humid layer is thinner (0.0025 /m).
+- The "super weird corner water thing" in free pools: the round steps' top step lay 3 cm under the surface, where the
+  contact line drew a bright bar over it. The steps now take as many risers as the depth wants at about 24 cm (one
+  step in a 45 cm shallow end, 10 cm under), and the contact line is drawn only against things that stand up through
+  the water (the scene's normal from the depth must be near horizontal).
+- Rust "cuts off oddly": the stain's seed came from 33 cm blocks of its world position, so it jumped at their edges; each
+  stain now carries its own seed in its UVs, and a tear is a few soft trickles that fade out well before the quad ends.
+- The pace clocks are gone.
+- The slide ("just doesnt look good at all"), rebuilt: a glossy gelcoat flume with a 3.5 cm wall and rolled rims, open
+  about 160 degrees, from a railed white platform on the wall (two steel legs into the water, a ladder up from the
+  water) curling down to a level run-out 28 cm over the water, on steel posts with cradles.
+
 ## Known gaps / ideas
 
 ## Known gaps / ideas

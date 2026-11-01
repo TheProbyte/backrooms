@@ -8,7 +8,7 @@ namespace Backrooms.Generation
     /// jets (small chrome nozzles that push the water round, PoolCirculation), skimmer mouths at the waterline (they draw
     /// the surface), round underwater niche lights (most dead, a few faintly lit), depth markers and NO DIVING spelled in
     /// small dark tiles on the deck beside the edge (reading the true depth; now and then a wrong one, a Backrooms tell),
-    /// vent grilles high on the walls, a pace clock in the lap pools, and rust running down from the metal. The jets,
+    /// vent grilles high on the walls, and rust running down from the metal. The jets,
     /// skimmers and grilles are listed for the water's circulation and the sound (PoolChunk.fittings).
     /// </summary>
     public partial class OfficeChunkBuilder
@@ -53,18 +53,20 @@ namespace Backrooms.Generation
             var mat = ring ? PoolMaterials.StainRing : PoolMaterials.StainTear;
             if (!mat) return;
             var w = WMask(mat, 1u);
+            // The stain's own seed in the whole part of u (PoolStain.shader), from where it is.
+            float k = FitHash(Mathf.RoundToInt(top.x * 50f), Mathf.RoundToInt(top.y * 50f), Mathf.RoundToInt(top.z * 50f)) % 97;
             if (ring)
             {
                 float s = width;
                 var c = top + Vector3.up * 0.0015f;
                 w.Quad(c + new Vector3(-s, 0, -s), c + new Vector3(-s, 0, s), c + new Vector3(s, 0, s), c + new Vector3(s, 0, -s), Vector3.up,
-                    new Vector2(0, 0), new Vector2(0, 1), new Vector2(1, 1), new Vector2(1, 0));
+                    new Vector2(k, 0), new Vector2(k, 1), new Vector2(k + 0.999f, 1), new Vector2(k + 0.999f, 0));
                 return;
             }
             var t = Vector3.Cross(Vector3.up, n).normalized * (width * 0.5f);
             var o = top + n * 0.002f;
             w.Quad(o - t, o + t, o + t + Vector3.down * length, o - t + Vector3.down * length, n,
-                new Vector2(0, 0), new Vector2(1, 0), new Vector2(1, 1), new Vector2(0, 1));
+                new Vector2(k, 0), new Vector2(k + 0.999f, 0), new Vector2(k + 0.999f, 1), new Vector2(k, 1));
         }
 
         /// <summary>A return jet on a pool wall (n into the water): a flange, a short nozzle, a dark bore. It pushes along d.</summary>
@@ -136,34 +138,6 @@ namespace Backrooms.Generation
             Stain(c - Vector3.up * (height * 0.5f + 0.03f), n, width * 0.8f, 0.5f);
             poolFittings.Add(new Vector4(c.x, c.y, c.z, 2f));
             poolFittingDirs.Add(n);
-        }
-
-        /// <summary>A pace clock on a wall: a white face, a dark rim, twelve marks and two hands.</summary>
-        void PaceClock(Vector3 at, Vector3 n, uint seed)
-        {
-            const float R = 0.32f;
-            var t = Vector3.Cross(Vector3.up, n).normalized;
-            var face = WMask(PoolMaterials.PlasticWhite ? PoolMaterials.PlasticWhite : TileMat, 1u);
-            face.Disc(at + n * 0.03f, R, 32, n, MeshWriter.MetreUV);
-            var dark = WMask(PoolMaterials.Marker ? PoolMaterials.Marker : ChromeMat, 1u);
-            _railPts.Clear();
-            for (int k = 0; k <= 32; k++) { float a = k * Mathf.PI * 2f / 32f; _railPts.Add(at + n * 0.03f + (t * Mathf.Cos(a) + Vector3.up * Mathf.Sin(a)) * (R + 0.012f)); }
-            Sweep(dark, _railPts, 0.018f, 8);
-            var q = Quaternion.LookRotation(n);
-            for (int k = 0; k < 12; k++)
-            {
-                float a = k * Mathf.PI / 6f;
-                var d = t * Mathf.Cos(a) + Vector3.up * Mathf.Sin(a);
-                dark.Box(at + n * 0.034f + d * (R - 0.04f), new Vector3(0.012f, 0.012f, 0.006f) + new Vector3(Mathf.Abs(Vector3.Dot(d, t)), Mathf.Abs(d.y), 0f) * (k % 3 == 0 ? 0.05f : 0.025f), q, 0b111111, MeshWriter.MetreUV);
-            }
-            // The hands, stopped at some time.
-            float hA = (seed % 12) * Mathf.PI / 6f, mA = ((seed >> 4) % 60) * Mathf.PI / 30f;
-            foreach (var (ang, len, wdt) in new[] { (hA, R * 0.5f, 0.016f), (mA, R * 0.8f, 0.01f) })
-            {
-                var d = t * Mathf.Sin(ang) + Vector3.up * Mathf.Cos(ang);
-                var mid = at + n * 0.04f + d * (len * 0.5f);
-                dark.Box(mid, new Vector3(wdt, len, 0.005f), Quaternion.LookRotation(n, d), 0b111111, MeshWriter.MetreUV);
-            }
         }
 
         // ---------------- Tile lettering ----------------
@@ -309,15 +283,14 @@ namespace Backrooms.Generation
             }
         }
 
-        /// <summary>Vent grilles high on room walls, and a pace clock in each lap pool's room.</summary>
+        /// <summary>Vent grilles high on room walls. (2026-11-01: no pace clocks, the owner was "not a fan".)</summary>
         void PoolWallFittings()
         {
-            var clocked = new HashSet<int>();
             foreach (var room in _L.rooms)
             {
                 if (!room.Walkable || room.spiral || room.noFloor) continue;
                 var rc = room.rect;
-                // Walk the room's outline: a grille on about one wall cell in nine, a clock once in a lap pool's room.
+                // Walk the room's outline: a grille on about one wall cell in nine.
                 for (int side = 0; side < 4; side++)
                 {
                     int len = side < 2 ? rc.height : rc.width;
@@ -338,11 +311,6 @@ namespace Backrooms.Generation
                         float ceil = _L.WallTop(room);
                         if (h % 9 == 0 && ceil > 3.2f)
                             Grille(new Vector3(fx, ceil - 0.55f, fz), n, 0.6f, 0.3f);
-                        else if (_L.pool[x, z].lanes != 0 && !clocked.Contains(room.id) && h % 4 == 1 && ceil > 3.4f)
-                        {
-                            clocked.Add(room.id);
-                            PaceClock(new Vector3(fx, 2.5f, fz), n, h >> 8);
-                        }
                     }
                 }
             }

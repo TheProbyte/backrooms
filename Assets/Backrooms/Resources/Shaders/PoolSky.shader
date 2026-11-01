@@ -42,7 +42,7 @@ Shader "Backrooms/PoolSky"
                 PoolCell cell = PoolLoad(c, storey);
                 if (PoolGlazed(c, cell.sky))
                 {
-                    float px = length(fwidth(P.xz));
+                    float px = max(length(fwidth(P.xz)) * 1.5, 0.004);
                     float pane = PoolMullions(P.xz, px) / 0.82;           // 0 on a bar, 1 in the glass
                     float3 milky = dot(sky, 1.0 / 3.0) * float3(0.92, 0.95, 0.93);
                     float3 glass = lerp(sky, milky, 0.45) * 0.8;

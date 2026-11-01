@@ -181,6 +181,13 @@ Shader "Backrooms/PoolWater"
                     // comparing depths): unrefracted, so it hugs the walls, rails and legs exactly.
                     float flat = max(DepthAt(suv) - eye, 0) * length(P - GetCameraPositionWS()) / max(eye, 1e-3);
                     contact = 1.0 - smoothstep(0.0, _ContactWidth, flat * max(V.y, 0.25));
+                    // (2026-11-01: over a step's top just under the surface it drew a bright bar.) Only against walls, legs
+                    // and rails: the thing behind must stand up (its normal, from the depth, near horizontal).
+                    float rawS = SAMPLE_TEXTURE2D_X_LOD(_CameraDepthTexture, sampler_PointClamp, UnityStereoTransformScreenSpaceTex(suv), 0).r;
+                    float3 sw = ComputeWorldSpacePosition(suv, rawS, UNITY_MATRIX_I_VP);
+                    float3 sn = cross(ddy(sw), ddx(sw));
+                    float upness = abs(sn.y) / max(length(sn), 1e-6);
+                    contact *= 1.0 - smoothstep(0.45, 0.75, upness);
                     [branch] if (planar)
                     {
                         // Exact: the mirror, bent by the ripples (more the further the reflected thing; a fixed share here).

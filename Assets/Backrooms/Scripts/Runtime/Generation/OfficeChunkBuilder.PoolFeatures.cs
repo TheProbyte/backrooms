@@ -210,7 +210,9 @@ namespace Backrooms.Generation
             var inward = new Vector3(in2.x, 0f, in2.y);
             var edge = new Vector3(E.x, 0f, E.y);
             float depth = -BasinFloorY(edge.x + inward.x * 0.6f, edge.z + inward.z * 0.6f);
-            int S = PoolBiome.Steps;
+            // As many risers as the depth wants at about 24 cm each (2026-11-01: three in a 45 cm shallow end put the top
+            // step 3 cm under the surface, where it read as a bright bar in the water).
+            int S = Mathf.Clamp(Mathf.RoundToInt(depth / 0.24f), 2, PoolBiome.Steps);
             float rise = depth / S;
             float Reach(int k) => 0.3f + (S - k) * 0.42f;               // the top step the smallest
             float SD(Vector3 p) => PoolBiome.ShapeSD(f, new Vector2(p.x, p.z));
@@ -477,7 +479,7 @@ namespace Backrooms.Generation
         {
             var tile = WMask(ZoneAt(Mathf.FloorToInt(f.centre.x / C), Mathf.FloorToInt(f.centre.y / C)), 1u);
             var sky = WMask(SkyMat, 1u);
-            float r = f.size.x, top = h + PoolBiome.ShaftHeight;
+            float r = f.size.x, top = h + PoolBiome.Shaft(h, _L.storey, PoolWorld.MapStoreys, _L.storeyPitch);
             var c = V3(f.centre);
             const int K = 48;
             float circ = 2f * Mathf.PI * r;
@@ -651,44 +653,116 @@ namespace Backrooms.Generation
             }
         }
 
+        /// <summary>
+        /// A body slide (2026-11-01, rebuilt: the owner found the first, a thin blue half pipe out of the wall, did not
+        /// "look good at all"). As pool slides are made: a glossy gelcoat flume with a real wall thickness and a rolled rim
+        /// along both edges, its channel open about 160 degrees, curling down from a small railed platform on the wall to a
+        /// level run-out just over the water; the platform on two steel legs in the water, a ladder up to it from the water,
+        /// and steel posts with cradles under the flume.
+        /// </summary>
         void Slide(PoolFeature f)
         {
-            var start = V3(f.centre, f.height);
-            var n = Dir(f.yaw);
-            var t = Vector3.Cross(Vector3.up, n) * (f.shape == 0 ? 1f : -1f);
-            var end = V3(f.centre) + n * 2.6f + t * 1.3f + Vector3.up * (PoolBiome.WaterLevel + 0.35f);
-            var p1 = start + n * 1.4f; var p2 = end - (n * 0.2f + t * 0.9f) + Vector3.up * 0.4f;
-            Vector3 B(float u) { float v = 1f - u; return v * v * v * start + 3f * v * v * u * p1 + 3f * v * u * u * p2 + u * u * u * end; }
+            var at = V3(f.centre);                      // on the wall's face
+            var n = Dir(f.yaw);                         // into the room, over the water
+            var t = Vector3.Cross(Vector3.up, n) * (f.shape == 0 ? 1f : -1f);   // the way it curls
+            float H = f.height;
+            float floorHere = BasinFloorY(at.x + n.x * 0.6f, at.z + n.z * 0.6f);
+            var deckMat = WMask(PoolMaterials.PlasticWhite ? PoolMaterials.PlasticWhite : TileMat, 1u);
             var blue = WMask(PoolMaterials.PlasticBlue ? PoolMaterials.PlasticBlue : TileMat, 1u);
-            const int K = 28, R = 12;
-            const float rad = 0.36f;
-            for (int k = 0; k < K; k++)
+            var q = Quaternion.LookRotation(n);
+
+            // The platform: a deck on the wall, two legs, rails on its sides.
+            var pc = at + n * 0.55f + Vector3.up * (H - 0.04f);
+            var ps = new Vector3(0.95f, 0.08f, 1.05f);
+            deckMat.Box(pc, ps, q, 0b111111, MeshWriter.MetreUV);
+            _rotBoxes.Add((pc, ps, q.eulerAngles.y));
+            foreach (float sx in new[] { -0.4f, 0.4f })
             {
-                float u0 = k / (float)K, u1 = (k + 1) / (float)K;
-                var a = B(u0); var b = B(u1);
-                var da = (B(Mathf.Min(1f, u0 + 0.01f)) - B(Mathf.Max(0f, u0 - 0.01f))).normalized;
-                var db = (B(Mathf.Min(1f, u1 + 0.01f)) - B(Mathf.Max(0f, u1 - 0.01f))).normalized;
-                var sa = Vector3.Cross(Vector3.up, da).normalized; var sb = Vector3.Cross(Vector3.up, db).normalized;
-                var ua = Vector3.Cross(da, sa); var ub = Vector3.Cross(db, sb);
-                for (int i = 0; i < R; i++)
-                {
-                    // A half pipe open at the top: from one side round the bottom to the other.
-                    float th0 = Mathf.PI * i / R, th1 = Mathf.PI * (i + 1) / R;
-                    var na0 = sa * Mathf.Cos(th0) - ua * Mathf.Sin(th0); var na1 = sa * Mathf.Cos(th1) - ua * Mathf.Sin(th1);
-                    var nb0 = sb * Mathf.Cos(th0) - ub * Mathf.Sin(th0); var nb1 = sb * Mathf.Cos(th1) - ub * Mathf.Sin(th1);
-                    var A0 = a + na0 * rad; var A1 = a + na1 * rad; var B0 = b + nb0 * rad; var B1 = b + nb1 * rad;
-                    var uvA = new Vector2(i / (float)R, u0 * 6f); var uvB = new Vector2((i + 1) / (float)R, u1 * 6f);
-                    blue.SmoothQuad(A0, A1, B1, B0, -na0, -na1, -nb1, -nb0, uvA, new Vector2(uvB.x, uvA.y), uvB, new Vector2(uvA.x, uvB.y));   // inside
-                    blue.SmoothQuad(A1, A0, B0, B1, na1, na0, nb0, nb1, new Vector2(uvB.x, uvA.y), uvA, new Vector2(uvA.x, uvB.y), uvB);        // outside
-                }
-                if (k % 4 == 0) _rotBoxes.Add(((a + b) * 0.5f + Vector3.down * 0.2f, new Vector3(0.8f, 0.4f, (b - a).magnitude + 0.1f), Mathf.Atan2(b.x - a.x, b.z - a.z) * Mathf.Rad2Deg));
+                var top = at + n * 0.98f + t * sx + Vector3.up * (H - 0.08f);
+                Rail(new List<Vector3> { new Vector3(top.x, floorHere, top.z), top }, 0.035f);
             }
-            // Supports from the floor.
-            foreach (float u in new[] { 0.45f, 0.8f })
+            foreach (float sx in new[] { -0.47f, 0.47f })
             {
-                var p = B(u);
-                float floor = BasinFloorY(p.x, p.z);
-                Rail(new List<Vector3> { new Vector3(p.x, floor, p.z), p + Vector3.down * rad }, 0.04f);
+                var b0 = at + n * 0.08f + t * sx + Vector3.up * H;
+                var b1 = at + n * 0.9f + t * sx + Vector3.up * H;
+                // The ladder side's rail stops short of the back to leave the way up open.
+                var back = sx < 0f ? at + n * 0.5f + t * sx + Vector3.up * H : b0;
+                Rail(new List<Vector3> { back, back + Vector3.up * 0.95f, b1 + Vector3.up * 0.95f, b1 }, 0.022f);
+            }
+
+            // The ladder up from the water, beside the platform on the side away from the curl.
+            var lc = at - t * 0.78f;
+            float lfloor = BasinFloorY(lc.x + n.x * 0.4f, lc.z + n.z * 0.4f);
+            foreach (float s in new[] { 0.22f, 0.72f })
+            {
+                var foot = lc + n * s + Vector3.up * lfloor;
+                var top = lc + n * s + Vector3.up * (H + 0.85f);
+                var over = top + t * 0.32f;
+                Rail(new List<Vector3> { foot, top, over, over + Vector3.down * 0.85f }, 0.022f);
+            }
+            var tw = WMask(ChromeMat, 1u);
+            for (float y = lfloor + 0.3f; y < H - 0.05f; y += 0.28f)
+                Tube(tw, lc + n * 0.22f + Vector3.up * y, lc + n * 0.72f + Vector3.up * y, 0.017f, 10);
+            _rotBoxes.Add((lc + n * 0.47f + Vector3.up * ((lfloor + H) * 0.5f), new Vector3(0.12f, H - lfloor, 0.6f), q.eulerAngles.y));
+
+            // The flume's path: off the platform's front, curling down to a level run-out just over the water.
+            var start = at + n * 1.05f + Vector3.up * (H + 0.02f);
+            var exitDir = (n * 0.45f + t * 0.9f).normalized;
+            var end = at + n * 3.3f + t * 1.7f + Vector3.up * (PoolBiome.WaterLevel + 0.28f);
+            var p1 = start + n * 1.25f + Vector3.down * 0.25f;
+            var p2 = end - exitDir * 1.3f + Vector3.up * 0.3f;
+            Vector3 Bz(float u) { float v = 1f - u; return v * v * v * start + 3f * v * v * u * p1 + 3f * v * u * u * p2 + u * u * u * end; }
+            const int K = 40, R = 16;
+            const float rad = 0.32f, wall = 0.035f, open = 80f * Mathf.Deg2Rad;      // rim at +-100 degrees from the bottom
+            var rimA = new List<Vector3>(K + 1); var rimB = new List<Vector3>(K + 1);
+            Vector3[] prevIn = new Vector3[R + 1], prevOut = new Vector3[R + 1], prevN = new Vector3[R + 1];
+            for (int k = 0; k <= K; k++)
+            {
+                float u = k / (float)K;
+                var c = Bz(u);
+                var d = (Bz(Mathf.Min(1f, u + 0.01f)) - Bz(Mathf.Max(0f, u - 0.01f))).normalized;
+                var side = Vector3.Cross(Vector3.up, d).normalized;
+                var up = Vector3.Cross(d, side).normalized;
+                var curIn = new Vector3[R + 1]; var curOut = new Vector3[R + 1]; var curN = new Vector3[R + 1];
+                for (int i = 0; i <= R; i++)
+                {
+                    float th = -Mathf.PI + open + (2f * Mathf.PI - 2f * open) * i / R;      // round the bottom from rim to rim
+                    var dir = side * Mathf.Sin(th) - up * Mathf.Cos(th);                  // th = 0 straight down
+                    curN[i] = dir;
+                    curIn[i] = c + dir * rad;
+                    curOut[i] = c + dir * (rad + wall);
+                }
+                rimA.Add(c + curN[0] * (rad + wall * 0.5f));
+                rimB.Add(c + curN[R] * (rad + wall * 0.5f));
+                if (k > 0)
+                    for (int i = 0; i < R; i++)
+                    {
+                        Vector2 uA = new Vector2(i / (float)R, (k - 1) * 0.25f), uB = new Vector2((i + 1) / (float)R, k * 0.25f);
+                        blue.SmoothQuad(prevIn[i], prevIn[i + 1], curIn[i + 1], curIn[i], -prevN[i], -prevN[i + 1], -curN[i + 1], -curN[i],
+                            uA, new Vector2(uB.x, uA.y), uB, new Vector2(uA.x, uB.y));
+                        blue.SmoothQuad(prevOut[i + 1], prevOut[i], curOut[i], curOut[i + 1], prevN[i + 1], prevN[i], curN[i], curN[i + 1],
+                            new Vector2(uB.x, uA.y), uA, new Vector2(uA.x, uB.y), uB);
+                    }
+                prevIn = curIn; prevOut = curOut; prevN = curN;
+                if (k > 0 && k % 4 == 0)
+                {
+                    var a0 = Bz((k - 4) / (float)K);
+                    _rotBoxes.Add(((a0 + c) * 0.5f + Vector3.down * 0.2f, new Vector3(0.75f, 0.35f, (c - a0).magnitude + 0.1f), Mathf.Atan2(c.x - a0.x, c.z - a0.z) * Mathf.Rad2Deg));
+                }
+            }
+            // The rolled rims, and the open ends closed.
+            Sweep(blue, rimA, wall * 0.9f, 10);
+            Sweep(blue, rimB, wall * 0.9f, 10);
+            // Posts with cradles under the flume.
+            foreach (float u in new[] { 0.42f, 0.78f })
+            {
+                var c = Bz(u);
+                var d = (Bz(u + 0.01f) - Bz(u - 0.01f)).normalized;
+                var side = Vector3.Cross(Vector3.up, d).normalized;
+                var under = c + Vector3.down * (rad + wall + 0.02f);
+                float floor = BasinFloorY(under.x, under.z);
+                Rail(new List<Vector3> { new Vector3(under.x, floor, under.z), under }, 0.04f);
+                Tube(WMask(ChromeMat, 1u), under - side * 0.28f, under + side * 0.28f, 0.025f, 10);
             }
         }
 

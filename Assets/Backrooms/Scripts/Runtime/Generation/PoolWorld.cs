@@ -267,7 +267,7 @@ namespace Backrooms.Generation
         {
             int s = StoreyOf(p.y);
             _cells.w = this; _cells.storey = s;
-            return PoolSun.Visibility(_cells, new Vector3(p.x, p.y - s * Pitch, p.z));
+            return PoolSun.Visibility(_cells, new Vector3(p.x, p.y - s * Pitch, p.z), s < MapStoreys - 1 ? Pitch - 1.15f : float.MaxValue);
         }
 
         /// <summary>Is this point in a loaded Poolrooms chunk?</summary>

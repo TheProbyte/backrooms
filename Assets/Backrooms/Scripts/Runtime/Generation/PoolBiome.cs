@@ -17,6 +17,13 @@ namespace Backrooms.Generation
         public const float HeaderHeight = 2.7f;
         /// <summary>Light well above a roof opening, from the ceiling to the sky.</summary>
         public const float ShaftHeight = 1.2f;
+        /// <summary>
+        /// A light well's height (2026-11-01: in tall halls the 1.2 m well reached up past the deep pools of the storey
+        /// above, whose steps and floors then hung in it, the owner's "ceiling tile glitches"): under another storey it stops
+        /// 1.15 m below that storey's floor. As PoolCommon.hlsl's PoolShaft.
+        /// </summary>
+        public static float Shaft(float ceiling, int storey, int storeys, float pitch) =>
+            storey < storeys - 1 ? Mathf.Clamp(pitch - 1.15f - ceiling, 0.15f, ShaftHeight) : ShaftHeight;
         public const float PillarRadius = 0.4f;
         /// <summary>Ceiling of a spiral stair's well on the storey above.</summary>
         public const float SpiralUpperCeiling = 4.5f;

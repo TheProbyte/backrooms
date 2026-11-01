@@ -17,7 +17,7 @@ namespace Backrooms.Generation
         [Tooltip("Scattering of the air everywhere (per metre).")]
         public float density = 0.003f;
         [Tooltip("Extra in the humid layer over the floor and water (per metre, fading over 0.7 m).")]
-        public float humid = 0.006f;
+        public float humid = 0.0025f;
         [Tooltip("How far the march reaches (m).")]
         public float reach = 28f;
         [Range(8, 48)] public int steps = 28;

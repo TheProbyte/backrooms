@@ -9,18 +9,18 @@ namespace Backrooms.Audio
     ///  - drops falling from the roof openings now and then, a plink into the pool (with a ring on the water) or a tick on
     ///    the deck, one at a time, never a loop (the shower drips' loop had rung on in the reverb, 2026-10-31);
     ///  - while you wade, the ripples you make reaching the nearest pool wall a moment later (at the speed shallow water
-    ///    carries them) and lapping there;
-    ///  - the filtration's hum and running water at the nearest skimmer or vent grille.
+    ///    carries them) and lapping there.
+    /// 2026-11-01, the owner: "a humming noise thats loud and annoying, and weird drips that are too loud": the filtration
+    /// hum at the skimmers and grilles is gone (there was always one within reach), the drips a third as loud, half as
+    /// often, heard over 10 m (was 18), and softer (ProceduralSounds.Plink).
     /// Added by PoolWorld; quiet when the player is not in the Poolrooms.
     /// </summary>
     public class PoolSounds : MonoBehaviour
     {
-        [Range(0f, 1f)] public float dripVolume = 0.35f;
-        [Range(0f, 1f)] public float lapVolume = 0.32f;
-        [Range(0f, 1f)] public float humVolume = 0.09f;
+        [Range(0f, 1f)] public float dripVolume = 0.1f;
+        [Range(0f, 1f)] public float lapVolume = 0.2f;
 
         AudioClip[] _plinks, _laps;
-        AudioSource _hum;
         AudioLowPassFilter _muffle;          // under the water (the realism plan 11)
         AudioListener _listener;
         float _nextDrip = 3f, _lapTimer;
@@ -34,7 +34,6 @@ namespace Backrooms.Audio
             if (!w || !cam) return;
             var p = cam.transform.position;
             bool inPool = w.IsPool(p);
-            UpdateHum(inPool, p);
             Muffle();
             if (!inPool) { _pending.Clear(); return; }
             float dt = Time.deltaTime;
@@ -53,7 +52,7 @@ namespace Backrooms.Audio
         {
             _nextDrip -= dt;
             if (_nextDrip > 0f) return;
-            _nextDrip = Random.Range(4f, 11f);
+            _nextDrip = Random.Range(9f, 24f);
             float C = OfficeBiome.CellSize;
             int storey = w.StoreyOf(p.y);
             float pitch = w.streamer && w.streamer.Settings != null ? w.streamer.Settings.storeyPitch : 9f;
@@ -67,10 +66,10 @@ namespace Backrooms.Audio
                 {
                     at.y = level;
                     if (_plinks == null) { _plinks = new AudioClip[6]; for (int k = 0; k < 6; k++) _plinks[k] = ProceduralSounds.Plink(k); }
-                    WorldSound.PlayAt(_plinks[_variant++ % 6], at, dripVolume, 18f, Random.Range(0.92f, 1.08f));
+                    WorldSound.PlayAt(_plinks[_variant++ % 6], at, dripVolume, 10f, Random.Range(0.92f, 1.08f));
                     PoolRipples.Splash(at, 0.05f, -0.004f);
                 }
-                else WorldSound.PlayAt(SoundBank.Drip(_variant++), at, dripVolume * 0.7f, 14f, Random.Range(0.9f, 1.1f));
+                else WorldSound.PlayAt(SoundBank.Drip(_variant++), at, dripVolume * 0.5f, 8f, Random.Range(0.9f, 1.1f));
                 return;
             }
         }
@@ -126,35 +125,5 @@ namespace Backrooms.Audio
             _muffle.enabled = under || f < 21000f;
         }
 
-        void UpdateHum(bool inPool, Vector3 p)
-        {
-            Vector3 near = default; float best = 14f * 14f;
-            if (inPool)
-                foreach (var c in PoolChunk.All)
-                {
-                    if (!c || c.fittings == null) continue;
-                    for (int i = 0; i < c.fittings.Length; i++)
-                    {
-                        if (c.fittings[i].w < 0.5f) continue;              // skimmers and grilles
-                        var at = c.FittingAt(i);
-                        float d2 = (at - p).sqrMagnitude;
-                        if (d2 < best) { best = d2; near = at; }
-                    }
-                }
-            bool on = inPool && best < 14f * 14f;
-            if (!_hum)
-            {
-                if (!on) return;
-                var go = new GameObject("Pool filtration hum");
-                go.transform.SetParent(transform, false);
-                _hum = go.AddComponent<AudioSource>();
-                _hum.clip = ProceduralSounds.FilterHum();
-                _hum.loop = true; _hum.spatialBlend = 1f; _hum.rolloffMode = AudioRolloffMode.Linear;
-                _hum.minDistance = 0.8f; _hum.maxDistance = 14f; _hum.dopplerLevel = 0f; _hum.volume = 0f;
-                _hum.Play();
-            }
-            if (on) _hum.transform.position = Vector3.Lerp(_hum.transform.position, near, 1f - Mathf.Exp(-Time.deltaTime / 0.5f));
-            _hum.volume = Mathf.MoveTowards(_hum.volume, on ? humVolume : 0f, Time.deltaTime * 0.2f);
-        }
     }
 }

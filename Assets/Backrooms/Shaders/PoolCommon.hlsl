@@ -26,6 +26,8 @@ float4 _PortalClipPlane;             // zero outside a portal-camera render
 #define POOL_C 1.2
 #define POOL_TILE 0.15
 #define POOL_SHAFT 1.2
+// A light well's height: under another storey it stops 1.15 m below that storey's floor (PoolBiome.Shaft, 2026-11-01).
+float PoolShaft(float ceiling, int storey);
 #define POOL_HEADER 2.7
 #define POOL_PILLAR_R 0.4
 #define POOL_ROUND_R 0.5
@@ -289,7 +291,7 @@ float PoolSunVisibilityMap(float3 pw)
         {
             float3 q = p + L * tCeil;
             float d1 = PoolHoleSDC(cell, q.xz - c * POOL_C);
-            float t2 = tCeil + POOL_SHAFT / L.y;
+            float t2 = tCeil + PoolShaft(cell.ceiling, storey) / L.y;
             float3 q2 = p + L * t2;
             int2 c2 = (int2)floor(q2.xz / POOL_C);
             PoolCell cell2 = PoolLoad(c2, storey);
@@ -661,7 +663,7 @@ PoolHit PoolTrace(float3 pw, float3 R, float maxT)
                 if (d1 > 0)
                 {
                     // Up the light well: the sky if the ray leaves its top inside the opening, else its sunny inside.
-                    float3 q2 = q + R * (POOL_SHAFT / R.y);
+                    float3 q2 = q + R * (PoolShaft(cell.ceiling, storey) / R.y);
                     int2 c2 = (int2)floor(q2.xz / POOL_C);
                     PoolCell cell2 = PoolLoad(c2, storey);
                     float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSDC(cell2, q2.xz - c2 * POOL_C) : -1.0;
@@ -728,7 +730,7 @@ float PoolSunVisibilityBlurMap(float3 pw, float blur)
         {
             float3 q = p + L * tCeil;
             float d1 = PoolHoleSDC(cell, q.xz - c * POOL_C);
-            float t2 = tCeil + POOL_SHAFT / L.y;
+            float t2 = tCeil + PoolShaft(cell.ceiling, storey) / L.y;
             float3 q2 = p + L * t2;
             int2 c2 = (int2)floor(q2.xz / POOL_C);
             PoolCell cell2 = PoolLoad(c2, storey);
@@ -838,7 +840,7 @@ float3 PoolPatchBounce(float3 P, float3 N)
     if (!me.valid) return 0;
     const float3 L = POOL_SUN;
     float2 run = L.xz / L.y;                                  // across per metre down
-    float2 shaft = run * POOL_SHAFT;
+    float2 shaft = run * PoolShaft(me.ceiling, storey);
     // The openings whose patches may lie near this point are about a ceiling's height toward the sun from it.
     float2 look = P.xz + run * max(me.ceiling - (P.y - base), 0.5);
     int2 lc = (int2)floor(look / POOL_C);
@@ -873,4 +875,9 @@ float3 PoolPatchBounce(float3 P, float3 N)
         found++;
     }
     return _PoolSunColor.rgb * L.y * sum;
+}
+
+float PoolShaft(float ceiling, int storey)
+{
+    return storey < (int)_PoolMapParams.z - 1 ? clamp(_PoolMapParams.y - 1.15 - ceiling, 0.15, POOL_SHAFT) : POOL_SHAFT;
 }

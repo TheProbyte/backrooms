@@ -14,18 +14,19 @@ namespace Backrooms.Audio
             var rng = new System.Random(5200 + variant * 11);
             int n = (int)(Rate * 0.18f);
             var d = new float[n];
-            var hp = Biquad.HighPass(2500f);
-            float hz = 900f + (float)rng.NextDouble() * 900f, hz2 = hz * (1.6f + (float)rng.NextDouble() * 0.5f);
+            var hp = Biquad.HighPass(1800f);
+            var soft = Biquad.LowPass(2600f);
+            float hz = 650f + (float)rng.NextDouble() * 550f, hz2 = hz * (1.5f + (float)rng.NextDouble() * 0.4f);
             float at2 = rng.NextDouble() < 0.5 ? 0.03f + (float)rng.NextDouble() * 0.04f : 99f;
             for (int i = 0; i < n; i++)
             {
                 float t = i / (float)Rate;
-                float tick = hp.Run(White(rng)) * Mathf.Exp(-t / 0.0025f) * 0.35f;
+                float tick = hp.Run(White(rng)) * Mathf.Exp(-t / 0.002f) * 0.18f;
                 float bt = t - 0.002f;
-                float bub = bt > 0f ? Mathf.Sin(6.2831853f * hz * (1f + 2.5f * bt) * bt) * Mathf.Exp(-bt / 0.022f) * Mathf.Min(1f, bt / 0.0008f) : 0f;
+                float bub = bt > 0f ? Mathf.Sin(6.2831853f * hz * (1f + 1.2f * bt) * bt) * Mathf.Exp(-bt / 0.014f) * Mathf.Min(1f, bt / 0.0015f) : 0f;
                 float b2t = t - at2;
-                float bub2 = b2t > 0f ? Mathf.Sin(6.2831853f * hz2 * (1f + 3f * b2t) * b2t) * Mathf.Exp(-b2t / 0.012f) * 0.4f : 0f;
-                d[i] = tick + bub + bub2;
+                float bub2 = b2t > 0f ? Mathf.Sin(6.2831853f * hz2 * (1f + 1.5f * b2t) * b2t) * Mathf.Exp(-b2t / 0.008f) * 0.25f : 0f;
+                d[i] = soft.Run(tick + bub + bub2);
             }
             Normalize(d, 0.5f);
             return Clip("Plink_" + variant, d, 1);
@@ -67,46 +68,5 @@ namespace Backrooms.Audio
             return Clip("Lap_" + variant, d, 1);
         }
 
-        /// <summary>
-        /// The pool's filtration heard at a skimmer or grille (a loop): a low pump hum at the mains' frequencies, water
-        /// running in a pipe behind the wall (band-limited noise, slowly wavering), the odd gurgle.
-        /// </summary>
-        public static AudioClip FilterHum()
-        {
-            var rng = new System.Random(5400);
-            float len = 4f;
-            int n = (int)(Rate * len);
-            var d = new float[n];
-            var bp = Biquad.BandPass(380f, 0.6f);
-            var lp = Biquad.LowPass(1400f);
-            var gurg = new (float at, float hz)[5];
-            for (int k = 0; k < gurg.Length; k++) gurg[k] = ((float)rng.NextDouble() * (len - 0.2f), 300f + (float)rng.NextDouble() * 400f);
-            for (int i = 0; i < n; i++)
-            {
-                float t = i / (float)Rate;
-                float hum = Mathf.Sin(6.2831853f * 50f * t) * 0.25f + Mathf.Sin(6.2831853f * 100f * t) * 0.18f + Mathf.Sin(6.2831853f * 150f * t) * 0.05f;
-                float waver = 0.7f + 0.3f * Mathf.Sin(6.2831853f * 0.5f * t + 1.3f) * Mathf.Sin(6.2831853f * 0.25f * t);
-                float run = bp.Run(lp.Run(White(rng))) * 0.9f * waver;
-                float g = 0f;
-                foreach (var (at, hz) in gurg)
-                {
-                    float dt = t - at;
-                    if (dt < 0f || dt > 0.12f) continue;
-                    g += Mathf.Sin(6.2831853f * hz * (1f + 1.5f * dt) * dt) * Mathf.Exp(-dt / 0.03f) * 0.15f;
-                }
-                d[i] = hum + run + g;
-            }
-            // Seamless: cross-fade the end into the start.
-            int fade = (int)(Rate * 0.25f);
-            for (int i = 0; i < fade; i++)
-            {
-                float k = i / (float)fade;
-                d[i] = d[i] * k + d[n - fade + i] * (1f - k);
-            }
-            var loop = new float[n - fade];
-            System.Array.Copy(d, loop, n - fade);
-            Normalize(loop, 0.45f);
-            return Clip("FilterHum", loop, 1);
-        }
     }
 }
