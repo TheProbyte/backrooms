@@ -167,6 +167,15 @@ Shader "Backrooms/PoolTile"
 
                 // The glaze: what it mirrors (traced), strongest at grazing angles, and the sun's own highlight.
                 float smooth = lerp(0.3, _Smoothness, tileMask);
+                // Specular anti-aliasing (Tokuyoshi & Kaplanyan's geometric kind, as HDRP's): where the normal turns faster
+                // than a pixel shows (tile edges and tilts far off), widen the highlight instead of letting it sparkle.
+                if (_PoolSpecAA > 0.5)
+                {
+                    float3 dnx = ddx(N), dny = ddy(N);
+                    float kernel = min(2.0 * 0.25 * (dot(dnx, dnx) + dot(dny, dny)), 0.18);
+                    float r0 = 1.0 - smooth, a2s = r0 * r0 * r0 * r0;
+                    smooth = 1.0 - sqrt(sqrt(min(a2s + kernel, 1.0)));
+                }
                 float NdotV = saturate(dot(N, V));
                 float Fv = 0.04 + 0.96 * pow(1.0 - NdotV, 5.0);
                 float dist = length(P - GetCameraPositionWS());

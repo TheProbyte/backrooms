@@ -40,8 +40,12 @@ namespace Backrooms.Camcorder
                 () => O().matchRecording, v => { O().matchRecording = v; O().Save(); });
             Toggle("Ambient occlusion", "Soft contact shadows in corners and under furniture (screen-space).",
                 () => O().ambientOcclusion, v => { O().ambientOcclusion = v; O().Save(); });
-            Toggle("Anti-aliasing (SMAA)", "Smooths jagged edges.",
+            Toggle("Anti-aliasing", "Smooths jagged edges.",
                 () => O().antiAliasing, v => { O().antiAliasing = v; O().Save(); });
+            Choice("Anti-aliasing type", "SMAA smooths edges in each frame. TAA blends each pixel with the last few frames (jittered): no crawling edges or sparkling tiles, a faint trail when moving fast. STP is Unity 6's spatial-temporal upscaler: TAA that also rebuilds the full picture from the smaller render (sharpest, with \"Match the recording\" on).",
+                new[] { "SMAA", "TAA", "STP" }, () => O().aaKind, v => { O().aaKind = v; O().Save(); });
+            Toggle("Tile specular anti-aliasing", "Glossy tiles far off: their highlights are widened where the surface turns faster than a pixel can show, so they shimmer less.",
+                () => O().specularAA, v => { O().specularAA = v; O().Save(); });
             Toggle("Player shadow", "With no body shown, a rough stand-in casts your shadow (holding the camcorder up), in the lights and in the Poolrooms' sun.",
                 () => O().playerShadow, v => { O().playerShadow = v; O().Save(); });
 

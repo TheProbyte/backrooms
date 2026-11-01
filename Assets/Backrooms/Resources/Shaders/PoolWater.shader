@@ -167,6 +167,23 @@ Shader "Backrooms/PoolWater"
                 float3 glint = _PoolSunColor.rgb * sun * saturate(dot(N, POOL_SUN)) * (a2 / (PI * dd * dd)) * F * 0.25;
 
                 float3 color = lerp(water, refl, F) + glint;
+
+                // Foam (2026-10-31): where the simulation churned the water, carried along by its flow. A lacy network of
+                // bubbles (cell borders at two scales, drifting) that thickens to white where there is a lot of it.
+                float foam = PoolFoamAt(P.xz);
+                [branch] if (foam > 0.01)
+                {
+                    // How much of the bubble pattern is filled follows the amount: thin foam is a few lines of bubbles,
+                    // thick foam fills most of it, never a flat sheet.
+                    float lace = 1.0 - smoothstep(0.0, 0.14, PoolCellEdge(P.xz * 6.0 + slope * 3.0, t * 0.35));
+                    float fine = 1.0 - smoothstep(0.0, 0.1, PoolCellEdge(P.xz * 17.0 + slope * 2.0, t * 0.55));
+                    float blot = PoolCellEdge(P.xz * 2.3, t * 0.2);
+                    float n = saturate(lace * 0.6 + fine * 0.45 + saturate(blot * 2.0) * 0.35);
+                    float cover = saturate(foam);
+                    float a = smoothstep(1.0 - cover * 0.85, 1.15 - cover * 0.85, n) * 0.85;
+                    float3 foamCol = float3(0.92, 0.95, 0.93) * (ambient * 1.1 + _PoolSunColor.rgb * sun * POOL_SUN.y);
+                    color = lerp(color, foamCol, a * 0.85);
+                }
                 return half4(PoolFarFade(MixFog(color, i.fogFactor), P), 1);
             }
             ENDHLSL

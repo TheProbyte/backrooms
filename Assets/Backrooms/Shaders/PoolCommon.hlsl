@@ -10,6 +10,7 @@ TEXTURE2D(_PoolMap);                 // RGBA32 linear, toroidal by world cell: r
 TEXTURE2D(_PoolMap2);                // the extras (read only where flagged): r depth/0.005, g gallery/0.05, b lanes|drain|disc radius, a disc centre
 float4 _PoolMapParams;               // x map size in cells, y height between storeys, z storeys in the map (stacked rows)
 TEXTURE2D(_PoolRipple); SAMPLER(sampler_PoolRipple);
+TEXTURE2D(_PoolFlow);                // the simulation's flow (xy, m/s) and foam (z), same window as the ripples
 float4 _PoolRippleRect;              // xy world xz of the window corner, z window size (m), w slope gain (0 = none)
 float4 _PoolSunColor;                // rgb: sun (already times intensity)
 float4 _PoolAmbient;                 // rgb: light everywhere (sky through the openings, scattered)
@@ -17,6 +18,7 @@ float4 _PoolBounce;                  // rgb: bounce at full baked strength
 float4 _PoolSkyZenith, _PoolSkyHorizon;
 float _PoolScreenTextures;           // 1: this camera has the opaque and depth textures (the main view)
 float _PoolLitBlend;                 // 1: this camera looks at the Poolrooms (Backrooms/Lit adds their light)
+float _PoolSpecAA;                   // 1: specular anti-aliasing on the glossy tiles (Graphics menu)
 #ifndef BACKROOMS_HAS_PORTAL_CLIP_PLANE
 float4 _PortalClipPlane;             // zero outside a portal-camera render
 #endif
@@ -296,6 +298,16 @@ float PoolCaustics(float2 xz, float t)
     float b = PoolCellEdge(xz * 3.1 + float2(t * 0.04, 3.7), t * 1.1);
     float la = pow(saturate(1.0 - a * 3.0), 6.0), lb = pow(saturate(1.0 - b * 3.0), 6.0);
     return 0.55 + 1.3 * (la + lb) + 1.6 * la * lb;
+}
+
+// Foam on the water (0..1.5) from the simulation round the player; none outside its window.
+float PoolFoamAt(float2 xz)
+{
+    if (_PoolRippleRect.w <= 0) return 0;
+    float2 uv = (xz - _PoolRippleRect.xy) / _PoolRippleRect.z;
+    if (any(uv < 0.02) || any(uv > 0.98)) return 0;
+    float edge = saturate(min(min(uv.x, uv.y), min(1 - uv.x, 1 - uv.y)) * 12.0 - 0.25);
+    return SAMPLE_TEXTURE2D_LOD(_PoolFlow, sampler_PoolRipple, uv, 0).z * edge;
 }
 
 // Slope of the rippled water (from the ripple simulation around the player), per metre.

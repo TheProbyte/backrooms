@@ -1,34 +1,67 @@
-// Ripples on the Poolrooms' water around the player: the classic two-step wave equation on a 256 x 256 grid
-// (8 cm texels) that follows the player. Walls reflect the waves; dry decks and anything outside the water absorb them.
+// The Poolrooms' water around the player (2026-10-31: rebuilt): the linearised shallow-water equations on a 256 x 256 grid
+// (8 cm texels) that follows the player, at 60 steps a second.
+//  - Heights: waves run at the speed shallow water has, sqrt(g * depth) (about 1.9 m/s in the usual 0.38 m, faster at a
+//    pool's deep end, slower in its shallows), where before every wave ran at one too-fast speed; a little viscosity on top
+//    of the plain damping, so small ripples calm before big swells as on real water. Walls and the pool's edges reflect
+//    them; dry decks and anything outside the water absorb them.
+//  - Flow: the water's velocity, pushed by the slope of the surface (u' = -g grad h), slowly losing speed.
+//  - Foam: made where the water is churned (where it rises and falls fastest, and where things go in), carried along by
+//    the flow (semi-Lagrangian, as Frontier's pools in Planet Coaster 2 and most game water carry foam) and fading in
+//    a few seconds. The water shader draws it (PoolWater, _PoolFlow).
 #pragma kernel Step
 
 Texture2D<float2> _Prev;            // r: height now, g: height a step before
 RWTexture2D<float2> _Next;
+Texture2D<float4> _FlowPrev;        // xy: velocity (m/s), z: foam (0..1.5)
+RWTexture2D<float4> _FlowNext;
+SamplerState linear_clamp_sampler;
 Texture2D<float4> _PoolMap;
+Texture2D<float4> _PoolMap2;
 float4 _PoolMapParams;
 int2 _Shift;                        // the window moved by this many texels since the last step
 int _Size;
-float _Damping;
+float _Damping;                     // per step, on the vertical motion
+float _Viscosity;                   // smoothing of the vertical motion (high frequencies die first)
+float _Dt;                          // the step (s)
+float _FoamDecay, _FoamGain, _FoamDrop;
 float2 _OriginWS;                   // world xz of texel (0, 0)'s corner
 float _Texel;
-float4 _Drops[8];                   // xy world xz, z radius (m), w height added (m)
+float4 _Drops[16];                  // xy world xz, z radius (m), w height added (m)
 int _DropCount;
 int _Storey;                        // which storey's map rows (the player's)
 
-uint MapFlags(int2 cell)
+uint4 MapRaw(int2 cell, out uint2 s)
 {
     int n = (int)_PoolMapParams.x;
-    uint2 s = (uint2)(cell + n * 4096) % (uint)n;      // cells are well within +-4096 maps of the origin
+    s = (uint2)(cell + n * 4096) % (uint)n;      // cells are well within +-4096 maps of the origin
     s.y += (uint)_Storey * (uint)n;
-    return (uint)(_PoolMap.Load(int3(s, 0)).r * 255.0 + 0.5);
+    return (uint4)(_PoolMap.Load(int3(s, 0)) * 255.0 + 0.5);
 }
 
+uint MapFlags(int2 cell) { uint2 s; return MapRaw(cell, s).r; }
+
 bool IsWater(uint flags) { return (flags & 64u) != 0 && (flags & 16u) != 0; }
+
+/// Water depth (m) in a cell: the pool's own (the second map) or the usual 0.5 m floor less 0.12 m to the surface.
+float WaterDepth(int2 cell)
+{
+    uint2 s;
+    uint4 v = MapRaw(cell, s);
+    float floorDepth = 0.5;
+    if ((v.b & 128u) != 0) { float d = _PoolMap2.Load(int3(s, 0)).r * 255.0 * 0.005; if (d > 0.01) floorDepth = d; }
+    return max(0.05, floorDepth - 0.12);
+}
 
 float2 Read(int2 q)
 {
     if (any(q < 0) || any(q >= _Size)) return 0;
     return _Prev[q];
+}
+
+float4 ReadFlow(int2 q)
+{
+    if (any(q < 0) || any(q >= _Size)) return 0;
+    return _FlowPrev[q];
 }
 
 [numthreads(8, 8, 1)]
@@ -40,9 +73,11 @@ void Step(uint3 id : SV_DispatchThreadID)
     float2 world = _OriginWS + (p + 0.5) * _Texel;
     int2 cell = (int2)floor(world / 1.2);
     uint me = MapFlags(cell);
-    if (!IsWater(me)) { _Next[p] = 0; return; }
+    if (!IsWater(me)) { _Next[p] = 0; _FlowNext[p] = 0; return; }
     float2 c = Read(q);
-    float sum = 0;
+    float vel = c.x - c.y;
+    float hn[4], vn[4];
+    bool open[4];
     const int2 dirs[4] = { int2(1, 0), int2(-1, 0), int2(0, 1), int2(0, -1) };
     [unroll] for (int k = 0; k < 4; k++)
     {
@@ -55,13 +90,35 @@ void Step(uint3 id : SV_DispatchThreadID)
             uint edge = o.x == 1 ? (other & 3u) : o.x == -1 ? (me & 3u) : o.y == 1 ? ((other >> 2) & 3u) : ((me >> 2) & 3u);
             blocked = edge == 1u || edge == 3u || !IsWater(other);      // 3: a wall with a high window
         }
-        sum += blocked ? c.x : Read(q + o).x;
+        float2 n2 = blocked ? c : Read(q + o);
+        hn[k] = n2.x; vn[k] = n2.x - n2.y; open[k] = !blocked;
     }
-    float h = (sum * 0.5 - c.y) * _Damping;
+    // Waves at the speed of shallow water here (Courant number c dt / dx, kept under the scheme's limit).
+    float cdx = sqrt(9.81 * WaterDepth(cell)) * _Dt / _Texel;
+    float courant2 = min(cdx * cdx, 0.45);
+    float lap = hn[0] + hn[1] + hn[2] + hn[3] - 4.0 * c.x;
+    float lapVel = vn[0] + vn[1] + vn[2] + vn[3] - 4.0 * vel;
+    float h = c.x + vel * _Damping + courant2 * lap + _Viscosity * lapVel;
+    float dropFoam = 0;
     for (int i = 0; i < _DropCount; i++)
     {
         float2 d = world - _Drops[i].xy;
-        h += _Drops[i].w * exp(-dot(d, d) / (_Drops[i].z * _Drops[i].z));
+        float g = exp(-dot(d, d) / (_Drops[i].z * _Drops[i].z));
+        h += _Drops[i].w * g;
+        dropFoam += abs(_Drops[i].w) * g;
     }
+    // Flow: pushed down the slope of the surface; none through a wall.
+    float4 f = ReadFlow(q);
+    float2 grad = float2(hn[0] - hn[1], hn[2] - hn[3]) / (2.0 * _Texel);
+    float2 u = (f.xy - 9.81 * _Dt * grad) * 0.985;
+    if (!open[0] && u.x > 0) u.x = 0; if (!open[1] && u.x < 0) u.x = 0;
+    if (!open[2] && u.y > 0) u.y = 0; if (!open[3] && u.y < 0) u.y = 0;
+    u = clamp(u, -1.5, 1.5);
+    // Foam: carried with the flow from where it was, fading; made where the water is churned and where things go in.
+    float2 back = (float2(q) + 0.5 - u * _Dt / _Texel) / _Size;
+    float foam = _FlowPrev.SampleLevel(linear_clamp_sampler, back, 0).z * _FoamDecay;
+    if (any(back < 0) || any(back > 1)) foam = 0;
+    foam += saturate((abs(vel) - 0.002) * _FoamGain) + dropFoam * _FoamDrop;
     _Next[p] = float2(h, c.x);
+    _FlowNext[p] = float4(u, min(foam, 1.5), 0);
 }

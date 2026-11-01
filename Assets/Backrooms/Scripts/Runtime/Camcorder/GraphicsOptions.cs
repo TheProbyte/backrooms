@@ -26,6 +26,8 @@ namespace Backrooms.Camcorder
         public bool ambientOcclusion = true;
         public bool lightGrid = true;         // far fixtures light a 3D grid (off: older room-layer lights)
         public bool antiAliasing = true;
+        public int aaKind = 0;                // 0 SMAA, 1 TAA (temporal), 2 STP (Unity 6's spatial-temporal upscaler: temporal AA + upscaling)
+        public bool specularAA = true;        // glossy tiles: highlights widened where the surface turns faster than a pixel shows
         public bool playerShadow = true;      // no body shown: a stand-in that casts the player's shadow (PlayerShadow)
 
         // F5 > LIGHTING (multipliers are relative to the scene's own light settings)
@@ -217,6 +219,7 @@ namespace Backrooms.Camcorder
         int _appliedGrid = -1;
         Camera _cam;
         CamcorderRig _rig;
+        UpscalingFilterSelection _origUpscale;
         float _origScale = -1f;
         float _baseTube, _baseLamp, _baseTubeRange, _baseLampRange;
         Color _baseTubeColour, _baseLampColour, _baseStripColour;
@@ -248,6 +251,7 @@ namespace Backrooms.Camcorder
             if (urp)
             {
                 _origScale = urp.renderScale;
+                _origUpscale = urp.upscalingFilter;
                 var f = typeof(UniversalRenderPipelineAsset).GetField("m_RendererDataList", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                 if (f?.GetValue(urp) is ScriptableRendererData[] list)
                     foreach (var data in list)
@@ -287,7 +291,7 @@ namespace Backrooms.Camcorder
         {
             // Settings changed at runtime must not end up saved in the project's assets.
             var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
-            if (urp && _origScale > 0f) urp.renderScale = _origScale;
+            if (urp && _origScale > 0f) { urp.renderScale = _origScale; urp.upscalingFilter = _origUpscale; }
             foreach (var s in _ssao) if (s.f) s.f.SetActive(s.orig);
             foreach (var (st, i, d, r, h) in _aoOrig)
             {
@@ -336,8 +340,21 @@ namespace Backrooms.Camcorder
             if (_cam)
             {
                 var data = _cam.GetUniversalAdditionalCameraData();
-                var aa = o.antiAliasing ? AntialiasingMode.SubpixelMorphologicalAntiAliasing : AntialiasingMode.None;
+                // SMAA (edges in this frame), TAA (each pixel jittered and blended with the last frames: no crawling edges or
+                // sparkle; a faint trail), or STP (Unity 6's spatial-temporal upscaler: TAA that also rebuilds the full-size
+                // picture from the smaller render, the newest and sharpest of the three).
+                var aa = !o.antiAliasing ? AntialiasingMode.None : o.aaKind == 0 ? AntialiasingMode.SubpixelMorphologicalAntiAliasing : AntialiasingMode.TemporalAntiAliasing;
                 if (data.antialiasing != aa) data.antialiasing = aa;
+                if (aa == AntialiasingMode.TemporalAntiAliasing) data.antialiasingQuality = AntialiasingQuality.High;
+            }
+            if (urp)
+            {
+                var up = o.antiAliasing && o.aaKind == 2 ? UpscalingFilterSelection.STP : _origUpscale == UpscalingFilterSelection.STP ? UpscalingFilterSelection.Auto : _origUpscale;
+                if (urp.upscalingFilter != up) urp.upscalingFilter = up;
+            }
+            Shader.SetGlobalFloat("_PoolSpecAA", o.specularAA ? 1f : 0f);
+            if (_cam)
+            {
             }
 
             if (!_lights) _lights = FindAnyObjectByType<FixtureLightManager>();

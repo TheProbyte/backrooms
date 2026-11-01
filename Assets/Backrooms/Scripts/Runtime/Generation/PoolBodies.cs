@@ -95,8 +95,7 @@ namespace Backrooms.Generation
                     s.splashAt = Time.time + 0.4f;
                     var at = new Vector3(c.x, level, c.z);
                     float strength = Mathf.Clamp01(energy / 30f);
-                    PoolSplashes.Burst(at, Mathf.RoundToInt(Mathf.Lerp(12f, 120f, Mathf.Sqrt(strength))), Mathf.Lerp(1.4f, 3.8f, Mathf.Sqrt(strength)),
-                        rb.linearVelocity * 0.25f, Mathf.Lerp(0.5f, 0.9f, strength), Mathf.Lerp(1.1f, 1.8f, strength));
+                    PoolSplashes.Splash(at, strength, rb.linearVelocity * 0.25f, rb.mass > 1.5f || s.size > 0.35f);
                     PoolRipples.Splash(at, Mathf.Clamp(s.size * 0.6f, 0.08f, 0.6f), -Mathf.Lerp(0.004f, 0.03f, strength));
                     int cls = s.size > 0.45f || rb.mass > 6f ? 2 : s.size > 0.18f || rb.mass > 0.8f ? 1 : 0;
                     WorldSound.PlayAt(SoundBank.Plop(cls, _plop++), at, Mathf.Lerp(0.25f, 0.9f, Mathf.Sqrt(strength)), 20f, Random.Range(0.93f, 1.07f));
@@ -106,6 +105,10 @@ namespace Backrooms.Generation
                 }
                 s.inWater = true;
             }
+
+            // A sinking thing trails bubbles for a little while (the air coming out of it).
+            if (s.density > 1f && rb.linearVelocity.y < -0.05f && Time.time < s.splashAt + 1.2f && Random.value < 0.25f)
+                PoolSplashes.Bubbles(new Vector3(c.x, level, c.z), 2, 0.05f, Mathf.Max(0.05f, level - c.y));
 
             // Water drag, and the wake of you wading past pushing it aside and along.
             rb.AddForce(-rb.linearVelocity * (drag * frac), ForceMode.Acceleration);

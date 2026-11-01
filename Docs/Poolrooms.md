@@ -260,6 +260,36 @@ a round opening) is read only where the first map's opening byte has bit 7 set, 
   the water) in some big pools.
 - Cost: 1920 x 1080 in the editor, a free pool hall with bleachers: GPU ~5.4 ms.
 
+## The water's motion, foam, bubbles, fuller splashes (2026-10-31)
+
+The owner: "see how water movement could be improved and the splash particles, if foam could be added or bubbles, and if
+the physical movement of the water can be much better". After Frontier's Planet Coaster 2 pools (shallow-water
+equations, foam made by the flow and carried with it) and LightSpeed's grid foam.
+- **The simulation** (Resources/PoolRipples.compute, `PoolRipples`): the linearised shallow-water equations. Waves run at
+  sqrt(g x depth) (about 1.9 m/s in the usual 0.38 m of water, faster in a deep end, slower in shallows: before, every
+  wave ran at about 3.4 m/s), with viscosity on top of the damping (small ripples calm first). A flow field (pushed by
+  the surface's slope, losing speed) and foam: made where the water rises and falls fastest and where things go in,
+  carried with the flow, about two thirds left after a second (`foamKeep`, `foamGain`, `foamDrop`). `_PoolFlow` for the
+  shaders (xy flow, z foam). Up to 16 disturbances a step.
+- **Wakes**: each shin pushes up a bow wave in front and leaves a hollow behind.
+- **Foam** on the water (PoolWater): a network of bubbles at two scales over larger blots, drifting; how much of it is
+  filled follows the amount (thin foam a few lines, thick foam most of it, never a flat sheet); lit by the sky and sun.
+- **Splashes** (`PoolSplashes.Splash`): a crown of drops thrown up and outward, for a heavy thing a jet shooting back up a
+  moment later (the cavity closing), a puff of mist over big ones, bubbles under the water, a ring and foam.
+- **Bubbles** (`PoolSplashes.Bubbles`, Backrooms/PoolBubble): under the water, rising at about 0.25 m/s with a wobble and
+  popping at the surface; each a ring of light with a glint, greener and fainter deeper; drawn after the water and tested
+  by hand against the depth of what is under it. From splashes, steps, sinking things (a trail) and running water.
+
+## Clearer pictures: anti-aliasing (2026-10-31)
+
+Graphics > Anti-aliasing type: **SMAA** (edges in each frame, the old one), **TAA** (each pixel jittered and blended with
+the last frames: no crawling edges or sparkle, a faint trail moving fast) or **STP** (Unity 6's spatial-temporal
+upscaler: temporal AA that also rebuilds the full picture from the smaller render; with "Match the recording" the
+sharpest). Before the camcorder's own processing (it runs after URP's post-processing). **Tile specular anti-aliasing**
+(on): Tokuyoshi & Kaplanyan's geometric specular AA (as HDRP's): where the tiles' normal turns faster than a pixel shows,
+their highlight widens instead of sparkling. In a test view SMAA left white sparkles on a far tiled wall, TAA calmed
+most, STP was cleanest. The renderer asset's upscaling filter is changed at runtime and put back on exit.
+
 ## The player's shadow (2026-10-31)
 
 With no body shown (the default), `PlayerShadow` keeps a stand-in of eight rough capsules (head, torso, two legs, the left

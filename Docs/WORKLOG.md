@@ -15,6 +15,20 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - TAA and STP options, tile specular anti-aliasing; the water as shallow-water physics with foam, bubbles and fuller splashes
+
+- The owner: "add those settings (TAA, specular AA), then see how water movement could be improved and the splash
+  particles, if foam could be added or bubbles, and if the physical movement of the water can be much better".
+- Research: URP 17's TAA and STP (the camera's anti-aliasing and the asset's upscaling filter, both scriptable); Frontier's
+  Planet Coaster 2 pools and LightSpeed's water (shallow-water equations, foam made and carried by the flow).
+- Graphics: Anti-aliasing type (SMAA / TAA / STP), Tile specular anti-aliasing (PoolTile, _PoolSpecAA).
+- Water: PoolRipples.compute rebuilt (depth-correct wave speed, viscosity, flow, carried foam), bow and stern wakes, foam
+  drawn on the water, `PoolSplashes.Splash` (crown, jet, mist, bubbles), underwater bubbles (PoolBubble) from splashes,
+  steps, sinking things and running water.
+- Checked in World 3 (pictures: a splash with lacy foam and the swell running into the steps; SMAA, TAA and STP side by
+  side). First foam was a flat white disc: made less of it and drawn as a filling pattern. EditMode tests pass. Not played
+  by the owner.
+
 ## 2026-10-31 - The player's shadow with no body: a capsule stand-in, shadow maps in Level 0, capsule shadows in the Poolrooms' sun
 
 - Queued by the owner in another session: "a player shadow with no visible body": a shadow-only stand-in of rough capsules

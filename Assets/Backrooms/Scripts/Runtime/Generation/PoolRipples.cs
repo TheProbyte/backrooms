@@ -18,13 +18,17 @@ namespace Backrooms.Generation
 
         ComputeShader _cs;
         int _kernel;
-        RenderTexture _a, _b;
+        RenderTexture _a, _b, _fa, _fb;      // heights; flow and foam
+        [Tooltip("Smoothing of the water's motion: small ripples calm first.")] public float viscosity = 0.035f;
+        [Tooltip("Foam left per second (of what there was).")] [Range(0.5f, 1f)] public float foamKeep = 0.66f;
+        [Tooltip("Foam made by churned water.")] public float foamGain = 12f;
+        [Tooltip("Foam made where something goes in.")] public float foamDrop = 7f;
         Vector2Int _origin;              // world texel of the window's (0, 0)
         bool _have;
         float _acc;
         Transform _player;
         CamcorderPlayerController _ctrl;
-        readonly Vector4[] _drops = new Vector4[8];
+        readonly Vector4[] _drops = new Vector4[16];
         int _dropCount;
         bool _wasIn;
         float _stride;
@@ -84,7 +88,8 @@ namespace Backrooms.Generation
                     // Stepping in: spray, more for a jump (and a drop or two on the lens if it was a hard landing).
                     float land = _ctrl ? _ctrl.LandedThisFrame : 0f;
                     var surf = new Vector3(p.x, level, p.z);
-                    PoolSplashes.Burst(surf, land > 0.5f ? 60 : 14, land > 0.5f ? 2.8f : 1.2f, v * 0.3f, 0.8f, land > 0.5f ? 1.3f : 1f);
+                    if (land > 0.5f) PoolSplashes.Splash(surf, Mathf.Clamp01(land / 6f), v * 0.3f, true);
+                    else { PoolSplashes.Burst(surf, 14, 1.2f, v * 0.3f, 0.8f, 1f); PoolSplashes.Bubbles(surf, 8, 0.2f, 0.25f); }
                     if (land > 2f) Camcorder.LensDrops.Add(3, 0.8f);
                 }
                 else if (speed > 0.05f)
@@ -102,10 +107,15 @@ namespace Backrooms.Generation
                         float k = Mathf.Clamp01(speed / 3.6f);
                         var shin = p + v / speed * 0.25f + (_foot == 0 ? side : -side);
                         PoolSplashes.Burst(new Vector3(shin.x, level, shin.z), Mathf.RoundToInt(Mathf.Lerp(2f, 18f, k * k)), Mathf.Lerp(0.6f, 2.2f, k), v * 0.55f, 0.55f);
+                        PoolSplashes.Bubbles(new Vector3(shin.x, level, shin.z), Mathf.RoundToInt(Mathf.Lerp(2f, 8f, k)), 0.08f, 0.3f);
                         if (k > 0.8f && Random.value < 0.08f) Camcorder.LensDrops.Add(1, 0.6f);
                     }
                     var leg = p + v.normalized * 0.12f + (_foot == 0 ? side : -side);
-                    Drop(leg, 0.13f, -wake * Mathf.Clamp(speed / 1.4f, 0.2f, 2.2f));
+                    // A shin moving through water: it piles up in front (the bow wave) and leaves a hollow behind.
+                    float wk = Mathf.Clamp(speed / 1.4f, 0.2f, 2.2f);
+                    var dir = v / speed;
+                    Drop(leg + dir * 0.1f, 0.12f, wake * 0.6f * wk);
+                    Drop(leg - dir * 0.08f, 0.12f, -wake * wk);
                 }
             }
             _wasIn = inWater;
@@ -124,6 +134,7 @@ namespace Backrooms.Generation
                 first = false;
             }
             Shader.SetGlobalTexture("_PoolRipple", _a);
+            Shader.SetGlobalTexture("_PoolFlow", _fa);
             Shader.SetGlobalVector("_PoolRippleRect", new Vector4(_origin.x * texel, _origin.y * texel, Size * texel, slopeGain));
         }
 
@@ -141,12 +152,13 @@ namespace Backrooms.Generation
             if (!_cs) return false;
             _kernel = _cs.FindKernel("Step");
             _a = Make("PoolRippleA"); _b = Make("PoolRippleB");
+            _fa = Make("PoolFlowA", RenderTextureFormat.ARGBHalf); _fb = Make("PoolFlowB", RenderTextureFormat.ARGBHalf);
             return true;
         }
 
-        static RenderTexture Make(string name)
+        static RenderTexture Make(string name, RenderTextureFormat format = RenderTextureFormat.RGFloat)
         {
-            var rt = new RenderTexture(Size, Size, 0, RenderTextureFormat.RGFloat, RenderTextureReadWrite.Linear)
+            var rt = new RenderTexture(Size, Size, 0, format, RenderTextureReadWrite.Linear)
             { name = name, enableRandomWrite = true, filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.DontSave };
             rt.Create();
             return rt;
@@ -157,6 +169,14 @@ namespace Backrooms.Generation
             _cs.SetTexture(_kernel, "_Prev", _a);
             _cs.SetTexture(_kernel, "_Next", _b);
             _cs.SetTexture(_kernel, "_PoolMap", Shader.GetGlobalTexture("_PoolMap"));
+            _cs.SetTexture(_kernel, "_PoolMap2", Shader.GetGlobalTexture("_PoolMap2"));
+            _cs.SetTexture(_kernel, "_FlowPrev", _fa);
+            _cs.SetTexture(_kernel, "_FlowNext", _fb);
+            _cs.SetFloat("_Viscosity", viscosity);
+            _cs.SetFloat("_Dt", 1f / 60f);
+            _cs.SetFloat("_FoamDecay", Mathf.Pow(foamKeep, 1f / 60f));
+            _cs.SetFloat("_FoamGain", foamGain);
+            _cs.SetFloat("_FoamDrop", foamDrop);
             _cs.SetVector("_PoolMapParams", Shader.GetGlobalVector("_PoolMapParams"));
             _cs.SetInts("_Shift", shift.x, shift.y);
             _cs.SetInt("_Size", Size);
@@ -169,12 +189,15 @@ namespace Backrooms.Generation
             _cs.SetInt("_Storey", w && _player ? w.StoreyOf(_player.position.y) : 0);
             _cs.Dispatch(_kernel, Size / 8, Size / 8, 1);
             (_a, _b) = (_b, _a);
+            (_fa, _fb) = (_fb, _fa);
         }
 
         void OnDestroy()
         {
             if (_a) { _a.Release(); Destroy(_a); }
             if (_b) { _b.Release(); Destroy(_b); }
+            if (_fa) { _fa.Release(); Destroy(_fa); }
+            if (_fb) { _fb.Release(); Destroy(_fb); }
         }
     }
 }

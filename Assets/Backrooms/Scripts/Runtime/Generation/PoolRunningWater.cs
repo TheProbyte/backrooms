@@ -37,6 +37,7 @@ namespace Backrooms.Generation
                 _nextSpray = now + (_kind == 1 ? 0.06f : 0.09f);
                 var drift = new Vector3(Random.Range(-0.3f, 0.3f), 0f, Random.Range(-0.3f, 0.3f));
                 PoolSplashes.Burst(transform.position + drift * 0.5f, _kind == 1 ? 4 : 2, _kind == 1 ? 1.1f : 0.9f, drift, 0.7f, 0.9f);
+                PoolSplashes.Bubbles(transform.position + drift * 0.5f, _kind == 1 ? 3 : 2, 0.25f, 0.3f);
             }
             if (now >= _nextRipple && d2 < 12f * 12f)
             {
