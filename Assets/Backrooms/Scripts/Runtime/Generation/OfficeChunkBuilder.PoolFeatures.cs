@@ -833,7 +833,8 @@ namespace Backrooms.Generation
                     case PoolFeatureKind.Ladder: if (Mine(f.centre)) Ladder(f); break;
                     case PoolFeatureKind.Lifeguard: if (Mine(f.centre)) Lifeguard(f); break;
                     case PoolFeatureKind.Bleachers: if (Mine(f.centre)) Bleachers(f); break;
-                    case PoolFeatureKind.Slide: if (Mine(f.centre)) Slide(f); break;
+                    // (Slides are still planned, so worlds stay as they were, but not built: the owner wants them to be a
+                    // biome of their own within the Poolrooms, 2026-11-01. Slide() is kept for that.)
                     case PoolFeatureKind.Changing: if (Mine(f.centre)) Changing(f); break;
                     case PoolFeatureKind.Showers: if (Mine(f.centre)) Showers(f); break;
                     case PoolFeatureKind.RoundHall:

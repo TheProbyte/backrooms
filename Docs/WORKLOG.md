@@ -15,6 +15,11 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-01 10:00  Claude Code  Slides no longer built (to be their own biome); a review of the Poolrooms and a plan of improvements
+- OfficeChunkBuilder.PoolFeatures: Slide features still planned (worlds keep their draws) but not built; Slide() kept for the water park biome.
+- Docs/Poolrooms.md: "Slides" and "Review and next improvements" (17 items: loose ends, the look, missing fittings, new biomes, water interaction); a duplicated "Known gaps" heading removed.
+- Checked: compiles; EditMode tests; the sun-patch bounce could not be compared in World 3 (the patches found were outside the loaded area), so it is item 2 of the plan.
+
 ## 2026-11-01 09:30  Claude Code  Poolrooms realism feedback: light wells under the upper storey, no hum, quieter drips, haze reprojection over water, steps under the surface, contact line only on upright things, smooth rust, no clocks, a real slide
 - Light wells capped under another storey (PoolBiome.Shaft / PoolShaft / PoolSun shaftCap): the upper storey's deep pools hung in tall halls' wells.
 - PoolSounds: hum removed (ProceduralSounds.FilterHum too); drips 0.1, every 9-24 s, 10 m; Plink softer.

@@ -510,11 +510,71 @@ The owner: "do it all please". All twelve, as follows (the not-done parts at the
   about 160 degrees, from a railed white platform on the wall (two steel legs into the water, a ladder up from the
   water) curling down to a level run-out 28 cm over the water, on steel posts with cradles.
 
-## Known gaps / ideas
+## Slides (2026-11-01)
+
+The owner: "the slides should be their own biome inside the pool rooms zone so just remove it for now until we work on
+that". Slides are still planned (`PoolPlan.Features.Slide`, so worlds keep their random draws) but not built;
+`OfficeChunkBuilder.Slide` (the rebuilt flume, platform and ladder) is kept for that biome.
+
+## Review and next improvements (2026-11-01)
+
+The owner: "look at everything you've made and make a plan for improvements". A look back over everything in this
+document, from what was seen in World 3 while building it, what the owner reported, and what was never checked. In the
+order to do them.
+
+**1. Loose ends (things built but not right or not checked)**
+1. **Too many skimmers.** 619 in the loaded area (one wall cell in eleven of every basin, plus free pools every 9 m).
+   Real pools have one per 37 m² of water (Maricopa code) set along one side: thin them to that, and jets to one every
+   3-4 m on two sides only, so the walls are not peppered with fittings.
+2. **The sun-patch bounce was never seen working.** The two attempts to compare it on and off found no patch in view.
+   Check it on a wall beside a patch, tune `_PatchBounce`, and lower the baked bounce under it if the two add up too
+   bright. Also make the C# sun (`PoolSun`, which bakes the bounce and answers `SunAt`) know the glazing, glass block
+   and clouds the shaders know, or the baked bounce under a glazed roof is brighter than its patch.
+3. **Exposure in bright halls.** After coming into a sunlit hall the picture is blown out for a few seconds (every
+   screenshot after a teleport). The camcorder's auto-exposure is tuned for Level 0's dim rooms: give the Poolrooms a
+   faster adaptation and a softer highlight roll-off, as consumer camcorders do in daylight.
+4. **The reflection complaint.** Not reproduced as a fault (it read as the water's Fresnel and the haze's shadows). Ask
+   for a short video. Meanwhile: bend the planar reflection by the ripples more for far things than near ones (it is a
+   fixed amount now), and put the haze into the mirror's view so the reflection and the room agree.
+5. **Mirror cost.** The mirror renders every frame in the Poolrooms even with no water on screen. Skip it when no
+   water cell is in view (a frustum test against the loaded basins), and drop to a quarter size when the water is far.
+6. **Sounds not listened to.** Drips, laps, the flutter echo and the underwater muffle were only measured. The flutter
+   echo is on the listener, so it repeats the ambience too: move it to sharp sounds only (one-shots through WorldSound).
+
+**2. The look (biggest visible gains)**
+7. **Sun shafts with structure.** In big openings they are an even veil. Real beams show drifting density: add a slowly
+   moving 3D noise to the haze's density (as Unreal's and Frostbite's volumetric fog do), stronger beams in darker halls,
+   and the beams in the water seen from above (the caustic map gives them their ripple).
+8. **The water's colour.** The bright floor dominates and reflections only show at grazing angles. Real pool water darkens
+   and greens with depth faster than the tiles suggest, and a faint film of dust and hair gathers at the edges. Tune the
+   absorption by depth, add the film (carried by the circulation to the skimmers), and a visible boil and ring of
+   bubbles where each return jet pushes water.
+9. **Glazed roof lights with depth.** The frames are painted in the sky; build the mullions as geometry with depth and
+   shadows in the well, dust and streaks on the panes, now and then a broken pane (a Backrooms tell).
+10. **Under the water.** The murk is flat: add the sunlit water's own caustic light shafts, a slow wobble, specks
+    drifting, the player's breath bubbles.
+11. **Clouds.** Value noise reads as soft blobs in the openings: a domain-warped cloud noise with crisper edges, and
+    days that differ (some districts overcast, the sun never out).
+12. **More wear variety.** Repaired patches of mismatched tiles (in every real pool), chipped tile edges at the coping,
+    white efflorescence below windows and leaks, grout colour by room.
+
+**3. What real pools are built with (still missing)**
+13. Rim-flow gutters with grates on the big pools (water level with the deck, brimming over); starting blocks on the
+    lap pools (they need a deck at one end); lane ropes that float and move with the circulation; rules boards; benches;
+    shower heads and drains in the changing areas; hose reels and rolled pool covers.
+
+**4. New biomes in the Poolrooms zone**
+14. **The water park** (the owner's idea): slides of several kinds (body flumes, tube slides, a kids' slide), splash
+    pools, a wave pool, lazy-river channels, built as their own biome with their own rooms. The rebuilt slide is the start.
+15. **Winding walkways beside water channels** (reference image 5, from the known gaps).
+
+**5. Water interaction (left from the 2026-10-31 plan)**
+16. Crouch at the edge and touch the water (hand ripples, a wet arm).
+17. The water as a horror tell: ripples with nothing making them, wading that is not yours, the water stilling at once.
 
 ## Known gaps / ideas
 
-- Crawling inside a basin puts the camera under the water surface, which is single-sided (nothing drawn from below).
+- (Done 2026-11-01: the view under the water.) Crawling inside a basin puts the camera under the water surface, which was single-sided (nothing drawn from below).
 - The duct of the Poolrooms' hole is shaded by the Backrooms' light grid, so its mouth is dark.
 - More biomes: winding walkways beside water channels (reference image 5).
 - The sun is not traced through the curved walls (they cast no sun shadow) or between the two floors (the stair towers
