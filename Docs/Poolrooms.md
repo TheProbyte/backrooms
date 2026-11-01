@@ -361,6 +361,72 @@ connected".
   water: a thin broken line of foam, `_ContactWidth`). Its FFT ocean waves, wave-peak foam and storm states do not fit
   still pool water.
 
+## Realism: the plan (2026-11-01)
+
+The owner: "plan out the next steps for realism for the poolrooms section". What makes it look real now: the traced sun
+and its soft edges, caustics, glazed tiles with traced reflections, the ripple and shallow-water simulation, floating
+things, wet prints, the body's shadow. What a real pool hall has that this does not, in order of how much it adds for
+the work (references: indoor pool photographs, natatorium design codes, Rare's and Crest's water, Unreal's and
+Frostbite's volumetrics, pool-industry notes on scale and stains):
+
+**First: the biggest visible gains**
+1. **Sun shafts in the air.** Pool halls are humid, so every beam from a roof opening shows. March the traced sun
+   (`PoolSunVisibility`, exact to the walls and openings, no shadow maps needed) along each view ray at quarter
+   resolution, jittered with blue noise, accumulated over frames and upsampled by depth (how froxel and raymarched
+   volumetrics are made smooth in Unreal and Frostbite). Denser in a thin layer over the water (evaporation), dust motes
+   glinting only inside the beams. Cost about 1 ms.
+2. **Clouds passing the sun.** Real sunlight is never constant. A slow cloud-shadow field projected along the sun (as
+   Unreal's cloud shadows and light functions do) dims every sun patch, beam, caustic and window together by 20-60 % for
+   tens of seconds now and then, the sky in the openings greying with it. Cheap (one noise lookup in
+   `PoolSunVisibility`), and eerie in an empty hall.
+3. **Exact reflections in the water.** All the water of a storey lies at one height, so one planar reflection (a second
+   render of the view mirrored in that plane, half resolution, only while water is on screen, distorted by the ripples'
+   normals) is exact: rails, ladders, curved walls, columns, props, the bleachers. The cell-map trace cannot see the
+   curved and small things; screen-space cannot see what is off screen. Planar water is what Half-Life: Alyx and most
+   indoor-water games use. Cost about 1.5-2.5 ms; a Graphics menu switch.
+4. **Weathering.** It is too clean. All procedural in PoolTile from the cell map and positions, no textures:
+   - a white, rough crust of calcium scale 2-6 cm above the waterline (evaporation leaves it), heavier at shallow ends
+     and round the return jets;
+   - grout darkened under water and in shaded corners (biofilm), darker grout along the floor-wall joints;
+   - rust tears running down from chrome fittings, escutcheons, drains and ladder anchors;
+   - mineral streaks on the walls under roof openings and windows, where rain and condensation run;
+   - worn, matte paths in the glossy deck glaze between doorways (from the plan's walking routes); damp, darker tiles at
+     the foot of walls near water.
+
+**Second: what real pools are built with**
+5. **Pool fittings.** Rounded bullnose coping instead of square edges; rim-flow gutters with grates round the big pools,
+   the water brimming over into them with a soft trickle; skimmer mouths and small chrome return jets in the pool walls
+   (they also drive item 12); round underwater niche lights, most dead, a few faintly lit; depth markers and NO DIVING
+   tiles on the coping and walls, reading the true depth, now and then a wrong one (a Backrooms tell); lane-rope hooks
+   and starting blocks on the lap pools, a pace clock, vent grilles high on the walls.
+6. **Glazed roof lights and glass block.** Some openings get frames and panes: the frame's bars draw thin shadows across
+   the sun patch, a dusty pane softens and dims it (traced: a mullion pattern in the opening's shape). Glass-block walls
+   (70s and 80s pools) glowing on the sun's side, by the same rule as the clerestories (only with outdoors behind).
+7. **Warm bounce from the sun patches.** Each patch of sun on the floor is a known shape (the opening projected), so its
+   light on the walls and ceiling near it can be computed exactly as an area light (Lambert's polygon formula, as
+   Unity's and Unreal's area lights do), where now it is one value per cell. The warm glow up the wall beside a sun patch
+   is in every photograph of a pool hall.
+
+**Third: hearing it, and the camcorder**
+8. **Acoustics.** Steam Audio still gives the Poolrooms drywall walls, carpet floors and ceiling tiles
+   (`SteamAudioWorld`): give it glazed tile and water (absorbing almost nothing), so things in the world ring as they
+   should; a reverb by room size aimed at real untreated-but-not-extreme halls (1.5-2.5 s); a short flutter echo between
+   parallel tiled walls on sharp sounds (a dropped hammer, a step on tile); water lapping in the gutters (water plan 8),
+   a filtration hum from the grates, drips under roof openings as single sounds in their places, not a loop.
+9. **The lens fogs up.** Walking from Level 0 into the warm, wet Poolrooms, the camcorder's cold lens mists over and
+   clears from the edges in about ten seconds, as real cameras do; again after surfacing (item 11).
+10. **Exposure.** Check the camcorder's auto-exposure across shade and sun patches: a slow, slightly overshooting
+   adjustment walking into a sunlit hall, sun patches clipping to white with a little halation, as consumer camcorders do.
+11. **Under the surface** (water plan 7): Snell's window from below (the sky only in a circle overhead, the rest a mirror
+   of the pool), green murk, beams in the water, muffled sound.
+
+**Fourth: water that is looked after**
+12. **Circulation.** Return jets push slow currents into the flow simulation and skimmers and gutters draw the surface,
+   so foam, floating things and a faint dust film drift slowly toward the skimmers and collect at the edges.
+
+Suggested order: 1, 4, 3, 5, 2, then the rest. 1-4 are where the pictures will change most; 5 and 6 make it read as a
+real building; 8 and 9 are cheap and felt at once.
+
 ## Known gaps / ideas
 
 - Crawling inside a basin puts the camera under the water surface, which is single-sided (nothing drawn from below).
