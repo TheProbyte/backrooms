@@ -1,12 +1,15 @@
 // Still water over the basins. Drawn after the opaque pass so it can see what is under it (refraction, depth for the
-// colour of the water) and what it mirrors (screen-space reflection), falling back to the ceiling or the sky straight
-// above where the screen holds nothing. Ripples come from the simulation around the player (PoolRipples).
+// colour of the water) and what it mirrors (screen-space reflection), falling back to a ray traced through the cell map
+// where the screen holds nothing (PoolTrace: walls, columns, the sky in the openings). Ripples come from the simulation
+// around the player (PoolRipples); a fine shimmer from the small waves that make the caustics (PoolWaveSlope).
+// 2026-10-31, after the owner's reference pictures: a deeper emerald green.
 Shader "Backrooms/PoolWater"
 {
     Properties
     {
-        _Absorb ("Absorption per metre", Vector) = (1.7, 0.36, 0.42, 0)
-        _Scatter ("In-scattered colour", Color) = (0.10, 0.42, 0.38, 1)
+        _Absorb ("Absorption per metre", Vector) = (2.6, 0.95, 1.35, 0)
+        _Scatter ("In-scattered colour", Color) = (0.02, 0.18, 0.13, 1)
+        _Shimmer ("Small waves on the surface", Range(0, 1)) = 0.05
         _Refraction ("Refraction", Range(0, 0.3)) = 0.15
         _Roughness ("Surface roughness", Range(0.01, 0.3)) = 0.05
         _Micro ("Stillness (micro waves)", Range(0, 0.05)) = 0.004
@@ -34,7 +37,7 @@ Shader "Backrooms/PoolWater"
             CBUFFER_START(UnityPerMaterial)
                 float4 _Absorb;
                 half4 _Scatter;
-                half _Refraction, _Roughness, _Micro;
+                half _Refraction, _Roughness, _Micro, _Shimmer;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; };
@@ -98,18 +101,11 @@ Shader "Backrooms/PoolWater"
                 return 0;
             }
 
-            // What the water mirrors where the screen has nothing: the ceiling above, or the sky through an opening.
+            // What the water mirrors where the screen has nothing: a ray traced through the cell map.
             float3 Mirror(float3 P, float3 R)
             {
-                int storey = PoolStorey(P.y);
-                PoolCell here = PoolLoad(PoolCellOf(P), storey);
-                float h = here.ceiling + PoolBase(storey);
-                float3 Q = P + R * ((h - P.y) / max(R.y, 0.02));
-                int2 qc = PoolCellOf(Q);
-                PoolCell q = PoolLoad(qc, storey);
-                float open = (q.valid && abs(q.ceiling - here.ceiling) < 0.05) ? saturate(PoolHoleSD(q.sky, q.joined, Q.xz - qc * POOL_C) / 0.02 + 0.5) : 0;
-                float3 ceiling = float3(0.8, 0.82, 0.78) * PoolAmbientAt(Q - float3(0, 0.05, 0), float3(0, -1, 0));
-                return lerp(ceiling, PoolSkyColor(R), open);
+                PoolHit hit = PoolTrace(P + float3(0, 0.01, 0), R, 40.0);
+                return PoolShadeHit(hit, R, 0.012);
             }
 
             half4 frag(Varyings i) : SV_Target
@@ -125,6 +121,9 @@ Shader "Backrooms/PoolWater"
                 float2 slope = PoolRippleSlope(P.xz);
                 slope += _Micro * float2(sin(P.x * 5.1 + t * 0.9) + sin(P.z * 6.9 - t * 0.7 + P.x * 2.1),
                                          sin(P.z * 5.7 + t * 0.8) + sin(P.x * 6.3 + t * 0.6 - P.z * 1.8)) * 0.5;
+                // The small waves that make the caustics, faded out where they would be finer than a pixel.
+                float pix = length(fwidth(P.xz));
+                slope += PoolWaveSlope(P.xz, _PoolWaveTime) * _Shimmer * saturate(1.0 - pix / 0.03);
                 float3 N = normalize(float3(-slope.x, 1.0, -slope.y));
                 float NdotV = saturate(dot(N, V));
                 float F = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0);

@@ -219,4 +219,268 @@ float2 PoolRippleSlope(float2 xz)
     return float2(hx, hz) / (2.0 * e * _PoolRippleRect.z) * _PoolRippleRect.w * edge;
 }
 
+// ---------------- Small waves, caustics, reflections (2026-10-31) ----------------
+
+TEXTURE2D(_PoolCaustic); SAMPLER(sampler_PoolCaustic);
+float4 _PoolCausticParams;           // x tile size (m), y 1 when the map exists, z strength under water, w reflected
+float _PoolWaveTime;                 // the waves' clock (PoolCausticMap: slowed to a calm)
+
+#define POOL_WAVE_TILE 2.4
+#define POOL_WATER_DEPTH 0.33        // surface to basin floor
+// The water's small waves: whole numbers of waves across the 2.4 m tile (so it tiles), 11-38 cm long.
+static const float3 POOL_WAVES[12] =
+{
+    float3(6, -2, 0.3), float3(-3, 7, 2.1), float3(9, 4, 4.0), float3(-8, 9, 1.2), float3(4, -13, 5.3), float3(14, 5, 0.7),
+    float3(-11, -12, 3.3), float3(17, -4, 2.6), float3(-15, 10, 5.9), float3(6, 19, 1.9), float3(21, 7, 4.4), float3(-13, -17, 0.2)
+};
+
+// Slope (dh/dx, dh/dz) of the small waves at a point. Each wave curves the surface about the same (amplitude falls with
+// the square of its number: 5 mm at 24 cm), so together they bring the sun to a focus a little below the basin floor:
+// a soft network of bright lines on it. Capillary-gravity speeds, slowed by the clock.
+float2 PoolWaveSlope(float2 x, float t)
+{
+    float2 s = 0;
+    [unroll] for (int i = 0; i < 12; i++)
+    {
+        float2 n = POOL_WAVES[i].xy;
+        float2 k = n * (6.2831853 / POOL_WAVE_TILE);
+        float kl = length(k);
+        float w = sqrt(9.81 * kl + 7.3e-5 * kl * kl * kl);
+        float A = 0.5 / dot(n, n);
+        s += A * k * cos(dot(k, x) - w * t + POOL_WAVES[i].z);
+    }
+    return s;
+}
+
+// The sun as it reaches a point under the water: the caustic map at the spot on the surface its light came through,
+// split very slightly by colour (blue bends more), wobbled by the player's ripples; full contrast at the basin's depth,
+// none at the surface. Falls back to the drawn pattern without the map.
+float3 PoolCausticLight(float3 p, float waterY)
+{
+    float below = waterY - p.y;
+    if (below <= 0) return 1;
+    float3 up = -refract(-POOL_SUN, float3(0, 1, 0), 1.0 / 1.333);     // back along the refracted sun ray
+    float3 s = p + up * (below / up.y);
+    float k = saturate(below / POOL_WATER_DEPTH);
+    if (_PoolCausticParams.y < 0.5) return lerp(1.0, PoolCaustics(s.xz, _Time.y), k);
+    float2 slope = PoolRippleSlope(s.xz);
+    float2 uv = (s.xz + slope * below * 0.6) / _PoolCausticParams.x;
+    float2 split = normalize(POOL_SUN.xz) * (0.0035 * k / _PoolCausticParams.x);
+    float3 c;
+    c.r = SAMPLE_TEXTURE2D(_PoolCaustic, sampler_PoolCaustic, uv - split).r;
+    c.g = SAMPLE_TEXTURE2D(_PoolCaustic, sampler_PoolCaustic, uv).r;
+    c.b = SAMPLE_TEXTURE2D(_PoolCaustic, sampler_PoolCaustic, uv + split).r;
+    return lerp(1.0, c, k * _PoolCausticParams.z);
+}
+
+// Is the straight path from p toward +x/+z (going down) clear of walls, headers and lower ceilings for t metres?
+bool PoolPathClear(float3 pw, float3 dir, float tEnd)
+{
+    int storey = PoolStorey(pw.y);
+    float3 p = pw; p.y -= PoolBase(storey);
+    int2 c = PoolCellOf(p);
+    PoolCell cell = PoolLoad(c, storey);
+    [loop] for (int i = 0; i < 8; i++)
+    {
+        if (!cell.valid) return false;
+        float tx = ((c.x + 1) * POOL_C - p.x) / dir.x;
+        float tz = ((c.y + 1) * POOL_C - p.z) / dir.z;
+        float tExit = min(tx, tz);
+        if (tExit >= tEnd) return true;
+        float y = p.y + dir.y * tExit;
+        int2 nc = c + (tx <= tz ? int2(1, 0) : int2(0, 1));
+        PoolCell n = PoolLoad(nc, storey);
+        uint edge = tx <= tz ? n.west : n.south;
+        if (edge == 1u || (edge == 2u && y > POOL_HEADER) || !n.valid || y >= n.ceiling) return false;
+        c = nc; cell = n;
+    }
+    return false;
+}
+
+// Sunlight thrown up off sunlit water onto a wall or ceiling (the wavy light that moves on pool walls): from the point,
+// back along the reflected sun ray to the water; lit if that water is in the sun and the way is clear. Rippled by the
+// caustic map seen from further off (larger, softer).
+float3 PoolWaterLight(float3 p, float3 n)
+{
+    if (_PoolCausticParams.w <= 0) return 0;
+    const float3 back = float3(POOL_SUN.x, -POOL_SUN.y, POOL_SUN.z);        // from the point down toward the water
+    float facing = saturate(dot(n, back));                                   // faces the light coming up off the water
+    if (facing <= 0) return 0;
+    int storey = PoolStorey(p.y);
+    float waterY = PoolBase(storey) + POOL_WATER;
+    float t = (p.y - waterY) / POOL_SUN.y;
+    if (t <= 0.02 || t > 7.0) return 0;
+    float3 q = p + back * t;
+    PoolCell qc = PoolLoad(PoolCellOf(q), storey);
+    if (!qc.basin || !qc.valid) return 0;
+    float sun = PoolSunVisibility(q + float3(0, 0.01, 0));
+    if (sun <= 0.01) return 0;
+    if (!PoolPathClear(p + n * 0.03, back, t)) return 0;
+    float2 uv = q.xz / _PoolCausticParams.x * 0.45;
+    float c = _PoolCausticParams.y > 0.5 ? SAMPLE_TEXTURE2D_LOD(_PoolCaustic, sampler_PoolCaustic, uv, 1.5 + t * 0.4).r : 1.0;
+    float spread = 1.0 / (1.0 + t * 0.35);                   // the further it goes, the softer and fainter
+    c = lerp(1.0, c, spread);
+    return _PoolSunColor.rgb * sun * facing * 0.024 * 3.0 * c * spread * _PoolCausticParams.w;
+}
+
+// ---- Reflections: a ray traced through the cell map (walls, headers, lower ceilings, columns, floors, the water, the
+// sky through the openings), what it meets lit as everything else is. Used by the glazed tiles and, where the screen
+// has nothing, by the water.
+
+#define POOL_HIT_NONE 0
+#define POOL_HIT_TILE 1
+#define POOL_HIT_SKY 2
+#define POOL_HIT_WATER 3
+#define POOL_HIT_WELL 4
+static const float3 POOL_WALL_ALBEDO = float3(0.78, 0.84, 0.77);
+static const float3 POOL_DECK_ALBEDO = float3(0.86, 0.85, 0.78);
+
+struct PoolHit { int kind; float t; float3 p; float3 n; };
+
+// Where a ray from a column's side meets it (round columns stand on cell corners), or a large t.
+float PoolPillarT(int2 c, int storey, float3 p, float3 R, out float3 nrm)
+{
+    nrm = 0;
+    float best = 1e9;
+    [unroll] for (int k = 0; k < 4; k++)
+    {
+        int2 v = c + int2(k & 1, k >> 1);
+        if (!PoolLoad(v, storey).pillar) continue;
+        float2 d = p.xz - v * POOL_C;
+        float a = dot(R.xz, R.xz), b = dot(d, R.xz), cc = dot(d, d) - POOL_PILLAR_R * POOL_PILLAR_R;
+        float disc = b * b - a * cc;
+        if (disc < 0 || a < 1e-6) continue;
+        float tin = (-b - sqrt(disc)) / a;
+        if (tin > 1e-3 && tin < best) { best = tin; float2 h = d + R.xz * tin; nrm = normalize(float3(h.x, 0, h.y)); }
+    }
+    return best;
+}
+
+PoolHit PoolTrace(float3 pw, float3 R, float maxT)
+{
+    PoolHit h; h.kind = POOL_HIT_NONE; h.t = maxT; h.p = pw + R * maxT; h.n = -R;
+    int storey = PoolStorey(pw.y);
+    float base = PoolBase(storey);
+    float3 p = pw; p.y -= base;
+    int2 c = PoolCellOf(p);
+    PoolCell cell = PoolLoad(c, storey);
+    int2 st = int2(R.x > 0 ? 1 : -1, R.z > 0 ? 1 : -1);
+    float t = 0;
+    [loop] for (int i = 0; i < 26; i++)
+    {
+        if (!cell.valid || t > maxT) return h;
+        float floorY = cell.basin ? POOL_WATER : 0.0;
+        float tCeil = R.y > 1e-4 ? (cell.ceiling - p.y) / R.y : 1e9;
+        float tFloor = R.y < -1e-4 ? (floorY - p.y) / R.y : 1e9;
+        float tx = abs(R.x) > 1e-5 ? ((c.x + (st.x > 0 ? 1 : 0)) * POOL_C - p.x) / R.x : 1e9;
+        float tz = abs(R.z) > 1e-5 ? ((c.y + (st.y > 0 ? 1 : 0)) * POOL_C - p.z) / R.z : 1e9;
+        float tExit = min(tx, tz);
+        float tV = min(tCeil, tFloor);
+        float3 pn;
+        float tP = cell.pillarNear ? PoolPillarT(c, storey, p, R, pn) : 1e9;
+        if (tP < min(tV, tExit) && tP > t - 1e-3)
+        {
+            h.kind = POOL_HIT_TILE; h.t = tP; h.p = pw + R * tP; h.n = pn; return h;
+        }
+        if (tV <= tExit)
+        {
+            float3 q = p + R * tV;
+            h.t = tV; h.p = q + float3(0, base, 0);
+            if (tCeil < tFloor)
+            {
+                h.n = float3(0, -1, 0);
+                float d1 = PoolHoleSD(cell.sky, cell.joined, q.xz - c * POOL_C);
+                if (d1 > 0)
+                {
+                    // Up the light well: the sky if the ray leaves its top inside the opening, else its sunny inside.
+                    float3 q2 = q + R * (POOL_SHAFT / R.y);
+                    int2 c2 = (int2)floor(q2.xz / POOL_C);
+                    PoolCell cell2 = PoolLoad(c2, storey);
+                    float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSD(cell2.sky, cell2.joined, q2.xz - c2 * POOL_C) : -1.0;
+                    h.kind = d2 > 0 ? POOL_HIT_SKY : POOL_HIT_WELL;
+                }
+                else h.kind = POOL_HIT_TILE;
+            }
+            else { h.n = float3(0, 1, 0); h.kind = cell.basin ? POOL_HIT_WATER : POOL_HIT_TILE; }
+            return h;
+        }
+        // Into the next cell, unless a wall, a header, a lower ceiling or a higher floor is in the way.
+        bool alongX = tx <= tz;
+        int2 nc = c + (alongX ? int2(st.x, 0) : int2(0, st.y));
+        PoolCell n = PoolLoad(nc, storey);
+        uint edge = alongX ? (st.x > 0 ? n.west : cell.west) : (st.y > 0 ? n.south : cell.south);
+        float y = p.y + R.y * tExit;
+        float nFloor = n.basin ? POOL_WATER : 0.0;
+        if (edge == 1u || (edge == 2u && y > POOL_HEADER) || !n.valid || y >= n.ceiling || y < nFloor)
+        {
+            // The wall's face is half a wall's thickness short of the cell line.
+            float tw = max(tExit - 0.075 / max(abs(alongX ? R.x : R.z), 0.05), t);
+            h.kind = POOL_HIT_TILE; h.t = tw; h.p = pw + R * tw;
+            h.n = alongX ? float3(-st.x, 0, 0) : float3(0, 0, -st.y);
+            return h;
+        }
+        c = nc; cell = n; t = tExit;
+    }
+    return h;
+}
+
+// The sun on a point as a blurred reflection sees it: the opening's edge softened by blur (m) more.
+float PoolSunVisibilityBlur(float3 pw, float blur)
+{
+    const float3 L = POOL_SUN;
+    int storey = PoolStorey(pw.y);
+    float3 p = pw; p.y -= PoolBase(storey);
+    int2 c = PoolCellOf(p);
+    PoolCell cell = PoolLoad(c, storey);
+    [loop] for (int i = 0; i < 20; i++)
+    {
+        if (!cell.valid) return 0;
+        float tCeil = (cell.ceiling - p.y) / L.y;
+        float tx = ((c.x + 1) * POOL_C - p.x) / L.x;
+        float tz = ((c.y + 1) * POOL_C - p.z) / L.z;
+        float tExit = min(tx, tz);
+        if (tCeil <= tExit)
+        {
+            float3 q = p + L * tCeil;
+            float d1 = PoolHoleSD(cell.sky, cell.joined, q.xz - c * POOL_C);
+            float t2 = tCeil + POOL_SHAFT / L.y;
+            float3 q2 = p + L * t2;
+            int2 c2 = (int2)floor(q2.xz / POOL_C);
+            PoolCell cell2 = PoolLoad(c2, storey);
+            float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSD(cell2.sky, cell2.joined, q2.xz - c2 * POOL_C) : -1.0;
+            return saturate(d1 / (0.006 + 0.009 * tCeil + blur) + 0.5) * saturate(d2 / (0.006 + 0.009 * t2 + blur) + 0.5);
+        }
+        float y = p.y + L.y * tExit;
+        int2 nc = c + (tx <= tz ? int2(1, 0) : int2(0, 1));
+        PoolCell n = PoolLoad(nc, storey);
+        uint edge = tx <= tz ? n.west : n.south;
+        if (edge == 1u || (edge == 2u && y > POOL_HEADER)) return 0;
+        if (!n.valid || y >= n.ceiling) return 0;
+        c = nc; cell = n;
+    }
+    return 0;
+}
+
+// What a reflected ray sees (radiance), blur: how soft the reflection is per metre travelled (glaze roughness).
+float3 PoolShadeHit(PoolHit h, float3 R, float blur)
+{
+    float soft = h.t * blur;
+    if (h.kind == POOL_HIT_SKY) return PoolSkyColor(R);
+    float3 amb = PoolAmbientAt(h.p, h.n);
+    if (h.kind == POOL_HIT_NONE) return POOL_WALL_ALBEDO * amb;
+    if (h.kind == POOL_HIT_WELL) return POOL_WALL_ALBEDO * (amb * 1.5 + _PoolSunColor.rgb * 0.18);
+    if (h.kind == POOL_HIT_WATER)
+    {
+        // The basin floor through the water (its sunny patches green and dimmed), and the ceiling's light on top.
+        float3 fl = h.p - float3(0, POOL_WATER_DEPTH, 0);
+        float sunF = PoolSunVisibilityBlur(fl + float3(0, 0.02, 0), soft);
+        float3 tr = exp(-float3(2.6, 0.9, 1.3) * 0.7);
+        float3 floorLit = POOL_WALL_ALBEDO * (_PoolSunColor.rgb * sunF * POOL_SUN.y + amb) * tr;
+        return floorLit + float3(0.03, 0.16, 0.12) * amb + 0.06 * amb;
+    }
+    float3 alb = h.n.y > 0.7 ? POOL_DECK_ALBEDO : POOL_WALL_ALBEDO;
+    float sun = PoolSunVisibilityBlur(h.p + h.n * 0.02, soft) * saturate(dot(h.n, POOL_SUN));
+    return alb * (_PoolSunColor.rgb * sun + amb);
+}
+
 #endif

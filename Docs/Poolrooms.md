@@ -59,12 +59,39 @@ layer Default only (no fixture lights here).
   hard dark bands along every floor-wall join and in corners, far heavier than in Level 0, which is lit mostly by
   direct light.
 
-## Water
+## Tiles, reflections, water and caustics (2026-10-31)
 
-- `Backrooms/PoolWater`: transparent queue, reads the opaque and depth copies (main camera only; `_PoolScreenTextures`):
-  refraction, colour by the thickness of water looked through, screen-space reflection with the ceiling or the sky
-  straight above as the fallback, the sun's glint.
-- Tiles below the waterline are darker, with caustics where the sun is.
+The owner's reference pictures (sunlit tiled pool halls in pale sage and cream, deep emerald water, glossy tiles): "the
+tiles more reflective and 3D looking, the water better, better caustics and reflections".
+- **Tiles** (`Backrooms/PoolTile`): pale sage walls, ceilings and basins (`_TileColor`), cream dry decks with tiles twice
+  the size (`_DeckColor`), light thin joints. Each tile is shaded as a slightly domed face with its edges rolled into a
+  recessed joint (`_Bevel`, `_Dome`; the joint gets less light, `_JointShade`) and set a little off true (`_Tilt`), so the
+  glaze catches light and breaks reflections up tile by tile; the per-tile shape fades out where tiles get smaller than
+  a few pixels.
+- **Reflections** (`PoolTrace` / `PoolShadeHit` in PoolCommon.hlsl): Unity's own screen-space reflections for URP are
+  only due in 6.7, and the screen cannot show what is behind you; so the glaze reflects a ray traced through the same
+  cell map the sun uses (walls, door headers, lower ceilings, round columns, decks, the water, the sky through an
+  opening or the inside of its light well), what it meets lit by the traced sun (its edges softened with distance:
+  `_ReflBlur`) and the bounce. Fresnel: little face on, a mirror at grazing angles. Up to 34 m; skipped under water and
+  beyond 48 m. Curved walls, arches and props are not in the map, so not in these reflections.
+- **Water** (`Backrooms/PoolWater`): transparent queue, reads the opaque and depth copies (main camera only;
+  `_PoolScreenTextures`): refraction, colour by the thickness of water looked through (deeper emerald since 2026-10-31:
+  `_Absorb` 2.6 / 0.95 / 1.35 per metre), screen-space reflection with the traced reflection as the fallback (it was the
+  ceiling straight above), the sun's glint, a fine shimmer from the same small waves as the caustics (`_Shimmer`).
+- **Caustics** (`PoolCausticMap`, `Hidden/Backrooms/PoolCausticSplat`): Evan Wallace's method. Each frame in the
+  Poolrooms a 512 x 512 grid over one 2.4 m tile of the water's small waves (`PoolWaveSlope`: 12 waves, 11-38 cm, whole
+  numbers across the tile so it repeats seamlessly, each curving the surface about the same so the sun comes to a focus
+  a little below the basin floor) is drawn into a 1024 x 1024 map with each vertex moved to where its refracted sun ray
+  meets a floor 0.33 m down; each fragment adds the ratio of the grid's area before and after (spread out: dim; gathered:
+  bright lines). Flat water gives 1 everywhere; mipmapped, so it averages to 1 far off. Tiles under the water read it at
+  the point on the surface their sunlight came through (`PoolCausticLight`), split slightly by colour, wobbled by the
+  player's ripples, at full contrast at the basin's depth and none at the surface. Speed `speed` (0.22: calm).
+- **Light off the water** (`PoolWaterLight`): walls and ceilings facing the reflected sun get the wavy light that sunlit
+  water throws up: back along the reflected sun ray to the water (in a basin, in the sun, the way clear of walls),
+  about 7 % of the sun, rippled by the caustic map seen larger and softer the further it travels.
+- Cost: 1920 x 1080 in the editor, a Poolrooms hall: GPU ~6.5 ms with all of it, within noise of it all off.
+- Checking: `DebugTools.PoolShots.Run(folder)` finds sunlit water near the player (`PoolWorld.SunAt`, the shaders' own
+  map) and saves views of it; `PoolTour` saves views of a district's big rooms.
 - **Ripples**: `PoolRipples` runs a 256 x 256 wave simulation (8 cm texels, 20 m square following the player, 60 Hz;
   Resources/PoolRipples.compute) while the player is in the Poolrooms. Legs push the water as they move, stepping in
   splashes; walls reflect waves, decks absorb them. Footsteps in water are splashes (`ProceduralSounds.WaterStep`).

@@ -61,6 +61,7 @@ namespace Backrooms.Generation
             Shader.SetGlobalVector("_PoolRippleRect", Vector4.zero);
             Shader.SetGlobalFloat("_PoolScreenTextures", 0f);
             if (!GetComponent<PoolRipples>()) gameObject.AddComponent<PoolRipples>();
+            if (!GetComponent<PoolCausticMap>()) gameObject.AddComponent<PoolCausticMap>();
             ApplyLight();
             RenderPipelineManager.beginCameraRendering += BeginCamera;
             RenderPipelineManager.endCameraRendering += EndCamera;
@@ -129,6 +130,33 @@ namespace Backrooms.Generation
             if (!streamer) return null;
             var c = WorldStreamer.ChunkOf(p);
             return streamer.LayoutAt(new Vector3Int(c.x, StoreyOf(p.y), c.y)) ?? streamer.LayoutAt(c);
+        }
+
+        /// <summary>A cell of the shaders' map, decoded (as PoolCommon.hlsl's PoolLoad).</summary>
+        public PoolCellInfo MapCell(int x, int z, int storey)
+        {
+            var v = _px[(Mod(z, MapCells) + Mathf.Clamp(storey, 0, MapStoreys - 1) * MapCells) * MapCells + Mod(x, MapCells)];
+            return new PoolCellInfo
+            {
+                valid = (v.r & 64) != 0, west = (byte)(v.r & 3), south = (byte)((v.r >> 2) & 3), basin = (v.r & 16) != 0,
+                pillar = (v.r & 32) != 0, pillarNear = (v.r & 128) != 0, ceiling = v.g * 0.1f,
+                sky = (SkylightShape)(v.b & 7), joined = (v.b >> 3) & 15,
+            };
+        }
+
+        sealed class MapCells_ : IPoolCells
+        {
+            public PoolWorld w; public int storey;
+            public PoolCellInfo Get(int x, int z) => w.MapCell(x, z, storey);
+        }
+        readonly MapCells_ _cells = new MapCells_();
+
+        /// <summary>Sunlight at a world point (0 shade .. 1 sun), from the loaded map (as the shaders see it).</summary>
+        public float SunAt(Vector3 p)
+        {
+            int s = StoreyOf(p.y);
+            _cells.w = this; _cells.storey = s;
+            return PoolSun.Visibility(_cells, new Vector3(p.x, p.y - s * Pitch, p.z));
         }
 
         /// <summary>Is this point in a loaded Poolrooms chunk?</summary>

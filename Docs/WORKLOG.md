@@ -15,6 +15,24 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - The Poolrooms: 3D glossy tiles with traced reflections, emerald water, real caustics and light off the water
+
+- The owner (three reference pictures: sunlit tiled pool halls, pale sage and cream, deep green water): "the tiles more
+  reflective and 3D looking, the water better, better caustics and reflections".
+- Research: URP's own screen-space reflections are only due in Unity 6.7 (a preview in 6.6 alpha), and screen-space
+  methods cannot show what is off screen; Evan Wallace's WebGL water and Yuksel & Keyser's height-field caustics (light
+  through a wave height field, the area ratio of the refracted grid).
+- `PoolTile`: sage walls, cream decks with double-size tiles, light thin joints; each tile a slightly domed face with
+  rolled edges into a recessed joint, set a little off true; the glaze reflects a ray traced through the Poolrooms' cell
+  map (`PoolTrace`/`PoolShadeHit`: walls, columns, decks, water, the sky in the openings), blurred with distance.
+- `PoolWater`: deeper emerald, the traced reflection as the fallback for screen-space reflection, a fine shimmer.
+- `PoolCausticMap` + `PoolCausticSplat` (new): the caustic map drawn each frame from the water's small waves (Wallace's
+  area-ratio splat), read by the tiles under water with a slight colour split and the player's ripples; light thrown up
+  off sunlit water onto walls and ceilings (`PoolWaterLight`).
+- `PoolWorld.MapCell` / `SunAt`, `DebugTools.PoolShots` (new): sunlit water near the player, framed and saved.
+- Checked in World 3 (pictures: the caustic network in a sun patch, wavy light off the water on a wall, a glossy corridor
+  mirroring a roof opening, the hall). GPU ~6.5 ms at 1080p either way. EditMode tests pass. Not played by the owner.
+
 ## 2026-10-31 - The Enemies menu (K): test the shadow, and enemies to come, without waiting
 
 - The owner: "a way to test him or future enemies instead of waiting around to see him".
