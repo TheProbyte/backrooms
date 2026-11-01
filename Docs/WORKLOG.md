@@ -15,6 +15,15 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-01 01:00  Claude Code  Poolrooms: clerestory windows, no square corners in free pools, round steps, real pool rails and ladders, the body's own shadow map, lit crests and a contact line on the water
+- Windows (PoolBiome, PoolPlan.Windows, OfficeChunkBuilder.Pool.WindowFaces, PoolCommon.hlsl): only in a tall room above a lower neighbour's roof, shown from the tall side; a plain wall from the low side. The owner: windows on both sides of one wall into the sun "ain't possible".
+- Free pools' 90 degree angles: BasinEdge skipped in free pool rooms (it built square lips along the cell lines inside them); PoolTile treats any surface below the deck as in a pool (cells with a dry middle were drawn dry in squares); no lane lines in free pools; FreePoolSteps rebuilt as round steps cut by the pool's outline, with a middle handrail.
+- Rails (OfficeChunkBuilder.PoolFeatures): 15 cm bends, 14 sides, escutcheons where they go into a floor; Ladder: goose neck, bumpers, flat treads (PoolMaterials.Rubber / Tread); chrome F0 0.6; specular anti-aliasing in PoolLit.
+- Shadow: PlayerShadow draws the body's renderers into its own sun-aligned map each frame (PlayerShadowMap.shader, beginContextRendering), PoolCommon.PoolBodySun tests it (PCSS-style); capsules only for the stand-in. FirstPersonBody.ShadowRenderers.
+- Water (PoolWater): lit crests and a contact line, after Sea of Thieves (SIGGRAPH 2018); PoolCommon.PoolRippleHeight.
+- Checked in World 3: round steps and rail, a goose-neck ladder, a clerestory window, the body's shadow on a sunlit deck (one connected silhouette), a free pool from above with the water hidden (no square lines), crest glow after splashes; EditMode tests.
+- Open: the world version was not bumped (windows, lanes and steps change in existing worlds, harmlessly); the contact line is subtle and was only glanced at.
+
 ## 2026-10-31 22:00  Claude Code  Poolrooms feedback: no more echo, a new tile step, ladders facing the water and smooth rails, no waterfalls, foam and ripple light remade, the real body's shadow, STP in builds
 - Reverb (BuildingAudio): pool tail 1.4-2.6 s (was 2.4-5.5), 4.5 dB under the dry sound (was 2 dB over), darker (HF 0.55). Shower drip loops and the waterfalls' loops removed.
 - Tile step (ProceduralSounds.TileStep): exciter/resonator footstep driven by a heel-then-ball force curve: a soft sole into heavy tile on concrete, a small wet slap.

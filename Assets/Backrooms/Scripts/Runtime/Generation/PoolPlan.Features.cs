@@ -279,7 +279,8 @@ namespace Backrooms.Generation
                 var p = new Vector2((x + 0.5f) * C, (z + 0.5f) * C);
                 var k = L.pool[x, z];
                 k.basin = PoolBiome.ShapeSD(f, p) < 0f;
-                if (k.basin) { k.depth = PoolBiome.SlopedDepth(f, p); if (shape == 0 && size.x >= 4f) k.lanes = (byte)(yaw == 0f ? 1 : 2); }
+                // (No lane lines: a leisure pool's curves cut them off in squares, cell by cell. 2026-11-01.)
+                if (k.basin) k.depth = PoolBiome.SlopedDepth(f, p);
                 L.pool[x, z] = k;
             }
             // Two chrome ladders on the long sides near the deep end (one on a round pool).

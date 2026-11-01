@@ -26,14 +26,22 @@ namespace Backrooms.Generation
         /// <summary>Stairs out of a basin: three risers within the cell next to the doorway.</summary>
         public const int Steps = 3;
         public const float StepRun = 0.3f;
-        /// <summary>High windows in walls (sky beyond): sill height, gap under the lower of the two ceilings, inset from each end
-        /// of the cell (so 0.6 m wide), and the lowest ceiling that has room for one. Must match PoolCommon.hlsl.</summary>
-        public const float WindowSill = 1.95f, WindowHead = 0.45f, WindowInset = 0.3f, WindowMinCeiling = 3.6f;
-        public static float WindowTop(float ceilA, float ceilB) => Mathf.Min(ceilA, ceilB) - WindowHead;
+        /// <summary>
+        /// High windows are clerestories (2026-11-01; the owner: a window in a single wall, with another window on its other
+        /// side, both out into the sun, "ain't possible"): only in a tall room's wall above the roof of a lower room next
+        /// door, as basilicas and natatoriums light their halls. The window runs from the lower room's roof (its ceiling
+        /// plus WindowRoof) to WindowHead under the taller ceiling, inset from each end of the cell (so 0.6 m wide), and is
+        /// built only if that leaves WindowMinHeight. From the lower room it is above the ceiling: a plain wall. Must match
+        /// PoolCommon.hlsl.
+        /// </summary>
+        public const float WindowRoof = 0.35f, WindowHead = 0.45f, WindowInset = 0.3f, WindowMinHeight = 0.75f;
+        public static float WindowSill(float ceilA, float ceilB) => Mathf.Min(ceilA, ceilB) + WindowRoof;
+        public static float WindowTop(float ceilA, float ceilB) => Mathf.Max(ceilA, ceilB) - WindowHead;
+        public static bool WindowFits(float ceilA, float ceilB) => WindowTop(ceilA, ceilB) - WindowSill(ceilA, ceilB) >= WindowMinHeight - 0.001f;
         /// <summary>Signed distance (m) from a point on a window's edge line (along: 0..1.2 in the cell, y above the deck) to
         /// the window's border; > 0 inside.</summary>
         public static float WindowSD(float along, float y, float ceilA, float ceilB) =>
-            Mathf.Min(Mathf.Min(along - WindowInset, C - WindowInset - along), Mathf.Min(y - WindowSill, WindowTop(ceilA, ceilB) - y));
+            Mathf.Min(Mathf.Min(along - WindowInset, C - WindowInset - along), Mathf.Min(y - WindowSill(ceilA, ceilB), WindowTop(ceilA, ceilB) - y));
 
         /// <summary>Tiles are 15 cm: eight to a cell, and every ceiling height (0.3 m steps) is a whole number of rows.</summary>
         public const float TileSize = 0.15f;

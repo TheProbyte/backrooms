@@ -557,7 +557,9 @@ namespace Backrooms.Generation
                 uint cm = CellMask(cx, cz);
                 // A door or window of its own size (build mode): the wall round it.
                 if (e != EdgeKind.Open && CutAt(vertical, line, along)) { CutoutFaces(room, cm, vertical, line, along, l, f, a0, a1, n, myCeil); continue; }
-                if (Pool && _L.Basin(cx, cz)) BasinEdge(e, vertical, line, along, s, n, f);
+                // (Not in a free pool's room: its curved wall is built from its shape. 2026-11-01: this drew a square lip of
+                // wall along the cell lines inside every free pool, the owner's "weird 90 degree angles".)
+                if (Pool && _L.Basin(cx, cz) && !_L.FreePoolRoom(cx, cz)) BasinEdge(e, vertical, line, along, s, n, f);
                 if (e == EdgeKind.Wall)
                 {
                     if (HoleAt(vertical, line, along, out int entry)) { HoleFaces(room, cm, vertical, along, l, f, a0, a1, n, myCeil, s == entry); continue; }
@@ -573,7 +575,7 @@ namespace Backrooms.Generation
                     if (Pool && !room.noFloor && room.ramp == 0 && PoolWindowAt(vertical, line, along))
                     {
                         var wv = ViewOpening(_L, Neighbour, vertical, line, along, s);
-                        if (WindowFaces(room, cm, vertical, l, f, a0, a1, along, n, myCeil, wv.otherKnown ? wv.otherCeil : myCeil, s == 1)) continue;
+                        if (WindowFaces(room, cm, vertical, l, f, a0, a1, along, n, myCeil, wv.otherKnown ? wv.otherCeil : myCeil)) continue;
                     }
                     // From this room's floor (a sunken room's is lower; a ramp's slopes along it) to its ceiling.
                     float fa = room.floor, fb = room.floor;

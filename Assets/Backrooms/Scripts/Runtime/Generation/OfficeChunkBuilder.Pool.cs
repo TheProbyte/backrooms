@@ -49,14 +49,14 @@ namespace Backrooms.Generation
         }
 
         /// <summary>
-        /// One side of a wall with a high window (PoolPlan.Windows): the wall below, above and either side of it, this side's
-        /// half of its reveal (sill, head, jambs) and, from the +X / +Z side only (it shows both ways), the sky in it. False
-        /// if the ceilings leave no room for it (then it is a plain wall).
+        /// One side of a wall with a high window (PoolPlan.Windows, a clerestory): from the taller room, the wall below,
+        /// above and either side of it, its reveal (sill, head, jambs) and the sky in it. False from the lower room (the
+        /// window is above its ceiling) or if the ceilings leave no room for it: then it is a plain wall.
         /// </summary>
-        bool WindowFaces(Room room, uint cm, bool vertical, float l, float f, float a0, float a1, int along, Vector3 n, float myCeil, float otherCeil, bool drawSky)
+        bool WindowFaces(Room room, uint cm, bool vertical, float l, float f, float a0, float a1, int along, Vector3 n, float myCeil, float otherCeil)
         {
-            float sill = PoolBiome.WindowSill, top = PoolBiome.WindowTop(myCeil, otherCeil);
-            if (top - sill < 0.6f) return false;
+            float sill = PoolBiome.WindowSill(myCeil, otherCeil), top = PoolBiome.WindowTop(myCeil, otherCeil);
+            if (myCeil <= otherCeil + 0.001f || !PoolBiome.WindowFits(myCeil, otherCeil)) return false;
             float w0 = along * C + PoolBiome.WindowInset, w1 = (along + 1) * C - PoolBiome.WindowInset;
             Vector3 A(float pos, float at, float y) => (vertical ? new Vector3(pos, 0, at) : new Vector3(at, 0, pos)) + Vector3.up * y;
             WallFace(room, cm, A(f, a0, 0), A(f, a1, 0), room.floor, sill, n);
@@ -69,7 +69,7 @@ namespace Backrooms.Generation
             w.Quad(A(l, w0, top), A(f, w0, top), A(f, w1, top), A(l, w1, top), Vector3.down, MeshWriter.MetreUV);
             w.Quad(A(l, w0, sill), A(f, w0, sill), A(f, w0, top), A(l, w0, top), alongDir, MeshWriter.MetreUV);
             w.Quad(A(l, w1, sill), A(f, w1, sill), A(f, w1, top), A(l, w1, top), -alongDir, MeshWriter.MetreUV);
-            if (drawSky) WMask(SkyMat, 1u).Quad(A(l, w0, sill), A(l, w1, sill), A(l, w1, top), A(l, w0, top), n, MeshWriter.MetreUV);
+            WMask(SkyMat, 1u).Quad(A(l, w0, sill), A(l, w1, sill), A(l, w1, top), A(l, w0, top), n, MeshWriter.MetreUV);
             return true;
         }
 

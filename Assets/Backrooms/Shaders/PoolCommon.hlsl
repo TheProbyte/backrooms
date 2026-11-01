@@ -31,8 +31,9 @@ float4 _PortalClipPlane;             // zero outside a portal-camera render
 #define POOL_ROUND_R 0.5
 #define POOL_WATER (-0.12)
 #define POOL_BASIN 0.45
-// High windows in walls (edge code 3; PoolBiome.Window*): sill, gap under the lower ceiling, inset from the cell's ends.
-#define POOL_WIN_SILL 1.95
+// High windows in walls (edge code 3; PoolBiome.Window*): clerestories, from the lower room's roof (its ceiling + ROOF) to
+// HEAD under the taller ceiling, inset from the cell's ends.
+#define POOL_WIN_ROOF 0.35
 #define POOL_WIN_HEAD 0.45
 #define POOL_WIN_IN 0.3
 float4 _PoolFar;                     // x, y: distance (m) the far fade starts and ends (0: none), so nothing ends in black
@@ -86,10 +87,10 @@ int2 PoolCellOf(float3 p) { return (int2)floor(p.xz / POOL_C); }
 bool PoolSolidEdge(uint e) { return e == 1u || e == 3u; }
 
 // Signed distance (m) from a point on a window's edge line (along: 0..1.2 within the cell; y above the deck) to the
-// window's border, > 0 inside; the window's top is under the lower of the two ceilings.
+// window's border, > 0 inside: above the lower room's roof, under the taller ceiling.
 float PoolWindowSD(float along, float y, float ceilA, float ceilB)
 {
-    return min(min(along - POOL_WIN_IN, POOL_C - POOL_WIN_IN - along), min(y - POOL_WIN_SILL, min(ceilA, ceilB) - POOL_WIN_HEAD - y));
+    return min(min(along - POOL_WIN_IN, POOL_C - POOL_WIN_IN - along), min(y - min(ceilA, ceilB) - POOL_WIN_ROOF, max(ceilA, ceilB) - POOL_WIN_HEAD - y));
 }
 
 // Far off, everything fades into the fog's colour before the loaded world ends (it showed black there).
@@ -146,12 +147,47 @@ bool PoolPillarHit(int2 c, int storey, float3 p, float t0, float t1)
 float4 _PoolCapsA[12], _PoolCapsB[12];  // a.xyz, radius; b.xyz (1: the torso, the player's middle)
 float _PoolCapsN;
 
+// The body's own shadow map (2026-11-01; PlayerShadow.cs, PlayerShadowMap.shader; the owner found the capsules'
+// shadow "disjointed and not connected"): the body as the sun sees it, its exact outline, as Unreal's per-object shadows.
+// Soft as PCSS: the blockers' average distance sets the filter's width (the sun's disc: about 1 cm + 2.2 cm a metre).
+TEXTURE2D(_PoolBodyMap); SAMPLER(sampler_PoolBodyMap);
+float4x4 _PoolBodyMtx;               // world -> (u, v, distance toward the sun)
+float4 _PoolBodyParams;              // x on (0/1), y the map's width (m)
+
+float PoolBodySun(float3 p)
+{
+    if (_PoolBodyParams.x < 0.5) return 1;
+    float3 m = mul(_PoolBodyMtx, float4(p, 1)).xyz;
+    if (any(m.xy < 0.002) || any(m.xy > 0.998)) return 1;
+    const float bias = 0.03, GA = 2.39996323;
+    float perM = 1.0 / _PoolBodyParams.y;
+    // Blockers: eight taps over 5 cm.
+    float blk = 0, nb = 0;
+    [unroll] for (int i = 0; i < 8; i++)
+    {
+        float r = sqrt((i + 0.5) / 8.0) * 0.05 * perM, a = i * GA;
+        float o = SAMPLE_TEXTURE2D_LOD(_PoolBodyMap, sampler_PoolBodyMap, m.xy + r * float2(cos(a), sin(a)), 0).r;
+        if (o > m.z + bias) { blk += o - m.z; nb += 1; }
+    }
+    if (nb < 0.5) return 1;
+    float pen = (0.008 + 0.022 * blk / nb) * perM;
+    float lit = 0;
+    [unroll] for (int j = 0; j < 16; j++)
+    {
+        float r = sqrt((j + 0.5) / 16.0) * pen, a = j * GA + 0.7;
+        float o = SAMPLE_TEXTURE2D_LOD(_PoolBodyMap, sampler_PoolBodyMap, m.xy + r * float2(cos(a), sin(a)), 0).r;
+        lit += o > m.z + bias ? 0 : 1;
+    }
+    return lit / 16.0;
+}
+
 float PoolCapsuleSun(float3 p)
 {
-    if (_PoolCapsN < 0.5) return 1;
+    float body = PoolBodySun(p);
+    if (_PoolCapsN < 0.5) return body;
     // Far from the player: nothing to test (the shadow falls within a few metres).
     float3 near = _PoolCapsA[1].xyz - p;
-    if (dot(near, near) > 25.0) return 1;
+    if (dot(near, near) > 25.0) return body;
     const float3 L = POOL_SUN;
     float vis = 1;
     [loop] for (int i = 0; i < (int)_PoolCapsN; i++)
@@ -169,7 +205,7 @@ float PoolCapsuleSun(float3 p)
         float pen = 0.01 + t * 0.022;
         vis *= lerp(1.0, smoothstep(r - pen, r + pen, dist), saturate(t * 8.0));
     }
-    return vis;
+    return vis * body;
 }
 
 float PoolSunVisibilityMap(float3 pw);
@@ -361,6 +397,16 @@ float2 PoolRippleSlope(float2 xz)
     float hz = SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv + float2(0, e), 0).r - SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv - float2(0, e), 0).r;
     float edge = saturate(min(min(uv.x, uv.y), min(1 - uv.x, 1 - uv.y)) * 12.0 - 0.25);
     return float2(hx, hz) / (2.0 * e * _PoolRippleRect.z) * _PoolRippleRect.w * edge;
+}
+
+// Height of the rippled water above its rest (m, as the slopes are scaled), for the crests' glow.
+float PoolRippleHeight(float2 xz)
+{
+    if (_PoolRippleRect.w <= 0) return 0;
+    float2 uv = (xz - _PoolRippleRect.xy) / _PoolRippleRect.z;
+    if (any(uv < 0.02) || any(uv > 0.98)) return 0;
+    float edge = saturate(min(min(uv.x, uv.y), min(1 - uv.x, 1 - uv.y)) * 12.0 - 0.25);
+    return SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv, 0).r * _PoolRippleRect.w * edge;
 }
 
 // ---------------- Small waves, caustics, reflections (2026-10-31) ----------------

@@ -19,6 +19,9 @@ namespace Backrooms.Generation
         public static Material Chrome { get; private set; }
         public static Material PlasticWhite { get; private set; }
         public static Material PlasticBlue { get; private set; }
+        /// <summary>A ladder's bumpers (black rubber) and treads (pale grey non-slip plastic).</summary>
+        public static Material Rubber { get; private set; }
+        public static Material Tread { get; private set; }
 
         public static void Ensure()
         {
@@ -33,7 +36,11 @@ namespace Backrooms.Generation
             Zones[1] = Zone("cream", new Color(0.88f, 0.86f, 0.78f), new Color(0.9f, 0.88f, 0.8f));
             Zones[2] = Zone("mint", new Color(0.66f, 0.82f, 0.72f), new Color(0.84f, 0.86f, 0.78f));
             Zones[3] = Zone("aqua", new Color(0.72f, 0.85f, 0.85f), new Color(0.86f, 0.88f, 0.84f));
-            Chrome = Lit("Pool chrome", new Color(0.86f, 0.87f, 0.86f), 0.9f, 1f);
+            // Polished stainless / chrome reflects about 55-60 % head on (its F0), slightly cool; at 0.86 it read as white
+            // plastic (2026-11-01, the owner: the rails "could use work visually").
+            Chrome = Lit("Pool chrome", new Color(0.6f, 0.615f, 0.63f), 0.93f, 1f);
+            Rubber = Lit("Pool rubber", new Color(0.05f, 0.05f, 0.055f), 0.35f, 0f);
+            Tread = Lit("Pool ladder tread", new Color(0.78f, 0.8f, 0.8f), 0.4f, 0f);
             PlasticWhite = Lit("Pool plastic (white)", new Color(0.9f, 0.9f, 0.86f), 0.62f, 0f);
             PlasticBlue = Lit("Pool plastic (blue)", new Color(0.22f, 0.5f, 0.78f), 0.7f, 0f);
         }

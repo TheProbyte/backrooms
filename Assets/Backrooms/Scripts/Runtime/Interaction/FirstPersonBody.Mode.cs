@@ -32,6 +32,9 @@ namespace Backrooms.Interaction
         /// <summary>The body is drawn into the shadows only now (None, Player shadow on, the body up: crawling hides it).</summary>
         public bool CastsShadowOnly => _modeShown == 3 && _isMpfb && _body && _body.gameObject.activeInHierarchy;
 
+        /// <summary>Everything of the body that casts its shadow now (with CastsShadowOnly: the body, its arms, the camcorder).</summary>
+        public List<Renderer> ShadowRenderers => _modeAll;
+
         static bool ShadowWanted()
         {
             var gc = Backrooms.Camcorder.GraphicsController.Instance;

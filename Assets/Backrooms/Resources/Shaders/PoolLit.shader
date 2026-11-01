@@ -70,6 +70,10 @@ Shader "Backrooms/PoolLit"
                 half3 diffuse = albedo * (1.0 - _Metallic);
                 half3 f0 = lerp(half3(0.04, 0.04, 0.04), albedo, _Metallic);
                 float rough = max(1.0 - _Smoothness, 0.05), a2 = rough * rough * rough * rough;
+                // Specular anti-aliasing (Kaplanyan & Hill; Tokuyoshi): where the normal turns fast across a pixel (thin
+                // chrome tubes far off), widen the highlight so it does not sparkle and break up.
+                float3 dNx = ddx(N), dNy = ddy(N);
+                a2 = saturate(a2 + min(2.0 * 0.25 * (dot(dNx, dNx) + dot(dNy, dNy)), 0.18));
                 float3 H = normalize(V + POOL_SUN);
                 float NdotH = saturate(dot(N, H)), dd = NdotH * NdotH * (a2 - 1.0) + 1.0;
                 float3 F = f0 + (1.0 - f0) * pow(1.0 - saturate(dot(V, H)), 5.0);

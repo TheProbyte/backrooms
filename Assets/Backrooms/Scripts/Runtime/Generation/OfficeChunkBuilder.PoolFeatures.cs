@@ -193,28 +193,95 @@ namespace Backrooms.Generation
             }
         }
 
-        /// <summary>A free pool's way in: three steps at its shallow end, with a chrome handrail. Built by the chunk its centre is in.</summary>
+        /// <summary>
+        /// A free pool's way in at its shallow end: round "wedding cake" steps, each a disc round a point on the edge cut by
+        /// the pool's outline, so they follow its curve (2026-11-01; the owner saw "weird 90 degree angles" in these pools:
+        /// the steps had been straight boxes poking into the curved wall), with a chrome handrail down their middle.
+        /// Built by the chunk the pool's centre is in.
+        /// </summary>
         void FreePoolSteps(PoolFeature f)
         {
             var q = Yaw(f.yaw);
             float edgeX = f.shape == 1 ? -f.radius : -f.size.x;
-            var edge = V3(f.centre) + q * new Vector3(edgeX, 0f, 0f);
-            float depth = -BasinFloorY(edge.x + Dir(f.yaw).x * 0.6f, edge.z + Dir(f.yaw).z * 0.6f);
-            float rise = depth / PoolBiome.Steps;
+            var e3 = V3(f.centre) + q * new Vector3(edgeX, 0f, 0f);
+            var E = new Vector2(e3.x, e3.z);
+            for (int i = 0; i < 8; i++) E -= ShapeGradient(f, E) * PoolBiome.ShapeSD(f, E);
+            var in2 = -ShapeGradient(f, E);
+            var inward = new Vector3(in2.x, 0f, in2.y);
+            var edge = new Vector3(E.x, 0f, E.y);
+            float depth = -BasinFloorY(edge.x + inward.x * 0.6f, edge.z + inward.z * 0.6f);
+            int S = PoolBiome.Steps;
+            float rise = depth / S;
+            float Reach(int k) => 0.3f + (S - k) * 0.42f;               // the top step the smallest
+            float SD(Vector3 p) => PoolBiome.ShapeSD(f, new Vector2(p.x, p.z));
             var w = WMask(ZoneAt(Mathf.FloorToInt(f.centre.x / C), Mathf.FloorToInt(f.centre.y / C)), 1u);
-            for (int k = 1; k < PoolBiome.Steps; k++)
+            const int NA = 48;
+            Vector3 Ray(float ang) => new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang));
+            for (int k = 1; k < S; k++)
             {
-                float run = (PoolBiome.Steps - k) * PoolBiome.StepRun, top = -depth + rise * k;
-                var c = edge + q * new Vector3(run * 0.5f + 0.02f, 0f, 0f) + Vector3.up * ((-depth + top) * 0.5f);
-                var size = new Vector3(run, top + depth, 1.0f);
-                w.Box(c, size, q, 0b111111, MeshWriter.MetreUV);
-                _rotBoxes.Add((c, size, -f.yaw));
+                float top = -depth + rise * k, rOut = Reach(k), rIn = k == S - 1 ? 0f : Reach(k + 1);
+                for (int s = 0; s < NA; s++)
+                {
+                    float a0 = s * Mathf.PI * 2f / NA, a1 = (s + 1) * Mathf.PI * 2f / NA;
+                    Vector3 d0 = Ray(a0), d1 = Ray(a1);
+                    // The tread: this sector of the ring, inside the pool.
+                    s_poly.Clear(); s_val.Clear();
+                    if (rIn <= 0f) { s_poly.Add(edge); s_val.Add(-1e-4f); }
+                    else { s_poly.Add(edge + d0 * rIn); s_val.Add(SD(edge + d0 * rIn)); }
+                    s_poly.Add(edge + d0 * rOut); s_val.Add(SD(edge + d0 * rOut));
+                    s_poly.Add(edge + d1 * rOut); s_val.Add(SD(edge + d1 * rOut));
+                    if (rIn > 0f) { s_poly.Add(edge + d1 * rIn); s_val.Add(SD(edge + d1 * rIn)); }
+                    Clip(s_poly, s_val, true, s_in, null);
+                    if (s_in.Count >= 3)
+                    {
+                        s_tmp.Clear();
+                        foreach (var p in s_in) s_tmp.Add(new Vector3(p.x, top, p.z));
+                        w.Polygon(s_tmp, Vector3.up, MeshWriter.MetreUV);
+                    }
+                    // The riser round its rim, where it is inside the pool.
+                    Vector3 A = edge + d0 * rOut, B = edge + d1 * rOut;
+                    float sa = SD(A), sb = SD(B);
+                    if (sa >= 0f && sb >= 0f) continue;
+                    float ta = 0f, tb = 1f;
+                    if (sa >= 0f) ta = sa / (sa - sb);
+                    if (sb >= 0f) tb = sa / (sa - sb);
+                    Vector3 pa = Vector3.Lerp(A, B, ta), pb = Vector3.Lerp(A, B, tb);
+                    Vector3 na = (pa - edge).normalized, nb = (pb - edge).normalized;
+                    float ya = k == 1 ? BasinFloorY(pa.x, pa.z) - 0.02f : top - rise, yb = k == 1 ? BasinFloorY(pb.x, pb.z) - 0.02f : top - rise;
+                    float ua = rOut * Mathf.Lerp(a0, a1, ta), ub = rOut * Mathf.Lerp(a0, a1, tb);
+                    w.SmoothQuad(new Vector3(pa.x, ya, pa.z), new Vector3(pb.x, yb, pb.z), new Vector3(pb.x, top, pb.z), new Vector3(pa.x, top, pa.z),
+                        na, nb, nb, na, new Vector2(ua, ya), new Vector2(ub, yb), new Vector2(ub, top), new Vector2(ua, top));
+                }
+                // Colliders: a ring of boxes, each from the floor up to the tread, where it is inside the pool.
+                const int NC = 16;
+                for (int s = 0; s < NC; s++)
+                {
+                    float am = (s + 0.5f) * Mathf.PI * 2f / NC;
+                    var d = Ray(am);
+                    float rm = (rIn + rOut) * 0.5f;
+                    var c = edge + d * rm;
+                    if (SD(c) > -0.05f) continue;
+                    float fy = BasinFloorY(c.x, c.z) - 0.05f;
+                    var size = new Vector3(2f * rOut * Mathf.Sin(Mathf.PI / NC) + 0.04f, top - fy, rOut - rIn);
+                    _rotBoxes.Add((new Vector3(c.x, (top + fy) * 0.5f, c.z), size, Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg));
+                }
             }
-            // A handrail down the steps' side.
-            var side = q * new Vector3(0f, 0f, 0.55f);
-            var top0 = edge - q * new Vector3(0.35f, 0f, 0f) + side;
-            var bottom = edge + q * new Vector3(PoolBiome.Steps * PoolBiome.StepRun + 0.1f, 0f, 0f) + side;
-            Rail(new List<Vector3> { top0, top0 + Vector3.up * 0.9f, edge + side + Vector3.up * 0.9f, bottom + Vector3.up * (0.9f - depth), bottom + Vector3.down * depth }, 0.022f);
+            // A handrail down the middle: up from the deck, over the edge, down along the steps and into the floor.
+            var anchor = edge - inward * 0.45f;
+            float lowR = Reach(1) + 0.12f;
+            var low = edge + inward * lowR;
+            float lowFloor = BasinFloorY(low.x, low.z);
+            float slopeTop = 0.9f - depth * Mathf.Clamp01((lowR - 0.25f) / lowR);
+            Rail(new List<Vector3> { anchor, anchor + Vector3.up * 0.9f, edge + inward * 0.25f + Vector3.up * 0.9f, low + Vector3.up * slopeTop, new Vector3(low.x, lowFloor, low.z) }, 0.024f);
+        }
+
+        /// <summary>Outward unit normal of a free pool's edge near a point (its distance's gradient).</summary>
+        static Vector2 ShapeGradient(PoolFeature f, Vector2 p)
+        {
+            const float e = 0.01f;
+            var g = new Vector2(PoolBiome.ShapeSD(f, p + new Vector2(e, 0f)) - PoolBiome.ShapeSD(f, p - new Vector2(e, 0f)),
+                                PoolBiome.ShapeSD(f, p + new Vector2(0f, e)) - PoolBiome.ShapeSD(f, p - new Vector2(0f, e)));
+            return g.sqrMagnitude > 1e-10f ? g.normalized : Vector2.right;
         }
 
         // ---------------- Tubes (chrome) ----------------
@@ -222,15 +289,17 @@ namespace Backrooms.Generation
         readonly List<Vector3> _railPts = new List<Vector3>(48);
 
         /// <summary>
-        /// A chrome tube along a polyline, its corners bent round as a pipe bender does (radius up to 9 cm), swept as one
-        /// smooth tube: one ring at every point, carried along the path without twisting (parallel transport), so there
-        /// are no gaps or creases at the joints (2026-10-31: straight pieces butted at the corners showed cracks and
-        /// pinches the owner saw as glitches).
+        /// A chrome tube along a polyline, its corners bent round as a pipe bender does, swept as one smooth tube: one ring
+        /// at every point, carried along the path without twisting (parallel transport), so there are no gaps or creases
+        /// at the joints (2026-10-31: straight pieces butted at the corners showed cracks and pinches the owner saw as
+        /// glitches). 2026-11-01 (the owner: the rails "could use work visually and shape wise"): bends as pool rails are
+        /// made (S.R. Smith and the like: a nominal 6 in, 15 cm, radius), 14 sides, and a round cover plate (escutcheon)
+        /// where an end goes down into a deck or floor, as the rails' anchors have.
         /// </summary>
         void Rail(List<Vector3> pts, float r, Material mat = null)
         {
             var w = WMask(mat ? mat : ChromeMat, 1u);
-            if (pts.Count < 3) { if (pts.Count == 2) { Tube(w, pts[0], pts[1], r); Cap(w, pts[0], pts[0] - pts[1], r); Cap(w, pts[1], pts[1] - pts[0], r); } return; }
+            if (pts.Count < 3) { if (pts.Count == 2) { Tube(w, pts[0], pts[1], r, 14); End(w, pts[0], pts[0] - pts[1], r); End(w, pts[1], pts[1] - pts[0], r); } return; }
             _railPts.Clear();
             _railPts.Add(pts[0]);
             for (int i = 1; i + 1 < pts.Count; i++)
@@ -243,16 +312,47 @@ namespace Backrooms.Generation
                 if (cos < -0.9995f) { _railPts.Add(p); continue; }               // straight on
                 float half = Mathf.Acos(Mathf.Clamp(cos, -1f, 1f)) * 0.5f;        // half the corner's angle
                 // The bend: tangent to both legs, as round as the legs leave room for.
-                float reach = Mathf.Min(0.45f * la, 0.45f * lb, 0.09f / Mathf.Tan(half));
+                float reach = Mathf.Min(0.48f * la, 0.48f * lb, 0.15f / Mathf.Tan(half));
                 float bend = reach * Mathf.Tan(half);
                 Vector3 pa = p + da * reach, pb = p + db * reach, centre = p + (da + db).normalized * (bend / Mathf.Sin(half));
-                const int K = 6;
+                int K = Mathf.Clamp(Mathf.CeilToInt((Mathf.PI - 2f * half) / 0.16f), 3, 14);
                 for (int k = 0; k <= K; k++) _railPts.Add(centre + Vector3.Slerp(pa - centre, pb - centre, k / (float)K));
             }
             _railPts.Add(pts[pts.Count - 1]);
-            Sweep(w, _railPts, r);
-            Cap(w, _railPts[0], _railPts[0] - _railPts[1], r);
-            Cap(w, _railPts[_railPts.Count - 1], _railPts[_railPts.Count - 1] - _railPts[_railPts.Count - 2], r);
+            Sweep(w, _railPts, r, 14);
+            End(w, _railPts[0], _railPts[0] - _railPts[1], r);
+            End(w, _railPts[_railPts.Count - 1], _railPts[_railPts.Count - 1] - _railPts[_railPts.Count - 2], r);
+        }
+
+        /// <summary>A rail's end: going down into a floor, an escutcheon (a round plate with a rounded rim); else capped.</summary>
+        static void End(MeshWriter w, Vector3 at, Vector3 outward, float r)
+        {
+            if (outward.sqrMagnitude > 1e-8f && outward.normalized.y < -0.9f) Escutcheon(w, at, r);
+            else Cap(w, at, outward, r);
+        }
+
+        /// <summary>The round cover plate where a rail goes into the deck: a low dome ring round the tube.</summary>
+        static void Escutcheon(MeshWriter w, Vector3 at, float r)
+        {
+            const int N = 18;
+            float R = r + 0.032f, h = 0.012f;
+            // Profile: from the deck out at R, rounding up to the tube.
+            var prof = new[] { new Vector2(R, 0f), new Vector2(R - 0.004f, h * 0.7f), new Vector2(R - 0.012f, h), new Vector2(r + 0.004f, h * 1.05f), new Vector2(r, h * 0.8f) };
+            for (int i = 0; i < N; i++)
+            {
+                float a0 = i * Mathf.PI * 2f / N, a1 = (i + 1) * Mathf.PI * 2f / N;
+                Vector3 d0 = new Vector3(Mathf.Cos(a0), 0f, Mathf.Sin(a0)), d1 = new Vector3(Mathf.Cos(a1), 0f, Mathf.Sin(a1));
+                for (int j = 0; j + 1 < prof.Length; j++)
+                {
+                    Vector2 p0 = prof[j], p1 = prof[j + 1];
+                    var edge = p1 - p0;
+                    var n2 = new Vector2(edge.y, -edge.x).normalized;          // outward-up in the profile's plane
+                    if (n2.y < 0f) n2 = -n2;
+                    Vector3 n0 = (d0 * n2.x + Vector3.up * n2.y).normalized, n1 = (d1 * n2.x + Vector3.up * n2.y).normalized;
+                    w.SmoothQuad(at + d0 * p0.x + Vector3.up * p0.y, at + d1 * p0.x + Vector3.up * p0.y, at + d1 * p1.x + Vector3.up * p1.y, at + d0 * p1.x + Vector3.up * p1.y,
+                        n0, n1, n1, n0, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f));
+                }
+            }
         }
 
         /// <summary>A tube through points (corners already rounded), smooth shaded, its rings carried without twisting.</summary>
@@ -457,27 +557,50 @@ namespace Backrooms.Generation
 
         // ---------------- Fittings ----------------
 
-        /// <summary>A pool ladder: two chrome rails from the deck, over the edge and down into the water, with treads.</summary>
+        /// <summary>
+        /// A pool ladder as they are made (2026-11-01, the owner: the rails "could use work visually and shape wise"): two
+        /// 48 mm chrome rails rising from escutcheons on the deck, over the coping in one round goose neck, and straight down
+        /// the wall a hand's width off it, with rubber bumpers against the wall and flat treads between them.
+        /// </summary>
         void Ladder(PoolFeature f)
         {
             var at = V3(f.centre);
             var n = Dir(f.yaw);                         // toward the water
             var t = Vector3.Cross(Vector3.up, n);
             float floor = BasinFloorY(at.x + n.x * 0.4f, at.z + n.z * 0.4f);
-            foreach (float s in new[] { -0.23f, 0.23f })
+            const float back = 0.36f, off = 0.13f, rise = 0.66f, half = 0.24f, r = 0.024f;
+            float neck = (back + off) * 0.5f;                                   // the goose neck's radius
+            var rubber = WMask(PoolMaterials.Rubber ? PoolMaterials.Rubber : ChromeMat, 1u);
+            var tread = WMask(PoolMaterials.Tread ? PoolMaterials.Tread : ChromeMat, 1u);
+            foreach (float s in new[] { -half, half })
             {
                 var b = at + t * s;
-                var pts = new List<Vector3>
+                var pts = new List<Vector3> { b - n * back };
+                var c = b + n * ((off - back) * 0.5f) + Vector3.up * rise;
+                const int K = 14;
+                for (int k = 0; k <= K; k++)
                 {
-                    b - n * 0.32f, b - n * 0.32f + Vector3.up * 0.75f, b - n * 0.22f + Vector3.up * 0.92f, b - n * 0.02f + Vector3.up * 0.92f,
-                    b + n * 0.12f + Vector3.up * 0.75f, b + n * 0.14f + Vector3.up * 0.2f, b + n * 0.14f + Vector3.up * (floor + 0.05f)
-                };
-                Rail(pts, 0.022f);
-                _rotBoxes.Add((b - n * 0.32f + Vector3.up * 0.4f, new Vector3(0.05f, 0.8f, 0.05f), 0f));
+                    float a = Mathf.PI * (1f - k / (float)K);                   // from the deck side over to the water side
+                    pts.Add(c + n * (Mathf.Cos(a) * neck) + Vector3.up * (Mathf.Sin(a) * neck));
+                }
+                pts.Add(b + n * off + Vector3.up * (floor + 0.06f));
+                Rail(pts, r);
+                _rotBoxes.Add((b - n * back + Vector3.up * 0.4f, new Vector3(0.05f, 0.8f, 0.05f), 0f));
+                // Bumpers: short black rubber stubs from the rail to the wall, high and low.
+                void Bumper(float y)
+                {
+                    Tube(rubber, b + n * (off - r) + Vector3.up * y, b + n * 0.004f + Vector3.up * y, 0.02f, 10);
+                    Cap(rubber, b + n * 0.004f + Vector3.up * y, -n, 0.02f);
+                }
+                Bumper(-0.3f);
+                if (floor + 0.35f < -0.65f) Bumper(floor + 0.35f);
             }
-            var w = WMask(ChromeMat, 1u);
-            for (float y = -0.18f; y > floor + 0.08f; y -= 0.25f)
-                Tube(w, at + n * 0.17f - t * 0.23f + Vector3.up * y, at + n * 0.17f + t * 0.23f + Vector3.up * y, 0.018f);
+            // Treads: flat, between the rails, against the wall's side of them.
+            for (float y = -0.22f; y > floor + 0.12f; y -= 0.26f)
+            {
+                var c = at + n * (off - 0.035f) + Vector3.up * y;
+                tread.Box(c, new Vector3(2f * half - 0.02f, 0.03f, 0.1f), Quaternion.LookRotation(n), 0b111111, MeshWriter.MetreUV);
+            }
         }
 
         void Lifeguard(PoolFeature f)

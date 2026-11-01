@@ -80,7 +80,11 @@ Shader "Backrooms/PoolTile"
                 int storey = PoolStorey(P.y);
                 PoolCell here = PoolLoad(PoolCellOf(P + N0 * 0.05), storey);
                 float waterY = PoolBase(storey) + POOL_WATER;
-                float under = here.basin ? saturate((waterY - P.y) / 0.02) : 0.0;
+                // In a pool: its cell is a basin, or the surface is below the deck (2026-11-01: a free pool's curved edge
+                // runs through cells whose middle is dry, and those parts of its floor and walls were drawn dry, in
+                // squares: the owner's "weird 90 degree angles" in those pools). Nothing dry lies below the deck here.
+                bool inPool = here.basin || P.y < PoolBase(storey) - 0.025;
+                float under = inPool ? saturate((waterY - P.y) / 0.02) : 0.0;
                 bool deck = N0.y > 0.7 && under < 0.5;              // a dry floor: tiles twice the size, cream
 
                 // Tiles: the grid sits half a wall thickness off the cell lines, so whole tiles meet at every corner.
@@ -137,7 +141,7 @@ Shader "Backrooms/PoolTile"
                     }
                 }
                 // Walls of the pools: a line of grime along the waterline.
-                if (abs(N0.y) < 0.5 && here.basin)
+                if (abs(N0.y) < 0.5 && inPool)
                 {
                     float rel = P.y - waterY;
                     float gb = smoothstep(-0.06, 0.0, rel) * (1.0 - smoothstep(0.02, 0.08, rel));

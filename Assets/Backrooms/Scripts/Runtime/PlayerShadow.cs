@@ -19,6 +19,11 @@ namespace Backrooms
     /// whenever it is up (FirstPersonBody, None: drawn into the shadows only, walking, crouching and reaching as it does),
     /// and the Poolrooms' capsules follow its bones (FirstPersonBody.ShadowCapsules) with the camcorder added. This
     /// stand-in is left for when the body is hidden (crawling) or is not the MakeHuman one.
+    ///
+    /// 2026-11-01, the owner: the shadow "looks disjointed and not connected". In the Poolrooms the body's capsules are
+    /// replaced by the body itself: each frame its renderers are drawn, as the sun sees them, into a small map of their own
+    /// (PlayerShadowMap.shader, 256 texels over 2.4 m, as Unreal's per-object shadows give a character its own map), which
+    /// PoolCommon.hlsl tests (PoolBodySun, soft as PCSS). The capsules remain for the stand-in.
     /// </summary>
     [DefaultExecutionOrder(110)]                // after FirstPersonBody (100) has posed the bones this frame
     public class PlayerShadow : MonoBehaviour
@@ -28,6 +33,13 @@ namespace Backrooms
         static Mesh s_capsule;
         // (Named apart from the first version's 8-long arrays: Unity keeps a global array's first size for the session.)
         static readonly int IdA = Shader.PropertyToID("_PoolCapsA"), IdB = Shader.PropertyToID("_PoolCapsB"), IdN = Shader.PropertyToID("_PoolCapsN");
+        static readonly int IdMap = Shader.PropertyToID("_PoolBodyMap"), IdMtx = Shader.PropertyToID("_PoolBodyMtx"), IdParams = Shader.PropertyToID("_PoolBodyParams");
+        const int MapSize = 256;
+        const float MapWidth = 2.4f;
+        RenderTexture _map;
+        Material _mapMat;
+        CommandBuffer _cmd;
+        bool _mapDue;
 
         CamcorderPlayerController _player;
         Interaction.PropGrabber _grab;
@@ -70,10 +82,74 @@ namespace Backrooms
             }
         }
 
+        void OnEnable() => RenderPipelineManager.beginContextRendering += DrawMap;
+
+        void OnDisable()
+        {
+            RenderPipelineManager.beginContextRendering -= DrawMap;
+            Shader.SetGlobalVector(IdParams, Vector4.zero);
+        }
+
         void OnDestroy()
         {
             if (_mat) Destroy(_mat);
+            if (_mapMat) Destroy(_mapMat);
+            if (_map) { _map.Release(); Destroy(_map); }
+            _cmd?.Release();
             Shader.SetGlobalFloat(IdN, 0f);
+            Shader.SetGlobalVector(IdParams, Vector4.zero);
+        }
+
+        /// <summary>
+        /// Readies the body's map for this frame, centred on its middle and seen along the sun (u, v across the sun's rays,
+        /// w toward the sun). False if it cannot be made (then the capsules are used).
+        /// </summary>
+        bool PrepareMap(Vector3 centre)
+        {
+            if (!_mapMat)
+            {
+                var sh = Shader.Find("Hidden/Backrooms/PlayerShadowMap");
+                if (!sh || !sh.isSupported) return false;
+                _mapMat = new Material(sh) { name = "Player shadow map", hideFlags = HideFlags.DontSave };
+            }
+            if (!_map)
+            {
+                _map = new RenderTexture(MapSize, MapSize, 0, RenderTextureFormat.RHalf) { name = "Player shadow map", filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.DontSave };
+                if (!_map.Create()) { Destroy(_map); _map = null; return false; }
+            }
+            var L = Generation.PoolBiome.SunDirection;
+            var u = Vector3.Cross(Vector3.up, L).normalized;
+            var v = Vector3.Cross(L, u);
+            float k = 1f / MapWidth;
+            var m = Matrix4x4.identity;
+            m.SetRow(0, new Vector4(u.x * k, u.y * k, u.z * k, -Vector3.Dot(centre, u) * k + 0.5f));
+            m.SetRow(1, new Vector4(v.x * k, v.y * k, v.z * k, -Vector3.Dot(centre, v) * k + 0.5f));
+            m.SetRow(2, new Vector4(L.x, L.y, L.z, -Vector3.Dot(centre, L)));
+            m.SetRow(3, new Vector4(0f, 0f, 0f, 1f));
+            Shader.SetGlobalMatrix(IdMtx, m);
+            Shader.SetGlobalTexture(IdMap, _map);
+            Shader.SetGlobalVector(IdParams, new Vector4(1f, MapWidth, 0f, 0f));
+            _mapDue = true;
+            return true;
+        }
+
+        /// <summary>Before the frame's cameras: the body's renderers into its map (after this frame's skinning).</summary>
+        void DrawMap(ScriptableRenderContext ctx, System.Collections.Generic.List<Camera> cams)
+        {
+            if (!_mapDue || !_map || !_mapMat || !_body) return;
+            _mapDue = false;
+            _cmd ??= new CommandBuffer { name = "Player shadow map" };
+            _cmd.Clear();
+            _cmd.SetRenderTarget(_map);
+            _cmd.ClearRenderTarget(false, true, new Color(-100f, 0f, 0f, 0f));
+            foreach (var r in _body.ShadowRenderers)
+            {
+                if (!r || !r.enabled || !r.gameObject.activeInHierarchy || r.shadowCastingMode == ShadowCastingMode.Off) continue;
+                if (r is not SkinnedMeshRenderer && r is not MeshRenderer) continue;
+                int subs = r.sharedMaterials.Length;
+                for (int s = 0; s < subs; s++) _cmd.DrawRenderer(r, _mapMat, s, 0);
+            }
+            ctx.ExecuteCommandBuffer(_cmd);
         }
 
         void LateUpdate()
@@ -100,7 +176,10 @@ namespace Backrooms
             }
             bool stand = on && n == 0;
             if (_root.gameObject.activeSelf != stand) _root.gameObject.SetActive(stand);
-            if (!on) { Shader.SetGlobalFloat(IdN, 0f); return; }
+            if (!on) { Shader.SetGlobalFloat(IdN, 0f); Shader.SetGlobalVector(IdParams, Vector4.zero); return; }
+            // The body itself into its own map for the Poolrooms' sun: then no capsules.
+            if (n > 0 && PrepareMap((_a[1] + _b[1]) * 0.5f)) { Shader.SetGlobalFloat(IdN, 0f); return; }
+            Shader.SetGlobalVector(IdParams, Vector4.zero);
             if (stand)
             {
                 Pose();

@@ -331,6 +331,36 @@ look round the body in the water, a shadow that is "not animated", and STP freez
   in the build uses STP. `HdrGradingForBuild` now sets the assets to STP for the length of a build (as it already did
   for HDR grading) and puts them back; the game picks the upscaler itself at runtime.
 
+## Second feedback pass (2026-11-01)
+
+The owner: Sea of Thieves' water for inspiration; windows on both sides of one thin wall, both out into the sun ("ain't
+possible"); the chrome rails' look and shape; "weird 90 degree angles" in the free pools; the shadow "disjointed and not
+connected".
+- **Windows are clerestories** (`PoolBiome.WindowSill/Top/Fits`, `PoolPlan.Windows`, PoolCommon.hlsl `PoolWindowSD`): only
+  in a tall room's wall above the roof of a lower room next door (its ceiling + 0.35 m) up to 0.45 m under the taller
+  ceiling, at least 0.75 m high, as basilicas and natatoriums are lit. From the lower room the window is above its
+  ceiling: a plain wall. The sun's beams still come in through them (they are on the sun's side).
+- **The 90 degree angles** were three things: the regular basins' edge (`BasinEdge`) also ran inside free pools' rooms,
+  building a square lip of wall along the cell lines between pool and not-pool cells (now skipped there); the tile shader
+  drew the parts of a free pool in cells whose middle is dry as dry (no wet darkening or caustics), in squares (now: a
+  surface below the deck is in a pool); and lane lines, cut off cell by cell by the curves (free pools have none now).
+  Their steps were straight boxes poking into the curved wall: now round "wedding cake" steps, discs round a point on the
+  edge cut by the pool's outline (`FreePoolSteps`), with a handrail down their middle.
+- **Rails and ladders**: bends of 15 cm (a pool rail's nominal 6 in), 14 sides, a round escutcheon wherever a rail goes
+  down into the deck or floor; ladders as they are made: two 48 mm rails from escutcheons, over the coping in one round
+  goose neck, straight down the wall 13 cm off it, black rubber bumpers to the wall and flat pale treads. Chrome's colour
+  is a metal's F0 (0.6, slightly cool; it was 0.86 and read as white plastic) and PoolLit widens highlights where the
+  normal turns fast across a pixel (specular anti-aliasing), so thin tubes do not sparkle.
+- **The shadow** in the Poolrooms is the body itself: each frame its renderers are drawn, as the sun sees them, into a
+  256-texel map over 2.4 m (`PlayerShadowMap.shader`, `PlayerShadow.DrawMap`, as Unreal's per-object shadows give a
+  character its own map) and PoolCommon.hlsl tests it (`PoolBodySun`, soft as PCSS: the blockers' distance sets the
+  width). The capsules remain only for the stand-in (crawling).
+- **From Sea of Thieves** (Rare, SIGGRAPH 2018, "The Technical Art of Sea of Thieves"): lit crests (the sun through a
+  ripple's thin crest comes out turquoise, most looking toward the sun; `_CrestColor`, `_CrestGain`), and the contact
+  line (where walls, rails and legs cut the surface, found by comparing depths as Sea of Thieves foams round things in its
+  water: a thin broken line of foam, `_ContactWidth`). Its FFT ocean waves, wave-peak foam and storm states do not fit
+  still pool water.
+
 ## Known gaps / ideas
 
 - Crawling inside a basin puts the camera under the water surface, which is single-sided (nothing drawn from below).

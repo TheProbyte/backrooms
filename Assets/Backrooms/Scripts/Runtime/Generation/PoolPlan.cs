@@ -187,9 +187,11 @@ namespace Backrooms.Generation
         /// <summary>
         /// High windows (2026-10-31, the owner: "some side wall high openings"; references: tall bright openings high in a
         /// tiled wall with the sun pouring through): in some tall rooms, every other cell along the wall on the sun's side
-        /// (+X or +Z: the sun comes from there) has a 0.6 m wide window from 1.95 m up to just under the ceiling, with the
-        /// sky beyond (this is the Backrooms: the room behind it sees the same sky). The sun comes in through them in
-        /// beams (PoolSun / PoolCommon.hlsl: edge code 3). Both rooms must be tall enough; only plain wall edges.
+        /// (+X or +Z: the sun comes from there) has a 0.6 m wide window up to just under the ceiling, with the sky beyond.
+        /// The sun comes in through them in beams (PoolSun / PoolCommon.hlsl: edge code 3). Only plain wall edges.
+        /// Since 2026-11-01 they are clerestories (PoolBiome.WindowSill): only where the room next door is low enough that
+        /// the window clears its roof, so its other side is outdoors, not another room (the owner: windows on both sides
+        /// of one wall, both out into the sun, "ain't possible").
         /// </summary>
         static void Windows(OfficeLayout L, System.Random rng, Dictionary<int, Tag> tags)
         {
@@ -197,7 +199,7 @@ namespace Backrooms.Generation
             bool Plain(Room room) => !tags.TryGetValue(room.id, out var t) || t == Tag.FreePool || t == Tag.Purpose;
             foreach (var r in L.rooms)
             {
-                if (!r.Walkable || r.spiral || r.ceiling < PoolBiome.WindowMinCeiling || !Plain(r)) continue;
+                if (!r.Walkable || r.spiral || r.openAbove || r.noFloor || !Plain(r)) continue;
                 if (rng.NextDouble() > 0.4) continue;
                 var rc = r.rect;
                 int phase = rng.Next(2);
@@ -213,7 +215,9 @@ namespace Backrooms.Generation
                         var edge = xWall ? L.vEdges[line, a] : L.hEdges[a, line];
                         if (edge != EdgeKind.Wall) continue;
                         var other = L.RoomAt(ox, oz);
-                        if (!other.Walkable || other.spiral || other.ceiling < PoolBiome.WindowMinCeiling || !Plain(other)) continue;
+                        if (!other.Walkable || other.spiral || other.openAbove || other.noFloor || !Plain(other)) continue;
+                        // A clerestory: the window must clear the lower room's roof; it shows from this (taller) side only.
+                        if (r.ceiling <= other.ceiling || !PoolBiome.WindowFits(r.ceiling, other.ceiling)) continue;
                         var c = L.pool[ox, oz]; c.windows |= (byte)(xWall ? 1 : 2); L.pool[ox, oz] = c;
                         made++;
                     }

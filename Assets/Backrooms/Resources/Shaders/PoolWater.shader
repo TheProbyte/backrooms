@@ -13,6 +13,9 @@ Shader "Backrooms/PoolWater"
         _Refraction ("Refraction", Range(0, 0.3)) = 0.15
         _Roughness ("Surface roughness", Range(0.01, 0.3)) = 0.05
         _Micro ("Stillness (micro waves)", Range(0, 0.05)) = 0.004
+        _CrestColor ("Lit crests (sub-surface)", Color) = (0.16, 0.62, 0.5, 1)
+        _CrestGain ("Crest height for full glow (m)", Float) = 0.035
+        _ContactWidth ("Contact line width (m of water)", Float) = 0.03
     }
     SubShader
     {
@@ -38,6 +41,8 @@ Shader "Backrooms/PoolWater"
                 float4 _Absorb;
                 half4 _Scatter;
                 half _Refraction, _Roughness, _Micro, _Shimmer;
+                half4 _CrestColor;
+                float _CrestGain, _ContactWidth;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; };
@@ -131,7 +136,7 @@ Shader "Backrooms/PoolWater"
                 float2 suv = GetNormalizedScreenSpaceUV(i.positionCS);
                 float eye = LinearEyeDepth(i.positionCS.z, _ZBufferParams);
                 float3 below, refl;
-                float thick;
+                float thick, contact = 0;
                 PoolCell here = PoolLoad(PoolCellOf(P), PoolStorey(P.y));
                 float3 ambient = PoolAmbientAt(P, float3(0, 1, 0));
                 float3 R = reflect(-V, N);
@@ -145,6 +150,10 @@ Shader "Backrooms/PoolWater"
                     if (scene < eye) { ruv = suv; scene = DepthAt(ruv); }
                     below = ColorAt(ruv);
                     thick = max(scene - eye, 0) * length(P - GetCameraPositionWS()) / max(eye, 1e-3);
+                    // How close the surface is to what stands in it (Sea of Thieves finds where things cut its water by
+                    // comparing depths): unrefracted, so it hugs the walls, rails and legs exactly.
+                    float flat = max(DepthAt(suv) - eye, 0) * length(P - GetCameraPositionWS()) / max(eye, 1e-3);
+                    contact = 1.0 - smoothstep(0.0, _ContactWidth, flat * max(V.y, 0.25));
                     float hit;
                     float3 ssr = ScreenReflection(P, R, hit);
                     refl = lerp(refl, ssr, hit);
@@ -168,6 +177,17 @@ Shader "Backrooms/PoolWater"
 
                 float3 color = lerp(water, refl, F) + glint;
 
+                // Lit crests (2026-11-01, Sea of Thieves: Rare's SIGGRAPH 2018 talk; the owner asked what of its water could be
+                // here): the sun passes through the thin water of a ripple's crest and comes out turquoise, most when looking
+                // toward the sun (forward scattering) and low over the water, a little from anywhere; none in the shade.
+                float crest = saturate(PoolRippleHeight(P.xz) / _CrestGain);
+                [branch] if (crest > 0.001 && sun > 0.001)
+                {
+                    float2 toSun = normalize(POOL_SUN.xz), look = -V.xz;
+                    float fwd = pow(saturate(dot(look / max(length(look), 1e-4), toSun)), 3.0) * saturate(1.0 - V.y * 0.8);
+                    color += _CrestColor.rgb * _PoolSunColor.rgb * sun * crest * crest * (0.05 + 0.3 * fwd) * (1.0 - F);
+                }
+
                 // Foam (2026-10-31, remade: the owner found the first, a network of cell borders, "spiderweb like"). As game
                 // water draws it (Crest, Sea of Thieves; Valve's flow maps for the motion): a pattern of clumps and bubbles
                 // carried along by the water's own flow (two phases of the flow map blended, so it never stretches out),
@@ -190,6 +210,16 @@ Shader "Backrooms/PoolWater"
                     float a = max(smoothstep(thr - soft, thr + soft, n), saturate((foam - 0.95) * 2.0));
                     // Thick foam is not flat: the pattern shows in it as the shade of bubbles over bubbles.
                     color = lerp(color, foamCol * (0.8 + 0.25 * saturate(n)), a * 0.9);
+                }
+                // The contact line: where walls, rails and legs cut the surface, the water climbs them a little and holds a
+                // thin, broken line of foam (as Sea of Thieves foams round whatever is in its water), lifted by the light.
+                [branch] if (contact > 0.01)
+                {
+                    float pixC = length(fwidth(P.xz));
+                    float brk = PoolFoamPattern(P.xz * 1.7 + t * 0.03, pixC);
+                    float a = contact * saturate(0.35 + brk * 0.9);
+                    float3 lineCol = float3(0.88, 0.92, 0.9) * (ambient * 1.1 + _PoolSunColor.rgb * sun * POOL_SUN.y);
+                    color = lerp(color, lineCol, a * 0.55);
                 }
                 return half4(PoolFarFade(MixFog(color, i.fogFactor), P), 1);
             }
