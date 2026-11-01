@@ -10,25 +10,35 @@ namespace Backrooms
     /// camcorder) that never draws itself, only its shadow (ShadowCastingMode.ShadowsOnly). It bobs and sways a little in
     /// step with the walk (or the wading clock), changes shape crouching and crawling, and leans the way the camera points.
     ///  - Level 0: the shadow-casting lights take it as they are.
-    ///  - The Poolrooms have no shadow maps: the same capsules go to the shaders each frame (_PoolCapA / _PoolCapB) and the
+    ///  - The Poolrooms have no shadow maps: the same capsules go to the shaders each frame (_PoolCapsA / _PoolCapsB) and the
     ///    traced sun is tested against them (PoolCommon.hlsl, PoolCapsuleSun: soft, as Unreal's capsule shadows), so tiles,
     ///    water and things there get it too.
     /// Only while no body is shown (PropGrabber.bodyMode 2; the bodies cast their own), and Graphics > Player shadow on.
+    ///
+    /// 2026-10-31, the owner: "my shadow looks odd when passing by because its not animated". The real body now casts it
+    /// whenever it is up (FirstPersonBody, None: drawn into the shadows only, walking, crouching and reaching as it does),
+    /// and the Poolrooms' capsules follow its bones (FirstPersonBody.ShadowCapsules) with the camcorder added. This
+    /// stand-in is left for when the body is hidden (crawling) or is not the MakeHuman one.
     /// </summary>
+    [DefaultExecutionOrder(110)]                // after FirstPersonBody (100) has posed the bones this frame
     public class PlayerShadow : MonoBehaviour
     {
         const int Count = 8;          // head, torso, two legs, two upper arms ... (see Pose)
+        const int Max = 12;           // the shaders' arrays (PoolCommon.hlsl)
         static Mesh s_capsule;
-        static readonly int IdA = Shader.PropertyToID("_PoolCapA"), IdB = Shader.PropertyToID("_PoolCapB"), IdN = Shader.PropertyToID("_PoolCapCount");
+        // (Named apart from the first version's 8-long arrays: Unity keeps a global array's first size for the session.)
+        static readonly int IdA = Shader.PropertyToID("_PoolCapsA"), IdB = Shader.PropertyToID("_PoolCapsB"), IdN = Shader.PropertyToID("_PoolCapsN");
 
         CamcorderPlayerController _player;
         Interaction.PropGrabber _grab;
         Transform _root;
         readonly Transform[] _parts = new Transform[Count];
         readonly MeshRenderer[] _renderers = new MeshRenderer[Count];
-        readonly Vector3[] _a = new Vector3[Count], _b = new Vector3[Count];
-        readonly float[] _r = new float[Count];
-        readonly Vector4[] _ga = new Vector4[Count], _gb = new Vector4[Count];
+        readonly Vector3[] _a = new Vector3[Max], _b = new Vector3[Max];
+        readonly float[] _r = new float[Max];
+        readonly Vector4[] _ga = new Vector4[Max], _gb = new Vector4[Max];
+        Interaction.FirstPersonBody _body;
+        float _nextFind;
         float _phase, _bob, _lean;
         Material _mat;
 
@@ -71,15 +81,37 @@ namespace Backrooms
             if (!_grab) _grab = GetComponent<Interaction.PropGrabber>() ?? FindAnyObjectByType<Interaction.PropGrabber>();
             var gc = GraphicsController.Instance;
             bool on = (gc == null || gc.Options == null || gc.Options.playerShadow) && (!_grab || _grab.Bodiless) && _player && !_player.noclip;
-            if (_root.gameObject.activeSelf != on) _root.gameObject.SetActive(on);
+            if (on && !_body && Time.unscaledTime >= _nextFind)
+            {
+                _nextFind = Time.unscaledTime + 1f;
+                _body = GetComponentInChildren<Interaction.FirstPersonBody>();
+                if (!_body) _body = FindAnyObjectByType<Interaction.FirstPersonBody>();
+            }
+            // The body itself casts the shadow when it can; its bones give the Poolrooms' capsules.
+            int n = on && _body ? _body.ShadowCapsules(_a, _b, _r) : 0;
+            if (n > 0)
+            {
+                var cam = Camera.main;
+                if (cam && n < Max)
+                {
+                    var c = cam.transform;
+                    _a[n] = c.position - c.forward * 0.12f; _b[n] = c.position + c.forward * 0.08f; _r[n] = 0.055f; n++;
+                }
+            }
+            bool stand = on && n == 0;
+            if (_root.gameObject.activeSelf != stand) _root.gameObject.SetActive(stand);
             if (!on) { Shader.SetGlobalFloat(IdN, 0f); return; }
-            Pose();
-            for (int i = 0; i < Count; i++) Place(_parts[i], _a[i], _b[i], _r[i]);
-            // The Poolrooms' shaders: the same capsules, world space (a.xyz, radius), (b.xyz).
-            for (int i = 0; i < Count; i++) { _ga[i] = new Vector4(_a[i].x, _a[i].y, _a[i].z, _r[i]); _gb[i] = _b[i]; }
+            if (stand)
+            {
+                Pose();
+                for (int i = 0; i < Count; i++) Place(_parts[i], _a[i], _b[i], _r[i]);
+                n = Count;
+            }
+            // The Poolrooms' shaders: the capsules, world space (a.xyz, radius), (b.xyz).
+            for (int i = 0; i < Max; i++) { _ga[i] = i < n ? new Vector4(_a[i].x, _a[i].y, _a[i].z, _r[i]) : Vector4.zero; _gb[i] = i < n ? (Vector4)_b[i] : Vector4.zero; }
             Shader.SetGlobalVectorArray(IdA, _ga);
             Shader.SetGlobalVectorArray(IdB, _gb);
-            Shader.SetGlobalFloat(IdN, Count);
+            Shader.SetGlobalFloat(IdN, n);
         }
 
         /// <summary>Where each capsule is now (world).</summary>

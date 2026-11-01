@@ -15,6 +15,17 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 22:00  Claude Code  Poolrooms feedback: no more echo, a new tile step, ladders facing the water and smooth rails, no waterfalls, foam and ripple light remade, the real body's shadow, STP in builds
+- Reverb (BuildingAudio): pool tail 1.4-2.6 s (was 2.4-5.5), 4.5 dB under the dry sound (was 2 dB over), darker (HF 0.55). Shower drip loops and the waterfalls' loops removed.
+- Tile step (ProceduralSounds.TileStep): exciter/resonator footstep driven by a heel-then-ball force curve: a soft sole into heavy tile on concrete, a small wet slap.
+- Ladders on free pools moved onto the edge and turned into the water (PoolPlan.EdgeLadder: Newton steps on the shape's distance, its gradient); Rail bends its corners and sweeps one untwisted tube with capped ends (OfficeChunkBuilder.PoolFeatures).
+- Waterfalls: spouts and cascades still planned (same random draws) but not built; PoolRunningWater, PoolFall.shader, RunningWater sound and PoolMaterials.Fall removed.
+- Foam (PoolWater, PoolCommon): flow-carried clumps and bubbles behind a coverage threshold (Crest / Sea of Thieves, Valve flow maps), in place of the cell-border network ("spiderweb"); less foam from wading (foamGain 5). Ripples now focus the caustics by the surface's curvature (PoolRippleFocus) instead of warping the caustic map.
+- Shadow: with no body shown and Player shadow on, FirstPersonBody draws the whole rig into the shadows only (mode 3), so the shadow animates; PlayerShadow sends capsules from its bones (_PoolCapsA/B/N, 12) to the Poolrooms' traced sun, the stand-in only while crawling. Capsule penumbra sharper.
+- STP froze in the build: URP's STPResourceStripper strips STP when no asset uses it. HdrGradingForBuild sets the URP assets to STP for the build and restores them.
+- Checked in World 3: ladders face into the pool, foam (stress test with no fading, then wading), the animated body shadow in a sun patch on the deck and from the water, reverb values, no drip or running-water sources, tile clip stats; STP runs in the editor; EditMode tests; build report checked for STP's shaders.
+- Open: the tile step and reverb were not listened to (only measured); the owner should try them.
+
 ## 2026-10-31 - TAA and STP options, tile specular anti-aliasing; the water as shallow-water physics with foam, bubbles and fuller splashes
 
 - The owner: "add those settings (TAA, specular AA), then see how water movement could be improved and the splash

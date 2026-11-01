@@ -143,28 +143,30 @@ bool PoolPillarHit(int2 c, int storey, float3 p, float t0, float t1)
 // The player's shadow (PlayerShadow.cs, 2026-10-31): a few capsules standing in for a body that is not shown, sent each
 // frame. There are no shadow maps here, so as Unreal's capsule shadows do: the sun's ray from a point passes each
 // capsule's axis at some distance; within its radius it is shadowed, softening the further the capsule is from the point.
-float4 _PoolCapA[8], _PoolCapB[8];   // a.xyz, radius; b.xyz
-float _PoolCapCount;
+float4 _PoolCapsA[12], _PoolCapsB[12];  // a.xyz, radius; b.xyz (1: the torso, the player's middle)
+float _PoolCapsN;
 
 float PoolCapsuleSun(float3 p)
 {
-    if (_PoolCapCount < 0.5) return 1;
+    if (_PoolCapsN < 0.5) return 1;
     // Far from the player: nothing to test (the shadow falls within a few metres).
-    float3 near = _PoolCapA[1].xyz - p;
+    float3 near = _PoolCapsA[1].xyz - p;
     if (dot(near, near) > 25.0) return 1;
     const float3 L = POOL_SUN;
     float vis = 1;
-    [loop] for (int i = 0; i < (int)_PoolCapCount; i++)
+    [loop] for (int i = 0; i < (int)_PoolCapsN; i++)
     {
-        float3 a = _PoolCapA[i].xyz, d = _PoolCapB[i].xyz - a;
-        float r = _PoolCapA[i].w, dd = dot(d, d);
+        float3 a = _PoolCapsA[i].xyz, d = _PoolCapsB[i].xyz - a;
+        float r = _PoolCapsA[i].w, dd = dot(d, d);
         // The point on the axis nearest the ray, then the ray's point nearest that (twice: close enough for capsules).
         float s = dd > 1e-6 ? saturate(dot(p + L * max(0.0, dot(a - p, L)) - a, d) / dd) : 0;
         float t = max(0.0, dot(a + d * s - p, L));
         s = dd > 1e-6 ? saturate(dot(p + L * t - a, d) / dd) : 0;
         t = max(0.0, dot(a + d * s - p, L));
         float dist = length(p + L * t - (a + d * s));
-        float pen = 0.012 + t * 0.055;
+        // The penumbra: a little wider the further the capsule is (the sun's disc and the sky's spread; much more and the
+        // thighs, highest of the limbs, faded out).
+        float pen = 0.01 + t * 0.022;
         vis *= lerp(1.0, smoothstep(r - pen, r + pen, dist), saturate(t * 8.0));
     }
     return vis;
@@ -300,14 +302,52 @@ float PoolCaustics(float2 xz, float t)
     return 0.55 + 1.3 * (la + lb) + 1.6 * la * lb;
 }
 
-// Foam on the water (0..1.5) from the simulation round the player; none outside its window.
-float PoolFoamAt(float2 xz)
+// The water's flow (xy, m/s) and foam (z, 0..1.5) from the simulation round the player; none outside its window.
+float3 PoolFlowAt(float2 xz)
 {
     if (_PoolRippleRect.w <= 0) return 0;
     float2 uv = (xz - _PoolRippleRect.xy) / _PoolRippleRect.z;
     if (any(uv < 0.02) || any(uv > 0.98)) return 0;
     float edge = saturate(min(min(uv.x, uv.y), min(1 - uv.x, 1 - uv.y)) * 12.0 - 0.25);
-    return SAMPLE_TEXTURE2D_LOD(_PoolFlow, sampler_PoolRipple, uv, 0).z * edge;
+    return SAMPLE_TEXTURE2D_LOD(_PoolFlow, sampler_PoolRipple, uv, 0).xyz * edge;
+}
+
+float PoolFoamAt(float2 xz) { return PoolFlowAt(xz).z; }
+
+// Smooth value noise (0..1).
+float PoolValueNoise(float2 p)
+{
+    float2 i = floor(p), f = frac(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = PoolHash22(i).x, b = PoolHash22(i + float2(1, 0)).x, c = PoolHash22(i + float2(0, 1)).x, d = PoolHash22(i + 1).x;
+    return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
+}
+
+// Round bubbles of mixed sizes, one per cell at most (1 in a bubble's middle, 0 between them).
+float PoolBubbles(float2 p)
+{
+    float2 ip = floor(p), fp = frac(p);
+    float v = 0;
+    [unroll] for (int j = -1; j <= 1; j++)
+    [unroll] for (int i = -1; i <= 1; i++)
+    {
+        float2 o = float2(i, j);
+        float2 h = PoolHash22(ip + o);
+        float r = 0.22 + 0.3 * h.y;
+        float d = length(o + 0.2 + 0.6 * h - fp);
+        v = max(v, 1.0 - smoothstep(r * 0.35, r, d));
+    }
+    return v;
+}
+
+// Foam's pattern (0..1): clumps (two octaves of noise, ~30 cm) with bubbles in them at two sizes (~10 and ~4 cm); the
+// small bubbles give way to their average where they would be finer than a pixel.
+float PoolFoamPattern(float2 xz, float pix)
+{
+    float clump = PoolValueNoise(xz * 3.3) * 0.65 + PoolValueNoise(xz * 7.9 + 4.1) * 0.35;
+    float big = PoolBubbles(xz * 10.0);
+    float small = lerp(PoolBubbles(xz * 24.0 + 7.3), 0.3, saturate(pix * 24.0 / 0.7));
+    return clump * 0.6 + max(big, small * 0.85) * 0.5;
 }
 
 // Slope of the rippled water (from the ripple simulation around the player), per metre.
@@ -356,9 +396,28 @@ float2 PoolWaveSlope(float2 x, float t)
     return s;
 }
 
+// How the player's ripples focus the sun at a depth below them (1 none, more where a wave's crest gathers the light,
+// less under its troughs): the surface's curvature (the height's Laplacian) bends the light as a lens would, by the
+// refraction's share (1 - 1/1.333) times the depth (the Jacobian of the refracted rays; 2026-10-31: in place of warping
+// the caustic map, which the owner saw as a "spiderweb" round the body).
+float PoolRippleFocus(float2 xz, float below)
+{
+    if (_PoolRippleRect.w <= 0) return 1;
+    float2 uv = (xz - _PoolRippleRect.xy) / _PoolRippleRect.z;
+    if (any(uv < 0.02) || any(uv > 0.98)) return 1;
+    const float e = 1.5 / 256.0;
+    float h = SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv, 0).r;
+    float n4 = SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv + float2(e, 0), 0).r + SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv - float2(e, 0), 0).r
+             + SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv + float2(0, e), 0).r + SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv - float2(0, e), 0).r;
+    float dx = e * _PoolRippleRect.z;
+    float lap = (n4 - 4.0 * h) / (dx * dx);
+    float edge = saturate(min(min(uv.x, uv.y), min(1 - uv.x, 1 - uv.y)) * 12.0 - 0.25);
+    return lerp(1.0, clamp(1.0 / max(0.3, 1.0 + below * 0.25 * lap), 0.45, 2.2), edge);
+}
+
 // The sun as it reaches a point under the water: the caustic map at the spot on the surface its light came through,
-// split very slightly by colour (blue bends more), wobbled by the player's ripples; full contrast at the basin's depth,
-// none at the surface. Falls back to the drawn pattern without the map.
+// split very slightly by colour (blue bends more), and the player's ripples focusing it; full contrast at the basin's
+// depth, none at the surface. Falls back to the drawn pattern without the map.
 float3 PoolCausticLight(float3 p, float waterY)
 {
     float below = waterY - p.y;
@@ -368,13 +427,13 @@ float3 PoolCausticLight(float3 p, float waterY)
     float k = saturate(below / POOL_WATER_DEPTH);
     if (_PoolCausticParams.y < 0.5) return lerp(1.0, PoolCaustics(s.xz, _Time.y), k);
     float2 slope = PoolRippleSlope(s.xz);
-    float2 uv = (s.xz + slope * below * 0.6) / _PoolCausticParams.x;
+    float2 uv = (s.xz + slope * below * 0.15) / _PoolCausticParams.x;
     float2 split = normalize(POOL_SUN.xz) * (0.0035 * k / _PoolCausticParams.x);
     float3 c;
     c.r = SAMPLE_TEXTURE2D(_PoolCaustic, sampler_PoolCaustic, uv - split).r;
     c.g = SAMPLE_TEXTURE2D(_PoolCaustic, sampler_PoolCaustic, uv).r;
     c.b = SAMPLE_TEXTURE2D(_PoolCaustic, sampler_PoolCaustic, uv + split).r;
-    return lerp(1.0, c, k * _PoolCausticParams.z);
+    return lerp(1.0, c, k * _PoolCausticParams.z) * PoolRippleFocus(s.xz, below);
 }
 
 // Is the straight path from p toward +x/+z (going down) clear of walls, headers and lower ceilings for t metres?

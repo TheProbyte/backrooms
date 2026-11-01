@@ -14,6 +14,7 @@ namespace Backrooms.Audio
         /// <summary>A footstep on a hard floor: a heel strike and the sole rolling flat, coloured by what the floor is.</summary>
         public static AudioClip HardStep(Floor floor, int variant)
         {
+            if (floor == Floor.Tile) return TileStep(variant);
             var rng = new System.Random(1300 + (int)floor * 31 + variant * 7);
             int n = Rate * 2 / 5;
             var d = new float[n];
@@ -43,6 +44,45 @@ namespace Backrooms.Audio
             Normalize(d, 0.75f);
             return Clip("Step_" + floor + "_" + variant, d, 1);
         }
+
+        /// <summary>
+        /// A step on the Poolrooms' wet tiles (2026-10-31, remade: the owner did not like the old one, a sharp click that the
+        /// pool's reverb rang on). Built the way footstep synthesis models a step (Nordahl, Serafin and Turchet: an exciter
+        /// and a resonator, driven by the ground reaction force): a walking foot's force comes in two pushes, the heel and
+        /// then the ball of the foot rolling down; it drives a soft rubber sole (the exciter: noise, low-passed, rubber has
+        /// no sharp edge) into heavy glazed tile bedded on concrete (the resonator: a dull, quickly damped thump, a faint
+        /// tick of the glaze on top). The water on the tiles adds a small slap as the sole squeezes it out, and a hiss.
+        /// </summary>
+        public static AudioClip TileStep(int variant)
+        {
+            var rng = new System.Random(1700 + variant * 13);
+            int n = (int)(Rate * 0.32f);
+            var d = new float[n];
+            float j = 1f + ((float)rng.NextDouble() - 0.5f) * 0.14f;
+            float rollAt = 0.055f + 0.03f * (float)rng.NextDouble();         // heel to ball (s)
+            float ballK = 0.45f + 0.25f * (float)rng.NextDouble();
+            var sole = Biquad.LowPass(1300f * j);
+            var slab = Biquad.BandPass(115f * j, 1.3f);
+            var tile = Biquad.BandPass(380f * j, 2.2f);
+            var glaze = Biquad.BandPass(2300f * j, 3f);
+            var slap = Biquad.BandPass(1100f * j, 0.9f);
+            var hiss = Biquad.HighPass(4200f);
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
+                float heel = Push(t, 0.004f, 0.03f), ball = Push(t - rollAt, 0.009f, 0.045f) * ballK;
+                float x = White(rng);
+                float e = sole.Run(x * (heel + ball));
+                float wet = Push(t, 0.001f, 0.007f) + Push(t - rollAt, 0.002f, 0.012f) * 0.6f;
+                d[i] = slab.Run(e) * 2.6f + tile.Run(e) * 1.4f + glaze.Run(x * Push(t, 0.0005f, 0.004f)) * 0.25f
+                     + slap.Run(x * wet) * 0.55f + hiss.Run(x) * (heel * 0.05f + ball * 0.03f);
+            }
+            Normalize(d, 0.7f);
+            return Clip("TileStep_" + variant, d, 1);
+        }
+
+        /// <summary>A push of force over time: up in rise (s), dying away over fall (s); none before t = 0.</summary>
+        static float Push(float t, float rise, float fall) => t < 0f ? 0f : t < rise ? t / rise : Mathf.Exp(-(t - rise) / fall);
 
         /// <summary>A shoe sliding a few centimetres as you come to a stop (the carpet's fibres, or a hard floor's grit).</summary>
         public static AudioClip Scuff(int variant)

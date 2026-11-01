@@ -168,21 +168,28 @@ Shader "Backrooms/PoolWater"
 
                 float3 color = lerp(water, refl, F) + glint;
 
-                // Foam (2026-10-31): where the simulation churned the water, carried along by its flow. A lacy network of
-                // bubbles (cell borders at two scales, drifting) that thickens to white where there is a lot of it.
-                float foam = PoolFoamAt(P.xz);
+                // Foam (2026-10-31, remade: the owner found the first, a network of cell borders, "spiderweb like"). As game
+                // water draws it (Crest, Sea of Thieves; Valve's flow maps for the motion): a pattern of clumps and bubbles
+                // carried along by the water's own flow (two phases of the flow map blended, so it never stretches out),
+                // shown through a threshold set by how much foam there is. Thick foam is a creamy solid; as it thins it breaks
+                // into clumps, then a scatter of single bubbles that pop (they do not fade), then nothing. Under it the
+                // churned water is aerated: lighter and milkier, with no pattern at all.
+                float3 flowFoam = PoolFlowAt(P.xz);
+                float foam = flowFoam.z;
                 [branch] if (foam > 0.01)
                 {
-                    // How much of the bubble pattern is filled follows the amount: thin foam is a few lines of bubbles,
-                    // thick foam fills most of it, never a flat sheet.
-                    float lace = 1.0 - smoothstep(0.0, 0.14, PoolCellEdge(P.xz * 6.0 + slope * 3.0, t * 0.35));
-                    float fine = 1.0 - smoothstep(0.0, 0.1, PoolCellEdge(P.xz * 17.0 + slope * 2.0, t * 0.55));
-                    float blot = PoolCellEdge(P.xz * 2.3, t * 0.2);
-                    float n = saturate(lace * 0.6 + fine * 0.45 + saturate(blot * 2.0) * 0.35);
+                    float3 foamCol = float3(0.9, 0.93, 0.91) * (ambient * 1.15 + _PoolSunColor.rgb * sun * POOL_SUN.y);
+                    color = lerp(color, foamCol * 0.8, saturate(foam) * 0.16);
+                    float ph = t * 0.6, p0 = frac(ph), p1 = frac(ph + 0.5);
+                    float w0 = 1.0 - abs(p0 * 2.0 - 1.0);
+                    float2 drift = flowFoam.xy * 1.6;
+                    float pix = length(fwidth(P.xz));
+                    float n = lerp(PoolFoamPattern(P.xz - drift * p1 + 3.7, pix), PoolFoamPattern(P.xz - drift * p0, pix), w0);
                     float cover = saturate(foam);
-                    float a = smoothstep(1.0 - cover * 0.85, 1.15 - cover * 0.85, n) * 0.85;
-                    float3 foamCol = float3(0.92, 0.95, 0.93) * (ambient * 1.1 + _PoolSunColor.rgb * sun * POOL_SUN.y);
-                    color = lerp(color, foamCol, a * 0.85);
+                    float thr = 1.02 - cover * 0.95, soft = 0.03 + pix * 3.0;
+                    float a = max(smoothstep(thr - soft, thr + soft, n), saturate((foam - 0.95) * 2.0));
+                    // Thick foam is not flat: the pattern shows in it as the shade of bubbles over bubbles.
+                    color = lerp(color, foamCol * (0.8 + 0.25 * saturate(n)), a * 0.9);
                 }
                 return half4(PoolFarFade(MixFog(color, i.fogFactor), P), 1);
             }

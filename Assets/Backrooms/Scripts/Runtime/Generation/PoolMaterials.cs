@@ -19,8 +19,6 @@ namespace Backrooms.Generation
         public static Material Chrome { get; private set; }
         public static Material PlasticWhite { get; private set; }
         public static Material PlasticBlue { get; private set; }
-        /// <summary>Running water: a falling sheet, or a film flowing down steps.</summary>
-        public static Material Fall { get; private set; }
 
         public static void Ensure()
         {
@@ -38,7 +36,6 @@ namespace Backrooms.Generation
             Chrome = Lit("Pool chrome", new Color(0.86f, 0.87f, 0.86f), 0.9f, 1f);
             PlasticWhite = Lit("Pool plastic (white)", new Color(0.9f, 0.9f, 0.86f), 0.62f, 0f);
             PlasticBlue = Lit("Pool plastic (blue)", new Color(0.22f, 0.5f, 0.78f), 0.7f, 0f);
-            Fall = Make("Backrooms/PoolFall", "Pool running water");
         }
 
         static Material Zone(string name, Color wall, Color deck)

@@ -7,7 +7,7 @@ namespace Backrooms.Generation
     /// The Poolrooms' larger pieces (2026-10-31, the architecture plan; planned in PoolPlan.Features): free-form pools cut
     /// into deck halls (their outline traced cell by cell on an 8 x 8 grid, marching-squares style: deck, a border of accent
     /// tiles, the curved pool wall, the floor and the water), sloping pool floors, barrel vaults, round halls' round roof
-    /// openings, galleries with their stairs and railings, spouts and cascades of running water, chrome ladders and rails,
+    /// openings, galleries with their stairs and railings, chrome ladders and rails,
     /// and the fittings of rooms with a purpose (changing stalls, showers, bleachers, a lifeguard's chair, a slide). Tile
     /// colours by room (ZoneTile).
     /// </summary>
@@ -15,8 +15,6 @@ namespace Backrooms.Generation
     {
         /// <summary>Pool chunks: the second per-cell map (depth, gallery, lanes and drains, round opening), as poolMap.</summary>
         public Color32[] poolMap2;
-        /// <summary>Running water and dripping to bring to life on the main thread: (position, kind 0 spout / 1 cascade / 2 drips, strength).</summary>
-        readonly List<(Vector3 at, int kind, float strength)> _poolFx = new List<(Vector3, int, float)>();
         Material _archZone;
 
         // ---------------- Materials ----------------
@@ -221,11 +219,85 @@ namespace Backrooms.Generation
 
         // ---------------- Tubes (chrome) ----------------
 
-        /// <summary>A tube along a polyline (chrome), rounded at the bends by its joints.</summary>
+        readonly List<Vector3> _railPts = new List<Vector3>(48);
+
+        /// <summary>
+        /// A chrome tube along a polyline, its corners bent round as a pipe bender does (radius up to 9 cm), swept as one
+        /// smooth tube: one ring at every point, carried along the path without twisting (parallel transport), so there
+        /// are no gaps or creases at the joints (2026-10-31: straight pieces butted at the corners showed cracks and
+        /// pinches the owner saw as glitches).
+        /// </summary>
         void Rail(List<Vector3> pts, float r, Material mat = null)
         {
             var w = WMask(mat ? mat : ChromeMat, 1u);
-            for (int i = 0; i + 1 < pts.Count; i++) Tube(w, pts[i], pts[i + 1], r);
+            if (pts.Count < 3) { if (pts.Count == 2) { Tube(w, pts[0], pts[1], r); Cap(w, pts[0], pts[0] - pts[1], r); Cap(w, pts[1], pts[1] - pts[0], r); } return; }
+            _railPts.Clear();
+            _railPts.Add(pts[0]);
+            for (int i = 1; i + 1 < pts.Count; i++)
+            {
+                Vector3 p = pts[i], da = pts[i - 1] - p, db = pts[i + 1] - p;
+                float la = da.magnitude, lb = db.magnitude;
+                if (la < 1e-4f || lb < 1e-4f) continue;
+                da /= la; db /= lb;
+                float cos = Vector3.Dot(da, db);
+                if (cos < -0.9995f) { _railPts.Add(p); continue; }               // straight on
+                float half = Mathf.Acos(Mathf.Clamp(cos, -1f, 1f)) * 0.5f;        // half the corner's angle
+                // The bend: tangent to both legs, as round as the legs leave room for.
+                float reach = Mathf.Min(0.45f * la, 0.45f * lb, 0.09f / Mathf.Tan(half));
+                float bend = reach * Mathf.Tan(half);
+                Vector3 pa = p + da * reach, pb = p + db * reach, centre = p + (da + db).normalized * (bend / Mathf.Sin(half));
+                const int K = 6;
+                for (int k = 0; k <= K; k++) _railPts.Add(centre + Vector3.Slerp(pa - centre, pb - centre, k / (float)K));
+            }
+            _railPts.Add(pts[pts.Count - 1]);
+            Sweep(w, _railPts, r);
+            Cap(w, _railPts[0], _railPts[0] - _railPts[1], r);
+            Cap(w, _railPts[_railPts.Count - 1], _railPts[_railPts.Count - 1] - _railPts[_railPts.Count - 2], r);
+        }
+
+        /// <summary>A tube through points (corners already rounded), smooth shaded, its rings carried without twisting.</summary>
+        static void Sweep(MeshWriter w, List<Vector3> pts, float r, int sides = 10)
+        {
+            int n = pts.Count;
+            Vector3 Seg(int i) => (pts[Mathf.Min(i + 1, n - 1)] - pts[i]).normalized;
+            Vector3 prevT = Seg(0);
+            Vector3 side = Vector3.Cross(prevT, Mathf.Abs(prevT.y) > 0.9f ? Vector3.right : Vector3.up).normalized;
+            var ringA = new Vector3[sides + 1]; var ringB = new Vector3[sides + 1];
+            float v = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 tan = i == 0 ? Seg(0) : i == n - 1 ? Seg(n - 2) : (Seg(i - 1) + Seg(i)).normalized;
+                if (tan.sqrMagnitude < 1e-8f) tan = prevT;
+                side = Quaternion.FromToRotation(prevT, tan) * side;          // parallel transport: no twist
+                side = Vector3.ProjectOnPlane(side, tan).normalized;
+                prevT = tan;
+                var up = Vector3.Cross(tan, side);
+                for (int s = 0; s <= sides; s++)
+                {
+                    float a = s * Mathf.PI * 2f / sides;
+                    ringB[s] = side * Mathf.Cos(a) + up * Mathf.Sin(a);
+                }
+                if (i > 0)
+                {
+                    float v1 = v + (pts[i] - pts[i - 1]).magnitude;
+                    for (int s = 0; s < sides; s++)
+                    {
+                        float u0 = s / (float)sides, u1 = (s + 1) / (float)sides;
+                        w.SmoothQuad(pts[i - 1] + ringA[s] * r, pts[i - 1] + ringA[s + 1] * r, pts[i] + ringB[s + 1] * r, pts[i] + ringB[s] * r,
+                            ringA[s], ringA[s + 1], ringB[s + 1], ringB[s],
+                            new Vector2(u0, v), new Vector2(u1, v), new Vector2(u1, v1), new Vector2(u0, v1));
+                    }
+                    v = v1;
+                }
+                var tmp = ringA; ringA = ringB; ringB = tmp;
+            }
+        }
+
+        /// <summary>A tube's open end closed (a flat disc facing out).</summary>
+        static void Cap(MeshWriter w, Vector3 at, Vector3 outward, float r)
+        {
+            if (outward.sqrMagnitude < 1e-8f) return;
+            w.Disc(at, r, 10, outward.normalized, MeshWriter.MetreUV);
         }
 
         static void Tube(MeshWriter w, Vector3 a, Vector3 b, float r, int sides = 8)
@@ -381,81 +453,6 @@ namespace Backrooms.Generation
             var r0 = foot + toMiddle * (C * 0.5f - 0.06f);
             var r1 = r0 + dir * gf.size.x;
             Rail(new List<Vector3> { r0, r0 + Vector3.up * 1.0f, r1 + Vector3.up * (gf.height + 1.0f), r1 + Vector3.up * gf.height }, 0.025f);
-        }
-
-        // ---------------- Running water ----------------
-
-        /// <summary>A spout: a dark slot in the wall and the sheet of water falling from it into the pool.</summary>
-        void Spout(PoolFeature f)
-        {
-            var at = V3(f.centre);
-            var n = Dir(f.yaw);
-            var t = Vector3.Cross(Vector3.up, n);
-            float half = f.size.x, y = f.height;
-            var acc = WMask(AccentMat, 1u);
-            // The slot: a small dark recess with a lip.
-            acc.Box(at + n * 0.03f + Vector3.up * (y - 0.03f), new Vector3(Mathf.Abs(t.x) * (half * 2f + 0.12f) + Mathf.Abs(n.x) * 0.06f, 0.05f, Mathf.Abs(t.z) * (half * 2f + 0.12f) + Mathf.Abs(n.z) * 0.06f), 0b111111, MeshWriter.MetreUV);
-            FallSheet(at + n * 0.06f + Vector3.up * y, n, t, half, PoolBiome.WaterLevel, 0.9f);
-            _poolFx.Add((new Vector3(at.x, PoolBiome.WaterLevel, at.z) + n * 0.5f, 0, 0.6f));
-        }
-
-        /// <summary>A sheet of water falling from a lip (the curve of something thrown out at speed v0), to height yEnd.</summary>
-        void FallSheet(Vector3 lip, Vector3 n, Vector3 t, float half, float yEnd, float v0)
-        {
-            var w = WMask(PoolMaterials.Fall ? PoolMaterials.Fall : WaterMat, 1u);
-            float drop = lip.y - yEnd;
-            if (drop <= 0.02f) return;
-            float tEnd = Mathf.Sqrt(2f * drop / 9.81f);
-            const int K = 10;
-            for (int k = 0; k < K; k++)
-            {
-                float ta = tEnd * k / K, tb = tEnd * (k + 1) / K;
-                var pa = lip + n * (v0 * ta) + Vector3.down * (4.905f * ta * ta);
-                var pb = lip + n * (v0 * tb) + Vector3.down * (4.905f * tb * tb);
-                var face = Vector3.Cross(t, pb - pa).normalized;
-                w.Quad(pa - t * half, pa + t * half, pb + t * half, pb - t * half, face, (p, nn) => new Vector2(Vector3.Dot(p, t), -p.y));
-                w.Quad(pa + t * half, pa - t * half, pb - t * half, pb + t * half, -face, (p, nn) => new Vector2(Vector3.Dot(p, t), -p.y));
-            }
-        }
-
-        /// <summary>
-        /// A cascade: a wall-long flight of three steps up out of the pool, water pouring from a long slot onto the top step
-        /// and running down over the others in a thin film.
-        /// </summary>
-        void Cascade(PoolFeature f)
-        {
-            var at = V3(f.centre);
-            var n = Dir(f.yaw);
-            var t = Vector3.Cross(Vector3.up, n);
-            float half = f.size.x;
-            int cx = Mathf.Clamp(Mathf.FloorToInt((at.x + n.x * 0.5f) / C), 0, _L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt((at.z + n.z * 0.5f) / C), 0, _L.N - 1);
-            var w = WMask(ZoneAt(cx, cz), 1u);
-            var film = WMask(PoolMaterials.Fall ? PoolMaterials.Fall : WaterMat, 1u);
-            float floorY = BasinFloorY(at.x + n.x * 0.6f, at.z + n.z * 0.6f), depth = -floorY;
-            const int steps = 3;
-            float rise = (depth - 0.06f) / steps, run = 0.35f;
-            var q = Quaternion.LookRotation(n, Vector3.up);
-            for (int k = 0; k < steps; k++)
-            {
-                // Step k counted from the wall: the highest against it.
-                float top = -0.06f - rise * k, reach = run * (steps - k);
-                var c = at + n * (reach * 0.5f) + Vector3.up * ((floorY + top) * 0.5f);
-                var size = new Vector3(half * 2f, top - floorY, reach);
-                w.Box(c, size, q, 0b111111, MeshWriter.MetreUV);
-                _rotBoxes.Add((c, size, Quaternion.LookRotation(n).eulerAngles.y));
-                // The film: on the tread (k's own part) and down its riser.
-                float t0 = run * (steps - k - 1), t1 = run * (steps - k);
-                var a0 = at + n * t0 + Vector3.up * (top + 0.01f); var a1 = at + n * t1 + Vector3.up * (top + 0.01f);
-                film.Quad(a0 - t * half, a1 - t * half, a1 + t * half, a0 + t * half, Vector3.up, (p, nn) => new Vector2(Vector3.Dot(p, t), -p.y + Vector3.Dot(p, n)));
-                float nextTop = k + 1 < steps ? -0.06f - rise * (k + 1) : PoolBiome.WaterLevel;
-                var r0 = a1 + n * 0.012f; var r1 = new Vector3(r0.x, nextTop, r0.z);
-                film.Quad(r0 - t * half, r0 + t * half, r1 + t * half, r1 - t * half, n, (p, nn) => new Vector2(Vector3.Dot(p, t), -p.y + Vector3.Dot(p, n)));
-            }
-            // The slot over the top step and the sheet from it.
-            float slotY = f.height;
-            WMask(AccentMat, 1u).Box(at + n * 0.03f + Vector3.up * (slotY - 0.03f), new Vector3(half * 2f + 0.1f, 0.05f, 0.06f), q, 0b111111, MeshWriter.MetreUV);
-            FallSheet(at + n * 0.06f + Vector3.up * slotY, n, t, half, -0.06f, 0.5f);
-            _poolFx.Add((new Vector3(at.x, PoolBiome.WaterLevel, at.z) + n * (run * steps + 0.2f), 1, Mathf.Clamp01(half / 2f)));
         }
 
         // ---------------- Fittings ----------------
@@ -615,7 +612,6 @@ namespace Backrooms.Generation
                 w.Disc(b + n * 0.3f + Vector3.up * 1.92f, 0.07f, 12, Vector3.down, MeshWriter.MetreUV);
                 Tube(w, b + n * 0.02f + Vector3.up * 1.15f, b + n * 0.09f + Vector3.up * 1.15f, 0.03f);
             }
-            _poolFx.Add((at + n * 0.5f, 2, 0.4f));
         }
 
         // ---------------- Per chunk ----------------
@@ -631,8 +627,8 @@ namespace Backrooms.Generation
                 {
                     case PoolFeatureKind.FreePool: if (Mine(f.centre)) FreePoolSteps(f); break;
                     case PoolFeatureKind.Gallery: if (Mine(f.centre)) GalleryStair(f); break;
-                    case PoolFeatureKind.Spout: if (Mine(f.centre)) Spout(f); break;
-                    case PoolFeatureKind.Cascade: if (Mine(f.centre)) Cascade(f); break;
+                    // (Spouts and cascades are still planned, so worlds stay as they were, but no longer built: the owner
+                    // did not like the waterfalls, 2026-10-31.)
                     case PoolFeatureKind.Ladder: if (Mine(f.centre)) Ladder(f); break;
                     case PoolFeatureKind.Lifeguard: if (Mine(f.centre)) Lifeguard(f); break;
                     case PoolFeatureKind.Bleachers: if (Mine(f.centre)) Bleachers(f); break;
@@ -650,19 +646,6 @@ namespace Backrooms.Generation
             }
             int N = _L.N;
             for (int x = 0; x < N; x++) for (int z = 0; z < N; z++) if (_L.pool[x, z].gallery > 0f) GalleryCell(x, z, _L.pool[x, z].gallery);
-        }
-
-        /// <summary>Main thread: the sound and spray of running water, and the drip of the showers.</summary>
-        void InstantiatePoolExtras(Transform root)
-        {
-            foreach (var (at, kind, strength) in _poolFx)
-            {
-                var go = new GameObject(kind == 2 ? "PoolDrips" : "PoolRunningWater");
-                go.transform.SetParent(root, false);
-                go.transform.localPosition = at;
-                if (kind == 2) go.AddComponent<Backrooms.CustomRooms.RoomSoundEmitter>().Init(Backrooms.CustomRooms.SoundKind.Drip, 0.5f, 10f);
-                else go.AddComponent<PoolRunningWater>().Init(kind, strength);
-            }
         }
     }
 }

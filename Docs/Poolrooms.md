@@ -139,8 +139,9 @@ Level 0 corridor 17.7 ms in the same session.
 ## Sound
 
 `BuildingAudio.PoolBlend` (0..1 over 1.2 s as the listener enters) fades out the building hum, ventilation and room tone
-and fades in a water bed (`ProceduralSounds.PoolAmbience`). The listener's reverb takes a tiled-hall profile: 2.4-5.5 s
-decay depending on the visible volume, bright (HF ratio 0.95), strong early reflections and tail.
+and fades in a water bed (`ProceduralSounds.PoolAmbience`). The listener's reverb takes a tiled-hall profile: 1.4-2.6 s
+decay depending on the visible volume (was 2.4-5.5 s, bright and louder than the dry sound: the owner heard "weird infinite
+echoing"; treated natatoriums keep near 1.5-2.5 s), the highs dying first (HF ratio 0.55), the tail 4.5 dB under the sound.
 - 2026-10-31 (the owner: the ambience "too loud, should be more chill, quiet"; the water steps "sound like blaster
   pistols"): the bed is now a soft low wash with a slow breath, faint far laps and a distant drip every 4-9 s (a tiny
   bubble, not a chirp), at 0.028 (was 0.05); the pool reverb's tail a little lower (200 mB, was 350).
@@ -251,12 +252,11 @@ a round opening) is read only where the first map's opening byte has bit 7 set, 
 - **Galleries** (`Gallery`, about two a district): a tall hall (7.2 m) with a walkway round it at 3.6 m, chrome
   railings, a straight stair along one long wall up to the far corner, and a pool in the middle to look down on. The sun
   and reflections know the gallery is there (a ceiling below it, a floor above it).
-- **Running water** (`Spout`, `Cascade`): a few dark slots in pool walls pouring a sheet of water into the pool, and now
-  and then a wall-long flight of steps with water pouring onto it from a long slot and running down in a film
-  (`Backrooms/PoolFall`). The only place you hear running water (`ProceduralSounds.RunningWater`: bubbles over a
-  fluttering splash), with spray and a stir of the water where it lands (`PoolRunningWater`).
+- **Running water**: removed (2026-10-31, the owner did not like the waterfalls). Spouts and cascades are still planned
+  (`PoolPlan.Features`, so worlds keep the same random draws) but the chunk builder no longer builds them; their shader,
+  sound and spray are gone.
 - **Rooms with a purpose**: small deck rooms become changing rooms (tiled stall partitions along a wall, a tiled bench) or
-  showers (chrome shower heads, a drain, dripping). A slide (a blue half pipe from a wall, curling down to just over
+  showers (chrome shower heads, a drain; no dripping sound since 2026-10-31, it looped into the reverb). A slide (a blue half pipe from a wall, curling down to just over
   the water) in some big pools.
 - Cost: 1920 x 1080 in the editor, a free pool hall with bleachers: GPU ~5.4 ms.
 
@@ -302,6 +302,34 @@ shape crouching (bent legs, lower hips) and crawling (along the floor), and lean
   closest approach to each capsule's axis against its radius, softening with distance), so tiles, water, reflections
   and things there all get it. Skipped beyond 5 m of the player.
 - Graphics > Player shadow (on by default). The bodies (Camera menu > HANDHELD > Body) cast their own.
+
+## Feedback pass (2026-10-31)
+
+The owner: echoing sounds, the tile steps, the chrome ladders "not rotated correctly", the waterfalls, a "spiderweb like"
+look round the body in the water, a shadow that is "not animated", and STP freezing the picture.
+- **Echo**: the reverb (above), the shower drips' loop and the waterfalls' loops gone.
+- **Tile steps** (`ProceduralSounds.TileStep`): footstep synthesis's exciter and resonator driven by the ground reaction
+  force (Nordahl, Serafin, Turchet): the heel's push then the ball's, a soft rubber sole (low-passed noise) into heavy
+  tile on concrete (a dull damped thump, a faint glaze tick) and a small wet slap. About 1.5 kHz where the old click was
+  3.2 kHz, over ~100 ms.
+- **Ladders** on free pools are moved onto the edge itself and turned to face straight into the water (by the shape's
+  distance and its gradient: `PoolPlan.EdgeLadder`); they had faced along the pool. **Rails** (`Rail`) bend round each
+  corner (up to 9 cm) and are swept as one smooth tube with untwisted rings and capped ends, where straight pieces were
+  butted at the corners (cracks and pinches).
+- **Foam** (PoolWater): as Crest and Sea of Thieves draw it, with Valve's flow maps for the motion: clumps (noise) and
+  round bubbles at two sizes, carried by the water's flow (two blended phases), shown through a threshold set by the
+  amount: thick foam a creamy, shaded solid, thinning into clumps, then single bubbles that pop, then nothing; the churned
+  water under it a little milkier. Wading makes less of it (`foamGain` 5, was 12), splashes as much.
+- **Ripple light**: the player's ripples no longer warp the caustic map (which stretched its web round the body); they
+  focus the sun as lenses do (`PoolRippleFocus`: the surface's curvature times the depth by the refraction's share),
+  bright under crests, dim under troughs.
+- **Shadow**: with no body shown and Player shadow on, the real body (FirstPersonBody, the MakeHuman rig) is drawn into
+  the shadows only, so it walks, crouches and reaches; the Poolrooms' capsules (`_PoolCapsA/B/N`, 12) follow its bones
+  (head, torso, thighs, shins, upper arms, forearms) plus the camcorder, sharper than before (penumbra 1 cm + 2.2 cm a
+  metre, was 5.5). The capsule stand-in (`PlayerShadow`) is left for crawling, when the body is hidden.
+- **STP** worked in the editor but froze in the build: URP's `STPResourceStripper` drops STP's shaders when no URP asset
+  in the build uses STP. `HdrGradingForBuild` now sets the assets to STP for the length of a build (as it already did
+  for HDR grading) and puts them back; the game picks the upscaler itself at runtime.
 
 ## Known gaps / ideas
 

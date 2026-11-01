@@ -636,16 +636,18 @@ namespace Backrooms.Audio
             float delayT = Mathf.Clamp(size / 340f, 0.008f, 0.07f);
             if (PoolBlend > 0f)
             {
-                // Tile, water and bare concrete reflect almost everything: long, bright, wet tails, and the halls are
-                // joined by wide openings, so the space rings well past what is in view.
+                // Tile, water and bare concrete: a longer, wetter tail than the offices', but kept well under the sound
+                // itself (2026-10-31: the owner heard "weird infinite echoing": the tail had been up to 5.5 s, louder than
+                // the dry sound and as bright, so every step and splash rang on). Natatoriums are treated to keep their
+                // reverberation near 1.5-2.5 s, and the highs die first in the humid air.
                 float p = PoolBlend;
-                float poolDecay = Mathf.Clamp(1.9f + 0.05f * Mathf.Sqrt(vol), 2.4f, 5.5f);
+                float poolDecay = Mathf.Clamp(1.2f + 0.02f * Mathf.Sqrt(vol), 1.4f, 2.6f);
                 decay = Mathf.Lerp(decay, poolDecay, p);
-                roomT = Mathf.Lerp(roomT, amt <= 0.001f ? -10000f : -450f + 2000f * Mathf.Log10(amt), p);
-                roomHFT = Mathf.Lerp(roomHFT, -250f, p);
-                reflT = Mathf.Lerp(reflT, -250f, p);
-                revT = Mathf.Lerp(revT, 200f, p);
-                hfRatioT = Mathf.Lerp(hfRatioT, 0.95f, p);
+                roomT = Mathf.Lerp(roomT, amt <= 0.001f ? -10000f : -900f + 2000f * Mathf.Log10(amt), p);
+                roomHFT = Mathf.Lerp(roomHFT, -700f, p);
+                reflT = Mathf.Lerp(reflT, -800f, p);
+                revT = Mathf.Lerp(revT, -450f, p);
+                hfRatioT = Mathf.Lerp(hfRatioT, 0.55f, p);
                 refDelayT = Mathf.Lerp(refDelayT, 0.035f, p);
                 delayT = Mathf.Lerp(delayT, 0.06f, p);
             }

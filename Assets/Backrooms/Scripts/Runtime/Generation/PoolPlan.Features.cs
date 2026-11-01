@@ -282,18 +282,33 @@ namespace Backrooms.Generation
                 if (k.basin) { k.depth = PoolBiome.SlopedDepth(f, p); if (shape == 0 && size.x >= 4f) k.lanes = (byte)(yaw == 0f ? 1 : 2); }
                 L.pool[x, z] = k;
             }
-            // Two chrome ladders on the long sides near the deep end.
+            // Two chrome ladders on the long sides near the deep end (one on a round pool).
             if (shape != 1)
-                foreach (float s in new[] { -1f, 1f })
-                {
-                    var at = centre + Rot(new Vector2(size.x * 0.45f, s * size.y), yaw);
-                    L.poolFeatures.Add(Fitting(PoolFeatureKind.Ladder, at, yaw + (s > 0 ? 180f : 0f), new Vector2(0.3f, 0.3f), r));
-                }
-            else
-            {
-                var at = centre + Rot(new Vector2(0f, -size.y), yaw + 45f);
-                L.poolFeatures.Add(Fitting(PoolFeatureKind.Ladder, at, yaw + 45f, new Vector2(0.3f, 0.3f), r));
-            }
+                foreach (float s in new[] { -1f, 1f }) EdgeLadder(L, r, f, centre + Rot(new Vector2(size.x * 0.45f, s * size.y), yaw));
+            else EdgeLadder(L, r, f, centre + Rot(new Vector2(0f, -size.y), yaw + 45f));
+        }
+
+        /// <summary>
+        /// A ladder on a free pool's edge near a point: moved onto the edge itself (Newton steps on the shape's distance) and
+        /// turned to face straight into the water (against the distance's gradient). 2026-10-31: they had faced along the
+        /// pool (and a round pool's 45 degrees off), their rails crossing the edge askew.
+        /// </summary>
+        static void EdgeLadder(OfficeLayout L, Room r, PoolFeature f, Vector2 near)
+        {
+            var p = near;
+            for (int i = 0; i < 8; i++) p -= ShapeGrad(f, p) * PoolBiome.ShapeSD(f, p);
+            var inward = -ShapeGrad(f, p);
+            float yaw = Mathf.Atan2(inward.y, inward.x) * Mathf.Rad2Deg;      // the builder's Dir(yaw) = (cos, sin)
+            L.poolFeatures.Add(Fitting(PoolFeatureKind.Ladder, p, yaw, new Vector2(0.3f, 0.3f), r));
+        }
+
+        /// <summary>Outward unit normal of a free pool's edge near a point (the distance's gradient).</summary>
+        static Vector2 ShapeGrad(PoolFeature f, Vector2 p)
+        {
+            const float e = 0.01f;
+            var g = new Vector2(PoolBiome.ShapeSD(f, p + new Vector2(e, 0f)) - PoolBiome.ShapeSD(f, p - new Vector2(e, 0f)),
+                                PoolBiome.ShapeSD(f, p + new Vector2(0f, e)) - PoolBiome.ShapeSD(f, p - new Vector2(0f, e)));
+            return g.sqrMagnitude > 1e-10f ? g.normalized : Vector2.right;
         }
 
         static void Slope(OfficeLayout L, Room r, System.Random rng)

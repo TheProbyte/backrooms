@@ -118,7 +118,7 @@ void Step(uint3 id : SV_DispatchThreadID)
     float2 back = (float2(q) + 0.5 - u * _Dt / _Texel) / _Size;
     float foam = _FlowPrev.SampleLevel(linear_clamp_sampler, back, 0).z * _FoamDecay;
     if (any(back < 0) || any(back > 1)) foam = 0;
-    foam += saturate((abs(vel) - 0.002) * _FoamGain) + dropFoam * _FoamDrop;
+    foam += saturate((abs(vel) - 0.003) * _FoamGain) + dropFoam * _FoamDrop;
     _Next[p] = float2(h, c.x);
     _FlowNext[p] = float4(u, min(foam, 1.5), 0);
 }

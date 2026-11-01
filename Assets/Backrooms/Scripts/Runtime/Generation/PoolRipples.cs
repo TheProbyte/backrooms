@@ -20,8 +20,8 @@ namespace Backrooms.Generation
         int _kernel;
         RenderTexture _a, _b, _fa, _fb;      // heights; flow and foam
         [Tooltip("Smoothing of the water's motion: small ripples calm first.")] public float viscosity = 0.035f;
-        [Tooltip("Foam left per second (of what there was).")] [Range(0.5f, 1f)] public float foamKeep = 0.66f;
-        [Tooltip("Foam made by churned water.")] public float foamGain = 12f;
+        [Tooltip("Foam left per second (of what there was).")] [Range(0.5f, 1f)] public float foamKeep = 0.6f;
+        [Tooltip("Foam made by churned water (2026-10-31: less from wading, which only stirs clean pool water).")] public float foamGain = 5f;
         [Tooltip("Foam made where something goes in.")] public float foamDrop = 7f;
         Vector2Int _origin;              // world texel of the window's (0, 0)
         bool _have;
