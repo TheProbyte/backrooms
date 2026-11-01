@@ -15,6 +15,10 @@ namespace Backrooms.Interaction
         public MovableSpec Spec { get; private set; }
         public MovableShape Shape { get; private set; }
         public Rigidbody Body { get; private set; }
+        /// <summary>Every movable prop in the world now (the Poolrooms' water goes through them: PoolBodies).</summary>
+        public static readonly System.Collections.Generic.List<MovableProp> Live = new System.Collections.Generic.List<MovableProp>();
+        void OnEnable() { Live.Add(this); }
+        void OnDisable() { Live.Remove(this); }
         public float Mass => Body ? Body.mass : 0f;
         /// <summary>Held by the player's hand right now (never frozen while held).</summary>
         [System.NonSerialized] public bool held;

@@ -127,7 +127,7 @@ namespace Backrooms.Interaction
             ShowAim(false);
         }
 
-        void OnDisable() { if (_heldNail) Destroy(_heldNail); ShowAim(false); }
+        protected override void OnDisable() { base.OnDisable(); if (_heldNail) Destroy(_heldNail); ShowAim(false); }
         void OnDestroy() { if (_ghost) Destroy(_ghost); if (_ring) Destroy(_ring); if (_ghostBad) Destroy(_ghostBad); }
 
         /// <summary>The box of nails in a pocket (with nails in it first), if there is one.</summary>

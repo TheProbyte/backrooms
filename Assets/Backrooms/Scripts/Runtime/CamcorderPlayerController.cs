@@ -118,6 +118,7 @@ namespace Backrooms
         [System.NonSerialized] public float pitchScale = 1f;
         /// <summary>Multiplier on walking speed (heavy things slow you down).</summary>
         [System.NonSerialized] public float moveScale = 1f;
+        float _wade;
         /// <summary>No running (e.g. while dragging something).</summary>
         [System.NonSerialized] public bool noRun;
         /// <summary>How far the body bends down (m), e.g. to reach something on the floor.</summary>
@@ -440,6 +441,9 @@ namespace Backrooms
             CrawlingFast = !noRun && hasFocus && CurrentStance == Stance.Crawl && keyboard.leftShiftKey.isPressed && input.y > 0.1f;
             float targetSpeed = CurrentStance == Stance.Crawl ? crawlSpeed * (CrawlingFast ? crawlRush : 1f) : CurrentStance == Stance.Crouch ? crouchSpeed : IsRunning ? runSpeed : walkSpeed;
             targetSpeed *= moveScale;
+            // Wading (the Poolrooms' shin-deep water): slower, running most of all (2026-10-31, the water interaction plan).
+            _wade = Mathf.MoveTowards(_wade, Generation.PoolRipples.PlayerInWater ? 1f : 0f, Time.deltaTime * 4f);
+            targetSpeed *= Mathf.Lerp(1f, CurrentStance == Stance.Crawl ? 0.7f : IsRunning ? 0.64f : 0.8f, _wade);
             // Stairs are walked a little slower than the flat (a step a tread at a time each foot, as people do).
             targetSpeed *= Mathf.Lerp(1f, stairSpeed, _onStairs);
             Vector3 target = (transform.forward * input.y + transform.right * input.x) * targetSpeed;
@@ -452,6 +456,7 @@ namespace Backrooms
             float half = !pushing || reversing ? stopHalfLife : IsRunning ? runAccelHalfLife : accelHalfLife;
             // After dropping into a crouch or crawl from a run the body carries forward for a moment.
             if (_hopCarry > 0f) { _hopCarry -= Time.deltaTime; half *= 4f; }
+            half *= Mathf.Lerp(1f, 1.7f, _wade);              // the water holds you back starting, and carries you a little stopping
             if (!_controller.isGrounded) half = airHalfLife;
             if (_slideT >= 0f) UpdateSlide(input, target);
             else PlanarVelocity = Springs.Damper(PlanarVelocity, ref _moveAccel, target, half, Time.deltaTime);

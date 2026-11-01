@@ -157,7 +157,36 @@ body, items and every movable prop) swaps their materials for Backrooms/PoolLit 
 Poolrooms' sun and bounce) while they are in the Poolrooms. Backrooms/Lit itself is untouched: adding the Poolrooms'
 light to it made the editor recompile all its variants and crash the D3D12 device twice (see WORKLOG).
 
-## Water interaction: the plan (2026-10-31, not built yet)
+## Water interaction (2026-10-31, built: items 1-4 of the plan below)
+
+The owner: "start that stuff, efficient but the newest tech and best methods; not sure about steps since we don't have a
+body any more". With no body the water answers your movement, not feet you could see: the strides, splashes and prints
+come from where you walk.
+- **Wading** (`CamcorderPlayerController`): in a basin 80 % walking speed, 64 % running, 70 % crawling, and slower to
+  get going and to stop (the damper's half-life x1.7), faded in and out over a quarter of a second.
+- **Spray** (`PoolSplashes`, `Backrooms/PoolSpray`): one world-space particle system for every splash (one draw call; no
+  object per splash): droplets thrown up in bursts, stretched along their flight, lit per vertex by the traced sun and
+  the sky, hidden under the surface by the water's depth. Each stride in the water throws a little forward off the
+  shin (2-18 drops by speed), stepping or jumping in a burst (60 for a jump), things thrown in by how hard they hit.
+  The rings are the ripple simulation's (`PoolRipples.Splash`: anything can disturb the water now).
+- **Things in the water** (`PoolBodies`): Archimedes over eight sample points per body (the middles of its collider
+  bounds' octants, each pushing by how much of its slice is under), as Unity's BoatAttack water does, plus water drag;
+  so floating things find their level and lie flat, sinkers fall slowly and stand lighter on the bottom. Density by what
+  it is: the rubber chicken 0.25, tape 0.7, the spray can 0.85 (they float), cartons 0.3 and pallets 0.55 float, chalk,
+  plugs, hammers, nails and furniture sink. Wading past pushes floating things aside and along, and wakes a floating prop
+  that froze where it settled. Going in: spray, a ring, and a plop (`ProceduralSounds.Plop`: the air cavity pinching
+  off, one low bubble rising half an octave, with the splash's noise and a fizz) by size. Only moving bodies within
+  30 m are simulated, from the items' and props' own registries (`WorldItem.Live`, `MovableProp.Live`): no physics
+  queries.
+- **After the water** (`PoolWetPrints`, `Backrooms/PoolWetPrint`): wet shoe prints on the dry deck for 22 s after you
+  climb out (fainter as the shoes dry), each drying over 30 s; all in one instanced draw (`Graphics.RenderMeshInstanced`,
+  wetness per instance). Drips off you for 6 s, quick then slowing (`ProceduralSounds.Drip`).
+- **Water on the lens** (`Camcorder/LensDrops`, CamcorderPipeline's integrate pass): a hard landing in water, a big
+  splash right in front of the camcorder, now and then running through the water leaves drops on the lens: each a small
+  lens of its own (the scene small and upside down in it, blurred), a dark rim, a bright edge; they run down and dry in
+  3-7 s. Up to eight.
+
+## Water interaction: the plan (2026-10-31; 1-4 built, see above)
 
 The owner: "plan out how to make interaction with water much better". What it has now: the ripple simulation round the
 player (legs push it, stepping in splashes, walls reflect it), caustics that wobble with those ripples, water steps and

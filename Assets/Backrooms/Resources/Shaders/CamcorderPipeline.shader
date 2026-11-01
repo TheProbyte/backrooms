@@ -52,6 +52,7 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
     float4 _CamDisplay;     // x: line doubling 0..1, y: interlace (0 off, 1 bob), z: field parity, w: CRT scanlines
     float4 _CamOSD;         // x: OSD on (0/1), y: OSD curvature, z, w: unused
     float4 _CamViewRect;    // xy: the camera viewport's corner, zw: its size (screen fractions), for the overlay texture
+    float4 _CamDrops[8];    // water on the lens (LensDrops.cs): xy centre (uv), z radius (share of the height), w strength
     TEXTURE2D(_CamOSDTex);
 
     // ---------------- Noise ----------------
@@ -87,9 +88,33 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
 
     static const float2 kRotatedGrid[4] = { float2(0.125, 0.375), float2(0.375, -0.125), float2(-0.125, -0.375), float2(-0.375, 0.125) };
 
+    // Water on the lens: each drop a small lens of its own (the scene through it small and upside down), blurred, with a
+    // dark rim and a bright edge toward the light.
+    float2 LensDrops(float2 uv, inout float blur, inout float shade)
+    {
+        float aspect = _CamRaster.x / max(_CamRaster.y, 1.0);
+        [unroll] for (int i = 0; i < 8; i++)
+        {
+            float4 d = _CamDrops[i];
+            if (d.w <= 0) continue;
+            float2 q = (uv - d.xy) * float2(aspect, 1.0) / d.z;
+            q.y *= q.y < 0 ? 1.25 : 0.9;                        // heavier at the bottom: it is running down
+            float r = length(q);
+            if (r >= 1.0) continue;
+            float k = d.w * smoothstep(1.0, 0.8, r);
+            uv = lerp(uv, d.xy - (uv - d.xy) * 0.55, k);
+            blur = max(blur, k);
+            float rim = smoothstep(0.7, 0.97, r) * (1.0 - smoothstep(0.97, 1.0, r));
+            shade *= lerp(1.0, 0.72 + 0.6 * saturate(q.y * 1.5) * (1.0 - smoothstep(0.75, 0.95, r)), rim * d.w) * lerp(1.0, 0.92, k);
+        }
+        return uv;
+    }
+
     float4 FragIntegrate(Varyings input) : SV_Target
     {
         float2 uv = input.texcoord;
+        float lensBlur = 0, lensShade = 1;
+        uv = LensDrops(uv, lensBlur, lensShade);
         uint frame = (uint)_CamFrame.x;
         // Where this point of the scene was when the shutter opened: the streak it leaves behind (trailing the motion).
         float2 delta = 0;
@@ -116,10 +141,10 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
         {
             float s = (k + j) / n;
             float2 o = k < 4 ? kRotatedGrid[k] : frac(0.5 + k * float2(0.7548777, 0.5698403)) - 0.5;
-            float2 sub = (dir * (dot(o, dir) * alongKeep) + across * dot(o, across)) * (1.0 + _CamFrame.w) * _CamRaster.zw;
+            float2 sub = (dir * (dot(o, dir) * alongKeep) + across * dot(o, across)) * (1.0 + _CamFrame.w + lensBlur * 7.0) * _CamRaster.zw;
             acc += SampleSource(uv + delta * s + sub);
         }
-        return float4(acc / n * _CamFrame.y, 1);
+        return float4(acc / n * _CamFrame.y * lensShade, 1);
     }
 
     // ---------------- 1 Meter ----------------

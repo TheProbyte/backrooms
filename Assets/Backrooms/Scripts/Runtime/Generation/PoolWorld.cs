@@ -62,6 +62,9 @@ namespace Backrooms.Generation
             Shader.SetGlobalFloat("_PoolScreenTextures", 0f);
             if (!GetComponent<PoolRipples>()) gameObject.AddComponent<PoolRipples>();
             if (!GetComponent<PoolCausticMap>()) gameObject.AddComponent<PoolCausticMap>();
+            if (!GetComponent<PoolSplashes>()) gameObject.AddComponent<PoolSplashes>();
+            if (!GetComponent<PoolBodies>()) gameObject.AddComponent<PoolBodies>();
+            if (!GetComponent<PoolWetPrints>()) gameObject.AddComponent<PoolWetPrints>();
             ApplyLight();
             RenderPipelineManager.beginCameraRendering += BeginCamera;
             RenderPipelineManager.endCameraRendering += EndCamera;

@@ -44,6 +44,22 @@ namespace Backrooms.Audio
         static AudioClip s_wade;
         public const int WaterStepCount = 8;
 
+        static AudioClip[] s_plops, s_drips;
+        /// <summary>Something going into the water: size 0 small, 1 middling, 2 big (4 variants each).</summary>
+        public static AudioClip Plop(int size, int variant)
+        {
+            if (s_plops == null) s_plops = new AudioClip[12];
+            int i = Mathf.Clamp(size, 0, 2) * 4 + ((variant % 4) + 4) % 4;
+            return s_plops[i] ? s_plops[i] : (s_plops[i] = ProceduralSounds.Plop(Mathf.Clamp(size, 0, 2), i % 4));
+        }
+        /// <summary>A drop off you onto the tiles (6 variants).</summary>
+        public static AudioClip Drip(int variant)
+        {
+            if (s_drips == null) s_drips = new AudioClip[6];
+            int i = ((variant % 6) + 6) % 6;
+            return s_drips[i] ? s_drips[i] : (s_drips[i] = ProceduralSounds.Drip(i));
+        }
+
         /// <summary>The swish of wading (a loop).</summary>
         public static AudioClip WadeLoop => s_wade ? s_wade : (s_wade = ProceduralSounds.WadeLoop());
 

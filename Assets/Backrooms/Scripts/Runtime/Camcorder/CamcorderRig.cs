@@ -311,6 +311,7 @@ namespace Backrooms.Camcorder
             // Sensor: AGC gain (noise grows with it), read and shot noise, colour-filter share, fixed pattern, smear.
             float gNoise = Mathf.Pow(2f, gainEV * Mathf.Max(0f, s.gainNoise));
             m.SetVector(IdSensor, new Vector4(gNoise, 0.002f, 1.6e-5f, Mathf.Max(0f, s.noise)));
+            LensDrops.Apply(m, Time.deltaTime);
             m.SetVector(IdNoise2, new Vector4(Mathf.Clamp01(0.5f * s.chromaNoise), s.fixedPattern, s.fixedPattern, T * 60f));
             m.SetVector(IdSmearK, new Vector4(0.003f * s.smear, s.purpleFringe, 0f, 0f));
 

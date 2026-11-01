@@ -33,6 +33,14 @@ namespace Backrooms.Generation
         /// <summary>The player is standing in water (for footsteps).</summary>
         public static bool PlayerInWater { get; private set; }
 
+        static readonly System.Collections.Generic.List<Vector4> s_extra = new System.Collections.Generic.List<Vector4>();
+        /// <summary>Something else disturbing the water (a thing thrown in): a dip of height (negative) and radius at a point,
+        /// taken into the next step of the simulation.</summary>
+        public static void Splash(Vector3 at, float radius, float height)
+        {
+            if (s_extra.Count < 8) s_extra.Add(new Vector4(at.x, at.z, radius, height));
+        }
+
         void Update()
         {
             var world = PoolWorld.Instance;
@@ -44,7 +52,7 @@ namespace Backrooms.Generation
             }
             bool active = world && _player && world.IsPool(_player.position);
             PlayerInWater = false;
-            if (!active) { if (_have) Shader.SetGlobalVector("_PoolRippleRect", Vector4.zero); return; }
+            if (!active) { s_extra.Clear(); if (_have) Shader.SetGlobalVector("_PoolRippleRect", Vector4.zero); return; }
             if (!Ensure()) return;
 
             // Follow the player: move the window in whole texels once they are a few metres off centre.
@@ -66,19 +74,38 @@ namespace Backrooms.Generation
             {
                 var v = _ctrl ? _ctrl.PlanarVelocity : Vector3.zero;
                 float speed = v.magnitude;
-                if (!_wasIn) Drop(p, 0.45f, -splash);
+                if (!_wasIn)
+                {
+                    Drop(p, 0.45f, -splash);
+                    // Stepping in: spray, more for a jump (and a drop or two on the lens if it was a hard landing).
+                    float land = _ctrl ? _ctrl.LandedThisFrame : 0f;
+                    var surf = new Vector3(p.x, level, p.z);
+                    PoolSplashes.Burst(surf, land > 0.5f ? 60 : 14, land > 0.5f ? 2.8f : 1.2f, v * 0.3f, 0.8f, land > 0.5f ? 1.3f : 1f);
+                    if (land > 2f) Camcorder.LensDrops.Add(3, 0.8f);
+                }
                 else if (speed > 0.05f)
                 {
                     // Alternate legs, a little to each side and ahead of the body.
                     var side = Vector3.Cross(Vector3.up, v / speed) * 0.12f;
                     _stride += speed * Time.deltaTime;
-                    if (_stride > 0.35f) { _stride = 0f; _foot ^= 1; }
+                    if (_stride > 0.35f)
+                    {
+                        _stride = 0f; _foot ^= 1;
+                        // Each stride throws a little water forward off the shin; running throws more (and now and then some
+                        // reaches the lens).
+                        float k = Mathf.Clamp01(speed / 3.6f);
+                        var shin = p + v / speed * 0.25f + (_foot == 0 ? side : -side);
+                        PoolSplashes.Burst(new Vector3(shin.x, level, shin.z), Mathf.RoundToInt(Mathf.Lerp(2f, 18f, k * k)), Mathf.Lerp(0.6f, 2.2f, k), v * 0.55f, 0.55f);
+                        if (k > 0.8f && Random.value < 0.08f) Camcorder.LensDrops.Add(1, 0.6f);
+                    }
                     var leg = p + v.normalized * 0.12f + (_foot == 0 ? side : -side);
                     Drop(leg, 0.13f, -wake * Mathf.Clamp(speed / 1.4f, 0.2f, 2.2f));
                 }
             }
             _wasIn = inWater;
 
+            foreach (var e in s_extra) if (_dropCount < _drops.Length) _drops[_dropCount++] = e;
+            s_extra.Clear();
             _acc = Mathf.Min(_acc + Time.deltaTime, 4f / 60f);
             // A move of the window must reach the simulation this frame (the drawing uses the new origin now), or the
             // waves would jump by the shift and seem to start somewhere else.

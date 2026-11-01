@@ -15,6 +15,22 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - Water you can interact with: wading, spray, floating and sinking things, plops, wet prints, drips, drops on the lens
+
+- The owner: "start that stuff (the water plan), efficient, newest tech, best methods; not sure about steps since we don't
+  have a body any more, you think about it". With no body, everything answers your movement (strides, prints by distance).
+- Research: Unity's BoatAttack water (Archimedes shared over sample points in the object), FusionWater / NaughtyWater
+  buoyancy (sample points, density sets the waterline), bubble acoustics (Minnaert) for the plops.
+- Wading slows you (80 % walk, 64 % run) with more lag. `PoolSplashes`: one particle system for all spray (stride spray,
+  stepping or jumping in, things thrown in). `PoolRipples.Splash`: anything can ripple the water.
+- `PoolBodies`: floating and sinking by density (8 sample points, water drag), pushed aside by your wake, splash, ring and
+  plop by size on going in; registries `WorldItem.Live` / `MovableProp.Live` (Hammer's OnDisable now calls the base).
+- `PoolWetPrints`: wet shoe prints on the deck after the water, drying (one instanced draw); drips for 6 s.
+- `LensDrops` + CamcorderPipeline: drops on the lens from big splashes and hard landings, running and drying.
+- Checked in World 3 (pictures: things floating and sunk in a sunlit basin, a trail of wet prints, drops on the lens,
+  spray). Fix found there: each sample point now stands for its own slice (a floating can sat under the surface).
+  EditMode tests pass. Not played by the owner (or heard: splashes_and_drips.wav sent).
+
 ## 2026-10-31 - The Poolrooms: larger roof openings, high windows, less haze, no black far off, calmer ambience, new wading sounds
 
 - The owner: "larger roof openings, some side wall high openings, less haze; far away shows as black (unloaded areas);

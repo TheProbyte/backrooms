@@ -36,6 +36,10 @@ namespace Backrooms.Interaction
         public string itemId;
         public string displayName;
         public Rigidbody Body { get; private set; }
+        /// <summary>Every item in the world now (the Poolrooms' water goes through them: PoolBodies).</summary>
+        public static readonly System.Collections.Generic.List<WorldItem> Live = new System.Collections.Generic.List<WorldItem>();
+        protected virtual void OnEnable() { Live.Add(this); }
+        protected virtual void OnDisable() { Live.Remove(this); }
         public bool Held { get; private set; }
         Collider[] _colliders;
         WorldStreamer _streamer;
