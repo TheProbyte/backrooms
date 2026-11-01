@@ -208,6 +208,56 @@ float PoolCapsuleSun(float3 p)
     return vis * body;
 }
 
+// ---------------- Passing clouds, glazed roof lights (2026-11-01, the realism plan 2 and 6) ----------------
+
+// Clouds drifting over the sun: a deck of noise 300 m up, read where the sun's ray from a point crosses it, so a cloud's
+// shadow sweeps across every opening, beam and caustic together (as Unreal's cloud shadows). Set by PoolWorld.
+float4 _PoolCloud;                   // xy drift (m), z cover (0..1), w how much a cloud takes of the sun (0: off)
+float PoolValueNoise(float2 p);
+float PoolCloudCover(float2 deck)
+{
+    float2 s = (deck + _PoolCloud.xy) * 0.004;
+    float n = PoolValueNoise(s) * 0.55 + PoolValueNoise(s * 2.03 + 17.1) * 0.3 + PoolValueNoise(s * 4.1 + 5.3) * 0.15;
+    return smoothstep(1.0 - _PoolCloud.z, 1.0 - _PoolCloud.z + 0.2, n);
+}
+float PoolCloudShade(float3 pw)
+{
+    if (_PoolCloud.w <= 0) return 1;
+    return 1.0 - _PoolCloud.w * PoolCloudCover(pw.xz + POOL_SUN.xz / POOL_SUN.y * (300.0 - pw.y));
+}
+
+// Some blocks of rooms have glazed roof lights: a frame of bars every 0.6 m and a dusty pane at the top of each light
+// well (the frames are built by OfficeChunkBuilder.GlazedFrames with the same hash, PoolBiome.Glazed).
+bool PoolGlazed(int2 cell, uint shape)
+{
+    if (shape == 0u || shape >= 5u) return false;
+    int2 b = (int2)floor(cell / 12.0);
+    uint h = ((uint)b.x * 73856093u) ^ ((uint)b.y * 19349663u);
+    h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
+    return (h % 100u) < 45u;
+}
+float PoolMullions(float2 xz, float blur)
+{
+    float2 d = abs(frac(xz / 0.6 + 0.5) - 0.5) * 0.6;          // to the nearest bar (m)
+    return 0.82 * smoothstep(0.02 - blur, 0.02 + blur, min(d.x, d.y));
+}
+// What happens to the sun at the top of a light well (world point there, the cell below, its opening).
+float PoolSkyGate(float3 top, int2 cell, uint shape, float blur)
+{
+    float g = PoolCloudShade(top);
+    if (PoolGlazed(cell, shape)) g *= PoolMullions(top.xz, 0.003 + blur);
+    return g;
+}
+
+// Some high windows are glass block (70s and 80s pool halls; OfficeChunkBuilder.WindowFaces, the same hash): the sun
+// comes through them scattered, a dim even glow where the clear ones throw a beam.
+bool PoolGlassBlock(int2 cellWithEdge, uint side)
+{
+    uint h = ((uint)cellWithEdge.x * 2654435761u) ^ ((uint)cellWithEdge.y * 40503u) ^ (side * 97u);
+    h ^= h >> 15; h *= 0x2c1b3c6du; h ^= h >> 12;
+    return (h % 100u) < 40u;
+}
+
 float PoolSunVisibilityMap(float3 pw);
 // Sunlight reaching a world point: the traced sun (below), and the player's shadow.
 float PoolSunVisibility(float3 pw)
@@ -244,8 +294,10 @@ float PoolSunVisibilityMap(float3 pw)
             int2 c2 = (int2)floor(q2.xz / POOL_C);
             PoolCell cell2 = PoolLoad(c2, storey);
             float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSDC(cell2, q2.xz - c2 * POOL_C) : -1.0;
-            // The sun is half a degree wide: the edge of each opening blurs with distance.
-            return saturate(d1 / (0.006 + 0.009 * tCeil) + 0.5) * saturate(d2 / (0.006 + 0.009 * t2) + 0.5);
+            // The sun is half a degree wide: the edge of each opening blurs with distance. Passing clouds and, in some
+            // rooms, a glazed roof light's frame and pane (PoolSkyGate).
+            float vis = saturate(d1 / (0.006 + 0.009 * tCeil) + 0.5) * saturate(d2 / (0.006 + 0.009 * t2) + 0.5);
+            return vis > 0.001 ? vis * PoolSkyGate(q2 + float3(0, PoolBase(storey), 0), c, cell.sky, 0.009 * t2) : 0;
         }
         float y = p.y + L.y * tExit;
         int2 nc = c + (tx <= tz ? int2(1, 0) : int2(0, 1));
@@ -255,7 +307,8 @@ float PoolSunVisibilityMap(float3 pw)
         {
             // A high window: the sky beyond (its edges soften with distance, as an opening's do).
             float along = tx <= tz ? p.z + L.z * tExit - c.y * POOL_C : p.x + L.x * tExit - c.x * POOL_C;
-            return saturate(PoolWindowSD(along, y, cell.ceiling, n.ceiling) / (0.006 + 0.009 * tExit) + 0.5);
+            float wv = saturate(PoolWindowSD(along, y, cell.ceiling, n.ceiling) / (0.006 + 0.009 * tExit) + 0.5) * PoolCloudShade(pw);
+            return PoolGlassBlock(nc, tx <= tz ? 1u : 2u) ? wv * 0.3 : wv;
         }
         if (edge == 1u || (edge == 2u && y > POOL_HEADER)) return 0;
         if (!n.valid || y >= n.ceiling) return 0;
@@ -680,7 +733,8 @@ float PoolSunVisibilityBlurMap(float3 pw, float blur)
             int2 c2 = (int2)floor(q2.xz / POOL_C);
             PoolCell cell2 = PoolLoad(c2, storey);
             float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSDC(cell2, q2.xz - c2 * POOL_C) : -1.0;
-            return saturate(d1 / (0.006 + 0.009 * tCeil + blur) + 0.5) * saturate(d2 / (0.006 + 0.009 * t2 + blur) + 0.5);
+            float vis = saturate(d1 / (0.006 + 0.009 * tCeil + blur) + 0.5) * saturate(d2 / (0.006 + 0.009 * t2 + blur) + 0.5);
+            return vis > 0.001 ? vis * PoolSkyGate(q2 + float3(0, PoolBase(storey), 0), c, cell.sky, 0.009 * t2 + blur) : 0;
         }
         float y = p.y + L.y * tExit;
         int2 nc = c + (tx <= tz ? int2(1, 0) : int2(0, 1));
@@ -689,7 +743,8 @@ float PoolSunVisibilityBlurMap(float3 pw, float blur)
         if (edge == 3u)
         {
             float along = tx <= tz ? p.z + L.z * tExit - c.y * POOL_C : p.x + L.x * tExit - c.x * POOL_C;
-            return saturate(PoolWindowSD(along, y, cell.ceiling, n.ceiling) / (0.006 + 0.009 * tExit + blur) + 0.5);
+            float wv = saturate(PoolWindowSD(along, y, cell.ceiling, n.ceiling) / (0.006 + 0.009 * tExit + blur) + 0.5) * PoolCloudShade(pw);
+            return PoolGlassBlock(nc, tx <= tz ? 1u : 2u) ? wv * 0.3 : wv;
         }
         if (edge == 1u || (edge == 2u && y > POOL_HEADER)) return 0;
         if (!n.valid || y >= n.ceiling) return 0;
@@ -722,3 +777,100 @@ float3 PoolShadeHit(PoolHit h, float3 R, float blur)
 }
 
 #endif
+
+// ---------------- Warm bounce from the sun patches (2026-11-01, the realism plan 7) ----------------
+
+// Is the way between two points (same storey) clear of walls? A walk through the cell grid in any direction.
+bool PoolWallsClear(float3 a, float3 b)
+{
+    int storey = PoolStorey(a.y);
+    float base = PoolBase(storey);
+    float3 d = b - a;
+    int2 c = PoolCellOf(a), e = PoolCellOf(b);
+    PoolCell cell = PoolLoad(c, storey);
+    int2 st = int2(d.x >= 0 ? 1 : -1, d.z >= 0 ? 1 : -1);
+    float2 inv = 1.0 / max(abs(d.xz), 1e-5);
+    float2 next = float2(st.x > 0 ? (c.x + 1) * POOL_C - a.x : a.x - c.x * POOL_C, st.y > 0 ? (c.y + 1) * POOL_C - a.z : a.z - c.y * POOL_C) * inv;
+    float2 dt = POOL_C * inv;
+    [loop] for (int i = 0; i < 8; i++)
+    {
+        if (c.x == e.x && c.y == e.y) return true;
+        bool xs = next.x < next.y;
+        float t = xs ? next.x : next.y;
+        if (t > 1.0) return true;
+        int2 nc = c + (xs ? int2(st.x, 0) : int2(0, st.y));
+        PoolCell n = PoolLoad(nc, storey);
+        uint edge = xs ? (st.x > 0 ? n.west : cell.west) : (st.y > 0 ? n.south : cell.south);
+        float y = a.y + d.y * t - base;
+        if (PoolSolidEdge(edge) || (edge == 2u && y > POOL_HEADER) || !n.valid) return false;
+        if (xs) next.x += dt.x; else next.y += dt.y;
+        c = nc; cell = n;
+    }
+    return true;
+}
+
+// The light a lambertian quad (four corners, any winding) throws on a point with normal n, as a share of its own
+// radiance times pi (Lambert's polygon formula: the edges' angles projected on the normal).
+float PoolQuadFormFactor(float3 p, float3 n, float3 q0, float3 q1, float3 q2, float3 q3)
+{
+    float3 v[4] = { normalize(q0 - p), normalize(q1 - p), normalize(q2 - p), normalize(q3 - p) };
+    float sum = 0;
+    [unroll] for (int i = 0; i < 4; i++)
+    {
+        float3 a = v[i], b = v[(i + 1) % 4];
+        float c = clamp(dot(a, b), -0.9999, 0.9999);
+        float3 g = cross(a, b);
+        float gl = length(g);
+        if (gl > 1e-6) sum += acos(c) * dot(n, g / gl);
+    }
+    return abs(sum) / (2.0 * PI);
+}
+
+// The warm light off the patches of sun on the floor near a point. Each patch is a known rectangle: the part of an
+// opening the sun gets through both ends of its light well, moved down along the sun to the floor. Its light is a
+// lambertian area light's (as Unity's and Unreal's area lights), checked for walls between; up to two patches.
+float3 PoolPatchBounce(float3 P, float3 N)
+{
+    int storey = PoolStorey(P.y);
+    float base = PoolBase(storey);
+    int2 pc = PoolCellOf(P);
+    PoolCell me = PoolLoad(pc, storey);
+    if (!me.valid) return 0;
+    const float3 L = POOL_SUN;
+    float2 run = L.xz / L.y;                                  // across per metre down
+    float2 shaft = run * POOL_SHAFT;
+    // The openings whose patches may lie near this point are about a ceiling's height toward the sun from it.
+    float2 look = P.xz + run * max(me.ceiling - (P.y - base), 0.5);
+    int2 lc = (int2)floor(look / POOL_C);
+    float3 sum = 0;
+    int found = 0;
+    [loop] for (int j = -1; j <= 1; j++)
+    [loop] for (int i = -1; i <= 1; i++)
+    {
+        if (found >= 2) break;
+        int2 hc = lc + int2(i, j);
+        PoolCell h = PoolLoad(hc, storey);
+        if (!h.valid || h.sky == 0u || h.sky >= 5u) continue;
+        float4 r = h.sky == 1u ? float4(0.15, 0.15, 1.05, 1.05) : h.sky == 2u ? float4(0.15, 0.3, 1.05, 0.9) : h.sky == 3u ? float4(0.3, 0.15, 0.9, 1.05) : float4(0.2, 0.2, 1.0, 1.0);
+        if (h.joined & 1u) r.x = 0.0; if (h.joined & 2u) r.z = 1.2; if (h.joined & 4u) r.y = 0.0; if (h.joined & 8u) r.w = 1.2;
+        // Through both ends of the light well; joined openings have no well wall between their cells.
+        if (!(h.joined & 2u)) r.z -= shaft.x; if (!(h.joined & 8u)) r.w -= shaft.y;
+        if (r.z - r.x < 0.05 || r.w - r.y < 0.05) continue;
+        float floorY = base + (h.basin ? POOL_WATER : 0.0);
+        float2 o = hc * POOL_C - run * (h.ceiling - (floorY - base));
+        float3 q0 = float3(o.x + r.x, floorY, o.y + r.y), q2 = float3(o.x + r.z, floorY, o.y + r.w);
+        float3 q1 = float3(q2.x, floorY, q0.z), q3 = float3(q0.x, floorY, q2.z);
+        float3 mid = (q0 + q2) * 0.5;
+        float3 toMid = mid - P;
+        float dist2 = dot(toMid, toMid);
+        if (dist2 > 49.0 || dot(N, toMid) <= 0) continue;
+        // The patch is really sunlit (not on the far side of a wall), and nothing stands between it and the point.
+        if (PoolSunVisibilityMap(mid + float3(0, 0.02, 0)) < 0.3) continue;
+        if (!PoolWallsClear(P + N * 0.05, mid + float3(0, 0.05, 0))) continue;
+        float ff = PoolQuadFormFactor(P, N, q0, q1, q2, q3);
+        float albedo = h.basin ? 0.25 : 0.78;                   // a sunlit deck, or water over the pool floor
+        sum += albedo * ff * PoolCloudShade(mid);
+        found++;
+    }
+    return _PoolSunColor.rgb * L.y * sum;
+}

@@ -110,8 +110,10 @@ namespace Backrooms.Generation
             if (s.density > 1f && rb.linearVelocity.y < -0.05f && Time.time < s.splashAt + 1.2f && Random.value < 0.25f)
                 PoolSplashes.Bubbles(new Vector3(c.x, level, c.z), 2, 0.05f, Mathf.Max(0.05f, level - c.y));
 
-            // Water drag, and the wake of you wading past pushing it aside and along.
-            rb.AddForce(-rb.linearVelocity * (drag * frac), ForceMode.Acceleration);
+            // Water drag (against the pool's slow current: floating things drift with it, PoolCirculation), and the wake
+            // of you wading past pushing it aside and along.
+            var current = s.density < 1f ? PoolCirculation.CurrentAt(c, _player ? _player.position : c) : Vector3.zero;
+            rb.AddForce(-(rb.linearVelocity - current) * (drag * frac), ForceMode.Acceleration);
             rb.AddTorque(-rb.angularVelocity * (angularDrag * frac), ForceMode.Acceleration);
             if (wading && toMe.sqrMagnitude < 1.4f * 1.4f)
             {

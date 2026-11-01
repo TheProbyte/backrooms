@@ -344,7 +344,7 @@ namespace Backrooms.Generation
             InstantiateDoors(root.transform);
             InstantiateCustomRoomExtras(root.transform);
             if (outlets.Count > 0) root.AddComponent<Interaction.ChunkOutlets>().Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), outlets);
-            if (poolMap != null) root.AddComponent<PoolChunk>().Set(_L.coord, _L.storey, poolMap, poolMap2);
+            if (poolMap != null) root.AddComponent<PoolChunk>().Set(_L.coord, _L.storey, poolMap, poolMap2, poolFittings.ToArray(), poolFittingDirs.ToArray());
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
             if (!Pool) AddFloorColliders(root);

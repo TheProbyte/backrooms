@@ -22,6 +22,7 @@ Shader "Backrooms/AirDust"
             #pragma vertex vert
             #pragma fragment frag
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Assets/Backrooms/Shaders/PoolCommon.hlsl"
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _Color;
@@ -30,7 +31,7 @@ Shader "Backrooms/AirDust"
             float _AirDustCount;
 
             struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; half4 color : COLOR; };
-            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; half4 color : COLOR; float3 positionWS : TEXCOORD1; };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; half4 color : COLOR; float3 positionWS : TEXCOORD1; half sun : TEXCOORD2; };
 
             Varyings vert(Attributes i)
             {
@@ -38,6 +39,8 @@ Shader "Backrooms/AirDust"
                 o.positionWS = TransformObjectToWorld(i.positionOS.xyz);
                 o.positionCS = TransformWorldToHClip(o.positionWS);
                 o.uv = i.uv; o.color = i.color;
+                // The Poolrooms (2026-11-01, the realism plan 1): no fixtures; a mote glints only inside a sun beam.
+                o.sun = _PoolLitBlend > 0.5 ? PoolSunVisibility(o.positionWS) * 2.2 : 0.0;
                 return o;
             }
 
@@ -45,7 +48,7 @@ Shader "Backrooms/AirDust"
             {
                 float2 c = i.uv * 2.0 - 1.0;
                 half dot2 = saturate(1.0 - dot(c, c));
-                half lit = 0;
+                half lit = i.sun;
                 [loop] for (int k = 0; k < 8; k++)
                 {
                     if (k >= (int)_AirDustCount) break;

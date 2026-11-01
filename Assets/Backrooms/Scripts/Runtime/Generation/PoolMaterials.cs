@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Backrooms.Generation
@@ -21,6 +22,16 @@ namespace Backrooms.Generation
         public static Material PlasticBlue { get; private set; }
         /// <summary>A ladder's bumpers (black rubber) and treads (pale grey non-slip plastic).</summary>
         public static Material Rubber { get; private set; }
+        /// <summary>The fittings (2026-11-01, the realism plan 5): dark marker tiles, the dark of openings, an underwater light's
+        /// dead lens and a lit one, a vent grille's grey metal, rust tears and rings (multiplied over the tiles).</summary>
+        public static Material Marker { get; private set; }
+        public static Material Dark { get; private set; }
+        public static Material LensDead { get; private set; }
+        public static Material Glow { get; private set; }
+        public static Material Grille { get; private set; }
+        public static Material StainTear { get; private set; }
+        public static Material StainRing { get; private set; }
+        public static Material GlassBlock { get; private set; }
         public static Material Tread { get; private set; }
 
         public static void Ensure()
@@ -41,6 +52,15 @@ namespace Backrooms.Generation
             Chrome = Lit("Pool chrome", new Color(0.6f, 0.615f, 0.63f), 0.93f, 1f);
             Rubber = Lit("Pool rubber", new Color(0.05f, 0.05f, 0.055f), 0.35f, 0f);
             Tread = Lit("Pool ladder tread", new Color(0.78f, 0.8f, 0.8f), 0.4f, 0f);
+            Marker = Lit("Pool marker tiles", new Color(0.05f, 0.07f, 0.09f), 0.88f, 0f);
+            Dark = Lit("Pool dark opening", new Color(0.02f, 0.025f, 0.025f), 0.2f, 0f);
+            LensDead = Lit("Pool light lens (dead)", new Color(0.16f, 0.19f, 0.19f), 0.95f, 0f);
+            Grille = Lit("Pool grille", new Color(0.62f, 0.64f, 0.63f), 0.45f, 0f);
+            Glow = Make("Backrooms/PoolGlow", "Pool light lens (lit)");
+            StainTear = Make("Backrooms/PoolStain", "Pool rust tear");
+            StainRing = Make("Backrooms/PoolStain", "Pool rust ring");
+            if (StainRing) StainRing.SetFloat("_Ring", 1f);
+            GlassBlock = Make("Backrooms/PoolGlassBlock", "Pool glass block");
             PlasticWhite = Lit("Pool plastic (white)", new Color(0.9f, 0.9f, 0.86f), 0.62f, 0f);
             PlasticBlue = Lit("Pool plastic (blue)", new Color(0.22f, 0.5f, 0.78f), 0.7f, 0f);
         }
@@ -73,10 +93,20 @@ namespace Backrooms.Generation
         public Vector2Int chunk;
         public int storey;
         public Color32[] cells, cells2;
+        /// <summary>Jets, skimmers and grilles (local: xyz, w kind 0/1/2) and the way each pushes or faces.</summary>
+        public Vector4[] fittings;
+        public Vector3[] fittingDirs;
+        /// <summary>Every loaded Poolrooms chunk (PoolCirculation and PoolSounds read their fittings).</summary>
+        public static readonly HashSet<PoolChunk> All = new HashSet<PoolChunk>();
 
-        public void Set(Vector2Int c, int s, Color32[] data, Color32[] data2) { chunk = c; storey = s; cells = data; cells2 = data2; }
+        public void Set(Vector2Int c, int s, Color32[] data, Color32[] data2, Vector4[] fit = null, Vector3[] dirs = null)
+        { chunk = c; storey = s; cells = data; cells2 = data2; fittings = fit; fittingDirs = dirs; }
 
-        void OnEnable() { if (PoolWorld.Instance) PoolWorld.Instance.Write(this); }
-        void OnDestroy() { if (PoolWorld.Instance) PoolWorld.Instance.Clear(this); }
+        /// <summary>A fitting's world position and direction.</summary>
+        public Vector3 FittingAt(int i) { var v = fittings[i]; return transform.TransformPoint(new Vector3(v.x, v.y, v.z)); }
+
+        void OnEnable() { All.Add(this); if (PoolWorld.Instance) PoolWorld.Instance.Write(this); }
+        void OnDisable() => All.Remove(this);
+        void OnDestroy() { All.Remove(this); if (PoolWorld.Instance) PoolWorld.Instance.Clear(this); }
     }
 }

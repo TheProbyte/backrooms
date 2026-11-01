@@ -138,6 +138,8 @@ namespace Backrooms.Generation
             Shader.SetGlobalVector("_PoolRippleRect", new Vector4(_origin.x * texel, _origin.y * texel, Size * texel, slopeGain));
         }
 
+        readonly Vector4[] _jets = new Vector4[PoolCirculation.MaxJets], _sinks = new Vector4[PoolCirculation.MaxSinks];
+
         void Drop(Vector3 at, float radius, float height)
         {
             if (_dropCount >= _drops.Length) return;
@@ -185,6 +187,11 @@ namespace Backrooms.Generation
             _cs.SetFloat("_Texel", texel);
             _cs.SetVectorArray("_Drops", _drops);
             _cs.SetInt("_DropCount", drops);
+            PoolCirculation.Fill(_player ? _player.position : Vector3.zero, _jets, out int jn, _sinks, out int sn);
+            _cs.SetVectorArray("_Jets", _jets);
+            _cs.SetInt("_JetCount", jn);
+            _cs.SetVectorArray("_Sinks", _sinks);
+            _cs.SetInt("_SinkCount", sn);
             var w = PoolWorld.Instance;
             _cs.SetInt("_Storey", w && _player ? w.StoreyOf(_player.position.y) : 0);
             _cs.Dispatch(_kernel, Size / 8, Size / 8, 1);

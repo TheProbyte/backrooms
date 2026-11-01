@@ -33,6 +33,9 @@ namespace Backrooms.Audio
         static readonly SteamAudio.Material Carpet = Mat(0.24f, 0.69f, 0.73f, 0.05f, 0.020f, 0.005f, 0.003f);
         static readonly SteamAudio.Material CeilingTile = Mat(0.50f, 0.70f, 0.80f, 0.10f, 0.050f, 0.020f, 0.010f);
         static readonly SteamAudio.Material Generic = Mat(0.10f, 0.20f, 0.30f, 0.05f, 0.100f, 0.050f, 0.030f);
+        // The Poolrooms (2026-11-01, the realism plan 8): glazed tile on concrete everywhere, and water, both reflecting
+        // almost everything; thick walls let little through.
+        static readonly SteamAudio.Material Tile = Mat(0.01f, 0.012f, 0.02f, 0.05f, 0.012f, 0.004f, 0.001f);
         static readonly SteamAudio.Material DoorWood = Mat(0.11f, 0.07f, 0.06f, 0.05f, 0.220f, 0.090f, 0.030f);
 
         static SteamAudio.Material Mat(float al, float am, float ah, float s, float tl, float tm, float th) => new SteamAudio.Material
@@ -181,7 +184,7 @@ namespace Backrooms.Audio
                 Box(b.transform, b.center, size, mat);
             }
             if (_t.Count == 0) return;
-            var mats = new[] { Drywall, Carpet, CeilingTile, Generic, DoorWood };
+            var mats = go && go.GetComponent<Generation.PoolChunk>() ? new[] { Tile, Tile, Tile, Tile, DoorWood } : new[] { Drywall, Carpet, CeilingTile, Generic, DoorWood };
             var mesh = Make(mats);
             if (mesh == null) return;
             _chunks[coord] = (mesh, _t.Count);

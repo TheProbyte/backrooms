@@ -69,8 +69,20 @@ namespace Backrooms.Generation
             w.Quad(A(l, w0, top), A(f, w0, top), A(f, w1, top), A(l, w1, top), Vector3.down, MeshWriter.MetreUV);
             w.Quad(A(l, w0, sill), A(f, w0, sill), A(f, w0, top), A(l, w0, top), alongDir, MeshWriter.MetreUV);
             w.Quad(A(l, w1, sill), A(f, w1, sill), A(f, w1, top), A(l, w1, top), -alongDir, MeshWriter.MetreUV);
-            WMask(SkyMat, 1u).Quad(A(l, w0, sill), A(l, w1, sill), A(l, w1, top), A(l, w0, top), n, MeshWriter.MetreUV);
+            // Some are glass block (the same hash as PoolCommon.hlsl's PoolGlassBlock: the cell on the edge's +X / +Z side).
+            int line = Mathf.RoundToInt(l / C);
+            int gx = _L.coord.x * _L.N + (vertical ? line : along), gz = _L.coord.y * _L.N + (vertical ? along : line);
+            var pane = GlassBlockAt(gx, gz, vertical ? 1u : 2u) && PoolMaterials.GlassBlock ? PoolMaterials.GlassBlock : SkyMat;
+            WMask(pane, 1u).Quad(A(l, w0, sill), A(l, w1, sill), A(l, w1, top), A(l, w0, top), n, MeshWriter.MetreUV);
             return true;
+        }
+
+        /// <summary>As PoolCommon.hlsl's PoolGlassBlock (40 % of the high windows).</summary>
+        static bool GlassBlockAt(int x, int z, uint side)
+        {
+            uint h = ((uint)x * 2654435761u) ^ ((uint)z * 40503u) ^ (side * 97u);
+            h ^= h >> 15; h *= 0x2c1b3c6du; h ^= h >> 12;
+            return h % 100u < 40u;
         }
 
         /// <summary>Floor of a cell (deck 0, basin below), here or next door; null if unknown.</summary>
@@ -95,6 +107,7 @@ namespace Backrooms.Generation
 
         void BuildPoolData()
         {
+            poolFittings.Clear(); poolFittingDirs.Clear();
             BuildPoolFloors();
             BuildPoolCeilings();
             BuildWalls();
@@ -103,6 +116,7 @@ namespace Backrooms.Generation
             BuildPoolFillets();
             BuildPoolArcs();
             BuildPoolFeatures();
+            PoolWallFittings();
             foreach (var r in _L.rooms)
                 if (r.spiral && !r.noFloor && r.rect.width == r.fullRect.width && r.rect.height == r.fullRect.height) BuildSpiral(r);
             BuildDoorways();
@@ -218,6 +232,7 @@ namespace Backrooms.Generation
                 Vector3 p0 = A(f, a0), p1 = A(f, a1);
                 tile.Quad(p0 + Vector3.up * Fy(p0), p1 + Vector3.up * Fy(p1), p1 + Vector3.down * band, p0 + Vector3.down * band, n, MeshWriter.MetreUV);
                 accent.Quad(p0 + Vector3.down * band, p1 + Vector3.down * band, p1, p0, n, MeshWriter.MetreUV);
+                BasinFittings(e, vertical, line, along, n, f, p0, p1, false);
                 return;
             }
             float? other = FloorAt(ox, oz);
@@ -226,6 +241,7 @@ namespace Backrooms.Generation
             Vector3 q0 = A(l, b0), q1 = A(l, b1);
             tile.Quad(q0 + Vector3.up * Fy(q0), q1 + Vector3.up * Fy(q1), q1 + Vector3.down * band, q0 + Vector3.down * band, n, MeshWriter.MetreUV);
             accent.Quad(q0 + Vector3.down * band, q1 + Vector3.down * band, q1, q0, n, MeshWriter.MetreUV);
+            BasinFittings(e, vertical, line, along, n, l, q0, q1, true);
         }
 
         /// <summary>Does the water lie across this deck cell's side (a basin cell through a passable edge)?</summary>

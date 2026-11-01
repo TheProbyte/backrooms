@@ -66,7 +66,7 @@ Shader "Backrooms/PoolLit"
                 #endif
                 float sun = PoolSunVisibility(i.positionWS + N * 0.02);
                 float NdotL = saturate(dot(N, POOL_SUN));
-                float3 ambient = PoolAmbientAt(i.positionWS, N) * ao;
+                float3 ambient = (PoolAmbientAt(i.positionWS, N) + PoolPatchBounce(i.positionWS, N) * 0.8) * ao;
                 half3 diffuse = albedo * (1.0 - _Metallic);
                 half3 f0 = lerp(half3(0.04, 0.04, 0.04), albedo, _Metallic);
                 float rough = max(1.0 - _Smoothness, 0.05), a2 = rough * rough * rough * rough;

@@ -25,7 +25,7 @@ Shader "Backrooms/PoolWater"
         {
             Name "Forward"
             Tags { "LightMode" = "UniversalForward" }
-            Cull Back ZWrite On ZTest LEqual Blend Off
+            Cull Off ZWrite On ZTest LEqual Blend Off
             HLSLPROGRAM
             #pragma target 4.5
             #pragma vertex vert
@@ -58,6 +58,11 @@ Shader "Backrooms/PoolWater"
             }
 
             // Explicit LOD: these are read inside loops.
+            // The planar reflection (PoolMirror.cs): the room mirrored in this storey's water, at the pixel's own screen
+            // position. Off (x = 0) when the Graphics option is off or the camera is not over the water.
+            TEXTURE2D(_PoolMirrorTex);
+            float4 _PoolMirrorParams;            // x on, y the water's height
+            float _PoolMirrorPass;               // 1 while the mirror itself is drawn (the water is left out of it)
             float DepthAt(float2 uv) { return LinearEyeDepth(SAMPLE_TEXTURE2D_X_LOD(_CameraDepthTexture, sampler_PointClamp, UnityStereoTransformScreenSpaceTex(uv), 0).r, _ZBufferParams); }
             float3 ColorAt(float2 uv) { return SAMPLE_TEXTURE2D_X_LOD(_CameraOpaqueTexture, sampler_CameraOpaqueTexture, UnityStereoTransformScreenSpaceTex(uv), 0).rgb; }
 
@@ -118,6 +123,7 @@ Shader "Backrooms/PoolWater"
                 #if defined(BACKROOMS_PORTAL_CLIP)
                     clip(dot(float4(i.positionWS, 1), _PortalClipPlane));
                 #endif
+                if (_PoolMirrorPass > 0.5) discard;
                 float3 P = i.positionWS;
                 float3 V = GetWorldSpaceNormalizeViewDir(P);
                 float t = _Time.y;
@@ -130,6 +136,26 @@ Shader "Backrooms/PoolWater"
                 float pix = length(fwidth(P.xz));
                 slope += PoolWaveSlope(P.xz, _PoolWaveTime) * _Shimmer * saturate(1.0 - pix / 0.03);
                 float3 N = normalize(float3(-slope.x, 1.0, -slope.y));
+                // From below (2026-11-01, the realism plan 11): looking up through the surface the air beyond shows only
+                // inside Snell's window (a cone of about 49 degrees overhead); outside it the surface mirrors the pool.
+                [branch] if (GetCameraPositionWS().y < P.y - 0.002)
+                {
+                    float3 up = -V;                                            // the view ray, going up
+                    float3 tr = refract(up, -N, 1.333);
+                    float3 ambUp = PoolAmbientAt(P - float3(0, 0.05, 0), float3(0, -1, 0));
+                    float3 murk = float3(0.07, 0.36, 0.29) * ambUp * 1.6;
+                    float3 c = murk;
+                    if (dot(tr, tr) > 0.01)
+                    {
+                        float cosI = saturate(dot(up, N)), cosT = saturate(tr.y);
+                        float rs = (1.333 * cosI - cosT) / (1.333 * cosI + cosT), rp = (cosI - 1.333 * cosT) / (cosI + 1.333 * cosT);
+                        float Fr = saturate(0.5 * (rs * rs + rp * rp));
+                        PoolHit hit = PoolTrace(P + float3(0, 0.01, 0), normalize(tr), 30.0);
+                        float3 air = PoolShadeHit(hit, normalize(tr), 0.02);
+                        c = lerp(air * float3(0.8, 0.95, 0.9), murk, Fr);
+                    }
+                    return half4(c, 1);
+                }
                 float NdotV = saturate(dot(N, V));
                 float F = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0);
 
@@ -141,7 +167,8 @@ Shader "Backrooms/PoolWater"
                 float3 ambient = PoolAmbientAt(P, float3(0, 1, 0));
                 float3 R = reflect(-V, N);
                 if (R.y < 0.02) R = normalize(float3(R.x, 0.02, R.z));
-                refl = Mirror(P, R);
+                bool planar = _PoolScreenTextures > 0.5 && _PoolMirrorParams.x > 0.5 && abs(P.y - _PoolMirrorParams.y) < 0.05;
+                refl = planar ? 0 : Mirror(P, R);
 
                 [branch] if (_PoolScreenTextures > 0.5)
                 {
@@ -154,9 +181,18 @@ Shader "Backrooms/PoolWater"
                     // comparing depths): unrefracted, so it hugs the walls, rails and legs exactly.
                     float flat = max(DepthAt(suv) - eye, 0) * length(P - GetCameraPositionWS()) / max(eye, 1e-3);
                     contact = 1.0 - smoothstep(0.0, _ContactWidth, flat * max(V.y, 0.25));
-                    float hit;
-                    float3 ssr = ScreenReflection(P, R, hit);
-                    refl = lerp(refl, ssr, hit);
+                    [branch] if (planar)
+                    {
+                        // Exact: the mirror, bent by the ripples (more the further the reflected thing; a fixed share here).
+                        float2 muv = suv + slope * 0.045;
+                        refl = SAMPLE_TEXTURE2D_LOD(_PoolMirrorTex, sampler_LinearClamp, muv, 0).rgb;
+                    }
+                    else
+                    {
+                        float hit;
+                        float3 ssr = ScreenReflection(P, R, hit);
+                        refl = lerp(refl, ssr, hit);
+                    }
                 }
                 else
                 {
@@ -219,7 +255,7 @@ Shader "Backrooms/PoolWater"
                     float brk = PoolFoamPattern(P.xz * 1.7 + t * 0.03, pixC);
                     float a = contact * saturate(0.35 + brk * 0.9);
                     float3 lineCol = float3(0.88, 0.92, 0.9) * (ambient * 1.1 + _PoolSunColor.rgb * sun * POOL_SUN.y);
-                    color = lerp(color, lineCol, a * 0.55);
+                    color = lerp(color, lineCol, a * 0.35);
                 }
                 return half4(PoolFarFade(MixFog(color, i.fogFactor), P), 1);
             }

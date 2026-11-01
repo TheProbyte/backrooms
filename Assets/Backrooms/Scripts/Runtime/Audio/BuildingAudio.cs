@@ -112,6 +112,8 @@ namespace Backrooms.Audio
         [Tooltip("Level of the Poolrooms' water ambience (2026-10-31: quieter, the owner wanted it more chill).")] public float waterLevel = 0.028f;
         AudioLowPassFilter _ventLpf;
         AudioReverbFilter _reverb;
+        AudioEchoFilter _echo;              // the Poolrooms' flutter echo between parallel tiled walls (2026-11-01)
+        float _echoDelay;
         Vector2Int _fieldCell = new Vector2Int(int.MinValue, 0);
         float _nextField, _nextSelect, _nextReverb;
         float _distantSmoothed, _compSmoothed = 1f, _ventSmoothed, _poweredNearby;
@@ -168,6 +170,17 @@ namespace Backrooms.Audio
                 _reverb.reverbPreset = AudioReverbPreset.User;
                 _reverb.dryLevel = 0f; _reverb.diffusion = 100f; _reverb.density = 100f;
                 _reverb.hfReference = 5000f; _reverb.lfReference = 250f; _reverb.roomLF = 0f;
+                // The flutter echo after the reverb, before the camcorder chain.
+                _echo = listener.GetComponent<AudioEchoFilter>();
+                if (!_echo)
+                {
+                    var chain = listener.GetComponent<CamcorderAudioChain>();
+                    bool had = chain;
+                    if (chain) DestroyImmediate(chain);
+                    _echo = listener.gameObject.AddComponent<AudioEchoFilter>();
+                    if (had) listener.gameObject.AddComponent<CamcorderAudioChain>();
+                }
+                _echo.dryMix = 1f; _echo.wetMix = 0f; _echo.decayRatio = 0.35f; _echo.enabled = false;
             }
         }
 
@@ -659,6 +672,20 @@ namespace Backrooms.Audio
             _reverb.reflectionsLevel = _rvRefl; _reverb.reverbLevel = _rvRev; _reverb.decayHFRatio = _rvHFRatio;
             _reverb.reflectionsDelay = _rvRefDelay; _reverb.reverbDelay = _rvDelay;
             ReverbDecay = _rvDecay;
+            // A flutter echo (2026-11-01, the realism plan 8): between parallel tiled walls a sharp sound comes back as a
+            // quick, fading train of repeats, one every round trip across the room (about 2 x its width / 343 m/s).
+            if (_echo)
+            {
+                bool on = PoolBlend > 0.01f;
+                if (_echo.enabled != on) _echo.enabled = on;
+                if (on)
+                {
+                    float width = Mathf.Clamp(size * 0.8f, 3f, 14f), delay = 2f * width / 343f * 1000f;
+                    if (Mathf.Abs(delay - _echoDelay) > 6f) { _echoDelay = delay; _echo.delay = delay; }
+                    _echo.decayRatio = 0.32f;
+                    _echo.wetMix = 0.09f * PoolBlend * Mathf.Clamp01(amt);
+                }
+            }
             SpaceLabel = (PoolBlend > 0.5f ? "tiles and water" : hard > 0.5f ? "plaster" : "drop ceiling") + ", " + area.ToString("0") + " m² visible, ceiling " + h.ToString("0.0") + " m";
         }
 

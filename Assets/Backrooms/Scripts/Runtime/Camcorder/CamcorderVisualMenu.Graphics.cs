@@ -48,6 +48,8 @@ namespace Backrooms.Camcorder
                 () => O().specularAA, v => { O().specularAA = v; O().Save(); });
             Toggle("Player shadow", "With no body shown, a rough stand-in casts your shadow (holding the camcorder up), in the lights and in the Poolrooms' sun.",
                 () => O().playerShadow, v => { O().playerShadow = v; O().Save(); });
+            Toggle("Water reflections", "The Poolrooms' water mirrors the room exactly: rails, ladders, curved walls and things on the deck (a second, half-size view of the room each frame). Off: a cheaper traced reflection that sees only walls, columns and openings.",
+                () => O().planarWater, v => { O().planarWater = v; O().Save(); });
 
             Section("SHADOWS", "Lights hand over smoothly between real (shadowed) and grid light as you move.");
             Toggle("Light grid", "On: the nearest fixtures are real lights with live shadows and every other fixture lights a 3D light grid (light through doorways, bounce on ceilings). Off: the older system, a large pool of unshadowed lights kept inside their own rooms.",

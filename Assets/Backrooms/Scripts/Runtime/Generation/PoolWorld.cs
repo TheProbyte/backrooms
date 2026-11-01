@@ -36,6 +36,19 @@ namespace Backrooms.Generation
         public Color skyHorizon = new Color(0.95f, 0.97f, 1f);
         public float skyIntensity = 10f;
 
+        [Header("Clouds (2026-11-01, the realism plan 2)")]
+        [Tooltip("How much of the sky the passing clouds cover (0 none).")]
+        [Range(0f, 1f)] public float cloudCover = 0.35f;
+        [Tooltip("How much of the sun a cloud takes (the sky still lights the rooms).")]
+        [Range(0f, 1f)] public float cloudShadow = 0.72f;
+        [Tooltip("The clouds' drift (m/s, x and z).")]
+        public Vector2 wind = new Vector2(4f, 1.6f);
+        /// <summary>How much sun reaches the rooms round the player now (1 clear .. 1 - cloudShadow under a cloud).</summary>
+        public float SunNow { get; private set; } = 1f;
+        /// <summary>The player's camera is under the water (crawling or crouched in a deep pool).</summary>
+        public static bool CameraUnderwater { get; private set; }
+        bool _camInPool, _camSeen;
+
         Texture2D _map, _map2;
         Color32[] _px, _px2;
         readonly PoolChunk[] _owner = new PoolChunk[MapChunks * MapChunks * MapStoreys];
@@ -73,6 +86,9 @@ namespace Backrooms.Generation
             if (!GetComponent<PoolSplashes>()) gameObject.AddComponent<PoolSplashes>();
             if (!GetComponent<PoolBodies>()) gameObject.AddComponent<PoolBodies>();
             if (!GetComponent<PoolWetPrints>()) gameObject.AddComponent<PoolWetPrints>();
+            if (!GetComponent<PoolAir>()) gameObject.AddComponent<PoolAir>();
+            if (!GetComponent<PoolMirror>()) gameObject.AddComponent<PoolMirror>();
+            if (!GetComponent<Audio.PoolSounds>()) gameObject.AddComponent<Audio.PoolSounds>();
             ApplyLight();
             RenderPipelineManager.beginCameraRendering += BeginCamera;
             RenderPipelineManager.endCameraRendering += EndCamera;
@@ -132,12 +148,86 @@ namespace Backrooms.Generation
         void LateUpdate()
         {
             Shader.SetGlobalVector("_PoolMapParams", new Vector4(MapCells, Pitch, MapStoreys, 0f));
+            Clouds();
+            CameraState();
             if (!_dirty) return;
             _dirty = false;
             _map.SetPixels32(_px);
             _map.Apply(false);
             _map2.SetPixels32(_px2);
             _map2.Apply(false);
+        }
+
+        // ---------------- The camera: under the water, misting over ----------------
+
+        /// <summary>
+        /// Under the water (2026-11-01, the realism plan 11): the shaders draw the murk, the surface from below and the beams
+        /// in the water (_PoolUnderwater); coming up puts water on the lens. Coming into the Poolrooms from the cool
+        /// Backrooms mists the lens over (plan 9).
+        /// </summary>
+        void CameraState()
+        {
+            var cam = Camera.main;
+            if (!cam) return;
+            var p = cam.transform.position;
+            bool under = WaterAt(p, out float level) && p.y < level - 0.005f;
+            if (CameraUnderwater && !under) { Camcorder.LensDrops.Add(5, 0.9f); Camcorder.LensFog.Fog(0.3f, 4f); }
+            CameraUnderwater = under;
+            Shader.SetGlobalVector("_PoolUnderwater", new Vector4(under ? 1f : 0f, level, 0f, 0f));
+            bool inPool = IsPool(p);
+            if (inPool && !_camInPool && _camSeen) Camcorder.LensFog.Fog(0.85f, 11f);
+            _camInPool = inPool; _camSeen = true;
+        }
+
+        // ---------------- Clouds ----------------
+
+        /// <summary>
+        /// The clouds' drift for the shaders (PoolCommon.hlsl, PoolCloudShade), and the bounce dimmed with the sun round the
+        /// player: under a cloud the sunlit floors that light the rooms go grey too.
+        /// </summary>
+        void Clouds()
+        {
+            var drift = wind * Time.time;
+            Shader.SetGlobalVector("_PoolCloud", new Vector4(drift.x, drift.y, cloudCover, cloudShadow));
+            var p = streamer && streamer.player ? streamer.player.position : Vector3.zero;
+            float shade = 0f;
+            for (int i = 0; i < 5; i++)
+            {
+                var q = p + new Vector3(i == 1 ? 6f : i == 2 ? -6f : 0f, 0f, i == 3 ? 6f : i == 4 ? -6f : 0f);
+                shade += CloudShade(q, drift);
+            }
+            SunNow = Mathf.Lerp(SunNow, shade / 5f, 1f - Mathf.Exp(-Time.deltaTime / 1.5f));
+            Shader.SetGlobalVector("_PoolBounce", (Vector4)(bounce.linear * bounceGain * Mathf.Lerp(0.6f, 1f, Mathf.InverseLerp(1f - cloudShadow, 1f, SunNow))));
+        }
+
+        /// <summary>As PoolCommon.hlsl's PoolCloudShade (the same noise).</summary>
+        public float CloudShade(Vector3 pw) => CloudShade(pw, wind * Time.time);
+
+        float CloudShade(Vector3 pw, Vector2 drift)
+        {
+            if (cloudShadow <= 0f) return 1f;
+            var L = PoolBiome.SunDirection;
+            var deck = new Vector2(pw.x + L.x / L.y * (300f - pw.y), pw.z + L.z / L.y * (300f - pw.y));
+            var s = (deck + drift) * 0.004f;
+            float n = Noise(s) * 0.55f + Noise(s * 2.03f + new Vector2(17.1f, 17.1f)) * 0.3f + Noise(s * 4.1f + new Vector2(5.3f, 5.3f)) * 0.15f;
+            float a = 1f - cloudCover, t = Mathf.Clamp01((n - a) / 0.2f);
+            return 1f - cloudShadow * t * t * (3f - 2f * t);
+        }
+
+        static float Frac(float x) => x - Mathf.Floor(x);
+        static Vector2 Hash22(Vector2 p)
+        {
+            float qx = Frac(p.x * 0.1031f), qy = Frac(p.y * 0.1030f), qz = Frac(p.x * 0.0973f);
+            float d = qx * (qy + 33.33f) + qy * (qz + 33.33f) + qz * (qx + 33.33f);
+            qx += d; qy += d; qz += d;
+            return new Vector2(Frac((qx + qy) * qz), Frac((qx + qz) * qy));
+        }
+        static float Noise(Vector2 p)
+        {
+            float ix = Mathf.Floor(p.x), iy = Mathf.Floor(p.y), fx = p.x - ix, fy = p.y - iy;
+            fx = fx * fx * (3f - 2f * fx); fy = fy * fy * (3f - 2f * fy);
+            float a = Hash22(new Vector2(ix, iy)).x, b = Hash22(new Vector2(ix + 1f, iy)).x, c = Hash22(new Vector2(ix, iy + 1f)).x, d = Hash22(new Vector2(ix + 1f, iy + 1f)).x;
+            return Mathf.Lerp(Mathf.Lerp(a, b, fx), Mathf.Lerp(c, d, fx), fy);
         }
 
         // ---------------- Queries ----------------

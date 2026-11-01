@@ -427,6 +427,65 @@ Frostbite's volumetrics, pool-industry notes on scale and stains):
 Suggested order: 1, 4, 3, 5, 2, then the rest. 1-4 are where the pictures will change most; 5 and 6 make it read as a
 real building; 8 and 9 are cheap and felt at once.
 
+## Realism: built (2026-11-01)
+
+The owner: "do it all please". All twelve, as follows (the not-done parts at the end).
+1. **Sun shafts** (`PoolAir.cs`, `Hidden/Backrooms/PoolAir`): a render pass on the player's camera in the Poolrooms
+   (before the camcorder's processing): the traced sun marched along each view ray at a quarter of the resolution (28
+   steps, 28 m, jittered per pixel and frame), smoothed over frames (reprojected, clamped to the neighbourhood) and
+   upsampled by depth. Density 0.003 /m plus 0.006 in a layer over the floor and water; Henyey-Greenstein 0.55. It
+   ends at the water. The dust motes (`AirDust`) glint in the Poolrooms only inside the beams. At 0.018 the air washed
+   the halls white; 0.003 is a faint glow where the sun crosses the air.
+2. **Clouds** (`PoolCommon.hlsl` PoolCloudCover / PoolCloudShade, `PoolWorld.Clouds`): a deck of noise 300 m up
+   drifting at 4.3 m/s; where the sun's ray crosses a cloud (about a fifth of the time, `cloudCover` 0.35) the sun is
+   down to 28 % (`cloudShadow` 0.72) in every opening, window, beam and caustic together; the sky in the openings greys
+   with them; the baked bounce dims with the sun round the player (`SunNow`).
+3. **Planar reflections** (`PoolMirror.cs`): a second render of the view mirrored in the storey's water plane (oblique
+   near plane on it, half resolution, HDR, no post-processing, culling inverted), read by PoolWater at the pixel's own
+   screen position bent by the ripples; the water is left out of it (`_PoolMirrorPass`). Graphics > Water reflections
+   (on); off: the trace and screen-space as before.
+4. **Weathering** (PoolTile): scale crust 1-6 cm over a grime line at the waterline; biofilm in the joints under water;
+   dirt in the joints at the foot of walls; puddles with chalky rims under the roof openings (straight below them) that
+   mirror the room; streaks down the light wells and under the high windows' sills; the glaze worn matte in front of
+   doorways. Rust (`Backrooms/PoolStain`, multiplied): tears under jets, lights and grilles, rings round the rails'
+   anchors on the deck.
+5. **Fittings** (`OfficeChunkBuilder.PoolFittings.cs`): a rounded bullnose along every pool edge (free pools' outline,
+   the basins' deck edges); return jets (chrome flange, nozzle, dark bore) every ~3 m; skimmer mouths at the waterline;
+   round underwater niche lights (a quarter lit, `Backrooms/PoolGlow`); depth markers and NO DIVING in 2.4 cm dark
+   mosaic tiles on the deck beside the edge (the true depth; one in 23 wrong); vent grilles high on one wall cell in nine
+   (never over a window); a pace clock in each lap pool's room. Jets, skimmers and grilles go to `PoolChunk.fittings`
+   (`PoolChunk.All`) for the circulation and the sound. **Not built**: rim-flow gutters with grates, starting blocks
+   (the lap pools have no deck at their ends), lane-rope hooks.
+6. **Glazed roof lights and glass block** (`PoolGlazed`, `PoolMullions`, `PoolGlassBlock`): in about 45 % of 12 x 12
+   cell blocks the openings (not round ones) are glazed: a frame of bars every 0.6 m and a dusty pane (82 %) at the top
+   of the light well, drawn by the sky shader; the bars throw thin shadow lines across the sun patches and beams. About
+   40 % of the clerestories are glass block (`Backrooms/PoolGlassBlock`: 19 cm blocks glowing with the daylight,
+   rippled); the sun through them is dim and even (30 %).
+7. **Bounce from the sun patches** (`PoolPatchBounce`, PoolTile `_PatchBounce` 0.8, PoolLit): each patch of sun under an
+   opening (the part the sun gets through both ends of the light well, moved down along the sun to the floor) lights the
+   walls and ceilings near it as a lambertian area light (Lambert's polygon formula), if nothing stands between (a cell
+   walk) and the patch is really sunlit; up to two patches a point, within 7 m.
+8. **Sound**: Steam Audio's Poolrooms meshes are glazed tile (`SteamAudioWorld.Tile`); a flutter echo on the listener
+   in the Poolrooms (`AudioEchoFilter`, a round trip across the room, 32 % decay, 9 % wet); `PoolSounds`: drops from the
+   roof openings every 4-11 s (`ProceduralSounds.Plink` into water with a ring, a tick on the deck), laps at the nearest
+   pool wall a moment after you wade (`Lap`, at shallow water's speed), the filtration's hum and running water at the
+   nearest skimmer or grille (`FilterHum`). The room reverb already scaled with the room (1.4-2.6 s).
+9. **Lens fog** (`Camcorder/LensFog.cs`, CamcorderPipeline integrate pass `_CamLensFog`): coming into the Poolrooms the
+   lens mists over (patchy, a soft wide blur, greyed) and clears from the edges inward over 11 s; a little after coming
+   up from under the water.
+10. **Exposure**: checked, unchanged: the camcorder's auto-exposure (CamcorderAutoExposure) already adapts with a lag
+   and clips sun patches.
+11. **Under the water** (`PoolWorld.CameraUnderwater`, `_PoolUnderwater`): the water is drawn from below (Snell's
+   window: the room through the surface in a cone overhead, a mirror of the pool outside it); the air pass multiplies
+   what is seen by the water's transmission over the path and adds its green scattered light, and its beams become the
+   water's own; sound through a 600 Hz low-pass; coming up leaves drops on the lens.
+12. **Circulation** (`PoolCirculation.cs`, PoolRipples.compute `_Jets` / `_Sinks`): the nearest 16 jets push plumes
+   (about 0.4 m/s at the nozzle in the simulation's flow) and 8 skimmers draw the surface in, so foam is carried round;
+   floating things drift with the analytic current (`CurrentAt`) in their water drag (PoolBodies).
+- Cost (editor, a pool hall): GPU 7.75 ms with all of it, 7.44 ms with the shafts and the mirror off.
+
+## Known gaps / ideas
+
 ## Known gaps / ideas
 
 - Crawling inside a basin puts the camera under the water surface, which is single-sided (nothing drawn from below).

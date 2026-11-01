@@ -53,6 +53,7 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
     float4 _CamOSD;         // x: OSD on (0/1), y: OSD curvature, z, w: unused
     float4 _CamViewRect;    // xy: the camera viewport's corner, zw: its size (screen fractions), for the overlay texture
     float4 _CamDrops[8];    // water on the lens (LensDrops.cs): xy centre (uv), z radius (share of the height), w strength
+    float4 _CamLensFog;     // condensation on the lens (LensFog.cs): x amount, y how far it has cleared (from the edges in)
     TEXTURE2D(_CamOSDTex);
 
     // ---------------- Noise ----------------
@@ -115,6 +116,18 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
         float2 uv = input.texcoord;
         float lensBlur = 0, lensShade = 1;
         uv = LensDrops(uv, lensBlur, lensShade);
+        // A misted lens: patchy, clearing from the edges toward the middle; it spreads and greys the light.
+        float fog = 0;
+        if (_CamLensFog.x > 0)
+        {
+            float aspect = _CamRaster.x / max(_CamRaster.y, 1.0);
+            float r = length((input.texcoord - 0.5) * float2(aspect, 1.0)) / (0.5 * sqrt(aspect * aspect + 1.0));
+            float edge = 1.0 - _CamLensFog.y * 1.15;
+            float2 cell = floor(input.texcoord * float2(aspect, 1.0) * 9.0);
+            float patchy = 0.75 + 0.25 * Rand3(int2(cell), 7u, 91u).x;
+            fog = _CamLensFog.x * (1.0 - smoothstep(edge - 0.25, edge, r)) * patchy;
+            lensBlur = max(lensBlur, fog * 2.2);
+        }
         uint frame = (uint)_CamFrame.x;
         // Where this point of the scene was when the shutter opened: the streak it leaves behind (trailing the motion).
         float2 delta = 0;
@@ -128,7 +141,7 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
             delta = clamp((uv - uvOpen) * _CamFrame.z * attached, -_CamBlur.y, _CamBlur.y);
         }
         float lengthPx = length(delta * _CamRaster.xy);
-        int n = (int)clamp(ceil(lengthPx), 4, 32);
+        int n = (int)clamp(max(ceil(lengthPx), fog > 0.02 ? 24.0 : 4.0), 4, 32);
         // Along the streak: stratified with a random start per pixel (fine grain, hidden by the sensor noise, never a pattern).
         float j = Hash((int2)input.positionCS.xy, frame, 31u);
         // The pixel's footprint: a fixed pattern (a still picture does not shimmer). Along a streak longer than the footprint
@@ -141,10 +154,17 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
         {
             float s = (k + j) / n;
             float2 o = k < 4 ? kRotatedGrid[k] : frac(0.5 + k * float2(0.7548777, 0.5698403)) - 0.5;
+            if (fog > 0.02) o = (frac(j + k * float2(0.7548777, 0.5698403)) - 0.5) * 1.4;     // a soft disc, not copies
             float2 sub = (dir * (dot(o, dir) * alongKeep) + across * dot(o, across)) * (1.0 + _CamFrame.w + lensBlur * 7.0) * _CamRaster.zw;
             acc += SampleSource(uv + delta * s + sub);
         }
-        return float4(acc / n * _CamFrame.y * lensShade, 1);
+        float3 col = acc / n * _CamFrame.y * lensShade;
+        if (fog > 0)
+        {
+            float l = dot(col, float3(0.3, 0.59, 0.11));
+            col = lerp(col, (col * 0.45 + l * 0.55) * 0.9 + l * 0.18 + 0.012 * _CamFrame.y, fog * 0.75);
+        }
+        return float4(col, 1);
     }
 
     // ---------------- 1 Meter ----------------

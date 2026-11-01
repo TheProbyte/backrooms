@@ -29,6 +29,7 @@ namespace Backrooms.Camcorder
         public int aaKind = 0;                // 0 SMAA, 1 TAA (temporal), 2 STP (Unity 6's spatial-temporal upscaler: temporal AA + upscaling)
         public bool specularAA = true;        // glossy tiles: highlights widened where the surface turns faster than a pixel shows
         public bool playerShadow = true;      // no body shown: a stand-in that casts the player's shadow (PlayerShadow)
+        public bool planarWater = true;       // the Poolrooms' water mirrors the room exactly (PoolMirror: a second, half-size render)
 
         // F5 > LIGHTING (multipliers are relative to the scene's own light settings)
         [Look] public float lightStrength = 1f;      // all fixtures

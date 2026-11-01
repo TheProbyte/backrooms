@@ -29,6 +29,12 @@ float _Texel;
 float4 _Drops[16];                  // xy world xz, z radius (m), w height added (m)
 int _DropCount;
 int _Storey;                        // which storey's map rows (the player's)
+// The circulation (2026-11-01, PoolCirculation.cs): return jets push plumes of water (x, z, push x, push z m/s), skimmers
+// draw the surface in (x, z, pull m/s, reach m).
+float4 _Jets[16];
+int _JetCount;
+float4 _Sinks[8];
+int _SinkCount;
 
 uint4 MapRaw(int2 cell, out uint2 s)
 {
@@ -111,6 +117,18 @@ void Step(uint3 id : SV_DispatchThreadID)
     float4 f = ReadFlow(q);
     float2 grad = float2(hn[0] - hn[1], hn[2] - hn[3]) / (2.0 * _Texel);
     float2 u = (f.xy - 9.81 * _Dt * grad) * 0.985;
+    // The jets and skimmers: a forcing toward each one's speed, which the flow's own loss (1.5 % a step) balances.
+    for (int jn = 0; jn < _JetCount; jn++)
+    {
+        float2 d = world - _Jets[jn].xy;
+        u += _Jets[jn].zw * exp(-dot(d, d) / (0.3 * 0.3)) * 0.03;
+    }
+    for (int sn = 0; sn < _SinkCount; sn++)
+    {
+        float2 d = _Sinks[sn].xy - world;
+        float r = length(d);
+        if (r > 0.05 && r < _Sinks[sn].w) u += d / r * _Sinks[sn].z * (1.0 - r / _Sinks[sn].w) * 0.015;
+    }
     if (!open[0] && u.x > 0) u.x = 0; if (!open[1] && u.x < 0) u.x = 0;
     if (!open[2] && u.y > 0) u.y = 0; if (!open[3] && u.y < 0) u.y = 0;
     u = clamp(u, -1.5, 1.5);

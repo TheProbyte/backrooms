@@ -5,6 +5,10 @@
 // The glaze reflects what a ray traced through the cell map meets (PoolTrace: walls, columns, the water, the sky in the
 // openings), blurred with distance. Below the waterline: wet, with the caustic map (PoolCausticLight). Above it: the
 // wavy light that sunlit water throws up onto walls and ceilings (PoolWaterLight).
+// 2026-11-01 (the realism plan 4: "it is too clean"): weathering, all from the cell map and the position, no textures:
+// a crust of white scale above the waterline over a grime line at it, biofilm in the joints under water, dirt in the
+// joints at the foot of walls, puddles under the roof openings (rain) with dried rims, streaks down the light wells and
+// under the high windows, and the glaze worn matte in front of doorways.
 Shader "Backrooms/PoolTile"
 {
     Properties
@@ -21,6 +25,7 @@ Shader "Backrooms/PoolTile"
         _JointShade ("Light in the joints", Range(0, 1)) = 0.8
         _ReflBlur ("Reflection blur per metre", Range(0, 0.3)) = 0.05
         _WetDarken ("Underwater darkening", Range(0, 1)) = 0.12
+        _PatchBounce ("Bounce from the sun patches", Range(0, 2)) = 0.8
     }
     SubShader
     {
@@ -44,7 +49,7 @@ Shader "Backrooms/PoolTile"
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _TileColor, _DeckColor, _GroutColor;
-                half _Grout, _Smoothness, _Variation, _Bevel, _Dome, _Tilt, _JointShade, _ReflBlur, _WetDarken;
+                half _Grout, _Smoothness, _Variation, _Bevel, _Dome, _Tilt, _JointShade, _ReflBlur, _WetDarken, _PatchBounce;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; float4 tangentOS : TANGENT; float2 uv : TEXCOORD0; };
@@ -140,15 +145,95 @@ Shader "Backrooms/PoolTile"
                         }
                     }
                 }
-                // Walls of the pools: a line of grime along the waterline.
-                if (abs(N0.y) < 0.5 && inPool)
+                // ---------------- Weathering ----------------
+                float baseY = PoolBase(storey);
+                bool wall = abs(N0.y) < 0.5;
+                float2 wallUV = float2(dot(P.xz, float2(N0.z, -N0.x)), P.y);    // along the wall, up
+                float glaze = 1.0;                                             // how much of the gloss is left
+                float puddle = 0.0;
+                if (wall && inPool)
                 {
+                    // At the waterline a grime line; over it a white crust of scale (evaporation leaves it), ragged, thicker
+                    // in places, filling the joints.
                     float rel = P.y - waterY;
-                    float gb = smoothstep(-0.06, 0.0, rel) * (1.0 - smoothstep(0.02, 0.08, rel));
-                    albedo *= lerp(float3(1, 1, 1), float3(0.8, 0.76, 0.62), gb * 0.85);
+                    float gb = smoothstep(-0.05, -0.008, rel) * (1.0 - smoothstep(-0.004, 0.006, rel));
+                    albedo *= lerp(float3(1, 1, 1), float3(0.78, 0.72, 0.56), gb * 0.8);
+                    float n1 = PoolValueNoise(float2(wallUV.x * 2.5, 4.1)), n2 = PoolValueNoise(wallUV * float2(16.0, 34.0));
+                    float top = 0.012 + 0.05 * n1 * n1;
+                    float crust = smoothstep(-0.002, 0.004, rel) * (1.0 - smoothstep(top - 0.01, top + 0.002, rel + 0.012 * (n2 - 0.5)));
+                    crust *= 0.5 + 0.5 * n2;
+                    albedo = lerp(albedo, float3(0.87, 0.87, 0.82), crust * 0.85);
+                    glaze *= 1.0 - crust * 0.8;
+                    tileMask = lerp(tileMask, 1.0, crust * 0.7);
                 }
+                if (under > 0.5)
+                {
+                    // Biofilm in the joints under water, patchy.
+                    float nb = PoolValueNoise(P.xz * 1.3 + P.y * 2.0 + 7.0);
+                    albedo = lerp(albedo, albedo * float3(0.55, 0.68, 0.56), (1.0 - tileMask) * (0.35 + 0.65 * nb));
+                }
+                else if (wall)
+                {
+                    // Dirt in the joints at the foot of the walls.
+                    float low = 1.0 - smoothstep(0.0, 0.4, P.y - baseY);
+                    albedo = lerp(albedo, albedo * float3(0.68, 0.66, 0.58), (1.0 - tileMask) * low * 0.85);
+                    // Streaks where rain runs: down the light wells over the openings, and under a high window from its sill.
+                    float streak = 0.0;
+                    if (P.y - baseY > here.ceiling - 0.02) streak = 0.75;
+                    else
+                    {
+                        int2 cc = PoolCellOf(P + N0 * 0.05);
+                        bool xw = abs(N0.x) > 0.5;
+                        int2 other = cc + (xw ? int2(N0.x > 0 ? -1 : 1, 0) : int2(0, N0.z > 0 ? -1 : 1));
+                        PoolCell oc = PoolLoad(other, storey);
+                        uint edge = xw ? (N0.x > 0 ? here.west : oc.west) : (N0.z > 0 ? here.south : oc.south);
+                        if (edge == 3u && here.ceiling > oc.ceiling)
+                        {
+                            float along = xw ? P.z - cc.y * POOL_C : P.x - cc.x * POOL_C;
+                            float sill = min(here.ceiling, oc.ceiling) + POOL_WIN_ROOF;
+                            float y = P.y - baseY;
+                            streak = smoothstep(0.2, 0.35, along) * smoothstep(1.0, 0.85, along) * (1.0 - smoothstep(sill - 0.01, sill, y)) * smoothstep(sill - 2.6, sill - 0.3, y);
+                        }
+                    }
+                    if (streak > 0.0)
+                    {
+                        float s = PoolValueNoise(float2(wallUV.x * 11.0, wallUV.y * 0.3 + 3.0)) * 0.7 + PoolValueNoise(float2(wallUV.x * 27.0, wallUV.y * 0.6)) * 0.3;
+                        s = smoothstep(0.5, 0.85, s) * streak;
+                        albedo = lerp(albedo, albedo * float3(0.74, 0.7, 0.6), s);
+                        glaze *= 1.0 - s * 0.5;
+                    }
+                }
+                if (deck)
+                {
+                    int2 cc = PoolCellOf(P);
+                    float2 lc = P.xz - cc * POOL_C;
+                    // Rain under a roof opening: a puddle with a dried, chalky rim (straight below it, not where the sun falls).
+                    if (here.sky != 0u)
+                    {
+                        float inHole = saturate(PoolHoleSDC(here, lc) / 0.3 + 0.7);
+                        float pn = PoolValueNoise(P.xz * 1.1 + 31.7) * 0.7 + PoolValueNoise(P.xz * 3.3) * 0.3;
+                        float v = pn * inHole + 0.1 * inHole;
+                        puddle = smoothstep(0.56, 0.6, v);
+                        float rim = smoothstep(0.5, 0.56, v) * (1.0 - puddle);
+                        albedo = lerp(albedo, float3(0.85, 0.84, 0.79), rim * 0.45);
+                        albedo *= 1.0 - puddle * 0.22;
+                    }
+                    // The glaze worn matte in front of doorways, where everyone walks.
+                    PoolCell ce = PoolLoad(cc + int2(1, 0), storey), cn = PoolLoad(cc + int2(0, 1), storey);
+                    float wear = 0.0;
+                    float2 dw = float2(lc.x, POOL_C - lc.x), dz = float2(lc.y, POOL_C - lc.y);
+                    float acrossZ = smoothstep(0.05, 0.35, lc.y) * smoothstep(1.15, 0.85, lc.y), acrossX = smoothstep(0.05, 0.35, lc.x) * smoothstep(1.15, 0.85, lc.x);
+                    if (here.west == 2u) wear = max(wear, exp(-dw.x * dw.x / 0.9) * acrossZ);
+                    if (ce.west == 2u) wear = max(wear, exp(-dw.y * dw.y / 0.9) * acrossZ);
+                    if (here.south == 2u) wear = max(wear, exp(-dz.x * dz.x / 0.9) * acrossX);
+                    if (cn.south == 2u) wear = max(wear, exp(-dz.y * dz.y / 0.9) * acrossX);
+                    wear *= 0.55 + 0.45 * PoolValueNoise(P.xz * 3.0);
+                    glaze *= 1.0 - 0.6 * wear;
+                    albedo *= 1.0 - 0.05 * wear;
+                }
+                tilt *= 1.0 - puddle;
                 float3 T = normalize(i.tangentWS.xyz), B = cross(N0, T) * i.tangentWS.w;
-                float2 grit = (PoolHash22(floor(i.uv * 260.0)) - 0.5) * 0.35 * near;
+                float2 grit = (PoolHash22(floor(i.uv * 260.0)) - 0.5) * 0.35 * near * (1.0 - puddle);
                 float3 N = normalize(N0 + (T * tilt.x + B * tilt.y) * tileMask + (T * grit.x + B * grit.y) * (1.0 - tileMask));
                 float3 V = GetWorldSpaceNormalizeViewDir(P);
                 albedo *= 1.0 - _WetDarken * under;
@@ -166,11 +251,12 @@ Shader "Backrooms/PoolTile"
                     ao = lerp(1.0, aof.indirectAmbientOcclusion, 0.38);
                 #endif
                 float joint = lerp(_JointShade, 1.0, saturate(tileMask + far));       // the recessed joint gets less light
-                float3 ambient = PoolAmbientAt(P, N0) * ao * joint;
+                float3 ambient = (PoolAmbientAt(P, N0) + PoolPatchBounce(P, N0) * _PatchBounce) * ao * joint;
                 float3 waterLight = under < 0.5 ? PoolWaterLight(P, N0) * joint : 0.0;
 
                 // The glaze: what it mirrors (traced), strongest at grazing angles, and the sun's own highlight.
-                float smooth = lerp(0.3, _Smoothness, tileMask);
+                float smooth = lerp(0.3, _Smoothness, tileMask) * glaze;
+                smooth = lerp(smooth, 0.97, puddle);                          // standing water: a mirror
                 // Specular anti-aliasing (Tokuyoshi & Kaplanyan's geometric kind, as HDRP's): where the normal turns faster
                 // than a pixel shows (tile edges and tilts far off), widen the highlight instead of letting it sparkle.
                 if (_PoolSpecAA > 0.5)

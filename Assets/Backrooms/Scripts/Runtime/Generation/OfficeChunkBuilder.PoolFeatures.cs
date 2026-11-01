@@ -322,6 +322,10 @@ namespace Backrooms.Generation
             Sweep(w, _railPts, r, 14);
             End(w, _railPts[0], _railPts[0] - _railPts[1], r);
             End(w, _railPts[_railPts.Count - 1], _railPts[_railPts.Count - 1] - _railPts[_railPts.Count - 2], r);
+            // Rust round the anchors on a dry deck (2026-11-01, the realism plan 4).
+            int last = _railPts.Count - 1;
+            if ((_railPts[0] - _railPts[1]).normalized.y < -0.9f && Mathf.Abs(_railPts[0].y) < 0.05f) Stain(_railPts[0], Vector3.up, r + 0.07f, 0f, true);
+            if ((_railPts[last] - _railPts[last - 1]).normalized.y < -0.9f && Mathf.Abs(_railPts[last].y) < 0.05f) Stain(_railPts[last], Vector3.up, r + 0.07f, 0f, true);
         }
 
         /// <summary>A rail's end: going down into a floor, an escutcheon (a round plate with a rounded rim); else capped.</summary>
@@ -748,7 +752,7 @@ namespace Backrooms.Generation
             {
                 switch (f.kind)
                 {
-                    case PoolFeatureKind.FreePool: if (Mine(f.centre)) FreePoolSteps(f); break;
+                    case PoolFeatureKind.FreePool: if (Mine(f.centre)) { FreePoolSteps(f); FreePoolFittings(f); } break;
                     case PoolFeatureKind.Gallery: if (Mine(f.centre)) GalleryStair(f); break;
                     // (Spouts and cascades are still planned, so worlds stay as they were, but no longer built: the owner
                     // did not like the waterfalls, 2026-10-31.)
