@@ -25,15 +25,20 @@ float4 _PortalClipPlane;             // zero outside a portal-camera render
 #define POOL_SHAFT 1.2
 #define POOL_HEADER 2.7
 #define POOL_PILLAR_R 0.4
-#define POOL_ROUND_R 0.45
+#define POOL_ROUND_R 0.5
 #define POOL_WATER (-0.12)
 #define POOL_BASIN 0.45
+// High windows in walls (edge code 3; PoolBiome.Window*): sill, gap under the lower ceiling, inset from the cell's ends.
+#define POOL_WIN_SILL 1.95
+#define POOL_WIN_HEAD 0.45
+#define POOL_WIN_IN 0.3
+float4 _PoolFar;                     // x, y: distance (m) the far fade starts and ends (0: none), so nothing ends in black
 static const float3 POOL_SUN = float3(0.420764, 0.781419, 0.460837);   // normalize(0.42, 0.78, 0.46), as PoolBiome.SunDirection
 
 struct PoolCell
 {
     bool valid, basin, pillar, pillarNear;
-    uint west, south;    // 0 open, 1 wall, 2 headed doorway
+    uint west, south;    // 0 open, 1 wall, 2 headed doorway, 3 wall with a high window
     uint sky, joined;
     float ceiling, fill;
 };
@@ -60,6 +65,24 @@ PoolCell PoolLoad(int2 cell, int storey)
 
 int2 PoolCellOf(float3 p) { return (int2)floor(p.xz / POOL_C); }
 
+// A wall, with or without a high window in it.
+bool PoolSolidEdge(uint e) { return e == 1u || e == 3u; }
+
+// Signed distance (m) from a point on a window's edge line (along: 0..1.2 within the cell; y above the deck) to the
+// window's border, > 0 inside; the window's top is under the lower of the two ceilings.
+float PoolWindowSD(float along, float y, float ceilA, float ceilB)
+{
+    return min(min(along - POOL_WIN_IN, POOL_C - POOL_WIN_IN - along), min(y - POOL_WIN_SILL, min(ceilA, ceilB) - POOL_WIN_HEAD - y));
+}
+
+// Far off, everything fades into the fog's colour before the loaded world ends (it showed black there).
+float3 PoolFarFade(float3 color, float3 pw)
+{
+    if (_PoolFar.y <= 0) return color;
+    float f = smoothstep(_PoolFar.x, _PoolFar.y, length(pw - GetCameraPositionWS()));
+    return lerp(color, unity_FogColor.rgb, f);
+}
+
 // Signed distance (m) from a point inside the cell (0..1.2 each way) to the edge of its roof opening, > 0 inside.
 // Shapes as PoolBiome.HoleRect: 1 full, 2 slot along x, 3 slot along z, 4 square, 5 round.
 float PoolHoleSD(uint shape, uint joined, float2 uv)
@@ -69,8 +92,8 @@ float PoolHoleSD(uint shape, uint joined, float2 uv)
     const float rim = 0.15;
     float x0 = (joined & 1u) ? -1.0 : rim, x1 = (joined & 2u) ? 2.2 : 1.2 - rim;
     float z0 = (joined & 4u) ? -1.0 : rim, z1 = (joined & 8u) ? 2.2 : 1.2 - rim;
-    float4 r = shape == 1 ? float4(x0, z0, x1, z1) : shape == 2 ? float4(x0, 0.45, x1, 0.75)
-             : shape == 3 ? float4(0.45, z0, 0.75, z1) : float4(0.3, 0.3, 0.9, 0.9);
+    float4 r = shape == 1 ? float4(x0, z0, x1, z1) : shape == 2 ? float4(x0, 0.3, x1, 0.9)
+             : shape == 3 ? float4(0.3, z0, 0.9, z1) : float4(0.2, 0.2, 1.0, 1.0);
     return min(min(uv.x - r.x, r.z - uv.x), min(uv.y - r.y, r.w - uv.y));
 }
 
@@ -125,6 +148,12 @@ float PoolSunVisibility(float3 pw)
         int2 nc = c + (tx <= tz ? int2(1, 0) : int2(0, 1));
         PoolCell n = PoolLoad(nc, storey);
         uint edge = tx <= tz ? n.west : n.south;
+        if (edge == 3u)
+        {
+            // A high window: the sky beyond (its edges soften with distance, as an opening's do).
+            float along = tx <= tz ? p.z + L.z * tExit - c.y * POOL_C : p.x + L.x * tExit - c.x * POOL_C;
+            return saturate(PoolWindowSD(along, y, cell.ceiling, n.ceiling) / (0.006 + 0.009 * tExit) + 0.5);
+        }
         if (edge == 1u || (edge == 2u && y > POOL_HEADER)) return 0;
         if (!n.valid || y >= n.ceiling) return 0;
         c = nc; cell = n; t = tExit;
@@ -141,8 +170,8 @@ float PoolFill(float3 p)
     int2 o = PoolCellOf(p) - b;   // which of the four is the point's own cell (0/1 each way)
     int s = PoolStorey(p.y);
     PoolCell c00 = PoolLoad(b, s), c10 = PoolLoad(b + int2(1, 0), s), c01 = PoolLoad(b + int2(0, 1), s), c11 = PoolLoad(b + int2(1, 1), s);
-    bool h0 = c10.west != 1u, h1 = c11.west != 1u;      // between the columns, rows 0 / 1
-    bool v0 = c01.south != 1u, v1 = c11.south != 1u;    // between the rows, columns 0 / 1
+    bool h0 = !PoolSolidEdge(c10.west), h1 = !PoolSolidEdge(c11.west);      // between the columns, rows 0 / 1
+    bool v0 = !PoolSolidEdge(c01.south), v1 = !PoolSolidEdge(c11.south);    // between the rows, columns 0 / 1
     bool k00, k10, k01, k11;
     if (o.x == 0 && o.y == 0) { k00 = true; k10 = h0; k01 = v0; k11 = (h0 && v1) || (v0 && h1); }
     else if (o.x == 1 && o.y == 0) { k00 = h0; k10 = true; k01 = (h0 && v0) || (v1 && h1); k11 = v1; }
@@ -291,7 +320,7 @@ bool PoolPathClear(float3 pw, float3 dir, float tEnd)
         int2 nc = c + (tx <= tz ? int2(1, 0) : int2(0, 1));
         PoolCell n = PoolLoad(nc, storey);
         uint edge = tx <= tz ? n.west : n.south;
-        if (edge == 1u || (edge == 2u && y > POOL_HEADER) || !n.valid || y >= n.ceiling) return false;
+        if (PoolSolidEdge(edge) || (edge == 2u && y > POOL_HEADER) || !n.valid || y >= n.ceiling) return false;
         c = nc; cell = n;
     }
     return false;
@@ -411,7 +440,16 @@ PoolHit PoolTrace(float3 pw, float3 R, float maxT)
         uint edge = alongX ? (st.x > 0 ? n.west : cell.west) : (st.y > 0 ? n.south : cell.south);
         float y = p.y + R.y * tExit;
         float nFloor = n.basin ? POOL_WATER : 0.0;
-        if (edge == 1u || (edge == 2u && y > POOL_HEADER) || !n.valid || y >= n.ceiling || y < nFloor)
+        if (edge == 3u)
+        {
+            float along = alongX ? p.z + R.z * tExit - c.y * POOL_C : p.x + R.x * tExit - c.x * POOL_C;
+            if (PoolWindowSD(along, y, cell.ceiling, n.ceiling) > 0)
+            {
+                h.kind = POOL_HIT_SKY; h.t = tExit; h.p = pw + R * tExit; h.n = alongX ? float3(-st.x, 0, 0) : float3(0, 0, -st.y);
+                return h;
+            }
+        }
+        if (PoolSolidEdge(edge) || (edge == 2u && y > POOL_HEADER) || !n.valid || y >= n.ceiling || y < nFloor)
         {
             // The wall's face is half a wall's thickness short of the cell line.
             float tw = max(tExit - 0.075 / max(abs(alongX ? R.x : R.z), 0.05), t);
@@ -454,6 +492,11 @@ float PoolSunVisibilityBlur(float3 pw, float blur)
         int2 nc = c + (tx <= tz ? int2(1, 0) : int2(0, 1));
         PoolCell n = PoolLoad(nc, storey);
         uint edge = tx <= tz ? n.west : n.south;
+        if (edge == 3u)
+        {
+            float along = tx <= tz ? p.z + L.z * tExit - c.y * POOL_C : p.x + L.x * tExit - c.x * POOL_C;
+            return saturate(PoolWindowSD(along, y, cell.ceiling, n.ceiling) / (0.006 + 0.009 * tExit + blur) + 0.5);
+        }
         if (edge == 1u || (edge == 2u && y > POOL_HEADER)) return 0;
         if (!n.valid || y >= n.ceiling) return 0;
         c = nc; cell = n;

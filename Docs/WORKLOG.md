@@ -15,6 +15,24 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - The Poolrooms: larger roof openings, high windows, less haze, no black far off, calmer ambience, new wading sounds
+
+- The owner: "larger roof openings, some side wall high openings, less haze; far away shows as black (unloaded areas);
+  the ambience too loud, should be more chill, quiet; the water walking sound is crazy bad (sounds like blaster pistols);
+  plan out how to make interaction with water much better".
+- Roof openings (world version 17): more rooms, the big rectangle about half the room, wider slots, bigger squares and
+  rounds (`PoolPlan`, `PoolBiome.HoleRect`, `PoolHoleSD`).
+- High windows (`PoolPlan.Windows`, `OfficeChunkBuilder.WindowFaces`, `PoolCell.windows`, edge code 3): tall windows high
+  in the sun-side walls with the sky in them; the traced sun comes through in beams onto the floors and water, the
+  reflections see them, bounce and ripples treat them as wall.
+- Haze: zone fog 0.0035 (0.008). Far fade (`PoolFarFade`): everything fades into the fog's colour before the loaded world
+  ends (43 m), the camera clears to it there: no more black.
+- Sound: a calmer, quieter water bed (0.028), the pool reverb's tail lower; new water steps from bubble physics (no pitch
+  sweeps) and a wading swish that follows your speed (`WadeLoop`, `PlayerAudio`).
+- The water interaction plan: Poolrooms.md.
+- Checked in World 3 (pictures: a big opening's caustic pool, a hall of high windows throwing sun onto the water; the
+  spectrogram of the new steps shows no tonal sweeps). EditMode tests pass. Not played by the owner (or heard).
+
 ## 2026-10-31 - The Poolrooms: 3D glossy tiles with traced reflections, emerald water, real caustics and light off the water
 
 - The owner (three reference pictures: sunlit tiled pool halls, pale sage and cream, deep green water): "the tiles more

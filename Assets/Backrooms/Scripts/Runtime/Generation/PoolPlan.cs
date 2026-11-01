@@ -127,6 +127,9 @@ namespace Backrooms.Generation
                 Skylights(L, r, rng, pillarCells);
             }
 
+            // High windows in the walls the sun comes through.
+            Windows(L, new System.Random(rng.Next()));
+
             // Spiral stair towers: a dry floor round the stair; light comes down the well from four openings at its top.
             foreach (var r in L.rooms)
             {
@@ -165,6 +168,43 @@ namespace Backrooms.Generation
             }
         }
 
+        /// <summary>
+        /// High windows (2026-10-31, the owner: "some side wall high openings"; references: tall bright openings high in a
+        /// tiled wall with the sun pouring through): in some tall rooms, every other cell along the wall on the sun's side
+        /// (+X or +Z: the sun comes from there) has a 0.6 m wide window from 1.95 m up to just under the ceiling, with the
+        /// sky beyond (this is the Backrooms: the room behind it sees the same sky). The sun comes in through them in
+        /// beams (PoolSun / PoolCommon.hlsl: edge code 3). Both rooms must be tall enough; only plain wall edges.
+        /// </summary>
+        static void Windows(OfficeLayout L, System.Random rng)
+        {
+            int n = L.N;
+            foreach (var r in L.rooms)
+            {
+                if (!r.Walkable || r.spiral || r.ceiling < PoolBiome.WindowMinCeiling) continue;
+                if (rng.NextDouble() > 0.4) continue;
+                var rc = r.rect;
+                int phase = rng.Next(2);
+                bool xWall = rng.NextDouble() < 0.5;
+                for (int pass = 0; pass < 2; pass++, xWall = !xWall)
+                {
+                    int line = xWall ? rc.xMax : rc.yMax;
+                    if (line >= n) continue;
+                    int lo = xWall ? rc.yMin : rc.xMin, hi = xWall ? rc.yMax : rc.xMax, made = 0;
+                    for (int a = lo + 1 + phase; a < hi - 1; a += 2)
+                    {
+                        int ox = xWall ? line : a, oz = xWall ? a : line;
+                        var edge = xWall ? L.vEdges[line, a] : L.hEdges[a, line];
+                        if (edge != EdgeKind.Wall) continue;
+                        var other = L.RoomAt(ox, oz);
+                        if (!other.Walkable || other.spiral || other.ceiling < PoolBiome.WindowMinCeiling) continue;
+                        var c = L.pool[ox, oz]; c.windows |= (byte)(xWall ? 1 : 2); L.pool[ox, oz] = c;
+                        made++;
+                    }
+                    if (made > 0 && rng.NextDouble() < 0.6) break;          // usually one wall of them, sometimes both
+                }
+            }
+        }
+
         static void Skylights(OfficeLayout L, Room r, System.Random rng, HashSet<Vector2Int> pillars)
         {
             var rc = r.rect;
@@ -190,10 +230,11 @@ namespace Backrooms.Generation
                 }
                 return;
             }
-            if (p < 0.3)
+            if (p < 0.45)
             {
-                // One big opening over the middle of the room: a wide pool of sun.
-                int ow = Mathf.Clamp(w / 3, 1, 4), oh = Mathf.Clamp(h / 3, 1, 4);
+                // One big opening over the middle of the room: a wide pool of sun (2026-10-31: larger, after the owner's
+                // reference pictures).
+                int ow = Mathf.Clamp(w / 2, 1, 6), oh = Mathf.Clamp(h / 2, 1, 6);
                 int ox = rc.xMin + (w - ow) / 2 + rng.Next(-1, 2), oz = rc.yMin + (h - oh) / 2 + rng.Next(-1, 2);
                 ox = Mathf.Clamp(ox, rc.xMin + 1, Mathf.Max(rc.xMin + 1, rc.xMax - 1 - ow)); oz = Mathf.Clamp(oz, rc.yMin + 1, Mathf.Max(rc.yMin + 1, rc.yMax - 1 - oh));
                 // One rectangle, or none: a column under part of it would leave an L whose inside corner opens onto nothing.
@@ -202,23 +243,23 @@ namespace Backrooms.Generation
                     if (x >= rc.xMax || z >= rc.yMax || pillars.Contains(new Vector2Int(x, z))) clear = false;
                 if (clear) for (int x = ox; x < ox + ow; x++) for (int z = oz; z < oz + oh; z++) Put(x, z, SkylightShape.Full);
             }
-            else if (p < 0.55)
+            else if (p < 0.65)
             {
                 // Parallel slots across the room: bars of light on the floor and up the walls.
-                int step = rng.Next(2, 4);
+                int step = 2;
                 if (alongX) { for (int x = rc.xMin + 1; x < rc.xMax - 1; x += step) for (int z = rc.yMin + 1; z < rc.yMax - 1; z++) Put(x, z, SkylightShape.SlotZ); }
                 else { for (int z = rc.yMin + 1; z < rc.yMax - 1; z += step) for (int x = rc.xMin + 1; x < rc.xMax - 1; x++) Put(x, z, SkylightShape.SlotX); }
             }
-            else if (p < 0.75)
+            else if (p < 0.8)
             {
                 // A grid of square openings.
-                int step = rng.Next(2, 4);
+                int step = 2;
                 for (int x = rc.xMin + 1; x < rc.xMax - 1; x += step) for (int z = rc.yMin + 1; z < rc.yMax - 1; z += step) Put(x, z, SkylightShape.Square);
             }
-            else if (p < 0.88)
+            else if (p < 0.9)
             {
                 // A few round openings.
-                int count = Mathf.Clamp(w * h / 25, 1, 4);
+                int count = Mathf.Clamp(w * h / 16, 2, 6);
                 for (int i = 0; i < count; i++) Put(rc.xMin + 1 + rng.Next(Mathf.Max(1, w - 2)), rc.yMin + 1 + rng.Next(Mathf.Max(1, h - 2)), SkylightShape.Round);
             }
             else

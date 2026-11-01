@@ -26,6 +26,15 @@ namespace Backrooms.Generation
         /// <summary>Stairs out of a basin: three risers within the cell next to the doorway.</summary>
         public const int Steps = 3;
         public const float StepRun = 0.3f;
+        /// <summary>High windows in walls (sky beyond): sill height, gap under the lower of the two ceilings, inset from each end
+        /// of the cell (so 0.6 m wide), and the lowest ceiling that has room for one. Must match PoolCommon.hlsl.</summary>
+        public const float WindowSill = 1.95f, WindowHead = 0.45f, WindowInset = 0.3f, WindowMinCeiling = 3.6f;
+        public static float WindowTop(float ceilA, float ceilB) => Mathf.Min(ceilA, ceilB) - WindowHead;
+        /// <summary>Signed distance (m) from a point on a window's edge line (along: 0..1.2 in the cell, y above the deck) to
+        /// the window's border; > 0 inside.</summary>
+        public static float WindowSD(float along, float y, float ceilA, float ceilB) =>
+            Mathf.Min(Mathf.Min(along - WindowInset, C - WindowInset - along), Mathf.Min(y - WindowSill, WindowTop(ceilA, ceilB) - y));
+
         /// <summary>Tiles are 15 cm: eight to a cell, and every ceiling height (0.3 m steps) is a whole number of rows.</summary>
         public const float TileSize = 0.15f;
 
@@ -50,15 +59,15 @@ namespace Backrooms.Generation
             switch (s)
             {
                 case SkylightShape.Full: return Rect.MinMaxRect(x0, z0, x1, z1);
-                case SkylightShape.SlotX: return Rect.MinMaxRect(x0, 0.45f, x1, 0.75f);
-                case SkylightShape.SlotZ: return Rect.MinMaxRect(0.45f, z0, 0.75f, z1);
-                case SkylightShape.Square: return Rect.MinMaxRect(0.3f, 0.3f, 0.9f, 0.9f);
-                case SkylightShape.Round: return Rect.MinMaxRect(0.15f, 0.15f, 1.05f, 1.05f);   // bounds of the circle
+                case SkylightShape.SlotX: return Rect.MinMaxRect(x0, 0.3f, x1, 0.9f);
+                case SkylightShape.SlotZ: return Rect.MinMaxRect(0.3f, z0, 0.9f, z1);
+                case SkylightShape.Square: return Rect.MinMaxRect(0.2f, 0.2f, 1.0f, 1.0f);
+                case SkylightShape.Round: return Rect.MinMaxRect(0.1f, 0.1f, 1.1f, 1.1f);   // bounds of the circle
                 default: return Rect.zero;
             }
         }
 
-        public const float RoundRadius = 0.45f;
+        public const float RoundRadius = 0.5f;
 
         /// <summary>Is the point (metres inside the cell) in the opening?</summary>
         public static bool InHole(SkylightShape s, int joined, float u, float v)

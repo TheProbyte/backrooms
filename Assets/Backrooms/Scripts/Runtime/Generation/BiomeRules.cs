@@ -131,7 +131,7 @@ namespace Backrooms.Generation
             lightsAllOn = 0f, lightsMixed = 0f, mixedOnFraction = 0f, faultyChance = 0f,
             pillarChance = 0.6f, pillarSpacing = 3f, halfWalls = 0f, scatteredSeating = 0f, rackChance = 0f,
             outletChance = 0f, stripLights = 0f,
-            skylights = 0.7f, flooded = 0.8f, ledges = 0.35f,
+            skylights = 0.85f, flooded = 0.8f, ledges = 0.35f,
         };
 
         /// <summary>

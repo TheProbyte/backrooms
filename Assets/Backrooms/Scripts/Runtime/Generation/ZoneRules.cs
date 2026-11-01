@@ -101,7 +101,7 @@ namespace Backrooms.Generation
             name = "Poolrooms", mapColor = new Color(0.45f, 0.8f, 0.76f), weight = 0f,
             biomes = new List<BiomeBand> { new BiomeBand { rules = BiomeRules.Poolrooms(), upTo = 1f } },
             edgeBiome = "Poolrooms",
-            overrideFog = true, fogColor = new Color(0.66f, 0.77f, 0.75f), fogDensity = 0.008f, ambience = "pool", power = 0f,
+            overrideFog = true, fogColor = new Color(0.66f, 0.77f, 0.75f), fogDensity = 0.0035f, ambience = "pool", power = 0f,
             minStorey = 0, maxStorey = 1, fullStoreys = 1,
             style = ZoneStyle.Pool, sealedEdges = true,
             pinned = true, pinCentre = new Vector2Int(24, 0), pinRadius = 5,

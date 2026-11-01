@@ -569,6 +569,12 @@ namespace Backrooms.Generation
                         if (room.floor < -0.001f) WallFace(room, cm, A(f, a0), A(f, a1), room.floor, 0f, n);
                         continue;
                     }
+                    // A high window in a Poolrooms wall (sky beyond): the wall round it and its reveal.
+                    if (Pool && !room.noFloor && room.ramp == 0 && PoolWindowAt(vertical, line, along))
+                    {
+                        var wv = ViewOpening(_L, Neighbour, vertical, line, along, s);
+                        if (WindowFaces(room, cm, vertical, l, f, a0, a1, along, n, myCeil, wv.otherKnown ? wv.otherCeil : myCeil, s == 1)) continue;
+                    }
                     // From this room's floor (a sunken room's is lower; a ramp's slopes along it) to its ceiling.
                     float fa = room.floor, fb = room.floor;
                     if (room.ramp != 0) { fa = FloorAlong(room, vertical, line, a0); fb = FloorAlong(room, vertical, line, a1); }

@@ -157,6 +157,8 @@ namespace Backrooms.Generation
         /// <summary>Flooded: the floor is <see cref="PoolBiome.BasinDepth"/> below the deck, under still water.</summary>
         public bool basin;
         public SkylightShape skylight;
+        /// <summary>A high window (sky beyond) in this cell's edge: 1 the -X (west) edge, 2 the -Z (south) edge.</summary>
+        public byte windows;
     }
 
     /// <summary>

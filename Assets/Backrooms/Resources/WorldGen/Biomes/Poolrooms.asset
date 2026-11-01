@@ -46,6 +46,6 @@ MonoBehaviour:
     rackChance: 0
     outletChance: 0
     stripLights: 0
-    skylights: 0.7
+    skylights: 0.85
     flooded: 0.8
     ledges: 0.35

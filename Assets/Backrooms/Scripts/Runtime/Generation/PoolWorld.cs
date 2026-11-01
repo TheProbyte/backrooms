@@ -199,10 +199,24 @@ namespace Backrooms.Generation
             _fogColor = RenderSettings.fogColor; _fogDensity = RenderSettings.fogDensity; _fog = RenderSettings.fog;
             _swapped = true;
             RenderSettings.fogColor = zone.fogColor; RenderSettings.fogDensity = zone.fogDensity; RenderSettings.fog = true;
+            // Far off, everything fades into the fog's colour before the loaded world ends, and what lies beyond it (nothing)
+            // is that colour too: it was black (2026-10-31, the owner: "far away shows as black").
+            float end = streamer.loadRadius * OfficeBiome.ChunkCells * OfficeBiome.CellSize - 1f;
+            Shader.SetGlobalVector("_PoolFar", new Vector4(end * farFadeStart, end, 0f, 0f));
+            _camFlags = cam.clearFlags; _camBack = cam.backgroundColor; _camSwapped = cam;
+            cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = zone.fogColor;
         }
+
+        [Tooltip("Where the far fade starts, as a share of the distance the loaded world is sure to reach.")]
+        [Range(0.3f, 0.95f)] public float farFadeStart = 0.6f;
+        Camera _camSwapped;
+        CameraClearFlags _camFlags;
+        Color _camBack;
 
         void EndCamera(ScriptableRenderContext ctx, Camera cam)
         {
+            if (_camSwapped == cam) { cam.clearFlags = _camFlags; cam.backgroundColor = _camBack; _camSwapped = null; }
+            Shader.SetGlobalVector("_PoolFar", Vector4.zero);
             if (!_swapped) return;
             _swapped = false;
             RenderSettings.fogColor = _fogColor; RenderSettings.fogDensity = _fogDensity; RenderSettings.fog = _fog;

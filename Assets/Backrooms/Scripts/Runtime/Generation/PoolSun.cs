@@ -28,7 +28,10 @@ namespace Backrooms.Generation
     {
         const float C = OfficeBiome.CellSize;
 
-        public const byte Open = 0, Wall = 1, Header = 2;
+        public const byte Open = 0, Wall = 1, Header = 2, Window = 3;
+
+        /// <summary>A wall (with or without a high window in it).</summary>
+        public static bool Solid(byte e) => e == Wall || e == Window;
 
         /// <summary>Sunlight reaching point p (metres in the grid's frame, y above the deck): 0 = shade, 1 = full sun.</summary>
         public static float Visibility(IPoolCells g, Vector3 p)
@@ -59,6 +62,12 @@ namespace Backrooms.Generation
                 if (tx <= tz) nx += L.x > 0f ? 1 : -1; else nz += L.z > 0f ? 1 : -1;
                 var n = g.Get(nx, nz);
                 byte edge = tx <= tz ? (L.x > 0f ? n.west : c.west) : (L.z > 0f ? n.south : c.south);
+                if (edge == Window)
+                {
+                    // A high window: the sky is beyond it.
+                    float along = tx <= tz ? p.z + L.z * tExit - cz * C : p.x + L.x * tExit - cx * C;
+                    return PoolBiome.WindowSD(along, y, c.ceiling, n.ceiling) > 0f ? 1f : 0f;
+                }
                 if (edge == Wall || (edge == Header && y > PoolBiome.HeaderHeight)) return 0f;
                 if (!n.valid || y >= n.ceiling) return 0f;
                 cx = nx; cz = nz; c = n; t = tExit;

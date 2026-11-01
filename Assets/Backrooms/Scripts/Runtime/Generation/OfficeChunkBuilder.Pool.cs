@@ -41,6 +41,38 @@ namespace Backrooms.Generation
             return owner.pool[lx, lz];
         }
 
+        /// <summary>Is there a high window in this edge (it belongs to the cell on its +X / +Z side, maybe next door)?</summary>
+        bool PoolWindowAt(bool vertical, int line, int along)
+        {
+            var c = vertical ? PoolAt(line, along, out _, out _, out _) : PoolAt(along, line, out _, out _, out _);
+            return c.HasValue && (c.Value.windows & (vertical ? 1 : 2)) != 0;
+        }
+
+        /// <summary>
+        /// One side of a wall with a high window (PoolPlan.Windows): the wall below, above and either side of it, this side's
+        /// half of its reveal (sill, head, jambs) and, from the +X / +Z side only (it shows both ways), the sky in it. False
+        /// if the ceilings leave no room for it (then it is a plain wall).
+        /// </summary>
+        bool WindowFaces(Room room, uint cm, bool vertical, float l, float f, float a0, float a1, int along, Vector3 n, float myCeil, float otherCeil, bool drawSky)
+        {
+            float sill = PoolBiome.WindowSill, top = PoolBiome.WindowTop(myCeil, otherCeil);
+            if (top - sill < 0.6f) return false;
+            float w0 = along * C + PoolBiome.WindowInset, w1 = (along + 1) * C - PoolBiome.WindowInset;
+            Vector3 A(float pos, float at, float y) => (vertical ? new Vector3(pos, 0, at) : new Vector3(at, 0, pos)) + Vector3.up * y;
+            WallFace(room, cm, A(f, a0, 0), A(f, a1, 0), room.floor, sill, n);
+            WallFace(room, cm, A(f, a0, 0), A(f, a1, 0), top, myCeil, n);
+            WallFace(room, cm, A(f, a0, 0), A(f, w0, 0), sill, top, n);
+            WallFace(room, cm, A(f, w1, 0), A(f, a1, 0), sill, top, n);
+            var w = WMask(WallMat(room), cm);
+            Vector3 alongDir = vertical ? Vector3.forward : Vector3.right;
+            w.Quad(A(l, w0, sill), A(f, w0, sill), A(f, w1, sill), A(l, w1, sill), Vector3.up, MeshWriter.MetreUV);
+            w.Quad(A(l, w0, top), A(f, w0, top), A(f, w1, top), A(l, w1, top), Vector3.down, MeshWriter.MetreUV);
+            w.Quad(A(l, w0, sill), A(f, w0, sill), A(f, w0, top), A(l, w0, top), alongDir, MeshWriter.MetreUV);
+            w.Quad(A(l, w1, sill), A(f, w1, sill), A(f, w1, top), A(l, w1, top), -alongDir, MeshWriter.MetreUV);
+            if (drawSky) WMask(SkyMat, 1u).Quad(A(l, w0, sill), A(l, w1, sill), A(l, w1, top), A(l, w0, top), n, MeshWriter.MetreUV);
+            return true;
+        }
+
         /// <summary>Floor of a cell (deck 0, basin below), here or next door; null if unknown.</summary>
         float? FloorAt(int x, int z)
         {
@@ -286,6 +318,8 @@ namespace Backrooms.Generation
                 valid = true, ceiling = owner.RoomAt(lx, lz).ceiling, sky = pc.Value.skylight, basin = pc.Value.basin,
                 west = EdgeCode(owner, owner.vEdges[lx, lz], true, lx, lz), south = EdgeCode(owner, owner.hEdges[lx, lz], false, lz, lx),
             };
+            if ((pc.Value.windows & 1) != 0 && info.west == PoolSun.Wall) info.west = PoolSun.Window;
+            if ((pc.Value.windows & 2) != 0 && info.south == PoolSun.Wall) info.south = PoolSun.Window;
             if (info.sky != SkylightShape.None)
                 info.joined = PoolBiome.Joined((a, b) =>
                 {
@@ -331,10 +365,10 @@ namespace Backrooms.Generation
                 sun *= 0.25f;
                 // Sun on the walls of the cell (bars of light from slots near a wall bounce as well).
                 float wallSun = 0f;
-                if (c.west == PoolSun.Wall) wallSun += PoolSun.Visibility(g, new Vector3(x0 + T * 0.5f + 0.02f, 1.4f, z0 + C * 0.5f));
-                if (c.south == PoolSun.Wall) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + T * 0.5f + 0.02f));
-                if (i + 1 < W && info[i + 1, j].west == PoolSun.Wall) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C - T * 0.5f - 0.02f, 1.4f, z0 + C * 0.5f));
-                if (j + 1 < W && info[i, j + 1].south == PoolSun.Wall) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + C - T * 0.5f - 0.02f));
+                if (PoolSun.Solid(c.west)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + T * 0.5f + 0.02f, 1.4f, z0 + C * 0.5f));
+                if (PoolSun.Solid(c.south)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + T * 0.5f + 0.02f));
+                if (i + 1 < W && PoolSun.Solid(info[i + 1, j].west)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C - T * 0.5f - 0.02f, 1.4f, z0 + C * 0.5f));
+                if (j + 1 < W && PoolSun.Solid(info[i, j + 1].south)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + C - T * 0.5f - 0.02f));
                 float skyOpen = c.sky == SkylightShape.None ? 0f : c.sky == SkylightShape.Full ? 0.7f : c.sky == SkylightShape.Round ? 0.45f : 0.25f;
                 src[i, j] = sun + 0.6f * wallSun + 0.5f * skyOpen;
             }
@@ -355,7 +389,7 @@ namespace Backrooms.Generation
                         int ni = i + (s == 0 ? -1 : s == 1 ? 1 : 0), nj = j + (s == 2 ? -1 : s == 3 ? 1 : 0);
                         byte edge = s == 0 ? info[i, j].west : s == 1 ? (ni < W ? info[ni, j].west : PoolSun.Wall)
                                   : s == 2 ? info[i, j].south : (nj < W ? info[i, nj].south : PoolSun.Wall);
-                        bool open = ni >= 0 && nj >= 0 && ni < W && nj < W && info[ni, nj].valid && edge != PoolSun.Wall;
+                        bool open = ni >= 0 && nj >= 0 && ni < W && nj < W && info[ni, nj].valid && !PoolSun.Solid(edge);
                         sum += open ? e[ni, nj] : e[i, j] * wallBack;
                     }
                     next[i, j] = src[i, j] + spread * sum * 0.25f;

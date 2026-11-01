@@ -41,7 +41,11 @@ namespace Backrooms.Audio
         public static AudioClip Strike(int variant) { if (s_strike == null) { s_strike = new AudioClip[3]; for (int i = 0; i < 3; i++) s_strike[i] = ProceduralSounds.StrikeOn(i); } return s_strike[Mathf.Abs(variant) % 3]; }
         public static AudioClip Tick(int variant) { if (s_tick == null) { s_tick = new AudioClip[4]; for (int i = 0; i < 4; i++) s_tick[i] = ProceduralSounds.Tick(i); } return s_tick[variant & 3]; }
         static AudioClip[] s_waterSteps;
-        public const int WaterStepCount = 6;
+        static AudioClip s_wade;
+        public const int WaterStepCount = 8;
+
+        /// <summary>The swish of wading (a loop).</summary>
+        public static AudioClip WadeLoop => s_wade ? s_wade : (s_wade = ProceduralSounds.WadeLoop());
 
         /// <summary>A step through water (the Poolrooms' basins).</summary>
         public static AudioClip WaterStep(int variant)

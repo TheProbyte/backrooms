@@ -23,7 +23,7 @@ MonoBehaviour:
   transitionZone: {fileID: 0}
   overrideFog: 1
   fogColor: {r: 0.66, g: 0.77, b: 0.75, a: 1}
-  fogDensity: 0.008
+  fogDensity: 0.0035
   ambience: pool
   power: 0
   minStorey: 0

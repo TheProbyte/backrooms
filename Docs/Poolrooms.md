@@ -30,6 +30,15 @@ Then, instead of lights, furniture and outlets:
 - Round tiled columns on a grid in big rooms (sometimes one colonnade down the middle).
 - Roof openings per room: one big rectangle, parallel slots, a grid of squares, a few round ones, or slots along one wall
   (bars of light down that wall). Corridors get a centre slot or a row of squares. Openings never touch a column.
+  2026-10-31 (world version 17, the owner: "larger roof openings"): 85 % of rooms have them (was 70 %), the big rectangle
+  is about half the room (up to 6 x 6 cells) and the commonest pattern, slots are 0.6 m wide (0.3), squares 0.8 m (0.6),
+  rounds 1 m across (0.9), slots and squares every other cell.
+- **High windows** (`PoolPlan.Windows`, the owner: "some side wall high openings"): in 40 % of rooms 3.6 m or taller,
+  every other cell along the wall on the sun's side (+X or +Z) has a 0.6 m wide window from 1.95 m up to 0.45 m under the
+  lower ceiling, with the sky in it (`OfficeChunkBuilder.WindowFaces`: the wall round it, the reveal, a PoolSky quad on the
+  wall's middle line; this is the Backrooms, the room behind sees the same sky). Stored per cell (`PoolCell.windows`:
+  1 its -X edge, 2 its -Z edge), edge code 3 in the shaders' map: the sun comes in through them in beams (`PoolSun`,
+  `PoolSunVisibility`), reflections see sky in them (`PoolTrace`), bounce and ripples treat them as wall.
 - Only the far hole: no ordinary crawl-hole pairs. It opens from a deck; if every usable wall is in a basin room, one
   room is drained (`CrawlPortals.Place`).
 - No landmarks (atriums, colonnades and custom rooms are office architecture).
@@ -54,7 +63,12 @@ layer Default only (no fixture lights here).
   (r: edges/basin/columns, g: ceiling, b: opening shape, a: bounce). Chunks write it when they appear and clear it when
   destroyed.
 - `PoolWorld` light settings (sun colour/intensity, ambient, bounce, sky) are inspector fields, set as shader globals.
-- The zone's fog is swapped in per camera (the player's, or a portal camera looking into the Poolrooms).
+- The zone's fog is swapped in per camera (the player's, or a portal camera looking into the Poolrooms). 2026-10-31: thinner
+  (0.0035, was 0.008: the owner wanted less haze).
+- **Far fade** (`PoolFarFade`, `_PoolFar`): the world is loaded 3 chunks (43 m) round you; past that there was nothing
+  and the camera's clear colour showed black. Every Poolrooms shader now fades into the fog's colour from 60 % of that
+  distance to its end (`PoolWorld.farFadeStart`), and the camera clears to the fog's colour while it looks at the
+  Poolrooms.
 - SSAO: only a gentle share (38 %) of it on the bounce light, none on the sun (PoolTile/PoolLit). At full strength it drew
   hard dark bands along every floor-wall join and in corners, far heavier than in Level 0, which is lit mostly by
   direct light.
@@ -125,9 +139,16 @@ Level 0 corridor 17.7 ms in the same session.
 ## Sound
 
 `BuildingAudio.PoolBlend` (0..1 over 1.2 s as the listener enters) fades out the building hum, ventilation and room tone
-and fades in a water bed (`ProceduralSounds.PoolAmbience`: distant lapping, a wash of water, occasional drips). The
-listener's reverb takes a tiled-hall profile: 2.4-5.5 s decay depending on the visible volume, bright (HF ratio 0.95),
-strong early reflections and tail.
+and fades in a water bed (`ProceduralSounds.PoolAmbience`). The listener's reverb takes a tiled-hall profile: 2.4-5.5 s
+decay depending on the visible volume, bright (HF ratio 0.95), strong early reflections and tail.
+- 2026-10-31 (the owner: the ambience "too loud, should be more chill, quiet"; the water steps "sound like blaster
+  pistols"): the bed is now a soft low wash with a slow breath, faint far laps and a distant drip every 4-9 s (a tiny
+  bubble, not a chirp), at 0.028 (was 0.05); the pool reverb's tail a little lower (200 mB, was 350).
+- **Wading**: most of the sound of water is small bubbles caught under it, each ringing a few ms at a pitch set by its size
+  (Minnaert, about 6.5 kHz over its diameter in mm) and barely rising; the old steps' droplets swept up four times in pitch
+  (the blasters). `ProceduralSounds.WaterStep` (8 variants): the low slosh of the water pushed aside, a swoosh of the leg,
+  a little spray, a fizz of 55-85 tiny bubbles crowded at the start, two or three drops falling back. Under the steps a
+  wading swish (`WadeLoop`) whose level follows the speed through the water (`PlayerAudio`).
 
 ## Things in the Poolrooms
 
@@ -135,6 +156,30 @@ The arm, body, items and furniture normally use Backrooms/Lit, which has no ligh
 body, items and every movable prop) swaps their materials for Backrooms/PoolLit copies (same colours and textures, the
 Poolrooms' sun and bounce) while they are in the Poolrooms. Backrooms/Lit itself is untouched: adding the Poolrooms'
 light to it made the editor recompile all its variants and crash the D3D12 device twice (see WORKLOG).
+
+## Water interaction: the plan (2026-10-31, not built yet)
+
+The owner: "plan out how to make interaction with water much better". What it has now: the ripple simulation round the
+player (legs push it, stepping in splashes, walls reflect it), caustics that wobble with those ripples, water steps and
+the wading swish. In order of how much they add for the work:
+1. **Wading feels like water**: slower in a basin (about 75 % walk, 60 % run) with a little lag starting and stopping;
+   the step bob heavier; running throws more.
+2. **Splashes you can see**: a ring of foam and spray at each step, more when running, a burst when jumping or stepping
+   in, the drops landing back as small ripples (the ripple simulation already takes drops). GPU particles, a handful
+   each.
+3. **Things in water**: items and props float or sink by how dense they are, bob on the ripples, drift a little, splash
+   and plop by size when dropped or thrown in (a plop for a can, a heavy splash for a chair); sunk things lie on the
+   bottom, wobbling under the refraction.
+4. **Wet**: wet footprints on the dry deck after leaving the water, fading over half a minute; drips from you for a few
+   seconds (sound, and tiny ripples if you stand in it); a splash can put drops on the camcorder's lens that blur the
+   picture and dry off (found footage).
+5. **Hand and water**: crouch at the edge and click to touch it (ripples from the hand); the arm comes out wet.
+6. **The water as a horror tell**: ripples with nothing making them (something unseen wading toward you), the sound of
+   wading that is not yours, the water stilling all at once. The tension director and the shadow could use it.
+7. **Under the surface**: crawling in a basin puts the camera under water: green murk, muffled sound, caustics on
+   everything, the surface seen from below (the known gap below).
+8. **Laps at the edges**: when the ripples reach a wall or the pool edge, a soft lap sound there (the simulation knows
+   where).
 
 ## Known gaps / ideas
 

@@ -152,7 +152,7 @@ Shader "Backrooms/PoolTile"
                 float3 spec = _PoolSunColor.rgb * sun * NdotL * min(D * F * 0.25, 40.0) * caustic * smooth;
 
                 float3 color = albedo * (sunLight + ambient + waterLight) * (1.0 - k) + refl * k + spec;
-                return half4(MixFog(color, i.fogFactor), 1);
+                return half4(PoolFarFade(MixFog(color, i.fogFactor), P), 1);
             }
             ENDHLSL
         }

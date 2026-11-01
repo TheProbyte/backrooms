@@ -167,7 +167,7 @@ Shader "Backrooms/PoolWater"
                 float3 glint = _PoolSunColor.rgb * sun * saturate(dot(N, POOL_SUN)) * (a2 / (PI * dd * dd)) * F * 0.25;
 
                 float3 color = lerp(water, refl, F) + glint;
-                return half4(MixFog(color, i.fogFactor), 1);
+                return half4(PoolFarFade(MixFog(color, i.fogFactor), P), 1);
             }
             ENDHLSL
         }

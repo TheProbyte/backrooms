@@ -25,7 +25,7 @@ Shader "Backrooms/PoolSky"
                 #if defined(BACKROOMS_PORTAL_CLIP)
                     clip(dot(float4(i.positionWS, 1), _PortalClipPlane));
                 #endif
-                return half4(PoolSkyColor(-GetWorldSpaceNormalizeViewDir(i.positionWS)), 1);
+                return half4(PoolFarFade(PoolSkyColor(-GetWorldSpaceNormalizeViewDir(i.positionWS)), i.positionWS), 1);
             }
             ENDHLSL
         }

@@ -109,7 +109,7 @@ namespace Backrooms.Audio
         /// <summary>0..1: how far the listener is into the Poolrooms (the Backrooms' beds fade out, water and a long
         /// tiled reverb fade in).</summary>
         public float PoolBlend { get; private set; }
-        [Tooltip("Level of the Poolrooms' water ambience.")] public float waterLevel = 0.05f;
+        [Tooltip("Level of the Poolrooms' water ambience (2026-10-31: quieter, the owner wanted it more chill).")] public float waterLevel = 0.028f;
         AudioLowPassFilter _ventLpf;
         AudioReverbFilter _reverb;
         Vector2Int _fieldCell = new Vector2Int(int.MinValue, 0);
@@ -644,7 +644,7 @@ namespace Backrooms.Audio
                 roomT = Mathf.Lerp(roomT, amt <= 0.001f ? -10000f : -450f + 2000f * Mathf.Log10(amt), p);
                 roomHFT = Mathf.Lerp(roomHFT, -250f, p);
                 reflT = Mathf.Lerp(reflT, -250f, p);
-                revT = Mathf.Lerp(revT, 350f, p);
+                revT = Mathf.Lerp(revT, 200f, p);
                 hfRatioT = Mathf.Lerp(hfRatioT, 0.95f, p);
                 refDelayT = Mathf.Lerp(refDelayT, 0.035f, p);
                 delayT = Mathf.Lerp(delayT, 0.06f, p);

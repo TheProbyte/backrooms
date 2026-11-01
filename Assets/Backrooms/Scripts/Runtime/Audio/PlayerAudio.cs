@@ -17,7 +17,8 @@ namespace Backrooms.Audio
 
         CamcorderPlayerController _player;
         CamcorderAudioChain _chain;
-        AudioSource _feet, _zoom;
+        AudioSource _feet, _zoom, _wade;
+        float _wadeLevel;
         float _zoomLevel;
         int _zoomVersion = -1;
         float _travel;
@@ -43,6 +44,12 @@ namespace Backrooms.Audio
             _zoom = zgo.AddComponent<AudioSource>();
             _zoom.clip = SoundBank.ZoomMotor; _zoom.loop = true; _zoom.playOnAwake = false; _zoom.volume = 0f;
             _zoom.Play();
+            // Wading: a loop under the steps whose level follows the speed through water.
+            var wgo = new GameObject("Wading");
+            wgo.transform.SetParent(transform, false);
+            wgo.transform.localPosition = new Vector3(0f, 0.25f, 0.1f);
+            _wade = wgo.AddComponent<AudioSource>();
+            _wade.clip = SoundBank.WadeLoop; _wade.loop = true; _wade.playOnAwake = false; _wade.volume = 0f;
             _lastPos = transform.position;
             _body = GetComponent<Interaction.FirstPersonBody>();
             if (_body) _body.FootLanded += OnFoot;
@@ -74,13 +81,13 @@ namespace Backrooms.Audio
             const string id = SoundIds.Footsteps;
             float varAmt = SoundCatalog.ParamA(id);
             int pick;
-            int count = floor == ProceduralSounds.Floor.Carpet ? SoundBank.StepCount : 6;
+            int count = floor == ProceduralSounds.Floor.Carpet ? SoundBank.StepCount : floor == ProceduralSounds.Floor.Water ? SoundBank.WaterStepCount : 6;
             do pick = Random.Range(0, count); while (pick == _last && varAmt > 0.01f && count > 1);
             _last = pick;
             AudioClip clip; float k = 1f;
             switch (floor)
             {
-                case ProceduralSounds.Floor.Water: clip = SoundBank.WaterStep(pick); k = 1.6f; break;
+                case ProceduralSounds.Floor.Water: clip = SoundBank.WaterStep(pick); k = 1.1f; break;
                 case ProceduralSounds.Floor.Carpet: clip = SoundBank.Step(pick); break;
                 case ProceduralSounds.Floor.Tile: clip = SoundBank.HardStep(floor, pick); k = 1.25f; break;
                 case ProceduralSounds.Floor.Metal: clip = SoundBank.HardStep(floor, pick); k = 1.3f; break;
@@ -97,7 +104,19 @@ namespace Backrooms.Audio
         {
             if (!_chain) { var l = FindAnyObjectByType<AudioListener>(); if (l) _chain = l.GetComponent<CamcorderAudioChain>(); }
             const string id = SoundIds.Footsteps;
-            if (SoundCatalog.Version != _version) { SoundBank.ApplySpatial(_feet, id); _version = SoundCatalog.Version; }
+            if (SoundCatalog.Version != _version) { SoundBank.ApplySpatial(_feet, id); if (_wade) SoundBank.ApplySpatial(_wade, id); _version = SoundCatalog.Version; }
+
+            // Wading: louder the faster you go through the water, gone when you stop or step out.
+            if (_wade)
+            {
+                bool wading = Generation.PoolRipples.PlayerInWater && _player.IsGrounded && !_player.noclip;
+                float want = wading ? Mathf.Clamp01(_player.PlanarVelocity.magnitude / Mathf.Max(0.1f, _player.runSpeed)) : 0f;
+                _wadeLevel = Mathf.MoveTowards(_wadeLevel, want, Time.deltaTime * (want > _wadeLevel ? 3f : 1.5f));
+                _wade.volume = SoundBank.BaseLevel(id) * SoundCatalog.Volume(id) * 0.55f * _wadeLevel;
+                _wade.pitch = 0.9f + 0.2f * _wadeLevel;
+                if (_wadeLevel > 0.001f && !_wade.isPlaying) _wade.Play();
+                else if (_wadeLevel <= 0.001f && _wade.isPlaying) _wade.Stop();
+            }
 
             // Zoom motor follows the motor speed (no sound when the lens is still).
             if (SoundCatalog.Version != _zoomVersion) { SoundBank.ApplySpatial(_zoom, SoundIds.ZoomMotor); _zoomVersion = SoundCatalog.Version; }
