@@ -34,7 +34,7 @@ MonoBehaviour:
     tallMin: 3.6
     tallMax: 4.8
     paintedChance: 1
-    archedDoors: 0
+    archedDoors: 0.85
     doorChance: 0
     lightsAllOn: 0
     lightsMixed: 0

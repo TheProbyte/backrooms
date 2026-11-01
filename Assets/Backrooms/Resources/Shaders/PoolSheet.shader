@@ -49,6 +49,37 @@ Shader "Backrooms/PoolSheet"
                     clip(dot(float4(i.positionWS, 1), _PortalClipPlane));
                 #endif
                 float3 P = i.positionWS;
+                // (2026-11-01, the owner: "these could use work where the water hits the water") Where it lands, two more
+                // parts after the usual waterfall split (the sheet, the white water at the foot, the spray): uv.y below -1.5
+                // is a ring of foam on the surface round the landing (-2 - its radial place, 0 inside to 1 out), aerated
+                // water carried outward in clumps; between -1 and 0 the crown, a short skirt of churned white water thrown
+                // up where the sheet goes in (-1 at the water, 0 at its top), boiling upward.
+                [branch] if (i.uv.y < -1.5)
+                {
+                    float r = saturate(-i.uv.y - 2.0);
+                    float t = _Time.y;
+                    float2 g = float2(i.uv.x * 34.0, r * 7.0 - t * 0.55);
+                    float foam = PoolValueNoise(g) * 0.55 + PoolValueNoise(g * float2(2.1, 2.6) + float2(5.1, -t * 0.4)) * 0.3 + PoolValueNoise(g * 5.3 + 1.7) * 0.15;
+                    float dense = smoothstep(0.0, 0.1, r) * (1.0 - smoothstep(0.2, 1.0, r));
+                    float px = fwidth(foam) + 0.02;
+                    float cover = smoothstep(1.0 - dense - px, 1.0 - dense + 0.12 + px, foam);
+                    if (cover < 0.01) discard;
+                    float3 c = i.light * (0.95 + 0.1 * foam);
+                    return half4(PoolFarFade(MixFog(c, i.fog), P), saturate(cover * 0.9));
+                }
+                [branch] if (i.uv.y < 0.0)
+                {
+                    float k = saturate(-i.uv.y);                       // 1 at the water, 0 at the top
+                    float t = _Time.y;
+                    float2 g = float2(i.uv.x * 26.0, (1.0 - k) * 3.0 - t * 2.6);
+                    float spray = PoolValueNoise(g) * 0.6 + PoolValueNoise(g * float2(2.7, 2.2) + float2(3.0, -t * 1.9)) * 0.4;
+                    float px = fwidth(spray) + 0.02;
+                    float th = 1.0 - k * 0.85;
+                    float cover = smoothstep(th - px, th + 0.1 + px, spray);
+                    if (cover < 0.01) discard;
+                    float3 c = i.light * 1.02;
+                    return half4(PoolFarFade(MixFog(c, i.fog), P), saturate(cover * (0.55 + 0.4 * k)));
+                }
                 float3 N = normalize(i.normalWS) * (front ? 1.0 : -1.0);
                 float3 V = normalize(_WorldSpaceCameraPos - P);
                 float y = max(i.uv.y, 0.0);
@@ -92,9 +123,13 @@ Shader "Backrooms/PoolSheet"
                 float3 refl = PoolSkyColor(R) * 0.35 + i.light * 0.5;
                 float glint = pow(saturate(dot(R, POOL_SUN)), 180.0) * 6.0;
                 // Air mixed in where it breaks: white, lit by the room.
-                float white = saturate(br * (0.25 + 0.55 * n2) + drop * 0.5);
+                // Fingers: the sheet's thicker streaks, which keep their place across it as they fall (they come from the
+                // lip's own unevenness), catching the light more than the thin sheet between.
+                float finger = smoothstep(0.55, 0.85, PoolValueNoise(float2(u * 23.0 + 11.0, s * 0.7)));
+                float white = saturate(br * (0.25 + 0.55 * n2) + drop * 0.5 + finger * (0.12 + 0.3 * br));
                 float3 c = lerp(behind, i.light * 0.95, white * 0.75);
                 c = lerp(c, refl, fres) + _PoolSunColor.rgb * glint * PoolSunVisibility(P) * 0.05;
+                c += i.light * 0.35 * (1.0 - smoothstep(0.0, 0.05, y));        // the curl of the lip, catching the light
                 a *= lerp(1.0, 0.85, br);
                 return half4(PoolFarFade(MixFog(c, i.fog), P), saturate(a));
             }

@@ -7,14 +7,26 @@ namespace Backrooms.Camcorder
     /// the lens. Each one is a little lens of its own in the picture (the scene through it small and upside down, blurred,
     /// a dark rim and a bright edge), slides slowly down and dries away over a few seconds. Up to eight, drawn in the
     /// camcorder's integrate pass (CamcorderPipeline.shader, _CamDrops).
+    /// 2026-11-01 (the owner: "walking under should wet the camera for a bit"): up to sixteen, and a wash, for walking
+    /// through falling water: the whole front of the lens running with water for a moment (the picture rippling and
+    /// smeared downward in streams, clearing from the top), leaving drops behind.
     /// </summary>
     public static class LensDrops
     {
-        const int Max = 8;
+        const int Max = 16;
         static readonly Vector4[] s_out = new Vector4[Max];
         static readonly Vector2[] s_pos = new Vector2[Max];
         static readonly float[] s_r = new float[Max], s_strength = new float[Max], s_life = new float[Max], s_age = new float[Max], s_slide = new float[Max];
-        static readonly int Id = Shader.PropertyToID("_CamDrops");
+        static readonly int Id = Shader.PropertyToID("_CamDrops"), IdWash = Shader.PropertyToID("_CamWash");
+        static float s_wash, s_washTime;
+
+        /// <summary>A sheet of water over the lens (0..1), drying in a second or two; drops left behind.</summary>
+        public static void Wash(float strength)
+        {
+            s_wash = Mathf.Max(s_wash, Mathf.Clamp01(strength));
+            s_washTime = 0f;
+            Add(Mathf.RoundToInt(6 + 8 * strength), Mathf.Lerp(0.6f, 1f, strength));
+        }
 
         /// <summary>count drops at strength (0..1) somewhere on the lens.</summary>
         public static void Add(int count, float strength)
@@ -47,9 +59,11 @@ namespace Backrooms.Camcorder
                 s_out[i] = new Vector4(s_pos[i].x, s_pos[i].y, r, s_strength[i] * Mathf.SmoothStep(0f, 1f, k * 1.5f));
             }
             m.SetVectorArray(Id, s_out);
+            if (s_wash > 0f) { s_washTime += dt; s_wash = Mathf.Max(0f, s_wash - dt / 1.6f); }
+            m.SetVector(IdWash, new Vector4(s_wash, s_washTime, 0f, 0f));
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void Reset() { for (int i = 0; i < Max; i++) { s_strength[i] = 0f; s_out[i] = Vector4.zero; } }
+        static void Reset() { s_wash = 0f; for (int i = 0; i < Max; i++) { s_strength[i] = 0f; s_out[i] = Vector4.zero; } }
     }
 }

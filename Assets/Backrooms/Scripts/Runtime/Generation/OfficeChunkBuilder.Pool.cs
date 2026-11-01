@@ -101,7 +101,7 @@ namespace Backrooms.Generation
 
         void BuildPoolData()
         {
-            poolFittings.Clear(); poolFittingDirs.Clear();
+            poolFittings.Clear(); poolFittingDirs.Clear(); poolRopes.Clear(); poolRopeEnds.Clear();
             BuildPoolFloors();
             BuildPoolCeilings();
             BuildWalls();

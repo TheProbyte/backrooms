@@ -17,6 +17,10 @@ namespace Backrooms.Generation
         /// for jets the direction they push (fittingDirs).</summary>
         public readonly List<Vector4> poolFittings = new List<Vector4>();
         public readonly List<Vector3> poolFittingDirs = new List<Vector3>();
+        /// <summary>Lane ropes (layout-local, on the water): each cell's share of a rope from (x, z) to (z, w); and which of
+        /// its ends are tied to the pool wall (bit 0 the first, bit 1 the second). PoolLaneRopes joins them up.</summary>
+        public readonly List<Vector4> poolRopes = new List<Vector4>();
+        public readonly List<byte> poolRopeEnds = new List<byte>();
 
         uint FitHash(int a, int b, int c)
         {
@@ -205,29 +209,79 @@ namespace Backrooms.Generation
             _rotBoxes.Add((c, new Vector3(0.5f, 0.6f, 2f * half + 0.3f), Mathf.Atan2(along.x, along.z) * Mathf.Rad2Deg));
         }
 
-        /// <summary>A lap pool's lane ropes over this cell: floats every 10 cm on the water, blue and white in runs.</summary>
+        /// <summary>
+        /// A lap pool's lane ropes over this cell. (2026-11-01, the owner: "should have a connection to the wall and should
+        /// move in the water, connected as a line but all together when waves hit it, and should stop you from passing".)
+        /// The floats are no longer built here: each rope's share of this cell is listed (poolRopes) for PoolLaneRopes,
+        /// which joins the shares across the chunks into whole ropes, floats them on the moving water and gives them a body;
+        /// where a rope ends at the pool's end, its anchor is built on the wall: a round plate, an eye bolt and a ring.
+        /// </summary>
         void LaneRopes(int x, int z, byte lanes)
         {
             bool alongX = lanes == 1;
             float x0 = x * C, z0 = z * C;
             var origin = new Vector3(_L.coord.x * _L.N * C, 0f, _L.coord.y * _L.N * C);
             float acrossLo = alongX ? z0 : x0, worldAcross = alongX ? origin.z : origin.x;
-            var blue = WMask(PoolMaterials.PlasticBlue ? PoolMaterials.PlasticBlue : TileMat, 1u);
-            var white = WMask(PoolMaterials.PlasticWhite ? PoolMaterials.PlasticWhite : TileMat, 1u);
+            int lo = alongX ? 0 : 2, hi = alongX ? 1 : 3;
             // The lane lines lie on tile rows 16k + 8 (PoolTile.shader); the ropes run between lanes, 1.2 m off them.
             for (int k = -2; k <= 2; k++)
             {
                 float wl = Mathf.Floor((worldAcross + acrossLo) / 2.4f) * 2.4f + k * 2.4f + 0.15f * 8f + 0.15f + 1.2f;
                 float local = wl - worldAcross;
                 if (local < acrossLo || local >= acrossLo + C) continue;
-                for (float s = 0.05f; s < C; s += 0.1f)
-                {
-                    var c = alongX ? new Vector3(x0 + s, PoolBiome.WaterLevel + 0.01f, local) : new Vector3(local, PoolBiome.WaterLevel + 0.01f, z0 + s);
-                    var d = alongX ? Vector3.right : Vector3.forward;
-                    float run = Mathf.Floor(((alongX ? origin.x + c.x : origin.z + c.z)) / 0.6f);
-                    Tube(((int)run & 1) == 0 ? blue : white, c - d * 0.04f, c + d * 0.04f, 0.045f, 8);
-                }
+                float a = alongX ? x0 : z0, b = a + C;
+                byte ends = 0;
+                // An end is tied only to a wall or the pool's edge; where the lanes stop but the water goes on (a lap pool
+                // open to more pool), it is left untied, and PoolLaneRopes draws no rope there at all.
+                bool loose = false;
+                if (!RopeGoesOn(x, z, lo, lanes)) { if (WaterBeyond(x, z, lo)) loose = true; else { a += RopeInset(x, z, lo); ends |= 1; } }
+                if (!RopeGoesOn(x, z, hi, lanes)) { if (WaterBeyond(x, z, hi)) loose = true; else { b -= RopeInset(x, z, hi); ends |= 2; } }
+                if (loose) ends = 4;
+                poolRopes.Add(alongX ? new Vector4(a, local, b, local) : new Vector4(local, a, local, b));
+                poolRopeEnds.Add(ends);
+                var d = alongX ? Vector3.right : Vector3.forward;
+                Vector3 At(float s) => alongX ? new Vector3(s, PoolBiome.WaterLevel + 0.05f, local) : new Vector3(local, PoolBiome.WaterLevel + 0.05f, s);
+                if ((ends & 1) != 0) RopeAnchor(At(a), d);
+                if ((ends & 2) != 0) RopeAnchor(At(b), -d);
             }
+        }
+
+        /// <summary>Does the lane go on through this side of the cell (more of the same pool beyond)?</summary>
+        bool RopeGoesOn(int x, int z, int side, byte lanes)
+        {
+            if (!OfficeLayout.IsPassable(_L.EdgeOf(x, z, side))) return false;
+            int nx = x + (side == 0 ? -1 : side == 1 ? 1 : 0), nz = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
+            var c = PoolAt(nx, nz, out _, out _, out _);
+            return c.HasValue && c.Value.basin && !c.Value.solid && c.Value.lanes == lanes;
+        }
+
+        /// <summary>Water through this side of the cell (another pool, with no lanes)?</summary>
+        bool WaterBeyond(int x, int z, int side)
+        {
+            if (!OfficeLayout.IsPassable(_L.EdgeOf(x, z, side))) return false;
+            int nx = x + (side == 0 ? -1 : side == 1 ? 1 : 0), nz = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
+            var c = PoolAt(nx, nz, out _, out _, out _);
+            return c.HasValue && c.Value.basin && !c.Value.solid;
+        }
+
+        /// <summary>How far in from the cell's side the pool's end wall stands (a room wall is half its thickness in).</summary>
+        float RopeInset(int x, int z, int side) => _L.EdgeOf(x, z, side) == EdgeKind.Wall ? T * 0.5f : 0f;
+
+        /// <summary>A rope's anchor on the end wall (at, on the wall's face; n out of it): a plate, an eye bolt, a ring.</summary>
+        void RopeAnchor(Vector3 at, Vector3 n)
+        {
+            var chrome = WMask(ChromeMat, 1u);
+            chrome.Disc(at + n * 0.004f, 0.045f, 14, n, MeshWriter.MetreUV);
+            Tube(chrome, at + n * 0.004f, at + n * 0.045f, 0.009f, 8);
+            _railPts.Clear();
+            var c = at + n * 0.072f;
+            for (int i = 0; i <= 14; i++)
+            {
+                float a = i * Mathf.PI * 2f / 14f;
+                _railPts.Add(c + (n * Mathf.Cos(a) + Vector3.up * Mathf.Sin(a)) * 0.026f);
+            }
+            Sweep(chrome, _railPts, 0.006f, 6);
+            Stain(at + Vector3.down * 0.05f, n, 0.05f, 0.18f);
         }
 
         // ---------------- Tile lettering ----------------
@@ -385,6 +439,14 @@ namespace Backrooms.Generation
                 // A walkway one cell wide with water on both sides (the channels): its bullnose only, no gutter, blocks or
                 // lettering crowding it (2026-11-01).
                 if (_L.WaterAtPoint(mid.x - n.x * (C + 0.3f), mid.z - n.z * (C + 0.3f))) goto walls;
+                // Nor anywhere in the channels (2026-11-01, the owner: "these look odd with the black": the gutters met in
+                // crosses at every turn of the walkways), nor on a deck that is not there (behind a round hall's wall).
+                if (PoolPlan.IsChannels(_L, new RectInt(Mathf.Clamp(Mathf.FloorToInt(mid.x / C), 0, _L.N - 1), Mathf.Clamp(Mathf.FloorToInt(mid.z / C), 0, _L.N - 1), 1, 1))) goto walls;
+                {
+                    int dx = Mathf.FloorToInt((mid.x - n.x * 0.3f) / C), dz = Mathf.FloorToInt((mid.z - n.z * 0.3f) / C);
+                    var dc = PoolAt(dx, dz, out _, out _, out _);
+                    if (!dc.HasValue || dc.Value.solid) goto walls;
+                }
                 Grate(new Vector3(p0.x, 0f, p0.z), new Vector3(p1.x, 0f, p1.z), n);
                 // Starting blocks at a lap pool's end, one per lane (on its floor line), and now and then a rolled cover.
                 int bx = Mathf.Clamp(Mathf.FloorToInt((mid.x + n.x * 0.3f) / C), 0, _L.N - 1), bz = Mathf.Clamp(Mathf.FloorToInt((mid.z + n.z * 0.3f) / C), 0, _L.N - 1);

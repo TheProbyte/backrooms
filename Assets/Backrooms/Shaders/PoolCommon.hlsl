@@ -463,7 +463,12 @@ float2 PoolRippleSlope(float2 xz)
     float hx = SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv + float2(e, 0), 0).r - SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv - float2(e, 0), 0).r;
     float hz = SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv + float2(0, e), 0).r - SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv - float2(0, e), 0).r;
     float edge = saturate(min(min(uv.x, uv.y), min(1 - uv.x, 1 - uv.y)) * 12.0 - 0.25);
-    return float2(hx, hz) / (2.0 * e * _PoolRippleRect.z) * _PoolRippleRect.w * edge;
+    float2 sl = float2(hx, hz) / (2.0 * e * _PoolRippleRect.z) * _PoolRippleRect.w * edge;
+    // (2026-11-01) A broken or runaway simulation must not tip the whole surface over into a mirror: real ripples are
+    // gentle (a slope of a few tenths at most).
+    if (!(abs(sl.x) < 100.0) || !(abs(sl.y) < 100.0)) return 0;
+    float m = length(sl);
+    return m > 0.6 ? sl * (0.6 / m) : sl;
 }
 
 // Height of the rippled water above its rest (m, as the slopes are scaled), for the crests' glow.
@@ -473,7 +478,8 @@ float PoolRippleHeight(float2 xz)
     float2 uv = (xz - _PoolRippleRect.xy) / _PoolRippleRect.z;
     if (any(uv < 0.02) || any(uv > 0.98)) return 0;
     float edge = saturate(min(min(uv.x, uv.y), min(1 - uv.x, 1 - uv.y)) * 12.0 - 0.25);
-    return SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv, 0).r * _PoolRippleRect.w * edge;
+    float rh = SAMPLE_TEXTURE2D_LOD(_PoolRipple, sampler_PoolRipple, uv, 0).r * _PoolRippleRect.w * edge;
+    return abs(rh) < 1.0 ? rh : 0.0;
 }
 
 // ---------------- Small waves, caustics, reflections (2026-10-31) ----------------

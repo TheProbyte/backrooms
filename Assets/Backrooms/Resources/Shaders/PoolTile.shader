@@ -171,6 +171,7 @@ Shader "Backrooms/PoolTile"
                 float2 wallUV = float2(dot(P.xz, float2(N0.z, -N0.x)), P.y);    // along the wall, up
                 float glaze = 1.0;                                             // how much of the gloss is left
                 float puddle = 0.0;
+                float2 ripple = 0;                                              // drops landing in a puddle (world x, z)
                 if (wall && inPool)
                 {
                     // At the waterline a grime line; over it a white crust of scale (evaporation leaves it), ragged, thicker
@@ -234,16 +235,57 @@ Shader "Backrooms/PoolTile"
                 {
                     int2 cc = PoolCellOf(P);
                     float2 lc = P.xz - cc * POOL_C;
-                    // Rain under a roof opening: a puddle with a dried, chalky rim (straight below it, not where the sun falls).
+                    // Rain under a roof opening: a puddle with a damp margin and a dried, chalky rim. (2026-11-01, the owner
+                    // liked the puddles and asked for better ones: they had taken the opening's own outline, a round one
+                    // drew a round puddle. Now the opening only makes them likelier, over a metre round it, and their
+                    // shape is the floor's: broad lobes, a ragged edge.)
                     if (here.sky != 0u)
                     {
-                        float inHole = saturate(PoolHoleSDC(here, lc) / 0.3 + 0.7);
-                        float pn = PoolValueNoise(P.xz * 1.1 + 31.7) * 0.7 + PoolValueNoise(P.xz * 3.3) * 0.3;
-                        float v = pn * inHole + 0.1 * inHole;
-                        puddle = smoothstep(0.56, 0.6, v);
-                        float rim = smoothstep(0.5, 0.56, v) * (1.0 - puddle);
-                        albedo = lerp(albedo, float3(0.85, 0.84, 0.79), rim * 0.45);
-                        albedo *= 1.0 - puddle * 0.22;
+                        float inHole = saturate(PoolHoleSDC(here, lc) / 0.9 + 0.55);
+                        float pn = PoolValueNoise(P.xz * 0.55 + 31.7) * 0.55 + PoolValueNoise(P.xz * 1.7 + 4.2) * 0.3 + PoolValueNoise(P.xz * 5.1) * 0.15;
+                        float v = pn * inHole + 0.12 * inHole;
+                        puddle = smoothstep(0.55, 0.585, v);
+                        float damp = smoothstep(0.47, 0.55, v) * (1.0 - puddle);
+                        float rim = smoothstep(0.42, 0.47, v) * (1.0 - smoothstep(0.47, 0.5, v));
+                        albedo = lerp(albedo, float3(0.85, 0.84, 0.79), rim * 0.4);
+                        albedo *= 1.0 - damp * 0.16 - puddle * 0.22;
+                    }
+                    // A floor drain (PoolPlan: under the openings, and now and then elsewhere): the floor falls to it a
+                    // little, so what water there is stands round it, more under the sky; a damp ring beyond.
+                    if (here.drain)
+                    {
+                        float2 dc = lc - 0.5 * POOL_C;
+                        float dr = length(dc);
+                        float wob = (PoolValueNoise(P.xz * 1.6 + 3.3) - 0.5) * 0.32 + (PoolValueNoise(P.xz * 4.3 + 9.1) - 0.5) * 0.12;
+                        float reach = here.sky != 0u ? 0.6 : 0.3;
+                        float dv = 1.0 - smoothstep(reach - 0.05, reach + 0.01, dr + wob);
+                        float dampD = (1.0 - dv) * (1.0 - smoothstep(reach, reach + 0.3, dr + wob));
+                        dv *= smoothstep(0.1, 0.13, dr);
+                        puddle = max(puddle, dv);
+                        albedo *= 1.0 - dampD * 0.16 - dv * 0.2;
+                        // The drain: a round stainless grate in a ring, its slots dark, a little grime round it.
+                        if (dr < 0.115)
+                        {
+                            float slots = step(0.5, frac(dc.x * 36.0));
+                            albedo = dr > 0.098 ? float3(0.58, 0.6, 0.6) : lerp(float3(0.05, 0.055, 0.055), float3(0.5, 0.52, 0.52), slots * step(dr, 0.09));
+                            tileMask = dr > 0.098 ? 0.85 : 0.3;
+                            glaze = 0.7;
+                        }
+                        else albedo *= 1.0 - 0.18 * (1.0 - smoothstep(0.115, 0.17, dr));
+                    }
+                    // Drops falling from the opening into the puddles: a ring spreading now and then from a point.
+                    if (here.sky != 0u && puddle > 0.01)
+                    {
+                        float2 cellR = floor(P.xz / 0.45);
+                        float2 hr = PoolHash22(cellR + 41.3);
+                        float period = 2.5 + 6.0 * hr.x;
+                        float ph = frac(_Time.y / period + hr.y);
+                        float2 at = (cellR + 0.2 + 0.6 * PoolHash22(cellR + floor(_Time.y / period + hr.y) * 1.37)) * 0.45;
+                        float2 to = P.xz - at;
+                        float rr = length(to);
+                        float rad = ph * 0.22;
+                        float ring = exp(-pow((rr - rad) / 0.012, 2.0)) * (1.0 - ph) * (1.0 - ph);
+                        ripple = (to / max(rr, 1e-4)) * ring * 0.35 * puddle;
                     }
                     // The glaze worn matte in front of doorways, where everyone walks.
                     PoolCell ce = PoolLoad(cc + int2(1, 0), storey), cn = PoolLoad(cc + int2(0, 1), storey);
@@ -261,7 +303,7 @@ Shader "Backrooms/PoolTile"
                 tilt *= 1.0 - puddle;
                 float3 T = normalize(i.tangentWS.xyz), B = cross(N0, T) * i.tangentWS.w;
                 float2 grit = (PoolHash22(floor(i.uv * 260.0)) - 0.5) * 0.35 * near * (1.0 - puddle);
-                float3 N = normalize(N0 + (T * tilt.x + B * tilt.y) * tileMask + (T * grit.x + B * grit.y) * (1.0 - tileMask));
+                float3 N = normalize(N0 + (T * tilt.x + B * tilt.y) * tileMask + (T * grit.x + B * grit.y) * (1.0 - tileMask) + float3(ripple.x, 0, ripple.y));
                 float3 V = GetWorldSpaceNormalizeViewDir(P);
                 albedo *= 1.0 - _WetDarken * under;
 

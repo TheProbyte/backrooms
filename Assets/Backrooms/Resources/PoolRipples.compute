@@ -81,6 +81,9 @@ void Step(uint3 id : SV_DispatchThreadID)
     uint me = MapFlags(cell);
     if (!IsWater(me)) { _Next[p] = 0; _FlowNext[p] = 0; return; }
     float2 c = Read(q);
+    // (2026-11-01) Never carry a broken value on: a NaN or a runaway height once made would stay for good and spread,
+    // and the water shader drew the whole pool as a smeared mirror ("these pools are super glitched").
+    if (!(abs(c.x) < 1.0) || !(abs(c.y) < 1.0)) c = 0;
     float vel = c.x - c.y;
     float hn[4], vn[4];
     bool open[4];
@@ -97,11 +100,15 @@ void Step(uint3 id : SV_DispatchThreadID)
             blocked = edge == 1u || edge == 3u || !IsWater(other);      // 3: a wall with a high window
         }
         float2 n2 = blocked ? c : Read(q + o);
+        if (!(abs(n2.x) < 1.0) || !(abs(n2.y) < 1.0)) n2 = c;
         hn[k] = n2.x; vn[k] = n2.x - n2.y; open[k] = !blocked;
     }
     // Waves at the speed of shallow water here (Courant number c dt / dx, kept under the scheme's limit).
     float cdx = sqrt(9.81 * WaterDepth(cell)) * _Dt / _Texel;
-    float courant2 = min(cdx * cdx, 0.45);
+    // (2026-11-01) Under 0.36: with the viscosity term the scheme's limit is (2 + 2 damping - 16 viscosity) / 8, about 0.43,
+    // not the plain wave equation's 0.5; at 0.45 the finest ripples grew without end in deep water (1.4 m and more: a
+    // slide's plunge pool, a deep end), churning the whole pool to foam and tipping its surface into a smeared mirror.
+    float courant2 = min(cdx * cdx, 0.36);
     float lap = hn[0] + hn[1] + hn[2] + hn[3] - 4.0 * c.x;
     float lapVel = vn[0] + vn[1] + vn[2] + vn[3] - 4.0 * vel;
     float h = c.x + vel * _Damping + courant2 * lap + _Viscosity * lapVel;
@@ -109,12 +116,14 @@ void Step(uint3 id : SV_DispatchThreadID)
     for (int i = 0; i < _DropCount; i++)
     {
         float2 d = world - _Drops[i].xy;
-        float g = exp(-dot(d, d) / (_Drops[i].z * _Drops[i].z));
+        float r = max(_Drops[i].z, 0.02);
+        float g = exp(-dot(d, d) / (r * r));
         h += _Drops[i].w * g;
         dropFoam += abs(_Drops[i].w) * g;
     }
     // Flow: pushed down the slope of the surface; none through a wall.
     float4 f = ReadFlow(q);
+    if (!(abs(f.x) < 10.0) || !(abs(f.y) < 10.0) || !(abs(f.z) < 10.0)) f = 0;
     float2 grad = float2(hn[0] - hn[1], hn[2] - hn[3]) / (2.0 * _Texel);
     float2 u = (f.xy - 9.81 * _Dt * grad) * 0.985;
     // The jets and skimmers: a forcing toward each one's speed, which the flow's own loss (1.5 % a step) balances.
@@ -137,6 +146,8 @@ void Step(uint3 id : SV_DispatchThreadID)
     float foam = _FlowPrev.SampleLevel(linear_clamp_sampler, back, 0).z * _FoamDecay;
     if (any(back < 0) || any(back > 1)) foam = 0;
     foam += saturate((abs(vel) - 0.003) * _FoamGain) + dropFoam * _FoamDrop;
+    h = abs(h) < 1.0 ? clamp(h, -0.3, 0.3) : 0.0;
+    if (!(abs(foam) < 10.0)) foam = 0;
     _Next[p] = float2(h, c.x);
     _FlowNext[p] = float4(u, min(foam, 1.5), 0);
 }

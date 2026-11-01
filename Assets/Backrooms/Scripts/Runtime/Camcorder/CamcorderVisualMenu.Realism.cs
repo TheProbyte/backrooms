@@ -37,7 +37,7 @@ namespace Backrooms.Camcorder
 
         void BuildRealismLocations()
         {
-            Section("WEAR AND DETAIL", "The rarer signs of age (Docs/RealismPlan.md), among the places built so far. Each puts you where it is seen; press again for the next nearest of the same kind.");
+            _list = Group("WEAR AND DETAIL", "The rarer signs of age (Docs/RealismPlan.md), among the places built so far. Each puts you where it is seen; press again for the next nearest of the same kind.");
             UnityEngine.UIElements.VisualElement row = null;
             for (int i = 0; i < RealismKinds.Length; i++)
             {

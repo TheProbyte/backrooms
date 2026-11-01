@@ -9,10 +9,13 @@ namespace Backrooms.Interaction
     /// water within reach puts the free hand in it. The palm goes down flat and through the surface, the fingers trail a
     /// slow stroke through the water and back (ripples spreading from the hand, the soft lap of it), then the hand comes out
     /// dripping: drops fall from it for a few seconds after, each a little plink where it lands in the pool.
+    /// 2026-11-01, the owner: "maybe a shorter 'tap' to water when pressed?" (and the body is not to be in the game): a
+    /// quick tap now, about two thirds of a second in all: in, a short flick through the water, out, a second of drips.
     /// </summary>
     public partial class PropGrabber
     {
         enum WaterPhase { None, Down, Stroke, Up }
+        const float TapDown = 0.12f, TapStroke = 0.32f, TapUp = 0.18f, TapReach = 0.09f, TapDrips = 1.6f;
 
         WaterPhase _water;
         float _waterT, _waterLevel, _dripUntil, _nextDrip;
@@ -65,7 +68,7 @@ namespace Backrooms.Interaction
                 else switch (_water)
                 {
                     case WaterPhase.Down:
-                        if (_waterT > 0.38f)
+                        if (_waterT > TapDown)
                         {
                             _water = WaterPhase.Stroke; _waterT = 0f;
                             var entry = new Vector3(_waterPoint.x, _waterLevel, _waterPoint.z);
@@ -78,8 +81,8 @@ namespace Backrooms.Interaction
                     case WaterPhase.Stroke:
                     {
                         // Out along the stroke and back, the palm pushing a small bow wave ahead of it.
-                        float u = Mathf.Clamp01(_waterT / 1.4f);
-                        float s = Mathf.Sin(u * Mathf.PI) * 0.22f;
+                        float u = Mathf.Clamp01(_waterT / TapStroke);
+                        float s = Mathf.Sin(u * Mathf.PI) * TapReach;
                         float v = Mathf.Cos(u * Mathf.PI) > 0f ? 1f : -1f;
                         var hand = _waterPoint + _waterAlong * s;
                         var surf = new Vector3(hand.x, _waterLevel, hand.z);
@@ -89,20 +92,20 @@ namespace Backrooms.Interaction
                         {
                             _water = WaterPhase.Up; _waterT = 0f;
                             PoolSplashes.Burst(surf, 5, 0.5f, Vector3.up * 0.2f, 0.4f, 0.6f);
-                            _dripUntil = Time.time + 3.5f; _nextDrip = Time.time + 0.15f;
+                            _dripUntil = Time.time + TapDrips; _nextDrip = Time.time + 0.12f;
                         }
                         break;
                     }
                     case WaterPhase.Up:
-                        if (_waterT > 0.45f) EndWater();
+                        if (_waterT > TapUp) EndWater();
                         break;
                 }
             }
             // Drops off the wet hand: quick at first, slowing; each lands as a plink in the pool (or nothing on the deck).
             if (Time.time < _dripUntil && Time.time >= _nextDrip)
             {
-                float k = 1f - (_dripUntil - Time.time) / 3.5f;
-                _nextDrip = Time.time + Mathf.Lerp(0.12f, 0.9f, k) * Random.Range(0.6f, 1.4f);
+                float k = 1f - (_dripUntil - Time.time) / TapDrips;
+                _nextDrip = Time.time + Mathf.Lerp(0.1f, 0.6f, k) * Random.Range(0.6f, 1.4f);
                 var hand = Armed ? HandPosition : ReachShoulder + transform.forward * 0.3f + Vector3.down * 0.5f;
                 var w = PoolWorld.Instance;
                 if (w && w.WaterAt(hand, out float level) && hand.y > level)
@@ -124,12 +127,12 @@ namespace Backrooms.Interaction
             var p = _waterPoint;
             switch (_water)
             {
-                case WaterPhase.Down: y = Mathf.Lerp(0.1f, 0f, Mathf.SmoothStep(0f, 1f, _waterT / 0.38f)); break;
+                case WaterPhase.Down: y = Mathf.Lerp(0.1f, 0f, Mathf.SmoothStep(0f, 1f, _waterT / TapDown)); break;
                 case WaterPhase.Stroke:
-                    y = -0.02f * Mathf.Sin(Mathf.Clamp01(_waterT / 1.4f) * Mathf.PI);
-                    p += _waterAlong * (Mathf.Sin(Mathf.Clamp01(_waterT / 1.4f) * Mathf.PI) * 0.22f);
+                    y = -0.02f * Mathf.Sin(Mathf.Clamp01(_waterT / TapStroke) * Mathf.PI);
+                    p += _waterAlong * (Mathf.Sin(Mathf.Clamp01(_waterT / TapStroke) * Mathf.PI) * TapReach);
                     break;
-                default: y = Mathf.Lerp(0f, 0.16f, _waterT / 0.45f); break;
+                default: y = Mathf.Lerp(0f, 0.16f, _waterT / TapUp); break;
             }
             HandPosition = p + Vector3.up * y;
             var fingers = Vector3.ProjectOnPlane(_waterAlong + transform.forward * 0.6f, Vector3.up).normalized;

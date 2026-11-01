@@ -37,6 +37,8 @@ namespace Backrooms.Generation
         public static Material Sheet { get; private set; }
         public static Material PlasticRed { get; private set; }
         public static Material PlasticYellow { get; private set; }
+        /// <summary>Painted (galvanised) steel: the water park's towers and supports.</summary>
+        public static Material Steel { get; private set; }
 
         public static void Ensure()
         {
@@ -71,6 +73,7 @@ namespace Backrooms.Generation
             PlasticRed = Lit("Pool plastic (red)", new Color(0.66f, 0.1f, 0.08f), 0.86f, 0f);
             PlasticYellow = Lit("Pool plastic (yellow)", new Color(0.86f, 0.64f, 0.12f), 0.86f, 0f);
             Sheet = Make("Backrooms/PoolSheet", "Pool falling water");
+            Steel = Lit("Pool painted steel", new Color(0.58f, 0.62f, 0.64f), 0.5f, 0.55f);
         }
 
         static Material Zone(string name, Color wall, Color deck, Color? grout = null)
@@ -106,6 +109,9 @@ namespace Backrooms.Generation
         /// dir.y the fall), 6 where an arch's stream lands (dir: the way it came). The way each pushes or faces.</summary>
         public Vector4[] fittings;
         public Vector3[] fittingDirs;
+        /// <summary>Lane ropes' shares of this chunk (local, on the water: from xy to zw in x-z) and their tied ends (bits 0, 1).</summary>
+        public Vector4[] ropes;
+        public byte[] ropeEnds;
         /// <summary>Every loaded Poolrooms chunk (PoolCirculation and PoolSounds read their fittings).</summary>
         public static readonly HashSet<PoolChunk> All = new HashSet<PoolChunk>();
 

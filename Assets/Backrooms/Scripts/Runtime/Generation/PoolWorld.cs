@@ -93,6 +93,7 @@ namespace Backrooms.Generation
             if (!GetComponent<PoolMirror>()) gameObject.AddComponent<PoolMirror>();
             if (!GetComponent<Audio.PoolSounds>()) gameObject.AddComponent<Audio.PoolSounds>();
             if (!GetComponent<PoolFalls>()) gameObject.AddComponent<PoolFalls>();
+            if (!GetComponent<PoolLaneRopes>()) gameObject.AddComponent<PoolLaneRopes>();
             ApplyLight();
             RenderPipelineManager.beginCameraRendering += BeginCamera;
             RenderPipelineManager.endCameraRendering += EndCamera;

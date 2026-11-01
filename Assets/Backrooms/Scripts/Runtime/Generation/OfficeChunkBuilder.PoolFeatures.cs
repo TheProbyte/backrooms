@@ -843,6 +843,7 @@ namespace Backrooms.Generation
                     case PoolFeatureKind.Arch: if (Mine(f.centre)) Arch(f); break;
                     case PoolFeatureKind.SlideTower: if (Mine(f.centre)) SlideTower(f); break;
                     case PoolFeatureKind.WaveMaker: if (Mine(f.centre)) WaveMaker(f); break;
+                    case PoolFeatureKind.Walkway: if (Mine(f.centre + f.size * 0.05f)) Walkway(f); break;
                     case PoolFeatureKind.RoundHall:
                         if (Mine(f.centre))
                         {

@@ -146,6 +146,21 @@ namespace Backrooms.Generation
             // High windows in the walls the sun comes through.
             Windows(L, new System.Random(rng.Next()), tags);
 
+            // Floor drains (2026-11-01, the owner: "maybe drains where the water puddles collect around?"): in the dry floor
+            // under the roof openings, where the rain that comes in gathers, one cell in three; and now and then elsewhere,
+            // where the splashed and mopped water goes. Hashed by place, so no other dice change.
+            for (int x = 0; x < n; x++)
+            for (int z = 0; z < n; z++)
+            {
+                var c = L.pool[x, z];
+                if (c.basin || c.solid || c.gallery > 0f || c.drain) continue;
+                var room = L.RoomAt(x, z);
+                if (!room.Walkable || room.spiral || room.noFloor || L.FreePoolRoom(x, z)) continue;
+                uint h = (uint)((L.coord.x * n + x) * 73856093) ^ (uint)((L.coord.y * n + z) * 19349663) ^ (uint)(L.storey * 83492791) ^ 0x5D2Au;
+                h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15;
+                if (c.skylight != SkylightShape.None ? h % 3 == 0 : h % 61 == 7) { c.drain = true; L.pool[x, z] = c; }
+            }
+
             // Spiral stair towers: a dry floor round the stair; light comes down the well from four openings at its top.
             foreach (var r in L.rooms)
             {
@@ -196,7 +211,7 @@ namespace Backrooms.Generation
         static void Windows(OfficeLayout L, System.Random rng, Dictionary<int, Tag> tags)
         {
             int n = L.N;
-            bool Plain(Room room) => !tags.TryGetValue(room.id, out var t) || t == Tag.FreePool || t == Tag.Purpose || t == Tag.Park;
+            bool Plain(Room room) => !tags.TryGetValue(room.id, out var t) || t == Tag.FreePool || t == Tag.Purpose || t == Tag.Park || t == Tag.Channel;
             foreach (var r in L.rooms)
             {
                 if (!r.Walkable || r.spiral || r.openAbove || r.noFloor || !Plain(r)) continue;

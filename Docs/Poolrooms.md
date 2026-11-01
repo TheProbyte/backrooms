@@ -562,6 +562,48 @@ Checked in World 3: districts round the Poolrooms generate all of it (a slide to
 pool, a lazy river with its current measured at 0.27 m/s at the outer wall, arches, channel halls); pictures of each; the
 water touch's whole cycle; no errors or warnings. Not checked: the sounds by ear, the waves' look in motion.
 
+## Owner's feedback on the water park and channels (2026-11-01, built)
+
+- The water read as a flat beige sheet with triangular holes ("these pools are super glitched"). The cause: the ripple
+  solver (PoolRipples.compute) was unstable in deep water. Its Courant cap of 0.45 is under the plain wave equation's 0.5
+  but over this scheme's limit with its viscosity term, (2 + 2 damping - 16 viscosity) / 8, about 0.43, so in water 1.4 m
+  and deeper (slide plunge pools, deep ends) the finest ripples grew until the surface was all foam and tilt, a smeared
+  mirror; the "holes" were the shallow steps, still clear. Now capped at 0.36; the solver also drops NaNs and runaway
+  heights, the shaders clamp ripple slopes, and falling water stirs the surface volume-neutrally (a dip and a ring), as do
+  the wave pool's crests (each with its trough). The water is clearer too (absorption 1.25 / 0.36 / 0.5 per metre). The
+  planar mirror no longer leans on GL.invertCulling (an x flip in its projection keeps the winding; PoolWater reads 1 - u),
+  and NaN reflections from the cell-map trace are caught.
+- A pale slab beside a cover reel: a corner behind a round hall's curved wall, left without a floor ("solid"), could be
+  seen from a way in. Round halls now have floor and ceiling everywhere (a nook behind the curve where it can be reached),
+  and need their openings within 0.6 R of the middle.
+- Slide towers rebuilt (OfficeChunkBuilder.WaterPark): painted steel columns on base plates, X bracing, a grating deck on a
+  beam frame, 1.1 m guards with bars and toe boards, a grab bar over the start, a steel stair with stringers, grating
+  treads and handrails; the flume's start flush with the deck and closed behind, flanged sections, and supports dropped
+  from each joint's lowest point in the flume's own frame (they had come up inside the channel). The flume's end pours.
+- Where falling water lands: a crown of churned water and a ring of foam (PoolSheet's uv.y < 0 modes); fingers and a
+  bright lip on the sheets. Standing inside a curtain the world is muffled (PoolSounds) and the curtain heard all round;
+  walking through one washes the lens (LensDrops.Wash, 16 drops now).
+- The falls' sound goes round walls like the building's hum (AcousticField via PoolFalls.Route: doorway direction at the
+  walking distance, duller; or faint through the wall), over 30 m, louder close, in the room's reverb.
+- Lane ropes (PoolLaneRopes): tied to eye bolts on the end walls, simulated as Verlet chains floating on the ripple heights
+  (PoolRipples.HeightAt, copied back from the GPU), swayed by waves, given boxes near the player so they stop you (duck
+  under or climb over); red within 5 m of the walls (a fifth of a short pool). Only ropes tied at both ends to a wall or
+  the pool's edge are drawn: none where a lap area opens into more water.
+- Channel halls: flooded wall to wall with a curving 1.2 m walkway between the doorways (and branches to the others)
+  instead of cell steps; no gutters, blocks or lettering anywhere in the channels.
+- Doorways round-topped in the Poolrooms (archedDoors 0.85, apex on the 2.7 m header).
+- Floor drains under roof openings (one cell in three) and now and then elsewhere, with water standing round them;
+  puddles shaped by the floor rather than the opening's outline, a damp margin, drops ringing in them under open sky.
+- The water touch is a quick tap now (about 0.6 s, a second of drips).
+- F5 > PLACES: a dropdown per zone (Level 0, the Poolrooms), groups inside; 22 kinds of Poolrooms places, standing on
+  dry floor in the same room with the place in sight.
+
+Checked in World 3 with the owner's seed (288152760): the slide pool from the first picture clear (ripple heights under
+3 cm, no NaNs); the tower; a mushroom's foam ring; inside a curtain the listener muffled to 1.3 kHz, walking out a lens
+wash; three fall voices routed (duller round walls); lane ropes floating and swaying a few cm on a test wave; a channel
+hall's walkway and its branches; arched doorways; a deck drain. Not checked: the sounds by ear; pushing into a rope in
+person; the F5 page's look.
+
 ## Review and next improvements (2026-11-01)
 
 The owner: "look at everything you've made and make a plan for improvements". A look back over everything in this

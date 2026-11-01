@@ -142,7 +142,7 @@ namespace Backrooms.Generation
 
     /// <summary>The Poolrooms' larger pieces (2026-10-31, the architecture plan): what they are.</summary>
     public enum PoolFeatureKind : byte { FreePool, Slope, Vault, RoundHall, Gallery, Spout, Cascade, Ladder, Changing, Showers, Bleachers, Lifeguard, Slide,
-        Mushroom, Arch, SlideTower, WaveMaker }
+        Mushroom, Arch, SlideTower, WaveMaker, Walkway }
 
     /// <summary>
     /// One of the Poolrooms' larger pieces, in layout-local metres (x, z). Planned per district (PoolPlan), sliced to every
@@ -162,6 +162,9 @@ namespace Backrooms.Generation
     ///    face), yaw (into the room), size.x (how far it throws), height (its peak). SlideTower: centre (the tower), yaw
     ///    (toward its pool), size.x (to the pool's middle), height (the platform), shape (colour 0-3, 4: curls the other
     ///    way). WaveMaker: centre (the deep end's wall), yaw (toward the beach), size.x (half the chambers' width).
+    ///  - Walkway (2026-11-01, the channels): a tiled walkway curving through a flooded hall, from centre (on a doorway's line;
+    ///    size the way in) to to (toNormal the way in there; shape 1: it ends on another walkway), meandering radius either side
+    ///    of the straight way in height half waves; bounds the hall.
     /// </summary>
     public struct PoolFeature
     {
@@ -170,8 +173,10 @@ namespace Backrooms.Generation
         public Vector2 centre, size;
         public float radius, height, yaw, depth, depth2;
         public int shape, room;
+        /// <summary>A walkway's far end and the way into the room there (centre and size are its near end's).</summary>
+        public Vector2 to, toNormal;
 
-        public void Shift(Vector2 d) { bounds.position += d; centre += d; }
+        public void Shift(Vector2 d) { bounds.position += d; centre += d; to += d; }
     }
 
     /// <summary>

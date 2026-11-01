@@ -112,17 +112,18 @@ namespace Backrooms.Audio
             if (!_listener) _listener = FindAnyObjectByType<AudioListener>();
             if (!_listener) return;
             bool under = PoolWorld.CameraUnderwater;
+            float curtain = Generation.PoolFalls.Inside;          // inside a mushroom's falling curtain: the world through it
             if (!_muffle)
             {
-                if (!under) return;
+                if (!under && curtain <= 0.01f) return;
                 _muffle = _listener.GetComponent<AudioLowPassFilter>();
                 if (!_muffle) _muffle = _listener.gameObject.AddComponent<AudioLowPassFilter>();
                 _muffle.cutoffFrequency = 22000f; _muffle.lowpassResonanceQ = 1f;
             }
-            float target = under ? 600f : 22000f;
+            float target = under ? 600f : Mathf.Exp(Mathf.Lerp(Mathf.Log(22000f), Mathf.Log(1300f), curtain));
             float f = Mathf.Exp(Mathf.MoveTowards(Mathf.Log(_muffle.cutoffFrequency), Mathf.Log(target), Time.deltaTime * 12f));
             _muffle.cutoffFrequency = f;
-            _muffle.enabled = under || f < 21000f;
+            _muffle.enabled = under || curtain > 0.01f || f < 21000f;
         }
 
     }

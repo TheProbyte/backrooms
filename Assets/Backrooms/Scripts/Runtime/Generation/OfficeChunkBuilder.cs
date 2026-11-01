@@ -344,7 +344,7 @@ namespace Backrooms.Generation
             InstantiateDoors(root.transform);
             InstantiateCustomRoomExtras(root.transform);
             if (outlets.Count > 0) root.AddComponent<Interaction.ChunkOutlets>().Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), outlets);
-            if (poolMap != null) root.AddComponent<PoolChunk>().Set(_L.coord, _L.storey, poolMap, poolMap2, poolFittings.ToArray(), poolFittingDirs.ToArray());
+            if (poolMap != null) { var pc = root.AddComponent<PoolChunk>(); pc.Set(_L.coord, _L.storey, poolMap, poolMap2, poolFittings.ToArray(), poolFittingDirs.ToArray()); pc.ropes = poolRopes.ToArray(); pc.ropeEnds = poolRopeEnds.ToArray(); }
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
             if (!Pool) AddFloorColliders(root);
@@ -669,7 +669,7 @@ namespace Backrooms.Generation
             bool header = v.kind == EdgeKind.DoorHeader || (!v.otherKnown && v.myCeil > OfficeBiome.CeilingHeight + 0.01f);
             v.top = header ? Mathf.Min(L.headerHeight, v.myCeil) : Mathf.Min(v.myCeil, v.otherCeil);
             v.arched = v.kind == EdgeKind.DoorHeader && v.otherKnown && IsArchedEdge(L, vertical, line, along);
-            if (v.arched) v.top = ArchApex;
+            if (v.arched) v.top = Mathf.Max(ArchApex, L.headerHeight);      // (the Poolrooms' doorways are 2.7 m: round on that)
             return v;
         }
 
@@ -703,13 +703,17 @@ namespace Backrooms.Generation
             var w = WMask(WallMat(room), cm);
             Vector3 alongDir = vertical ? Vector3.forward : Vector3.right;
             Vector3 P(float plane, float at, float y) => (vertical ? new Vector3(plane, 0, at) : new Vector3(at, 0, plane)) + Vector3.up * y;
+            // (2026-11-01, the owner: "some sort of curve to almost all doors in this place": the Poolrooms' doorways round on
+            // their own 2.7 m header, tiled.)
+            float ArchApex = Mathf.Max(OfficeChunkBuilder.ArchApex, _L.headerHeight);
+            MeshWriter.UVProjector wallUV = Pool ? MeshWriter.MetreUV : MeshWriter.WallUV;
             float r = (a1 - a0) * 0.5f, mid = (a0 + a1) * 0.5f, spring = ArchApex - r;
             float depth = Mathf.Abs(f - l);
             if (myCeil > ArchApex + 0.001f) WallFace(room, cm, P(f, a0, 0), P(f, a1, 0), ArchApex, myCeil, n);
 
             // Wallpaper wraps around the corner: the face\x27s texture coordinates continue onto the underside in
             // the direction the surface turns (into the opening), so stripes flow through the reveal with no seams.
-            Vector2 FaceUV(float at, float y) => MeshWriter.WallUV(P(f, at, y) + w.worldOffset, n);
+            Vector2 FaceUV(float at, float y) => wallUV(P(f, at, y) + w.worldOffset, n);
             Vector3 Inward(float t) => -(alongDir * Mathf.Cos(t) + Vector3.up * Mathf.Sin(t));
 
             for (int i = 0; i < K; i++)
@@ -718,7 +722,7 @@ namespace Backrooms.Generation
                 float x0 = mid + r * Mathf.Cos(t0), y0 = spring + r * Mathf.Sin(t0);
                 float x1 = mid + r * Mathf.Cos(t1), y1 = spring + r * Mathf.Sin(t1);
                 // Spandrel strip on the face.
-                w.Quad(P(f, x0, y0), P(f, x1, y1), P(f, x1, ArchApex), P(f, x0, ArchApex), n, MeshWriter.WallUV);
+                w.Quad(P(f, x0, y0), P(f, x1, y1), P(f, x1, ArchApex), P(f, x0, ArchApex), n, Pool ? MeshWriter.MetreUV : MeshWriter.WallUV);
                 // Underside (intrados): faces the arch\x27s centre, smooth normals, wrapped texture.
                 Vector3 n0 = Inward(t0), n1 = Inward(t1);
                 Vector2 uf0 = FaceUV(x0, y0), uf1 = FaceUV(x1, y1);

@@ -7,7 +7,7 @@ Shader "Backrooms/PoolWater"
 {
     Properties
     {
-        _Absorb ("Absorption per metre", Vector) = (2.8, 1.15, 1.5, 0)
+        _Absorb ("Absorption per metre", Vector) = (1.25, 0.36, 0.5, 0)
         _Scatter ("In-scattered colour", Color) = (0.02, 0.18, 0.13, 1)
         _Shimmer ("Small waves on the surface", Range(0, 1)) = 0.05
         _Refraction ("Refraction", Range(0, 0.3)) = 0.15
@@ -115,7 +115,10 @@ Shader "Backrooms/PoolWater"
             float3 Mirror(float3 P, float3 R)
             {
                 PoolHit hit = PoolTrace(P + float3(0, 0.01, 0), R, 40.0);
-                return PoolShadeHit(hit, R, 0.012);
+                float3 c = PoolShadeHit(hit, R, 0.012);
+                // (2026-11-01) Some traced hits shaded to NaN or infinity, which turned the water black and, through the
+                // exposure, the whole picture white whenever the planar mirror was not in use: only finite light.
+                return (any(isnan(c)) || any(isinf(c))) ? PoolAmbientAt(P, float3(0, 1, 0)) * POOL_WALL_ALBEDO : min(c, 32.0);
             }
 
             half4 frag(Varyings i) : SV_Target
@@ -193,7 +196,7 @@ Shader "Backrooms/PoolWater"
                     {
                         // Exact: the mirror, bent by the ripples (more the further the reflected thing; a fixed share here).
                         float2 muv = suv + slope * (0.012 + 0.04 * saturate(length(P - GetCameraPositionWS()) / 8.0));
-                        refl = SAMPLE_TEXTURE2D_LOD(_PoolMirrorTex, sampler_LinearClamp, muv, 0).rgb;
+                        refl = SAMPLE_TEXTURE2D_LOD(_PoolMirrorTex, sampler_LinearClamp, float2(1.0 - muv.x, muv.y), 0).rgb;   // (drawn mirrored in x: PoolMirror)
                     }
                     else
                     {
@@ -273,6 +276,7 @@ Shader "Backrooms/PoolWater"
                     float3 lineCol = float3(0.88, 0.92, 0.9) * (ambient * 1.1 + _PoolSunColor.rgb * sun * POOL_SUN.y);
                     color = lerp(color, lineCol, a * 0.35);
                 }
+                if (any(isnan(color)) || any(isinf(color))) color = ambient * 0.5;
                 return half4(PoolFarFade(MixFog(color, i.fogFactor), P), 1);
             }
             ENDHLSL

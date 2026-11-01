@@ -52,7 +52,8 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
     float4 _CamDisplay;     // x: line doubling 0..1, y: interlace (0 off, 1 bob), z: field parity, w: CRT scanlines
     float4 _CamOSD;         // x: OSD on (0/1), y: OSD curvature, z, w: unused
     float4 _CamViewRect;    // xy: the camera viewport's corner, zw: its size (screen fractions), for the overlay texture
-    float4 _CamDrops[8];    // water on the lens (LensDrops.cs): xy centre (uv), z radius (share of the height), w strength
+    float4 _CamDrops[16];   // water on the lens (LensDrops.cs): xy centre (uv), z radius (share of the height), w strength
+    float4 _CamWash;        // a sheet of water over the lens (LensDrops.Wash): x how much is left, y seconds since
     float4 _CamLensFog;     // condensation on the lens (LensFog.cs): x amount, y how far it has cleared (from the edges in)
     TEXTURE2D(_CamOSDTex);
 
@@ -94,7 +95,7 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
     float2 LensDrops(float2 uv, inout float blur, inout float shade)
     {
         float aspect = _CamRaster.x / max(_CamRaster.y, 1.0);
-        [unroll] for (int i = 0; i < 8; i++)
+        [loop] for (int i = 0; i < 16; i++)
         {
             float4 d = _CamDrops[i];
             if (d.w <= 0) continue;
@@ -115,6 +116,22 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
     {
         float2 uv = input.texcoord;
         float lensBlur = 0, lensShade = 1;
+        // A wash of water running down the lens: streams of it bending the picture and smearing it downward, the top
+        // clearing first.
+        if (_CamWash.x > 0.001)
+        {
+            float aspect = _CamRaster.x / max(_CamRaster.y, 1.0);
+            float t = _CamWash.y;
+            float clear = saturate(t * 0.7);
+            float k = _CamWash.x * smoothstep(1.0 - clear - 0.2, 1.0 - clear + 0.1, 1.0 - uv.y);
+            float2 q = float2(uv.x * aspect * 9.0, uv.y * 2.5 + t * 1.7);
+            float2 cellId = floor(q);
+            float sx = frac(sin(dot(cellId.xx, float2(12.9898, 78.233))) * 43758.5453);
+            float stream = smoothstep(0.35, 0.0, abs(frac(q.x) - 0.5 - (sx - 0.5) * 0.3)) * (0.6 + 0.4 * sin(q.y * 6.2832 + sx * 6.0));
+            uv += float2((stream - 0.3) * 0.012, -0.02 * stream - 0.006) * k;
+            lensBlur = max(lensBlur, k * (0.8 + stream));
+            lensShade *= 1.0 - 0.08 * k;
+        }
         uv = LensDrops(uv, lensBlur, lensShade);
         // A misted lens: patchy, clearing from the edges toward the middle; it spreads and greys the light.
         float fog = 0;

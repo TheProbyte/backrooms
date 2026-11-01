@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Backrooms.Generation
 {
@@ -39,6 +40,45 @@ namespace Backrooms.Generation
         public static bool PlayerInWater { get; private set; }
         /// <summary>How deep the water is where the player stands (m; 0 out of it).</summary>
         public static float PlayerWaterDepth { get; private set; }
+
+        // ---------------- Heights on the CPU (2026-11-01, for the lane ropes: PoolLaneRopes) ----------------
+
+        static float[] s_h;
+        static Vector2 s_hOrigin;
+        static float s_hTexel = 0.08f, s_wantUntil;
+        static bool s_pending;
+
+        /// <summary>Something wants the surface's heights on the CPU for a while (copied back a few times a second).</summary>
+        public static void WantHeights() => s_wantUntil = Time.time + 0.5f;
+
+        /// <summary>The ripples' height at a point (m above the still surface; 0 outside the window or before a copy).</summary>
+        public static float HeightAt(float x, float z)
+        {
+            if (s_h == null) return 0f;
+            float fx = (x - s_hOrigin.x) / s_hTexel - 0.5f, fz = (z - s_hOrigin.y) / s_hTexel - 0.5f;
+            int ix = Mathf.FloorToInt(fx), iz = Mathf.FloorToInt(fz);
+            if (ix < 0 || iz < 0 || ix >= Size - 1 || iz >= Size - 1) return 0f;
+            float tx = fx - ix, tz = fz - iz;
+            int i = iz * Size + ix;
+            return Mathf.Lerp(Mathf.Lerp(s_h[i], s_h[i + 1], tx), Mathf.Lerp(s_h[i + Size], s_h[i + Size + 1], tx), tz);
+        }
+
+        void RequestHeights()
+        {
+            if (s_pending || Time.time > s_wantUntil || !_a || !SystemInfo.supportsAsyncGPUReadback) return;
+            s_pending = true;
+            var origin = new Vector2(_origin.x * texel, _origin.y * texel);
+            float tx = texel;
+            AsyncGPUReadback.Request(_a, 0, req =>
+            {
+                s_pending = false;
+                if (req.hasError) return;
+                var data = req.GetData<Vector2>();
+                if (s_h == null || s_h.Length != data.Length) s_h = new float[data.Length];
+                for (int i = 0; i < data.Length; i++) s_h[i] = data[i].x;
+                s_hOrigin = origin; s_hTexel = tx;
+            });
+        }
 
         static readonly System.Collections.Generic.List<Vector4> s_extra = new System.Collections.Generic.List<Vector4>();
         /// <summary>Something else disturbing the water (a thing thrown in): a dip of height (negative) and radius at a point,
@@ -137,6 +177,7 @@ namespace Backrooms.Generation
             Shader.SetGlobalTexture("_PoolRipple", _a);
             Shader.SetGlobalTexture("_PoolFlow", _fa);
             Shader.SetGlobalVector("_PoolRippleRect", new Vector4(_origin.x * texel, _origin.y * texel, Size * texel, slopeGain));
+            RequestHeights();
         }
 
         readonly Vector4[] _jets = new Vector4[PoolCirculation.MaxJets], _sinks = new Vector4[PoolCirculation.MaxSinks];

@@ -14,7 +14,7 @@ namespace Backrooms.Generation
     /// </summary>
     public static partial class PoolPlan
     {
-        public enum Tag : byte { None, Vault, Round, Gallery, FreePool, Purpose, Park }
+        public enum Tag : byte { None, Vault, Round, Gallery, FreePool, Purpose, Park, Channel }
 
         const float C = OfficeBiome.CellSize, T = OfficeBiome.WallThickness;
 
@@ -34,7 +34,7 @@ namespace Backrooms.Generation
                 // The water park's rooms (PoolPlan.WaterPark.cs).
                 if (IsPark(L, rc)) { if (WaterParkRoom(L, r, rng)) tags[r.id] = Tag.Park; continue; }
                 // The channels' rooms (PoolPlan.Channels.cs): vaulted channels and halls with a winding walkway.
-                if (IsChannels(L, rc) && ChannelRoom(L, r, rng)) { if (r.kind == RoomKind.Hallway) tags[r.id] = Tag.Vault; continue; }
+                if (IsChannels(L, rc) && ChannelRoom(L, r, rng)) { tags[r.id] = r.kind == RoomKind.Hallway ? Tag.Vault : Tag.Channel; continue; }
 
                 if (r.kind == RoomKind.Hallway && mn <= 3 && mx >= 4 && rng.NextDouble() < 0.4)
                 { Vault(L, r, rng); tags[r.id] = Tag.Vault; continue; }
@@ -150,6 +150,9 @@ namespace Backrooms.Generation
                 float mid = len * 0.5f;
                 if (lo < mid - 2.6f || hi > mid + 2.6f) return false;
                 float half = Mathf.Max(mid - lo, hi - mid) * C + 0.1f;
+                // (2026-11-01, the owner's picture of a pale slab by a cover reel) An opening wider than this left the corners
+                // behind the curved wall open to the next room, with no floor in them: the curve must close round them.
+                if (half > 0.6f * R) return false;
                 gaps.Add((side == 0 ? 180f : side == 1 ? 0f : side == 2 ? 270f : 90f, Mathf.Asin(Mathf.Clamp01(half / R)) * Mathf.Rad2Deg));
             }
             if (gaps.Count == 0) return false;
@@ -170,7 +173,10 @@ namespace Backrooms.Generation
                 var c = L.pool[x, z];
                 var cc = new Vector2((x + 0.5f) * C, (z + 0.5f) * C);
                 c.basin = false; c.skylight = SkylightShape.None;
-                c.solid = (cc - centre).magnitude > R + 0.35f;
+                // (2026-11-01) Floor and ceiling everywhere, behind the curved wall too: left out there ("solid"), a corner
+                // that could be seen from a way in (a long room's reach further round than a square one's) showed a hole
+                // in the floor, the owner's pale slab by a cover reel. Where it can be reached it is a nook behind the curve.
+                c.solid = false;
                 // The opening covers this cell if the disc reaches into its square.
                 float dx = Mathf.Max(0f, Mathf.Abs(cc.x - centre.x) - C * 0.5f), dz = Mathf.Max(0f, Mathf.Abs(cc.y - centre.y) - C * 0.5f);
                 if (dx * dx + dz * dz < discR * discR)

@@ -15,6 +15,21 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-01 13:30  Claude Code  Poolrooms feedback: glitched pools (ripple solver), slide towers, landing water, lane ropes, channel walkways, arched doors, drains, F5 places by zone
+- Glitched pools: PoolRipples.compute's Courant cap 0.45 broke the scheme's own limit (~0.43 with viscosity) in deep water; now 0.36, with NaN/runaway guards; PoolCommon clamps ripple slopes; PoolFalls stirs volume-neutrally, wave crests with troughs; PoolWater clearer (_Absorb), NaN-safe trace; PoolMirror uses an x-flipped projection instead of GL.invertCulling (PoolWater reads 1 - u).
+- Round halls: no floorless "solid" cells (a hole showed by a cover reel); openings within 0.6 R; deck fittings skip solid cells.
+- Slide towers rebuilt (OfficeChunkBuilder.WaterPark: steel frame, bracing, grating deck, guards with bars, grab bar, stair with stringers and handrails; flume with a closed start flush with the deck, flanges, supports in the flume's frame, an end pour); PoolMaterials.Steel.
+- Falling water: crown and foam ring at landings (PoolSheet uv.y < 0 modes), fingers and lip; inside a curtain the world muffled (PoolFalls.Inside, PoolSounds), walking through washes the lens (LensDrops.Wash, 16 drops, CamcorderPipeline _CamWash); fall sounds routed round walls via AcousticField over 30 m.
+- Lane ropes: PoolLaneRopes (Verlet chains on CPU ripple heights from PoolRipples.HeightAt / AsyncGPUReadback, boxes near the player), RopeAnchor plates on walls; ropes only when tied at both ends.
+- Channels: halls flooded with curved walkways between doorways (PoolPlan.Channels, OfficeChunkBuilder.Channels, PoolFeatureKind.Walkway, Tag.Channel); no gutters or lettering in the biome.
+- Arched doorways in the Poolrooms (archedDoors 0.85 in code and the three biome assets; arch apex on the 2.7 m header, tiled).
+- Deck drains under roof openings (PoolPlan.Dress, hashed) with puddles round them; puddles shaped by noise, damp margin, drip rings (PoolTile).
+- Water touch a quick tap (PropGrabber.Water). F5 > PLACES: zone dropdowns (Level 0, the Poolrooms) with groups; CamcorderVisualMenu.Poolrooms (22 kinds, line of sight, same room).
+- World generation changes (round halls, channels, arches, drains): all worlds' Poolrooms regenerate differently.
+- Checked in World 3 with seed 288152760 (pictures); EditMode 171/171 (new: ChannelWalkwaysAndRoundHallsAreSound).
+- I edited PoolFalls.cs once while Play mode was running (against the rule); stopped Play straight away, before Unity picked it up. Also a forced asset refresh during Play reloaded the domain mid-session once (statics lost); Play was restarted.
+- Not checked: sounds by ear, pushing into a rope in person, the F5 page's look.
+
 ## 2026-11-01 11:30  Claude Code  Poolrooms review items 1-16 (not 17): fittings, glazing, clouds, wear, water colour, beams; the water park and channels biomes; touching the water
 - Review items: skimmers/jets thinned, rim-flow grates, starting blocks, lane ropes, rules boards, benches, cover reels (PoolFittings); glazed roof-light bars, dirty and broken panes, glass block known to PoolSun; domain-warped clouds with overcast districts (C# and HLSL); repair patches, chips, efflorescence, grout by room (PoolTile, PoolMaterials); absorption and a dust film (PoolWater); haze density noise and beams into the water (PoolAir); jets boiling (PoolCirculation.Stir), breath bubbles; faster exposure in the Poolrooms; PoolMirror skipped with no water near the view, smaller when far; quieter flutter echo.
 - New biomes of the Poolrooms zone (ZoneRules, Zones/Poolrooms.asset, Biomes/Channels.asset and WaterPark.asset): Channels < 0.28 < Poolrooms < 0.64 < WaterPark. Water park (PoolPlan.WaterPark, OfficeChunkBuilder.WaterPark): slide towers with flumes over plunge pools, a lazy river (ring pool, one-way jets), a wave pool (beach, chambers, wave sessions), kiddie pools with mushroom fountains, water arches. Falling water: new shader Backrooms/PoolSheet; PoolFalls runtime (stirring, spray, WaterCurtain and WaveSurge sounds). Channels (PoolPlan.Channels): all corridors flooded vaults, halls with a meandering walkway; narrow walkways without grates or lettering.

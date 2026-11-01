@@ -254,5 +254,46 @@ namespace Backrooms.Tests
             for (int z = 0; z < 20; z++) g.wallWest.Add(new Vector2Int(wx, z));
             Assert.AreEqual(0f, PoolSun.Visibility(g, patch + Vector3.up * 0.01f), "walls stop the sun");
         }
+
+        /// <summary>The channels' curving walkways stay inside their halls, start at a doorway's line, and every round hall's
+        /// corners behind its curved wall have a floor (2026-11-01).</summary>
+        [Test]
+        public void ChannelWalkwaysAndRoundHallsAreSound()
+        {
+            var s = Set();
+            var z = Pool(s);
+            var gen = new WorldGenerator(1234, s);
+            int walkways = 0, rounds = 0;
+            for (int dx = -z.pinRadius; dx <= z.pinRadius; dx++)
+            for (int dz = -z.pinRadius; dz <= z.pinRadius; dz++)
+            {
+                var d = z.pinCentre + new Vector2Int(dx, dz);
+                var plan = gen.District(new Vector3Int(d.x, 0, d.y));
+                if (plan.style != ZoneStyle.Pool) continue;
+                foreach (var f in plan.poolFeatures)
+                {
+                    if (f.kind == PoolFeatureKind.Walkway)
+                    {
+                        walkways++;
+                        var b = f.bounds;
+                        for (int k = 0; k <= 50; k++)
+                        {
+                            var p = PoolPlan.WalkwayPoint(f, k / 50f, out _);
+                            Assert.IsTrue(p.x >= b.xMin - 0.01f && p.x <= b.xMax + 0.01f && p.y >= b.yMin - 0.01f && p.y <= b.yMax + 0.01f, "a walkway stays in its hall");
+                        }
+                    }
+                    if (f.kind == PoolFeatureKind.RoundHall)
+                    {
+                        rounds++;
+                        int n = plan.N;
+                        for (int x = 0; x < n; x++)
+                        for (int zz = 0; zz < n; zz++)
+                            if (plan.RoomAt(x, zz).globalId == f.room) Assert.IsFalse(plan.pool[x, zz].solid, "a round hall's corner left without a floor");
+                    }
+                }
+            }
+            Assert.Greater(walkways, 0, "the channels have walkways");
+            Assert.Greater(rounds, 0, "there are round halls");
+        }
     }
 }

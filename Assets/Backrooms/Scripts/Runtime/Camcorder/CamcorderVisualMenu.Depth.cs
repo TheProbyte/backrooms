@@ -19,7 +19,7 @@ namespace Backrooms.Camcorder
 
         void BuildDepthLocations()
         {
-            Section("HEIGHT AND DEPTH", "The world's floors and ceilings that are not flat (Docs/WorldDepthPlan.md). Each puts you where the thing is seen best; press again for the next nearest of the same kind.");
+            _list = Group("HEIGHT AND DEPTH", "The world's floors and ceilings that are not flat (Docs/WorldDepthPlan.md). Each puts you where the thing is seen best; press again for the next nearest of the same kind.");
             var a = BtnRow(_list);
             Button(a, "SUNKEN ROOM", () => GoDepth(DepthSunken));
             Button(a, "PIT ROOM", () => GoDepth(DepthPit));

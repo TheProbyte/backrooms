@@ -60,15 +60,18 @@ namespace Backrooms.Generation
             var m = _cam.worldToCameraMatrix;
             var cp = m.MultiplyPoint(new Vector3(0f, h - 0.02f, 0f));
             var cn = m.MultiplyVector(Vector3.up).normalized;
-            _cam.projectionMatrix = main.CalculateObliqueMatrix(new Vector4(cn.x, cn.y, cn.z, -Vector3.Dot(cp, cn)));
+            // Mirrored left to right as well (2026-11-01, the owner: "these pools are super glitched", a flat beige sheet):
+            // the reflection turns every triangle's winding over, and GL.invertCulling, which used to turn it back, is not
+            // honoured by URP's render graph, so the mirror drew the backs of the walls and no ceilings (the room seen from
+            // under its floor). A second flip, of the picture's x, turns the winding back by itself; PoolWater reads the
+            // mirror at 1 - u.
+            _cam.projectionMatrix = Matrix4x4.Scale(new Vector3(-1f, 1f, 1f)) * main.CalculateObliqueMatrix(new Vector4(cn.x, cn.y, cn.z, -Vector3.Dot(cp, cn)));
 
             Rendering = true;
             Shader.SetGlobalFloat(IdPass, 1f);
-            GL.invertCulling = true;
             try { _cam.Render(); }
             finally
             {
-                GL.invertCulling = false;
                 Shader.SetGlobalFloat(IdPass, 0f);
                 Rendering = false;
             }
