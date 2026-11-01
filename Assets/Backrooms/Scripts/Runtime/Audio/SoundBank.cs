@@ -60,6 +60,15 @@ namespace Backrooms.Audio
             return s_drips[i] ? s_drips[i] : (s_drips[i] = ProceduralSounds.Drip(i));
         }
 
+        static AudioClip[] s_running;
+        /// <summary>Running water (a loop): 0 a spout falling into the pool, 1 a cascade down steps.</summary>
+        public static AudioClip RunningWater(int kind)
+        {
+            if (s_running == null) s_running = new AudioClip[2];
+            int i = Mathf.Clamp(kind, 0, 1);
+            return s_running[i] ? s_running[i] : (s_running[i] = ProceduralSounds.RunningWater(i));
+        }
+
         /// <summary>The swish of wading (a loop).</summary>
         public static AudioClip WadeLoop => s_wade ? s_wade : (s_wade = ProceduralSounds.WadeLoop());
 

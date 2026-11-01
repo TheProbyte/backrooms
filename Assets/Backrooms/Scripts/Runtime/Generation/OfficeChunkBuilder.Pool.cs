@@ -77,7 +77,8 @@ namespace Backrooms.Generation
         float? FloorAt(int x, int z)
         {
             var c = PoolAt(x, z, out _, out _, out _);
-            return c.HasValue ? PoolBiome.FloorY(c.Value.basin) : (float?)null;
+            if (!c.HasValue) return null;
+            return c.Value.basin ? -(c.Value.depth > 0f ? c.Value.depth + 0.06f : PoolBiome.BasinDepth) : 0f;
         }
 
         /// <summary>Same room of one district plan (rooms are numbered per district).</summary>
@@ -101,6 +102,7 @@ namespace Backrooms.Generation
             BuildPoolPillars();
             BuildPoolFillets();
             BuildPoolArcs();
+            BuildPoolFeatures();
             foreach (var r in _L.rooms)
                 if (r.spiral && !r.noFloor && r.rect.width == r.fullRect.width && r.rect.height == r.fullRect.height) BuildSpiral(r);
             BuildDoorways();
@@ -115,34 +117,59 @@ namespace Backrooms.Generation
         void BuildPoolFloors()
         {
             int N = _L.N;
-            var tile = WMask(TileMat, 1u);
             var water = WMask(WaterMat, 1u);
+            var accent = WMask(AccentMat, 1u);
             for (int x = 0; x < N; x++)
             for (int z = 0; z < N; z++)
             {
-                if (_L.Has(x, z, CellFlags.NoFloor)) continue;            // a stair well from the storey below
+                if (_L.Has(x, z, CellFlags.NoFloor) || _L.pool[x, z].solid) continue;   // a stair well from below; behind a round wall
+                if (FreePoolOf(x, z, out var fp)) { FreePoolCell(x, z, fp); continue; }
+                var tile = WMask(ZoneAt(x, z), 1u);
                 bool basin = _L.Basin(x, z);
-                float y = PoolBiome.FloorY(basin), x0 = x * C, z0 = z * C, x1 = x0 + C, z1 = z0 + C;
-                tile.Quad(new Vector3(x0, y, z0), new Vector3(x0, y, z1), new Vector3(x1, y, z1), new Vector3(x1, y, z0), Vector3.up, MeshWriter.MetreUV);
-                if (!basin) continue;
+                float x0 = x * C, z0 = z * C, x1 = x0 + C, z1 = z0 + C;
+                if (!basin)
+                {
+                    // The deck, with a border of accent tiles along the edge of the water (the coping).
+                    float b = 0.15f;
+                    bool W = EdgeWater(x, z, 0), E = EdgeWater(x, z, 1), S = EdgeWater(x, z, 2), Nn = EdgeWater(x, z, 3);
+                    float ix0 = x0 + (W ? b : 0f), ix1 = x1 - (E ? b : 0f), iz0 = z0 + (S ? b : 0f), iz1 = z1 - (Nn ? b : 0f);
+                    tile.Quad(new Vector3(ix0, 0, iz0), new Vector3(ix0, 0, iz1), new Vector3(ix1, 0, iz1), new Vector3(ix1, 0, iz0), Vector3.up, MeshWriter.MetreUV);
+                    void Band(float a0, float c0, float a1, float c1) { if (a1 - a0 > 1e-4f && c1 - c0 > 1e-4f) accent.Quad(new Vector3(a0, 0, c0), new Vector3(a0, 0, c1), new Vector3(a1, 0, c1), new Vector3(a1, 0, c0), Vector3.up, MeshWriter.MetreUV); }
+                    if (W) Band(x0, z0, x0 + b, z1);
+                    if (E) Band(x1 - b, z0, x1, z1);
+                    if (S) Band(ix0, z0, ix1, z0 + b);
+                    if (Nn) Band(ix0, z1 - b, ix1, z1);
+                    continue;
+                }
+                // The pool floor (sloping where it does) and the water.
+                float f00 = BasinFloorY(x0, z0), f01 = BasinFloorY(x0, z1), f11 = BasinFloorY(x1, z1), f10 = BasinFloorY(x1, z0);
+                tile.Quad(new Vector3(x0, f00, z0), new Vector3(x0, f01, z1), new Vector3(x1, f11, z1), new Vector3(x1, f10, z0), Vector3.up, MeshWriter.MetreUV);
                 float wy = PoolBiome.WaterLevel;
                 water.Quad(new Vector3(x0, wy, z0), new Vector3(x0, wy, z1), new Vector3(x1, wy, z1), new Vector3(x1, wy, z0), Vector3.up, MeshWriter.MetreUV);
                 int side = StairSideOf(x, z);
                 if (side >= 0) Stairs(tile, x, z, side);
             }
 
-            // Floor colliders: runs of one level per row; the deck's are deep enough to make the basin's edges solid.
+            // Floor colliders: runs of one level per row; the deck's are deep enough to make the basin's edges solid. Free
+            // pools make their own; a sloping pool floor, one per cell.
+            for (int z = 0; z < N; z++)
+            for (int x = 0; x < N; x++)
+            {
+                if (!_L.Basin(x, z) || _L.Has(x, z, CellFlags.NoFloor) || _L.pool[x, z].solid || _L.pool[x, z].depth <= 0f || FreePoolOf(x, z, out _)) continue;
+                float fy = BasinFloorY((x + 0.5f) * C, (z + 0.5f) * C);
+                _boxes.Add((new Vector3((x + 0.5f) * C, fy - 0.15f, (z + 0.5f) * C), new Vector3(C, 0.3f, C)));
+            }
             for (int z = 0; z < N; z++)
             {
                 int start = 0;
-                int Kind(int x) => _L.Has(x, z, CellFlags.NoFloor) ? 2 : _L.Basin(x, z) ? 1 : 0;
+                int Kind(int x) => _L.Has(x, z, CellFlags.NoFloor) || _L.pool[x, z].solid || FreePoolOf(x, z, out _) || (_L.Basin(x, z) && _L.pool[x, z].depth > 0f) ? 2 : _L.Basin(x, z) ? 1 : 0;
                 for (int x = 1; x <= N; x++)
                 {
                     if (x < N && Kind(x) == Kind(start)) continue;
                     if (Kind(start) != 2)
                     {
                         bool basin = _L.Basin(start, z);
-                        float top = PoolBiome.FloorY(basin), depth = basin ? 0.3f : BD_POOL + 0.3f;
+                        float top = PoolBiome.FloorY(basin), depth = basin ? 0.3f : 1.3f;
                         _boxes.Add((new Vector3((start + x) * 0.5f * C, top - depth * 0.5f, (z + 0.5f) * C), new Vector3((x - start) * C, depth, C)));
                     }
                     start = x;
@@ -153,6 +180,7 @@ namespace Backrooms.Generation
         /// <summary>Three steps up out of a basin to the deck on the given side, filling the cell's width.</summary>
         void Stairs(MeshWriter w, int x, int z, int side)
         {
+            float BD_POOL = -BasinFloorY((x + 0.5f) * C, (z + 0.5f) * C);
             float rise = BD_POOL / PoolBiome.Steps;
             Vector3 edgeMid = new Vector3((x + 0.5f) * C, 0f, (z + 0.5f) * C);
             Vector3 outDir = side == 0 ? Vector3.left : side == 1 ? Vector3.right : side == 2 ? Vector3.back : Vector3.forward;
@@ -180,16 +208,33 @@ namespace Backrooms.Generation
             int ox = vertical ? (s == 0 ? line : line - 1) : along, oz = vertical ? along : (s == 0 ? line : line - 1);
             var tile = WMask(TileMat, 1u);
             Vector3 A(float pos, float at) => vertical ? new Vector3(pos, 0, at) : new Vector3(at, 0, pos);
+            tile = WMask(ZoneAt(cx, cz), 1u);
+            var accent = WMask(AccentMat, 1u);
+            const float band = 0.25f;                                 // a band of accent tiles round the waterline
+            float Fy(Vector3 p) => Mathf.Min(-band - 0.02f, BasinFloorY(p.x, p.z) - 0.02f);
             if (e == EdgeKind.Wall)
             {
                 float a0 = along * C + T * 0.5f, a1 = (along + 1) * C - T * 0.5f;
-                tile.Quad(A(f, a0) + Vector3.down * BD_POOL, A(f, a1) + Vector3.down * BD_POOL, A(f, a1), A(f, a0), n, MeshWriter.MetreUV);
+                Vector3 p0 = A(f, a0), p1 = A(f, a1);
+                tile.Quad(p0 + Vector3.up * Fy(p0), p1 + Vector3.up * Fy(p1), p1 + Vector3.down * band, p0 + Vector3.down * band, n, MeshWriter.MetreUV);
+                accent.Quad(p0 + Vector3.down * band, p1 + Vector3.down * band, p1, p0, n, MeshWriter.MetreUV);
                 return;
             }
             float? other = FloorAt(ox, oz);
             if (other.HasValue && other.Value < -0.01f) return;      // water continues
             float l = line * C, b0 = along * C, b1 = (along + 1) * C;
-            tile.Quad(A(l, b0) + Vector3.down * BD_POOL, A(l, b1) + Vector3.down * BD_POOL, A(l, b1), A(l, b0), n, MeshWriter.MetreUV);
+            Vector3 q0 = A(l, b0), q1 = A(l, b1);
+            tile.Quad(q0 + Vector3.up * Fy(q0), q1 + Vector3.up * Fy(q1), q1 + Vector3.down * band, q0 + Vector3.down * band, n, MeshWriter.MetreUV);
+            accent.Quad(q0 + Vector3.down * band, q1 + Vector3.down * band, q1, q0, n, MeshWriter.MetreUV);
+        }
+
+        /// <summary>Does the water lie across this deck cell's side (a basin cell through a passable edge)?</summary>
+        bool EdgeWater(int x, int z, int side)
+        {
+            if (!OfficeLayout.IsPassable(_L.EdgeOf(x, z, side))) return false;
+            int nx = x + (side == 0 ? -1 : side == 1 ? 1 : 0), nz = z + (side == 2 ? -1 : side == 3 ? 1 : 0);
+            var c = PoolAt(nx, nz, out var o, out int lx, out int lz);
+            return c.HasValue && c.Value.basin && !c.Value.solid && !(o.FreePoolRoom(lx, lz));
         }
 
         // ---------------- Ceilings, roof openings, light wells, sky ----------------
@@ -206,19 +251,27 @@ namespace Backrooms.Generation
         void BuildPoolCeilings()
         {
             int N = _L.N;
-            var tile = WMask(TileMat, 1u);
             var sky = WMask(SkyMat, 1u);
             for (int x = 0; x < N; x++)
             for (int z = 0; z < N; z++)
             {
                 var r = _L.RoomAt(x, z);
-                if (_L.Has(x, z, CellFlags.OpenAbove)) continue;           // a stair tower: the storey above closes it
+                if (_L.Has(x, z, CellFlags.OpenAbove) || _L.pool[x, z].solid) continue;   // a stair tower; behind a round wall
+                var tile = WMask(ZoneTile(r), 1u);
                 float h = r.ceiling, x0 = x * C, z0 = z * C;
                 var shape = _L.pool[x, z].skylight;
                 Vector3 P(float u, float v, float y) => new Vector3(x0 + u, y, z0 + v);
+                if (shape == SkylightShape.Disc)
+                {
+                    var pc = _L.pool[x, z];
+                    DiscCeilingCell(x, z, h, new Vector2(x0 + pc.discX * 0.5f * C, z0 + pc.discZ * 0.5f * C), pc.discR);
+                    continue;
+                }
+                bool vault = FeatureOf(PoolFeatureKind.Vault, x, z, out var vf);
+                if (vault) VaultCell(x, z, vf, shape == SkylightShape.SlotX || shape == SkylightShape.SlotZ);
                 if (shape == SkylightShape.None)
                 {
-                    tile.Quad(P(0, 0, h), P(C, 0, h), P(C, C, h), P(0, C, h), Vector3.down, MeshWriter.MetreUV);
+                    if (!vault) tile.Quad(P(0, 0, h), P(C, 0, h), P(C, C, h), P(0, C, h), Vector3.down, MeshWriter.MetreUV);
                     continue;
                 }
                 int joined = JoinedAt(x, z);
@@ -230,7 +283,7 @@ namespace Backrooms.Generation
                 }
                 var hole = PoolBiome.HoleRect(shape, joined);
                 // Ceiling around the opening (up to four strips).
-                void Strip(float u0, float v0, float u1, float v1) { if (u1 - u0 > 0.001f && v1 - v0 > 0.001f) tile.Quad(P(u0, v0, h), P(u1, v0, h), P(u1, v1, h), P(u0, v1, h), Vector3.down, MeshWriter.MetreUV); }
+                void Strip(float u0, float v0, float u1, float v1) { if (!vault && u1 - u0 > 0.001f && v1 - v0 > 0.001f) tile.Quad(P(u0, v0, h), P(u1, v0, h), P(u1, v1, h), P(u0, v1, h), Vector3.down, MeshWriter.MetreUV); }
                 Strip(0, 0, C, hole.yMin);
                 Strip(0, hole.yMax, C, C);
                 Strip(0, hole.yMin, hole.xMin, hole.yMax);
@@ -284,6 +337,8 @@ namespace Backrooms.Generation
                 float floor = 0f;
                 for (int k = 0; k < 4; k++) floor = Mathf.Min(floor, FloorAt(p.vertex.x - (k & 1), p.vertex.y - (k >> 1)) ?? 0f);
                 var room = _L.RoomAt(Mathf.Min(p.vertex.x, _L.N - 1), Mathf.Min(p.vertex.y, _L.N - 1));
+                tile = WMask(ZoneTile(room), 1u);
+                floor -= 0.06f;
                 float h = room.ceiling;
                 var c = new Vector3(p.vertex.x * C, 0f, p.vertex.y * C);
                 for (int i = 0; i < K; i++)
@@ -312,10 +367,12 @@ namespace Backrooms.Generation
         PoolCellInfo Info(int x, int z)
         {
             var pc = PoolAt(x, z, out var owner, out int lx, out int lz);
-            if (!pc.HasValue) return default;
+            if (!pc.HasValue || pc.Value.solid) return default;         // (behind a round wall: not part of the rooms)
             var info = new PoolCellInfo
             {
                 valid = true, ceiling = owner.RoomAt(lx, lz).ceiling, sky = pc.Value.skylight, basin = pc.Value.basin,
+                gallery = pc.Value.gallery, depth = pc.Value.depth, lanes = pc.Value.lanes, drain = pc.Value.drain,
+                discX = pc.Value.discX * 0.5f * C, discZ = pc.Value.discZ * 0.5f * C, discR = pc.Value.discR,
                 west = EdgeCode(owner, owner.vEdges[lx, lz], true, lx, lz), south = EdgeCode(owner, owner.hEdges[lx, lz], false, lz, lx),
             };
             if ((pc.Value.windows & 1) != 0 && info.west == PoolSun.Wall) info.west = PoolSun.Window;
@@ -398,13 +455,24 @@ namespace Backrooms.Generation
             }
 
             poolMap = new Color32[N * N];
+            poolMap2 = new Color32[N * N];
             for (int x = 0; x < N; x++)
             for (int z = 0; z < N; z++)
             {
                 var c = info[x + N, z + N];
+                if (!c.valid) continue;
+                // The second map (PoolCommon.hlsl, PoolLoad): depth, gallery, lanes and drain, the round opening.
+                var pc = _L.pool[x, z];
+                bool extras = pc.depth > 0f || pc.gallery > 0f || pc.lanes != 0 || pc.drain || pc.skylight == SkylightShape.Disc;
+                if (extras)
+                {
+                    int rCode = Mathf.Clamp(Mathf.RoundToInt(pc.discR / 0.3f), 0, 15);
+                    poolMap2[z * N + x] = new Color32((byte)Mathf.Clamp(Mathf.RoundToInt(pc.depth / 0.005f), 0, 255), (byte)Mathf.Clamp(Mathf.RoundToInt(pc.gallery / 0.05f), 0, 255),
+                        (byte)((pc.lanes & 3) | (pc.drain ? 4 : 0) | (rCode << 4)), (byte)(((pc.discX + 8) & 15) | (((pc.discZ + 8) & 15) << 4)));
+                }
                 byte flags = (byte)(c.west | (c.south << 2) | (c.basin ? 16 : 0) | (c.pillar ? 32 : 0) | 64 | (c.pillarNear ? 128 : 0));
                 byte ceil = (byte)Mathf.Clamp(Mathf.RoundToInt(c.ceiling * 10f), 0, 255);
-                byte sky = (byte)((int)c.sky | (c.joined << 3));
+                byte sky = (byte)((int)c.sky | (c.joined << 3) | (extras ? 128 : 0));
                 float fill = 1f - Mathf.Exp(-e[x + N, z + N] * 0.7f);
                 poolMap[z * N + x] = new Color32(flags, ceil, sky, (byte)Mathf.Clamp(Mathf.RoundToInt(fill * 255f), 0, 255));
             }

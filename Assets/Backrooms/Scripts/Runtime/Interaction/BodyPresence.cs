@@ -65,6 +65,8 @@ namespace Backrooms.Interaction
             // ---- Exertion and breathing ----
             float gain = 0f;
             if (_player.IsRunning && speed > 2f) gain += 0.07f;
+            if (_player.IsRunning && _player.Wade > 0.5f && speed > 1.2f) gain += 0.06f;    // running through water is hard work
+            else if (_player.Wade > 0.5f && speed > 0.6f) gain += 0.012f;                  // wading too, a little
             if (_player.LandedThisFrame > 0f) Exertion = Mathf.Min(1f, Exertion + 0.06f * _player.LandedThisFrame);
             if (_grab && _grab.Current == PropGrabber.State.Holding) gain += 0.04f * _grab.Strain;
             float rest = moving ? 0.012f : _player.CurrentStance == CamcorderPlayerController.Stance.Stand ? 0.03f : 0.045f;

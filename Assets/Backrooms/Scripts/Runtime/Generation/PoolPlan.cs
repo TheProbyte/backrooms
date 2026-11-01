@@ -9,7 +9,7 @@ namespace Backrooms.Generation
     /// which are dry decks (with raised walkways along some basin walls), round tiled columns, and the openings in
     /// the roof the sun comes through. No lights, furniture or outlets. Pure data, worker threads.
     /// </summary>
-    public static class PoolPlan
+    public static partial class PoolPlan
     {
         /// <summary>Ceiling heights by room size, in 0.3 m steps (whole rows of 15 cm tiles).</summary>
         public static void Ceilings(OfficeLayout L, System.Random rng)
@@ -94,12 +94,16 @@ namespace Backrooms.Generation
                 Fill(L, strip, c => c.basin = false);
             }
 
+            // The larger pieces (free pools, vaults, round halls, galleries, running water, rooms with a purpose).
+            var tags = Features(L, new System.Random(rng.Next()));
+
             // Round columns on a grid in the big rooms, two cells clear of the walls.
             var pillarCells = new HashSet<Vector2Int>();
             foreach (var r in L.rooms)
             {
                 var rc = r.rect;
                 if (r.kind != RoomKind.BigOffice || Mathf.Min(rc.width, rc.height) < 6) continue;
+                if (tags.ContainsKey(r.id)) continue;                         // a round hall, a gallery, a free pool: open floor
                 var R = L.RulesAt(rc);
                 if (rng.NextDouble() >= R.pillarChance) continue;
                 int spacing = Mathf.Max(2, Mathf.RoundToInt(R.pillarSpacing + (float)(rng.NextDouble() - 0.5)));
@@ -117,18 +121,30 @@ namespace Backrooms.Generation
                 }
             }
 
+            // A gallery's ring and a free pool's room keep their roofs over the middle only; a round hall has its own opening.
+            foreach (var r in L.rooms)
+            {
+                if (!tags.TryGetValue(r.id, out var t) || t != Tag.Gallery) continue;
+                var rc = r.rect;
+                for (int x = rc.xMin; x < rc.xMax; x++) for (int z = rc.yMin; z < rc.yMax; z++)
+                    if (x <= rc.xMin + 1 || z <= rc.yMin + 1 || x >= rc.xMax - 2 || z >= rc.yMax - 2) pillarCells.Add(new Vector2Int(x, z));
+            }
+
             // Curved walls standing free in the big halls (their own dice).
-            Arcs(L, new System.Random(rng.Next()), pillarCells);
+            Arcs(L, new System.Random(rng.Next()), pillarCells, tags);
 
             // Roof openings, one pattern per room.
             foreach (var r in L.rooms)
             {
                 if (!r.Walkable || r.spiral || rng.NextDouble() >= L.RulesAt(r.rect).skylights) continue;
+                if (tags.TryGetValue(r.id, out var t) && t == Tag.Round) continue;
                 Skylights(L, r, rng, pillarCells);
             }
 
+            VaultSkylights(L, tags);
+
             // High windows in the walls the sun comes through.
-            Windows(L, new System.Random(rng.Next()));
+            Windows(L, new System.Random(rng.Next()), tags);
 
             // Spiral stair towers: a dry floor round the stair; light comes down the well from four openings at its top.
             foreach (var r in L.rooms)
@@ -148,13 +164,13 @@ namespace Backrooms.Generation
         /// Curved walls in big halls (reference: tiled walls that bend round, some full height, some low enough to look
         /// over). Centred well inside the room so no doorway is ever closed off; columns too close are taken out.
         /// </summary>
-        static void Arcs(OfficeLayout L, System.Random rng, HashSet<Vector2Int> pillarCells)
+        static void Arcs(OfficeLayout L, System.Random rng, HashSet<Vector2Int> pillarCells, Dictionary<int, Tag> tags)
         {
             float C = OfficeBiome.CellSize;
             foreach (var r in L.rooms)
             {
                 var rc = r.rect;
-                if (!r.Walkable || r.spiral || r.kind != RoomKind.BigOffice || Mathf.Min(rc.width, rc.height) < 9) continue;
+                if (!r.Walkable || r.spiral || r.kind != RoomKind.BigOffice || Mathf.Min(rc.width, rc.height) < 9 || tags.ContainsKey(r.id)) continue;
                 if (rng.NextDouble() > 0.45) continue;
                 int vx = rng.Next(rc.xMin + 4, rc.xMax - 3), vz = rng.Next(rc.yMin + 4, rc.yMax - 3);
                 float radius = C * (2 + rng.Next(3) * 0.25f);
@@ -175,12 +191,13 @@ namespace Backrooms.Generation
         /// sky beyond (this is the Backrooms: the room behind it sees the same sky). The sun comes in through them in
         /// beams (PoolSun / PoolCommon.hlsl: edge code 3). Both rooms must be tall enough; only plain wall edges.
         /// </summary>
-        static void Windows(OfficeLayout L, System.Random rng)
+        static void Windows(OfficeLayout L, System.Random rng, Dictionary<int, Tag> tags)
         {
             int n = L.N;
+            bool Plain(Room room) => !tags.TryGetValue(room.id, out var t) || t == Tag.FreePool || t == Tag.Purpose;
             foreach (var r in L.rooms)
             {
-                if (!r.Walkable || r.spiral || r.ceiling < PoolBiome.WindowMinCeiling) continue;
+                if (!r.Walkable || r.spiral || r.ceiling < PoolBiome.WindowMinCeiling || !Plain(r)) continue;
                 if (rng.NextDouble() > 0.4) continue;
                 var rc = r.rect;
                 int phase = rng.Next(2);
@@ -196,7 +213,7 @@ namespace Backrooms.Generation
                         var edge = xWall ? L.vEdges[line, a] : L.hEdges[a, line];
                         if (edge != EdgeKind.Wall) continue;
                         var other = L.RoomAt(ox, oz);
-                        if (!other.Walkable || other.spiral || other.ceiling < PoolBiome.WindowMinCeiling) continue;
+                        if (!other.Walkable || other.spiral || other.ceiling < PoolBiome.WindowMinCeiling || !Plain(other)) continue;
                         var c = L.pool[ox, oz]; c.windows |= (byte)(xWall ? 1 : 2); L.pool[ox, oz] = c;
                         made++;
                     }

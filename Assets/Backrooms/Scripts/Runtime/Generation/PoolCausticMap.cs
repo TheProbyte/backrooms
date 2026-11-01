@@ -24,7 +24,7 @@ namespace Backrooms.Generation
         Mesh _mesh;
         CommandBuffer _cb;
         float _time;
-        bool _drawn;
+        bool _drawn, _warm;
 
         void Update()
         {
@@ -36,6 +36,7 @@ namespace Backrooms.Generation
             if (!Ensure()) { Shader.SetGlobalVector("_PoolCausticParams", Vector4.zero); return; }
             // Drawn while you are in the Poolrooms (and once, so a portal view into them has something).
             if (active || !_drawn) Draw();
+            if (active && !_warm) { _warm = true; Audio.SoundBank.RunningWater(0); Audio.SoundBank.RunningWater(1); }
             Shader.SetGlobalTexture("_PoolCaustic", _map);
             Shader.SetGlobalVector("_PoolCausticParams", new Vector4(TileSize, 1f, strength, reflected));
         }

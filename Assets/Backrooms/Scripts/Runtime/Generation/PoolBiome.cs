@@ -44,6 +44,57 @@ namespace Backrooms.Generation
 
         public static float FloorY(bool basin) => basin ? -BasinDepth : 0f;
 
+        // ---------------- Shapes (2026-10-31, the architecture plan) ----------------
+
+        static Vector2 ToLocal(PoolFeature f, Vector2 p)
+        {
+            var d = p - f.centre;
+            float a = -f.yaw * Mathf.Deg2Rad, c = Mathf.Cos(a), s = Mathf.Sin(a);
+            return new Vector2(d.x * c - d.y * s, d.x * s + d.y * c);
+        }
+
+        /// <summary>Signed distance (m) from a point (layout-local metres) to a free pool's edge, &lt; 0 inside.</summary>
+        public static float ShapeSD(PoolFeature f, Vector2 p)
+        {
+            var q = ToLocal(f, p);
+            switch (f.shape)
+            {
+                case 1: return q.magnitude - f.radius;
+                case 2:
+                {
+                    // Kidney: two circles melted together, the smaller one off to one side.
+                    float ra = f.size.y, rb = f.size.y * 0.72f;
+                    float a = (q - new Vector2(-f.size.x + ra, 0f)).magnitude - ra;
+                    float b = (q - new Vector2(f.size.x - rb, f.size.y * 0.28f)).magnitude - rb;
+                    float k = 1.4f, h = Mathf.Clamp01(0.5f + 0.5f * (b - a) / k);
+                    return Mathf.Lerp(b, a, h) - k * h * (1f - h);
+                }
+                default:
+                {
+                    var e = new Vector2(Mathf.Abs(q.x), Mathf.Abs(q.y)) - (f.size - Vector2.one * f.radius);
+                    return new Vector2(Mathf.Max(e.x, 0f), Mathf.Max(e.y, 0f)).magnitude + Mathf.Min(Mathf.Max(e.x, e.y), 0f) - f.radius;
+                }
+            }
+        }
+
+        /// <summary>Depth of a sloping pool floor at a point: shallow at local -x, deep at +x (FreePool and Slope).</summary>
+        public static float SlopedDepth(PoolFeature f, Vector2 p)
+        {
+            if (f.depth2 <= 0f) return f.depth > 0f ? f.depth : BasinDepth;
+            float t;
+            if (f.kind == PoolFeatureKind.Slope)
+            {
+                var b = f.bounds;
+                float yaw = Mathf.Repeat(f.yaw, 360f);
+                t = yaw < 45f || yaw >= 315f ? (p.x - b.xMin) / b.width : yaw < 135f ? (p.y - b.yMin) / b.height
+                  : yaw < 225f ? (b.xMax - p.x) / b.width : (b.yMax - p.y) / b.height;
+            }
+            else t = (ToLocal(f, p).x + f.size.x) / (2f * f.size.x);
+            // Flat at each end, a slope between (as pools are built).
+            t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.3f) / 0.45f));
+            return Mathf.Lerp(f.depth, f.depth2, t);
+        }
+
         const float C = OfficeBiome.CellSize;
 
         /// <summary>
@@ -69,10 +120,10 @@ namespace Backrooms.Generation
 
         public const float RoundRadius = 0.5f;
 
-        /// <summary>Is the point (metres inside the cell) in the opening?</summary>
+        /// <summary>Is the point (metres inside the cell) in the opening? (A Disc needs the cell's own disc: see the overload.)</summary>
         public static bool InHole(SkylightShape s, int joined, float u, float v)
         {
-            if (s == SkylightShape.None) return false;
+            if (s == SkylightShape.None || s == SkylightShape.Disc) return false;
             if (s == SkylightShape.Round) { float du = u - C * 0.5f, dv = v - C * 0.5f; return du * du + dv * dv < RoundRadius * RoundRadius; }
             return HoleRect(s, joined).Contains(new Vector2(u, v));
         }

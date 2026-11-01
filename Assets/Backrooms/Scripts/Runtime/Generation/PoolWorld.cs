@@ -36,8 +36,8 @@ namespace Backrooms.Generation
         public Color skyHorizon = new Color(0.95f, 0.97f, 1f);
         public float skyIntensity = 10f;
 
-        Texture2D _map;
-        Color32[] _px;
+        Texture2D _map, _map2;
+        Color32[] _px, _px2;
         readonly PoolChunk[] _owner = new PoolChunk[MapChunks * MapChunks * MapStoreys];
         float Pitch => streamer && streamer.Settings != null ? streamer.Settings.storeyPitch : 9f;
 
@@ -57,6 +57,14 @@ namespace Backrooms.Generation
             _px = new Color32[MapCells * MapCells * MapStoreys];
             _map.SetPixels32(_px); _map.Apply(false);
             Shader.SetGlobalTexture("_PoolMap", _map);
+            // The second map: depth, gallery, lanes and drains, round openings (only read where the first says so).
+            _map2 = new Texture2D(MapCells, MapCells * MapStoreys, TextureFormat.RGBA32, false, true)
+            {
+                name = "PoolMap2", filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat, hideFlags = HideFlags.DontSave,
+            };
+            _px2 = new Color32[MapCells * MapCells * MapStoreys];
+            _map2.SetPixels32(_px2); _map2.Apply(false);
+            Shader.SetGlobalTexture("_PoolMap2", _map2);
             Shader.SetGlobalVector("_PoolMapParams", new Vector4(MapCells, Pitch, MapStoreys, 0f));
             Shader.SetGlobalVector("_PoolRippleRect", Vector4.zero);
             Shader.SetGlobalFloat("_PoolScreenTextures", 0f);
@@ -76,6 +84,7 @@ namespace Backrooms.Generation
             RenderPipelineManager.endCameraRendering -= EndCamera;
             if (Instance == this) Instance = null;
             if (_map) Destroy(_map);
+            if (_map2) Destroy(_map2);
         }
 
         void OnValidate() { if (Application.isPlaying) ApplyLight(); }
@@ -99,7 +108,10 @@ namespace Backrooms.Generation
             int bx = Mod(c.chunk.x, MapChunks) * N, bz = Mod(c.chunk.y, MapChunks) * N + c.storey * MapCells;
             for (int z = 0; z < N; z++)
             for (int x = 0; x < N; x++)
+            {
                 _px[(bz + z) * MapCells + bx + x] = c.cells[z * N + x];
+                _px2[(bz + z) * MapCells + bx + x] = c.cells2 != null ? c.cells2[z * N + x] : default;
+            }
             _dirty = true;
         }
 
@@ -113,7 +125,7 @@ namespace Backrooms.Generation
             int N = OfficeBiome.ChunkCells, bx = Mod(c.chunk.x, MapChunks) * N, bz = Mod(c.chunk.y, MapChunks) * N + c.storey * MapCells;
             for (int z = 0; z < N; z++)
             for (int x = 0; x < N; x++)
-                _px[(bz + z) * MapCells + bx + x] = default;
+            { _px[(bz + z) * MapCells + bx + x] = default; _px2[(bz + z) * MapCells + bx + x] = default; }
             _dirty = true;
         }
 
@@ -124,6 +136,8 @@ namespace Backrooms.Generation
             _dirty = false;
             _map.SetPixels32(_px);
             _map.Apply(false);
+            _map2.SetPixels32(_px2);
+            _map2.Apply(false);
         }
 
         // ---------------- Queries ----------------
@@ -138,12 +152,16 @@ namespace Backrooms.Generation
         /// <summary>A cell of the shaders' map, decoded (as PoolCommon.hlsl's PoolLoad).</summary>
         public PoolCellInfo MapCell(int x, int z, int storey)
         {
-            var v = _px[(Mod(z, MapCells) + Mathf.Clamp(storey, 0, MapStoreys - 1) * MapCells) * MapCells + Mod(x, MapCells)];
+            int index = (Mod(z, MapCells) + Mathf.Clamp(storey, 0, MapStoreys - 1) * MapCells) * MapCells + Mod(x, MapCells);
+            var v = _px[index];
+            var v2 = (v.b & 128) != 0 ? _px2[index] : default;
             return new PoolCellInfo
             {
                 valid = (v.r & 64) != 0, west = (byte)(v.r & 3), south = (byte)((v.r >> 2) & 3), basin = (v.r & 16) != 0,
                 pillar = (v.r & 32) != 0, pillarNear = (v.r & 128) != 0, ceiling = v.g * 0.1f,
                 sky = (SkylightShape)(v.b & 7), joined = (v.b >> 3) & 15,
+                depth = v2.r * 0.005f, gallery = v2.g * 0.05f, lanes = (byte)(v2.b & 3), drain = (v2.b & 4) != 0,
+                discR = (v2.b >> 4) * 0.3f, discX = (((v2.a & 15) - 8) * 0.5f) * OfficeBiome.CellSize, discZ = (((v2.a >> 4) - 8) * 0.5f) * OfficeBiome.CellSize,
             };
         }
 
@@ -178,7 +196,7 @@ namespace Backrooms.Generation
             float C = OfficeBiome.CellSize;
             int x = Mathf.Clamp(Mathf.FloorToInt(p.x / C) - L.coord.x * L.N, 0, L.N - 1);
             int z = Mathf.Clamp(Mathf.FloorToInt(p.z / C) - L.coord.y * L.N, 0, L.N - 1);
-            if (!L.pool[x, z].basin) return false;
+            if (!L.WaterAtPoint(p.x - L.coord.x * L.N * C, p.z - L.coord.y * L.N * C)) return false;
             level = L.BaseY + PoolBiome.WaterLevel;
             return true;
         }

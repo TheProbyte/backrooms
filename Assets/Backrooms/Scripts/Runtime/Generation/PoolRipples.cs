@@ -28,10 +28,13 @@ namespace Backrooms.Generation
         int _dropCount;
         bool _wasIn;
         float _stride;
+        int _stepsSeen;
         int _foot;
 
         /// <summary>The player is standing in water (for footsteps).</summary>
         public static bool PlayerInWater { get; private set; }
+        /// <summary>How deep the water is where the player stands (m; 0 out of it).</summary>
+        public static float PlayerWaterDepth { get; private set; }
 
         static readonly System.Collections.Generic.List<Vector4> s_extra = new System.Collections.Generic.List<Vector4>();
         /// <summary>Something else disturbing the water (a thing thrown in): a dip of height (negative) and radius at a point,
@@ -51,7 +54,7 @@ namespace Backrooms.Generation
                 if (_player) _ctrl = _player.GetComponent<CamcorderPlayerController>();
             }
             bool active = world && _player && world.IsPool(_player.position);
-            PlayerInWater = false;
+            PlayerInWater = false; PlayerWaterDepth = 0f;
             if (!active) { s_extra.Clear(); if (_have) Shader.SetGlobalVector("_PoolRippleRect", Vector4.zero); return; }
             if (!Ensure()) return;
 
@@ -70,6 +73,7 @@ namespace Backrooms.Generation
             _dropCount = 0;
             bool inWater = world.WaterAt(p, out float level) && p.y < level + 0.05f;
             PlayerInWater = inWater;
+            PlayerWaterDepth = inWater ? level - p.y : 0f;
             if (inWater)
             {
                 var v = _ctrl ? _ctrl.PlanarVelocity : Vector3.zero;
@@ -88,7 +92,9 @@ namespace Backrooms.Generation
                     // Alternate legs, a little to each side and ahead of the body.
                     var side = Vector3.Cross(Vector3.up, v / speed) * 0.12f;
                     _stride += speed * Time.deltaTime;
-                    if (_stride > 0.35f)
+                    bool stepped = _ctrl ? _ctrl.WadeSteps != _stepsSeen : _stride > 0.35f;
+                    if (_ctrl) _stepsSeen = _ctrl.WadeSteps;
+                    if (stepped)
                     {
                         _stride = 0f; _foot ^= 1;
                         // Each stride throws a little water forward off the shin; running throws more (and now and then some

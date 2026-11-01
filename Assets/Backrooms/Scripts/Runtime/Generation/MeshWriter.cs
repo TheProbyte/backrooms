@@ -160,6 +160,12 @@ namespace Backrooms.Generation
             }
         }
 
+        /// <summary>A flat convex polygon (a fan of triangles), wound to face the normal.</summary>
+        public void Polygon(List<Vector3> pts, Vector3 normal, UVProjector uv)
+        {
+            for (int i = 1; i + 1 < pts.Count; i++) Quad(pts[0], pts[i], pts[i + 1], pts[i + 1], normal, uv);
+        }
+
         public Mesh ToMesh(string name) => ToMesh(name, false);
 
         /// <summary>readable: keep the CPU copy (to combine it with others first).</summary>

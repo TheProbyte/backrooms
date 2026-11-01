@@ -152,6 +152,48 @@ namespace Backrooms
                            + Noise3(t * 4.5f + 113f) * runShakeDegrees * 0.45f;
 
             float walkOnly = _walkBlend * (1f - _runBlend);
+
+            // Wading (2026-10-31): the water's own gait instead of the land walk. Each step the leg comes up out of the
+            // water slowly and goes down quickly (a nod as the foot plants), more rise and fall, the weight rolling from leg
+            // to leg (unevenly: one side heavier), leaning a little into the water's push; running, lurching; standing, a
+            // faint sway as the water moves round the legs. In step with the controller's clock (WadePhase).
+            float wade = player ? player.Wade : 0f;
+            Vector3 wadePos = Vector3.zero, wadeRot = Vector3.zero;
+            if (wade > 0.001f && grounded)
+            {
+                float sp = Mathf.Clamp01(player.PlanarVelocity.magnitude / Mathf.Max(0.1f, player.walkSpeed));
+                float ph = player.WadePhase, u = Mathf.Repeat(ph, 1f);
+                int stepIndex = Mathf.FloorToInt(ph);
+                float side = (stepIndex & 1) == 0 ? 1f : -1.2f;
+                float lift = u < 0.68f ? Mathf.SmoothStep(0f, 1f, u / 0.68f) : 1f - Mathf.SmoothStep(0f, 1f, (u - 0.68f) / 0.32f);
+                float plant = Mathf.Pow(1f - lift, 6f);
+                float amp = wade * sp;
+                wadePos = new Vector3(side * 0.007f * lift, (lift - 0.5f) * Mathf.Lerp(0.026f, 0.044f, _runBlend), 0f) * amp;
+                wadeRot = new Vector3(0.9f * sp + plant * Mathf.Lerp(0.9f, 1.6f, _runBlend), side * 0.45f * lift,
+                                      side * Mathf.Lerp(1.3f, 2.3f, _runBlend) * (lift - 0.3f)) * amp;
+                // Running: each step lands a little differently (a lurch held through that step).
+                var lurch = new Vector3(Mathf.PerlinNoise(stepIndex * 0.71f, _seed.x) - 0.5f, Mathf.PerlinNoise(stepIndex * 0.71f, _seed.y) - 0.5f,
+                                        Mathf.PerlinNoise(stepIndex * 0.71f, _seed.z) - 0.5f);
+                wadeRot += lurch * 3.2f * _runBlend * amp * (0.4f + 0.6f * lift);
+                // Standing in it: the water moving round the legs.
+                wadeRot += Noise3(t * 0.17f + 777f) * 0.4f * wade * (1f - sp);
+                walkOnly *= 1f - 0.75f * wade;
+            }
+            // Stepping down into the water and climbing out: a dip and a lift.
+            bool inWade = wade > 0.5f;
+            if (inWade != _wasWading && player && grounded)
+            {
+                _wadeDipVel += inWade ? -0.35f : 0.22f;
+                Jolt(inWade ? new Vector3(26f, 0f, 9f) : new Vector3(-14f, 0f, -5f));
+            }
+            _wasWading = inWade;
+            for (float rem = Mathf.Min(dt, 0.1f); rem > 1e-5f; rem -= 1f / 120f)
+            {
+                float h = Mathf.Min(rem, 1f / 120f);
+                _wadeDipVel += (-_wadeDip * 90f - _wadeDipVel * 11f) * h;
+                _wadeDip += _wadeDipVel * h;
+            }
+            wadePos.y += _wadeDip;
             // Breathing: irregular period (rate wanders a little) so it never reads as a metronome.
             _breathPhase += dt * breathingRate * (0.85f + 0.3f * Mathf.PerlinNoise(t * 0.05f, _seed.x)) * Mathf.PI * 2f;
             float breath = Mathf.Sin(_breathPhase) + 0.25f * Mathf.Sin(_breathPhase * 2f + 0.8f);
@@ -163,11 +205,13 @@ namespace Backrooms
 
             // Stabilisation removes the fast components first (run shake), then some of the slow ones.
             float stab = 1f - stabilization;
-            Vector3 pos = breathPos * (1f - stabilization * 0.5f) + (walkPos * walkOnly + runPos * _runBlend) * Mathf.Lerp(1f, 0.45f, stabilization);
-            Vector3 rot = breathRot * (1f - stabilization * 0.5f)
+            float runShare = _runBlend * (1f - 0.6f * wade);
+            Vector3 pos = breathPos * (1f - stabilization * 0.5f) + (walkPos * walkOnly + runPos * runShare) * Mathf.Lerp(1f, 0.45f, stabilization)
+                        + wadePos * Mathf.Lerp(1f, 0.6f, stabilization);
+            Vector3 rot = breathRot * (1f - stabilization * 0.5f) + wadeRot * Mathf.Lerp(1f, 0.5f, stabilization)
                         + idleRot * Mathf.Lerp(1f, rec ? 0.25f : 0.6f, _walkBlend) * Mathf.Lerp(1f, 0.4f, stabilization)
                         + walkRot * walkOnly * Mathf.Lerp(1f, 0.35f, stabilization)
-                        + runRot * _runBlend * Mathf.Lerp(1f, 0.25f, stabilization) * (0.5f + 0.5f * stab);
+                        + runRot * runShare * Mathf.Lerp(1f, 0.25f, stabilization) * (0.5f + 0.5f * stab);
 
             rot += LookMotion(dt, t) * (1f - stabilization * 0.5f);
 
@@ -282,6 +326,8 @@ namespace Backrooms
         public Vector3 StrapClear => _clear;
 
         Vector3 _jolt, _joltVel;
+        float _wadeDip, _wadeDipVel;
+        bool _wasWading;
 
         /// <summary>A sudden knock to the camera (degrees per second of pitch, yaw, roll), which springs back.</summary>
         public void Jolt(Vector3 kick) { _joltVel += kick; }

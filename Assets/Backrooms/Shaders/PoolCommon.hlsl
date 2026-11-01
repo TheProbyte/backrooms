@@ -6,7 +6,8 @@
 #ifndef BACKROOMS_POOL_COMMON
 #define BACKROOMS_POOL_COMMON
 
-TEXTURE2D(_PoolMap);                 // RGBA32 linear, toroidal by world cell: r flags, g ceiling/10, b opening, a bounce
+TEXTURE2D(_PoolMap);                 // RGBA32 linear, toroidal by world cell: r flags, g ceiling/10, b opening (bit 7: has extras), a bounce
+TEXTURE2D(_PoolMap2);                // the extras (read only where flagged): r depth/0.005, g gallery/0.05, b lanes|drain|disc radius, a disc centre
 float4 _PoolMapParams;               // x map size in cells, y height between storeys, z storeys in the map (stacked rows)
 TEXTURE2D(_PoolRipple); SAMPLER(sampler_PoolRipple);
 float4 _PoolRippleRect;              // xy world xz of the window corner, z window size (m), w slope gain (0 = none)
@@ -41,6 +42,12 @@ struct PoolCell
     uint west, south;    // 0 open, 1 wall, 2 headed doorway, 3 wall with a high window
     uint sky, joined;
     float ceiling, fill;
+    // Extras (2026-10-31): pool depth (0: the usual), gallery floor (0: none), lanes (0 none, 1 along X, 2 along Z), a
+    // drain, a round opening's centre (m from the cell's corner) and radius.
+    float depth, gallery, discR;
+    float2 disc;
+    uint lanes;
+    bool drain;
 };
 
 // Storey a point belongs to (its floor is up to 0.6 m below a storey line: the basins).
@@ -60,6 +67,14 @@ PoolCell PoolLoad(int2 cell, int storey)
     c.ceiling = v.g * 0.1;
     c.sky = v.b & 7u; c.joined = (v.b >> 3) & 15u;
     c.fill = v.a / 255.0;
+    c.depth = 0; c.gallery = 0; c.discR = 0; c.disc = 0; c.lanes = 0; c.drain = false;
+    [branch] if ((v.b & 128u) != 0)
+    {
+        uint4 e = (uint4)(LOAD_TEXTURE2D(_PoolMap2, s) * 255.0 + 0.5);
+        c.depth = e.r * 0.005; c.gallery = e.g * 0.05;
+        c.lanes = e.b & 3u; c.drain = (e.b & 4u) != 0; c.discR = (e.b >> 4) * 0.3;
+        c.disc = float2(((int)(e.a & 15u) - 8) * 0.5, ((int)(e.a >> 4) - 8) * 0.5) * POOL_C;
+    }
     return c;
 }
 
@@ -81,6 +96,14 @@ float3 PoolFarFade(float3 color, float3 pw)
     if (_PoolFar.y <= 0) return color;
     float f = smoothstep(_PoolFar.x, _PoolFar.y, length(pw - GetCameraPositionWS()));
     return lerp(color, unity_FogColor.rgb, f);
+}
+
+float PoolHoleSD(uint shape, uint joined, float2 uv);
+// The same for a loaded cell (a round hall's big round opening knows its own centre).
+float PoolHoleSDC(PoolCell c, float2 uv)
+{
+    if (c.sky == 6u) return c.discR - length(uv - c.disc);
+    return PoolHoleSD(c.sky, c.joined, uv);
 }
 
 // Signed distance (m) from a point inside the cell (0..1.2 each way) to the edge of its roof opening, > 0 inside.
@@ -132,15 +155,17 @@ float PoolSunVisibility(float3 pw)
         float tz = ((c.y + 1) * POOL_C - p.z) / L.z;
         float tExit = min(tx, tz);
         if (cell.pillarNear && PoolPillarHit(c, storey, p, t, min(tExit, tCeil))) return 0;
+        // A gallery overhead: below it, it is this cell's ceiling (with no opening).
+        if (cell.gallery > 0 && p.y + L.y * t < cell.gallery - 0.01 && (cell.gallery - 0.2 - p.y) / L.y <= tExit) return 0;
         if (tCeil <= tExit)
         {
             float3 q = p + L * tCeil;
-            float d1 = PoolHoleSD(cell.sky, cell.joined, q.xz - c * POOL_C);
+            float d1 = PoolHoleSDC(cell, q.xz - c * POOL_C);
             float t2 = tCeil + POOL_SHAFT / L.y;
             float3 q2 = p + L * t2;
             int2 c2 = (int2)floor(q2.xz / POOL_C);
             PoolCell cell2 = PoolLoad(c2, storey);
-            float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSD(cell2.sky, cell2.joined, q2.xz - c2 * POOL_C) : -1.0;
+            float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSDC(cell2, q2.xz - c2 * POOL_C) : -1.0;
             // The sun is half a degree wide: the edge of each opening blurs with distance.
             return saturate(d1 / (0.006 + 0.009 * tCeil) + 0.5) * saturate(d2 / (0.006 + 0.009 * t2) + 0.5);
         }
@@ -398,8 +423,14 @@ PoolHit PoolTrace(float3 pw, float3 R, float maxT)
     [loop] for (int i = 0; i < 26; i++)
     {
         if (!cell.valid || t > maxT) return h;
-        float floorY = cell.basin ? POOL_WATER : 0.0;
-        float tCeil = R.y > 1e-4 ? (cell.ceiling - p.y) / R.y : 1e9;
+        float floorY = cell.basin ? POOL_WATER : 0.0, ceilY = cell.ceiling;
+        bool underGallery = false;
+        if (cell.gallery > 0)
+        {
+            if (p.y + R.y * t < cell.gallery - 0.1) { ceilY = cell.gallery - 0.2; underGallery = true; }
+            else floorY = cell.gallery;
+        }
+        float tCeil = R.y > 1e-4 ? (ceilY - p.y) / R.y : 1e9;
         float tFloor = R.y < -1e-4 ? (floorY - p.y) / R.y : 1e9;
         float tx = abs(R.x) > 1e-5 ? ((c.x + (st.x > 0 ? 1 : 0)) * POOL_C - p.x) / R.x : 1e9;
         float tz = abs(R.z) > 1e-5 ? ((c.y + (st.y > 0 ? 1 : 0)) * POOL_C - p.z) / R.z : 1e9;
@@ -418,19 +449,19 @@ PoolHit PoolTrace(float3 pw, float3 R, float maxT)
             if (tCeil < tFloor)
             {
                 h.n = float3(0, -1, 0);
-                float d1 = PoolHoleSD(cell.sky, cell.joined, q.xz - c * POOL_C);
+                float d1 = underGallery ? -1.0 : PoolHoleSDC(cell, q.xz - c * POOL_C);
                 if (d1 > 0)
                 {
                     // Up the light well: the sky if the ray leaves its top inside the opening, else its sunny inside.
                     float3 q2 = q + R * (POOL_SHAFT / R.y);
                     int2 c2 = (int2)floor(q2.xz / POOL_C);
                     PoolCell cell2 = PoolLoad(c2, storey);
-                    float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSD(cell2.sky, cell2.joined, q2.xz - c2 * POOL_C) : -1.0;
+                    float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSDC(cell2, q2.xz - c2 * POOL_C) : -1.0;
                     h.kind = d2 > 0 ? POOL_HIT_SKY : POOL_HIT_WELL;
                 }
                 else h.kind = POOL_HIT_TILE;
             }
-            else { h.n = float3(0, 1, 0); h.kind = cell.basin ? POOL_HIT_WATER : POOL_HIT_TILE; }
+            else { h.n = float3(0, 1, 0); h.kind = cell.basin && cell.gallery <= 0 ? POOL_HIT_WATER : POOL_HIT_TILE; }
             return h;
         }
         // Into the next cell, unless a wall, a header, a lower ceiling or a higher floor is in the way.
@@ -470,6 +501,7 @@ float PoolSunVisibilityBlur(float3 pw, float blur)
     float3 p = pw; p.y -= PoolBase(storey);
     int2 c = PoolCellOf(p);
     PoolCell cell = PoolLoad(c, storey);
+    float t = 0;
     [loop] for (int i = 0; i < 20; i++)
     {
         if (!cell.valid) return 0;
@@ -477,15 +509,16 @@ float PoolSunVisibilityBlur(float3 pw, float blur)
         float tx = ((c.x + 1) * POOL_C - p.x) / L.x;
         float tz = ((c.y + 1) * POOL_C - p.z) / L.z;
         float tExit = min(tx, tz);
+        if (cell.gallery > 0 && p.y + L.y * t < cell.gallery - 0.01 && (cell.gallery - 0.2 - p.y) / L.y <= tExit) return 0;
         if (tCeil <= tExit)
         {
             float3 q = p + L * tCeil;
-            float d1 = PoolHoleSD(cell.sky, cell.joined, q.xz - c * POOL_C);
+            float d1 = PoolHoleSDC(cell, q.xz - c * POOL_C);
             float t2 = tCeil + POOL_SHAFT / L.y;
             float3 q2 = p + L * t2;
             int2 c2 = (int2)floor(q2.xz / POOL_C);
             PoolCell cell2 = PoolLoad(c2, storey);
-            float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSD(cell2.sky, cell2.joined, q2.xz - c2 * POOL_C) : -1.0;
+            float d2 = (cell2.valid && cell2.sky == cell.sky) ? PoolHoleSDC(cell2, q2.xz - c2 * POOL_C) : -1.0;
             return saturate(d1 / (0.006 + 0.009 * tCeil + blur) + 0.5) * saturate(d2 / (0.006 + 0.009 * t2 + blur) + 0.5);
         }
         float y = p.y + L.y * tExit;
@@ -499,7 +532,7 @@ float PoolSunVisibilityBlur(float3 pw, float blur)
         }
         if (edge == 1u || (edge == 2u && y > POOL_HEADER)) return 0;
         if (!n.valid || y >= n.ceiling) return 0;
-        c = nc; cell = n;
+        c = nc; cell = n; t = tExit;
     }
     return 0;
 }
@@ -515,7 +548,8 @@ float3 PoolShadeHit(PoolHit h, float3 R, float blur)
     if (h.kind == POOL_HIT_WATER)
     {
         // The basin floor through the water (its sunny patches green and dimmed), and the ceiling's light on top.
-        float3 fl = h.p - float3(0, POOL_WATER_DEPTH, 0);
+        PoolCell wc = PoolLoad(PoolCellOf(h.p), PoolStorey(h.p.y));
+        float3 fl = h.p - float3(0, wc.depth > 0 ? wc.depth + POOL_WATER : POOL_WATER_DEPTH, 0);
         float sunF = PoolSunVisibilityBlur(fl + float3(0, 0.02, 0), soft);
         float3 tr = exp(-float3(2.6, 0.9, 1.3) * 0.7);
         float3 floorLit = POOL_WALL_ALBEDO * (_PoolSunColor.rgb * sunF * POOL_SUN.y + amb) * tr;

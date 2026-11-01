@@ -132,7 +132,7 @@ namespace Backrooms.Generation
         {
             _neighbours = neighbours;
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); _lampItems.Clear(); _breakers.Clear(); _deskLamps.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
-            _capsules.Clear(); poolMap = null; _sounds.Clear();
+            _capsules.Clear(); poolMap = null; poolMap2 = null; _sounds.Clear(); _poolFx.Clear();
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             // Square panels sit inside a ceiling tile and need no gap in the grid; only round domes sit on a cross tee.
@@ -343,8 +343,9 @@ namespace Backrooms.Generation
             InstantiateNoclipDoors(root.transform);
             InstantiateDoors(root.transform);
             InstantiateCustomRoomExtras(root.transform);
+            if (Pool) InstantiatePoolExtras(root.transform);
             if (outlets.Count > 0) root.AddComponent<Interaction.ChunkOutlets>().Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), outlets);
-            if (poolMap != null) root.AddComponent<PoolChunk>().Set(_L.coord, _L.storey, poolMap);
+            if (poolMap != null) root.AddComponent<PoolChunk>().Set(_L.coord, _L.storey, poolMap, poolMap2);
 
             // Colliders: one floor slab, merged axis-aligned boxes, and rotated prop boxes.
             if (!Pool) AddFloorColliders(root);
@@ -421,7 +422,7 @@ namespace Backrooms.Generation
 
         // ---------------- Floor / ceiling / grid ----------------
 
-        Material WallMat(Room r) => Pool ? TileMat : _a.WallMaterial(r);
+        Material WallMat(Room r) => Pool ? ZoneTile(r) : _a.WallMaterial(r);
         Material FloorMat(Room r) => Pool ? TileMat : _a.FloorMaterial(r);
 
         /// <summary>One floor and one ceiling quad per room (world-space UVs keep textures continuous).</summary>
@@ -600,6 +601,7 @@ namespace Backrooms.Generation
                 var v = ViewOpening(_L, Neighbour, vertical, line, along, s);
                 if (Pool && _L.ArchSpan(vertical, line, along, out int spanIndex, out int spanLength))
                 {
+                    _archZone = ZoneTile(room);
                     BigArchFaces(vertical, line, along, spanIndex, spanLength, f, n, myCeil, v.otherKnown ? v.otherCeil : myCeil);
                     continue;
                 }

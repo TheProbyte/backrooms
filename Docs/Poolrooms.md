@@ -210,42 +210,55 @@ the wading swish. In order of how much they add for the work:
 8. **Laps at the edges**: when the ripples reach a wall or the pool edge, a soft lap sound there (the simulation knows
    where).
 
-## Wading motion: the plan (2026-10-31, not built)
+## Wading motion (2026-10-31, built)
 
-Built so far: slower (80 % walk, 64 % run) and slower to start and stop. The camera's walk (HandheldCameraShake: a recorded
-handheld walk played by stride) only plays slower in water, so it reads as walking slowly, not wading. Studies of walking
-in water: shorter steps, slower, more knee and hip bend at each foot strike (lifting the legs), less even left to right.
-1. **A wading gait for the camera**: blend into it in water by speed. Each stride a slow lift (the leg coming up out of
-   the water) and a quicker drop as it goes down, a bigger rise and fall than on land, more roll from side to side
-   (weight going leg to leg), uneven left and right, the camera leaning a degree into the water's push.
-2. **Surges**: the speed pulsing with the stride (each push gains a little, the drag takes it back between), in step
-   with the gait and the step sounds.
-3. **Stepping in and out**: a dip as you step down into a basin (the steps), a lift climbing out.
-4. **Running in water**: lurching, heavier, the effort building (HandheldCameraShake.exertion: heavier breathing after).
-5. **Standing in water**: a faint sway as the water moves round the legs.
+Studies of walking in water: shorter steps, slower, more knee and hip bend at each foot strike, less even left to right.
+- **The step clock** (`CamcorderPlayerController.WadePhase`, `WadeSteps`): in water, steps of 0.48 m (0.7 m running);
+  each whole number a foot coming down. The camera's gait, the surges, the water steps (`PlayerAudio`) and the stride
+  spray (`PoolRipples`) all keep time with it.
+- **The gait** (`HandheldCameraShake`, in water in place of the land walk): each step the leg lifts slowly out of the
+  water and drops quickly (a nod as it plants), more rise and fall than on land, rolling leg to leg (one side heavier),
+  leaning a degree into the water; running, a lurch held through each step; standing, a faint sway.
+- **Surges**: the speed pulses with the step (+-13 %). Deeper water (a deep end, up the thigh) is slower still (up to
+  -25 %, `PoolRipples.PlayerWaterDepth`).
+- **In and out**: a dip and a little jolt stepping down into a pool, a lift climbing out.
+- **Effort**: running through water tires you (BodyPresence: heavier breathing after), wading a little.
 
-## Architecture: the next improvements (2026-10-31, the plan; not built)
+## Architecture (2026-10-31, built; world version 18)
 
-The references: sunlit tiled halls, curved pools with rounded coping and chrome ladders in round halls, vaulted tiled
-tunnels with a channel of water and a walkway beside it, tall arched windows. Constraint for all of them: the sun,
-reflections and bounce are traced through the cell map, so anything new must go into the map (or an exact shape the
-shaders can test), or it casts no sun shadow and is missing from reflections.
-1. **Tile detailing (cheap, big effect)**: darker border tiles round pool edges and at the waterline, a line of grime
-   at the waterline, dark lane lines and drains on pool floors, overflow gutters, a few cracked or missing tiles,
-   tile colour zones by room (sage, cream, white, pale blue), chrome ladders and handrails at pool edges.
-2. **Free-form pools**: a pool that is not the whole room: a rounded rectangle, kidney or round pool in a hall with deck
-   all round, curved coping (an exact shape per room the shaders and the builder share).
-3. **Vaulted tunnels and channels**: barrel-vaulted corridors (the third reference), and long flooded channels with a
-   raised walkway along one side that bend away out of sight (the first reference, and image 5's walkways).
-4. **Depth**: pool floors that slope from a shallow end to a deep end (darker water), deep pools you cannot wade into
-   (ladders, a rail), zero-depth ramps into the water.
-5. **Round halls**: circular rooms with a curved tiled wall and a round opening in the middle of the ceiling (an
-   oculus), a pool following the curve (the second reference).
-6. **Cascades**: wide steps with water running down them between levels, slots in walls with water falling: the one
-   place you hear running water.
-7. **Rooms with a purpose, empty**: changing rooms and showers, bleachers over a pool, a lifeguard's chair, a water
-   slide's tube coming out of a wall.
-8. **Galleries**: a walkway round a tall hall at the second floor, looking down onto the water.
+Planned per district in `PoolPlan.Features` (`PoolFeature`s on the plan, sliced to every chunk they reach), built in
+`OfficeChunkBuilder.PoolFeatures`. A second per-cell map for the shaders (`_PoolMap2`: depth, gallery, lanes, drain,
+a round opening) is read only where the first map's opening byte has bit 7 set, so plain cells cost nothing more.
+- **Tile detailing**: tile colour by room (`PoolMaterials.Zones`: sage 55 %, cream, deeper mint, pale aqua); accent tiles
+  (`PoolMaterials.Accent`, dark teal) as the coping round every pool edge on the deck and as a band at the waterline on
+  pool walls; a line of grime at the waterline; dark lane lines (a tile wide, 2.4 m apart) and round drains on some
+  pool floors; now and then a cracked tile, rarely a missing one. Chrome ladders at pool edges and walkways, handrails
+  down pool steps (`PoolMaterials.Chrome`: PoolLit, metallic, reflecting what a ray through the map meets).
+- **Free-form pools** (about three a district): rounded rectangles, kidneys (two circles melted together) or circles cut
+  into deck halls, traced cell by cell on an 8 x 8 grid (marching squares: deck, accent border, the curved pool wall,
+  the floor, the water; colliders on a 4 x 4 one), a flight of steps with a handrail at the shallow end, ladders by the
+  deep end, sometimes a lifeguard's chair beside and bleachers along a wall. `OfficeLayout.WaterAtPoint` follows the
+  shape (wading, footsteps, floating things).
+- **Depth**: about half the pools slope from a shallow end (0.42 m) to a deep end (0.75-0.95 m), flat at each end. The
+  floor, the walls carried down, the steps and the colliders follow it; the water darkens with it.
+- **Vaults and channels** (`Vault`): 40 % of corridors are barrel-vaulted (ceiling raised so the vault springs at 2.95 m
+  or more), 60 % of those flooded with a walkway along one side; an odd-width vault's only opening is a slot along its
+  crown.
+- **Round halls** (`RoundHall`, a few in ten districts): a square hall whose doorways all sit near the middle of their
+  walls becomes round (a curved wall with gaps at the doorways; the corners behind it are left out of the map), with a
+  round pool in the middle under a round opening in the roof (`SkylightShape.Disc`: the shader knows its centre and
+  radius from the second map).
+- **Galleries** (`Gallery`, about two a district): a tall hall (7.2 m) with a walkway round it at 3.6 m, chrome
+  railings, a straight stair along one long wall up to the far corner, and a pool in the middle to look down on. The sun
+  and reflections know the gallery is there (a ceiling below it, a floor above it).
+- **Running water** (`Spout`, `Cascade`): a few dark slots in pool walls pouring a sheet of water into the pool, and now
+  and then a wall-long flight of steps with water pouring onto it from a long slot and running down in a film
+  (`Backrooms/PoolFall`). The only place you hear running water (`ProceduralSounds.RunningWater`: bubbles over a
+  fluttering splash), with spray and a stir of the water where it lands (`PoolRunningWater`).
+- **Rooms with a purpose**: small deck rooms become changing rooms (tiled stall partitions along a wall, a tiled bench) or
+  showers (chrome shower heads, a drain, dripping). A slide (a blue half pipe from a wall, curling down to just over
+  the water) in some big pools.
+- Cost: 1920 x 1080 in the editor, a free pool hall with bleachers: GPU ~5.4 ms.
 
 ## Known gaps / ideas
 

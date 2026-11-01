@@ -75,7 +75,15 @@ Shader "Backrooms/PoolLit"
                 float3 F = f0 + (1.0 - f0) * pow(1.0 - saturate(dot(V, H)), 5.0);
                 float3 spec = _PoolSunColor.rgb * sun * NdotL * (a2 / (PI * dd * dd)) * F * 0.25;
                 float3 Fv = f0 + (1.0 - f0) * pow(1.0 - saturate(dot(N, V)), 5.0);
-                float3 color = diffuse * (_PoolSunColor.rgb * sun * NdotL * aoDirect + ambient) + spec + ambient * Fv * _Smoothness;
+                float3 env = ambient;
+                // Metal (the Poolrooms' chrome ladders and rails): what it mirrors, traced through the cell map.
+                [branch] if (_Metallic > 0.5)
+                {
+                    float3 R = reflect(-V, N);
+                    PoolHit hit = PoolTrace(i.positionWS + N * 0.02, R, 25.0);
+                    env = PoolShadeHit(hit, R, 0.03 * (1.1 - _Smoothness));
+                }
+                float3 color = diffuse * (_PoolSunColor.rgb * sun * NdotL * aoDirect + ambient) + spec + env * Fv * (_Metallic > 0.5 ? 1.0 : _Smoothness);
                 return half4(PoolFarFade(MixFog(color, i.fogFactor), i.positionWS), 1);
             }
             ENDHLSL

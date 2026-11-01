@@ -106,6 +106,43 @@ Shader "Backrooms/PoolTile"
                 float2 tilt = (sign(f) * e * e * _Bevel + f * _Dome * 2.0 + (h - 0.5) * _Tilt) * near;
                 float2 wave = float2(sin(f.x * 6.2832 + h.y * 6.0), sin(f.y * 6.2832 + h.x * 6.0)) * 0.01 * near;
                 tilt += wave;
+                // Wear (2026-10-31): now and then a tile cracked across, or missing (the mortar bed showing).
+                float2 h3 = PoolHash22(id + (deck ? 413.0 : 913.0));
+                if (h3.x < 0.0007 && near > 0.5) { tint = float3(0.36, 0.36, 0.33); tileMask = 0.0; tilt = 0; }
+                else if (h3.x < 0.004)
+                {
+                    float2 cd = normalize(float2(cos(h3.y * 6.28), sin(h3.y * 6.28)));
+                    float crack = 1.0 - smoothstep(0.006, 0.02, abs(dot(f - (h3 - 0.5) * 0.3, cd)));
+                    tint *= 1.0 - 0.45 * crack * tileMask * near;
+                }
+                albedo = lerp(_GroutColor.rgb, tint, tileMask);
+                // Pool floors: dark lane lines (a tile wide, every 2.4 m) and a round drain in some cells.
+                if (under > 0.5 && N0.y > 0.7)
+                {
+                    if (here.lanes != 0u)
+                    {
+                        float tz = floor(((here.lanes == 1u ? P.z : P.x) - 0.075) / POOL_TILE);
+                        if (fmod(tz + 4096.0, 16.0) == 8.0) albedo = lerp(_GroutColor.rgb * 0.6, float3(0.1, 0.24, 0.27), tileMask);
+                    }
+                    if (here.drain)
+                    {
+                        float2 dc = P.xz - (PoolCellOf(P) + 0.5) * POOL_C;
+                        float dr = length(dc);
+                        if (dr < 0.13)
+                        {
+                            float slots = step(0.5, frac(dc.x * 40.0));
+                            albedo = dr > 0.11 ? float3(0.55, 0.56, 0.55) : lerp(float3(0.06, 0.07, 0.07), float3(0.3, 0.31, 0.3), slots * step(dr, 0.1));
+                            tileMask = dr > 0.11 ? 0.8 : 0.2;
+                        }
+                    }
+                }
+                // Walls of the pools: a line of grime along the waterline.
+                if (abs(N0.y) < 0.5 && here.basin)
+                {
+                    float rel = P.y - waterY;
+                    float gb = smoothstep(-0.06, 0.0, rel) * (1.0 - smoothstep(0.02, 0.08, rel));
+                    albedo *= lerp(float3(1, 1, 1), float3(0.8, 0.76, 0.62), gb * 0.85);
+                }
                 float3 T = normalize(i.tangentWS.xyz), B = cross(N0, T) * i.tangentWS.w;
                 float2 grit = (PoolHash22(floor(i.uv * 260.0)) - 0.5) * 0.35 * near;
                 float3 N = normalize(N0 + (T * tilt.x + B * tilt.y) * tileMask + (T * grit.x + B * grit.y) * (1.0 - tileMask));

@@ -179,6 +179,14 @@ namespace Backrooms.Generation
                 if (!reaches) continue;
                 var g = mz; g.start -= new Vector2Int(ox, oz); S.mezzanines.Add(g);
             }
+            // The Poolrooms' larger pieces: every chunk they reach (each builds its part, or the one their centre is in).
+            var chunkMetres = new Rect(ox * C, oz * C, N * C, N * C);
+            foreach (var f in plan.poolFeatures)
+            {
+                if (!f.bounds.Overlaps(chunkMetres)) continue;
+                var g = f; g.Shift(new Vector2(-ox * C, -oz * C));
+                S.poolFeatures.Add(g);
+            }
             foreach (var arc in plan.arcs)
             {
                 int ax = Mathf.FloorToInt(arc.centre.x / C), az = Mathf.FloorToInt(arc.centre.y / C);

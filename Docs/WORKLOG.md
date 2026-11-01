@@ -15,6 +15,22 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - The Poolrooms: wading motion, and the architecture plan built (free pools, depth, vaults and channels, round halls, galleries, running water, rooms with a purpose, tile detailing)
+
+- The owner: "build all please as planned".
+- Wading: a step clock in water (`WadePhase`) driving a wading gait for the camera (slow lift, quick drop, roll, lean,
+  lurch running, sway standing), surges, a dip stepping in and a lift climbing out, deeper water slower, effort.
+- Architecture (world version 18; `PoolPlan.Features`, `OfficeChunkBuilder.PoolFeatures`, `PoolFeature`, `_PoolMap2`): tile
+  colours by room, accent coping and waterline bands, grime line, lane lines, drains, cracked and missing tiles, chrome
+  ladders and handrails; free-form pools (rounded, kidney, round) traced on an 8 x 8 grid; sloping pool floors; vaulted
+  corridors and flooded channels; round halls with a round roof opening; galleries round tall halls; spouts and
+  cascades with sound, spray and ripples; changing rooms, showers, bleachers, lifeguard chairs, slides.
+- Found while checking: the clipping scratch lists were static and chunks build on several threads (a chunk failed and
+  the player fell through): now per builder. Spouts were far too many (20 a district: 4-5 now), round halls almost never
+  passed their doorway test (0.4 a district now), kidneys came apart into two pools, missing tiles too common.
+- Checked in World 3 (pictures: a kidney pool hall with bleachers and a lifeguard's chair, a gallery hall, a vaulted
+  channel, a cascade, a round hall). GPU ~5.4 ms. EditMode tests pass. Not played by the owner.
+
 ## 2026-10-31 - Water you can interact with: wading, spray, floating and sinking things, plops, wet prints, drips, drops on the lens
 
 - The owner: "start that stuff (the water plan), efficient, newest tech, best methods; not sure about steps since we don't

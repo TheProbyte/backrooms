@@ -64,6 +64,55 @@ namespace Backrooms.Audio
             return Clip("Plop_" + size + "_" + variant, d, 1);
         }
 
+        /// <summary>
+        /// Running water (a seamless 6 s loop): water falling into water is a dense crowd of bubbles (Minnaert again) over
+        /// a broad splashing noise that flutters; kind 1 (a cascade over steps) is broader and lower, with more of the hiss of
+        /// a film of water.
+        /// </summary>
+        public static AudioClip RunningWater(int kind)
+        {
+            var rng = new System.Random(5800 + kind * 31);
+            float L = 6f;
+            int n = (int)(Rate * L), fade = Rate / 2;
+            var raw = new float[(n + fade) * 2];
+            var bodyL = Biquad.BandPass(kind == 1 ? 480f : 700f, 0.6f); var bodyR = Biquad.BandPass(kind == 1 ? 520f : 760f, 0.6f);
+            var hissL = Biquad.HighPass(2600f); var hissR = Biquad.HighPass(2800f);
+            var lowL = Biquad.LowPass(180f); var lowR = Biquad.LowPass(190f);
+            // Bubbles: hundreds a second, small, ringing a few ms each.
+            int count = (int)(L * (kind == 1 ? 420 : 300));
+            var bubbles = new (float at, float hz, float tau, float amp, float pan)[count];
+            for (int k = 0; k < count; k++)
+            {
+                float diam = 1.5f + (float)rng.NextDouble() * (float)rng.NextDouble() * 7f;
+                float hz = 6520f / diam;
+                bubbles[k] = ((float)rng.NextDouble() * (L + 0.5f), hz, Mathf.Clamp(5f / hz, 0.0012f, 0.006f), 0.015f + (float)rng.NextDouble() * 0.035f, (float)rng.NextDouble());
+            }
+            System.Array.Sort(bubbles, (a, b) => a.at.CompareTo(b.at));
+            int first = 0;
+            float flutter = 0f;
+            for (int i = 0; i < n + fade; i++)
+            {
+                float t = i / (float)Rate;
+                if ((i & 63) == 0) flutter = Mathf.Lerp(flutter, (float)rng.NextDouble(), 0.3f);
+                float amp = 0.75f + 0.5f * flutter;
+                float l = bodyL.Run(White(rng)) * 0.7f * amp + hissL.Run(White(rng)) * (kind == 1 ? 0.3f : 0.2f) + lowL.Run(White(rng)) * 0.5f;
+                float r = bodyR.Run(White(rng)) * 0.7f * amp + hissR.Run(White(rng)) * (kind == 1 ? 0.3f : 0.2f) + lowR.Run(White(rng)) * 0.5f;
+                while (first < count && bubbles[first].at < t - 0.04f) first++;
+                for (int k = first; k < count && bubbles[k].at <= t; k++)
+                {
+                    var b = bubbles[k];
+                    float dt = t - b.at;
+                    if (dt > b.tau * 5f) continue;
+                    float v = Mathf.Sin(6.2831853f * b.hz * (1f + 4f * dt) * dt) * Mathf.Exp(-dt / b.tau) * b.amp;
+                    l += v * (1f - b.pan); r += v * b.pan;
+                }
+                raw[i * 2] = l; raw[i * 2 + 1] = r;
+            }
+            var data = Seamless(raw, n, fade, 2);
+            Normalize(data, 0.5f);
+            return Clip("RunningWater_" + kind, data, 2);
+        }
+
         /// <summary>A drop of water off you onto the tiles: the faint tick of it landing and a tiny splash.</summary>
         public static AudioClip Drip(int variant)
         {

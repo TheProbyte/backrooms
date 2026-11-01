@@ -18,7 +18,7 @@ namespace Backrooms.Generation
         /// </summary>
         void BigArchFaces(bool vertical, int line, int along, int index, int length, float f, Vector3 n, float myCeil, float otherCeil)
         {
-            var w = WMask(TileMat, 1u);
+            var w = WMask(_archZone ? _archZone : TileMat, 1u);
             float l = line * C;
             float runStart = (along - index) * C + T * 0.5f, runEnd = (along - index + length) * C - T * 0.5f;
             float lower = Mathf.Min(myCeil, otherCeil);
@@ -69,6 +69,8 @@ namespace Backrooms.Generation
             {
                 var room = _L.RoomAt(x, z);
                 if (!room.Walkable || room.spiral || room.noFloor || room.openAbove || Mathf.Min(room.fullRect.width, room.fullRect.height) < 3) continue;
+                if (_L.pool[x, z].gallery > 0f || _L.pool[x, z].solid || FeatureOf(PoolFeatureKind.RoundHall, x, z, out _)) continue;
+                tile = WMask(ZoneTile(room), 1u);
                 if (StairSideOf(x, z) >= 0 || Info(x, z).pillarNear) continue;
                 for (int corner = 0; corner < 4; corner++)
                 {
@@ -84,7 +86,7 @@ namespace Backrooms.Generation
                     float dx = sx == 0 ? 1f : -1f, dz = sz == 2 ? 1f : -1f;
                     var cornerPt = new Vector3(sx == 0 ? x * C + T * 0.5f : (x + 1) * C - T * 0.5f, 0f, sz == 2 ? z * C + T * 0.5f : (z + 1) * C - T * 0.5f);
                     var centre = cornerPt + new Vector3(dx * FilletRadius, 0f, dz * FilletRadius);
-                    float y0 = FloorAt(x, z) ?? 0f, y1 = _L.WallTop(room);
+                    float y0 = (FloorAt(x, z) ?? 0f) - 0.04f, y1 = _L.WallTop(room);
                     const int K = 10;
                     Vector3 prev = default, prevN = default; float prevU = 0f;
                     for (int k = 0; k <= K; k++)
@@ -120,6 +122,7 @@ namespace Backrooms.Generation
             var tile = WMask(TileMat, 1u);
             foreach (var arc in _L.arcs)
             {
+                tile = WMask(ZoneAt(Mathf.FloorToInt(arc.centre.x / C), Mathf.FloorToInt(arc.centre.y / C)), 1u);
                 float rIn = arc.radius - T * 0.5f, rOut = arc.radius + T * 0.5f;
                 var c = new Vector3(arc.centre.x, 0f, arc.centre.y);
                 // Floor: the lowest under it (it stands in the basin where there is one).

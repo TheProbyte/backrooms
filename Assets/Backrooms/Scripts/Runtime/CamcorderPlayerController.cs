@@ -119,6 +119,16 @@ namespace Backrooms
         /// <summary>Multiplier on walking speed (heavy things slow you down).</summary>
         [System.NonSerialized] public float moveScale = 1f;
         float _wade;
+        /// <summary>How far into wading (0 on land .. 1 in a basin, eased in and out).</summary>
+        public float Wade => _wade;
+        /// <summary>The wading step clock: counts steps through the water; each whole number is a foot coming down, between
+        /// them the leg lifts out of the water and pushes on (the camera's gait, the surges, the step sounds and the spray all
+        /// keep time with it).</summary>
+        public float WadePhase { get; private set; }
+        /// <summary>Feet come down in the water so far (a change: one just did).</summary>
+        public int WadeSteps { get; private set; }
+        /// <summary>Shorter steps in water (studies of walking in water: shorter, slower, more knee lift).</summary>
+        public float WadeStepLength => IsRunning ? 0.7f : 0.48f;
         /// <summary>No running (e.g. while dragging something).</summary>
         [System.NonSerialized] public bool noRun;
         /// <summary>How far the body bends down (m), e.g. to reach something on the floor.</summary>
@@ -444,6 +454,17 @@ namespace Backrooms
             // Wading (the Poolrooms' shin-deep water): slower, running most of all (2026-10-31, the water interaction plan).
             _wade = Mathf.MoveTowards(_wade, Generation.PoolRipples.PlayerInWater ? 1f : 0f, Time.deltaTime * 4f);
             targetSpeed *= Mathf.Lerp(1f, CurrentStance == Stance.Crawl ? 0.7f : IsRunning ? 0.64f : 0.8f, _wade);
+            // Deeper (a pool's deep end, up the thigh): slower still.
+            targetSpeed *= 1f - 0.25f * _wade * Mathf.Clamp01((Generation.PoolRipples.PlayerWaterDepth - 0.4f) / 0.45f);
+            // The step clock, and a surge with each step: the push after a foot comes down gains a little, the water's drag
+            // takes it back while the other leg lifts.
+            if (_wade > 0.01f && _controller.isGrounded && CurrentStance != Stance.Crawl)
+            {
+                float before = WadePhase;
+                WadePhase += PlanarVelocity.magnitude * Time.deltaTime / WadeStepLength;
+                if (Mathf.FloorToInt(WadePhase) != Mathf.FloorToInt(before)) WadeSteps++;
+                targetSpeed *= 1f + 0.13f * _wade * Mathf.Cos(Mathf.Repeat(WadePhase, 1f) * Mathf.PI * 2f);
+            }
             // Stairs are walked a little slower than the flat (a step a tread at a time each foot, as people do).
             targetSpeed *= Mathf.Lerp(1f, stairSpeed, _onStairs);
             Vector3 target = (transform.forward * input.y + transform.right * input.x) * targetSpeed;

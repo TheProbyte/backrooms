@@ -13,6 +13,18 @@ namespace Backrooms.Generation
         public bool basin;
         public bool pillar;              // a round column stands on the cell's -X -Z corner
         public bool pillarNear;          // a column stands on one of the cell's four corners
+        public float gallery;            // a gallery's floor over the cell (m above the deck; 0 none)
+        public float discX, discZ, discR; // a round roof opening's centre (m from the cell's corner) and radius
+        public float depth;              // basin floor depth (m)
+        public byte lanes;
+        public bool drain;
+
+        /// <summary>Is the point (metres inside the cell) in this cell's roof opening?</summary>
+        public bool InHole(float u, float v)
+        {
+            if (sky == SkylightShape.Disc) { float du = u - discX, dv = v - discZ; return du * du + dv * dv < discR * discR; }
+            return PoolBiome.InHole(sky, joined, u, v);
+        }
     }
 
     public interface IPoolCells { PoolCellInfo Get(int x, int z); }
@@ -48,14 +60,21 @@ namespace Backrooms.Generation
                 float tz = L.z > 0f ? ((cz + 1) * C - p.z) / L.z : L.z < 0f ? (cz * C - p.z) / L.z : float.MaxValue;
                 float tExit = Mathf.Min(tx, tz);
                 if (c.pillarNear && PillarHit(g, cx, cz, p, L, t, Mathf.Min(tExit, tCeil))) return 0f;
+                // A gallery overhead: below it, it is this cell's ceiling (and has no opening).
+                float yIn = p.y + L.y * t;
+                if (c.gallery > 0f && yIn < c.gallery - 0.01f)
+                {
+                    float tG = (c.gallery - 0.2f - p.y) / L.y;
+                    if (tG <= tExit) return 0f;
+                }
                 if (tCeil <= tExit)
                 {
                     var q = p + L * tCeil;
-                    if (!PoolBiome.InHole(c.sky, c.joined, q.x - cx * C, q.z - cz * C)) return 0f;
+                    if (!c.InHole(q.x - cx * C, q.z - cz * C)) return 0f;
                     var q2 = p + L * (tCeil + PoolBiome.ShaftHeight / L.y);
                     int qx = Mathf.FloorToInt(q2.x / C), qz = Mathf.FloorToInt(q2.z / C);
                     var c2 = qx == cx && qz == cz ? c : g.Get(qx, qz);
-                    return c2.valid && c2.sky == c.sky && PoolBiome.InHole(c2.sky, c2.joined, q2.x - qx * C, q2.z - qz * C) ? 1f : 0f;
+                    return c2.valid && c2.sky == c.sky && c2.InHole(q2.x - qx * C, q2.z - qz * C) ? 1f : 0f;
                 }
                 float y = p.y + L.y * tExit;
                 int nx = cx, nz = cz;

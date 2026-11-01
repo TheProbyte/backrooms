@@ -138,7 +138,35 @@ namespace Backrooms.Generation
     public struct Pillar { public Vector2Int vertex; public float size; public int roomColor; }
 
     /// <summary>Shape of a roof opening over one cell (Poolrooms). Neighbouring Full cells join into one big opening.</summary>
-    public enum SkylightShape : byte { None, Full, SlotX, SlotZ, Square, Round }
+    public enum SkylightShape : byte { None, Full, SlotX, SlotZ, Square, Round, Disc }
+
+    /// <summary>The Poolrooms' larger pieces (2026-10-31, the architecture plan): what they are.</summary>
+    public enum PoolFeatureKind : byte { FreePool, Slope, Vault, RoundHall, Gallery, Spout, Cascade, Ladder, Changing, Showers, Bleachers, Lifeguard, Slide }
+
+    /// <summary>
+    /// One of the Poolrooms' larger pieces, in layout-local metres (x, z). Planned per district (PoolPlan), sliced to every
+    /// chunk it reaches (WorldGenerator.Slice). Meaning of the fields by kind:
+    ///  - FreePool: a pool in a deck room: centre, size (half extents), radius (corners, or the circle), shape (0 rounded
+    ///    rectangle, 1 circle, 2 kidney), yaw; depth at the shallow end, depth2 at the deep end (along local +x).
+    ///  - Slope: a whole-room basin's floor sloping from depth (shallow) to depth2 (deep) along yaw's direction over bounds.
+    ///  - Vault: a barrel vault over a corridor: bounds, yaw 0 (along x) or 90 (along z), radius, height (its spring).
+    ///  - RoundHall: centre, radius (the round wall), size.x (the round roof opening's radius).
+    ///  - Gallery: a walkway round a tall hall: bounds (the room), height (its floor), shape (the side its stair is on),
+    ///    centre (the stair's foot), size.x (its run).
+    ///  - Spout / Cascade: centre (the point on the wall face), yaw (facing into the room), height (of the slot), size.x
+    ///    (half its width); a cascade's steps run size.x along the wall.
+    ///  - Ladder, Lifeguard, Slide, Bleachers, Changing, Showers: centre, yaw, size (extent), shape (variant).
+    /// </summary>
+    public struct PoolFeature
+    {
+        public PoolFeatureKind kind;
+        public Rect bounds;
+        public Vector2 centre, size;
+        public float radius, height, yaw, depth, depth2;
+        public int shape, room;
+
+        public void Shift(Vector2 d) { bounds.position += d; centre += d; }
+    }
 
     /// <summary>
     /// A free-standing curved wall in a Poolrooms hall: an arc of a circle, from one angle to another (degrees, 0 = +X,
@@ -159,6 +187,19 @@ namespace Backrooms.Generation
         public SkylightShape skylight;
         /// <summary>A high window (sky beyond) in this cell's edge: 1 the -X (west) edge, 2 the -Z (south) edge.</summary>
         public byte windows;
+        /// <summary>Basin floor depth below the deck at the cell's middle (m); 0: the usual (PoolBiome.BasinDepth).</summary>
+        public float depth;
+        /// <summary>A gallery's floor over this cell, metres above the deck (0: none).</summary>
+        public float gallery;
+        /// <summary>Lane lines on the pool floor: 0 none, 1 running along X, 2 along Z; a drain in the middle of the cell.</summary>
+        public byte lanes;
+        public bool drain;
+        /// <summary>Walled off behind a round hall's wall: not part of the Poolrooms the light and the water know.</summary>
+        public bool solid;
+        /// <summary>A round hall's round roof opening (SkylightShape.Disc): its centre in half cells from this cell's (0, 0)
+        /// corner, and its radius (m).</summary>
+        public sbyte discX, discZ;
+        public float discR;
     }
 
     /// <summary>
@@ -430,6 +471,41 @@ namespace Backrooms.Generation
         /// (index in the run + 1) | (run length in cells &lt;&lt; 8). The run is a row of open edges between two rooms.</summary>
         public ushort[,] spanV, spanH;
         public readonly List<PoolArc> arcs = new List<PoolArc>();
+        /// <summary>The Poolrooms' larger pieces (free pools, vaults, round halls, galleries, spouts, fittings), layout-local.</summary>
+        public readonly List<PoolFeature> poolFeatures = new List<PoolFeature>();
+
+        /// <summary>The pool floor at a point (layout-local metres): below the deck (negative), from the pieces that shape it.</summary>
+        public float BasinFloorAt(float mx, float mz)
+        {
+            var p = new Vector2(mx, mz);
+            foreach (var f in poolFeatures)
+            {
+                if (f.kind != PoolFeatureKind.Slope && f.kind != PoolFeatureKind.FreePool) continue;
+                if (!f.bounds.Contains(p)) continue;
+                return -PoolBiome.SlopedDepth(f, p);
+            }
+            return -PoolBiome.BasinDepth;
+        }
+
+        /// <summary>Is a point (layout-local metres) over water: a free pool's shape where there is one, else its cell's basin.</summary>
+        public bool WaterAtPoint(float mx, float mz)
+        {
+            var p = new Vector2(mx, mz);
+            foreach (var f in poolFeatures)
+                if (f.kind == PoolFeatureKind.FreePool && f.bounds.Contains(p)) return PoolBiome.ShapeSD(f, p) < 0f;
+            int x = Mathf.FloorToInt(mx / OfficeBiome.CellSize), z = Mathf.FloorToInt(mz / OfficeBiome.CellSize);
+            if (pool == null || !InChunk(x, z)) return false;
+            if (FreePoolRoom(x, z)) return false;
+            return pool[x, z].basin;
+        }
+
+        /// <summary>Is this cell in a room with a free pool (its floor is built from the pool's shape)?</summary>
+        public bool FreePoolRoom(int x, int z)
+        {
+            int gid = RoomAt(x, z).globalId;
+            foreach (var f in poolFeatures) if (f.kind == PoolFeatureKind.FreePool && f.room == gid) return true;
+            return false;
+        }
 
         /// <summary>The arched span an edge belongs to, if any (vertical: line X = line at z = along; else line Z = line at x = along).</summary>
         public bool ArchSpan(bool vertical, int line, int along, out int index, out int length)

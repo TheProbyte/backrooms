@@ -19,6 +19,7 @@ namespace Backrooms.Audio
         CamcorderAudioChain _chain;
         AudioSource _feet, _zoom, _wade;
         float _wadeLevel;
+        int _wadeStepsHeard;
         float _zoomLevel;
         int _zoomVersion = -1;
         float _travel;
@@ -155,6 +156,18 @@ namespace Backrooms.Audio
             if (_body && _body.FeetActive) { _travel = 0f; return; }           // the feet play their own steps
             if (_player.Sliding) { _travel = 0f; return; }                     // the slide is its own sound
 
+            // Wading: a step each time a foot comes down on the water's clock (in step with the camera's gait).
+            if (_player.Wade > 0.5f && !_player.IsCrawling)
+            {
+                _travel = 0f;
+                if (_player.WadeSteps == _wadeStepsHeard) return;
+                _wadeStepsHeard = _player.WadeSteps;
+                if (speed < 0.15f) return;
+                Play(ProceduralSounds.Floor.Water, transform.position, _player.IsRunning ? 1.4f : Mathf.Lerp(0.7f, 1f, speed / Mathf.Max(0.1f, _player.walkSpeed)));
+                if (_chain) _chain.HandlingImpulse();
+                return;
+            }
+            _wadeStepsHeard = _player.WadeSteps;
             _travel += d.magnitude;
             float stride = _player.IsCrawling ? (_player.CrawlingFast ? 0.5f : 0.42f) : _player.IsRunning ? runStride : walkStride;
             if (_travel < stride) return;
