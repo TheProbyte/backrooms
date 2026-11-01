@@ -33,7 +33,7 @@ namespace Backrooms.Atmosphere
     ///    room whose lights are off. Then it is gone for a while.
     /// Near it the camcorder's picture breaks up (<see cref="CamcorderRig.Interference"/>) and the power sags.
     /// </summary>
-    public class ShadowStalker : MonoBehaviour
+    public class ShadowStalker : MonoBehaviour, IDevEnemy
     {
         public enum Mode { Absent, Stalk, Evade, Angry, Leave, Caught }
 
@@ -79,6 +79,9 @@ namespace Backrooms.Atmosphere
             _crackle.playOnAwake = false; _crackle.spatialBlend = 0f;
         }
 
+        void OnEnable() { EnemyDebug.Register(this); }
+        void OnDisable() { EnemyDebug.Unregister(this); }
+
         void OnDestroy()
         {
             if (Instance == this) Instance = null;
@@ -89,8 +92,11 @@ namespace Backrooms.Atmosphere
 
         // ---------------- The director's calls ----------------
 
-        /// <summary>Comes: somewhere 15-25 cells' walk from you, out of sight. False if there is nowhere (or no player).</summary>
-        public bool Begin(bool bold)
+        /// <summary>Comes: somewhere 14-22 cells' walk from you, out of sight. False if there is nowhere (or no player).</summary>
+        public bool Begin(bool bold) => Begin(bold, 14, 22);
+
+        /// <summary>Comes: somewhere minSteps-maxSteps cells' walk from you, out of sight.</summary>
+        public bool Begin(bool bold, int minSteps, int maxSteps)
         {
             if (Current == Mode.Caught) return false;
             if (!Ready()) return false;
@@ -98,10 +104,10 @@ namespace Backrooms.Atmosphere
             _storey = StoreyAt(p, out _baseY);
             var from = CellOf(p);
             if (!Walkable(from)) return false;
-            Flood(from, 26);
+            Flood(from, maxSteps + 4);
             var picks = new List<Vector2Int>();
             foreach (var kv in _steps)
-                if (kv.Value >= 14 && kv.Value <= 22 && !CellVisible(kv.Key)) picks.Add(kv.Key);
+                if (kv.Value >= minSteps && kv.Value <= maxSteps && !CellVisible(kv.Key)) picks.Add(kv.Key);
             if (picks.Count == 0) return false;
             _cell = picks[_rng.Next(picks.Count)];
             _pos = Centre(_cell);
@@ -152,7 +158,8 @@ namespace Backrooms.Atmosphere
 
             // Seen? (its shadow on the wall, or, charging, its eyes.)
             bool seen = _sheet != null && _sheet.Seen();
-            if (seen)
+            bool frozen = EnemyDebug.Freeze;                           // (the test menu: it stands, its anger stays)
+            if (seen && !frozen)
             {
                 bool close = _sheet.DistanceToEye < 6f;
                 if (!_seenLast) Anger += close ? 0.15f : 0.08f;
@@ -167,6 +174,7 @@ namespace Backrooms.Atmosphere
                     _peekT = 0f;
                 }
             }
+            else if (frozen) { }
             else if (Bold && Current == Mode.Stalk) Anger += dt * 0.012f;          // the peak: it works itself up
             else Anger = Mathf.Max(0f, Anger - dt * 0.015f);
             Anger = Mathf.Min(Anger, 1.5f);
@@ -174,7 +182,7 @@ namespace Backrooms.Atmosphere
 
             _think -= dt;
             if (_wait > 0f) _wait -= dt;
-            switch (Current)
+            if (!frozen) switch (Current)
             {
                 case Mode.Stalk:
                 {
@@ -210,7 +218,12 @@ namespace Backrooms.Atmosphere
                         if (Distance < 2.6f && Clear(pp)) { Vector3 aim = pp; aim.y = _pos.y; _pos = Vector3.MoveTowards(_pos, aim, 5.6f * dt); }
                         else Walk(5.6f, false, dt);
                     }
-                    if (Distance < 0.8f) { StartCoroutine(Catch()); return; }
+                    if (Distance < 0.8f)
+                    {
+                        if (!EnemyDebug.NoCatch) { StartCoroutine(Catch()); return; }
+                        EnemyDebug.Say("The shadow reached you (can't be caught is on: it backs off).");
+                        _angryLeft = 0f;
+                    }
                     if (_angryLeft <= 0f) { Anger = 0.3f; Current = Mode.Evade; _evadeLeft = 5f; _think = 0f; }
                     break;
                 }
@@ -336,6 +349,8 @@ namespace Backrooms.Atmosphere
                                 SrcId = Shader.PropertyToID("_SrcBlend"), DstId = Shader.PropertyToID("_DstBlend");
             const float Aspect = 0.32f;
             public float DistanceToEye { get; private set; } = 999f;
+            /// <summary>Its middle, while it shows (for the test menu's marker).</summary>
+            public Vector3? Where => _root && _root.activeSelf ? _root.transform.position + Vector3.up * _h * 0.6f : (Vector3?)null;
             public string Status => _root && _root.activeSelf ? $" shadow {(_onWall ? "on a wall" : "standing")} {_strength:0.00} {_h:0.0} m eyes {_glow:0.00}" : "";
 
             public Sheet(ShadowStalker s)
@@ -500,6 +515,62 @@ namespace Backrooms.Atmosphere
                     if (score < best) { best = score; at = hit.point; normal = n; height = h; }
                 }
                 return best < float.MaxValue;
+            }
+        }
+
+        // ---------------- The test menu (EnemiesMenu, K) ----------------
+
+        public string DevName => "The shadow";
+        public string DevStatus => Current == Mode.Absent ? "Not here." : Status;
+        public bool DevPresent => Current != Mode.Absent && Current != Mode.Caught;
+        public Vector3 DevPosition => _pos;
+        public Vector3? DevShownAt => _sheet?.Where;
+
+        public void DevActions(List<DevAction> into)
+        {
+            into.Add(DevAction.Header("Bring it"));
+            into.Add(new DevAction("Come close", () => DevBring(false, true), "It comes about 8-14 m off (7-12 cells' walk), out of sight."));
+            into.Add(new DevAction("Come", () => DevBring(false, false), "It comes as the director sends it: 17-26 m off, out of sight."));
+            into.Add(new DevAction(Bold ? "Not bold" : "Bold (the peak)", () => { if (DevBring(!Bold, true)) EnemyDebug.Say(Bold ? "The shadow is bold: 4.5 m off, its anger builds by itself." : "The shadow is not bold."); },
+                "Bold: it keeps 4.5 m off instead of 7.5 m, and its anger builds by itself."));
+            into.Add(DevAction.Header("Anger (it comes close first if it is not here)"));
+            into.Add(new DevAction("Calm (0)", () => DevAnger(0f, false), null));
+            into.Add(new DevAction("Dull eyes (0.45)", () => DevAnger(0.45f, false), "Two dull red points in its head."));
+            into.Add(new DevAction("Glowing eyes (0.8)", () => DevAnger(0.8f, false), "Its eyes glow and it darkens; a look or two more and it charges."));
+            into.Add(new DevAction("Charge now", () => DevAnger(1f, true), "It stands up off the wall and comes straight at you."));
+            into.Add(DevAction.Header("Send it away"));
+            into.Add(new DevAction("Leave", () => { Leave(); EnemyDebug.Say("The shadow is leaving."); }, "It drifts off and is gone."));
+            into.Add(new DevAction("Gone now", () => { Vanish(); EnemyDebug.Say("The shadow is gone."); }, null));
+        }
+
+        /// <summary>Here (bringing it if it is not); the director hands off. False if there is nowhere out of sight.</summary>
+        bool DevBring(bool bold, bool near)
+        {
+            EnemyDebug.Hold = true;
+            if (Current == Mode.Caught) { EnemyDebug.Say("It has just caught you: wait a moment."); return false; }
+            if (Current != Mode.Absent)
+            {
+                Bold = bold;
+                if (Current == Mode.Leave) { Current = Mode.Stalk; _think = 0f; }
+                return true;
+            }
+            bool ok = near ? Begin(bold, 7, 12) : Begin(bold);
+            if (ok) EnemyDebug.Say($"The shadow came, {Vector3.Distance(_pos, _player.transform.position):0} m off{(bold ? ", bold" : "")}.");
+            else EnemyDebug.Say("The shadow could not come: nowhere out of sight here (or the director is off: noclip, the Poolrooms, Tension director 0).");
+            return ok;
+        }
+
+        void DevAnger(float a, bool charge)
+        {
+            if (Current == Mode.Absent && !DevBring(Bold, true)) return;
+            if (!DevPresent) return;
+            EnemyDebug.Hold = true;
+            Anger = a;
+            if (charge) { Current = Mode.Angry; _angryLeft = 4.5f; _think = 0f; _wait = 0.25f; EnemyDebug.Say("The shadow charges."); }
+            else
+            {
+                if (Current == Mode.Angry) { Current = Mode.Evade; _evadeLeft = 3f; _think = 0f; }
+                EnemyDebug.Say($"The shadow's anger: {a:0.00}.");
             }
         }
 

@@ -15,6 +15,20 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-10-31 - The Enemies menu (K): test the shadow, and enemies to come, without waiting
+
+- The owner: "a way to test him or future enemies instead of waiting around to see him".
+- Research: Unreal's Gameplay Debugger (a key toggles an overlay of each AI's state; custom categories per game), cheat
+  managers' exec commands, Valve's notarget / ai_disable.
+- `Atmosphere/EnemyDebug.cs` (new): an `IDevEnemy` interface and a registry, and the switches Hold (the director hands
+  off), NoCatch, Freeze, Overlay. `Atmosphere/EnemiesMenu.cs` (new, K, added by the director): a side panel with the
+  switches, the director (phase, Peak now, dark, flicker, door) and each enemy's status and buttons, Turn to face it; the
+  overlay marks where each enemy is (red) and where it shows (yellow) through walls, with its status in the corner.
+- `ShadowStalker` is the first: Come close / Come / Bold, anger Calm / Dull eyes / Glowing eyes / Charge now, Leave / Gone
+  now; `Begin(bold, minSteps, maxSteps)`; Freeze and NoCatch honoured. The pause menu leaves Escape to it.
+- Checked in World 3: brought it close (11 m), set glowing eyes, the marker and corner status (pictures), a charge with
+  can't be caught on reached and backed off. EditMode tests pass. Not played by the owner.
+
 ## 2026-10-31 - The shadow is a shadow: a long tall silhouette on the walls, keeps its distance, red eyes as it angers
 
 - The owner: the figure was good barely seen but not walking in full view; make it an actual long tall shadow on walls,

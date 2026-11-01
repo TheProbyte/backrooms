@@ -78,6 +78,7 @@ namespace Backrooms.Atmosphere
         {
             Instance = this;
             _stalker = gameObject.AddComponent<ShadowStalker>();
+            gameObject.AddComponent<EnemiesMenu>();          // the developer menu (K)
             Enter(Phase.Relax, 30f, 60f);
         }
 
@@ -103,7 +104,7 @@ namespace Backrooms.Atmosphere
             FixtureLightManager.DirectorSag = Mathf.Max(_sag, _stalker ? _stalker.Sag : 0f);
             if (!active) return;
             // The shadow, by phase: it comes with the build-up (once a little of it has passed), is bold at the peak, goes.
-            if (_stalker)
+            if (_stalker && !EnemyDebug.Hold)                 // (the test menu can tell it to leave the shadow alone)
             {
                 if (Current == Phase.BuildUp && _stalker.Current == ShadowStalker.Mode.Absent && Time.time - _phaseStart > 12f && Time.time >= _stalkerRetry)
                 {

@@ -248,3 +248,20 @@ where you look.
   picks up 20-45 m away in a room whose lights are off (saved: find its switch). The director goes to its fade.
 - Near it the picture breaks up (`CamcorderRig.Interference`, through the noclip glitch: tracking, tearing, sound
   dropouts) and the power sags. Route planning: about 1.5 ms in the editor, every 0.8 s.
+
+## Testing the enemies: the Enemies menu (K)
+
+`Atmosphere/EnemiesMenu.cs`, `Atmosphere/EnemyDebug.cs` (2026-10-31, the owner: "a way to test him or future enemies
+instead of waiting around"). After Unreal's Gameplay Debugger (an overlay of what each AI is doing, toggled by a key) and
+Valve's notarget / ai_disable switches. **K** in a level opens a panel down the right side (the level stays in view; K or
+Escape closes it):
+- **Switches**: *Director hands off* (the tension director no longer sends, emboldens or calls off the enemies; any button
+  that brings one turns it on), *Can't be caught* (it reaches you and backs off), *Freeze enemies* (they stand still, their
+  anger stays put), *Show on screen* (their status in the top-left corner and a marker through walls where each really is,
+  red, and where it shows, yellow, with the menu closed too).
+- **Tension director**: its phase and tension; Peak now, a room goes dark, lights flicker, a door swings shut.
+- **Each enemy**: its status, *Turn to face it*, and its own buttons. The shadow: Come close (8-14 m off, out of sight),
+  Come (as the director sends it), Bold; anger Calm / Dull eyes (0.45) / Glowing eyes (0.8) / Charge now; Leave, Gone now.
+- **A new enemy**: implement `IDevEnemy` (name, status line, present, position, where it shows, its buttons as
+  `DevAction`s, `DevAction.Header` between groups) and call `EnemyDebug.Register(this)` in OnEnable /
+  `Unregister` in OnDisable; check `EnemyDebug.Hold`, `NoCatch` and `Freeze` in its own logic.
