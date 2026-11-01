@@ -210,6 +210,43 @@ the wading swish. In order of how much they add for the work:
 8. **Laps at the edges**: when the ripples reach a wall or the pool edge, a soft lap sound there (the simulation knows
    where).
 
+## Wading motion: the plan (2026-10-31, not built)
+
+Built so far: slower (80 % walk, 64 % run) and slower to start and stop. The camera's walk (HandheldCameraShake: a recorded
+handheld walk played by stride) only plays slower in water, so it reads as walking slowly, not wading. Studies of walking
+in water: shorter steps, slower, more knee and hip bend at each foot strike (lifting the legs), less even left to right.
+1. **A wading gait for the camera**: blend into it in water by speed. Each stride a slow lift (the leg coming up out of
+   the water) and a quicker drop as it goes down, a bigger rise and fall than on land, more roll from side to side
+   (weight going leg to leg), uneven left and right, the camera leaning a degree into the water's push.
+2. **Surges**: the speed pulsing with the stride (each push gains a little, the drag takes it back between), in step
+   with the gait and the step sounds.
+3. **Stepping in and out**: a dip as you step down into a basin (the steps), a lift climbing out.
+4. **Running in water**: lurching, heavier, the effort building (HandheldCameraShake.exertion: heavier breathing after).
+5. **Standing in water**: a faint sway as the water moves round the legs.
+
+## Architecture: the next improvements (2026-10-31, the plan; not built)
+
+The references: sunlit tiled halls, curved pools with rounded coping and chrome ladders in round halls, vaulted tiled
+tunnels with a channel of water and a walkway beside it, tall arched windows. Constraint for all of them: the sun,
+reflections and bounce are traced through the cell map, so anything new must go into the map (or an exact shape the
+shaders can test), or it casts no sun shadow and is missing from reflections.
+1. **Tile detailing (cheap, big effect)**: darker border tiles round pool edges and at the waterline, a line of grime
+   at the waterline, dark lane lines and drains on pool floors, overflow gutters, a few cracked or missing tiles,
+   tile colour zones by room (sage, cream, white, pale blue), chrome ladders and handrails at pool edges.
+2. **Free-form pools**: a pool that is not the whole room: a rounded rectangle, kidney or round pool in a hall with deck
+   all round, curved coping (an exact shape per room the shaders and the builder share).
+3. **Vaulted tunnels and channels**: barrel-vaulted corridors (the third reference), and long flooded channels with a
+   raised walkway along one side that bend away out of sight (the first reference, and image 5's walkways).
+4. **Depth**: pool floors that slope from a shallow end to a deep end (darker water), deep pools you cannot wade into
+   (ladders, a rail), zero-depth ramps into the water.
+5. **Round halls**: circular rooms with a curved tiled wall and a round opening in the middle of the ceiling (an
+   oculus), a pool following the curve (the second reference).
+6. **Cascades**: wide steps with water running down them between levels, slots in walls with water falling: the one
+   place you hear running water.
+7. **Rooms with a purpose, empty**: changing rooms and showers, bleachers over a pool, a lifeguard's chair, a water
+   slide's tube coming out of a wall.
+8. **Galleries**: a walkway round a tall hall at the second floor, looking down onto the water.
+
 ## Known gaps / ideas
 
 - Crawling inside a basin puts the camera under the water surface, which is single-sided (nothing drawn from below).
