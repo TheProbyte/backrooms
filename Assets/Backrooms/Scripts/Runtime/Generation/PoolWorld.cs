@@ -47,7 +47,10 @@ namespace Backrooms.Generation
         public float SunNow { get; private set; } = 1f;
         /// <summary>The player's camera is under the water (crawling or crouched in a deep pool).</summary>
         public static bool CameraUnderwater { get; private set; }
+        /// <summary>The player's camera is in the Poolrooms (the camcorder adapts faster in their daylight).</summary>
+        public static bool CameraInPool { get; private set; }
         bool _camInPool, _camSeen;
+        float _breathAt;
 
         Texture2D _map, _map2;
         Color32[] _px, _px2;
@@ -89,6 +92,7 @@ namespace Backrooms.Generation
             if (!GetComponent<PoolAir>()) gameObject.AddComponent<PoolAir>();
             if (!GetComponent<PoolMirror>()) gameObject.AddComponent<PoolMirror>();
             if (!GetComponent<Audio.PoolSounds>()) gameObject.AddComponent<Audio.PoolSounds>();
+            if (!GetComponent<PoolFalls>()) gameObject.AddComponent<PoolFalls>();
             ApplyLight();
             RenderPipelineManager.beginCameraRendering += BeginCamera;
             RenderPipelineManager.endCameraRendering += EndCamera;
@@ -173,10 +177,16 @@ namespace Backrooms.Generation
             bool under = WaterAt(p, out float level) && p.y < level - 0.005f;
             if (CameraUnderwater && !under) { Camcorder.LensDrops.Add(5, 0.9f); Camcorder.LensFog.Fog(0.3f, 4f); }
             CameraUnderwater = under;
+            // Breath under the water: a puff of bubbles every few seconds.
+            if (under && Time.time > _breathAt)
+            {
+                _breathAt = Time.time + Random.Range(2.8f, 4.5f);
+                PoolSplashes.Bubbles(new Vector3(p.x, level, p.z) + cam.transform.forward * 0.15f, 7, 0.06f, Mathf.Max(0.05f, level - p.y));
+            }
             Shader.SetGlobalVector("_PoolUnderwater", new Vector4(under ? 1f : 0f, level, 0f, 0f));
             bool inPool = IsPool(p);
             if (inPool && !_camInPool && _camSeen) Camcorder.LensFog.Fog(0.85f, 11f);
-            _camInPool = inPool; _camSeen = true;
+            _camInPool = inPool; _camSeen = true; CameraInPool = inPool;
         }
 
         // ---------------- Clouds ----------------
@@ -209,8 +219,12 @@ namespace Backrooms.Generation
             var L = PoolBiome.SunDirection;
             var deck = new Vector2(pw.x + L.x / L.y * (300f - pw.y), pw.z + L.z / L.y * (300f - pw.y));
             var s = (deck + drift) * 0.004f;
-            float n = Noise(s) * 0.55f + Noise(s * 2.03f + new Vector2(17.1f, 17.1f)) * 0.3f + Noise(s * 4.1f + new Vector2(5.3f, 5.3f)) * 0.15f;
-            float a = 1f - cloudCover, t = Mathf.Clamp01((n - a) / 0.2f);
+            var warp = new Vector2(Noise(s * 0.7f + new Vector2(3.1f, 3.1f)), Noise(s * 0.7f + new Vector2(8.4f, 8.4f))) - new Vector2(0.5f, 0.5f);
+            s += warp * 1.2f;
+            float n = Noise(s) * 0.5f + Noise(s * 2.03f + new Vector2(17.1f, 17.1f)) * 0.3f + Noise(s * 4.1f + new Vector2(5.3f, 5.3f)) * 0.2f;
+            float o = Mathf.Clamp01((Noise(deck * 0.0011f + new Vector2(41f, 41f)) - 0.62f) / 0.16f);
+            float cover = cloudCover + 0.55f * o * o * (3f - 2f * o);
+            float a = 1f - cover, t = Mathf.Clamp01((n - a) / 0.12f);
             return 1f - cloudShadow * t * t * (3f - 2f * t);
         }
 

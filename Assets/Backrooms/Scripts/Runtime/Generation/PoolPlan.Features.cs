@@ -14,7 +14,7 @@ namespace Backrooms.Generation
     /// </summary>
     public static partial class PoolPlan
     {
-        public enum Tag : byte { None, Vault, Round, Gallery, FreePool, Purpose }
+        public enum Tag : byte { None, Vault, Round, Gallery, FreePool, Purpose, Park }
 
         const float C = OfficeBiome.CellSize, T = OfficeBiome.WallThickness;
 
@@ -30,6 +30,11 @@ namespace Backrooms.Generation
                 var rc = r.rect;
                 int w = rc.width, h = rc.height, mn = Mathf.Min(w, h), mx = Mathf.Max(w, h);
                 bool basin = L.Basin(rc.xMin + w / 2, rc.yMin + h / 2);
+
+                // The water park's rooms (PoolPlan.WaterPark.cs).
+                if (IsPark(L, rc)) { if (WaterParkRoom(L, r, rng)) tags[r.id] = Tag.Park; continue; }
+                // The channels' rooms (PoolPlan.Channels.cs): vaulted channels and halls with a winding walkway.
+                if (IsChannels(L, rc) && ChannelRoom(L, r, rng)) { if (r.kind == RoomKind.Hallway) tags[r.id] = Tag.Vault; continue; }
 
                 if (r.kind == RoomKind.Hallway && mn <= 3 && mx >= 4 && rng.NextDouble() < 0.4)
                 { Vault(L, r, rng); tags[r.id] = Tag.Vault; continue; }
@@ -77,7 +82,7 @@ namespace Backrooms.Generation
 
         // ---------------- Vaults and channels ----------------
 
-        static void Vault(OfficeLayout L, Room r, System.Random rng)
+        static void Vault(OfficeLayout L, Room r, System.Random rng, bool flood = false)
         {
             var rc = r.rect;
             bool alongX = rc.width >= rc.height;
@@ -87,7 +92,7 @@ namespace Backrooms.Generation
             L.poolFeatures.Add(new PoolFeature { kind = PoolFeatureKind.Vault, bounds = Metres(rc), centre = Metres(rc).center, yaw = alongX ? 0f : 90f,
                                                  radius = radius, height = r.ceiling - radius, room = r.globalId });
             // A flooded channel with a walkway along one side, or dry.
-            if (rng.NextDouble() < 0.6)
+            if (flood || rng.NextDouble() < 0.6)
             {
                 FillCells(L, rc, c => c.basin = true);
                 if (across >= 2)
@@ -265,10 +270,13 @@ namespace Backrooms.Generation
             return new PoolFeature { kind = k, centre = at, yaw = yaw, size = size, room = r.globalId, bounds = new Rect(at.x - e, at.y - e, 2f * e, 2f * e) };
         }
 
-        static void AddFreePool(OfficeLayout L, Room r, Vector2 centre, Vector2 size, float radius, int shape, float yaw, float shallow, float deep, System.Random rng)
+        /// <param name="width">A ring's width (shape 3, the lazy river).</param>
+        /// <param name="ladders">Ladders on its sides (not in a kiddie pool or a plunge pool).</param>
+        static PoolFeature AddFreePool(OfficeLayout L, Room r, Vector2 centre, Vector2 size, float radius, int shape, float yaw, float shallow, float deep, System.Random rng,
+            float width = 0f, bool ladders = true)
         {
             var f = new PoolFeature { kind = PoolFeatureKind.FreePool, centre = centre, size = size, radius = radius, shape = shape, yaw = yaw,
-                                      depth = shallow, depth2 = deep, room = r.globalId };
+                                      depth = shallow, depth2 = deep, room = r.globalId, height = width };
             float e = Mathf.Max(size.x, size.y) + 0.2f;
             f.bounds = new Rect(centre.x - e, centre.y - e, 2f * e, 2f * e);
             L.poolFeatures.Add(f);
@@ -284,9 +292,11 @@ namespace Backrooms.Generation
                 L.pool[x, z] = k;
             }
             // Two chrome ladders on the long sides near the deep end (one on a round pool).
+            if (!ladders) return f;
             if (shape != 1)
                 foreach (float s in new[] { -1f, 1f }) EdgeLadder(L, r, f, centre + Rot(new Vector2(size.x * 0.45f, s * size.y), yaw));
             else EdgeLadder(L, r, f, centre + Rot(new Vector2(0f, -size.y), yaw + 45f));
+            return f;
         }
 
         /// <summary>

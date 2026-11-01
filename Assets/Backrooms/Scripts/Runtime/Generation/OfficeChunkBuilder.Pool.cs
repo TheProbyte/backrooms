@@ -77,13 +77,7 @@ namespace Backrooms.Generation
             return true;
         }
 
-        /// <summary>As PoolCommon.hlsl's PoolGlassBlock (40 % of the high windows).</summary>
-        static bool GlassBlockAt(int x, int z, uint side)
-        {
-            uint h = ((uint)x * 2654435761u) ^ ((uint)z * 40503u) ^ (side * 97u);
-            h ^= h >> 15; h *= 0x2c1b3c6du; h ^= h >> 12;
-            return h % 100u < 40u;
-        }
+        static bool GlassBlockAt(int x, int z, uint side) => PoolBiome.GlassBlock(x, z, side);
 
         /// <summary>Floor of a cell (deck 0, basin below), here or next door; null if unknown.</summary>
         float? FloorAt(int x, int z)
@@ -162,6 +156,7 @@ namespace Backrooms.Generation
                 water.Quad(new Vector3(x0, wy, z0), new Vector3(x0, wy, z1), new Vector3(x1, wy, z1), new Vector3(x1, wy, z0), Vector3.up, MeshWriter.MetreUV);
                 int side = StairSideOf(x, z);
                 if (side >= 0) Stairs(tile, x, z, side);
+                if (_L.pool[x, z].lanes != 0) LaneRopes(x, z, _L.pool[x, z].lanes);
             }
 
             // Floor colliders: runs of one level per row; the deck's are deep enough to make the basin's edges solid. Free
@@ -312,6 +307,17 @@ namespace Backrooms.Generation
                 if (hole.yMax < C - 0.001f || (joined & 8) == 0) Well(P(hole.xMin, hole.yMax, 0), P(hole.xMax, hole.yMax, 0), Vector3.back);
                 // The sky, closing the top of the well.
                 sky.Quad(P(hole.xMin, hole.yMin, top), P(hole.xMax, hole.yMin, top), P(hole.xMax, hole.yMax, top), P(hole.xMin, hole.yMax, top), Vector3.down, MeshWriter.MetreUV);
+                // A glazed roof light's frame (2026-11-01, the review: it was painted in the sky): bars with depth every
+                // 0.6 m (world-aligned, as the sky shader and the sun's trace have them), just under the pane.
+                if (PoolBiome.Glazed(_L.coord.x * _L.N + x, _L.coord.y * _L.N + z, shape))
+                {
+                    var bar = WMask(PoolMaterials.Grille ? PoolMaterials.Grille : TileMat, 1u);
+                    float by = top - 0.035f;
+                    for (float u = Mathf.Ceil((x0 + hole.xMin) / 0.6f + 0.001f) * 0.6f; u < x0 + hole.xMax - 0.001f; u += 0.6f)
+                        bar.Box(new Vector3(u, by, z0 + (hole.yMin + hole.yMax) * 0.5f), new Vector3(0.04f, 0.06f, hole.yMax - hole.yMin), 0b001111 | 0b110000, MeshWriter.MetreUV);
+                    for (float v = Mathf.Ceil((z0 + hole.yMin) / 0.6f + 0.001f) * 0.6f; v < z0 + hole.yMax - 0.001f; v += 0.6f)
+                        bar.Box(new Vector3(x0 + (hole.xMin + hole.xMax) * 0.5f, by, v), new Vector3(hole.xMax - hole.xMin, 0.06f, 0.04f), 0b111111, MeshWriter.MetreUV);
+                }
             }
         }
 
@@ -434,14 +440,14 @@ namespace Backrooms.Generation
                 if (!c.valid) continue;
                 float fy = PoolBiome.FloorY(c.basin) + 0.02f, x0 = (i - N) * C, z0 = (j - N) * C;
                 float sun = 0f;
-                for (int k = 0; k < 4; k++) sun += PoolSun.Visibility(g, new Vector3(x0 + C * (0.25f + 0.5f * (k & 1)), fy, z0 + C * (0.25f + 0.5f * (k >> 1))), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue);
+                for (int k = 0; k < 4; k++) sun += PoolSun.Visibility(g, new Vector3(x0 + C * (0.25f + 0.5f * (k & 1)), fy, z0 + C * (0.25f + 0.5f * (k >> 1))), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue, new Vector2Int(_L.coord.x * _L.N, _L.coord.y * _L.N));
                 sun *= 0.25f;
                 // Sun on the walls of the cell (bars of light from slots near a wall bounce as well).
                 float wallSun = 0f;
-                if (PoolSun.Solid(c.west)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + T * 0.5f + 0.02f, 1.4f, z0 + C * 0.5f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue);
-                if (PoolSun.Solid(c.south)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + T * 0.5f + 0.02f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue);
-                if (i + 1 < W && PoolSun.Solid(info[i + 1, j].west)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C - T * 0.5f - 0.02f, 1.4f, z0 + C * 0.5f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue);
-                if (j + 1 < W && PoolSun.Solid(info[i, j + 1].south)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + C - T * 0.5f - 0.02f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue);
+                if (PoolSun.Solid(c.west)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + T * 0.5f + 0.02f, 1.4f, z0 + C * 0.5f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue, new Vector2Int(_L.coord.x * _L.N, _L.coord.y * _L.N));
+                if (PoolSun.Solid(c.south)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + T * 0.5f + 0.02f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue, new Vector2Int(_L.coord.x * _L.N, _L.coord.y * _L.N));
+                if (i + 1 < W && PoolSun.Solid(info[i + 1, j].west)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C - T * 0.5f - 0.02f, 1.4f, z0 + C * 0.5f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue, new Vector2Int(_L.coord.x * _L.N, _L.coord.y * _L.N));
+                if (j + 1 < W && PoolSun.Solid(info[i, j + 1].south)) wallSun += PoolSun.Visibility(g, new Vector3(x0 + C * 0.5f, 1.4f, z0 + C - T * 0.5f - 0.02f), _L.storey < PoolWorld.MapStoreys - 1 ? _L.storeyPitch - 1.15f : float.MaxValue, new Vector2Int(_L.coord.x * _L.N, _L.coord.y * _L.N));
                 float skyOpen = c.sky == SkylightShape.None ? 0f : c.sky == SkylightShape.Full ? 0.7f : c.sky == SkylightShape.Round ? 0.45f : 0.25f;
                 src[i, j] = sun + 0.6f * wallSun + 0.5f * skyOpen;
             }

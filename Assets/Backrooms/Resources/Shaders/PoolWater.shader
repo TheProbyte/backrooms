@@ -7,7 +7,7 @@ Shader "Backrooms/PoolWater"
 {
     Properties
     {
-        _Absorb ("Absorption per metre", Vector) = (2.6, 0.95, 1.35, 0)
+        _Absorb ("Absorption per metre", Vector) = (2.8, 1.15, 1.5, 0)
         _Scatter ("In-scattered colour", Color) = (0.02, 0.18, 0.13, 1)
         _Shimmer ("Small waves on the surface", Range(0, 1)) = 0.05
         _Refraction ("Refraction", Range(0, 0.3)) = 0.15
@@ -162,7 +162,7 @@ Shader "Backrooms/PoolWater"
                 float2 suv = GetNormalizedScreenSpaceUV(i.positionCS);
                 float eye = LinearEyeDepth(i.positionCS.z, _ZBufferParams);
                 float3 below, refl;
-                float thick, contact = 0;
+                float thick, contact = 0, contactNear = 0;
                 PoolCell here = PoolLoad(PoolCellOf(P), PoolStorey(P.y));
                 float3 ambient = PoolAmbientAt(P, float3(0, 1, 0));
                 float3 R = reflect(-V, N);
@@ -188,10 +188,11 @@ Shader "Backrooms/PoolWater"
                     float3 sn = cross(ddy(sw), ddx(sw));
                     float upness = abs(sn.y) / max(length(sn), 1e-6);
                     contact *= 1.0 - smoothstep(0.45, 0.75, upness);
+                    contactNear = (1.0 - smoothstep(0.0, 0.45, flat * max(V.y, 0.25))) * (1.0 - smoothstep(0.45, 0.75, upness));
                     [branch] if (planar)
                     {
                         // Exact: the mirror, bent by the ripples (more the further the reflected thing; a fixed share here).
-                        float2 muv = suv + slope * 0.045;
+                        float2 muv = suv + slope * (0.012 + 0.04 * saturate(length(P - GetCameraPositionWS()) / 8.0));
                         refl = SAMPLE_TEXTURE2D_LOD(_PoolMirrorTex, sampler_LinearClamp, muv, 0).rgb;
                     }
                     else
@@ -253,6 +254,14 @@ Shader "Backrooms/PoolWater"
                     float a = max(smoothstep(thr - soft, thr + soft, n), saturate((foam - 0.95) * 2.0));
                     // Thick foam is not flat: the pattern shows in it as the shade of bubbles over bubbles.
                     color = lerp(color, foamCol * (0.8 + 0.25 * saturate(n)), a * 0.9);
+                }
+                // A faint film of dust and hair drifts to the edges (2026-11-01, the review): a matte, speckled sheen in the
+                // last half metre of water by a wall (the thin water there in the depth), dulling the mirror.
+                if (contactNear > 0.01)
+                {
+                    float sp = PoolValueNoise(P.xz * 9.0 + t * 0.02) * PoolValueNoise(P.xz * 23.0 - t * 0.03);
+                    float filmA = contactNear * (0.35 + 0.65 * sp);
+                    color = lerp(color, color * 0.92 + ambient * float3(0.05, 0.05, 0.04), filmA * 0.5);
                 }
                 // The contact line: where walls, rails and legs cut the surface, the water climbs them a little and holds a
                 // thin, broken line of foam (as Sea of Thieves foams round whatever is in its water), lifted by the light.

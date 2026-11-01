@@ -141,7 +141,8 @@ namespace Backrooms.Generation
     public enum SkylightShape : byte { None, Full, SlotX, SlotZ, Square, Round, Disc }
 
     /// <summary>The Poolrooms' larger pieces (2026-10-31, the architecture plan): what they are.</summary>
-    public enum PoolFeatureKind : byte { FreePool, Slope, Vault, RoundHall, Gallery, Spout, Cascade, Ladder, Changing, Showers, Bleachers, Lifeguard, Slide }
+    public enum PoolFeatureKind : byte { FreePool, Slope, Vault, RoundHall, Gallery, Spout, Cascade, Ladder, Changing, Showers, Bleachers, Lifeguard, Slide,
+        Mushroom, Arch, SlideTower, WaveMaker }
 
     /// <summary>
     /// One of the Poolrooms' larger pieces, in layout-local metres (x, z). Planned per district (PoolPlan), sliced to every
@@ -156,6 +157,11 @@ namespace Backrooms.Generation
     ///  - Spout / Cascade: centre (the point on the wall face), yaw (facing into the room), height (of the slot), size.x
     ///    (half its width); a cascade's steps run size.x along the wall.
     ///  - Ladder, Lifeguard, Slide, Bleachers, Changing, Showers: centre, yaw, size (extent), shape (variant).
+    ///  - The water park (2026-11-01, PoolPlan.WaterPark): FreePool shape 3 is a ring (the lazy river), height its width.
+    ///    Mushroom: centre, radius (its cap), height (the cap's rim), shape (colour). Arch: centre (the nozzle on the wall
+    ///    face), yaw (into the room), size.x (how far it throws), height (its peak). SlideTower: centre (the tower), yaw
+    ///    (toward its pool), size.x (to the pool's middle), height (the platform), shape (colour 0-3, 4: curls the other
+    ///    way). WaveMaker: centre (the deep end's wall), yaw (toward the beach), size.x (half the chambers' width).
     /// </summary>
     public struct PoolFeature
     {

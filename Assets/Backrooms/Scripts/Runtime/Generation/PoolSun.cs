@@ -47,7 +47,9 @@ namespace Backrooms.Generation
 
         /// <summary>Sunlight reaching point p (metres in the grid's frame, y above the deck): 0 = shade, 1 = full sun.</summary>
         /// <param name="shaftCap">The highest a light well's top may reach (under another storey; PoolBiome.Shaft).</param>
-        public static float Visibility(IPoolCells g, Vector3 p, float shaftCap = float.MaxValue)
+        /// <param name="origin">The grid's cell (0, 0) in world cells, for which roof lights are glazed and which windows are
+        /// glass block (2026-11-01: so the bounce baked from this knows them, as the shaders do).</param>
+        public static float Visibility(IPoolCells g, Vector3 p, float shaftCap = float.MaxValue, Vector2Int origin = default)
         {
             Vector3 L = PoolBiome.SunDirection;
             int cx = Mathf.FloorToInt(p.x / C), cz = Mathf.FloorToInt(p.z / C);
@@ -76,7 +78,8 @@ namespace Backrooms.Generation
                     var q2 = p + L * (tCeil + shaft / L.y);
                     int qx = Mathf.FloorToInt(q2.x / C), qz = Mathf.FloorToInt(q2.z / C);
                     var c2 = qx == cx && qz == cz ? c : g.Get(qx, qz);
-                    return c2.valid && c2.sky == c.sky && c2.InHole(q2.x - qx * C, q2.z - qz * C) ? 1f : 0f;
+                    if (!(c2.valid && c2.sky == c.sky && c2.InHole(q2.x - qx * C, q2.z - qz * C))) return 0f;
+                    return PoolBiome.Glazed(cx + origin.x, cz + origin.y, c.sky) ? PoolBiome.GlazedTransmission : 1f;
                 }
                 float y = p.y + L.y * tExit;
                 int nx = cx, nz = cz;
@@ -87,7 +90,8 @@ namespace Backrooms.Generation
                 {
                     // A high window: the sky is beyond it.
                     float along = tx <= tz ? p.z + L.z * tExit - cz * C : p.x + L.x * tExit - cx * C;
-                    return PoolBiome.WindowSD(along, y, c.ceiling, n.ceiling) > 0f ? 1f : 0f;
+                    if (PoolBiome.WindowSD(along, y, c.ceiling, n.ceiling) <= 0f) return 0f;
+                    return PoolBiome.GlassBlock(nx + origin.x, nz + origin.y, tx <= tz ? 1u : 2u) ? PoolBiome.GlassBlockTransmission : 1f;
                 }
                 if (edge == Wall || (edge == Header && y > PoolBiome.HeaderHeight)) return 0f;
                 if (!n.valid || y >= n.ceiling) return 0f;

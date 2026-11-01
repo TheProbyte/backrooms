@@ -16,7 +16,11 @@ MonoBehaviour:
   mapColor: {r: 0.45, g: 0.8, b: 0.76, a: 1}
   weight: 0
   biomes:
+  - biome: {fileID: 11400000, guid: 0eb2213150cd4c44a8f2fe2bb40349dc, type: 2}
+    upTo: 0.28
   - biome: {fileID: 11400000, guid: b5f46cc2bdfe5314d993800daedd7360, type: 2}
+    upTo: 0.64
+  - biome: {fileID: 11400000, guid: a06690fa097ab694aab723fd9becc727, type: 2}
     upTo: 1
   edgeBiome: {fileID: 11400000, guid: b5f46cc2bdfe5314d993800daedd7360, type: 2}
   neighbours: []

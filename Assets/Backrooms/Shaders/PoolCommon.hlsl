@@ -216,11 +216,17 @@ float PoolCapsuleSun(float3 p)
 // shadow sweeps across every opening, beam and caustic together (as Unreal's cloud shadows). Set by PoolWorld.
 float4 _PoolCloud;                   // xy drift (m), z cover (0..1), w how much a cloud takes of the sun (0: off)
 float PoolValueNoise(float2 p);
+float2 PoolHash22(float2 p);
 float PoolCloudCover(float2 deck)
 {
+    // (2026-11-01, the review: soft blobs.) Warped by a second noise for billowing shapes, a crisper edge, and over some
+    // regions (a few hundred metres across, fixed in the world) the sky is overcast all day.
     float2 s = (deck + _PoolCloud.xy) * 0.004;
-    float n = PoolValueNoise(s) * 0.55 + PoolValueNoise(s * 2.03 + 17.1) * 0.3 + PoolValueNoise(s * 4.1 + 5.3) * 0.15;
-    return smoothstep(1.0 - _PoolCloud.z, 1.0 - _PoolCloud.z + 0.2, n);
+    float2 warp = float2(PoolValueNoise(s * 0.7 + 3.1), PoolValueNoise(s * 0.7 + 8.4)) - 0.5;
+    s += warp * 1.2;
+    float n = PoolValueNoise(s) * 0.5 + PoolValueNoise(s * 2.03 + 17.1) * 0.3 + PoolValueNoise(s * 4.1 + 5.3) * 0.2;
+    float cover = _PoolCloud.z + 0.55 * smoothstep(0.62, 0.78, PoolValueNoise(deck * 0.0011 + 41.0));
+    return smoothstep(1.0 - cover, 1.0 - cover + 0.12, n);
 }
 float PoolCloudShade(float3 pw)
 {
@@ -238,10 +244,16 @@ bool PoolGlazed(int2 cell, uint shape)
     h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
     return (h % 100u) < 45u;
 }
+// A pane now and then is broken out (2026-11-01, the review; a Backrooms tell): the sun comes through it whole.
+bool PoolPaneBroken(float2 xz)
+{
+    float2 id = floor(xz / 0.6);
+    return PoolHash22(id + 71.3).x < 0.035;
+}
 float PoolMullions(float2 xz, float blur)
 {
     float2 d = abs(frac(xz / 0.6 + 0.5) - 0.5) * 0.6;          // to the nearest bar (m)
-    return 0.82 * smoothstep(0.02 - blur, 0.02 + blur, min(d.x, d.y));
+    return (PoolPaneBroken(xz) ? 1.0 : 0.82) * smoothstep(0.02 - blur, 0.02 + blur, min(d.x, d.y));
 }
 // What happens to the sun at the top of a light well (world point there, the cell below, its opening).
 float PoolSkyGate(float3 top, int2 cell, uint shape, float blur)

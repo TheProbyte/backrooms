@@ -33,6 +33,10 @@ namespace Backrooms.Generation
         public static Material StainRing { get; private set; }
         public static Material GlassBlock { get; private set; }
         public static Material Tread { get; private set; }
+        /// <summary>The water park (2026-11-01): falling water (Backrooms/PoolSheet), red and yellow gelcoat.</summary>
+        public static Material Sheet { get; private set; }
+        public static Material PlasticRed { get; private set; }
+        public static Material PlasticYellow { get; private set; }
 
         public static void Ensure()
         {
@@ -41,12 +45,13 @@ namespace Backrooms.Generation
             Water = Make("Backrooms/PoolWater", "Pool water");
             Sky = Make("Backrooms/PoolSky", "Pool sky");
             Accent = Make("Backrooms/PoolTile", "Pool accent tiles");
-            if (Accent) { Accent.SetColor("_TileColor", new Color(0.17f, 0.42f, 0.4f)); Accent.SetColor("_DeckColor", new Color(0.17f, 0.42f, 0.4f)); Accent.SetColor("_GroutColor", new Color(0.55f, 0.62f, 0.6f)); }
+            if (Accent) { Accent.SetColor("_TileColor", new Color(0.17f, 0.42f, 0.4f)); Accent.SetColor("_DeckColor", new Color(0.17f, 0.42f, 0.4f)); Accent.SetColor("_GroutColor", new Color(0.55f, 0.62f, 0.6f)); Accent.SetFloat("_Chips", 0.06f); }
             Zones = new Material[4];
             Zones[0] = Tile;
-            Zones[1] = Zone("cream", new Color(0.88f, 0.86f, 0.78f), new Color(0.9f, 0.88f, 0.8f));
-            Zones[2] = Zone("mint", new Color(0.66f, 0.82f, 0.72f), new Color(0.84f, 0.86f, 0.78f));
-            Zones[3] = Zone("aqua", new Color(0.72f, 0.85f, 0.85f), new Color(0.86f, 0.88f, 0.84f));
+            // Grout by room too (2026-11-01, the review): a warmer, darker joint in the cream rooms, a grey one in the mint.
+            Zones[1] = Zone("cream", new Color(0.88f, 0.86f, 0.78f), new Color(0.9f, 0.88f, 0.8f), new Color(0.66f, 0.62f, 0.54f));
+            Zones[2] = Zone("mint", new Color(0.66f, 0.82f, 0.72f), new Color(0.84f, 0.86f, 0.78f), new Color(0.6f, 0.64f, 0.62f));
+            Zones[3] = Zone("aqua", new Color(0.72f, 0.85f, 0.85f), new Color(0.86f, 0.88f, 0.84f), new Color(0.78f, 0.82f, 0.8f));
             // Polished stainless / chrome reflects about 55-60 % head on (its F0), slightly cool; at 0.86 it read as white
             // plastic (2026-11-01, the owner: the rails "could use work visually").
             Chrome = Lit("Pool chrome", new Color(0.6f, 0.615f, 0.63f), 0.93f, 1f);
@@ -63,12 +68,15 @@ namespace Backrooms.Generation
             GlassBlock = Make("Backrooms/PoolGlassBlock", "Pool glass block");
             PlasticWhite = Lit("Pool plastic (white)", new Color(0.9f, 0.9f, 0.86f), 0.62f, 0f);
             PlasticBlue = Lit("Pool plastic (blue)", new Color(0.13f, 0.38f, 0.68f), 0.88f, 0f);      // glossy gelcoat
+            PlasticRed = Lit("Pool plastic (red)", new Color(0.66f, 0.1f, 0.08f), 0.86f, 0f);
+            PlasticYellow = Lit("Pool plastic (yellow)", new Color(0.86f, 0.64f, 0.12f), 0.86f, 0f);
+            Sheet = Make("Backrooms/PoolSheet", "Pool falling water");
         }
 
-        static Material Zone(string name, Color wall, Color deck)
+        static Material Zone(string name, Color wall, Color deck, Color? grout = null)
         {
             var m = Make("Backrooms/PoolTile", "Pool tiles (" + name + ")");
-            if (m) { m.SetColor("_TileColor", wall); m.SetColor("_DeckColor", deck); }
+            if (m) { m.SetColor("_TileColor", wall); m.SetColor("_DeckColor", deck); if (grout.HasValue) m.SetColor("_GroutColor", grout.Value); }
             return m ? m : Tile;
         }
 
@@ -93,7 +101,9 @@ namespace Backrooms.Generation
         public Vector2Int chunk;
         public int storey;
         public Color32[] cells, cells2;
-        /// <summary>Jets, skimmers and grilles (local: xyz, w kind 0/1/2) and the way each pushes or faces.</summary>
+        /// <summary>Jets, skimmers and grilles (local: xyz, w kind 0/1/2), and the water park's: 3 a lazy river's jet, 4 a wave
+        /// pool's chambers (dir: toward the beach, its length half their width), 5 a mushroom's falling ring (dir.x its radius,
+        /// dir.y the fall), 6 where an arch's stream lands (dir: the way it came). The way each pushes or faces.</summary>
         public Vector4[] fittings;
         public Vector3[] fittingDirs;
         /// <summary>Every loaded Poolrooms chunk (PoolCirculation and PoolSounds read their fittings).</summary>

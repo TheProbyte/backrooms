@@ -196,7 +196,7 @@ namespace Backrooms.Generation
         static void Windows(OfficeLayout L, System.Random rng, Dictionary<int, Tag> tags)
         {
             int n = L.N;
-            bool Plain(Room room) => !tags.TryGetValue(room.id, out var t) || t == Tag.FreePool || t == Tag.Purpose;
+            bool Plain(Room room) => !tags.TryGetValue(room.id, out var t) || t == Tag.FreePool || t == Tag.Purpose || t == Tag.Park;
             foreach (var r in L.rooms)
             {
                 if (!r.Walkable || r.spiral || r.openAbove || r.noFloor || !Plain(r)) continue;

@@ -15,8 +15,11 @@ namespace Backrooms.Generation
         public const int MaxJets = 16, MaxSinks = 8;
         /// <summary>A jet's speed at its nozzle (m/s) and how far its plume carries.</summary>
         public const float JetSpeed = 0.22f, PlumeLength = 2.4f, SinkPull = 0.07f, SinkReach = 2f;
+        /// <summary>A lazy river's jets (kind 3, the water park) push harder: its current about half a metre a second, as
+        /// real lazy rivers run (slow enough to stand in), the plumes longer so they join into one stream.</summary>
+        public const float RiverJetGain = 2.5f, RiverPlumeGain = 1.6f;
 
-        static readonly List<(Vector3 p, Vector3 d)> s_jets = new List<(Vector3, Vector3)>();
+        static readonly List<(Vector3 p, Vector3 d, float s)> s_jets = new List<(Vector3, Vector3, float)>();
         static readonly List<Vector3> s_sinks = new List<Vector3>();
         static int s_frame = -1;
 
@@ -32,10 +35,10 @@ namespace Backrooms.Generation
                 for (int i = 0; i < c.fittings.Length; i++)
                 {
                     int kind = Mathf.RoundToInt(c.fittings[i].w);
-                    if (kind > 1) continue;
+                    if (kind > 3 || kind == 2) continue;
                     var at = c.FittingAt(i);
                     if ((at - near).sqrMagnitude > 18f * 18f || Mathf.Abs(at.y - near.y) > 3f) continue;
-                    if (kind == 0) { var d = c.fittingDirs[i]; d.y = 0f; s_jets.Add((at, d.normalized)); }
+                    if (kind == 0 || kind == 3) { var d = c.fittingDirs[i]; d.y = 0f; s_jets.Add((at, d.normalized, kind == 3 ? RiverJetGain : 1f)); }
                     else s_sinks.Add(at);
                 }
             }
@@ -44,18 +47,41 @@ namespace Backrooms.Generation
             s_sinks.Sort((a, b) => (a - near).sqrMagnitude.CompareTo((b - near).sqrMagnitude));
         }
 
+        static float s_bubbleT;
+        /// <summary>
+        /// Where a return jet pushes water the surface boils a little over it, with now and then a few bubbles (2026-11-01,
+        /// the review): small disturbances of the ripple simulation and bubbles for the nearest four within 10 m.
+        /// </summary>
+        public static void Stir(Vector3 near, float dt)
+        {
+            Gather(near);
+            s_bubbleT += dt;
+            bool bubbles = s_bubbleT > 0.35f;
+            if (bubbles) s_bubbleT = 0f;
+            int n = 0;
+            foreach (var (p, d, _) in s_jets)
+            {
+                if (n >= 4) break;
+                if ((p - near).sqrMagnitude > 100f) continue;
+                n++;
+                var surf = new Vector3(p.x, PoolBiome.WaterLevel + Mathf.Floor((p.y + 0.6f) / 9f) * 9f, p.z) + d * 0.35f;
+                PoolRipples.Splash(surf + new Vector3(Random.Range(-0.1f, 0.1f), 0f, Random.Range(-0.1f, 0.1f)), 0.1f, Random.Range(-0.0012f, 0.0012f));
+                if (bubbles) PoolSplashes.Bubbles(surf, 2, 0.08f, Mathf.Max(0.1f, surf.y - p.y));
+            }
+        }
+
         /// <summary>The water's slow current at a point (horizontal, m/s), for floating things.</summary>
         public static Vector3 CurrentAt(Vector3 p, Vector3 near)
         {
             Gather(near);
             var v = Vector3.zero;
-            foreach (var (j, d) in s_jets)
+            foreach (var (j, d, s) in s_jets)
             {
                 var rel = p - j; rel.y = 0f;
-                float along = Vector3.Dot(rel, d);
-                if (along < -0.1f || along > PlumeLength * 2f) continue;
+                float along = Vector3.Dot(rel, d), plume = PlumeLength * (s > 1f ? RiverPlumeGain : 1f);
+                if (along < -0.1f || along > plume * 2f) continue;
                 float lat = (rel - d * along).magnitude, w = 0.2f + 0.18f * Mathf.Max(0f, along);
-                v += d * (JetSpeed * Mathf.Exp(-Mathf.Max(0f, along) / PlumeLength) * Mathf.Exp(-lat * lat / (w * w)));
+                v += d * (JetSpeed * s * Mathf.Exp(-Mathf.Max(0f, along) / plume) * Mathf.Exp(-lat * lat / (w * w)));
             }
             foreach (var s in s_sinks)
             {
@@ -72,7 +98,7 @@ namespace Backrooms.Generation
         {
             Gather(near);
             jetCount = Mathf.Min(s_jets.Count, Mathf.Min(MaxJets, jets.Length));
-            for (int i = 0; i < jetCount; i++) { var (p, d) = s_jets[i]; jets[i] = new Vector4(p.x, p.z, d.x * JetSpeed, d.z * JetSpeed); }
+            for (int i = 0; i < jetCount; i++) { var (p, d, s) = s_jets[i]; jets[i] = new Vector4(p.x, p.z, d.x * JetSpeed * s, d.z * JetSpeed * s); }
             sinkCount = Mathf.Min(s_sinks.Count, Mathf.Min(MaxSinks, sinks.Length));
             for (int i = 0; i < sinkCount; i++) { var p = s_sinks[i]; sinks[i] = new Vector4(p.x, p.z, SinkPull, SinkReach); }
         }

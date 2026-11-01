@@ -38,6 +38,10 @@ namespace Backrooms.Generation
             int storey = world.StoreyOf(main.transform.position.y);
             float h = storey * pitch + PoolBiome.WaterLevel;
             if (main.transform.position.y < h + 0.03f) { Off(); return; }
+            // Is any water on screen, and how near (2026-11-01, the review: it rendered every frame in the Poolrooms)?
+            float nearest = NearestWater(world, main, h);
+            if (nearest > 45f) { Off(); return; }
+            scale = nearest > 14f ? 0.35f : 0.5f;
             Ensure(main);
             if (!_cam) { Off(); return; }
 
@@ -73,6 +77,24 @@ namespace Backrooms.Generation
         }
 
         void Off() => Shader.SetGlobalVector(IdParams, Vector4.zero);
+
+        /// <summary>The nearest water seen on a 9 x 6 grid of view rays down to the water's plane (m; far if none).</summary>
+        static float NearestWater(PoolWorld world, Camera cam, float h)
+        {
+            float best = 999f;
+            var o = cam.transform.position;
+            for (int i = 0; i < 9; i++)
+            for (int j = 0; j < 6; j++)
+            {
+                var ray = cam.ViewportPointToRay(new Vector3((i + 0.5f) / 9f, (j + 0.5f) / 6f, 0f));
+                if (ray.direction.y > -0.01f) continue;
+                float t = (h - o.y) / ray.direction.y;
+                if (t > 45f || t >= best) continue;
+                var at = o + ray.direction * t;
+                if (world.WaterAt(at, out float lv) && Mathf.Abs(lv - h) < 0.05f) best = t;
+            }
+            return best;
+        }
 
         void Ensure(Camera main)
         {

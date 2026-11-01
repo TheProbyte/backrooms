@@ -135,6 +135,43 @@ namespace Backrooms.Generation
         };
 
         /// <summary>
+        /// The channels (2026-11-01, the review's item 15): a biome of the Poolrooms zone of long narrow corridors, all of
+        /// them vaulted, flooded channels with a walkway along one side, and halls of water crossed by a winding walkway
+        /// (PoolPlan.Channels). Few big halls, many loops, the light mostly from slots in the vaults' crowns.
+        /// </summary>
+        public static BiomeRules Channels() => new BiomeRules
+        {
+            name = "Channels", mapColor = new Color(0.3f, 0.55f, 0.55f),
+            bigHallChance = 0.2f, stopSmall = 0.9f, stopMedium = 0.75f, stopLarge = 0.45f, stopHuge = 0.25f, maxRoomCells = 12f,
+            hallChanceShallow = 0.75f, hallChanceDeep = 0.45f, hallWideChance = 0.5f, crawlChance = 0f,
+            openPlanChance = 0.2f, loopChance = 0.85f, loungeChance = 0f, conferenceChance = 0f,
+            tallChanceBig = 1f, tallChanceSmall = 1f, tallMin = 3.6f, tallMax = 4.8f, paintedChance = 1f, archedDoors = 0f, doorChance = 0f,
+            lightsAllOn = 0f, lightsMixed = 0f, mixedOnFraction = 0f, faultyChance = 0f,
+            pillarChance = 0.3f, pillarSpacing = 3f, halfWalls = 0f, scatteredSeating = 0f, rackChance = 0f,
+            outletChance = 0f, stripLights = 0f,
+            skylights = 0.7f, flooded = 0.9f, ledges = 0.1f,
+        };
+
+        /// <summary>
+        /// The water park (2026-11-01, the owner: "indoor water park, slides, mushroom water things with water going down
+        /// them"): a biome of the Poolrooms zone. Bigger, taller halls with more dry tiled decks for the attractions (PoolPlan
+        /// .WaterPark: slide towers over plunge pools, a lazy river round an island, a wave pool with a beach, kiddie pools
+        /// with mushroom fountains, water arches), fewer columns, light from above everywhere.
+        /// </summary>
+        public static BiomeRules WaterPark() => new BiomeRules
+        {
+            name = "WaterPark", mapColor = new Color(0.35f, 0.62f, 0.9f),
+            bigHallChance = 0.7f, stopSmall = 0.97f, stopMedium = 0.9f, stopLarge = 0.65f, stopHuge = 0.35f, maxRoomCells = 20f,
+            hallChanceShallow = 0.3f, hallChanceDeep = 0.1f, hallWideChance = 0.85f, crawlChance = 0f,
+            openPlanChance = 0.55f, loopChance = 0.8f, loungeChance = 0f, conferenceChance = 0f,
+            tallChanceBig = 1f, tallChanceSmall = 1f, tallMin = 4.8f, tallMax = 7.2f, paintedChance = 1f, archedDoors = 0f, doorChance = 0f,
+            lightsAllOn = 0f, lightsMixed = 0f, mixedOnFraction = 0f, faultyChance = 0f,
+            pillarChance = 0.25f, pillarSpacing = 4f, halfWalls = 0f, scatteredSeating = 0f, rackChance = 0f,
+            outletChance = 0f, stripLights = 0f,
+            skylights = 0.95f, flooded = 0.35f, ledges = 0.2f,
+        };
+
+        /// <summary>
         /// Living rooms (2026-10-31, the owner's reference photos): the emptied-out living rooms of an early-2000s house, room
         /// after room. Bigger rooms than the offices, few hallways, a door in most doorways, square headers; orange-peel
         /// painted drywall (now and then the blue-sky clouds wallpaper), carpet, baseboards, flat plaster ceilings with round

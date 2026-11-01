@@ -682,8 +682,8 @@ namespace Backrooms.Audio
                 {
                     float width = Mathf.Clamp(size * 0.8f, 3f, 14f), delay = 2f * width / 343f * 1000f;
                     if (Mathf.Abs(delay - _echoDelay) > 6f) { _echoDelay = delay; _echo.delay = delay; }
-                    _echo.decayRatio = 0.32f;
-                    _echo.wetMix = 0.09f * PoolBlend * Mathf.Clamp01(amt);
+                    _echo.decayRatio = 0.25f;
+                    _echo.wetMix = 0.05f * PoolBlend * Mathf.Clamp01(amt);
                 }
             }
             SpaceLabel = (PoolBlend > 0.5f ? "tiles and water" : hard > 0.5f ? "plaster" : "drop ceiling") + ", " + area.ToString("0") + " m² visible, ceiling " + h.ToString("0.0") + " m";

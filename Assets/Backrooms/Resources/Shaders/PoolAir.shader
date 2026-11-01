@@ -75,9 +75,27 @@ Shader "Hidden/Backrooms/PoolAir"
             if (s <= 0.0) continue;
             float above = p.y - PoolBase(PoolStorey(p.y));
             float dens = under ? 0.03 * exp(-POOL_MURK_ABSORB.g * (k + jit) * dt) : _PoolAirParams.x + _PoolAirParams.y * exp(-max(above, 0.0) / 0.7);
+            // Drifting density (2026-11-01, the review: an even veil): two slow noises, as volumetric fog is textured.
+            float t = _Time.y;
+            dens *= 0.35 + 1.3 * PoolValueNoise(p.xz * 0.55 + float2(t * 0.06, t * 0.02)) * PoolValueNoise(float2(p.x + p.z, p.y) * 0.8 - t * 0.04 + 7.0) * 2.0;
+            if (under) s *= dot(PoolCausticLight(p, _PoolUnderwater.y), 1.0 / 3.0);
             acc += s * dens;
         }
         float3 light = _PoolSunColor.rgb * acc * dt * phase * (under ? float3(0.45, 1.0, 0.82) : 1.0);
+        // Seen from above, the beams go on into the water: green, rippled by the caustics, dimming with depth.
+        if (!under && cam.y > wy && dir.y < -1e-4 && dist > tMax + 0.02)
+        {
+            float t0 = tMax, t1 = min(dist, tMax + 3.0), wdt = (t1 - t0) / 6.0;
+            float wacc = 0;
+            [loop] for (int m = 0; m < 6; m++)
+            {
+                float3 q = cam + dir * (t0 + (m + jit) * wdt);
+                float sq = PoolSunVisibility(q);
+                if (sq <= 0.0) continue;
+                wacc += sq * dot(PoolCausticLight(q, wy), 1.0 / 3.0) * exp(-0.6 * (wy - q.y));
+            }
+            light += _PoolSunColor.rgb * float3(0.35, 1.0, 0.8) * wacc * wdt * 0.02 * phase;
+        }
         return float4(light, sky ? 1000.0 : dist);
     }
 

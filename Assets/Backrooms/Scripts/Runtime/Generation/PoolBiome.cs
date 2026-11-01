@@ -22,6 +22,27 @@ namespace Backrooms.Generation
         /// above, whose steps and floors then hung in it, the owner's "ceiling tile glitches"): under another storey it stops
         /// 1.15 m below that storey's floor. As PoolCommon.hlsl's PoolShaft.
         /// </summary>
+        /// <summary>As PoolCommon.hlsl's PoolGlazed: the roof lights of this 12 x 12 cell block are glazed (world cell).</summary>
+        public static bool Glazed(int x, int z, SkylightShape shape)
+        {
+            if (shape == SkylightShape.None || (int)shape >= 5) return false;
+            int bx = Mathf.FloorToInt(x / 12f), bz = Mathf.FloorToInt(z / 12f);
+            uint h = ((uint)bx * 73856093u) ^ ((uint)bz * 19349663u);
+            h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
+            return h % 100u < 45u;
+        }
+        /// <summary>The share of the sun a glazed roof light lets through, on average (pane 82 %, the bars' shadows).</summary>
+        public const float GlazedTransmission = 0.71f, GlassBlockTransmission = 0.3f;
+
+        /// <summary>As PoolCommon.hlsl's PoolGlassBlock: this high window is glass block (the cell on the edge's +X / +Z
+        /// side, world cell; side 1 its -X edge, 2 its -Z edge).</summary>
+        public static bool GlassBlock(int x, int z, uint side)
+        {
+            uint h = ((uint)x * 2654435761u) ^ ((uint)z * 40503u) ^ (side * 97u);
+            h ^= h >> 15; h *= 0x2c1b3c6du; h ^= h >> 12;
+            return h % 100u < 40u;
+        }
+
         public static float Shaft(float ceiling, int storey, int storeys, float pitch) =>
             storey < storeys - 1 ? Mathf.Clamp(pitch - 1.15f - ceiling, 0.15f, ShaftHeight) : ShaftHeight;
         public const float PillarRadius = 0.4f;
@@ -83,6 +104,17 @@ namespace Backrooms.Generation
                     float b = (q - new Vector2(f.size.x - rb, f.size.y * 0.28f)).magnitude - rb;
                     float k = 1.4f, h = Mathf.Clamp01(0.5f + 0.5f * (b - a) / k);
                     return Mathf.Lerp(b, a, h) - k * h * (1f - h);
+                }
+                case 3:
+                {
+                    // A ring (the lazy river): inside the outer rounded rectangle, outside the island (height: its width).
+                    float w = Mathf.Max(0.8f, f.height);
+                    var eo = new Vector2(Mathf.Abs(q.x), Mathf.Abs(q.y)) - (f.size - Vector2.one * f.radius);
+                    float outer = new Vector2(Mathf.Max(eo.x, 0f), Mathf.Max(eo.y, 0f)).magnitude + Mathf.Min(Mathf.Max(eo.x, eo.y), 0f) - f.radius;
+                    float ri = Mathf.Max(1.0f, f.radius - w);           // the island's corners rounded too
+                    var ei = new Vector2(Mathf.Abs(q.x), Mathf.Abs(q.y)) - (f.size - Vector2.one * w - Vector2.one * ri);
+                    float inner = new Vector2(Mathf.Max(ei.x, 0f), Mathf.Max(ei.y, 0f)).magnitude + Mathf.Min(Mathf.Max(ei.x, ei.y), 0f) - ri;
+                    return Mathf.Max(outer, -inner);
                 }
                 default:
                 {

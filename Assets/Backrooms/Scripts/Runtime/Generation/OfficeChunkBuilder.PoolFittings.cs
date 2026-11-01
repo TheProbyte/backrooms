@@ -70,14 +70,14 @@ namespace Backrooms.Generation
         }
 
         /// <summary>A return jet on a pool wall (n into the water): a flange, a short nozzle, a dark bore. It pushes along d.</summary>
-        void Jet(Vector3 at, Vector3 n, Vector3 d)
+        void Jet(Vector3 at, Vector3 n, Vector3 d, float kind = 0f)
         {
             var w = WMask(ChromeMat, 1u);
             w.Disc(at + n * 0.003f, 0.045f, 14, n, MeshWriter.MetreUV);
             Tube(w, at + n * 0.003f, at + n * 0.035f, 0.017f, 10);
             WMask(PoolMaterials.Dark ? PoolMaterials.Dark : ChromeMat, 1u).Disc(at + n * 0.036f, 0.011f, 10, n, MeshWriter.MetreUV);
             Stain(at + Vector3.down * 0.035f, n, 0.07f, 0.28f);
-            poolFittings.Add(new Vector4(at.x, at.y, at.z, 0f));
+            poolFittings.Add(new Vector4(at.x, at.y, at.z, kind));
             poolFittingDirs.Add(d);
         }
 
@@ -138,6 +138,96 @@ namespace Backrooms.Generation
             Stain(c - Vector3.up * (height * 0.5f + 0.03f), n, width * 0.8f, 0.5f);
             poolFittings.Add(new Vector4(c.x, c.y, c.z, 2f));
             poolFittingDirs.Add(n);
+        }
+
+        // ---------------- More fittings (2026-11-01, the review, item 13) ----------------
+
+        /// <summary>A slot drain along a deck edge: a dark channel under a grate of cross bars, beside the coping.</summary>
+        void Grate(Vector3 a, Vector3 b, Vector3 n)
+        {
+            var t = (b - a).normalized;
+            float len = (b - a).magnitude;
+            var dark = WMask(PoolMaterials.Dark ? PoolMaterials.Dark : TileMat, 1u);
+            var metal = WMask(PoolMaterials.Grille ? PoolMaterials.Grille : ChromeMat, 1u);
+            Vector3 o0 = a - n * 0.17f, o1 = a - n * 0.31f;
+            dark.Quad(o0 + Vector3.up * 0.001f, o0 + t * len + Vector3.up * 0.001f, o1 + t * len + Vector3.up * 0.001f, o1 + Vector3.up * 0.001f, Vector3.up, MeshWriter.MetreUV);
+            var q = Quaternion.LookRotation(t);
+            for (float s = 0.03f; s < len - 0.01f; s += 0.055f)
+                metal.Box(a + t * s - n * 0.24f + Vector3.up * 0.004f, new Vector3(0.14f, 0.008f, 0.014f), q * Quaternion.Euler(0f, 90f, 0f), 0b111111, MeshWriter.MetreUV);
+        }
+
+        /// <summary>A starting block on the deck at a lap pool's end, its front over the coping: a white body, a sloped blue
+        /// top, chrome handles at the front.</summary>
+        void StartingBlock(Vector3 edge, Vector3 n)
+        {
+            var white = WMask(PoolMaterials.PlasticWhite ? PoolMaterials.PlasticWhite : TileMat, 1u);
+            var blue = WMask(PoolMaterials.PlasticBlue ? PoolMaterials.PlasticBlue : TileMat, 1u);
+            var q = Quaternion.LookRotation(n);
+            white.Box(edge - n * 0.22f + Vector3.up * 0.33f, new Vector3(0.5f, 0.66f, 0.42f), q, 0b111111, MeshWriter.MetreUV);
+            blue.Box(edge - n * 0.18f + Vector3.up * 0.69f, new Vector3(0.52f, 0.05f, 0.56f), q * Quaternion.Euler(10f, 0f, 0f), 0b111111, MeshWriter.MetreUV);
+            var t = Vector3.Cross(Vector3.up, n);
+            foreach (float s in new[] { -0.2f, 0.2f })
+                Rail(new List<Vector3> { edge - n * 0.06f + t * s + Vector3.up * 0.55f, edge + n * 0.05f + t * s + Vector3.up * 0.5f, edge + n * 0.06f + t * s + Vector3.up * 0.25f }, 0.012f);
+            _rotBoxes.Add((edge - n * 0.22f + Vector3.up * 0.36f, new Vector3(0.5f, 0.72f, 0.42f), q.eulerAngles.y));
+        }
+
+        /// <summary>A pool rules board on a wall: a white board, a blue header and lines of small dark text.</summary>
+        void RulesBoard(Vector3 at, Vector3 n)
+        {
+            var q = Quaternion.LookRotation(n);
+            var t = Vector3.Cross(Vector3.up, n);
+            WMask(PoolMaterials.PlasticWhite ? PoolMaterials.PlasticWhite : TileMat, 1u).Box(at + n * 0.015f, new Vector3(0.8f, 1.05f, 0.03f), q, 0b111111, MeshWriter.MetreUV);
+            WMask(PoolMaterials.PlasticBlue ? PoolMaterials.PlasticBlue : TileMat, 1u).Box(at + n * 0.032f + Vector3.up * 0.42f, new Vector3(0.72f, 0.14f, 0.006f), q, 0b111111, MeshWriter.MetreUV);
+            var ink = WMask(PoolMaterials.Marker ? PoolMaterials.Marker : TileMat, 1u);
+            uint h = FitHash(Mathf.RoundToInt(at.x * 10f), Mathf.RoundToInt(at.y * 10f), Mathf.RoundToInt(at.z * 10f));
+            for (int i = 0; i < 11; i++)
+            {
+                float y = 0.27f - i * 0.065f;
+                float len = 0.3f + 0.35f * ((h >> (i % 24)) & 7) / 7f;
+                ink.Box(at + n * 0.032f + Vector3.up * y - t * (0.32f - len * 0.5f), new Vector3(len, 0.014f, 0.004f), q, 0b111111, MeshWriter.MetreUV);
+            }
+        }
+
+        /// <summary>A rolled pool cover on its reel: a blue roll on a chrome tube between two stands.</summary>
+        void CoverReel(Vector3 at, Vector3 along)
+        {
+            var blue = WMask(PoolMaterials.PlasticBlue ? PoolMaterials.PlasticBlue : TileMat, 1u);
+            var c = at + Vector3.up * 0.55f;
+            float half = 0.5f;
+            Tube(blue, c - along * half, c + along * half, 0.24f, 16);
+            Cap(blue, c - along * half, -along, 0.24f); Cap(blue, c + along * half, along, 0.24f);
+            Tube(WMask(ChromeMat, 1u), c - along * (half + 0.12f), c + along * (half + 0.12f), 0.03f, 10);
+            foreach (float s in new[] { -1f, 1f })
+            {
+                var e = c + along * (half + 0.12f) * s;
+                Rail(new List<Vector3> { new Vector3(e.x, 0f, e.z) - Vector3.Cross(Vector3.up, along) * 0.25f, e, new Vector3(e.x, 0f, e.z) + Vector3.Cross(Vector3.up, along) * 0.25f }, 0.02f);
+            }
+            _rotBoxes.Add((c, new Vector3(0.5f, 0.6f, 2f * half + 0.3f), Mathf.Atan2(along.x, along.z) * Mathf.Rad2Deg));
+        }
+
+        /// <summary>A lap pool's lane ropes over this cell: floats every 10 cm on the water, blue and white in runs.</summary>
+        void LaneRopes(int x, int z, byte lanes)
+        {
+            bool alongX = lanes == 1;
+            float x0 = x * C, z0 = z * C;
+            var origin = new Vector3(_L.coord.x * _L.N * C, 0f, _L.coord.y * _L.N * C);
+            float acrossLo = alongX ? z0 : x0, worldAcross = alongX ? origin.z : origin.x;
+            var blue = WMask(PoolMaterials.PlasticBlue ? PoolMaterials.PlasticBlue : TileMat, 1u);
+            var white = WMask(PoolMaterials.PlasticWhite ? PoolMaterials.PlasticWhite : TileMat, 1u);
+            // The lane lines lie on tile rows 16k + 8 (PoolTile.shader); the ropes run between lanes, 1.2 m off them.
+            for (int k = -2; k <= 2; k++)
+            {
+                float wl = Mathf.Floor((worldAcross + acrossLo) / 2.4f) * 2.4f + k * 2.4f + 0.15f * 8f + 0.15f + 1.2f;
+                float local = wl - worldAcross;
+                if (local < acrossLo || local >= acrossLo + C) continue;
+                for (float s = 0.05f; s < C; s += 0.1f)
+                {
+                    var c = alongX ? new Vector3(x0 + s, PoolBiome.WaterLevel + 0.01f, local) : new Vector3(local, PoolBiome.WaterLevel + 0.01f, z0 + s);
+                    var d = alongX ? Vector3.right : Vector3.forward;
+                    float run = Mathf.Floor(((alongX ? origin.x + c.x : origin.z + c.z)) / 0.6f);
+                    Tube(((int)run & 1) == 0 ? blue : white, c - d * 0.04f, c + d * 0.04f, 0.045f, 8);
+                }
+            }
         }
 
         // ---------------- Tile lettering ----------------
@@ -222,10 +312,16 @@ namespace Backrooms.Generation
                 float floor = BasinFloorY(mid.x - g.x * 0.3f, mid.y - g.y * 0.3f);
                 // Leave the shallow end's steps (round E) clear.
                 if ((mid - start).magnitude < 1.6f) continue;
-                if (run >= nextJet && floor < -0.6f)
+                if (f.shape == 3 && run >= nextJet && floor < -0.6f)
+                {
+                    // The lazy river's jets: all pushing along it, the one way round (kind 3, PoolCirculation).
+                    Jet(wallPt + Vector3.up * Mathf.Max(floor + 0.3f, -0.4f), inward, (tan * 0.9f + inward * 0.2f).normalized, 3f);
+                    nextJet = run + 3f; jets++;
+                }
+                else if (run >= nextJet && floor < -0.6f)
                 {
                     Jet(wallPt + Vector3.up * Mathf.Max(floor + 0.2f, -0.38f), inward, (inward * 0.6f + tan * 0.8f).normalized);
-                    nextJet = run + 3.2f; jets++;
+                    nextJet = run + 4.5f; jets++;
                 }
                 else if (run >= nextLight && floor < -0.75f)
                 {
@@ -236,7 +332,7 @@ namespace Backrooms.Generation
                 else if (run >= nextSkim)
                 {
                     Skimmer(wallPt, inward);
-                    nextSkim = run + 9f;
+                    nextSkim = run + 16f;
                 }
                 if (run >= nextMark)
                 {
@@ -248,6 +344,30 @@ namespace Backrooms.Generation
                     TileText(text, at, Vector3.Cross(Vector3.up, inward).normalized, inward);
                     nextMark = run + 3.4f;
                 }
+            }
+            if (f.shape == 3) IslandEdge(f);
+        }
+
+        /// <summary>The lazy river's island: its bullnose all round (the outline walk from its near side).</summary>
+        void IslandEdge(PoolFeature f)
+        {
+            float w = Mathf.Max(0.8f, f.height);
+            var e3 = V3(f.centre) + Yaw(f.yaw) * new Vector3(-(f.size.x - w), 0f, 0f);
+            var p = new Vector2(e3.x, e3.z);
+            for (int i = 0; i < 8; i++) p -= ShapeGradient(f, p) * PoolBiome.ShapeSD(f, p);
+            var start = p;
+            var prev = p;
+            const float ds = 0.3f;
+            for (int i = 0; i < 400; i++)
+            {
+                var g = ShapeGradient(f, p);
+                p += new Vector2(-g.y, g.x) * ds;
+                for (int k = 0; k < 4; k++) p -= ShapeGradient(f, p) * PoolBiome.ShapeSD(f, p);
+                var mid = (prev + p) * 0.5f;
+                var gm = ShapeGradient(f, mid);
+                Nosing(new Vector3(prev.x, 0f, prev.y), new Vector3(p.x, 0f, p.y), new Vector3(-gm.x, 0f, -gm.y));
+                prev = p;
+                if (i > 4 && (p - start).magnitude < ds * 0.9f) { Nosing(new Vector3(p.x, 0f, p.y), new Vector3(start.x, 0f, start.y), new Vector3(-gm.x, 0f, -gm.y)); break; }
             }
         }
 
@@ -262,6 +382,22 @@ namespace Backrooms.Generation
             if (deckEdge)
             {
                 Nosing(new Vector3(p0.x, 0f, p0.z), new Vector3(p1.x, 0f, p1.z), n);
+                // A walkway one cell wide with water on both sides (the channels): its bullnose only, no gutter, blocks or
+                // lettering crowding it (2026-11-01).
+                if (_L.WaterAtPoint(mid.x - n.x * (C + 0.3f), mid.z - n.z * (C + 0.3f))) goto walls;
+                Grate(new Vector3(p0.x, 0f, p0.z), new Vector3(p1.x, 0f, p1.z), n);
+                // Starting blocks at a lap pool's end, one per lane (on its floor line), and now and then a rolled cover.
+                int bx = Mathf.Clamp(Mathf.FloorToInt((mid.x + n.x * 0.3f) / C), 0, _L.N - 1), bz = Mathf.Clamp(Mathf.FloorToInt((mid.z + n.z * 0.3f) / C), 0, _L.N - 1);
+                byte lanes = _L.pool[bx, bz].lanes;
+                if (lanes != 0 && (lanes == 1) == vertical)
+                {
+                    float worldAlong = vertical ? _L.coord.y * _L.N * C + mid.z : _L.coord.x * _L.N * C + mid.x;
+                    float laneLine = Mathf.Floor(worldAlong / 2.4f) * 2.4f + 0.15f * 8f + 0.15f;      // the floor's lane line
+                    foreach (float l in new[] { laneLine - 2.4f, laneLine, laneLine + 2.4f })
+                        if (Mathf.Abs(l - worldAlong) < C * 0.5f - 0.25f)
+                            StartingBlock(new Vector3(mid.x, 0f, mid.z) + tan * (l - worldAlong) * (vertical ? Mathf.Sign(tan.z) : Mathf.Sign(tan.x)), n);
+                }
+                else if (h % 37 == 11) CoverReel(new Vector3(mid.x, 0f, mid.z) - n * 0.85f, tan);
                 if (h % 3 == 0)
                 {
                     uint h2 = h >> 8;
@@ -269,9 +405,15 @@ namespace Backrooms.Generation
                     TileText(h2 % 3 == 0 ? "NO DIVING" : DepthText(depth, h2), mid - n * 0.42f, Vector3.Cross(Vector3.up, n).normalized, n);
                 }
             }
-            switch (h % 11)
+            walls:
+            // (2026-11-01, the review: 619 skimmers in the loaded area, the walls peppered.) Jets every third edge on two of
+            // the four sides (the -X and -Z facing ones), a light now and then, a skimmer about once per 37 m2 of water
+            // (one per 400 sq ft, as public pool codes ask) on the other two sides.
+            bool jetSide = n.x + n.z > 0f;
+            int alongIndex = vertical ? GZ(along) : GX(along);
+            switch (jetSide ? (alongIndex % 3 == 0 ? 0 : (h % 9 == 3 ? 3 : 9)) : (h % 26 == 5 ? 5 : (h % 11 == 4 ? 4 : 9)))
             {
-                case 0: case 1: case 2:
+                case 0:
                     if (floor < -0.55f) Jet(mid + Vector3.up * Mathf.Max(floor + 0.2f, -0.36f), n, (n * 0.5f + tan * ((h & 64) != 0 ? 0.85f : -0.85f)).normalized);
                     break;
                 case 3: case 4:
@@ -311,6 +453,17 @@ namespace Backrooms.Generation
                         float ceil = _L.WallTop(room);
                         if (h % 9 == 0 && ceil > 3.2f)
                             Grille(new Vector3(fx, ceil - 0.55f, fz), n, 0.6f, 0.3f);
+                        else if (h % 41 == 7 && !_L.pool[x, z].basin)
+                            RulesBoard(new Vector3(fx, 1.75f, fz), n);
+                        else if (h % 17 == 3 && !_L.pool[x, z].basin && Info(x, z).pillarNear == false)
+                        {
+                            // A tiled bench along the wall.
+                            var tb = WMask(ZoneTile(room), 1u);
+                            var bc = new Vector3(fx, 0.22f, fz) + n * 0.22f;
+                            var bs = side < 2 ? new Vector3(0.4f, 0.44f, C - 0.1f) : new Vector3(C - 0.1f, 0.44f, 0.4f);
+                            tb.Box(bc, bs, 0b111111, MeshWriter.MetreUV);
+                            _boxes.Add((bc, bs));
+                        }
                     }
                 }
             }

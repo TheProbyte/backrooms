@@ -210,6 +210,7 @@ namespace Backrooms.Generation
             var inward = new Vector3(in2.x, 0f, in2.y);
             var edge = new Vector3(E.x, 0f, E.y);
             float depth = -BasinFloorY(edge.x + inward.x * 0.6f, edge.z + inward.z * 0.6f);
+            if (depth < 0.3f) return;                   // a beach (the wave pool) or a kiddie pool: walked into, no steps
             // As many risers as the depth wants at about 24 cm each (2026-11-01: three in a 45 cm shallow end put the top
             // step 3 cm under the surface, where it read as a bright bar in the water).
             int S = Mathf.Clamp(Mathf.RoundToInt(depth / 0.24f), 2, PoolBiome.Steps);
@@ -837,6 +838,11 @@ namespace Backrooms.Generation
                     // biome of their own within the Poolrooms, 2026-11-01. Slide() is kept for that.)
                     case PoolFeatureKind.Changing: if (Mine(f.centre)) Changing(f); break;
                     case PoolFeatureKind.Showers: if (Mine(f.centre)) Showers(f); break;
+                    // The water park (OfficeChunkBuilder.WaterPark).
+                    case PoolFeatureKind.Mushroom: if (Mine(f.centre)) Mushroom(f); break;
+                    case PoolFeatureKind.Arch: if (Mine(f.centre)) Arch(f); break;
+                    case PoolFeatureKind.SlideTower: if (Mine(f.centre)) SlideTower(f); break;
+                    case PoolFeatureKind.WaveMaker: if (Mine(f.centre)) WaveMaker(f); break;
                     case PoolFeatureKind.RoundHall:
                         if (Mine(f.centre))
                         {

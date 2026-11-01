@@ -45,7 +45,7 @@ namespace Backrooms.Generation
         /// taken into the next step of the simulation.</summary>
         public static void Splash(Vector3 at, float radius, float height)
         {
-            if (s_extra.Count < 8) s_extra.Add(new Vector4(at.x, at.z, radius, height));
+            if (s_extra.Count < 14) s_extra.Add(new Vector4(at.x, at.z, radius, height));
         }
 
         void Update()
@@ -120,6 +120,7 @@ namespace Backrooms.Generation
             }
             _wasIn = inWater;
 
+            PoolCirculation.Stir(p, Time.deltaTime);
             foreach (var e in s_extra) if (_dropCount < _drops.Length) _drops[_dropCount++] = e;
             s_extra.Clear();
             _acc = Mathf.Min(_acc + Time.deltaTime, 4f / 60f);

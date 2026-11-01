@@ -516,11 +516,66 @@ The owner: "the slides should be their own biome inside the pool rooms zone so j
 that". Slides are still planned (`PoolPlan.Features.Slide`, so worlds keep their random draws) but not built;
 `OfficeChunkBuilder.Slide` (the rebuilt flume, platform and ladder) is kept for that biome.
 
+## The water park and the channels (2026-11-01, built)
+
+The owner: "go ahead on the new biome as well, which will basically be indoor water park, slides, mushroom water things
+with water going down them etc". Two new biomes of the Poolrooms zone (`ZoneRules.Poolrooms`, `Zones/Poolrooms.asset`):
+**Channels** where the zone's density is under 0.28, **Poolrooms** to 0.64, **WaterPark** above. `WorldGenSettings
+.AddMissingBiomes` now also fills in pinned zones' bands.
+
+**The water park** (`BiomeRules.WaterPark`: bigger, taller halls 4.8-7.2 m, more dry decks, fewer columns, skylights
+almost everywhere; `PoolPlan.WaterPark`, rooms tagged `Park`). Laid out as indoor water parks are (an attraction to a room):
+- **Slide towers** over a plunge pool: four steel legs, a railed platform (2.4-3.8 m), a steep stair up the back with
+  rails and stringers, and a gelcoat flume (red, yellow, blue or white) swinging out to one side and down into the pool
+  with water running down its bottom and posts with cradles under it (`OfficeChunkBuilder.SlideTower`, `Flume`).
+- **A lazy river**: free pool shape 3 (a ring round a rounded island, 2.2 m wide, 0.85 m deep), its return jets all
+  pushing one way round (fitting kind 3: 2.5 times a jet's push, longer plumes, so the current is about 0.3-0.5 m/s, as
+  real lazy rivers run); the island gets its bullnose too.
+- **A wave pool**: a beach entry (14 cm) down to 1.7 m; three grated wave chambers low in the deep end's wall (kind 4).
+  Sessions as real ones run: a wave every ~4 s for 40 s, then 30 s of calm; each wave lifts a line of water at the
+  chambers that runs down the pool, with a surge sound (`PoolFalls.Waves`, `ProceduralSounds.WaveSurge`).
+- **Kiddie pools** (28 cm, no steps or ladders) each round a **mushroom fountain**: a white stem, a domed cap (red with
+  white spots, yellow, blue or white, after the fibreglass mushrooms parks buy, about 1.5-2.5 m across) with a rolled rim,
+  and a curtain of water off the whole rim, thrown out at 0.45 m/s and falling under gravity to the water (kind 5).
+- In flooded park halls: mushrooms standing in the water and **water arches**: chrome nozzles low in the walls throwing
+  a stream 1.8-3 m out into the pool (kind 6).
+- Falling water is `Backrooms/PoolSheet`: uv.y is the metres fallen and the pattern is keyed to when the water left the
+  lip (now minus sqrt(2y/g)), so it speeds up as it falls; clear and glassy at the lip (the room refracted through it),
+  breaking into ropes and drops lower down, whiter where air is in it, with Fresnel and sun glints (the usual waterfall
+  approach in games: UVs along the fall and a scrolling breakup mask).
+- `PoolFalls` (on PoolWorld): where curtains and streams land the ripple simulation is kept stirred and spray thrown;
+  the nearest two are heard through Steam Audio, quietly (`ProceduralSounds.WaterCurtain`: patter, churn and Minnaert
+  bubbles; 0.07, 12 m).
+- Steps are left out of a free pool whose shallow end is under 30 cm (beaches, kiddie pools).
+
+**The channels** (`BiomeRules.Channels`: narrow corridors, many loops, few big halls; `PoolPlan.Channels`): every corridor
+is a vaulted channel, flooded, with a walkway on one side; halls are flooded but for a one-cell walkway meandering from one
+end to the other (a sideways step of one or two cells every 2-4 cells). Walkways with water on both sides get their
+bullnose only (no gutter grates, starting blocks or lettering crowding them).
+
+**Touching the water** (`PropGrabber.Water`): crouched or lying at an edge, a click on the water within reach puts the
+free hand in it: the palm goes down through the surface, strokes out and back (a bow wave ahead of it, a hollow behind,
+a soft lap), and comes out dripping for 3.5 s (drops plinking into the pool). Works with no body drawn too (the water
+still answers).
+
+Checked in World 3: districts round the Poolrooms generate all of it (a slide tower, kiddie pools with mushrooms, a wave
+pool, a lazy river with its current measured at 0.27 m/s at the outer wall, arches, channel halls); pictures of each; the
+water touch's whole cycle; no errors or warnings. Not checked: the sounds by ear, the waves' look in motion.
+
 ## Review and next improvements (2026-11-01)
 
 The owner: "look at everything you've made and make a plan for improvements". A look back over everything in this
 document, from what was seen in World 3 while building it, what the owner reported, and what was never checked. In the
 order to do them.
+
+**Status (2026-11-01, later):** built: 1 (skimmers and jets thinned), 3 (faster exposure in the Poolrooms), 4 (the
+ripples bend far reflections more; the haze is not yet in the mirror's view), 5 (the mirror skips frames with no water
+near the view, quarter size when it is far), 7 (drifting density in the haze, beams into the water), 8 (absorption, a
+dust film at the edges, jets boiling), 9 (frame bars, dirty and broken panes), 10 (beams under the water, breath
+bubbles), 11 (domain-warped clouds, overcast districts), 12 (repair patches, chips, efflorescence, grout by room), 13
+(gutter grates, starting blocks, lane ropes, rules boards, benches, cover reels), 14 (the water park, above), 15 (the
+channels, above), 16 (touching the water, above). Left: 2 (the bounce still not compared by eye; the C# sun now knows
+glazing and glass block), 6 (the flutter echo only made quieter, not moved to one-shots), 17 (not yet, as asked).
 
 **1. Loose ends (things built but not right or not checked)**
 1. **Too many skimmers.** 619 in the loaded area (one wall cell in eleven of every basin, plus free pools every 9 m).
@@ -576,6 +631,5 @@ order to do them.
 
 - (Done 2026-11-01: the view under the water.) Crawling inside a basin puts the camera under the water surface, which was single-sided (nothing drawn from below).
 - The duct of the Poolrooms' hole is shaded by the Backrooms' light grid, so its mouth is dark.
-- More biomes: winding walkways beside water channels (reference image 5).
 - The sun is not traced through the curved walls (they cast no sun shadow) or between the two floors (the stair towers
   are lit by the bounce only).

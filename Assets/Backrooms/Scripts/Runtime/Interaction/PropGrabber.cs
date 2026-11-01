@@ -224,7 +224,8 @@ namespace Backrooms.Interaction
                     if (QuickDooring) { UpdateQuickDoor(hold); break; }
                     if (OnDoor) { UpdateDoor(hold); break; }
                     // (Round 11: a click on a door opens it, or shuts it if it is well open; held on, it is the careful way.)
-                    if (pressed) { if (!TryHandUse() && !TryStartPoke() && !TryPickUp() && !TryQuickDoor(true)) TryStart(); }
+                    if (_water != WaterPhase.None) break;
+                    if (pressed) { if (!TryHandUse() && !TryStartPoke() && !TryPickUp() && !TryQuickDoor(true) && !TryTouchWater()) TryStart(); }
                     else if (shovePressed) { if (!TryQuickDoor()) Push(); }
                     break;
                 case State.Reaching:
@@ -243,7 +244,8 @@ namespace Backrooms.Interaction
             }
             if (_poke != PokePhase.None) UpdatePoke();
             UpdatePokeFingers();
-            UpdateTouch(!Bodiless && !HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking && !QuickDooring);
+            UpdateWaterTouch();
+            UpdateTouch(!Bodiless && !HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && !Poking && !QuickDooring && _water == WaterPhase.None);
             // No climbing with the hands full of furniture or a door.
             _player.noMantle = Current != State.Idle || OnDoor || TwoHanded;
             UpdateCarriedWeight();
@@ -675,7 +677,7 @@ namespace Backrooms.Interaction
         {
             // (A quick door's hand once it has let go fades out quickly: it was at full blend 0.15 s with the palm off the lever.)
             bool letGo = _quick == QuickPhase.Back || Time.time < _letGoUntil;
-            bool active = (Current != State.Idle && _target) || Poking || HeldItem || _fetch || OnDoor || _touching || (QuickDooring && !letGo);
+            bool active = (Current != State.Idle && _target) || Poking || HeldItem || _fetch || OnDoor || _touching || _water != WaterPhase.None || (QuickDooring && !letGo);
             // (Going out for an item, a little slower: it was there in 0.3 s, and the grab at 0.43 s looked snatched.)
             // (Round 11: out in about 0.22 s, back in 0.3: 2.2 a second made every reach start with half a second of the arm
             // coming up.)
@@ -694,6 +696,7 @@ namespace Backrooms.Interaction
             if (Poking) PokePose = true; else if (HandBlend <= 0.01f) PokePose = false;
             if (OnDoor && _door) { PokePose = false; DoorHandPose(); return; }
             if (_touching) { PokePose = false; TouchHandPose(); return; }
+            if (_water != WaterPhase.None) { PokePose = false; WaterHandPose(); return; }
             if (QuickDooring && _quickDoor) { PokePose = false; QuickDoorPose(); return; }
             // A door's lever just let go: the hand stays where it was from the shoulder while it fades (left at the lever, the
             // arm went out straight after it as the body walked on).

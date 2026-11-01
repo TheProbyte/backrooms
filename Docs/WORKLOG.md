@@ -15,6 +15,13 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-01 11:30  Claude Code  Poolrooms review items 1-16 (not 17): fittings, glazing, clouds, wear, water colour, beams; the water park and channels biomes; touching the water
+- Review items: skimmers/jets thinned, rim-flow grates, starting blocks, lane ropes, rules boards, benches, cover reels (PoolFittings); glazed roof-light bars, dirty and broken panes, glass block known to PoolSun; domain-warped clouds with overcast districts (C# and HLSL); repair patches, chips, efflorescence, grout by room (PoolTile, PoolMaterials); absorption and a dust film (PoolWater); haze density noise and beams into the water (PoolAir); jets boiling (PoolCirculation.Stir), breath bubbles; faster exposure in the Poolrooms; PoolMirror skipped with no water near the view, smaller when far; quieter flutter echo.
+- New biomes of the Poolrooms zone (ZoneRules, Zones/Poolrooms.asset, Biomes/Channels.asset and WaterPark.asset): Channels < 0.28 < Poolrooms < 0.64 < WaterPark. Water park (PoolPlan.WaterPark, OfficeChunkBuilder.WaterPark): slide towers with flumes over plunge pools, a lazy river (ring pool, one-way jets), a wave pool (beach, chambers, wave sessions), kiddie pools with mushroom fountains, water arches. Falling water: new shader Backrooms/PoolSheet; PoolFalls runtime (stirring, spray, WaterCurtain and WaveSurge sounds). Channels (PoolPlan.Channels): all corridors flooded vaults, halls with a meandering walkway; narrow walkways without grates or lettering.
+- Touching the water (PropGrabber.Water): crouched at an edge, click the water: hand in, a stroke, drips after.
+- Checked in World 3: each attraction found and pictured, the river's current measured, the water touch's cycle run, no console errors; EditMode tests 170/170 (PoolroomsTests updated: the Poolrooms' own rooms mostly flooded, a glazed opening passes 71 %). Unity was briefly in Play mode while two script edits were saved (stopped before it recompiled).
+- Open: sounds not listened to; waves not seen in motion; plan items 2 (bounce by eye), 6 (echo on one-shots only) and 17 (horror tells, held back as asked).
+
 ## 2026-11-01 10:00  Claude Code  Slides no longer built (to be their own biome); a review of the Poolrooms and a plan of improvements
 - OfficeChunkBuilder.PoolFeatures: Slide features still planned (worlds keep their draws) but not built; Slide() kept for the water park biome.
 - Docs/Poolrooms.md: "Slides" and "Review and next improvements" (17 items: loose ends, the look, missing fittings, new biomes, water interaction); a duplicated "Known gaps" heading removed.

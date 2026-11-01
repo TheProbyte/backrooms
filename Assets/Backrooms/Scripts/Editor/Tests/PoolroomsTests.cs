@@ -78,9 +78,18 @@ namespace Backrooms.Tests
             var L = gen.District(new Vector3Int(Pool(s).pinCentre.x, 0, Pool(s).pinCentre.y));
             Assert.AreEqual(0, L.fixtures.Count, "no ceiling lights");
             Assert.AreEqual(0, L.props.Count + L.plates.Count, "no furniture or outlets");
-            int basins = 0, sky = 0;
-            for (int x = 0; x < L.N; x++) for (int y = 0; y < L.N; y++) { if (L.pool[x, y].basin) basins++; if (L.pool[x, y].skylight != SkylightShape.None) sky++; }
-            Assert.Greater(basins, L.N * L.N / 2, "mostly flooded");
+            // (2026-11-01: the zone has three biomes now. The Poolrooms' own rooms are mostly flooded; the water park has more
+            // dry decks, the channels more water.)
+            int basins = 0, sky = 0, poolCells = 0, poolBasins = 0;
+            for (int x = 0; x < L.N; x++) for (int y = 0; y < L.N; y++)
+            {
+                if (L.pool[x, y].basin) basins++;
+                if (L.pool[x, y].skylight != SkylightShape.None) sky++;
+                var room = L.roomOf[x, y] >= 0 && L.roomOf[x, y] < L.rooms.Count ? L.rooms[L.roomOf[x, y]] : null;
+                if (room != null && L.RulesAt(room.rect).name == "Poolrooms") { poolCells++; if (L.pool[x, y].basin) poolBasins++; }
+            }
+            Assert.Greater(basins, L.N * L.N / 4, "a lot of water");
+            if (poolCells > 200) Assert.Greater(poolBasins, poolCells / 2, "the Poolrooms' own rooms mostly flooded");
             Assert.Greater(sky, 20, "openings to the sky");
             foreach (var r in L.rooms) Assert.GreaterOrEqual(r.ceiling, 3.29f, "tall rooms");
 
@@ -236,7 +245,8 @@ namespace Backrooms.Tests
             var L = PoolBiome.SunDirection;
             // The patch on the floor: straight below the opening's middle, moved away from the sun.
             var patch = centre - new Vector3(L.x, 0f, L.z) * ((4f + PoolBiome.ShaftHeight * 0.5f) / L.y);
-            Assert.AreEqual(1f, PoolSun.Visibility(g, patch + Vector3.up * 0.01f), "sunlit patch");
+            // (A glazed roof light lets 71 % through, 2026-11-01.)
+            Assert.That(PoolSun.Visibility(g, patch + Vector3.up * 0.01f), Is.EqualTo(1f).Or.EqualTo(PoolBiome.GlazedTransmission).Within(1e-4f), "sunlit patch");
             Assert.AreEqual(0f, PoolSun.Visibility(g, centre + Vector3.up * 0.01f), "the floor right under the opening is in shade (the sun is slanted)");
             Assert.AreEqual(0f, PoolSun.Visibility(g, new Vector3(3f, 0.01f, 3f)), "far from the opening");
             // A wall between the patch and the opening blocks it.

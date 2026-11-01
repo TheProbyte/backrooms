@@ -359,7 +359,7 @@ namespace Backrooms.Generation
             foreach (var dz in Defaults().zones)
             {
                 int i = ZoneIndex(dz.name);
-                if (i < 0 || dz.pinned) continue;
+                if (i < 0) continue;                       // (pinned zones too since 2026-11-01: the Poolrooms' water park)
                 var z = zones[i];
                 bool missing = false;
                 foreach (var b in dz.biomes) if (z.Band(b.rules.name) == null) missing = true;

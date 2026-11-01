@@ -26,6 +26,7 @@ Shader "Backrooms/PoolTile"
         _ReflBlur ("Reflection blur per metre", Range(0, 0.3)) = 0.05
         _WetDarken ("Underwater darkening", Range(0, 1)) = 0.12
         _PatchBounce ("Bounce from the sun patches", Range(0, 2)) = 0.8
+        _Chips ("Chipped tile corners (the coping)", Range(0, 1)) = 0
     }
     SubShader
     {
@@ -49,7 +50,7 @@ Shader "Backrooms/PoolTile"
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _TileColor, _DeckColor, _GroutColor;
-                half _Grout, _Smoothness, _Variation, _Bevel, _Dome, _Tilt, _JointShade, _ReflBlur, _WetDarken, _PatchBounce;
+                half _Grout, _Smoothness, _Variation, _Bevel, _Dome, _Tilt, _JointShade, _ReflBlur, _WetDarken, _PatchBounce, _Chips;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; float4 tangentOS : TANGENT; float2 uv : TEXCOORD0; };
@@ -124,7 +125,26 @@ Shader "Backrooms/PoolTile"
                     float crack = 1.0 - smoothstep(0.006, 0.02, abs(dot(f - (h3 - 0.5) * 0.3, cd)));
                     tint *= 1.0 - 0.45 * crack * tileMask * near;
                 }
+                // (2026-11-01, the review) Repairs: now and then a ragged patch of a few tiles replaced with a near match,
+                // slightly whiter or greener, their joints cleaner; and on the coping, chipped tile corners showing the pale
+                // body under the glaze.
+                float2 blk = floor(id / 5.0);
+                float2 rh = PoolHash22(blk + (deck ? 3.7 : 9.1));
+                if (rh.x < 0.05)
+                {
+                    float2 rc = (id - blk * 5.0) - 2.0 - (rh - 0.5) * 2.0;
+                    if (dot(rc, rc) < 2.2 + 1.5 * PoolHash22(id + 5.5).x)
+                        tint *= lerp(float3(1.06, 1.04, 1.0), float3(0.97, 1.05, 1.0), step(0.5, rh.y));
+                }
                 albedo = lerp(_GroutColor.rgb, tint, tileMask);
+                if (_Chips > 0.0 && near > 0.3)
+                {
+                    float2 ch = PoolHash22(id + 77.0);
+                    float2 corner = sign(f) * 0.5 - f;
+                    float cd = length(corner);
+                    if (ch.x < _Chips && cd < 0.12 + 0.1 * ch.y && dot(sign(f), float2(ch.y > 0.5 ? 1 : -1, ch.x * 4.0 > _Chips * 2.0 ? 1 : -1)) > 1.5)
+                    { albedo = float3(0.82, 0.8, 0.74); tileMask = 0.4; }
+                }
                 // Pool floors: dark lane lines (a tile wide, every 2.4 m) and a round drain in some cells.
                 if (under > 0.5 && N0.y > 0.7)
                 {
@@ -195,6 +215,13 @@ Shader "Backrooms/PoolTile"
                             streak = smoothstep(0.2, 0.35, along) * smoothstep(1.0, 0.85, along) * (1.0 - smoothstep(sill - 0.01, sill, y)) * smoothstep(sill - 2.6, sill - 0.3, y);
                         }
                     }
+                    // White efflorescence: salts the damp brings out, a powdery bloom low on walls by the water and in
+                    // patches where a leak once ran.
+                    float bloomN = PoolValueNoise(wallUV * float2(3.0, 5.0) + 13.0);
+                    float leak = step(PoolHash22(floor(wallUV.x / 1.2) + float2(17.0, 3.0)).x, 0.06) * smoothstep(0.0, 0.6, PoolValueNoise(float2(wallUV.x * 6.0, wallUV.y * 0.6)) - 0.3);
+                    float bloom = saturate((1.0 - smoothstep(0.05, 0.5, P.y - baseY)) * here.fill * 2.0 * bloomN + leak * bloomN);
+                    albedo = lerp(albedo, float3(0.9, 0.9, 0.86), bloom * 0.4);
+                    glaze *= 1.0 - bloom * 0.6;
                     if (streak > 0.0)
                     {
                         float s = PoolValueNoise(float2(wallUV.x * 11.0, wallUV.y * 0.3 + 3.0)) * 0.7 + PoolValueNoise(float2(wallUV.x * 27.0, wallUV.y * 0.6)) * 0.3;

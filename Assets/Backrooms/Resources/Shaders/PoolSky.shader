@@ -43,9 +43,23 @@ Shader "Backrooms/PoolSky"
                 if (PoolGlazed(c, cell.sky))
                 {
                     float px = max(length(fwidth(P.xz)) * 1.5, 0.004);
-                    float pane = PoolMullions(P.xz, px) / 0.82;           // 0 on a bar, 1 in the glass
+                    float2 d2 = abs(frac(P.xz / 0.6 + 0.5) - 0.5) * 0.6;
+                    float pane = smoothstep(0.02 - px, 0.02 + px, min(d2.x, d2.y));    // 0 on a bar, 1 in the glass
                     float3 milky = dot(sky, 1.0 / 3.0) * float3(0.92, 0.95, 0.93);
-                    float3 glass = lerp(sky, milky, 0.45) * 0.8;
+                    // Dust gathered toward the frames, streaks where rain ran, and now and then a pane broken out.
+                    float2 local = frac(P.xz / 0.6);
+                    float edge = 1.0 - min(min(local.x, 1.0 - local.x), min(local.y, 1.0 - local.y)) * 2.0;
+                    float streak = PoolValueNoise(float2(P.x * 30.0, P.z * 2.0)) * PoolValueNoise(float2(P.x * 3.0 + 5.0, P.z * 22.0));
+                    float dirt = saturate(edge * edge * 0.6 + streak * 0.5);
+                    float3 glass = lerp(lerp(sky, milky, 0.45) * 0.8, milky * 0.45, dirt * 0.5);
+                    if (PoolPaneBroken(P.xz))
+                    {
+                        // Shards left in the frame: a jagged rim of glass round a clear hole.
+                        float2 c = local - 0.5;
+                        float ang = atan2(c.y, c.x);
+                        float jag = 0.3 + 0.09 * sin(ang * 7.0 + PoolHash22(floor(P.xz / 0.6)).x * 6.0) + 0.05 * sin(ang * 17.0);
+                        glass = max(abs(c.x), abs(c.y)) > jag ? glass : sky;
+                    }
                     float3 bar = float3(0.2, 0.21, 0.2) * PoolAmbientAt(P - float3(0, 0.3, 0), float3(0, -1, 0));
                     sky = lerp(bar, glass, pane);
                 }

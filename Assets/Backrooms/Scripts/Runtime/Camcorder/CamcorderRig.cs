@@ -192,7 +192,9 @@ namespace Backrooms.Camcorder
                 exposure.autoExposure = s.autoExposure;
                 exposure.snap = freezeForStills;
                 exposure.exposureBias = s.exposureBias;
-                exposure.speedScale = s.exposureSpeed;
+                // In the Poolrooms' daylight it adapts faster (2026-11-01, the review: a sunlit hall stayed blown out for a
+                // few seconds); a consumer camcorder in daylight is quick, Level 0's slow pace is for its dim rooms.
+                exposure.speedScale = s.exposureSpeed * (Generation.PoolWorld.CameraInPool ? 2.5f : 1f);
                 exposure.compensation = s.exposureCompensation;
                 exposure.maxGainEV = s.maxGain;
                 exposure.shutterTime = s.ShutterTime;
