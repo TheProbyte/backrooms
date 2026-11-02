@@ -6,6 +6,10 @@ Last updated 2026-11-02 (world version 13).
 
 ## Newest (2026-11-02)
 
+- **The shadow remade** (Docs/Audio.md, "The shadow"): a tall, thin, faceless, Slender-like figure that stands perfectly
+  still in a room it has darkened, its edge rippling like heat haze. It only moves when unseen, coming a little nearer each
+  time; it is gone the moment it is out of frame; a glance sends it back; staring builds static until it is too late: it is
+  in your face and the tape cuts.
 - **Ray tracing and surface detail** (Docs/RuntimeLighting.md, "Ray-traced light" and "Surface detail"; F5 > LIGHT >
   RAY TRACING / SURFACES): on a card with ray tracing (Direct3D 12), every ceiling fixture shadows every chair, box, door
   and person round it with a panel's soft, contact-hardening shadow (the 16-32 shadow maps are gone: the GPU frame got

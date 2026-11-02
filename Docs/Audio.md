@@ -219,35 +219,37 @@ Strength: audio menu > ATMOSPHERE > Tension director (0 off, 1 normal, 2 intense
 `TensionDirector.Instance.Force("shadow" | "bold" | "leave" | "dark" | "flicker" | "door" | "sag" | "peak")` for testing;
 `Status` for a one-line state (with the shadow's).
 
-## The shadow (2026-10-31)
+## The shadow (2026-10-31, remade 2026-11-02)
 
-`Atmosphere/ShadowStalker.cs`. The owner: "like Lethal Company's Bracken", "maybe not a physical thing; in the shadows,
-when it nears, lights turn off in its path". The director is its macro brain (Alien: Isolation's split): it sends it 12 s
-into a build-up, makes it **bold** at the peak, calls it off in the fade. The shadow itself only knows where you are and
-where you look.
-- **Lights**: the room it is in and the room it is about to step into go dark, tube by tube with a stutter
-  (`LightZones.Drain`: not a switch, not saved); a room it has left strikes again 2.5-4 s later. It makes no sound: you
-  hear the building's hum cut out and tubes strike behind it.
-- **What you see is its shadow** (the owner, 2026-10-31: "like an actual long tall shadow, against walls, keeping its
-  distance until enraged enough; in the final stages redder eyes glowing in the dark"): a long, tall human shadow on a wall
-  with nobody to cast it, as tall as the wall (head at the ceiling line), soft-edged, wavering a little
-  (`Resources/Shaders/ShadowFigure.shader`, multiplied onto the wall like the wear marks: it takes the wall's light; no
-  lit-shader variants). It lies on a wall 1-5 m from where the shadow is, facing you, a lit one where it can, slides along
-  that wall as it moves and fades out to move to another. Faint at first (0.42), darker as it angers.
-- **Eyes**: from anger 0.45 two dull red points in the shadow's head; from 0.75 they glow; charging, they burn (an added
-  pass of the same shader).
-- **Stalk**: cell by cell through the building (through doors: it is not solid), toward a spot 9 m behind you (5 m when
-  bold); it never steps into view: its route goes round what you can see, and if there is none it waits behind the corner
-  and leans out now and then (its shadow leans with it). It keeps its distance: 7.5 m (4.5 m bold); come within 2 m of
-  that and it draws back.
-- **Looked at** (its shadow in view within 22 m): it freezes 0.4 s, then draws back out of sight. Each look adds anger
-  (0.15 within 6 m, else 0.08), staring adds 0.15/s close or 0.06/s far (about 5 s up close fills it); at the peak it
-  works itself up by itself (0.012/s); it ebbs 0.015/s. Full: **angry**, it comes straight at you at 5.6 m/s for 2.5-5 s,
-  standing up off the wall: a vague darkness with burning red eyes; lights die ahead of it.
-- **Caught** (only when angry and on you): the tape breaks up and cuts (the last frame held, crackle), and the recording
-  picks up 20-45 m away in a room whose lights are off (saved: find its switch). The director goes to its fade.
-- Near it the picture breaks up (`CamcorderRig.Interference`, through the noclip glitch: tracking, tearing, sound
-  dropouts) and the power sags. Route planning: about 1.5 ms in the editor, every 0.8 s.
+`Atmosphere/ShadowStalker.cs`, `Resources/Shaders/ShadowWatcher.shader`. The owner (2026-11-02, after the first one, a long
+shadow gliding along the walls, looked like a stick figure): "maybe he shouldn't move at all but disappears the second
+he's out of frame. If you look at him for too long then it's too late for you. If you glance but look away immediately he
+retreats slightly. He only shows up in shadows (or his own shadows of the lights he turns off). A scarier shadow, still
+tall and thin, maybe shimmering, like heat waves; a slenderman style shadow." The rules follow SCP-173 and the Weeping
+Angels (it only moves unseen) and Slender (the longer you look the worse it gets; the static is both the warning and what
+hides it). The director is still its macro brain: it sends it 12 s into a build-up, makes it **bold** at the peak, calls it
+off in the fade.
+- **What you see**: a tall, thin, faceless figure (2.25-2.85 m, up to just under the ceiling) standing perfectly still: a
+  suited, Slender-like silhouette, shoulders drawn up round a sunk neck, a small head bowed and tilted, arms hanging below
+  the knees with long fingers. Near black, its edge boiling upward like the air over a hot road and the room just round it
+  rippling (heat haze: the picture behind looked up through rising noise, from URP's opaque texture); a little of the
+  warped room seeps through it in rising streaks. One camera-facing quad, a distance field; no keywords, no shadow cast.
+- **Where it stands**: a place about the distance it wants (4-18 m), on your storey, out of frame but in your line of sight
+  (turning round finds it), clear to stand in, behind you or to the side by preference, a dark room by preference. The
+  room's tubes stutter out first (`LightZones.Drain`), and it is only there once they are dark (it does not stand in a lit
+  room); calm, never in your own room (bold, it may put your own room out). When it goes they strike again 2.5-4 s later.
+- **Unseen** it comes on: every 6-10 s (4-6 s bold) a new place 2.5 m nearer, down to 4 m (2.5 m bold).
+- **Seen** it stands. A **glance** (under 0.6 s) and away: gone, and next time 4 m further off. Longer: the tape breaks up
+  more and more (`CamcorderRig.Interference`, 0.12 + 0.75 x stare^2) and its shimmer boils harder; look away and it is gone
+  (next time where it was). The look is counted (it ebbs 0.08/s): about 2.6 s of looking at 12 m is too late, 1.9 s at
+  4 m, less bold (1.7 s base).
+- **Too late**: it is right in front of you (1.1 m) for a third of a second, the tape breaks up and cuts (the last frame
+  held, crackle), and the recording picks up 20-45 m away in a room whose lights are off (saved: find its switch). The
+  director goes to its fade.
+- **Gone the moment it is out of frame** after being seen (and when told to leave, the next time it is out of frame).
+- Near it the picture breaks up a little and the power sags. No sound of its own: the hum of the room it darkens cuts out.
+- Test menu (K): Come close (7 m), Come (14 m), Right behind me (3 m), Bold, Leave, Gone now. *Freeze* holds it and the
+  look; *Can't be caught* sends it off instead of the cut.
 
 ## Testing the enemies: the Enemies menu (K)
 
