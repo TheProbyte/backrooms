@@ -6,6 +6,9 @@ Last updated 2026-11-02 (world version 13).
 
 ## Newest (2026-11-02)
 
+- **Living-room walls from a photo**: the homes' orange-peel drywall is now the owner's photo of a real sprayed wall
+  (Tools/Textures/make_surface_textures.py orange_peel), its relief recovered from the photo's raking light, with
+  parallax and micro-shadowing.
 - **The shadow remade** (Docs/Audio.md, "The shadow"): a tall, thin, faceless, Slender-like figure that stands perfectly
   still in a room it has darkened, its edge rippling like heat haze. It only moves when unseen, coming a little nearer each
   time; it is gone the moment it is out of frame; a glance sends it back; staring builds static until it is too late: it is

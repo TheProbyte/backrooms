@@ -38,6 +38,14 @@ A material whose normal map is listed in `MaterialMaps.Surfaces` gets surface de
 detail"). Its height and cavity map is made from the normal map: add the normal map to `MAPS` in
 `Tools/Textures/make_height_maps.py`, run it, import the result linear (not sRGB), and add a row to `Surfaces`.
 
+## Photos lit from one side (2026-11-02)
+
+A close photo of a relief taken under one light (a wall by a window, a lamp to one side) has its shading, not its
+height, in its brightness: "dark is lower" turns each bump into a half-lit smear. `orange_peel()` in
+`Tools/Textures/make_surface_textures.py` finds the light's direction from the shading's spectrum, integrates the
+shading along it into a height, and makes it seamless with a histogram-preserving blend (`hp_seamless`); reuse it for
+such photos (set the fitted angle and the photo's size in metres).
+
 ## How to check a texture in game
 
 1. Put the files in `Assets/Backrooms/Textures/`.

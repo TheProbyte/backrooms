@@ -9,7 +9,7 @@ For each tangent-space normal map (green up, as Unity's) listed below:
 Written as RGB PNG (R height, G cavity, B 0) to Assets/Backrooms/Resources/Textures/Height/<name>_Height.png, at most
 1024 x 1024 (the relief does not need more: the camcorder records about 480 lines). Imported linear (not sRGB).
 
-    python Tools/Textures/make_height_maps.py
+    python Tools/Textures/make_height_maps.py [OrangePeel ...]
 """
 import os
 import numpy as np
@@ -36,6 +36,7 @@ MAPS = [
     ("Resources/Textures/Photo/Concrete_Normal.png", 2.0),
     ("Resources/Textures/Photo/OldWood_Normal.png", 2.0),
     ("Resources/Textures/Photo/DoorVeneer_Normal.png", 1.0),
+    ("Resources/Textures/Home/OrangePeel_Normal.png", 2.0),
 ]
 
 
@@ -93,9 +94,11 @@ def cavity(height, depth_texels):
     return np.clip(1.0 - occ * 1.6, 0.0, 1.0)
 
 
-def main():
+def main(only=()):
     os.makedirs(OUT, exist_ok=True)
     for rel, depth in MAPS:
+        if only and not any(o in rel for o in only):
+            continue
         src = os.path.join(ROOT, "Assets", "Backrooms", rel)
         if not os.path.exists(src):
             print("missing", rel)
@@ -119,4 +122,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    main(sys.argv[1:])                                                          # names to redo (all if none)

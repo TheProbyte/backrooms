@@ -43,6 +43,7 @@ namespace Backrooms.Generation
             ("Fabric_Normal", 0.012f, 0.6f, 0.7f, 0.4f), ("CreamWeave_Normal", 0.012f, 0.55f, 0.6f, 0.4f),
             ("Cardboard_Normal", 0.004f, 0.45f, 0f, 0f), ("Concrete_Normal", 0.006f, 0.6f, 0f, 0f),
             ("OldWood_Normal", 0.005f, 0.5f, 0f, 0f), ("DoorVeneer_Normal", 0.002f, 0.4f, 0f, 0f),
+            ("OrangePeel_Normal", 0.0016f, 0.35f, 0f, 0f),     // its relief: about 0.9 mm over a 0.6 m texture
         };
         static Dictionary<string, (Texture2D height, float depth, float cavity, float sheen, float sheenSmooth)> s_surfaces;
         static readonly int ParallaxMap = Shader.PropertyToID("_ParallaxMap"), Parallax = Shader.PropertyToID("_Parallax"),
@@ -142,8 +143,9 @@ namespace Backrooms.Generation
 
         /// <summary>
         /// A home's walls (Room.home, WallFinish.OrangePeel): sprayed orange-peel drywall, eggshell off-white paint. A copy of
-        /// the painted wall (its keywords: no new shader variant) with Resources/Textures/Home/OrangePeel_* (generated: fine
-        /// droplets 2-6 mm over a gentle wave, one tile = 0.6 m).
+        /// the painted wall (its keywords: no new shader variant) with Resources/Textures/Home/OrangePeel_* (from the owner's
+        /// photo, Tools/Textures/make_surface_textures.py orange_peel: droplets 2-5 mm, one tile = 0.6 m, the normal map at
+        /// the relief's real slope) and its surface detail.
         /// </summary>
         public static Material OrangePeel;
         /// <summary>The rarer papered home (WallFinish.SkyWallpaper): the owner's blue-sky clouds pattern (Textures/Home/SkyClouds,
@@ -165,6 +167,9 @@ namespace Backrooms.Generation
             {
                 if (!peelN || !m.HasProperty(BumpMap)) return;
                 m.SetTexture(BumpMap, peelN); m.SetFloat(BumpScale, strength); m.EnableKeyword("_NORMALMAP");
+                // The relief's surface detail, as deep as the bump is strong (the map is at full strength 1).
+                SurfaceDetail(m);
+                if (m.HasProperty(Parallax) && m.GetFloat(Parallax) < 0f) m.SetFloat(Parallax, m.GetFloat(Parallax) * Mathf.Min(strength, 1f));
             }
             var paint = a.paintedWall ? a.paintedWall : a.wallpaper;
             if (paint && paint.HasProperty(BaseMap))
@@ -173,7 +178,7 @@ namespace Backrooms.Generation
                 OrangePeel.SetTextureScale(BaseMap, new Vector2(2f, 4.5f));            // 0.6 m tiles (WallUV: 1.2 m by 2.7 m)
                 OrangePeel.SetColor(BaseColor, new Color(0.86f, 0.84f, 0.78f, 1f));      // off-white, a little warm
                 OrangePeel.SetFloat("_Smoothness", 0.2f);                               // eggshell
-                Bump(OrangePeel, 0.55f);
+                Bump(OrangePeel, 1.2f);
             }
             if (a.wallpaper && sky && a.wallpaper.HasProperty(BaseMap))
             {
@@ -182,7 +187,7 @@ namespace Backrooms.Generation
                 SkyWallpaper.SetTextureOffset(BaseMap, Vector2.zero);
                 SkyWallpaper.SetColor(BaseColor, new Color(0.86f, 0.87f, 0.86f, 1f));      // a little faded
                 SkyWallpaper.SetFloat("_Smoothness", 0.22f);                            // vinyl-coated paper
-                Bump(SkyWallpaper, 0.15f);
+                Bump(SkyWallpaper, 0.2f);                                   // a little paper tooth (the peel map is ~1.35x the old one's slope)
             }
             if (a.carpet && a.carpet.HasProperty(BaseColor))
             {

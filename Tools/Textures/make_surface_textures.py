@@ -371,11 +371,104 @@ def stains():
         save_rgb(stamp, os.path.join(PHOTO, name + ".png"))
 
 
+# ---------------- The living rooms' orange-peel walls (2026-11-02) ----------------
+
+HOME = os.path.join(RES, "Home")
+
+
+def hp_seamless(h):
+    """Makes a one-channel map tile without a join, keeping its histogram (Heitz & Neyret, "High-Performance By-Example
+    Noise using a Histogram-Preserving Blending Operator", HPG 2018, with Burley's 1D lookup): the values are mapped to a
+    Gaussian by rank, blended with themselves shifted by half (variance-preserving weights, across then down), and mapped
+    back through the original's sorted values. A plain blend of two patches is flatter and its peaks lower."""
+    from scipy.special import ndtri
+    flat = h.ravel()
+    order = np.argsort(flat, kind="stable")
+    g = np.empty_like(flat)
+    g[order] = ndtri((np.arange(flat.size) + 0.5) / flat.size)
+    g = g.reshape(h.shape)
+    for axis in (1, 0):
+        n = g.shape[axis]
+        w = np.sin(np.pi * (np.arange(n) + 0.5) / n) ** 2
+        w = w[None, :] if axis == 1 else w[:, None]
+        g = (g * w + np.roll(g, n // 2, axis) * (1 - w)) / np.sqrt(w * w + (1 - w) * (1 - w))
+    # Back through the original's distribution (by rank, so exactly its histogram).
+    out = np.empty_like(flat)
+    out[np.argsort(g.ravel(), kind="stable")] = flat[order]
+    return out.reshape(h.shape)
+
+
+def orange_peel():
+    """The homes' sprayed orange-peel drywall (MaterialMaps.OrangePeel; one texture = 0.6 m of wall), from the owner's
+    photo (OrangePeel_Photo.jpg: about 0.55-0.6 m of wall, droplets 2-5 mm, 6144 px).
+
+    The photo is lit from one side (from the top, a little from the right: its shading's spectrum follows cos^2 of the
+    angle to that direction, the signature of raking light on an isotropic relief), so its brightness is the relief's
+    slope toward the light, not its height. The height is that shading integrated along the light (shape from shading
+    with one known light, in the Fourier domain, regularised where a frequency runs across the light and the photo says
+    nothing about it), its slow waviness above about 2 cm kept faint. Then made seamless keeping its histogram, and the
+    normal map taken from the height at its real slope (one texel = 0.29 mm). The colour is the paint's: an even
+    near-white (the material's tint gives the warm off-white) darkened a little down in the hollows."""
+    a = load("OrangePeel_Photo.jpg")
+    a = a[: a.shape[0] // 2 * 2, : a.shape[1] // 2 * 2]
+    a = (a[0::2, 0::2] + a[1::2, 0::2] + a[0::2, 1::2] + a[1::2, 1::2]) * 0.25          # 3072 px: 0.19 mm a pixel
+    lum = a @ np.array([0.2126, 0.7152, 0.0722])
+    shade = lum / np.maximum(ndimage.gaussian_filter(lum, 150, mode="reflect"), 1e-3) - 1.0   # the lighting's slow fall-off out
+    # Taper the edges so the transform does not see a jump at the border (cropped off after).
+    edge = 96
+    h0, w0 = shade.shape
+    ry = np.clip(np.minimum(np.arange(h0), np.arange(h0)[::-1]) / edge, 0, 1)
+    rx = np.clip(np.minimum(np.arange(w0), np.arange(w0)[::-1]) / edge, 0, 1)
+    shade = shade * (np.sin(ry * np.pi / 2) ** 2)[:, None] * (np.sin(rx * np.pi / 2) ** 2)[None, :]
+
+    # Toward the light, in image axes (x right, y down): up and a little right (fitted: the axis at 102 degrees).
+    t = np.radians(102.0)
+    lx, ly = -np.cos(t), -np.sin(t)
+    fy = np.fft.fftfreq(h0)[:, None]
+    fx = np.fft.fftfreq(w0)[None, :]
+    # Lambert at grazing light: shade ~ -grad(h).l, so in frequency S = -i 2pi (f.l) H.
+    g = -2j * np.pi * (fx * lx + fy * ly)
+    eps = (2 * np.pi * 0.0025) ** 2
+    H = np.fft.fft2(shade) * np.conj(g) / (np.abs(g) ** 2 + eps)
+    f = np.hypot(fx, fy)
+    H *= 1.0 - 0.85 * np.exp(-(f * 110.0) ** 2)                                     # waves over ~2 cm kept faint
+    H[0, 0] = 0
+    h = np.real(np.fft.ifft2(H))[edge:-edge, edge:-edge]
+    s = float(((h - h.mean()) ** 3).mean() / h.std() ** 3)
+    print("   height skew", round(s, 3), "(droplets: a few high, rounded tops)")
+
+    h = hp_seamless(h)
+    side = 2048
+    hi = Image.fromarray(h.astype(np.float32), "F").resize((side, side), Image.LANCZOS)
+    h = np.asarray(hi, dtype=np.float64)
+    h = ndimage.gaussian_filter(h, 0.7, mode="wrap")                              # the photo's own softness
+    h = (h - h.mean()) / h.std()
+
+    texel_mm = 600.0 / side
+    relief_mm = 0.17                                                                 # the bumps' height spread (std; a little
+    #                                    over the photo's, so the droplets still read on the camcorder's few hundred lines)
+    hm = h * relief_mm
+    dx = (np.roll(hm, -1, 1) - np.roll(hm, 1, 1)) / (2 * texel_mm)
+    dy = (np.roll(hm, -1, 0) - np.roll(hm, 1, 0)) / (2 * texel_mm)                  # rows go down the image
+    nx, ny, nz = -dx, dy, np.ones_like(hm)
+    l = np.sqrt(nx * nx + ny * ny + nz * nz)
+    normal = np.stack([nx / l, ny / l, nz / l], -1) * 0.5 + 0.5
+    print("   slope rms", round(float(np.sqrt((dx * dx + dy * dy).mean())), 3))
+
+    # The paint: even, a touch darker in the hollows (dust and the roller's thinner coat).
+    hollow = np.clip(ndimage.gaussian_filter(h, 10, mode="wrap") - h, 0, None)
+    shade_a = 1.0 - 0.03 * hollow
+    albedo = np.repeat((shade_a / shade_a.mean() * 246.85 / 255.0)[..., None], 3, -1)
+    os.makedirs(HOME, exist_ok=True)
+    save_rgb(albedo, os.path.join(HOME, "OrangePeel_Albedo.png"))
+    save_rgb(normal, os.path.join(HOME, "OrangePeel_Normal.png"))
+
+
 if __name__ == "__main__":
     import sys
     only = set(sys.argv[1:])
     for f in (drywall, ceiling, duct, carpet, cardboard, paper, galvanized, pine, end_grain, old_wood, flex_duct,
-              door_veneer, concrete, stains):
+              door_veneer, concrete, stains, orange_peel):
         if not only or f.__name__ in only:
             print("--", f.__name__)
             f()
