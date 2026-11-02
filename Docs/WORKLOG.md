@@ -15,6 +15,9 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-02 17:20  Claude Code  The line in the water along the bottom of the frame
+- The owner: "a line in water visible at the bottom of frame, wherever I look". PoolWater's refraction dropped its bend for pixels whose bent ray pointed below the picture's bottom edge, so a strip along the bottom showed the floor unbent. Now the bend is shortened to stay on the picture. Checked in World 3 at the Poolrooms spot looking down 32 degrees: no edge strip. Build updated.
+
 ## 2026-11-02 16:30  Claude Code  A ring on the pool floor round the player; the ray-traced shadows' ghost trail and grain
 - The owner (a Poolrooms screenshot): "this line moves as I move, it's around me in a circle"; and "shadows do seem better but there is weird ghosting and texture to them when moving side to side", "now I have shadows for footsteps if I look straight down".
 - The ring: PoolWater's refraction refused a lookup when what it landed on was nearer than this pixel's own water surface, but looking down at a slant the bent ray always lands on floor nearer the camera, so past about 4 m every lookup was refused and the refraction went off at once (the floor jumped and darkened along a ring). Now told by the height of what it lands on (above the water or not), the colour split too. Found by elimination in World 3 at the owner's spot (1396.5, 1.1, -101.2): not the tiles, the shimmer, the ripples, the planar mirror or the screen reflection.

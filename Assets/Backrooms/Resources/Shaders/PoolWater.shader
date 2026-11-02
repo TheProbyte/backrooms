@@ -207,8 +207,12 @@ Shader "Backrooms/PoolWater"
                     [unroll] for (int r = 0; r < 3; r++)
                     {
                         float2 u = ScreenUV(P + Tr * tl);
-                        if (any(u < 0.001) || any(u > 0.999)) break;
-                        float3 Pq = ComputeWorldSpacePosition(u, RawAt(u), UNITY_MATRIX_I_VP);
+                        // Off the picture (the bent ray points below its bottom edge when looking down): the bend shortened
+                        // to stay on it, not dropped (2026-11-02, the owner: a line in the water along the bottom of the
+                        // frame wherever they looked).
+                        float2 du = u - suv;
+                        float2 room = du > 0 ? (0.998 - suv) / max(du, 1e-6) : (suv - 0.002) / max(-du, 1e-6);
+                        u = suv + du * saturate(min(room.x, room.y));                        float3 Pq = ComputeWorldSpacePosition(u, RawAt(u), UNITY_MATRIX_I_VP);
                         if (Pq.y > P.y + 0.02) break;                                 // something above the water there
                         ruv = u;
                         tl = min(length(Pq - P), 8.0);
