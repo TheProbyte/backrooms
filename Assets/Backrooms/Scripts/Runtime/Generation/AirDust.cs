@@ -14,7 +14,8 @@ namespace Backrooms.Generation
         public float strength = 1f;
 
         static Material s_mat;
-        static readonly int LightsId = Shader.PropertyToID("_AirDustLights"), CountId = Shader.PropertyToID("_AirDustCount");
+        static readonly int LightsId = Shader.PropertyToID("_AirDustLights"), CountId = Shader.PropertyToID("_AirDustCount"),
+            StrengthId = Shader.PropertyToID("_AirDustStrength");
         ParticleSystem _ps;
         FixtureLightManager _lights;
         readonly List<LightSource> _near = new List<LightSource>();
@@ -79,6 +80,7 @@ namespace Backrooms.Generation
             bool on = strength > 0.001f;
             if (on != _ps.isPlaying) { if (on) _ps.Play(); else _ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear); }
             if (!on) return;
+            Shader.SetGlobalFloat(StrengthId, strength);
             if (!_lights) _lights = FindAnyObjectByType<FixtureLightManager>();
             int n = 0;
             if (_lights)

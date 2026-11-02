@@ -43,7 +43,9 @@ namespace Backrooms.Generation
         CompositePass _composite;
 
         static readonly int HazeId = Shader.PropertyToID("_LGridHaze"), IntegratedId = Shader.PropertyToID("_VolIntegrated"),
-            DepthParamsId = Shader.PropertyToID("_VolDepth"), DimsId = Shader.PropertyToID("_VolDims");
+            DepthParamsId = Shader.PropertyToID("_VolDepth"), DimsId = Shader.PropertyToID("_VolDims"),
+            DustLightId = Shader.PropertyToID("_VolLight"), DustVPId = Shader.PropertyToID("_VolDustVP"),
+            DustCamId = Shader.PropertyToID("_VolDustCam"), DustFwdId = Shader.PropertyToID("_VolDustFwd");
 
         public static VolumetricLight Ensure()
         {
@@ -96,7 +98,12 @@ namespace Backrooms.Generation
             if (!_grid) _grid = FindAnyObjectByType<LightGrid>();
             bool mine = Active && cam.cameraType == CameraType.Game && cam == Camera.main
                 && !(PoolWorld.Instance && PoolWorld.Instance.IsPool(cam.transform.position));
-            if (!mine) { if (Active) RestoreHaze(); return; }
+            if (!mine)
+            {
+                if (Active) RestoreHaze();
+                Shader.SetGlobalVector(DustFwdId, Vector4.zero);         // the dust in the air lights itself (AirDust)
+                return;
+            }
             var data = cam.GetUniversalAdditionalCameraData();
             var renderer = data ? data.scriptableRenderer : null;
             if (renderer == null) return;
@@ -205,6 +212,13 @@ namespace Backrooms.Generation
                 Shader.SetGlobalVector(DepthParamsId, new Vector4(near, far, Mathf.Log(far / near), 0f));
                 Shader.SetGlobalVector(DimsId, new Vector4(o._w, o._h, o._d, 0f));
                 Shader.SetGlobalTexture(IntegratedId, o._integrated);
+                // The froxels' light for the dust in the air (2026-11-01, Backrooms/AirDust): each mote takes the light of
+                // the froxel it floats in, so walls, doorways, shut doors and furniture shadow the motes as they do the air.
+                // The volume this frame's inject writes (Execute swaps _cur first).
+                Shader.SetGlobalTexture(DustLightId, o._vol[1 - o._cur]);
+                Shader.SetGlobalMatrix(DustVPId, vp);
+                Shader.SetGlobalVector(DustCamId, new Vector4(pos.x, pos.y, pos.z, SystemInfo.graphicsUVStartsAtTop ? -1f : 1f));
+                Shader.SetGlobalVector(DustFwdId, new Vector4(fwd.x, fwd.y, fwd.z, 1f));
                 o.Frames++;
             }
         }

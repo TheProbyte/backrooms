@@ -669,6 +669,35 @@ glazing and glass block), 6 (the flutter echo only made quieter, not moved to on
 16. Crouch at the edge and touch the water (hand ripples, a wet arm).
 17. The water as a horror tell: ripples with nothing making them, wading that is not yours, the water stilling at once.
 
+## Water and effects pass (2026-11-01)
+
+The owner: "do the same for water and other effects" (after the lighting engine's screen-space light and volumetric light).
+After Unreal's single-layer water (scattering and absorption in one depth layer, a phase function), screen-space
+refraction against the depth, and planar reflections with contact hardening (a reflection sharp where the object meets the
+surface, softer and more rippled the farther it is).
+- **Refraction** (PoolWater): the view ray bent by water's own index (1.333) along the surface's real normal, then walked to
+  what it meets with three fixed-point steps against the depth (where it lands, how far that is, again); never onto
+  something above the water. The deep end's floor shifts and wobbles, the shallow edge barely, as in real pools (it was a
+  fixed shift of the picture). A faint colour split (`_Dispersion` 0.03). The water's colour by the real path length.
+  `_RefractScale` (1 = physical).
+- **Sun in the water**: the refracted sunbeam scattered toward the eye along the view's path under the surface, thinned on
+  the way down and on the way up (per channel, by `_Absorb`), Henyey-Greenstein (`_SunPhaseG` 0.4); zero in the shade. Sunlit
+  water glows green from within. `_SunScatter`.
+- **The mirror by distance**: `PoolMirror` now resolves its picture with each pixel's eye depth into a mipmapped texture
+  (`Hidden/Backrooms/PoolMirrorResolve`; the mirror's projection is oblique, so the depth is undone by its inverse
+  projection). The water reads how far beyond the surface the mirrored thing is (d) and moves the image by the ripples' tilt
+  times d / (d + the camera's distance), and blurs by the lobe (GGX alpha plus the micro ripples) the same way: legs and wall
+  feet meet their reflections exactly, far walls ripple and soften. `_MirrorBend`, `_MirrorBlur`.
+- **Highlight AA** on the ripples (Tokuyoshi & Kaplanyan): the glint widens where the normal turns faster than a pixel.
+- **Screen-space reflections on tiles and props**: PoolTile and PoolLit take ScreenLighting's reflection where it found
+  something (props, people, arches, curved walls, slides, the water itself: nothing of which the cell-map trace sees) over
+  the trace, which is kept where the screen has nothing. The tiles read it bent by each tile's tilt. Their depth-normals
+  now write smoothness in alpha (tiles 0.85; PoolLit its `_Smoothness`; rough surfaces are skipped).
+- **Dust in the air** (Level 0, AirDust): with volumetric light on, each mote takes the light of the froxel it floats in, so
+  walls, doorways, shut doors and furniture shadow it; scaled to the old motes at the bright end (measured: the froxels'
+  light was 3.5x the old cone's for the brightest tenth) and faded faster in dim air.
+- Cost: a sunlit hall at 1920 x 1080, GPU 10.23 ms with all of it, 10.26 ms without (noise).
+
 ## Known gaps / ideas
 
 - (Done 2026-11-01: the view under the water.) Crawling inside a basin puts the camera under the water surface, which was single-sided (nothing drawn from below).

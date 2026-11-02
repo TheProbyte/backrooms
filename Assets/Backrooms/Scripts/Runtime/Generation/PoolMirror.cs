@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
 
 namespace Backrooms.Generation
@@ -12,6 +13,9 @@ namespace Backrooms.Generation
     /// columns' bases, rails, ladders, props, bleachers) and what screen-space reflection cannot (what is off screen), as
     /// planar water does in Half-Life: Alyx and most indoor-water games. Only while the player's camera is in the
     /// Poolrooms above the water; Graphics > Water reflections switches it off (the trace and screen-space then).
+    /// 2026-11-01 (the water and effects pass): after the mirror is drawn, a resolve pass (Hidden/Backrooms/PoolMirrorResolve)
+    /// copies its picture into a mipmapped texture with each pixel's distance in alpha, so the water bends and blurs a
+    /// reflection by how far away the mirrored thing is (sharp where things meet the water, softer far off).
     /// </summary>
     [DefaultExecutionOrder(1000)]
     public class PoolMirror : MonoBehaviour
@@ -20,8 +24,35 @@ namespace Backrooms.Generation
         public static bool Rendering { get; private set; }
 
         Camera _cam;
-        RenderTexture _rt;
-        static readonly int IdTex = Shader.PropertyToID("_PoolMirrorTex"), IdParams = Shader.PropertyToID("_PoolMirrorParams"), IdPass = Shader.PropertyToID("_PoolMirrorPass");
+        RenderTexture _rt, _out;
+        RTHandle _outHandle;
+        Material _resolveMat;
+        ResolvePass _resolve;
+        bool _resolved;
+        static readonly int IdTex = Shader.PropertyToID("_PoolMirrorTex"), IdParams = Shader.PropertyToID("_PoolMirrorParams"), IdPass = Shader.PropertyToID("_PoolMirrorPass"),
+            IdDepthSrc = Shader.PropertyToID("_PoolMirrorDepthSrc"), IdInvP = Shader.PropertyToID("_PoolMirrorInvP");
+
+        void OnEnable()
+        {
+            var sh = Shader.Find("Hidden/Backrooms/PoolMirrorResolve");
+            if (sh) _resolveMat = new Material(sh) { hideFlags = HideFlags.HideAndDontSave };
+            _resolve = new ResolvePass(this);
+            RenderPipelineManager.beginCameraRendering += BeginCamera;
+        }
+
+        void OnDisable()
+        {
+            RenderPipelineManager.beginCameraRendering -= BeginCamera;
+            Off();
+        }
+
+        void BeginCamera(ScriptableRenderContext context, Camera cam)
+        {
+            if (!_cam || cam != _cam || !_resolveMat || !_out) return;
+            var data = cam.GetUniversalAdditionalCameraData();
+            var renderer = data ? data.scriptableRenderer : null;
+            if (renderer != null) renderer.EnqueuePass(_resolve);
+        }
 
         static bool Wanted()
         {
@@ -68,6 +99,7 @@ namespace Backrooms.Generation
             _cam.projectionMatrix = Matrix4x4.Scale(new Vector3(-1f, 1f, 1f)) * main.CalculateObliqueMatrix(new Vector4(cn.x, cn.y, cn.z, -Vector3.Dot(cp, cn)));
 
             Rendering = true;
+            _resolved = false;
             Shader.SetGlobalFloat(IdPass, 1f);
             try { _cam.Render(); }
             finally
@@ -75,8 +107,8 @@ namespace Backrooms.Generation
                 Shader.SetGlobalFloat(IdPass, 0f);
                 Rendering = false;
             }
-            Shader.SetGlobalTexture(IdTex, _rt);
-            Shader.SetGlobalVector(IdParams, new Vector4(1f, h, 0f, 0f));
+            Shader.SetGlobalTexture(IdTex, _resolved ? _out : _rt);
+            Shader.SetGlobalVector(IdParams, new Vector4(1f, h, _resolved ? _out.mipmapCount : 1f, _resolved ? 1f : 0f));
         }
 
         void Off() => Shader.SetGlobalVector(IdParams, Vector4.zero);
@@ -107,6 +139,14 @@ namespace Backrooms.Generation
                 if (_rt) { _rt.Release(); Destroy(_rt); }
                 _rt = new RenderTexture(w, hgt, 24, RenderTextureFormat.ARGBHalf) { name = "Pool mirror", filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.DontSave };
                 _rt.Create();
+                ReleaseOut();
+                _out = new RenderTexture(w, hgt, 0, RenderTextureFormat.ARGBHalf)
+                {
+                    name = "Pool mirror (resolved)", useMipMap = true, autoGenerateMips = false, filterMode = FilterMode.Trilinear,
+                    wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.DontSave
+                };
+                _out.Create();
+                _outHandle = RTHandles.Alloc(_out);
             }
             if (!_cam)
             {
@@ -136,11 +176,61 @@ namespace Backrooms.Generation
             return r;
         }
 
+        void ReleaseOut()
+        {
+            _outHandle?.Release();
+            _outHandle = null;
+            if (_out) { _out.Release(); Destroy(_out); _out = null; }
+        }
+
         void OnDestroy()
         {
             Off();
             if (_rt) { _rt.Release(); Destroy(_rt); }
+            ReleaseOut();
+            if (_resolveMat) Destroy(_resolveMat);
             if (_cam) Destroy(_cam.gameObject);
+        }
+
+        /// <summary>The mirror's picture and distances into the mipmapped texture the water reads.</summary>
+        class ResolvePass : ScriptableRenderPass
+        {
+            readonly PoolMirror _o;
+            class PassData { public PoolMirror o; public TextureHandle color, depth; public Matrix4x4 invP; }
+
+            public ResolvePass(PoolMirror owner)
+            {
+                _o = owner;
+                renderPassEvent = RenderPassEvent.AfterRenderingTransparents;
+                ConfigureInput(ScriptableRenderPassInput.Depth);
+            }
+
+            public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
+            {
+                var resources = frameData.Get<UniversalResourceData>();
+                var camera = frameData.Get<UniversalCameraData>();
+                var o = _o;
+                if (!o || !o._resolveMat || o._outHandle == null || !resources.activeColorTexture.IsValid() || !resources.cameraDepthTexture.IsValid()) return;
+                using (var builder = renderGraph.AddUnsafePass<PassData>("Backrooms pool mirror resolve", out var d))
+                {
+                    d.o = o;
+                    d.color = resources.activeColorTexture;
+                    d.depth = resources.cameraDepthTexture;
+                    d.invP = GL.GetGPUProjectionMatrix(camera.GetProjectionMatrix(), true).inverse;
+                    builder.UseTexture(d.color, AccessFlags.Read);
+                    builder.UseTexture(d.depth, AccessFlags.Read);
+                    builder.AllowPassCulling(false);
+                    builder.SetRenderFunc(static (PassData d, UnsafeGraphContext ctx) =>
+                    {
+                        var native = CommandBufferHelpers.GetNativeCommandBuffer(ctx.cmd);
+                        native.SetGlobalTexture(IdDepthSrc, d.depth);
+                        d.o._resolveMat.SetMatrix(IdInvP, d.invP);
+                        Blitter.BlitCameraTexture(native, d.color, d.o._outHandle, d.o._resolveMat, 0);
+                        native.GenerateMips(d.o._out);
+                    });
+                }
+                o._resolved = true;
+            }
         }
     }
 }

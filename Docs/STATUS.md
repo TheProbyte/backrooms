@@ -6,6 +6,11 @@ Last updated 2026-11-01 (world version 13).
 
 ## Newest (2026-11-01)
 
+- **Water and effects, modern pass** (Docs/Poolrooms.md, "Water and effects pass"): the pool water's refraction is
+  traced through the surface (deep floors shift and wobble, shallow edges barely), with a faint colour split; sunlit water
+  glows from within (the sun scattered in the water); the mirror on the water is sharp where things meet it and bends and
+  softens far off; pool tiles and props reflect what is on screen (props, people, arches, slides) as well as the traced
+  room; dust in the air in Level 0 is lit by the volumetric light (sparkles in shafts, not in their shadows).
 - **Lighting engine, modern pass** (Docs/RuntimeLighting.md, F5 > LIGHT > SCREEN LIGHT and AIR): bounce and occlusion
   found in the picture (visibility bitmask: corners and contact shade softly, and what hides light gives its own back, so
   nothing goes black the way plain AO made it), glossy reflections found in the picture (the probes where nothing is

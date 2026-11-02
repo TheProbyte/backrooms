@@ -348,6 +348,13 @@ Shader "Backrooms/PoolTile"
                     if (rn < 0.03) R = normalize(R + N0 * (0.03 - rn));      // bumps at grazing angles: back out
                     PoolHit hit = PoolTrace(P + N0 * 0.012, R, 34.0);
                     refl = PoolShadeHit(hit, R, _ReflBlur * (1.15 - smooth));
+                    // What the screen shows in that direction (2026-11-01): props, people, arches, curved walls and slides,
+                    // which the trace cannot see, from the screen-space reflection (ScreenLighting); the trace is kept where
+                    // the screen has nothing. Read a little off by each tile's tilt, so it breaks up tile by tile as the trace's.
+                    float3 tiltN = N - N0;
+                    float2 bend = float2(dot(tiltN, UNITY_MATRIX_V[0].xyz), -dot(tiltN, UNITY_MATRIX_V[1].xyz)) * _BRScreenSize.y * 0.05;
+                    float4 ssr = PoolScreenReflection(i.positionCS, bend);
+                    refl = lerp(refl, ssr.rgb, ssr.a);
                 }
                 float rough = max(1.0 - smooth, 0.05), a2 = rough * rough * rough * rough;
                 float3 H = normalize(V + POOL_SUN);
@@ -404,7 +411,8 @@ Shader "Backrooms/PoolTile"
                 #if defined(BACKROOMS_PORTAL_CLIP)
                     clip(dot(float4(i.positionWS, 1), _PortalClipPlane));
                 #endif
-                return half4(normalize(i.normalWS), 0);
+                // The glaze's smoothness in alpha (2026-11-01): the screen-space reflection traces glossy surfaces only.
+                return half4(normalize(i.normalWS), 0.85);
             }
             ENDHLSL
         }

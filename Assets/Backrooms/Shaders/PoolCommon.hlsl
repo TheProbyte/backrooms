@@ -33,6 +33,19 @@ float3 PoolScreenBounce(float4 positionCS)
     int2 px = clamp((int2)positionCS.xy, 0, (int2)_BRScreenSize.xy - 1);
     return max(LOAD_TEXTURE2D(_BRScreenGI, px).rgb, 0) * _BRScreen.y;
 }
+// (2026-11-01, the water and effects pass) Its screen-space reflection: what a glossy surface mirrors that is on screen
+// (props, people, arches, curved walls, slides: none of them are in the cell map the trace walks). rgb the light, a how
+// much was found (0 where the screen had nothing; the trace is kept there). offsetPx bends where it is read (the tiles'
+// own tilt, which the depth-normals the trace used do not have).
+TEXTURE2D(_BRScreenRefl);
+float4 PoolScreenReflection(float4 positionCS, float2 offsetPx)
+{
+    if (_BRScreen.x < 0.5 || _BRScreen.z <= 0.0) return 0;
+    int2 px = clamp((int2)(positionCS.xy + offsetPx), 0, (int2)_BRScreenSize.xy - 1);
+    float4 r = LOAD_TEXTURE2D(_BRScreenRefl, px);
+    if (!all(isfinite(r))) return 0;
+    return float4(max(r.rgb, 0), saturate(r.a * _BRScreen.z));
+}
 #endif
 
 #define POOL_C 1.2

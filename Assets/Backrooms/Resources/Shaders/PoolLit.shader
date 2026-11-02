@@ -88,6 +88,10 @@ Shader "Backrooms/PoolLit"
                     PoolHit hit = PoolTrace(i.positionWS + N * 0.02, R, 25.0);
                     env = PoolShadeHit(hit, R, 0.03 * (1.1 - _Smoothness));
                 }
+                // What the screen shows in the mirrored direction (2026-11-01, ScreenLighting's reflection: props, people,
+                // arches; glossy surfaces only), over the trace (metal) or the ambient light (the rest).
+                float4 ssr = PoolScreenReflection(i.positionCS, 0);
+                env = lerp(env, ssr.rgb, ssr.a);
                 float3 color = diffuse * (_PoolSunColor.rgb * sun * NdotL * aoDirect + ambient) + spec + env * Fv * (_Metallic > 0.5 ? 1.0 : _Smoothness);
                 return half4(PoolFarFade(MixFog(color, i.fogFactor), i.positionWS), 1);
             }
@@ -127,6 +131,11 @@ Shader "Backrooms/PoolLit"
             #pragma multi_compile _ BACKROOMS_PORTAL_CLIP
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             float4 _PortalClipPlane;
+            CBUFFER_START(UnityPerMaterial)
+                float4 _BaseMap_ST;
+                half4 _BaseColor;
+                half _Smoothness, _Metallic;
+            CBUFFER_END
             struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; };
             struct Varyings { float4 positionCS : SV_POSITION; float3 normalWS : TEXCOORD0; float3 positionWS : TEXCOORD1; };
             Varyings vert(Attributes i) { Varyings o; o.positionWS = TransformObjectToWorld(i.positionOS.xyz); o.positionCS = TransformWorldToHClip(o.positionWS); o.normalWS = TransformObjectToWorldNormal(i.normalOS); return o; }
@@ -135,7 +144,7 @@ Shader "Backrooms/PoolLit"
                 #if defined(BACKROOMS_PORTAL_CLIP)
                     clip(dot(float4(i.positionWS, 1), _PortalClipPlane));
                 #endif
-                return half4(normalize(i.normalWS), 0);
+                return half4(normalize(i.normalWS), _Smoothness);      // smoothness in alpha: the screen-space reflection's
             }
             ENDHLSL
         }
