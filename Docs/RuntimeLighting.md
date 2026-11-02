@@ -381,8 +381,13 @@ build's first API; `RayTracedLighting.Supported`). Without one nothing is create
   one fixture is picked from its 4.8 m tile's list in proportion to the light it gives there (its share drawn per pixel,
   distance, measured shape, the surface turned toward it and the grid's wall test), by weighted reservoir sampling, and one
   ray goes to a random point on its panel (a lamp: a 10 cm ball; the fitting's last 8 cm / a lamp's 30 cm are not
-  blockers). Blended over 12 frames (reprojected, kept within the range this frame's 3 x 3 neighbours found, so a moving
-  shadow does not smear) and a 5 x 5 edge-aware filter; faded out from 30 to 34 m. Backrooms/Lit lights every fixture as
+  blockers). Blended over 12 frames, reprojected and kept within the mean of this frame's 7 x 7 neighbours on the same
+  surface give or take half their spread (AMD's FidelityFX shadow denoiser; a 3 x 3 that is all one value may also reach
+  it, so sharp edges stay sharp); history the clamp pulls more than a little starts its count again, so a moving shadow
+  (the player's own) does not trail. Then two passes of a 5 x 5 edge-aware filter (every pixel, then every other: an
+  a-trous filter); faded out from 30 to 34 m. (2026-11-02: it was kept within the 3 x 3's lowest and highest, which with one
+  ray a pixel is 0..1 in any penumbra: the player's soft shadow left a row of old foot shadows behind them, and one filter
+  pass left a grain that slid over the floor.) Backrooms/Lit lights every fixture as
   before and multiplies their summed light by it (`_BRRTShadow`, `BackroomsRTShadow`; transparent surfaces excepted). So
   every fixture shadows, with the panel's true penumbra. While the rays run the fixtures have no shadow maps
   (FixtureLightManager), the contact-shadow pass does not run, and the furniture boxes' direct-light test is left out. URP's

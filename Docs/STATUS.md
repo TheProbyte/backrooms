@@ -6,6 +6,9 @@ Last updated 2026-11-02 (world version 13).
 
 ## Newest (2026-11-02)
 
+- **Pool ring and shadow ghosting fixed**: the line in a ring round the player on the pool floor (the refraction
+  switching off past 4 m) is gone; the ray-traced shadows no longer leave a trail of old foot shadows when strafing,
+  and their grain is lower (FidelityFX-style history clamp, two filter passes).
 - **Living-room walls from a photo**: the homes' orange-peel drywall is now the owner's photo of a real sprayed wall
   (Tools/Textures/make_surface_textures.py orange_peel), its relief recovered from the photo's raking light, with
   parallax and micro-shadowing.

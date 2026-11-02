@@ -197,6 +197,10 @@ Shader "Backrooms/PoolWater"
                     float3 Tr = refract(I, N, 1.0 / 1.333);
                     if (dot(Tr, Tr) < 1e-4) Tr = I;
                     Tr = normalize(lerp(I, Tr, _RefractScale));
+                    // (2026-11-02, the owner: a line on the pool floor in a ring round the player, moving with them.) What is
+                    // there is under the water when its height is: it used to be checked against this pixel's own depth, but
+                    // looking down at a slant the bent ray lands on floor nearer the camera than this pixel's surface, so past
+                    // about 4 m every lookup was refused and the refraction went off at once, the floor jumping and darkening.
                     float3 Ps = ComputeWorldSpacePosition(suv, RawAt(suv), UNITY_MATRIX_I_VP);
                     float tl = min(length(Ps - P), 8.0);
                     float2 ruv = suv;
@@ -204,17 +208,15 @@ Shader "Backrooms/PoolWater"
                     {
                         float2 u = ScreenUV(P + Tr * tl);
                         if (any(u < 0.001) || any(u > 0.999)) break;
-                        float rawQ = RawAt(u);
-                        if (LinearEyeDepth(rawQ, _ZBufferParams) < eye) break;       // something above the water there
-                        float3 Pq = ComputeWorldSpacePosition(u, rawQ, UNITY_MATRIX_I_VP);
-                        if (Pq.y > P.y + 0.02) break;                                 // (a wall above the waterline)
+                        float3 Pq = ComputeWorldSpacePosition(u, RawAt(u), UNITY_MATRIX_I_VP);
+                        if (Pq.y > P.y + 0.02) break;                                 // something above the water there
                         ruv = u;
                         tl = min(length(Pq - P), 8.0);
                     }
                     // A faint split by colour (water's index is a little higher for blue), only onto what is under water.
                     float2 uvR = lerp(suv, ruv, 1.0 - _Dispersion), uvB = lerp(suv, ruv, 1.0 + _Dispersion);
-                    if (DepthAt(uvR) < eye) uvR = ruv;
-                    if (any(uvB < 0.0) || any(uvB > 1.0) || DepthAt(uvB) < eye) uvB = ruv;
+                    if (ComputeWorldSpacePosition(uvR, RawAt(uvR), UNITY_MATRIX_I_VP).y > P.y + 0.02) uvR = ruv;
+                    if (any(uvB < 0.0) || any(uvB > 1.0) || ComputeWorldSpacePosition(uvB, RawAt(uvB), UNITY_MATRIX_I_VP).y > P.y + 0.02) uvB = ruv;
                     below = float3(ColorAt(uvR).r, ColorAt(ruv).g, ColorAt(uvB).b);
                     thick = tl;
                     viewDown = max(-Tr.y, 0.05);

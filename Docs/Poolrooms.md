@@ -677,8 +677,9 @@ refraction against the depth, and planar reflections with contact hardening (a r
 surface, softer and more rippled the farther it is).
 - **Refraction** (PoolWater): the view ray bent by water's own index (1.333) along the surface's real normal, then walked to
   what it meets with three fixed-point steps against the depth (where it lands, how far that is, again); never onto
-  something above the water. The deep end's floor shifts and wobbles, the shallow edge barely, as in real pools (it was a
-  fixed shift of the picture). A faint colour split (`_Dispersion` 0.03). The water's colour by the real path length.
+  something above the water (2026-11-02: told by the height of what it lands on; it was told by this pixel's own depth,
+  which looking down at a slant refused every lookup past about 4 m and drew a ring round the player). The deep end's
+  floor shifts and wobbles, the shallow edge barely, as in real pools (it was a fixed shift of the picture). A faint colour split (`_Dispersion` 0.03). The water's colour by the real path length.
   `_RefractScale` (1 = physical).
 - **Sun in the water**: the refracted sunbeam scattered toward the eye along the view's path under the surface, thinned on
   the way down and on the way up (per channel, by `_Absorb`), Henyey-Greenstein (`_SunPhaseG` 0.4); zero in the shade. Sunlit

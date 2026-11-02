@@ -76,7 +76,7 @@ namespace Backrooms.Generation
         internal const uint MaskCasters = 1u, MaskVisible = 2u;
 
         ComputeShader _cs;
-        int _kTrace, _kTemporal, _kBlur, _kReflect;
+        int _kTrace, _kTemporal, _kBlur1, _kBlur, _kReflect;
         bool _ready;
         int _builtFrame = -1;
         RayTracingAccelerationStructure _scene;
@@ -109,7 +109,7 @@ namespace Backrooms.Generation
             if (!Supported) return;
             _cs = Resources.Load<ComputeShader>("RayTracedLighting");
             if (!_cs) return;
-            _kTrace = _cs.FindKernel("Trace"); _kTemporal = _cs.FindKernel("Temporal"); _kBlur = _cs.FindKernel("Blur"); _kReflect = _cs.FindKernel("Reflect");
+            _kTrace = _cs.FindKernel("Trace"); _kTemporal = _cs.FindKernel("Temporal"); _kBlur1 = _cs.FindKernel("Blur1"); _kBlur = _cs.FindKernel("Blur"); _kReflect = _cs.FindKernel("Reflect");
             if (!_cs.IsSupported(_kTrace)) { Debug.LogWarning("[Backrooms] Ray-traced light: the compute shader is not supported here."); return; }
             _scene ??= new RayTracingAccelerationStructure(new RayTracingAccelerationStructure.Settings(
                 RayTracingAccelerationStructure.ManagementMode.Manual, RayTracingAccelerationStructure.RayTracingModeMask.Everything, -1,
@@ -346,7 +346,7 @@ namespace Backrooms.Generation
             ReversedZId = Shader.PropertyToID("_ReversedZ"), DepthId = Shader.PropertyToID("_CameraDepthTexture"), NormalsId = Shader.PropertyToID("_CameraNormalsTexture"),
             PosId = Shader.PropertyToID("_Pos"), PosRId = Shader.PropertyToID("_PosR"), PrevPosId = Shader.PropertyToID("_PrevPos"),
             TraceId = Shader.PropertyToID("_Trace"), TraceRId = Shader.PropertyToID("_TraceR"), HistId = Shader.PropertyToID("_Hist"),
-            HistRId = Shader.PropertyToID("_HistR"), OutId = Shader.PropertyToID("_Out");
+            HistRId = Shader.PropertyToID("_HistR"), OutId = Shader.PropertyToID("_Out"), FiltId = Shader.PropertyToID("_Filt");
 
         void Execute(CommandBuffer cmd, PassData d)
         {
@@ -381,9 +381,16 @@ namespace Backrooms.Generation
             cmd.SetComputeTextureParam(cs, _kTemporal, HistId, _hist[c]);
             cmd.DispatchCompute(cs, _kTemporal, gx, gy, 1);
 
+            // The filter's two passes (2026-11-02): the first into the trace texture (free once blended), the second out.
+            cmd.SetComputeTextureParam(cs, _kBlur1, PosRId, _pos[c]);
+            cmd.SetComputeTextureParam(cs, _kBlur1, NormalsId, d.normals);
+            cmd.SetComputeTextureParam(cs, _kBlur1, HistRId, _hist[c]);
+            cmd.SetComputeTextureParam(cs, _kBlur1, FiltId, _trace);
+            cmd.DispatchCompute(cs, _kBlur1, gx, gy, 1);
+
             cmd.SetComputeTextureParam(cs, _kBlur, PosRId, _pos[c]);
             cmd.SetComputeTextureParam(cs, _kBlur, NormalsId, d.normals);
-            cmd.SetComputeTextureParam(cs, _kBlur, HistRId, _hist[c]);
+            cmd.SetComputeTextureParam(cs, _kBlur, HistRId, _trace);
             cmd.SetComputeTextureParam(cs, _kBlur, OutId, _out);
             cmd.DispatchCompute(cs, _kBlur, gx, gy, 1);
 

@@ -10,8 +10,8 @@
 // light-weighted mean visibility for many. The scene holds only what casts shadows (furniture, props, doors, people, the
 // player's body; walls, floors and ceilings are the light grid's), so a chair leg shadows every panel round it, far and
 // near, with the true penumbra of a panel's area: sharp where it touches the floor, wider away from it.
-// Blended over frames (reprojected, kept within what this frame's neighbours found, so a moving shadow does not smear)
-// and filtered edge-aware.
+// Blended over frames (reprojected, kept within the mean and spread of what this frame's neighbours found, so a moving
+// shadow does not smear: FidelityFX's shadow denoiser) and filtered edge-aware in two passes.
 //
 // Occlusion: one short ray a pixel into the hemisphere (cosine-weighted, 1 m) against the same casters: what hides the
 // sky of a point under a desk or beside a cabinet, on screen or not. ScreenLighting takes the smaller of it and its own
@@ -25,6 +25,7 @@
 // longer shows where something stands in the way.
 #pragma kernel Trace
 #pragma kernel Temporal
+#pragma kernel Blur1
 #pragma kernel Blur
 #pragma kernel Reflect
 #pragma require inlineraytracing
@@ -243,17 +244,39 @@ void Temporal(uint3 id : SV_DispatchThreadID)
     float4 pp = _PosR[id.xy];
     float4 t = _TraceR[id.xy];
     if (pp.w <= 0.0) { _Hist[id.xy] = float4(1, 0, 1, 0); return; }
-    // What this frame's neighbours found: the history is kept within it, so where a shadow moves (a door, a prop carried,
-    // the player) the old shadow does not linger; in a penumbra (both found) it keeps blending.
-    float2 lo = t.xz, hi = t.xz;
+    // What this frame's rays found round the point: the history is kept within it, so where a shadow moves (a door, a
+    // prop carried, the player) the old shadow does not linger.
+    // (2026-11-02, the owner: the shadows ghosted and had a texture to them when moving side to side.) It was kept within
+    // the lowest and highest of the 3 x 3 neighbours, but with one ray a pixel a soft shadow's neighbours are both lit and
+    // shaded, so that range was 0..1 and held nothing back: the player's own soft shadow trailed behind them. Now, as AMD's
+    // FidelityFX shadow denoiser does: within the mean of the 7 x 7 neighbours on the same surface, give or take half
+    // their spread (a fully lit or shaded neighbourhood pins the history to it; a penumbra keeps it near its true value).
+    // Where the 3 x 3 is all one value the history may also reach that value, so a sharp shadow's edge is not softened.
+    float2 lo3 = t.xz, hi3 = t.xz;
     [unroll] for (int y = -1; y <= 1; y++)
     [unroll] for (int x = -1; x <= 1; x++)
     {
         float4 c = _TraceR[clamp((int2)id.xy + int2(x, y), 0, (int2)_Size.xy - 1)];
-        if (c.y > 0.5) { lo.x = min(lo.x, c.x); hi.x = max(hi.x, c.x); }
-        if (c.w > 0.5) { lo.y = min(lo.y, c.z); hi.y = max(hi.y, c.z); }
+        if (c.y > 0.5) { lo3.x = min(lo3.x, c.x); hi3.x = max(hi3.x, c.x); }
+        if (c.w > 0.5) { lo3.y = min(lo3.y, c.z); hi3.y = max(hi3.y, c.z); }
     }
-    // The last frame's values at this point: bilinear among the four texels that saw this same surface.
+    float2 s1 = 0, s2 = 0, sn = 0;
+    float tolD = 0.04 * pp.w + 0.02;
+    [loop] for (int my = -3; my <= 3; my++)
+    [unroll] for (int mx = -3; mx <= 3; mx++)
+    {
+        int2 q = clamp((int2)id.xy + int2(mx, my), 0, (int2)_Size.xy - 1);
+        float4 qp = _PosR[q];
+        if (qp.w <= 0.0 || abs(qp.w - pp.w) > tolD) continue;
+        float4 c = _TraceR[q];
+        if (c.y > 0.5) { s1.x += c.x; s2.x += c.x * c.x; sn.x += 1.0; }
+        if (c.w > 0.5) { s1.y += c.z; s2.y += c.z * c.z; sn.y += 1.0; }
+    }
+    float2 mean = s1 / max(sn, 1.0);
+    float2 sd = sqrt(max(s2 / max(sn, 1.0) - mean * mean, 0.0));
+    float2 lo = mean - 0.5 * sd - 0.02, hi = mean + 0.5 * sd + 0.02;
+    if (hi3.x - lo3.x < 0.01) { lo.x = min(lo.x, lo3.x); hi.x = max(hi.x, hi3.x); }
+    if (hi3.y - lo3.y < 0.01) { lo.y = min(lo.y, lo3.y); hi.y = max(hi.y, hi3.y); }    // The last frame's values at this point: bilinear among the four texels that saw this same surface.
     float3 hv = 0;
     float hw = 0;
     float2 puv;
@@ -279,26 +302,29 @@ void Temporal(uint3 id : SV_DispatchThreadID)
     if (hw > 1e-3)
     {
         hv /= hw;
-        float count = min(floor(hv.y + 0.5) + 1.0, _ShadowParams.w);
+        float2 kept = float2(clamp(hv.x, lo.x, hi.x), clamp(hv.z, lo.y, hi.y));
+        // History the clamp had to pull far is stale (a shadow moved off it): its count starts again, so this frame's rays
+        // take over within a few frames instead of the clamped value fading out over twelve (a grey trail behind the feet).
+        float2 pulled = abs(float2(hv.x, hv.z) - kept) * float2(t.y > 0.5 ? 1.0 : 0.0, t.w > 0.5 ? 1.0 : 0.0);
+        float stale = saturate((max(pulled.x, pulled.y) - 0.04) * 6.0);
+        float count = min(lerp(floor(hv.y + 0.5), 0.0, stale) + 1.0, _ShadowParams.w);
         float k = 1.0 / count;
-        outH.x = t.y > 0.5 ? lerp(clamp(hv.x, lo.x, hi.x), t.x, k) : 1.0;
-        outH.z = t.w > 0.5 ? lerp(clamp(hv.z, lo.y, hi.y), t.z, k) : 1.0;
+        outH.x = t.y > 0.5 ? lerp(kept.x, t.x, k) : 1.0;
+        outH.z = t.w > 0.5 ? lerp(kept.y, t.z, k) : 1.0;
         outH.y = count;
     }
     _Hist[id.xy] = saturate(float4(outH.x, 0, outH.z, 0)) + float4(0, outH.y, 0, 0);
 }
 
 // ---------------------------------------------------------------- edge-aware filter
-[numthreads(8, 8, 1)]
-void Blur(uint3 id : SV_DispatchThreadID)
+// Two passes of a 5 x 5 (an a-trous filter, as SVGF and FidelityFX's shadow denoiser): every pixel, then every other
+// pixel (2026-11-02; one pass left a grain in the penumbras that slid over the floor as the view moved). Wider while the
+// history is short. The first pass writes into the trace texture (free once blended), the second the output.
+RWTexture2D<float4> _Filt;
+
+float2 FilterAt(uint2 id, float4 pp, float4 c0, int stride)
 {
-    if (any(id.xy >= (uint2)_Size.xy)) return;
-    float4 pp = _PosR[id.xy];
-    float4 c0 = _HistR[id.xy];
-    if (pp.w <= 0.0 || c0.y < 0.5) { _Out[id.xy] = 1; return; }
-    float3 N = normalize(_CameraNormalsTexture[id.xy].xyz + 1e-5);
-    // Wider while the history is short; a 5 x 5 of every other pixel then, of every pixel once settled.
-    int stride = c0.y < 4.0 ? 2 : 1;
+    float3 N = normalize(_CameraNormalsTexture[id].xyz + 1e-5);
     float2 s = 0, lo = 1, hi = 0;
     float ws = 0;
     [loop] for (int y = -2; y <= 2; y++)
@@ -319,8 +345,30 @@ void Blur(uint3 id : SV_DispatchThreadID)
     // A fully lit or fully shaded neighbourhood stays exactly so (no grey creeping in from the filter's edge).
     if (hi.x - lo.x < 0.02) v.x = c0.x;
     if (hi.y - lo.y < 0.02) v.y = c0.z;
+    return saturate(v);
+}
+
+[numthreads(8, 8, 1)]
+void Blur1(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= (uint2)_Size.xy)) return;
+    float4 pp = _PosR[id.xy];
+    float4 c0 = _HistR[id.xy];
+    if (pp.w <= 0.0 || c0.y < 0.5) { _Filt[id.xy] = c0; return; }
+    float2 v = FilterAt(id.xy, pp, c0, c0.y < 4.0 ? 2 : 1);
+    _Filt[id.xy] = float4(v.x, c0.y, v.y, 0);
+}
+
+[numthreads(8, 8, 1)]
+void Blur(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= (uint2)_Size.xy)) return;
+    float4 pp = _PosR[id.xy];
+    float4 c0 = _HistR[id.xy];
+    if (pp.w <= 0.0 || c0.y < 0.5) { _Out[id.xy] = 1; return; }
+    float2 v = FilterAt(id.xy, pp, c0, c0.y < 4.0 ? 4 : 2);
     float fade = smoothstep(_ShadowParams.y, _ShadowParams.z, pp.w);
-    _Out[id.xy] = lerp(saturate(v), 1.0, fade);
+    _Out[id.xy] = lerp(v, 1.0, fade);
 }
 
 // ---------------------------------------------------------------- reflections (ScreenLighting's half resolution)
