@@ -75,6 +75,14 @@ namespace Backrooms.Camcorder
         // Volumetric light (2026-11-01, VolumetricLight): the haze lit froxel by froxel, shafts through doorways.
         public bool volumetricLight = true;
         [Look] public float hazeGlow = 0.35f;        // forward scattering: the air glows looking toward a light (0: even all round)
+        // Ray tracing (2026-11-02, RayTracedLighting): hardware ray queries, on a card that has them (Direct3D 12). Off, or
+        // without such a card, everything is as before (shadow maps for the nearest fixtures, contact shadows, boxes).
+        public bool rayTracedShadows = true;         // every fixture shadows everything round it, with the panel's soft edge
+        public bool rayTracedReflections = true;     // glossy surfaces reflect what is really there, on screen or behind you
+        public bool rayTracedOcclusion = true;       // bounce light hidden by what stands over and beside a surface, seen or not
+        // Surface detail (2026-11-02, Shaders/BackroomsSurface.hlsl): the relief of carpet, ceiling tiles, wallpaper, plaster and
+        // fabric (parallax close up, the relief's own occlusion and shadows, fabric sheen).
+        public bool surfaceDetail = true;
         public int lookPreset = 0;                   // the LOOK preset last applied (-1: changed since, -2: my look)
 
         static System.Reflection.FieldInfo[] s_lookFields;
@@ -90,6 +98,8 @@ namespace Backrooms.Camcorder
             CopyLook(d);
             indoorReflections = d.indoorReflections; farLights = d.farLights; exactLightRadius = d.exactLightRadius;
             areaLights = d.areaLights; tracedBounce = d.tracedBounce; photometric = d.photometric; screenLight = d.screenLight; volumetricLight = d.volumetricLight; lookPreset = 0;
+            rayTracedShadows = d.rayTracedShadows; rayTracedReflections = d.rayTracedReflections; rayTracedOcclusion = d.rayTracedOcclusion;
+            surfaceDetail = d.surfaceDetail;
         }
         /// <summary>Evenly lit and pale, like the found-footage references: little contrast, a lot of fill, soft shadows.</summary>
         public void ApplyEvenLighting() => ApplyLook(1);
@@ -237,7 +247,7 @@ namespace Backrooms.Camcorder
         PoolWorld _pool;
         float _poolSun, _poolBounce, _poolSky; Color _poolSunColour, _poolAmbient;
         Vector4 _poolApplied = new Vector4(-1, -1, -1, -1);
-        static readonly int LookId = Shader.PropertyToID("_BRLook"), EmissionTintId = Shader.PropertyToID("_BREmissionTint"), DustId = Shader.PropertyToID("_BRDust");
+        static readonly int SurfaceId = Shader.PropertyToID("_BRSurface"), LookId = Shader.PropertyToID("_BRLook"), EmissionTintId = Shader.PropertyToID("_BREmissionTint"), DustId = Shader.PropertyToID("_BRDust");
         WorldStreamer _streamer;
         // SSAO on every renderer: the player's and the crawl holes' views (so the view through a hole has the same AO
         // as the room has once you are through it).
@@ -441,6 +451,8 @@ namespace Backrooms.Camcorder
             // x: ceiling panels as rectangles, y: contact-hardening shadow softness, z: contact shadow strength, w: set.
             FixtureLightManager.Photometric = o.photometric;
             Shader.SetGlobalVector(LookId, new Vector4(o.areaLights ? 1f : 0f, Mathf.Clamp(o.shadowSoftness, 0f, 2f), Mathf.Clamp01(o.contactShadows), 1f));
+            // Surface detail (BackroomsSurface.hlsl): on, parallax out to 6 m, at most 16 steps.
+            Shader.SetGlobalVector(SurfaceId, new Vector4(o.surfaceDetail ? 1f : 0f, 6f, 16f, 1f));
             // Dust on what faces up (Backrooms/Lit): strength, and the storey pitch (no dust on each storey's floor itself).
             if (!_streamer) _streamer = FindAnyObjectByType<WorldStreamer>();
             float pitch = _streamer && _streamer.Settings != null ? _streamer.Settings.storeyPitch : 9f;
@@ -454,8 +466,19 @@ namespace Backrooms.Camcorder
                 var air = AirDust.Ensure(Camera.main);
                 if (air) air.strength = inPool ? 0f : Mathf.Clamp(o.airDust, 0f, 3f);
             }
+            // Ray-traced light (only where the card traces rays; otherwise nothing is created and all stays as it was).
+            bool rtWanted = (o.rayTracedShadows || o.rayTracedReflections || o.rayTracedOcclusion) && RayTracedLighting.Supported;
+            if (rtWanted || RayTracedLighting.Instance)
+            {
+                var rt = RayTracedLighting.Ensure();
+                rt.shadows = o.rayTracedShadows;
+                rt.reflections = o.rayTracedReflections;
+                rt.occlusion = o.rayTracedOcclusion && o.ambientOcclusion;
+                if (rt.enabled != rtWanted) rt.enabled = rtWanted;
+            }
             // Contact shadows have a render pass of their own on the player's camera (it reads the camera depth properly).
-            ContactShadows.Ensure().strength = Mathf.Clamp01(o.contactShadows);
+            // The rays already find what they would (and more), so with ray-traced shadows the pass does not run.
+            ContactShadows.Ensure().strength = RayTracedLighting.ShadowsActive ? 0f : Mathf.Clamp01(o.contactShadows);
             var tint = GraphicsOptions.ColourShift(o.colourTemp, o.colourTint) * Mathf.Clamp(o.panelGlow, 0f, 3f);
             Shader.SetGlobalVector(EmissionTintId, new Vector4(tint.r, tint.g, tint.b, 1f));
 

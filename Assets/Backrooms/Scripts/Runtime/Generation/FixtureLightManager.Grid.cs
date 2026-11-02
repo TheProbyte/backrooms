@@ -419,6 +419,8 @@ namespace Backrooms.Generation
                 int maps = c.isLamp ? 6 : 1;
                 float distanceFade = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(shadowDistance * 0.65f, shadowDistance, PoolDistance(pos)));
                 float wantedShadow = on && sh.shadowed && sh.target > 0f ? distanceFade : 0f;
+                // Ray-traced shadows replace the fixtures' shadow maps (every fixture, not only the nearest; RayTracedLighting).
+                if (RayTracedLighting.ShadowsActive) wantedShadow = 0f;
                 bool hadShadow = sh.slot.shadowK > 0.001f;
                 if (!hadShadow && shadowMaps + maps > atlasMaps) wantedShadow = 0f;
                 sh.slot.shadowK = Mathf.MoveTowards(sh.slot.shadowK, wantedShadow, dt / Mathf.Max(0.01f, shadowFade));

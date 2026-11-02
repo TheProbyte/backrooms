@@ -362,3 +362,59 @@ exponentially from 0.3 to 40 m), integrated toward the camera, and laid over the
 - The thickness is the Haze slider, by the light grid's formula (0.25 scatters about 2.5 % per 10 m). On this camera
   it replaces Backrooms/Lit's 8-step march (`_LGridHaze.w` is 0 while it draws); portal views and reflection captures keep
   the march. Off in the Poolrooms, whose air has its own sun shafts (PoolAir).
+
+## Ray-traced light (2026-11-02)
+
+F5 > LIGHT > RAY TRACING. `Generation/RayTracedLighting.cs`, `Resources/RayTracedLighting.compute`. Hardware ray queries
+from compute (inline ray tracing, `#pragma require inlineraytracing`), so a card with ray tracing on Direct3D 12 (the
+build's first API; `RayTracedLighting.Supported`). Without one nothing is created and everything is as below.
+
+- **The scene**: each frame `RayTracingAccelerationStructure.CullInstances` gathers the renderers round the camera (36 m,
+  growing from 6 m over about 20 frames after the rays come on or the camera jumps: a dense area joining at once built
+  every mesh's structure in one frame and the card was reset). What casts shadows (shadow casting On or ShadowsOnly:
+  furniture, props, doors, the player's body, the warehouse dressing's proxy boxes) under mask 1; what is drawn (casting
+  or not) under mask 2. Walls, floors and ceilings do not cast: the light grid's line test stops every fixture at them
+  exactly. One component for the session; its structure and textures are freed only in OnDestroy (the render thread runs
+  a frame behind). Its pass runs before ScreenLighting's (AfterRenderingPrePasses + 1). The grid is bound to its kernels
+  (`LightGrid.BindPortalLighting`) as for every compute shader that reads it.
+- **Shadows** (Unreal's MegaLights way, Epic 2025, with the ratio estimator of Heitz, Hill & McGuire 2018): at each pixel
+  one fixture is picked from its 4.8 m tile's list in proportion to the light it gives there (its share drawn per pixel,
+  distance, measured shape, the surface turned toward it and the grid's wall test), by weighted reservoir sampling, and one
+  ray goes to a random point on its panel (a lamp: a 10 cm ball; the fitting's last 8 cm / a lamp's 30 cm are not
+  blockers). Blended over 12 frames (reprojected, kept within the range this frame's 3 x 3 neighbours found, so a moving
+  shadow does not smear) and a 5 x 5 edge-aware filter; faded out from 30 to 34 m. Backrooms/Lit lights every fixture as
+  before and multiplies their summed light by it (`_BRRTShadow`, `BackroomsRTShadow`; transparent surfaces excepted). So
+  every fixture shadows, with the panel's true penumbra. While the rays run the fixtures have no shadow maps
+  (FixtureLightManager), the contact-shadow pass does not run, and the furniture boxes' direct-light test is left out. URP's
+  `stripShadowsOffVariants` is set on every renderer meanwhile, so with no shadow-mapped light it keeps the lit shader's
+  `_ADDITIONAL_LIGHT_SHADOWS` variants (warmed by LitShaderWarmup) with an empty map instead of switching to unwarmed ones.
+- **Occlusion**: one cosine-weighted ray a pixel, 1 m, against the casters (strength 0.8); ScreenLighting takes the smaller
+  of it and its screen-space visibility (`_BRRTShadow.g`), which then scales the probes' bounce and is URP's SSAO.
+- **Reflections**: ScreenLighting's reflection rays (its half resolution, one GGX ray a pixel) are traced in the scene
+  (`TraceReflections`) instead of marched through the depth, and go through its usual blending and filters. A hit seen
+  last frame takes its light from that picture (a mip as wide as the lobe); off screen, its normal from two neighbouring
+  rays and its light from the grid (every fixture of its tile past the walls, plus the grid's far light and bounce) on an
+  average surface (0.45, warm); a hit on a glowing panel or a miss within 20 m is left to the reflection probe. Measured in
+  a Poolrooms view: a reflection for 98.7 % of the picture, against 59.2 % for the screen march.
+- **Cost** (RTX 4070, 1171 x 658 render): GPU median 5.25 ms for the whole frame with all of it against 7.52 ms with the
+  old 32 shadow maps; gathering the scene 0.9-1.7 ms on the main thread.
+
+## Surface detail (2026-11-02)
+
+F5 > LIGHT > SURFACES. `Shaders/BackroomsSurface.hlsl` (Backrooms/Lit's forward pass), `MaterialMaps.SurfaceDetail`.
+- **Parallax occlusion mapping** (Tatarchuk, GDC 2006): the material is looked up where the view ray meets its relief
+  (up to 16 layers, more at grazing angles, then the crossing between the last two); out to 6 m, fading from 3.6 m.
+- **Cavity**: the relief's own ambient occlusion darkens the bounce light down in a carpet's pile and a tile's fissures.
+- **Micro-shadowing** (Chan, "Material Advances in Call of Duty: WWII", 2018): `saturate(|N.L| + 2 cavity^2 - 1)` on each
+  fixture's direct light, so light raking down a wall or across the carpet brings out the relief.
+- **Fabric sheen** (Charlie distribution, Estevez & Kulla 2017, Neubelt & Pettineo's visibility, as Filament and Unreal's
+  cloth): a soft bright rim on carpet and upholstery toward the light.
+- Per material in properties URP's LitInput declares and this shader never uses for their own keywords (so no new
+  variant and no change to the material layout): `_ParallaxMap` R height, G cavity; `_Parallax` below 0 = on, its size the
+  depth in texture units; `_OcclusionStrength` the cavity's strength; `_ClearCoatMask` / `_ClearCoatSmoothness` the
+  sheen. Set only on MaterialMaps' in-memory copies (keyed by the normal map), never on the project's .mat files.
+- The height and cavity maps (`Resources/Textures/Height`) are made from the normal maps by
+  `Tools/Textures/make_height_maps.py` (Frankot-Chellappa integration, exact for a tiling texture; cavity as a
+  horizon-based AO of the relief). Imported linear, BC5.
+- Chunk meshes now compare their material with the project material it was copied from (`MaterialMaps.Original`) when
+  deciding what casts shadows; before, the copies of the baseboard, ceiling grid and fixture housing cast by mistake.

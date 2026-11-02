@@ -32,6 +32,12 @@ The world builder (Backrooms > Build Infinite Offices Scene) picks them up; noth
 | Roughness / AO | none as files | | | The photos' cavities stay in the colour maps (that is the ambient occlusion), and each material's smoothness is set from what it is. Separate roughness or AO maps would need new variants of the lit shader (10-15 s each to compile, and compiling mid-play once crashed the editor), so they are left for a planned shader pass. |
 | Upholstery | `Fabric_Albedo`, `Fabric_Normal` | **1 m** | square | Optional. Chair and armchair fabric. |
 
+## Height and cavity maps (2026-11-02)
+
+A material whose normal map is listed in `MaterialMaps.Surfaces` gets surface detail (Docs/RuntimeLighting.md, "Surface
+detail"). Its height and cavity map is made from the normal map: add the normal map to `MAPS` in
+`Tools/Textures/make_height_maps.py`, run it, import the result linear (not sRGB), and add a row to `Surfaces`.
+
 ## How to check a texture in game
 
 1. Put the files in `Assets/Backrooms/Textures/`.

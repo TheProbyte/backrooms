@@ -158,9 +158,34 @@ half3 BackroomsHaze(float3 P, half3 color, float2 pixel)
 TEXTURE2D(_BRContactMask);
 float4 _BRContact;   // x: on for this camera, y, z: mask size in pixels
 
+// ---------------- Ray-traced shadows (RayTracedLighting.cs, Resources/RayTracedLighting.compute) ----------------
+// Worked out before the opaque pass on the player's camera with hardware ray queries: the share of the fixtures' light that
+// reaches each pixel past everything that casts shadows (each pixel traces rays to fixtures picked by the light they give,
+// to random points on their panels; blended over frames). The fixtures are lit here exactly as before and their sum is
+// multiplied by it. Where it runs, the contact shadows and the furniture boxes' direct-light test are left out (they would
+// count the same chair twice). Transparent surfaces are not in the depth it was traced from: they keep the old way.
+TEXTURE2D(_BRRTShadow);
+float4 _BRRT;   // x: ray-traced shadows on for this camera, y, z: size in pixels
+
+bool BR_RTShadows()
+{
+#if defined(_SURFACE_TYPE_TRANSPARENT)
+    return false;
+#else
+    return _BRRT.x > 0.5;
+#endif
+}
+
+half BackroomsRTShadow(float2 screenUV)
+{
+    if (!BR_RTShadows()) return 1;
+    int2 size = (int2)_BRRT.yz;
+    return LOAD_TEXTURE2D(_BRRTShadow, clamp((int2)(screenUV * _BRRT.yz), 0, size - 1)).r;
+}
+
 half BackroomsContact(uint lightIndex, float2 screenUV)
 {
-    if (_BRContact.x < 0.5) return 1;
+    if (_BRContact.x < 0.5 || BR_RTShadows()) return 1;
     int2 size = (int2)_BRContact.yz;
     float4 m = LOAD_TEXTURE2D(_BRContactMask, clamp((int2)(screenUV * _BRContact.yz), 0, size - 1));
     float id = lightIndex + 1.0;

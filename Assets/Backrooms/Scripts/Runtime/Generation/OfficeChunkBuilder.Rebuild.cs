@@ -27,11 +27,13 @@ namespace Backrooms.Generation
             r.sharedMaterial = mat;
             r.renderingLayerMask = mask;
             if (mat == _a.lensOn || mat == MaterialMaps.TrofferOn || (_a.domeOn && mat == _a.domeOn) || mat == DomeFitting.On || (_a.stripOn && mat == _a.stripOn) || mat == _a.lampShadeOn) litLensRenderers.Add(r);
-            bool architecture = mat == _a.wallpaper || mat == _a.paintedWall || mat == _a.referenceCream || mat == _a.referenceOlive || mat == _a.baseboard || mat == _a.halfWallCap;
-            bool caster = !architecture && mat != _a.lensOn && mat != _a.lensOff && !MaterialMaps.IsTroffer(mat) && !MaterialMaps.IsCeilingVariant(mat) && mat != _a.ceilingGrid && mat != _a.carpet && mat != _a.ceilingTile && mat != _a.lampShadeOn
-                          && mat != _a.domeOn && mat != _a.domeOff && !DomeFitting.IsGlass(mat) && mat != _a.ceilingPlaster && mat != _a.stripOn && mat != _a.stripOff
-                          && mat != _a.referenceCarpet && mat != _a.cardboard && mat != _a.boxTape && mat != _a.boxPrint && mat != _a.rackUpright && mat != _a.rackBeam && mat != _a.pallet
-                          && mat != _a.fixtureHousing                 // light fittings: black blotches on the wall or header beside them
+            // Against the project material it was made from (MaterialMaps copies carry normal maps and surface detail).
+            var src = MaterialMaps.Original(mat);
+            bool architecture = src == _a.wallpaper || src == _a.paintedWall || src == _a.referenceCream || src == _a.referenceOlive || src == _a.baseboard || src == _a.halfWallCap;
+            bool caster = !architecture && src != _a.lensOn && src != _a.lensOff && !MaterialMaps.IsTroffer(mat) && !MaterialMaps.IsCeilingVariant(mat) && src != _a.ceilingGrid && src != _a.carpet && src != _a.ceilingTile && src != _a.lampShadeOn
+                          && src != _a.domeOn && src != _a.domeOff && !DomeFitting.IsGlass(mat) && src != _a.ceilingPlaster && src != _a.stripOn && src != _a.stripOff
+                          && src != _a.referenceCarpet && src != _a.cardboard && src != _a.boxTape && src != _a.boxPrint && src != _a.rackUpright && src != _a.rackBeam && src != _a.pallet
+                          && src != _a.fixtureHousing                 // light fittings: black blotches on the wall or header beside them
                           && !WallPlateModels.IsPlate(mat);   // warehouse dressing: proxies cast the shadows
             r.shadowCastingMode = mask == ProxyMask || mask == WallProxyMask ? ShadowCastingMode.ShadowsOnly : caster ? ShadowCastingMode.On : ShadowCastingMode.Off;
             if (Pool) r.shadowCastingMode = ShadowCastingMode.Off;      // the Poolrooms' sun is traced in the shader, not shadow-mapped

@@ -29,11 +29,74 @@ namespace Backrooms.Generation
 
         static readonly int BumpMap = Shader.PropertyToID("_BumpMap"), BumpScale = Shader.PropertyToID("_BumpScale");
 
+        // ---------------- Surface detail (2026-11-02, Shaders/BackroomsSurface.hlsl) ----------------
+        // The relief of a material's own texture: parallax occlusion, cavity, micro-shadowing and (fabrics) sheen. Keyed by the
+        // material's normal map: its height and cavity map (Resources/Textures/Height, made from the normal map by
+        // Tools/Textures/make_height_maps.py), the relief's depth in texture units, how much the cavity darkens, and the fabric
+        // sheen's strength and smoothness. Set on the in-memory copies only (properties URP's Lit declares and this shader
+        // never uses otherwise; no new variant), never on the project's .mat files.
+        static readonly (string normal, float depth, float cavity, float sheen, float sheenSmooth)[] Surfaces =
+        {
+            ("RefCarpet_Normal", 0.006f, 0.55f, 0.55f, 0.35f), ("Carpet_Normal", 0.006f, 0.55f, 0.55f, 0.35f),
+            ("RefCeiling_Normal", 0.004f, 0.7f, 0f, 0f), ("CeilingTile_Normal", 0.004f, 0.7f, 0f, 0f),
+            ("Wallpaper_Chevron_Normal", 0.0025f, 0.6f, 0f, 0f), ("Plaster_Normal", 0.0012f, 0.3f, 0f, 0f),
+            ("Fabric_Normal", 0.012f, 0.6f, 0.7f, 0.4f), ("CreamWeave_Normal", 0.012f, 0.55f, 0.6f, 0.4f),
+            ("Cardboard_Normal", 0.004f, 0.45f, 0f, 0f), ("Concrete_Normal", 0.006f, 0.6f, 0f, 0f),
+            ("OldWood_Normal", 0.005f, 0.5f, 0f, 0f), ("DoorVeneer_Normal", 0.002f, 0.4f, 0f, 0f),
+        };
+        static Dictionary<string, (Texture2D height, float depth, float cavity, float sheen, float sheenSmooth)> s_surfaces;
+        static readonly int ParallaxMap = Shader.PropertyToID("_ParallaxMap"), Parallax = Shader.PropertyToID("_Parallax"),
+            OcclusionStrength = Shader.PropertyToID("_OcclusionStrength"), SheenMask = Shader.PropertyToID("_ClearCoatMask"),
+            SheenSmooth = Shader.PropertyToID("_ClearCoatSmoothness");
+        static readonly Dictionary<Material, Material> s_orig = new Dictionary<Material, Material>();
+
+        static bool HasSurface(Material m)
+        {
+            if (!m || !m.HasProperty(BumpMap) || !m.HasProperty(ParallaxMap)) return false;
+            var n = m.GetTexture(BumpMap);
+            if (!n) return false;
+            if (s_surfaces == null)
+            {
+                s_surfaces = new Dictionary<string, (Texture2D, float, float, float, float)>();
+                foreach (var (normal, depth, cavity, sheen, smooth) in Surfaces)
+                {
+                    var h = Resources.Load<Texture2D>("Textures/Height/" + normal.Replace("_Normal", "_Height"));
+                    if (h) s_surfaces[normal] = (h, depth, cavity, sheen, smooth);
+                }
+            }
+            return s_surfaces.ContainsKey(n.name);
+        }
+
+        /// <summary>
+        /// Gives an in-memory material its surface detail (from its normal map), or clears it where its normal map has none.
+        /// Never call on a project asset.
+        /// </summary>
+        public static void SurfaceDetail(Material m)
+        {
+            if (!m || !m.HasProperty(ParallaxMap)) return;
+            if (!HasSurface(m))
+            {
+                if (m.HasProperty(Parallax) && m.GetFloat(Parallax) < 0f) { m.SetFloat(Parallax, 0.005f); m.SetFloat(SheenMask, 0f); }
+                return;
+            }
+            var d = s_surfaces[m.GetTexture(BumpMap).name];
+            m.SetTexture(ParallaxMap, d.height);
+            m.SetFloat(Parallax, -d.depth);                    // below 0: on (BackroomsSurface.hlsl)
+            m.SetFloat(OcclusionStrength, d.cavity);
+            m.SetFloat(SheenMask, d.sheen);
+            m.SetFloat(SheenSmooth, d.sheenSmooth);
+            // (The sheen's properties are the clear coat's, whose keyword this game never sets.)
+        }
+
+        /// <summary>The project material an in-memory copy was made from (itself if it is not a copy).</summary>
+        public static Material Original(Material m) => m && s_orig.TryGetValue(m, out var o) ? o : m;
+
         public static void Ensure(OfficeBiomeAssets a)
         {
             if (!a || a == s_for) return;
             s_for = a;
             s_map.Clear();
+            s_orig.Clear();
             var byName = new Dictionary<string, (Texture2D tex, float scale)>();
             foreach (var (mat, tex, scale) in Table)
             {
@@ -42,13 +105,23 @@ namespace Backrooms.Generation
             }
             void Add(Material m)
             {
-                if (!m || s_map.ContainsKey(m) || !byName.TryGetValue(m.name, out var n)) return;
-                if (!m.HasProperty(BumpMap) || m.GetTexture(BumpMap)) { s_map[m] = m; return; }
-                var c = new Material(m) { name = m.name + " (normal map)", hideFlags = HideFlags.DontSave };
-                c.SetTexture(BumpMap, n.tex);
-                c.SetFloat(BumpScale, n.scale);
-                c.EnableKeyword("_NORMALMAP");
-                s_map[m] = c;
+                if (!m || s_map.ContainsKey(m)) return;
+                Material c = null;
+                if (byName.TryGetValue(m.name, out var n) && m.HasProperty(BumpMap) && !m.GetTexture(BumpMap))
+                {
+                    c = new Material(m) { name = m.name + " (normal map)", hideFlags = HideFlags.DontSave };
+                    c.SetTexture(BumpMap, n.tex);
+                    c.SetFloat(BumpScale, n.scale);
+                    c.EnableKeyword("_NORMALMAP");
+                }
+                // Its surface's relief (a copy: the project's material is left as it is).
+                if (HasSurface(c ? c : m))
+                {
+                    if (!c) c = new Material(m) { name = m.name + " (surface)", hideFlags = HideFlags.DontSave };
+                    SurfaceDetail(c);
+                }
+                if (c) { s_map[m] = c; s_orig[c] = m; }
+                else if (byName.ContainsKey(m.name)) s_map[m] = m;
             }
             foreach (var f in typeof(OfficeBiomeAssets).GetFields())
             {
@@ -198,6 +271,8 @@ namespace Backrooms.Generation
             if (!src) return null;
             var m = new Material(src) { name = src.name + suffix, hideFlags = HideFlags.DontSave };
             m.SetColor(BaseColor, tint);
+            SurfaceDetail(m);
+            s_orig[m] = Original(src);
             return m;
         }
 
@@ -393,6 +468,8 @@ namespace Backrooms.Generation
         {
             var m = new Material(src) { name = src.name + suffix, hideFlags = HideFlags.DontSave };
             if (baseMap) m.SetTexture(BaseMap, baseMap);
+            SurfaceDetail(m);
+            s_orig[m] = Original(src);
             return m;
         }
 

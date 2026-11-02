@@ -2,9 +2,18 @@
 
 The game is called **Still Recording** (working title).
 
-Last updated 2026-11-01 (world version 13).
+Last updated 2026-11-02 (world version 13).
 
-## Newest (2026-11-01)
+## Newest (2026-11-02)
+
+- **Ray tracing and surface detail** (Docs/RuntimeLighting.md, "Ray-traced light" and "Surface detail"; F5 > LIGHT >
+  RAY TRACING / SURFACES): on a card with ray tracing (Direct3D 12), every ceiling fixture shadows every chair, box, door
+  and person round it with a panel's soft, contact-hardening shadow (the 16-32 shadow maps are gone: the GPU frame got
+  faster); glossy surfaces reflect what is off screen too; bounce light is hidden by what really stands over a surface.
+  Carpet, ceiling tiles, wallpaper, plaster and fabric have relief (parallax close up, darker crevices, the relief shading
+  raking light) and carpet and upholstery a soft sheen. Without such a card everything is as before.
+
+## Earlier (2026-11-01)
 
 - **Water and effects, modern pass** (Docs/Poolrooms.md, "Water and effects pass"): the pool water's refraction is
   traced through the surface (deep floors shift and wobble, shallow edges barely), with a faint colour split; sunlit water

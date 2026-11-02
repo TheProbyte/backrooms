@@ -7,6 +7,7 @@
 #include "Assets/Backrooms/Shaders/LightGridSample.hlsl"   // Backrooms: light grid
 float4 _PortalClipPlane; // zero outside an explicit portal-camera render
 #include "Assets/Backrooms/Shaders/BackroomsLook.hlsl"     // Backrooms: rectangular panels, soft and contact shadows, haze
+#include "Assets/Backrooms/Shaders/BackroomsSurface.hlsl"  // Backrooms: relief, cavity, micro-shadowing, fabric sheen
 
 // Backrooms: dust settled on what faces up (baseboard tops, door headers, desks, boxes, the tops of fittings), set by
 // GraphicsController. x: strength (0 = none), y: the storey pitch, z: set (1). A uniform branch, no shader variant. Not on
@@ -236,6 +237,7 @@ half3 BackroomsRectFixture(LGridLight f, half3 energy, half shadow, float sizeWe
     // Contrast is based on full output, independent of the handover share (as for the point fixture).
     float lum = max(dot(f.colorAll, float3(0.2126, 0.7152, 0.0722)) * attenuation, 1e-5);
     float contrast = pow(saturate(lum), _LGridShape.w * 1.2);
+    shadow *= BR_MicroShadow(dot(N, dirC));                                   // Backrooms: the surface's own relief
     half3 color = energy * _LGridParams.y * (half)(shadow * contrast);
     half3 lit = brdf.diffuse * color * (half)attenuation;
     // Optional artistic diffuse wrap, shared with the point fixture (taken toward the centre).
@@ -258,6 +260,7 @@ half3 BackroomsRectFixture(LGridLight f, half3 energy, half shadow, float sizeWe
             lit += brdf.specular * DirectBRDFSpecular(brdf, N, Ls, data.viewDirectionWS) * color * (half)(attenuation * keep);
         }
     }
+    lit += BR_Sheen(N, (half3)dirC, data.viewDirectionWS) * color * (half)attenuation;   // Backrooms: fabric sheen
     return lit;
 }
 
@@ -279,7 +282,7 @@ half3 BackroomsFixturePBR(LGridLight f, uint lightId, half3 energy, half shadow,
         if (seen <= 0) return 0;
         shadow *= seen;
     }
-    if (localContact) shadow *= LocalLightVisibility(data.positionWS, data.normalWS, f.pos);
+    if (localContact && !BR_RTShadows()) shadow *= LocalLightVisibility(data.positionWS, data.normalWS, f.pos);   // (rays: BackroomsRTShadow)
     // Ceiling panels as rectangles (F5 > LIGHT > Rectangular panels); otherwise, and for lamps and far fixtures, a point.
     [branch] if (_BRLook.x > 0.5 && dot(f.halfSize, f.halfSize) > 0 && sizeWeight > 0 && f.dir.y < -0.99)
         return BackroomsRectFixture(f, energy, shadow, sizeWeight, distanceSquared, data, brdf, noSpecular);
@@ -294,8 +297,10 @@ half3 BackroomsFixturePBR(LGridLight f, uint lightId, half3 energy, half shadow,
     light.color = energy * _LGridParams.y;
     light.direction = dir;
     light.distanceAttenuation = attenuation;
+    shadow *= BR_MicroShadow(dot(data.normalWS, dir));                       // Backrooms: the surface's own relief
     light.shadowAttenuation = shadow;
     half3 lit = LightingPhysicallyBased(brdf, coat, light, data.normalWS, data.viewDirectionWS, surface.clearCoatMask, noSpecular);
+    lit += BR_Sheen(data.normalWS, (half3)dir, data.viewDirectionWS) * light.color * (half)(attenuation * shadow * saturate(dot(data.normalWS, dir)));
     // Optional artistic diffuse wrap is shared by both tiers; specular keeps the physical normal.
     float noL = saturate(dot(data.normalWS, dir));
     float wrapped = saturate((dot(data.normalWS, dir) + _LGridShape.x) / (1 + _LGridShape.x));
@@ -365,7 +370,9 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
     inputData.bakedGI = inputData.bakedGI * portalLocalWeight + portalLight;
     MixRealtimeAndBakedGI(mainLight, inputData.normalWS, inputData.bakedGI);
     LightingData lightingData = CreateLightingData(inputData, surfaceData);
-    lightingData.additionalLightsColor += BackroomsDistantPBR(inputData, brdfData, brdfDataClearCoat, surfaceData, specularHighlightsOff, aoFactor.directAmbientOcclusion);
+    // Every fixture's direct light (the grid's per-pixel share here, the real lights' in the loop below), kept apart so the
+    // ray-traced shadows can scale it as a whole (BackroomsRTShadow; 1 where they do not run).
+    half3 fixtureLight = BackroomsDistantPBR(inputData, brdfData, brdfDataClearCoat, surfaceData, specularHighlightsOff, aoFactor.directAmbientOcclusion);
     aoFactor.indirectAmbientOcclusion = min(aoFactor.indirectAmbientOcclusion, (half)LocalIndirectVisibility(inputData.positionWS, inputData.normalWS));
     lightingData.giColor = BackroomsGlobalIllumination(brdfData, brdfDataClearCoat, surfaceData.clearCoatMask,   // Backrooms: screen-space bounce and reflections
        
@@ -447,7 +454,10 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
         {
             if (isFixture)
             {
-                lightingData.additionalLightsColor += BackroomsFixturePBR(fixture, fixtureId, energy, light.shadowAttenuation * seen * aoFactor.directAmbientOcclusion, false, true,
+                // A real fixture with neither a shadow map nor rays (their maps are off while the rays run; other cameras):
+                // the nearby furniture boxes, as for the per-pixel fixtures.
+                if (!shadowMapped && !BR_RTShadows()) light.shadowAttenuation *= LocalLightVisibility(inputData.positionWS, inputData.normalWS, fixture.pos);
+                fixtureLight += BackroomsFixturePBR(fixture, fixtureId, energy, light.shadowAttenuation * seen * aoFactor.directAmbientOcclusion, false, true,
                     inputData, brdfData, brdfDataClearCoat, surfaceData, specularHighlightsOff);
             }
             else
@@ -460,6 +470,7 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
         }
     LIGHT_LOOP_END
     #endif
+    lightingData.additionalLightsColor += fixtureLight * BackroomsRTShadow(inputData.normalizedScreenSpaceUV);
 
     #if defined(_ADDITIONAL_LIGHTS_VERTEX)
     lightingData.vertexLightingColor += inputData.vertexLighting * brdfData.diffuse;
@@ -565,9 +576,23 @@ void LitPassFragment(
 #endif
     ApplyPerPixelDisplacement(viewDirTS, input.uv);
 #endif
+#if defined(REQUIRES_WORLD_SPACE_TANGENT_INTERPOLATOR)
+    // Backrooms: the relief's parallax (BackroomsSurface.hlsl), close up only.
+    [branch] if (BR_SurfaceOn())
+    {
+        float reliefFade = 1.0 - smoothstep(0.6 * _BRSurface.y, _BRSurface.y, distance(input.positionWS, GetCameraPositionWS()));
+        if (reliefFade > 0.001)
+        {
+            half3 viewWS = GetWorldSpaceNormalizeViewDir(input.positionWS);
+            half3 viewTS = GetViewDirectionTangentSpace(input.tangentWS, input.normalWS, viewWS);
+            input.uv = BR_ParallaxOcclusion(input.uv, viewTS, -_Parallax * reliefFade);
+        }
+    }
+#endif
 
     SurfaceData surfaceData;
     InitializeStandardLitSurfaceData(input.uv, surfaceData);
+    BR_SurfaceSetup(input.uv, surfaceData);                                             // Backrooms: cavity and sheen
     if (_BREmissionTint.w > 0.5) surfaceData.emission *= _BREmissionTint.rgb;              // Backrooms: the look's light colour and panel glow
 
 #ifdef LOD_FADE_CROSSFADE

@@ -45,6 +45,8 @@ RWTexture2D<float4> _GIBlur, _RefBlur;
 Texture2D<float4> _GIBlurR, _RefBlurR;
 RWTexture2D<float4> _GIOut, _RefOut;
 RWTexture2D<float> _AOOut;
+Texture2D<float2> _BRRTShadow;               // ray-traced shadows (x) and occlusion (y), full size (RayTracedLighting)
+float4 _BRRT;                                // w: the occlusion is there this frame
 
 float4x4 _InvVP, _VP, _PrevVP;
 float4 _CamPos;          // xyz camera, w frame index
@@ -447,6 +449,9 @@ void Upsample(uint3 id : SV_DispatchThreadID)
     if (!all(isfinite(g))) g = float4(0, 0, 0, 1);
     if (!all(isfinite(r))) r = 0;
     float vis = lerp(1.0, saturate(g.a), _GIParams2.z);
+    // Ray-traced occlusion (RayTracedLighting, worked out before this pass): what hides the hemisphere off screen or behind
+    // what is seen. The smaller of the two, so what both find is not counted twice.
+    if (_BRRT.w > 0.5) vis = min(vis, lerp(1.0, _BRRTShadow[min(id.xy, (uint2)_BRRT.yz - 1)].g, _GIParams2.z));
     _GIOut[id.xy] = float4(max(g.rgb, 0.0), vis);
     _RefOut[id.xy] = float4(max(r.rgb, 0.0), saturate(r.a));
     _AOOut[id.xy] = vis;

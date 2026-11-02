@@ -88,6 +88,20 @@ namespace Backrooms.Camcorder
             Slider("Reflection occlusion", "Keeps the room's cached reflection out of corners, under furniture and inside cupboards, where it would glow.",
                 0f, 1f, "0.00", "", () => O().reflectionOcclusion, Look(v => O().reflectionOcclusion = v));
 
+            Section("RAY TRACING", Generation.RayTracedLighting.Supported
+                ? "Light traced with the graphics card's ray tracing hardware, against the real shapes of everything round you."
+                : "Needs a graphics card with ray tracing (RTX, Radeon RX 6000 or newer) running Direct3D 12. Not available here: the settings below are used instead.");
+            Toggle("Ray-traced shadows", "Every ceiling light casts real shadows of every chair leg, desk, box, door and person round it, near or far, soft-edged as a panel's shadow is and sharp where things touch the floor. Replaces the shadow maps of the nearest lights and the contact shadows.",
+                () => O().rayTracedShadows, v => { O().rayTracedShadows = v; O().Save(); });
+            Toggle("Ray-traced reflections", "Glossy floors, metal, glass and tiles reflect what is really there, traced through the room: what is behind you and off the edge of the picture too, and the room's cached reflection no longer shows through a chair or a pillar. Replaces the reflections found in the picture.",
+                () => O().rayTracedReflections, v => { O().rayTracedReflections = v; O().Save(); });
+            Toggle("Ray-traced occlusion", "Bounced light is hidden by what really stands over and beside a surface: under desks and chairs, behind cabinets, inside shelves, whether you can see the thing doing the hiding or not. Works with the screen light (the darker of the two is kept). Needs Ambient occlusion on.",
+                () => O().rayTracedOcclusion, v => { O().rayTracedOcclusion = v; O().Save(); });
+
+            Section("SURFACES", "How the materials themselves take the light.");
+            Toggle("Surface detail", "Carpet pile, ceiling tile fissures, the wallpaper's emboss, plaster and fabric have real depth: close up the texture shifts with its relief as you move, deep spots stay darker in bounced light and lose the light first when it comes in low (a ceiling light raking down a wall brings out its texture), and carpet and upholstery catch a soft sheen toward the light.",
+                () => O().surfaceDetail, v => { O().surfaceDetail = v; O().Save(); });
+
             Section("SHADOWS & DARKNESS", "Deepen the dark parts and shape the shadows of furniture, items and you.");
             Slider("Shadow darkness", "How dark shadows from nearby lights are. Below 1 lets a little light into shadows.",
                 0f, 1f, "0.00", "", () => O().shadowDarkness, Look(v => O().shadowDarkness = v));

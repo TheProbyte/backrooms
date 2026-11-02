@@ -219,7 +219,8 @@ namespace Backrooms.Generation
             RefTraceRId = Shader.PropertyToID("_RefTraceR"), GIHistId = Shader.PropertyToID("_GIHist"), RefHistId = Shader.PropertyToID("_RefHist"),
             GIHistRId = Shader.PropertyToID("_GIHistR"), RefHistRId = Shader.PropertyToID("_RefHistR"), GIBlurId = Shader.PropertyToID("_GIBlur"),
             RefBlurId = Shader.PropertyToID("_RefBlur"), GIBlurRId = Shader.PropertyToID("_GIBlurR"), RefBlurRId = Shader.PropertyToID("_RefBlurR"),
-            GIOutId = Shader.PropertyToID("_GIOut"), RefOutId = Shader.PropertyToID("_RefOut"), AOOutId = Shader.PropertyToID("_AOOut");
+            GIOutId = Shader.PropertyToID("_GIOut"), RefOutId = Shader.PropertyToID("_RefOut"), AOOutId = Shader.PropertyToID("_AOOut"),
+            RTOutId = Shader.PropertyToID("_BRRTShadow");
 
         void Execute(UnsafeCommandBuffer cmd, LightData d)
         {
@@ -269,8 +270,16 @@ namespace Backrooms.Generation
                 cmd.SetComputeTextureParam(cs, _kShare, GITraceId, _giTrace);
                 cmd.DispatchCompute(cs, _kShare, hx, hy, 1);
             }
-            cmd.SetComputeTextureParam(cs, _kRefl, RefTraceId, _refTrace);
-            cmd.DispatchCompute(cs, _kRefl, hx, hy, 1);
+            // With hardware ray tracing the reflection rays are traced in the real scene (RayTracedLighting, built this frame
+            // before this pass), not marched through the depth; the same blending and filters follow.
+            var rt = RayTracedLighting.Instance;
+            if (d.refl.x > 0.5f && RayTracedLighting.ReflectionsActive)
+                rt.TraceReflections(CommandBufferHelpers.GetNativeCommandBuffer(cmd), d, _pos[c], _nrm, _geo, _pos[p], _color, _refTrace, _hw, _hh, brightestBounce);
+            else
+            {
+                cmd.SetComputeTextureParam(cs, _kRefl, RefTraceId, _refTrace);
+                cmd.DispatchCompute(cs, _kRefl, hx, hy, 1);
+            }
 
             cmd.SetComputeTextureParam(cs, _kTemporal, HalfPosRId, _pos[c]);
             cmd.SetComputeTextureParam(cs, _kTemporal, PrevPosId, _pos[p]);
@@ -299,6 +308,11 @@ namespace Backrooms.Generation
             cmd.SetComputeTextureParam(cs, _kUp, GIOutId, _giOut);
             cmd.SetComputeTextureParam(cs, _kUp, RefOutId, _refOut);
             cmd.SetComputeTextureParam(cs, _kUp, AOOutId, _aoOut);
+            // The ray-traced occlusion (RayTracedLighting, before this pass), bound explicitly: a global that was never set
+            // left the kernel unbound and Unity skipped it. White (nothing hidden) when there is none this frame.
+            var rtOut = rt ? rt.OutputThisFrame : null;
+            if (rtOut != null) cmd.SetComputeTextureParam(cs, _kUp, RTOutId, rtOut);
+            else cmd.SetComputeTextureParam(cs, _kUp, RTOutId, Texture2D.whiteTexture);
             cmd.DispatchCompute(cs, _kUp, fx, fy, 1);
 
             // For the opaque pass: the bounce and reflections for Backrooms/Lit, and the visibility as URP's own SSAO
