@@ -318,9 +318,10 @@ Shader "Backrooms/PoolTile"
                     // The Poolrooms are lit mostly by soft bounce, which made full-strength SSAO draw hard dark bands at
                     // every floor-wall join and in corners: a gentle share of it on the bounce, none on the sun.
                     ao = lerp(1.0, aof.indirectAmbientOcclusion, 0.38);
+                    if (_BRScreen.x > 0.5) ao = aof.indirectAmbientOcclusion;   // with the screen bounce given back below
                 #endif
                 float joint = lerp(_JointShade, 1.0, saturate(tileMask + far));       // the recessed joint gets less light
-                float3 ambient = (PoolAmbientAt(P, N0) + PoolPatchBounce(P, N0) * _PatchBounce) * ao * joint;
+                float3 ambient = ((PoolAmbientAt(P, N0) + PoolPatchBounce(P, N0) * _PatchBounce) * ao + PoolScreenBounce(i.positionCS)) * joint;
                 float3 waterLight = under < 0.5 ? PoolWaterLight(P, N0) * joint : 0.0;
 
                 // The glaze: what it mirrors (traced), strongest at grazing angles, and the sun's own highlight.

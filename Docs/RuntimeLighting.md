@@ -290,3 +290,75 @@ pass (rectangular panels, point fixtures, reach), the light grid compute, portal
 Effect: the tops of walls and pillars get the light a real fixture throws there (the cone cut it off at 75 degrees); in a
 test room the top third of the frame was about 8 % brighter. Lighting menu > Measured light shape (IES); off restores the
 cone (Fixture spread).
+
+## Screen-space light (2026-11-01)
+
+F5 > LIGHT > SCREEN LIGHT. `Generation/ScreenLighting.cs`, `Resources/ScreenLighting.compute`, read by Backrooms/Lit
+(`BackroomsGlobalIllumination`, `BackroomsLook.hlsl`) and the Poolrooms' tile and lit shaders (`PoolScreenBounce`).
+A render pass of its own on the player's camera, after the depth-normals prepass and before the opaque pass, at half
+resolution, from this frame's depth and normals and the last frame's lit picture (copied after the transparents, half
+size with mips). What the traced probes (1.2 m apart) cannot resolve, it finds in the picture:
+
+- **Near bounce and occlusion with a visibility bitmask** (Therrien, Levesque & Gilet, "Screen Space Indirect Lighting
+  with Visibility Bitmask", 2023; the approach of the RTGI ReShade shader and of Blender EEVEE's horizon scan). Along
+  two slices round each pixel (rotated every frame), 8 steps a side out to 1.5 m, each sample sets the sectors of the
+  hemisphere its front and its back (0.25 m behind it, more far off) cover in a 32-bit mask; sectors it newly covers
+  take its light from the last frame (reprojected; only where its own surface was seen there). Unlike a horizon (GTAO)
+  light passes behind thin things (chair legs, table edges), and unlike plain AO what hides part of the hemisphere is not
+  black: its own light comes back. The sectors are spaced evenly in sin(angle from the normal), so each holds an equal
+  share of cosine-weighted light, and the slices are weighted by the projected normal as in GTAO. Emitters (a lit lens or
+  shade: the depth-normals pass writes -1 in the normals' alpha for materials with emission) neither hide nor give
+  light: their light is the fixtures' own, drawn exactly. The last frame's light is capped at 6 (fireflies).
+  The hemisphere is the surface's own plane, its normal rebuilt from the depth (a carpet's bump map tilted the shading
+  normal so the flat floor round each point hid part of it). What it hides is taken from the probe bounce only as much
+  as the probes had in those directions (`ProbeShare`: their L1 irradiance facing the hidden directions' mean against
+  facing the normal, 0.25-1.25; the probes' bounce only, not the grid's direct light). Without it a wall's foot beside a
+  dark carpet lost an even share of the probe light and got the carpet's dark light back: the probes already knew the
+  floor was dark, and a hard-topped dark band ran along every wall. The lit shader then takes the probe bounce times
+  the visibility plus the bounce found: in a corner between lit walls the share the walls hide is replaced by their
+  real light, so it stays lit (the old SSAO assumed black blockers and was cut to 0.3 for that reason). Measured in a
+  Level 0 view against no occlusion at all: the same mean brightness (1.00), corners and contact a little darker, faces
+  beside lit surfaces a little brighter. `Editor/Tests/ScreenLightingTests` checks it on a made-up floor meeting a wall where every
+  surface gives the same light: open floor has visibility 1 and no bounce, and in the corner and at the wall's foot the
+  visibility drops and visibility + bounce stays 1.
+- **The visibility as URP's SSAO**: bound as URP's own occlusion texture with its keyword (`_SCREEN_SPACE_OCCLUSION`),
+  so every shader that reads SSAO gets it without a new shader variant, and URP's SSAO feature is switched off on the
+  player's renderer while this runs (the crawl holes' views keep it). Direct light is not darkened by it.
+- **Screen-space reflections** (stochastic, as FidelityFX SSSR and Stachowiak 2015): one ray a pixel for smoothness
+  above 0.45, its direction drawn from the GGX lobe (visible normals, Heitz 2018, at 0.6 of the surface's roughness),
+  marched 28 steps out to 14 m through the half-size depth and refined by bisection; a hit takes the last frame's light
+  from a mip as wide as the lobe's cone there. Hits on the back of something, off screen or near its edge fade out, and
+  there the room's reflection probe stays. The probes' own reflections get **reflection occlusion** from the visibility
+  (Lagarde & de Rousiers 2014), so they no longer glow in corners and under furniture.
+- **Over frames and up to the full picture**: the bounce blends up to 24 frames (its history in full floats: the frame
+  count rides with the visibility, and in half floats a long history's small steps rounded away, so it stuck dark) where the surface was seen last frame
+  (reset where it was not: a disocclusion, a teleport, a turn of more than about 37 degrees in a frame); reflections
+  blend 5 frames kept within this frame's neighbours (they move with the view). Then a 5 x 5 edge-aware filter (by plane
+  distance and normal, wider while the history is short) and a joint bilateral upsample to the full picture.
+- **Specular anti-aliasing** for Backrooms/Lit (Tokuyoshi & Kaplanyan, as the Poolrooms' tiles had it; Graphics >
+  Specular anti-aliasing): highlights on bevels, handles and far fittings widen instead of sparkling.
+
+Other cameras (portal views, the water mirror, reflection captures, the scene view) get none of it (`_BRScreen.x` is 0
+for them, as with contact shadows). Off (Screen light), everything is as before: URP's SSAO at 0.3 and the probes.
+
+## Volumetric light (2026-11-01)
+
+F5 > LIGHT > AIR > Volumetric light, Glow toward lights. `Generation/VolumetricLight.cs`, `Resources/VolumetricLight.compute`,
+`Resources/Shaders/VolumetricComposite.shader`. Frostbite's unified volumetrics (Hillaire, SIGGRAPH 2015), the froxel
+approach most engines use now: the haze is lit in a grid of cells of the view's frustum (64 x 48 across, 48 slices spaced
+exponentially from 0.3 to 40 m), integrated toward the camera, and laid over the opaque picture before the transparents
+(colour x transmittance + in-scatter).
+
+- **Inject**: within 12 m of the camera every fixture in the froxel's 4.8 m tile is worked out exactly: its distance
+  falloff and measured shape, the light grid's own line test (walls, door headers, shut doors, broken-wall holes), the
+  nearby furniture boxes (`LocalLightVisibility`) and a Henyey-Greenstein phase (g 0.35 by default): light through a
+  doorway falls in a shaft with a soft edge, a lit room's air glows seen from a dark corridor, and the air brightens
+  round a fixture you look toward. Within a panel's size of a fixture its light stops growing (a panel is not a point:
+  as 1/d^2 the air under each fixture blazed and veiled the whole picture). Farther away (a 3 m blend) the light grid's luminance channel, isotropic, as the old
+  haze had it. The density drifts slowly with a faint 3D noise (dust is never even). Jittered in depth every frame and
+  blended with the last frames' froxels (12 % new, reprojected; reset on a teleport or a fast turn).
+- **Integrate**: front to back along each column, each slice's in-scatter integrated against its own extinction
+  (energy-conserving), giving the light in front of each depth and what still gets through.
+- The thickness is the Haze slider, by the light grid's formula (0.25 scatters about 2.5 % per 10 m). On this camera
+  it replaces Backrooms/Lit's 8-step march (`_LGridHaze.w` is 0 while it draws); portal views and reflection captures keep
+  the march. Off in the Poolrooms, whose air has its own sun shafts (PoolAir).

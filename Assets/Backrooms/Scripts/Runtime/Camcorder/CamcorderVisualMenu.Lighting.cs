@@ -78,6 +78,16 @@ namespace Backrooms.Camcorder
             Slider("Room fill", "Older bounce field only: evens out the walls. 0 = walls are lit mostly by pools under each fixture, 1 = walls glow almost as evenly as the ceiling.",
                 0f, 1f, "0.00", "", () => O().roomFill, Look(v => O().roomFill = v));
 
+            Section("SCREEN LIGHT", "Light worked out from what the camera sees, on top of the traced bounce: the bounce between things close together, reflections in glossy surfaces, and reflections kept out of corners.");
+            Toggle("Screen light", "Bounce, occlusion and reflections found in the picture itself (half resolution, blended over frames). Off: the older ambient occlusion and the reflection probes alone.",
+                () => O().screenLight, v => { O().screenLight = v; O().Save(); });
+            Slider("Near bounce", "What hides part of a surface lights it with its own light: the floor glows up the bottom of a lit wall, a desk's top lights the underside of a shelf, and a corner between lit walls stays lit instead of going dark as plain AO makes it. 0 keeps just the occlusion.",
+                0f, 2f, "0.00", "x", () => O().screenBounce, Look(v => O().screenBounce = v));
+            Slider("Screen reflections", "Glossy surfaces (lino, laminate, metal, glass, wet floors) reflect what is really beside them, found in the picture: sharp on smooth surfaces, blurred on rougher ones. Where nothing is found the room's reflection probe is used. 0: probes only.",
+                0f, 1f, "0.00", "", () => O().screenReflections, Look(v => O().screenReflections = v));
+            Slider("Reflection occlusion", "Keeps the room's cached reflection out of corners, under furniture and inside cupboards, where it would glow.",
+                0f, 1f, "0.00", "", () => O().reflectionOcclusion, Look(v => O().reflectionOcclusion = v));
+
             Section("SHADOWS & DARKNESS", "Deepen the dark parts and shape the shadows of furniture, items and you.");
             Slider("Shadow darkness", "How dark shadows from nearby lights are. Below 1 lets a little light into shadows.",
                 0f, 1f, "0.00", "", () => O().shadowDarkness, Look(v => O().shadowDarkness = v));
@@ -93,6 +103,10 @@ namespace Backrooms.Camcorder
             Section("AIR", "Dust and haze in the air, lit by the lights: glow round fixtures, lit air in bright rooms, dark rooms stay clear.");
             Slider("Haze", "How thick the air is. Light hangs in it near the fixtures and in lit rooms; distant rooms soften. 0 is perfectly clear.",
                 0f, 1f, "0.00", "", () => O().haze, Look(v => O().haze = v));
+            Toggle("Volumetric light", "The air is lit in 3D, cell by cell of the view: light from a lit room falls through the doorway in a shaft, furniture shadows the air under a lamp, and the air glows looking toward a fixture. Off: the older, flatter haze.",
+                () => O().volumetricLight, v => { O().volumetricLight = v; O().Save(); });
+            Slider("Glow toward lights", "Volumetric light: dust and haze scatter light mostly onward, so the air brightens round a fixture you look toward and shafts show best looking along them. 0 scatters evenly all round.",
+                0f, 0.8f, "0.00", "", () => O().hazeGlow, Look(v => O().hazeGlow = v));
             Slider("Settled dust", "Dust settled on everything that faces up: desks and tables, the tops of baseboards, door headers, boxes, light fittings. Patchy, never on the floor itself. 0 is spotless.",
                 0f, 2f, "0.00", "x", () => O().surfaceDust, v => { O().surfaceDust = v; O().Save(); });
             Slider("Dust in the air", "Motes drifting in the air, seen only where a ceiling light shines down through them. Very faint. 0 is clean air.",

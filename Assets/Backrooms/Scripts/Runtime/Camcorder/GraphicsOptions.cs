@@ -66,6 +66,15 @@ namespace Backrooms.Camcorder
         public bool areaLights = true;               // ceiling panels lit as rectangles (a method, not part of a look)
         public bool photometric = true;              // ceiling fixtures throw their measured (IES) light shape
         public bool tracedBounce = true;             // bounce light traced through the rooms (off: the older bounce field)
+        // Screen-space light (2026-11-01, ScreenLighting): near bounce and occlusion with a visibility bitmask, glossy
+        // reflections found on screen, reflection occlusion. Off: URP's SSAO and the probes, as before.
+        public bool screenLight = true;
+        [Look] public float screenBounce = 1f;       // near bounce: what hides part of a surface gives it its own light
+        [Look] public float screenReflections = 1f;  // glossy reflections found on screen (0: the reflection probes only)
+        [Look] public float reflectionOcclusion = 1f; // keeps probe reflections out of corners and from under furniture
+        // Volumetric light (2026-11-01, VolumetricLight): the haze lit froxel by froxel, shafts through doorways.
+        public bool volumetricLight = true;
+        [Look] public float hazeGlow = 0.35f;        // forward scattering: the air glows looking toward a light (0: even all round)
         public int lookPreset = 0;                   // the LOOK preset last applied (-1: changed since, -2: my look)
 
         static System.Reflection.FieldInfo[] s_lookFields;
@@ -80,7 +89,7 @@ namespace Backrooms.Camcorder
             var d = new GraphicsOptions();
             CopyLook(d);
             indoorReflections = d.indoorReflections; farLights = d.farLights; exactLightRadius = d.exactLightRadius;
-            areaLights = d.areaLights; tracedBounce = d.tracedBounce; photometric = d.photometric; lookPreset = 0;
+            areaLights = d.areaLights; tracedBounce = d.tracedBounce; photometric = d.photometric; screenLight = d.screenLight; volumetricLight = d.volumetricLight; lookPreset = 0;
         }
         /// <summary>Evenly lit and pale, like the found-footage references: little contrast, a lot of fill, soft shadows.</summary>
         public void ApplyEvenLighting() => ApplyLook(1);
@@ -232,7 +241,7 @@ namespace Backrooms.Camcorder
         WorldStreamer _streamer;
         // SSAO on every renderer: the player's and the crawl holes' views (so the view through a hole has the same AO
         // as the room has once you are through it).
-        readonly System.Collections.Generic.List<(ScriptableRendererFeature f, bool orig)> _ssao = new System.Collections.Generic.List<(ScriptableRendererFeature, bool)>();
+        readonly System.Collections.Generic.List<(ScriptableRendererFeature f, bool orig, bool portal)> _ssao = new System.Collections.Generic.List<(ScriptableRendererFeature, bool, bool)>();
 
         public static GraphicsController Ensure()
         {
@@ -258,7 +267,7 @@ namespace Backrooms.Camcorder
                     foreach (var data in list)
                         if (data)
                             foreach (var feat in data.rendererFeatures)
-                                if (feat && feat.GetType().Name.Contains("AmbientOcclusion")) { _ssao.Add((feat, feat.isActive)); PhysicalAO(feat, true); }
+                                if (feat && feat.GetType().Name.Contains("AmbientOcclusion")) { _ssao.Add((feat, feat.isActive, data.name.Contains("Portal"))); PhysicalAO(feat, true); }
             }
         }
 
@@ -335,7 +344,24 @@ namespace Backrooms.Camcorder
                     scale = Mathf.Clamp(_rig.Settings.videoLines * 1.35f / Screen.height, 0.5f, scale);
             }
             if (urp && Mathf.Abs(urp.renderScale - scale) > 0.001f) urp.renderScale = scale;
-            foreach (var s in _ssao) if (s.f && s.f.isActive != o.ambientOcclusion) s.f.SetActive(o.ambientOcclusion);
+            // Screen-space light on the player's camera: its visibility replaces URP's SSAO there (the crawl holes' views keep
+            // SSAO, they have no screen light of their own).
+            var screen = ScreenLighting.Ensure();
+            if (screen.enabled != o.screenLight) screen.enabled = o.screenLight;
+            screen.bounce = Mathf.Clamp(o.screenBounce, 0f, 2f);
+            screen.reflections = Mathf.Clamp01(o.screenReflections);
+            screen.reflectionOcclusion = Mathf.Clamp01(o.reflectionOcclusion);
+            screen.occlusion = o.ambientOcclusion ? 1f : 0f;
+            bool screenOn = screen.Active;
+            var vol = VolumetricLight.Ensure();
+            if (vol.enabled != o.volumetricLight) vol.enabled = o.volumetricLight;
+            vol.haze = Mathf.Clamp01(o.haze);
+            vol.anisotropy = Mathf.Clamp(o.hazeGlow, 0f, 0.9f);
+            foreach (var s in _ssao)
+            {
+                bool want = o.ambientOcclusion && (s.portal || !screenOn);
+                if (s.f && s.f.isActive != want) s.f.SetActive(want);
+            }
 
             if (!_cam) _cam = Camera.main;
             if (_cam)
@@ -418,11 +444,15 @@ namespace Backrooms.Camcorder
             // Dust on what faces up (Backrooms/Lit): strength, and the storey pitch (no dust on each storey's floor itself).
             if (!_streamer) _streamer = FindAnyObjectByType<WorldStreamer>();
             float pitch = _streamer && _streamer.Settings != null ? _streamer.Settings.storeyPitch : 9f;
-            Shader.SetGlobalVector(DustId, new Vector4(PoolWorld.Instance ? 0f : Mathf.Clamp(o.surfaceDust, 0f, 2f), pitch, 1f, 0f));
+            // Not in the Poolrooms (2026-11-01: this asked whether a Poolrooms world existed at all, so since the zone came in
+            // there was no settled dust or dust in the air anywhere, Level 0 included).
+            if (!_cam) _cam = Camera.main;
+            bool inPool = PoolWorld.Instance && _cam && PoolWorld.Instance.IsPool(_cam.transform.position);
+            Shader.SetGlobalVector(DustId, new Vector4(inPool ? 0f : Mathf.Clamp(o.surfaceDust, 0f, 2f), pitch, 1f, 0f));
             if (_streamer && Camera.main)
             {
                 var air = AirDust.Ensure(Camera.main);
-                if (air) air.strength = PoolWorld.Instance ? 0f : Mathf.Clamp(o.airDust, 0f, 3f);
+                if (air) air.strength = inPool ? 0f : Mathf.Clamp(o.airDust, 0f, 3f);
             }
             // Contact shadows have a render pass of their own on the player's camera (it reads the camera depth properly).
             ContactShadows.Ensure().strength = Mathf.Clamp01(o.contactShadows);

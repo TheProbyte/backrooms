@@ -21,6 +21,18 @@ float _PoolLitBlend;                 // 1: this camera looks at the Poolrooms (B
 float _PoolSpecAA;                   // 1: specular anti-aliasing on the glossy tiles (Graphics menu)
 #ifndef BACKROOMS_HAS_PORTAL_CLIP_PLANE
 float4 _PortalClipPlane;             // zero outside a portal-camera render
+// Screen-space light (ScreenLighting.cs, the player's view only): the near bounce found on screen. Where it is on, the
+// SSAO these shaders read is its visibility, used in full: what hides part of a surface's hemisphere gives back its own
+// light here, so corners and floor-wall joins no longer go dark (why SSAO used to be cut to 38 % in the Poolrooms).
+TEXTURE2D(_BRScreenGI);
+float4 _BRScreen;                    // x: on for this camera, y: bounce strength
+float4 _BRScreenSize;                // xy: size in pixels
+float3 PoolScreenBounce(float4 positionCS)
+{
+    if (_BRScreen.x < 0.5) return 0;
+    int2 px = clamp((int2)positionCS.xy, 0, (int2)_BRScreenSize.xy - 1);
+    return max(LOAD_TEXTURE2D(_BRScreenGI, px).rgb, 0) * _BRScreen.y;
+}
 #endif
 
 #define POOL_C 1.2

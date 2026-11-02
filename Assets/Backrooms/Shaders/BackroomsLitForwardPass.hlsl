@@ -367,7 +367,8 @@ half4 BackroomsFragmentPBR(InputData inputData, SurfaceData surfaceData)
     LightingData lightingData = CreateLightingData(inputData, surfaceData);
     lightingData.additionalLightsColor += BackroomsDistantPBR(inputData, brdfData, brdfDataClearCoat, surfaceData, specularHighlightsOff, aoFactor.directAmbientOcclusion);
     aoFactor.indirectAmbientOcclusion = min(aoFactor.indirectAmbientOcclusion, (half)LocalIndirectVisibility(inputData.positionWS, inputData.normalWS));
-    lightingData.giColor = GlobalIllumination(brdfData, brdfDataClearCoat, surfaceData.clearCoatMask,
+    lightingData.giColor = BackroomsGlobalIllumination(brdfData, brdfDataClearCoat, surfaceData.clearCoatMask,   // Backrooms: screen-space bounce and reflections
+       
                                               inputData.bakedGI, aoFactor.indirectAmbientOcclusion, inputData.positionWS,
                                               inputData.normalWS, inputData.viewDirectionWS, inputData.normalizedScreenSpaceUV);
 #ifdef _LIGHT_LAYERS
@@ -582,6 +583,7 @@ void LitPassFragment(
 #endif
 
     BR_SurfaceDust(surfaceData, inputData.positionWS, inputData.normalWS);              // Backrooms: dust on what faces up
+    surfaceData.smoothness = BackroomsSpecularAA(surfaceData.smoothness, inputData.normalWS);   // Backrooms: no sparkling highlights
     InitializeBakedGIData(input, inputData);
     inputData.bakedGI += BackroomsLightGrid(inputData.positionWS, inputData.normalWS);   // Backrooms: light grid
 

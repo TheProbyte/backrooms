@@ -63,10 +63,11 @@ Shader "Backrooms/PoolLit"
                     // The Poolrooms are lit mostly by soft bounce, which made full-strength SSAO draw hard dark bands at
                     // every floor-wall join and in corners: a gentle share of it on the bounce, none on the sun.
                     ao = lerp(1.0, aof.indirectAmbientOcclusion, 0.38); aoDirect = 1.0;
+                    if (_BRScreen.x > 0.5) ao = aof.indirectAmbientOcclusion;   // with the screen bounce given back below
                 #endif
                 float sun = PoolSunVisibility(i.positionWS + N * 0.02);
                 float NdotL = saturate(dot(N, POOL_SUN));
-                float3 ambient = (PoolAmbientAt(i.positionWS, N) + PoolPatchBounce(i.positionWS, N) * 0.8) * ao;
+                float3 ambient = (PoolAmbientAt(i.positionWS, N) + PoolPatchBounce(i.positionWS, N) * 0.8) * ao + PoolScreenBounce(i.positionCS);
                 half3 diffuse = albedo * (1.0 - _Metallic);
                 half3 f0 = lerp(half3(0.04, 0.04, 0.04), albedo, _Metallic);
                 float rough = max(1.0 - _Smoothness, 0.05), a2 = rough * rough * rough * rough;

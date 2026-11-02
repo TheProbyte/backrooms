@@ -1,0 +1,453 @@
+// Screen-space light for the player's camera (ScreenLighting.cs), worked out after the depth prepass and before the opaque
+// pass, at half resolution, from this frame's depth and normals and the last frame's lit picture:
+//
+//  - Bounce and occlusion: screen-space indirect lighting with a visibility bitmask (Therrien, Levesque & Gilet, 2023):
+//    along a few slices round each pixel, everything within the radius sets the 32 sectors of the hemisphere its front and
+//    back (a constant thickness behind it) cover; sectors it newly covers take its light from the last frame. Unlike a
+//    horizon (GTAO) light passes behind thin things, and unlike plain AO what hides the hemisphere is not black: a lit
+//    wall beside the floor gives its own light. The rest of the hemisphere is left to the traced probe bounce.
+//    The sectors are spaced evenly in sin(angle from the normal), so each holds an equal share of cosine-weighted light.
+//    The hemisphere is the surface's own plane (its normal rebuilt from the depth), not the bump-mapped normal: a carpet's
+//    bumps tilted it so the flat floor round each point hid part of it.
+//    What it hides is taken away from the probe bounce only as much as the probes had there: their irradiance facing the
+//    hidden directions, against facing the surface's normal (the probes already know a dark floor is below a wall's foot;
+//    taking an even share away and adding the floor's dark light back counted that darkness twice).
+//  - Reflections: one ray a pixel, its direction drawn from the GGX lobe (visible normals, Heitz 2018) so glossy surfaces
+//    blur, marched through the depth; a hit takes the last frame's light at the hit, from a mip as wide as the lobe's cone.
+//    Where nothing is found the reflection probes stay (FidelityFX SSSR, Stachowiak 2015).
+//  - Both are blended over frames where the surface was seen last frame, then filtered edge-aware and brought back up
+//    to the full picture (joint bilateral upsampling) for the lit shaders.
+#pragma kernel Prepare
+#pragma kernel TraceGI
+#pragma kernel ProbeShare
+#pragma kernel TraceRefl
+#pragma kernel Temporal
+#pragma kernel Blur
+#pragma kernel Upsample
+
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Assets/Backrooms/Shaders/LightGridSample.hlsl"
+
+Texture2D<float> _CameraDepthTexture;
+Texture2D<float4> _CameraNormalsTexture;
+Texture2D<float4> _ColorHist;                // the last frame's lit picture (half size, mips)
+SamplerState sl_linear_clamp_sampler;
+
+RWTexture2D<float4> _HalfPos;                 // xyz world position, w linear depth (0: nothing there)
+RWTexture2D<float4> _HalfNormal;              // xyz world normal, w smoothness (-1: an emitter)
+RWTexture2D<float4> _HalfGeo;                 // xyz the surface's own normal (from the depth)
+Texture2D<float4> _HalfPosR, _HalfNormalR, _HalfGeoR, _PrevPos;
+RWTexture2D<float4> _GITrace, _RefTrace;
+RWTexture2D<float4> _GIHidden;              // xyz: the hidden directions' mean, w: 1 if any
+Texture2D<float4> _GITraceR, _RefTraceR, _GIHistR, _RefHistR;
+RWTexture2D<float4> _GIHist, _RefHist;
+RWTexture2D<float4> _GIBlur, _RefBlur;
+Texture2D<float4> _GIBlurR, _RefBlurR;
+RWTexture2D<float4> _GIOut, _RefOut;
+RWTexture2D<float> _AOOut;
+
+float4x4 _InvVP, _VP, _PrevVP;
+float4 _CamPos;          // xyz camera, w frame index
+float4 _CamFwd;          // xyz forward, w near device depth
+float4 _PrevCam;         // xyz the last frame's camera, w 1 if the history is valid
+float4 _FullSize, _HalfSize;   // xy size, zw 1/size
+float4 _GIParams;        // x radius (m), y thickness (m), z pixels per metre at 1 m (half size), w steps a side
+float4 _GIParams2;       // x slices, y brightest light taken, z occlusion strength, w bounce on
+float4 _RefParams;       // x on, y max distance, z steps, w smoothest it skips below
+float _FlipY;            // -1 where texture rows start at the top
+float _ReversedZ;
+
+float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+float IGN(float2 p) { return frac(52.9829189 * frac(dot(p, float2(0.06711056, 0.00583715)))); }
+
+float3 WorldAt(float2 uv, float device)
+{
+    float4 c = float4(uv.x * 2.0 - 1.0, (uv.y * 2.0 - 1.0) * _FlipY, device, 1.0);
+    float4 w = mul(_InvVP, c);
+    return w.xyz / w.w;
+}
+
+bool Project(float4x4 m, float3 p, out float2 uv)
+{
+    float4 c = mul(m, float4(p, 1.0));
+    uv = 0;
+    if (c.w <= 1e-4) return false;
+    float2 n = c.xy / c.w;
+    uv = float2(n.x * 0.5 + 0.5, n.y * _FlipY * 0.5 + 0.5);
+    return all(uv > 0.0) && all(uv < 1.0);
+}
+
+// ---------------------------------------------------------------- half-size depth and normals
+[numthreads(8, 8, 1)]
+void Prepare(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= (uint2)_HalfSize.xy)) return;
+    int2 full = (int2)_FullSize.xy - 1;
+    // The nearest of the 2 x 2 (edges stay with what is in front).
+    int2 best = min(int2(id.xy) * 2, full);
+    float bestD = -1.0;
+    for (int k = 0; k < 4; k++)
+    {
+        int2 p = min(int2(id.xy) * 2 + int2(k & 1, k >> 1), full);
+        float d = _CameraDepthTexture[p];
+        float nearness = _ReversedZ > 0.5 ? d : 1.0 - d;
+        if (nearness > bestD) { bestD = nearness; best = p; }
+    }
+    float device = _CameraDepthTexture[best];
+    bool sky = _ReversedZ > 0.5 ? device <= 1e-7 : device >= 1.0 - 1e-7;
+    float2 uv = (best + 0.5) * _FullSize.zw;
+    float3 P = WorldAt(uv, device);
+    float depth = dot(P - _CamPos.xyz, _CamFwd.xyz);
+    float4 n = _CameraNormalsTexture[best];
+    float len = length(n.xyz);
+    if (sky || len < 0.1 || depth <= 0.0) { _HalfPos[id.xy] = 0; _HalfNormal[id.xy] = 0; _HalfGeo[id.xy] = 0; return; }
+    _HalfPos[id.xy] = float4(P, depth);
+    _HalfNormal[id.xy] = float4(n.xyz / len, n.w);
+    // The plane: from the neighbours on the side nearer in depth each way (an edge takes the surface it belongs to).
+    int2 bx0 = clamp(best - int2(1, 0), 0, full), bx1 = clamp(best + int2(1, 0), 0, full);
+    int2 by0 = clamp(best - int2(0, 1), 0, full), by1 = clamp(best + int2(0, 1), 0, full);
+    float3 X0 = WorldAt((bx0 + 0.5) * _FullSize.zw, _CameraDepthTexture[bx0]), X1 = WorldAt((bx1 + 0.5) * _FullSize.zw, _CameraDepthTexture[bx1]);
+    float3 Y0 = WorldAt((by0 + 0.5) * _FullSize.zw, _CameraDepthTexture[by0]), Y1 = WorldAt((by1 + 0.5) * _FullSize.zw, _CameraDepthTexture[by1]);
+    float3 dx = abs(dot(X1 - P, _CamFwd.xyz)) < abs(dot(P - X0, _CamFwd.xyz)) ? X1 - P : P - X0;
+    float3 dy = abs(dot(Y1 - P, _CamFwd.xyz)) < abs(dot(P - Y0, _CamFwd.xyz)) ? Y1 - P : P - Y0;
+    float3 g = cross(dx, dy);
+    float gl = length(g);
+    g = gl > 1e-8 ? g / gl : n.xyz / len;
+    if (dot(g, _CamPos.xyz - P) < 0.0) g = -g;
+    if (dot(g, n.xyz) < 0.2) g = n.xyz / len;            // a bad reconstruction (a silhouette): the shading normal
+    _HalfGeo[id.xy] = float4(g, 0);
+}
+
+// The last frame's light at a point, if the point was on screen and not hidden then (its own surface was seen there).
+bool HistoryLight(float3 p, float depth, float mip, out float3 light)
+{
+    light = 0;
+    if (_PrevCam.w < 0.5) return false;
+    float2 uv;
+    if (!Project(_PrevVP, p, uv)) return false;
+    float4 was = _PrevPos[min((int2)(uv * _HalfSize.xy), (int2)_HalfSize.xy - 1)];
+    if (was.w <= 0.0 || distance(was.xyz, p) > 0.06 + 0.025 * depth) return false;
+    light = _ColorHist.SampleLevel(sl_linear_clamp_sampler, uv, mip).rgb;
+    float l = Luma(light);
+    if (!(l >= 0.0)) { light = 0; return false; }
+    if (l > _GIParams2.y) light *= _GIParams2.y / l;     // fireflies and anything left of an emitter's glow
+    return true;
+}
+
+// ---------------------------------------------------------------- bounce and occlusion
+[numthreads(8, 8, 1)]
+void TraceGI(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= (uint2)_HalfSize.xy)) return;
+    float4 pp = _HalfPosR[id.xy];
+    if (pp.w <= 0.0) { _GITrace[id.xy] = float4(0, 0, 0, 1); return; }
+    float3 P = pp.xyz, N = _HalfGeoR[id.xy].xyz, Nb = _HalfNormalR[id.xy].xyz;
+    float3 V = normalize(_CamPos.xyz - P);
+    float frame = _CamPos.w;
+    float jitterA = IGN(id.xy + 5.588238 * fmod(frame, 64.0));
+    float jitterS = frac(IGN(id.xy.yx * 1.7 + 11.0 + 3.1 * fmod(frame, 64.0)) + 0.618034 * fmod(frame, 16.0));
+    float radius = _GIParams.x;
+    float radiusPx = min(radius * _GIParams.z / pp.w, 0.4 * _HalfSize.y);
+    int steps = (int)_GIParams.w, slices = (int)_GIParams2.x;
+    if (radiusPx < 1.5) { _GITrace[id.xy] = float4(0, 0, 0, 1); return; }
+    float thick = _GIParams.y * (1.0 + 0.05 * pp.w);
+    float2 uv0 = (id.xy + 0.5) * _HalfSize.zw;
+
+    float3 gi = 0, hidden = 0;
+    float vis = 0, weight = 0;
+    [loop] for (int s = 0; s < slices; s++)
+    {
+        float phi = (s + jitterA) / slices * PI;
+        float2 dir = float2(cos(phi), sin(phi));
+        // The slice's direction in the world: a point a little along it at this depth.
+        float2 uvD = uv0 + dir * 4.0 * _HalfSize.zw;
+        float3 rayD = normalize(WorldAt(uvD, _CamFwd.w) - _CamPos.xyz);
+        float3 PD = _CamPos.xyz + rayD * (pp.w / max(dot(rayD, _CamFwd.xyz), 1e-3));
+        float3 ortho = PD - P;
+        ortho -= dot(ortho, V) * V;
+        ortho = normalize(ortho);
+        float3 axis = normalize(cross(ortho, V));
+        float3 projN = N - axis * dot(N, axis);
+        float lenPN = length(projN);
+        if (lenPN < 1e-3) continue;
+        float cosN = clamp(dot(projN, V) / lenPN, -1.0, 1.0);
+        float n = (dot(ortho, projN) >= 0.0 ? 1.0 : -1.0) * acos(cosN);
+
+        uint bits = 0u;
+        float3 sliceGI = 0;
+        [loop] for (int side = 0; side < 2; side++)
+        {
+            float sgn = side == 0 ? 1.0 : -1.0;
+            [loop] for (int j = 0; j < steps; j++)
+            {
+                float t = (j + jitterS) / steps;
+                float off = max(1.0 + j, t * t * radiusPx);
+                int2 sp = (int2)floor(id.xy + 0.5 + sgn * dir * off);
+                if (any(sp < 0) || any(sp >= (int2)_HalfSize.xy)) break;
+                float4 q = _HalfPosR[sp];
+                if (q.w <= 0.0) continue;
+                float3 delta = q.xyz - P;
+                float dl = length(delta);
+                if (dl < 1e-3 || dl > radius) continue;
+                float3 deltaB = delta - V * thick;                  // its back, farther from the camera
+                float hf = acos(clamp(dot(delta / dl, V), -1.0, 1.0));
+                float hb = acos(clamp(dot(normalize(deltaB), V), -1.0, 1.0));
+                float af = clamp(sgn * hf - n, -HALF_PI, HALF_PI), ab = clamp(sgn * hb - n, -HALF_PI, HALF_PI);
+                float uf = 0.5 + 0.5 * sin(af), ub = 0.5 + 0.5 * sin(ab);
+                uint b0 = (uint)round(min(uf, ub) * 32.0), b1 = (uint)round(max(uf, ub) * 32.0);
+                if (b1 <= b0) continue;
+                uint span = b1 - b0;
+                uint mask = span >= 32u ? 0xFFFFFFFFu : ((1u << span) - 1u) << b0;
+                uint fresh = mask & ~bits;
+                if (fresh == 0u) continue;
+                float4 qn = _HalfNormalR[sp];
+                if (qn.w < -0.5) continue;                          // an emitter: its light is the direct light's
+                bits |= mask;
+                hidden += (delta / dl) * (countbits(fresh) * lenPN);
+                if (_GIParams2.w > 0.5)
+                {
+                    float facing = saturate(dot(_HalfGeoR[sp].xyz, -delta / dl) * 3.0 + 0.15);
+                    float3 L;
+                    if (facing > 0.0 && HistoryLight(q.xyz, q.w, 1.0, L))
+                        sliceGI += L * facing * (countbits(fresh) / 32.0);
+                }
+            }
+        }
+        vis += lenPN * (1.0 - countbits(bits) / 32.0);
+        gi += lenPN * sliceGI;
+        weight += lenPN;
+    }
+    if (weight > 1e-4) { vis /= weight; gi /= weight; } else vis = 1.0;
+    float hl = length(hidden);
+    _GIHidden[id.xy] = hl > 1e-4 && vis < 0.999 ? float4(hidden / hl, 1.0) : 0;
+    _GITrace[id.xy] = float4(gi, vis);
+}
+
+// Take away only what the probes had in the hidden directions: their light facing those, against facing the normal.
+// (Run only where the light grid is bound.)
+[numthreads(8, 8, 1)]
+void ProbeShare(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= (uint2)_HalfSize.xy)) return;
+    float4 h = _GIHidden[id.xy];
+    if (h.w < 0.5 || _LGridParams.x < 0.5) return;
+    if (_LGridGI.x < 0.5) return;                        // no traced probes: an even share
+    float3 P = _HalfPosR[id.xy].xyz, Nb = _HalfNormalR[id.xy].xyz;
+    // The probes' own bounce only (their L1 light per direction), not the grid's direct light: a wall point's hidden
+    // directions toward the ceiling face the fixtures, but what hides them there is the ceiling, lit from below.
+    float3 q = LGrid_Clamp(P + Nb * _LGridShape.y, _LGridParams.w);
+    float e = Luma(LGrid_ProbeIrradiance(q, Nb));
+    float eo = Luma(LGrid_ProbeIrradiance(q, h.xyz));
+    float share = e > 1e-4 ? clamp(eo / e, 0.25, 1.25) : 1.0;
+    float4 g = _GITrace[id.xy];
+    _GITrace[id.xy] = float4(g.rgb, saturate(1.0 - (1.0 - g.a) * share));
+}
+
+// ---------------------------------------------------------------- reflections
+float3 SampleGGXVNDF(float3 Ve, float alpha, float2 u)
+{
+    float3 Vh = normalize(float3(alpha * Ve.x, alpha * Ve.y, Ve.z));
+    float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+    float3 T1 = lensq > 0 ? float3(-Vh.y, Vh.x, 0) * rsqrt(lensq) : float3(1, 0, 0);
+    float3 T2 = cross(Vh, T1);
+    float r = sqrt(u.x), ph = 2.0 * PI * u.y;
+    float t1 = r * cos(ph), t2 = r * sin(ph);
+    float sv = 0.5 * (1.0 + Vh.z);
+    t2 = (1.0 - sv) * sqrt(1.0 - t1 * t1) + sv * t2;
+    float3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
+    return normalize(float3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)));
+}
+
+[numthreads(8, 8, 1)]
+void TraceRefl(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= (uint2)_HalfSize.xy)) return;
+    float4 pp = _HalfPosR[id.xy];
+    float4 nn = _HalfNormalR[id.xy];
+    if (_RefParams.x < 0.5 || pp.w <= 0.0 || nn.w < _RefParams.w) { _RefTrace[id.xy] = 0; return; }
+    float3 P = pp.xyz, N = nn.xyz;
+    float3 V = normalize(_CamPos.xyz - P);
+    float rough = 1.0 - saturate(nn.w), alpha = max(rough * rough, 0.002);
+    float frame = fmod(_CamPos.w, 64.0);
+    float2 u = float2(IGN(id.xy + 7.13 * frame), IGN(id.xy.yx + 3.7 + 13.1 * frame));
+    // The lobe a little narrower than the surface's (the mip below blurs the rest; less noise).
+    float3 T = normalize(abs(N.y) < 0.99 ? cross(float3(0, 1, 0), N) : cross(float3(1, 0, 0), N));
+    float3 B = cross(N, T);
+    float3 Ve = float3(dot(V, T), dot(V, B), dot(V, N));
+    float3 He = SampleGGXVNDF(Ve, alpha * 0.6, u);
+    float3 H = T * He.x + B * He.y + N * He.z;
+    float3 R = reflect(-V, H);
+    if (dot(R, N) < 0.02) R = reflect(-V, N);
+
+    float maxD = _RefParams.y;
+    int steps = (int)_RefParams.z;
+    float3 O = P + N * (0.015 + 0.002 * pp.w);
+    float jitter = IGN(id.xy.yx * 1.3 + 17.0 * frame);
+    float prevS = 0.0, hitS = -1.0;
+    float2 hitUV = 0;
+    [loop] for (int i = 1; i <= steps; i++)
+    {
+        float t = (i - 1.0 + jitter) / steps;
+        float s = maxD * (0.02 + 0.98 * t * t);
+        float3 Q = O + R * s;
+        float2 uv;
+        if (!Project(_VP, Q, uv)) break;
+        float dq = dot(Q - _CamPos.xyz, _CamFwd.xyz);
+        float4 scene = _HalfPosR[min((int2)(uv * _HalfSize.xy), (int2)_HalfSize.xy - 1)];
+        if (scene.w > 0.0)
+        {
+            float diff = dq - scene.w, thickR = max(0.12, (s - prevS) * 1.2) + 0.02 * scene.w;
+            if (diff > 0.0 && diff < thickR)
+            {
+                // Refine between the last step in front and this one.
+                float a = prevS, b = s;
+                [unroll] for (int k = 0; k < 5; k++)
+                {
+                    float m = 0.5 * (a + b);
+                    float3 Qm = O + R * m;
+                    float2 um;
+                    if (!Project(_VP, Qm, um)) { b = m; continue; }
+                    float4 sm = _HalfPosR[min((int2)(um * _HalfSize.xy), (int2)_HalfSize.xy - 1)];
+                    float dm = dot(Qm - _CamPos.xyz, _CamFwd.xyz);
+                    if (sm.w > 0.0 && dm > sm.w) b = m; else a = m;
+                }
+                hitS = b;
+                Project(_VP, O + R * b, hitUV);
+                break;
+            }
+        }
+        prevS = s;
+    }
+    if (hitS < 0.0) { _RefTrace[id.xy] = 0; return; }
+    int2 hp = min((int2)(hitUV * _HalfSize.xy), (int2)_HalfSize.xy - 1);
+    float4 hit = _HalfPosR[hp];
+    float4 hn = _HalfNormalR[hp];
+    if (hit.w <= 0.0 || dot(hn.xyz, R) > 0.15) { _RefTrace[id.xy] = 0; return; }     // the back of something
+    // A mip as wide as the lobe's cone where it lands.
+    float coneR = hitS * alpha * 0.7;
+    float px = coneR * _GIParams.z / max(hit.w, 0.1);
+    float3 L;
+    if (!HistoryLight(hit.xyz, hit.w, clamp(log2(max(px, 1.0)), 0.0, 5.0), L)) { _RefTrace[id.xy] = 0; return; }
+    float2 edge = saturate(min(hitUV, 1.0 - hitUV) / 0.08);
+    float conf = edge.x * edge.y * (1.0 - smoothstep(0.75, 1.0, hitS / maxD));
+    conf *= saturate((nn.w - _RefParams.w) / 0.12);
+    _RefTrace[id.xy] = float4(L, conf);
+}
+
+// ---------------------------------------------------------------- blending over frames
+[numthreads(8, 8, 1)]
+void Temporal(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= (uint2)_HalfSize.xy)) return;
+    float4 pp = _HalfPosR[id.xy];
+    float4 gi = _GITraceR[id.xy], rf = _RefTraceR[id.xy];
+    if (pp.w <= 0.0) { _GIHist[id.xy] = float4(0, 0, 0, 1); _RefHist[id.xy] = 0; return; }
+    bool valid = false;
+    float4 hg = 0, hr = 0;
+    float2 uv;
+    if (_PrevCam.w > 0.5 && Project(_PrevVP, pp.xyz, uv))
+    {
+        int2 q = min((int2)(uv * _HalfSize.xy), (int2)_HalfSize.xy - 1);
+        float4 was = _PrevPos[q];
+        if (was.w > 0.0 && distance(was.xyz, pp.xyz) < 0.04 + 0.02 * pp.w)
+        {
+            valid = true;
+            hg = _GIHistR[q];
+            hr = _RefHistR[q];
+        }
+    }
+    // The bounce: a long blend (it is noisy and changes slowly). How many frames it has is kept with its visibility.
+    float4 outG = gi;
+    float countG = 1.0;
+    if (valid && all(isfinite(hg)))
+    {
+        float count = floor(hg.a / 2.0);
+        float histVis = hg.a - count * 2.0;
+        countG = min(count + 1.0, 24.0);
+        float k = 1.0 / countG;
+        outG = float4(lerp(hg.rgb, gi.rgb, k), lerp(histVis, gi.a, k));
+    }
+    _GIHist[id.xy] = float4(outG.rgb, countG * 2.0 + saturate(outG.a));
+    // Reflections move with the view: the history is kept within what this frame's neighbours found.
+    float4 lo = rf, hi = rf;
+    [unroll] for (int y = -1; y <= 1; y++)
+    [unroll] for (int x = -1; x <= 1; x++)
+    {
+        float4 c = _RefTraceR[clamp((int2)id.xy + int2(x, y), 0, (int2)_HalfSize.xy - 1)];
+        lo = min(lo, c); hi = max(hi, c);
+    }
+    float4 outR = rf;
+    if (valid && all(isfinite(hr))) outR = lerp(clamp(hr, lo, hi), rf, 0.2);
+    _RefHist[id.xy] = outR;
+}
+
+// ---------------------------------------------------------------- edge-aware filter (half size)
+[numthreads(8, 8, 1)]
+void Blur(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= (uint2)_HalfSize.xy)) return;
+    float4 pp = _HalfPosR[id.xy];
+    if (pp.w <= 0.0) { _GIBlur[id.xy] = float4(0, 0, 0, 1); _RefBlur[id.xy] = 0; return; }
+    float3 N = _HalfNormalR[id.xy].xyz;
+    float4 sg = 0, sr = 0;
+    float wg = 0, wr = 0;
+    float4 c0 = _GIHistR[id.xy];
+    float frames = floor(c0.a / 2.0);
+    int stride = frames < 6.0 ? 2 : 1;                // wider while the history is short
+    [loop] for (int y = -2; y <= 2; y++)
+    [loop] for (int x = -2; x <= 2; x++)
+    {
+        int2 q = clamp((int2)id.xy + int2(x, y) * stride, 0, (int2)_HalfSize.xy - 1);
+        float4 qp = _HalfPosR[q];
+        if (qp.w <= 0.0) continue;
+        float3 qn = _HalfNormalR[q].xyz;
+        float plane = abs(dot(qp.xyz - pp.xyz, N));
+        float w = exp(-plane / (0.03 + 0.01 * pp.w)) * pow(saturate(dot(qn, N)), 16.0);
+        w *= exp(-(x * x + y * y) * 0.18);
+        float4 g = _GIHistR[q];
+        float gv = g.a - floor(g.a / 2.0) * 2.0;
+        sg += w * float4(g.rgb, gv); wg += w;
+        if (abs(x) <= 1 && abs(y) <= 1) { sr += w * _RefHistR[q]; wr += w; }
+    }
+    _GIBlur[id.xy] = wg > 1e-5 ? sg / wg : float4(0, 0, 0, 1);
+    _RefBlur[id.xy] = wr > 1e-5 ? sr / wr : 0;
+}
+
+// ---------------------------------------------------------------- back up to the full picture
+[numthreads(8, 8, 1)]
+void Upsample(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= (uint2)_FullSize.xy)) return;
+    float device = _CameraDepthTexture[id.xy];
+    bool sky = _ReversedZ > 0.5 ? device <= 1e-7 : device >= 1.0 - 1e-7;
+    if (sky) { _GIOut[id.xy] = float4(0, 0, 0, 1); _RefOut[id.xy] = 0; _AOOut[id.xy] = 1; return; }
+    float2 uv = (id.xy + 0.5) * _FullSize.zw;
+    float3 P = WorldAt(uv, device);
+    float3 N = _CameraNormalsTexture[id.xy].xyz;
+    N = normalize(N + 1e-5);
+    float2 h = uv * _HalfSize.xy - 0.5;
+    int2 b = (int2)floor(h);
+    float2 f = h - b;
+    float4 sg = 0, sr = 0;
+    float w = 0;
+    [unroll] for (int k = 0; k < 4; k++)
+    {
+        int2 o = int2(k & 1, k >> 1);
+        int2 q = clamp(b + o, 0, (int2)_HalfSize.xy - 1);
+        float4 qp = _HalfPosR[q];
+        if (qp.w <= 0.0) continue;
+        float bil = (o.x ? f.x : 1.0 - f.x) * (o.y ? f.y : 1.0 - f.y) + 1e-3;
+        float plane = abs(dot(qp.xyz - P, N));
+        float3 qn = _HalfNormalR[q].xyz;
+        float ww = bil * exp(-plane / (0.02 + 0.01 * qp.w)) * pow(saturate(dot(qn, N)) , 8.0) + 1e-6 * bil;
+        sg += ww * _GIBlurR[q]; sr += ww * _RefBlurR[q]; w += ww;
+    }
+    float4 g = w > 0 ? sg / w : float4(0, 0, 0, 1);
+    float4 r = w > 0 ? sr / w : 0;
+    if (!all(isfinite(g))) g = float4(0, 0, 0, 1);
+    if (!all(isfinite(r))) r = 0;
+    float vis = lerp(1.0, saturate(g.a), _GIParams2.z);
+    _GIOut[id.xy] = float4(max(g.rgb, 0.0), vis);
+    _RefOut[id.xy] = float4(max(r.rgb, 0.0), saturate(r.a));
+    _AOOut[id.xy] = vis;
+}

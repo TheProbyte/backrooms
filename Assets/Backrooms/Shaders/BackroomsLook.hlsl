@@ -169,4 +169,59 @@ half BackroomsContact(uint lightIndex, float2 screenUV)
     return 1;
 }
 
+// ---------------- Screen-space light (ScreenLighting.cs, Resources/ScreenLighting.compute) ----------------
+// Worked out before the opaque pass on the player's camera: the near bounce found on screen (what hides part of a
+// surface's hemisphere, with the light it had last frame), and glossy reflections found on screen. The visibility itself
+// arrives as URP's SSAO (the occlusion this function is given), so here it scales the probe bounce, and the bounce from
+// what hides the rest is added unscaled: a corner between lit walls takes their light instead of going dark.
+// Reflection occlusion (Lagarde & de Rousiers 2014) from the visibility keeps cached probe reflections out of corners
+// and from under furniture; where a reflection was found on screen it replaces the probe's.
+TEXTURE2D(_BRScreenGI);    // rgb: near bounce (radiance), a: visibility
+TEXTURE2D(_BRScreenRefl);  // rgb: reflected light, a: how much of the reflection was found
+float4 _BRScreen;          // x: on for this camera, y: bounce strength, z: reflection strength, w: reflection occlusion
+float4 _BRScreenSize;      // xy: size in pixels
+
+half3 BackroomsGlobalIllumination(BRDFData brdfData, BRDFData brdfDataClearCoat, float clearCoatMask,
+    half3 bakedGI, half occlusion, float3 positionWS, half3 normalWS, half3 viewDirectionWS, float2 screenUV)
+{
+    if (_BRScreen.x < 0.5)
+        return GlobalIllumination(brdfData, brdfDataClearCoat, clearCoatMask, bakedGI, occlusion, positionWS, normalWS, viewDirectionWS, screenUV);
+    half3 reflectVector = reflect(-viewDirectionWS, normalWS);
+    half NoV = saturate(dot(normalWS, viewDirectionWS));
+    half fresnelTerm = Pow4(1.0 - NoV);
+    int2 size = (int2)_BRScreenSize.xy;
+    int2 px = clamp((int2)(screenUV * _BRScreenSize.xy), 0, size - 1);
+    half4 gi = LOAD_TEXTURE2D(_BRScreenGI, px);
+    half4 rf = LOAD_TEXTURE2D(_BRScreenRefl, px);
+    half rough = brdfData.perceptualRoughness;
+    half specOcc = saturate(pow(abs(NoV + occlusion), exp2(-16.0 * rough * rough - 1.0)) - 1.0 + occlusion);
+    specOcc = lerp((half)1.0, specOcc, (half)_BRScreen.w);
+    half3 indirectDiffuse = bakedGI * occlusion + max(gi.rgb, 0) * (half)_BRScreen.y;
+    half3 probe = GlossyEnvironmentReflection(reflectVector, positionWS, rough, 1.0h, screenUV) * specOcc;
+    half3 indirectSpecular = lerp(probe, max(rf.rgb, 0), saturate(rf.a * (half)_BRScreen.z));
+    half3 color = EnvironmentBRDF(brdfData, indirectDiffuse, indirectSpecular, fresnelTerm);
+#if defined(_CLEARCOAT) || defined(_CLEARCOATMAP)
+    half3 coatSpecular = GlossyEnvironmentReflection(reflectVector, positionWS, brdfDataClearCoat.perceptualRoughness, 1.0h, screenUV) * specOcc;
+    coatSpecular = lerp(coatSpecular, max(rf.rgb, 0), saturate(rf.a * (half)_BRScreen.z));
+    half3 coatColor = EnvironmentBRDFClearCoat(brdfDataClearCoat, clearCoatMask, coatSpecular, fresnelTerm);
+    half coatFresnel = kDielectricSpec.x + kDielectricSpec.a * fresnelTerm;
+    return color * (1.0 - coatFresnel * clearCoatMask) + coatColor;
+#else
+    return color;
+#endif
+}
+
+// Specular anti-aliasing (Tokuyoshi & Kaplanyan's geometric kind, as HDRP's and the Poolrooms' tiles have it): where the
+// normal turns faster than a pixel shows (bevels, door handles, fittings far off), the highlight widens instead of
+// sparkling and crawling. Graphics > Specular anti-aliasing (_PoolSpecAA).
+float _PoolSpecAA;
+half BackroomsSpecularAA(half smoothness, float3 normalWS)
+{
+    if (_PoolSpecAA < 0.5) return smoothness;
+    float3 dnx = ddx(normalWS), dny = ddy(normalWS);
+    float kernel = min(2.0 * 0.25 * (dot(dnx, dnx) + dot(dny, dny)), 0.18);
+    float r = 1.0 - smoothness, a2 = r * r * r * r;
+    return (half)(1.0 - sqrt(sqrt(min(a2 + kernel, 1.0))));
+}
+
 #endif

@@ -2,7 +2,16 @@
 
 The game is called **Still Recording** (working title).
 
-Last updated 2026-10-27 (world version 13).
+Last updated 2026-11-01 (world version 13).
+
+## Newest (2026-11-01)
+
+- **Lighting engine, modern pass** (Docs/RuntimeLighting.md, F5 > LIGHT > SCREEN LIGHT and AIR): bounce and occlusion
+  found in the picture (visibility bitmask: corners and contact shade softly, and what hides light gives its own back, so
+  nothing goes black the way plain AO made it), glossy reflections found in the picture (the probes where nothing is
+  found), reflection occlusion, highlights that no longer sparkle, and volumetric light (the haze lit cell by cell of the
+  view: light falls through doorways in shafts, the air glows toward fixtures). Settled dust and dust in the air are back
+  in Level 0 (off everywhere since the Poolrooms came in).
 
 ## Newest (2026-10-27)
 

@@ -153,7 +153,10 @@ void DepthNormalsFragment(
             float3 normalWS = input.normalWS;
         #endif
 
-        outNormalWS = half4(NormalizeNormalPerPixel(normalWS), 0.0);
+        // Backrooms: alpha carries the smoothness for screen-space reflections, or -1 for an emitter (a lit lens or shade:
+        // its light is the fixtures' own, so the screen-space bounce passes it by). ScreenLighting.compute reads it.
+        half brFlag = dot(_EmissionColor.rgb, half3(1, 1, 1)) > 0.02 ? -1.0 : saturate(_Smoothness);
+        outNormalWS = half4(NormalizeNormalPerPixel(normalWS), brFlag);
     #endif
 
     #ifdef _WRITE_RENDERING_LAYERS
