@@ -6,6 +6,9 @@ Last updated 2026-11-02 (world version 13).
 
 ## Newest (2026-11-02)
 
+- **Road rugs**: some living rooms have a children's road rug on the floor (the owner's design), at real rug sizes,
+  with a sewn binding round the edge and now and then a corner come up; fixed in place, carpet underfoot
+  (Docs/WorldGeneration.md, Living rooms).
 - **Pool ring and shadow ghosting fixed**: the line in a ring round the player on the pool floor (the refraction
   switching off past 4 m) is gone; the ray-traced shadows no longer leave a trail of old foot shadows when strafing,
   and their grain is lower (FidelityFX-style history clamp, two filter passes).

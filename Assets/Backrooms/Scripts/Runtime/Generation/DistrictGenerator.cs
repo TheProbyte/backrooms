@@ -19,7 +19,7 @@ namespace Backrooms.Generation
     ///  - Crawl spaces are dead-end slots too narrow for the player and never carry connectivity.
     /// Streaming chunks are slices of the plan (see <see cref="WorldGenerator"/>).
     /// </summary>
-    public static class DistrictGenerator
+    public static partial class DistrictGenerator
     {
         public const int MinRoom = 2;
         const int ChunkN = OfficeBiome.ChunkCells, DC = WorldGenSettings.DistrictChunks;
@@ -189,6 +189,8 @@ namespace Backrooms.Generation
             NoclipDoors.Place(L, set, seed);
             // Corners cut at 45 degrees where nothing is in the corner (last: it looks at everything placed).
             DepthPlan.Chamfers(L, new System.Random(Hash(sseed, district.x, district.y, 0xC4A3)));
+            // Rugs in some living rooms: their own dice and last of the props, so nothing else in the plan moves or renumbers.
+            PlaceRugs(L, new System.Random(Hash(sseed, district.x, district.y, 0x2A6E)), L.rooms, false);
             AssignColors(L);
             return L;
         }
@@ -949,6 +951,7 @@ namespace Backrooms.Generation
                 for (int i = 0; i < 6 && L.props.Count == before; i++) Furnish(L, rng, r, occupied);
             }
             PlaceBoxes(L, rng);
+            PlaceRugs(L, rng, rooms, true);
             foreach (var (r, lm) in keep) r.landmark = lm;
         }
 

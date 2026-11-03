@@ -15,6 +15,13 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-02 18:40  Claude Code  Road rugs in the living rooms
+- The owner's tileable car play-mat design (Tools/Textures/Source/PlayRug_Design.webp; it tiles: the roads run on across its edges) as a physical rug: `make_surface_textures.py play_rug rug_binding` -> Resources/Textures/Home/PlayRug_Albedo/Normal (the print a touch faded, a pile normal map of 2 mm tufts, crushed patches and tufting rows, at the texture's 3:2 so texels stay square) and RugBinding_Albedo/Normal (overlocked yarn wraps, 2.5 mm, one repeat = 5 cm); its height map by make_height_maps.py PlayRug; a MaterialMaps.Surfaces row (parallax 0.0009, sheen 0.45).
+- Sizes as road rugs are sold (searched: 80 x 120, 95 x 133, 100 x 150, 100 x 165, 133 x 200 cm; low pile, 8 mm or less, rubber backing). One print repeat = 2.7 x 1.8 m: 8 cm roads and cars, as on rugs made for toy cars.
+- DistrictGenerator.Rugs.cs: 22 % of homes and 25 % of furnished living rooms, in the open floor (0.45 m from walls, off doorway cells, steps, chamfered corners, pillars, half walls and furniture by rectangle overlap), square or a few degrees askew; own dice, appended last to the plan's props (existing worlds keep every other prop and id). Also in build mode's FURNISH FOR ME.
+- OfficeChunkBuilder.Rugs.cs: chunk mesh (no new draw per rug beyond its materials): 7 mm top, an 18 mm binding swept round the pile's edge with round corners and tucked under, 30 % with a corner come up 2-4.5 cm (backing underneath). A thin box collider named Rug: footsteps and impacts read carpet on it (Audio/Surfaces); fallen ceiling tiles keep off rugs.
+- RugTests (rugs turn up, in living rooms, clear of walls, nothing on them) and GoodRoomTests, WorldGenTests pass. Checked in World 3 (seed 288152760): about 16 % of living rooms have one; pictures of a 200 x 133 rug by a sofa and of its edge; the curled corner is subtle from standing height. Not checked: the build by eye.
+
 ## 2026-11-02 17:20  Claude Code  The line in the water along the bottom of the frame
 - The owner: "a line in water visible at the bottom of frame, wherever I look". PoolWater's refraction dropped its bend for pixels whose bent ray pointed below the picture's bottom edge, so a strip along the bottom showed the floor unbent. Now the bend is shortened to stay on the picture. Checked in World 3 at the Poolrooms spot looking down 32 degrees: no edge strip. Build updated.
 

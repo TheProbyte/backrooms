@@ -464,11 +464,75 @@ def orange_peel():
     save_rgb(normal, os.path.join(HOME, "OrangePeel_Normal.png"))
 
 
+def play_rug():
+    """The children's road rug (the owner's tileable design, Source/PlayRug_Design.webp) -> Resources/Textures/Home/
+    PlayRug_Albedo.png + PlayRug_Normal.png. One texture = 2.7 x 1.8 m of rug (OfficeChunkBuilder.Rug), so its two-lane
+    roads are about 8 cm wide and its cars about 8 cm long, as on real ones made for toy cars.
+
+    The print, a little faded (a rug left in an emptied house). The normal map is the pile, not the picture (a printed
+    rug is flat where the ink changes): tufts of about 2 mm (one texel is 1.76 mm), the pile crushed and brushed in
+    patches of a few centimetres, and a faint grid of the tufting rows. Made at the texture's own 3:2 size so its
+    texels stay square on the rug."""
+    a = np.asarray(Image.open(os.path.join(SRC, "PlayRug_Design.webp")).convert("RGB"), dtype=np.float64) / 255.0
+    lum = a @ np.array([0.2126, 0.7152, 0.0722])
+    albedo = lum[..., None] + (a - lum[..., None]) * 0.88                         # a touch faded
+    albedo = albedo * 0.94 + 0.02
+    h, w = lum.shape
+    rng = np.random.default_rng(29)
+    tufts = ndimage.gaussian_filter(rng.standard_normal((h, w)), 0.75, mode="wrap")
+    crush = ndimage.gaussian_filter(rng.standard_normal((h, w)), 14.0, mode="wrap")
+    rows = np.sin(np.arange(h) * 2 * np.pi / 1.6)[:, None] * np.ones((1, w))     # tufting rows, about 2.8 mm apart
+    def unit(x): return (x - x.mean()) / x.std()
+    relief = 0.65 * unit(tufts) + 0.25 * unit(crush) + 0.12 * rows                # mm-ish units, scaled below
+    texel_mm = 2700.0 / w
+    hm = relief * 0.5                                                             # the pile's height spread, mm (std)
+    dx = (np.roll(hm, -1, 1) - np.roll(hm, 1, 1)) / (2 * texel_mm)
+    dy = (np.roll(hm, -1, 0) - np.roll(hm, 1, 0)) / (2 * texel_mm)
+    nx, ny, nz = -dx, dy, np.ones_like(hm)
+    l = np.sqrt(nx * nx + ny * ny + nz * nz)
+    normal = np.stack([nx / l, ny / l, nz / l], -1) * 0.5 + 0.5
+    print("   slope rms", round(float(np.sqrt((dx * dx + dy * dy).mean())), 3))
+    # The pile's shade in the print too: tufts a little lighter at their tips.
+    albedo = albedo * (1.0 + 0.035 * unit(tufts))[..., None]
+    os.makedirs(HOME, exist_ok=True)
+    save_rgb(albedo, os.path.join(HOME, "PlayRug_Albedo.png"))
+    save_rgb(normal, os.path.join(HOME, "PlayRug_Normal.png"))
+
+
+def rug_binding():
+    """A rug's bound edge (the overlocked yarn sewn round it) -> Resources/Textures/Home/RugBinding_Albedo.png +
+    RugBinding_Normal.png. U runs along the edge (one texture = 5 cm: 20 wraps of yarn, 2.5 mm apart, leaning a little),
+    V across it from the rug's top, over the rounded edge, to the floor. Grey: the material's tint gives the colour."""
+    W, H = 512, 128
+    u = (np.arange(W) + 0.5) / W
+    v = (np.arange(H) + 0.5) / H
+    U, V = np.meshgrid(u, v)
+    rng = np.random.default_rng(41)
+    phase = (U + 0.06 * V) * 20.0                                                # 20 wraps a repeat, leaning
+    jitter = ndimage.gaussian_filter1d(rng.standard_normal(W), 6, mode="wrap")[None, :] * 0.04
+    f = np.mod(phase + jitter, 1.0)
+    yarn = np.sqrt(np.clip(1.0 - (2.0 * f - 1.0) ** 2, 0.0, 1.0))                # round strands side by side
+    fibres = ndimage.gaussian_filter(rng.standard_normal((H, W)), (2.0, 0.6), mode="wrap")
+    hgt = yarn * 0.6 + fibres * 0.04                                              # mm
+    texel_u = 50.0 / W
+    texel_v = 25.0 / H                                                            # the profile is about 2.5 cm round
+    dx = (np.roll(hgt, -1, 1) - np.roll(hgt, 1, 1)) / (2 * texel_u)
+    dy = (np.roll(hgt, -1, 0) - np.roll(hgt, 1, 0)) / (2 * texel_v)
+    nx, ny, nz = -dx, dy, np.ones_like(hgt)
+    l = np.sqrt(nx * nx + ny * ny + nz * nz)
+    normal = np.stack([nx / l, ny / l, nz / l], -1) * 0.5 + 0.5
+    shade = 0.62 + 0.38 * yarn + fibres * 0.05                                    # the gaps between strands darker
+    albedo = np.repeat((shade / shade.mean() * 0.85)[..., None], 3, -1)
+    os.makedirs(HOME, exist_ok=True)
+    save_rgb(albedo, os.path.join(HOME, "RugBinding_Albedo.png"))
+    save_rgb(normal, os.path.join(HOME, "RugBinding_Normal.png"))
+
+
 if __name__ == "__main__":
     import sys
     only = set(sys.argv[1:])
     for f in (drywall, ceiling, duct, carpet, cardboard, paper, galvanized, pine, end_grain, old_wood, flex_duct,
-              door_veneer, concrete, stains, orange_peel):
+              door_veneer, concrete, stains, orange_peel, play_rug, rug_binding):
         if not only or f.__name__ in only:
             print("--", f.__name__)
             f()

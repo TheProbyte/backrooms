@@ -274,6 +274,10 @@ namespace Backrooms.Generation
         Counter, Fridge, Shelving, Desk, Monitor, BreakerPanel, MopSink, Microwave, DiningTable, DeskLamp,
         /// <summary>Build mode: a model the player brought in (.glb / .obj, <see cref="Prop.model"/>), static scenery.</summary>
         Custom,
+        /// <summary>A children's road rug lying on a living room's floor (DistrictGenerator.PlaceRugs, OfficeChunkBuilder.Rug):
+        /// position is its middle, yaw turns its long side (local X), size is length x thickness x width, variant its own dice
+        /// (where the print starts, the binding's colour, a corner come up). Fixed in place.</summary>
+        Rug,
     }
 
     /// <summary>Level 0's kinds of room (DistrictGenerator.StyleOf): the backrooms (wallpaper), living rooms (painted,

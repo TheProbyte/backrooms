@@ -44,6 +44,7 @@ namespace Backrooms.Generation
             ("Cardboard_Normal", 0.004f, 0.45f, 0f, 0f), ("Concrete_Normal", 0.006f, 0.6f, 0f, 0f),
             ("OldWood_Normal", 0.005f, 0.5f, 0f, 0f), ("DoorVeneer_Normal", 0.002f, 0.4f, 0f, 0f),
             ("OrangePeel_Normal", 0.0016f, 0.35f, 0f, 0f),     // its relief: about 0.9 mm over a 0.6 m texture
+            ("PlayRug_Normal", 0.0009f, 0.4f, 0.45f, 0.35f),   // the road rug's pile: about 2.4 mm over its 2.7 m print
         };
         static Dictionary<string, (Texture2D height, float depth, float cavity, float sheen, float sheenSmooth)> s_surfaces;
         static readonly int ParallaxMap = Shader.PropertyToID("_ParallaxMap"), Parallax = Shader.PropertyToID("_Parallax"),
@@ -155,10 +156,17 @@ namespace Backrooms.Generation
         public static Material[] HomeCarpets = new Material[0];
         /// <summary>A home's baseboard: the world's baseboard painted off-white.</summary>
         public static Material HomeBaseboard;
+        /// <summary>The children's road rug (OfficeChunkBuilder.Rug): a copy of the carpet with the owner's print
+        /// (Textures/Home/PlayRug_Albedo, one repeat = 2.7 x 1.8 m) and its own pile (PlayRug_Normal, with surface detail).
+        /// Its bound edge in a few yarn colours (RugBinding_*: overlocked wraps, one repeat = 5 cm along the edge), and its
+        /// rubber backing (seen under a corner come up).</summary>
+        public static Material PlayRug, RugBacking;
+        public static Material[] RugBindings = new Material[0];
 
         static void Homes(OfficeBiomeAssets a)
         {
             OrangePeel = SkyWallpaper = HomeBaseboard = null; HomeCarpets = new Material[0];
+            PlayRug = RugBacking = null; RugBindings = new Material[0];
             if (a.baseboard && a.baseboard.HasProperty(BaseColor)) HomeBaseboard = Tinted(For(a.baseboard), " (home, painted)", new Color(0.82f, 0.8f, 0.76f, 1f));
             var peelN = Resources.Load<Texture2D>("Textures/Home/OrangePeel_Normal");
             var peelA = Resources.Load<Texture2D>("Textures/Home/OrangePeel_Albedo");
@@ -196,6 +204,43 @@ namespace Backrooms.Generation
                 HomeCarpets = new Material[shades.Length];
                 for (int i = 0; i < shades.Length; i++) HomeCarpets[i] = Tinted(a.carpet, " (home " + i + ")", shades[i]);
             }
+            Rugs(a);
+        }
+
+        static void Rugs(OfficeBiomeAssets a)
+        {
+            var rugA = Resources.Load<Texture2D>("Textures/Home/PlayRug_Albedo");
+            var rugN = Resources.Load<Texture2D>("Textures/Home/PlayRug_Normal");
+            var bindA = Resources.Load<Texture2D>("Textures/Home/RugBinding_Albedo");
+            var bindN = Resources.Load<Texture2D>("Textures/Home/RugBinding_Normal");
+            if (!a.carpet || !rugA || !a.carpet.HasProperty(BaseMap)) return;
+            Material Make(string suffix, Texture2D albedo, Texture2D normal, float bump, Color tint, float smooth)
+            {
+                var m = new Material(a.carpet) { name = a.carpet.name + suffix, hideFlags = HideFlags.DontSave };
+                m.SetTexture(BaseMap, albedo);
+                m.SetTextureScale(BaseMap, Vector2.one);
+                m.SetTextureOffset(BaseMap, Vector2.zero);
+                m.SetColor(BaseColor, tint);
+                if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", smooth);
+                if (m.HasProperty(BumpMap))
+                {
+                    m.SetTexture(BumpMap, normal);
+                    m.SetFloat(BumpScale, bump);
+                    if (normal) m.EnableKeyword("_NORMALMAP");
+                }
+                SurfaceDetail(m);
+                s_orig[m] = a.carpet;
+                return m;
+            }
+            PlayRug = Make(" (road rug)", rugA, rugN, 1f, new Color(0.9f, 0.9f, 0.88f, 1f), 0.12f);
+            // Overlocked yarn: navy, charcoal, a dark green (the rugs' own colours).
+            var yarn = new[] { new Color(0.09f, 0.11f, 0.2f), new Color(0.1f, 0.1f, 0.1f), new Color(0.07f, 0.17f, 0.09f) };
+            RugBindings = new Material[yarn.Length];
+            for (int i = 0; i < yarn.Length; i++) RugBindings[i] = Make(" (rug binding " + i + ")", bindA, bindN, 1f, yarn[i], 0.18f);
+            // The backing: grey-beige latex, flat.
+            RugBacking = Make(" (rug backing)", bindA, null, 0f, new Color(0.55f, 0.52f, 0.46f, 1f), 0.25f);
+            if (RugBacking.HasProperty(BumpMap)) { RugBacking.SetTexture(BumpMap, null); RugBacking.DisableKeyword("_NORMALMAP"); }
+            RugBacking.SetTextureScale(BaseMap, new Vector2(0.02f, 0.02f));             // (the yarn texture, so broad it is plain)
         }
 
         // ---------------- Ceiling tiles ----------------

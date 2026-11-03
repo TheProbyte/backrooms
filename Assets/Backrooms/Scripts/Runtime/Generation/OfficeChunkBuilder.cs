@@ -132,7 +132,7 @@ namespace Backrooms.Generation
         {
             _neighbours = neighbours;
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); _lampItems.Clear(); _breakers.Clear(); _deskLamps.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
-            _capsules.Clear(); poolMap = null; poolMap2 = null; _sounds.Clear();
+            _capsules.Clear(); _rugs.Clear(); poolMap = null; poolMap2 = null; _sounds.Clear();
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             // Square panels sit inside a ceiling tile and need no gap in the grid; only round domes sit on a cross tee.
@@ -343,6 +343,7 @@ namespace Backrooms.Generation
             InstantiateNoclipDoors(root.transform);
             InstantiateDoors(root.transform);
             InstantiateCustomRoomExtras(root.transform);
+            InstantiateRugs(root.transform);
             if (outlets.Count > 0) root.AddComponent<Interaction.ChunkOutlets>().Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), outlets);
             if (poolMap != null) { var pc = root.AddComponent<PoolChunk>(); pc.Set(_L.coord, _L.storey, poolMap, poolMap2, poolFittings.ToArray(), poolFittingDirs.ToArray()); pc.ropes = poolRopes.ToArray(); pc.ropeEnds = poolRopeEnds.ToArray(); }
 
@@ -1362,6 +1363,7 @@ namespace Backrooms.Generation
             int pcx = Mathf.Clamp(Mathf.FloorToInt(p.position.x / C), 0, _L.N - 1), pcz = Mathf.Clamp(Mathf.FloorToInt(p.position.y / C), 0, _L.N - 1);
             var at = new Vector3(p.position.x, _L.FloorAt(pcx, pcz), p.position.y);
             if (p.kind == PropKind.Custom) { CustomModelProp(p, at); return; }        // a model the player brought in
+            if (p.kind == PropKind.Rug) { Rug(p, at, rot); return; }                 // a rug on the floor (.Rugs.cs)
             if (p.kind >= PropKind.Counter) { SpecialProp(p, at, rot); return; }     // the good rooms' furniture
             if (modelled) { PlaceModelled(p, at, rot, lights); return; }
             switch (p.kind)

@@ -22,6 +22,7 @@ namespace Backrooms.Audio
                 if (h.distance < best) { best = h.distance; under = h.collider; }
             }
             if (under && under.transform.parent && under.transform.parent.name == "DuctColliders") return ProceduralSounds.Floor.Metal;
+            if (under && under.name == "Rug") return ProceduralSounds.Floor.Carpet;                  // a rug (OfficeChunkBuilder.Rug)
             var ws = WorldStreamer.Current;
             if (!ws) return ProceduralSounds.Floor.Carpet;
             var L = ws.LayoutAt(WorldStreamer.ChunkOf(p));

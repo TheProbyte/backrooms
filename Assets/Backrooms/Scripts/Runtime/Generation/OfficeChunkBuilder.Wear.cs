@@ -621,6 +621,7 @@ namespace Backrooms.Generation
         /// <summary>No collider box (furniture, walls) within r of a point on the floor.</summary>
         bool Clear(Vector3 p, float r)
         {
+            if (OnRug(p, r)) return false;
             foreach (var (c, s) in _boxes)
             {
                 if (c.y - s.y * 0.5f > 0.3f) continue;

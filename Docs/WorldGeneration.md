@@ -76,6 +76,17 @@ now Hallways (to 0.3), Offices (0.55), **Living rooms** (0.78), Warehouse (1) (`
   none). Lights: 30 % of rooms all on, 40 % some, the rest dark.
 - Furniture (`DistrictGenerator.FurnishHome`): mostly none. Now and then the one sofa left against a wall or an armchair,
   rarely an unplugged floor lamp; loose boxes as anywhere.
+- **Rugs** (2026-11-02, `DistrictGenerator.PlaceRugs`, `OfficeChunkBuilder.Rug`): 22 % of homes and 25 % of furnished
+  living rooms have a children's road rug (the owner's tileable car play-mat design, `Textures/Home/PlayRug_*`, one
+  repeat = 2.7 x 1.8 m so its roads are about 8 cm wide, each rug starting somewhere else in it). Sizes as sold:
+  120 x 80, 133 x 95, 150 x 100 (the commonest), 165 x 100, 200 x 133 cm. It lies in the open floor: 0.45 m or more
+  from the walls (the carpet's lifted edges and ripples are nearer), off doorway cells, steps, chamfered corners,
+  pillars, half walls and the furniture, in one chunk where it can; square to the room or kicked a few degrees askew.
+  Built into the chunk's meshes: a 7 mm printed pile (its own pile normal map and surface detail), an 18 mm overlocked
+  binding in navy, charcoal or green (`Textures/Home/RugBinding_*`) rolling over the edge and tucked under, round at
+  the corners, and in 30 % one corner come up 2-4.5 cm with its latex backing showing. Fixed in place: a thin box
+  collider named `Rug` (footsteps and dropped things sound of carpet on it). Its own dice, last of the plan's props, so
+  nothing else in existing worlds moves or renumbers. Build mode's FURNISH FOR ME lays them too.
 
 ### Landmarks
 One landmark at most per landmark cell (`landmarkSpacing` x spacing districts): the cell's dice pick a

@@ -37,6 +37,7 @@ MAPS = [
     ("Resources/Textures/Photo/OldWood_Normal.png", 2.0),
     ("Resources/Textures/Photo/DoorVeneer_Normal.png", 1.0),
     ("Resources/Textures/Home/OrangePeel_Normal.png", 2.0),
+    ("Resources/Textures/Home/PlayRug_Normal.png", 2.0),
 ]
 
 
