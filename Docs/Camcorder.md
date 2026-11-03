@@ -147,4 +147,40 @@ the right about half way), eased in over about a tenth of a second, never backwa
 pace is the time between the last two steps. It takes the place of the generated walking bob and sway, and of the
 roughness's walking part (the recording has the hand's own shake in it); it is weighted by walking speed like the bob
 was, and running, standing and breathing are unchanged. Shake intensity and image stabilisation apply to it.
-Camera menu > HANDHELD > Recorded walk (on by default; off is the generated bob). `CameraMotionTests` (EditMode).
+Camera menu > CAMERA SHAKE > Real handheld recordings (on by default; off is the generated bob; it was "Real walking
+recording" until 2026-11-03). `CameraMotionTests` (EditMode).
+
+## Standing, side-steps, turning and the walk jitter (2026-11-03)
+
+Six more takes (`Tools/CameraMotion/Recordings`: `idle_stand_1`, `walk_normal_3`, `look_slow_1`, `look_fast_1`,
+`strafe_left_1`, `strafe_right_1`; same phone, weight and left hand). `build_camera_motion.py` now builds every clip from
+the folder by the takes' names (`python Tools/CameraMotion/build_camera_motion.py Tools/CameraMotion/Recordings --out-dir
+Assets/Backrooms/Resources/CameraMotion --report`):
+
+- **Walk**: the third take adds 18 strides: 52 strides, 64 s (it repeats less often).
+- **Side-steps** (`StrafeLeft`, `StrafeRight`): cut into strides like the walk (their steps are gentler, so the step
+  detector's threshold is lower for them): 11 and 12 strides, about 15 s each, 85-97 steps a minute. They sway more than
+  walking forward: rotation rms yaw 1.6-2.5 degrees, movement 2.3-2.5 cm sideways. Played by how much of the movement is
+  sideways (eased over a quarter second), at their own recorded pace times the speed, not in step with the feet: the body
+  side-steps about four times a second at walking speed (FirstPersonBody), and the recording sped up that far read as a
+  shudder.
+- **Standing** (`Idle`): 52 s of standing still, a seamless loop played by seconds: the hand's slow drift, its
+  corrections and its tremor, rotation from 0.05 Hz (rms about 0.6 degrees each axis, three to four times the old
+  generated idle sway) and movement from 0.25 Hz (rms about half a centimetre). It takes the generated idle wander's place
+  and gives way to the walk as you set off. Breathing stays generated: its sounds keep time with the camera's rise and
+  fall (BodyPresence), and the recording has no one clear breathing rhythm to take out.
+- **Turning** (`Look`): the mouse does the turn, so what is kept is the tremor that comes with it (3-15 Hz): 0.25 degrees
+  rms turning at 4 degrees a second, 0.33 at 18, 0.48 at 69, 0.98 at 171, 1.08 at 270 (the three axes together), and its
+  texture (the tremor over its own envelope: one degree rms, 62 s). Turning adds the part above standing still's, at
+  Turn wobble 0.5 (its default) as recorded. Not taken from these takes: the overshoot when a turn stops (it cannot be told
+  apart from where the hand meant to stop), and the roll with a turn (it grew the longer after the turn it was looked for,
+  so it follows where the camera has turned to rather than the turn, and the fast whips were tipped on purpose); the
+  generated overshoot and lean stay.
+- **Walk jitter** (Camera menu > CAMERA SHAKE > Walk jitter, `CamcorderSettings.walkJitter`, 1 as recorded): every stride
+  of the walk and the side-steps is the rhythm they all share (their average, sample by sample) plus how this one differs
+  from it; the slider scales only the second part. At 0 each step is the same (the bob and sway kept, the irregular shake
+  gone), at 2 double. No new recording is needed to change it.
+
+Checked with `DebugTools.CameraMotionProbe` in World 3 (stand, walk, side-step each way, slow turns, whips; recordings on,
+walk jitter 0, recordings off): camera rotation rms, at the owner's Walking shake of 0.47, standing 0.2-0.3 degrees (0.1
+generated), walking 0.3-0.6, side-steps 0.4-0.95 (0.2-0.3 at walk jitter 0), turning 0.1-0.5. `CameraMotionTests`.

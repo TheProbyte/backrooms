@@ -2,9 +2,15 @@
 
 The game is called **Still Recording** (working title).
 
-Last updated 2026-11-02 (world version 13).
+Last updated 2026-11-03 (world version 13).
 
-## Newest (2026-11-02)
+## Newest (2026-11-03)
+
+- **More real handheld motion** (Docs/Camcorder.md, "Standing, side-steps, turning and the walk jitter"): standing still,
+  side-stepping and the shake of turning now come from the owner's phone recordings too, and the walk has a third take.
+  Camera menu > CAMERA SHAKE > Walk jitter turns the walk's step-to-step irregularity down (or up) without recording again.
+
+## 2026-11-02
 
 - **Road rugs**: some living rooms have a children's road rug on the floor (the owner's design), at real rug sizes,
   with a sewn binding round the edge and now and then a corner come up; fixed in place, carpet underfoot

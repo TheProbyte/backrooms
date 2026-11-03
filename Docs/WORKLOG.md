@@ -15,6 +15,25 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-03 09:40  Claude Code  Standing, side-steps and turning from the owner's phone recordings; a walk jitter slider
+- Six new takes in Tools/CameraMotion/Recordings (idle_stand_1, walk_normal_3, look_slow_1, look_fast_1, strafe_left_1,
+  strafe_right_1). build_camera_motion.py now builds every clip from the folder by name: Walk (52 strides, 64 s, was 34),
+  StrafeLeft/StrafeRight (stride clips, a lower step threshold), Idle (a seamless 52 s loop by seconds), Look (the 3-15 Hz
+  tremor of turning at each turn speed, and its texture at 1 degree rms). Resources/CameraMotion/*.json.
+- CameraMotionClip: turn-speed curve (TurnTremor), the strides' shared rhythm (Mean) and Sample(..., variation) scaling
+  each stride's difference from it. HandheldCameraShake: recorded idle replaces the generated idle wander; side-steps
+  blended in by the sideways share at their own pace (the body side-steps ~4/s, the recording 1.5/s); recorded turning
+  tremor in LookMotion (above standing's, Turn wobble 0.5 = as recorded); walkJitter. CamcorderSettings.walkJitter, Camera
+  menu > CAMERA SHAKE > Walk jitter; the recordings toggle renamed Real handheld recordings.
+- Why: the owner recorded more takes and asked whether the walk's jitter can be turned down after recording (it can).
+- Not taken from the takes: the turn-stop overshoot (not separable from intent) and the roll with turning (no stable
+  relation: it grew with lag, and the fast whips were tipped on purpose); both stay generated. Breathing stays generated
+  (its sounds are timed to it).
+- Checked: CameraMotionTests (8, EditMode, incl. a texture spike guard: the first Look build divided by a near-zero
+  envelope and spiked to 340 degrees, seen in the probe as 3.5-8.6 degree turning shake, fixed by flooring it).
+  DebugTools.CameraMotionProbe in World 3, three passes (recorded, jitter 0, generated): no spikes, side-step weights
+  0.97/0.96, figures in Docs/Camcorder.md. Build rebuilt.
+
 ## 2026-11-02 18:40  Claude Code  Road rugs in the living rooms
 - The owner's tileable car play-mat design (Tools/Textures/Source/PlayRug_Design.webp; it tiles: the roads run on across its edges) as a physical rug: `make_surface_textures.py play_rug rug_binding` -> Resources/Textures/Home/PlayRug_Albedo/Normal (the print a touch faded, a pile normal map of 2 mm tufts, crushed patches and tufting rows, at the texture's 3:2 so texels stay square) and RugBinding_Albedo/Normal (overlocked yarn wraps, 2.5 mm, one repeat = 5 cm); its height map by make_height_maps.py PlayRug; a MaterialMaps.Surfaces row (parallax 0.0009, sheen 0.45).
 - Sizes as road rugs are sold (searched: 80 x 120, 95 x 133, 100 x 150, 100 x 165, 133 x 200 cm; low pile, 8 mm or less, rubber backing). One print repeat = 2.7 x 1.8 m: 8 cm roads and cars, as on rugs made for toy cars.

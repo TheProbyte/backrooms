@@ -11,8 +11,14 @@ matched to what the player is doing.
   held in the left hand, as the game's camcorder is, so nothing is mirrored. Keep using the left hand for new takes).
   98 steps a minute; four straight stretches, 34 strides (42 s) once the pick-up, the turn-around and the set-down are cut
   out. Camera menu > HANDHELD > Recorded walk (on; off is the generated bob). See Camcorder.md, "Recorded walk".
-- Everything else (standing, looking, running, crouching, stairs, strafing, backing up, a startle) still uses the generated
-  shake; the takes below are what would replace it.
+- **Standing, side-steps, turning, a third walk: in the game (2026-11-03).** `idle_stand_1`, `strafe_left_1`,
+  `strafe_right_1`, `look_slow_1`, `look_fast_1`, `walk_normal_3`. See Camcorder.md, "Standing, side-steps, turning and
+  the walk jitter". The walk's irregularity can be turned down without new takes (Camera menu > Walk jitter).
+- Still generated: running, crouching, stairs, backing up, a startle, being out of breath. Most useful next:
+  `walk_slow` (creeping), `run` (and stopping), `walk_back`, `stairs_up`/`stairs_down`, `crouch_walk`, a second
+  `idle_stand` and `strafe_*` take each (the side-step loops are only 15 s), and `idle_tired`.
+- For turning, the overshoot as a turn stops could not be measured from free looking. A take that would measure it:
+  `turn_stop`: stand still, turn quickly to a mark on the wall and hold on it, ten times each way.
 
 ## What you need
 
@@ -64,9 +70,9 @@ renamed `walk_normal_1.zip`) and tell me. Also say which phone and app you used,
 A turn-around in the middle of a take is fine (it is found and cut out); no trimming is needed. With one phone the double
 tap is not needed for syncing (all its sensors share one clock), but it does no harm.
 
-Rebuilding the walk from the recordings (Python with numpy and scipy):
+Rebuilding the clips from the recordings (Python with numpy and scipy; every kind of take it knows, by name):
 
-    python Tools/CameraMotion/build_camera_motion.py "Tools/CameraMotion/Recordings/walk_normal_*.zip" --report --out Assets/Backrooms/Resources/CameraMotion/Walk.json
+    python Tools/CameraMotion/build_camera_motion.py Tools/CameraMotion/Recordings --report --out-dir Assets/Backrooms/Resources/CameraMotion
 
 ## What I'll do with it
 

@@ -84,7 +84,8 @@ namespace Backrooms.Camcorder
         public float lookOvershoot = 0.5f;
         public float lookJitter = 0.5f;
         public float handheldRoughness = 0f;
-        public bool recordedWalk = true;        // walking plays the phone recording of a carried camera (HandheldCameraShake)
+        public bool recordedWalk = true;        // standing, walking, side-steps and turning play the phone recordings of a carried camera (HandheldCameraShake)
+        public float walkJitter = 1f;           // how much of the recorded walk's stride-to-stride irregularity is kept, x (HandheldCameraShake.walkJitter)
         public int handsInView = 1;             // 0 full, 1 low (held things at the bottom edge), 2 off (no hand drawn): PropGrabber
         public float hangingShake = 1f;         // the camera on its strap (hands busy): its swing and shake, x (HandheldCameraShake.hangingShake)
         public int body = 2;                    // 0 full body, 1 hands only (arms while they do something), 2 none (the default since 2026-10-31): PropGrabber.bodyMode
@@ -170,6 +171,7 @@ namespace Backrooms.Camcorder
             n.shakeIntensity = old.shakeIntensity; n.breathing = old.breathing; n.stabilization = old.stabilization;
             n.lookOvershoot = old.lookOvershoot; n.lookJitter = old.lookJitter; n.handheldRoughness = old.handheldRoughness;
             n.recordedWalk = old.recordedWalk;
+            n.walkJitter = old.walkJitter;
             n.handsInView = old.handsInView;
             n.body = old.body;
             n.hangingShake = old.hangingShake;

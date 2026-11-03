@@ -260,11 +260,13 @@ namespace Backrooms.Camcorder
                 0f, 3f, "0.00", "x", () => S().breathing, v => S().breathing = v);
             Slider("Hand tremor", "Fast, irregular hand shake on top of the smooth walking bob, with a small jolt on each step: someone walking with the camera in one hand. 0 = off.",
                 0f, 3f, "0.00", "", () => S().handheldRoughness, v => S().handheldRoughness = v);
-            Toggle("Real walking recording", "Walking moves the camera the way a real camera carried in the hand did: a phone recording (the sway, the bob of each step, the hand's tremor) kept in step with your feet. Off uses the generated walking bob. Shake intensity scales it.",
+            Toggle("Real handheld recordings", "The camera moves the way a real camera held in the hand did, from phone recordings: standing still (the hand's slow drift and tremor), walking (the sway, the bob of each step, kept in step with your feet), side-stepping, and the shake that comes with turning. Off uses the generated motion. Walking shake scales it all.",
                 () => S().recordedWalk, v => S().recordedWalk = v);
+            Slider("Walk jitter", "How irregular the recorded walk is from one step to the next: 1 as recorded, 0 every step the same (the steady rhythm of the steps without the jitter), 2 double. Leaves the bob of the steps alone; Walking shake scales the whole thing.",
+                0f, 2f, "0.00", "x", () => S().walkJitter, v => S().walkJitter = v);
             Slider("Turn overshoot", "When you stop turning, the camera carries on a fraction of a degree and settles back, like a hand-held camera. Adds no input delay. 0 = off.",
                 0f, 2f, "0.00", "x", () => S().lookOvershoot, v => S().lookOvershoot = v);
-            Slider("Turn wobble", "A small irregular wobble while you turn the camera. 0 = off.",
+            Slider("Turn wobble", "The shake that comes with turning the camera, stronger the faster you turn. With the real recordings on, 0.5 is the shake the recorded hand had. 0 = off.",
                 0f, 2f, "0.00", "x", () => S().lookJitter, v => S().lookJitter = v);
             Slider("Image stabilisation", "Removes much of the fast shake (running jolts) but keeps slow drift.",
                 0f, 1f, "0.00", "", () => S().stabilization, v => S().stabilization = v);
