@@ -19,6 +19,10 @@ Last updated 2026-11-04 (world version 13).
   a cable kit on a long one.
 - **The hand-held items baked** (build_items2.py, build_items.py): wear and grime on all of them, a printed spray paint
   label and a printed nail box.
+- **The warehouse** (Tools/Blender/build_warehouse.py): modelled stringer pallets (notched runners, nails, a heat-treatment
+  stamp; new, weathered, or with a broken board), rack base plates with anchor bolts, riveted beam connectors with
+  safety locks, bay location labels, yellow upright guards, a capacity plate. The concrete floor no longer has the
+  carpet's parallax depth, sheen and fibre detail (a copy of the carpet material had kept them).
 
 ## Newest (2026-11-03)
 

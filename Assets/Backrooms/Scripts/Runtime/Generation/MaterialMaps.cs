@@ -314,6 +314,19 @@ namespace Backrooms.Generation
             Concrete.SetFloat("_Smoothness", 0.3f);
             var n = Destruction.DemolitionMaterials.Photo("Concrete", true);
             if (n && Concrete.HasProperty(BumpMap)) { Concrete.SetTexture(BumpMap, n); Concrete.SetFloat(BumpScale, 1f); }
+            // Not the carpet's surface (2026-11-04): the copy kept the carpet pile's parallax depth map and its sheen (they
+            // are chosen by the normal map's name, which was still the carpet's), and its fibre detail maps. A trowelled
+            // slab is flat: no parallax, no sheen; its detail a fine sand-and-pore grain over the photo's own relief.
+            if (Concrete.HasProperty(ParallaxMap)) { Concrete.SetTexture(ParallaxMap, null); Concrete.SetFloat(Parallax, 0.005f); }
+            Concrete.SetFloat(SheenMask, 0f);
+            if (Concrete.HasProperty("_DetailAlbedoMap")) Concrete.SetTexture("_DetailAlbedoMap", null);
+            var grain = Resources.Load<Texture2D>("Textures/Generated/Detail_Chalk_Normal");
+            if (Concrete.HasProperty("_DetailNormalMap"))
+            {
+                Concrete.SetTexture("_DetailNormalMap", grain);
+                Concrete.SetFloat("_DetailNormalMapScale", grain ? 0.35f : 0f);
+                Concrete.SetTextureScale("_DetailAlbedoMap", new Vector2(12f, 12f));      // 0.25 m a repeat over the 3 m texture
+            }
         }
 
         static Material Tinted(Material src, string suffix, Color tint)

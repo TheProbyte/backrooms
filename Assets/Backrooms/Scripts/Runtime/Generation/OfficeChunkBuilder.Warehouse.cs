@@ -102,13 +102,23 @@ namespace Backrooms.Generation
 
             // Uprights, base plates. (Solid, and casting shadows: they and the decks are what is solid of a rack now that
             // its boxes can be taken off it; it was one solid box.)
+            uint m = LayerBit(col);
+            bool hardware = FittingModels.Ready && FittingModels.Get("RackConnector") != null;
+            var hrng = new System.Random(p.variant ^ 0x7A11);           // (its own dice: the load stays as it was)
             for (int i = 0; i < 4; i++)
             {
                 float x = (i % 2 == 0 ? -1 : 1) * ux, z = (i < 2 ? -1 : 1) * uz;
                 Upright(steel, at + new Vector3(x, 0, z), h);
-                beams.Box(at + new Vector3(x, 0.006f, z), new Vector3(0.14f, 0.012f, 0.14f), 63, MeshWriter.MetreUV);
+                // Its foot plate and anchor bolts (RackBasePlate, 2026-11-04); now and then a yellow guard round the aisle side.
+                if (!hardware || !Model("RackBasePlate", m, at + new Vector3(x, 0f, z), Quaternion.Euler(0f, 90f * (i & 1), 0f)))
+                    beams.Box(at + new Vector3(x, 0.006f, z), new Vector3(0.14f, 0.012f, 0.14f), 63, MeshWriter.MetreUV);
+                if (hardware && hrng.NextDouble() < 0.3)
+                    Model("ColumnGuard", m, at + new Vector3(x, 0f, z), Quaternion.Euler(0f, z > 0f ? 0f : 180f, 0f));
                 _boxes.Add((at + new Vector3(x, h * 0.5f, z), new Vector3(UprightSize, h, UprightSize)));
             }
+            // The capacity plate on one end frame's ties.
+            if (hardware && hrng.NextDouble() < 0.6)
+                Model("LoadSign", m, at + new Vector3(ux + UprightSize * 0.5f + 0.004f, 1.45f, 0f), Quaternion.Euler(0f, 90f, 0f));
             // The end frames' bracing, as a thin wall each end (boxes do not slide out past them).
             for (int side = -1; side <= 1; side += 2)
                 _boxes.Add((at + new Vector3(side * ux, h * 0.5f, 0f), new Vector3(0.03f, h, D - UprightSize)));
@@ -142,6 +152,15 @@ namespace Backrooms.Generation
                     float z = s * (uz - UprightSize * 0.5f - 0.0125f);
                     beams.Box(at + new Vector3(0, yb - BeamHeight * 0.5f, z), new Vector3(L - UprightSize * 2f, BeamHeight, 0.05f), 63, MeshWriter.MetreUV);
                     beams.Box(at + new Vector3(0, yb + 0.005f, z - s * 0.012f), new Vector3(L - UprightSize * 2f, 0.01f, 0.026f), 63, MeshWriter.MetreUV);
+                    if (hardware)
+                    {
+                        // The beam's end plates on the uprights, riveted, their safety locks; the bay's location label.
+                        for (int e = -1; e <= 1; e += 2)
+                            Model("RackConnector", m, at + new Vector3(e * (L * 0.5f - UprightSize), yb, z), Quaternion.Euler(0f, e > 0 ? 0f : 180f, 0f));
+                        if (hrng.NextDouble() < 0.85)
+                            Model("RackLabel_" + hrng.Next(4), m, at + new Vector3((float)(hrng.NextDouble() - 0.5) * 0.3f, yb - BeamHeight * 0.5f, z + s * 0.0252f),
+                                Quaternion.Euler(0f, s > 0 ? 0f : 180f, 0f));
+                    }
                 }
                 // Deck: two boards laid across the beams.
                 float bz = Da * 0.5f - 0.02f;

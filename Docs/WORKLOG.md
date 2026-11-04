@@ -15,6 +15,20 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-04 07:30  Claude Code  The warehouse: modelled pallets and rack hardware; the concrete floor's surface fixed
+- Owner: the warehouse pieces in the realism pass; "the concrete ground in warehouse ... same depth map texture as carpet".
+- The concrete floor (MaterialMaps.Floors) is a copy of the carpet material: SurfaceDetail had run while its normal map
+  was still the carpet's, so it kept the carpet pile's parallax height map (6 mm), its sheen and its fibre detail maps.
+  Now: parallax off, no sheen, the detail albedo neutral, the detail normal a fine grain (Detail_Chalk) at 0.25 m.
+- New Tools/Blender/build_warehouse.py -> Resources/Fittings: Pallet_0/1/2 (stringer pallet at PalletGeometry's size:
+  notched runners, lead boards wider, nails at each crossing, an HT stamp; pine, weathered, old with a broken board),
+  RackBasePlate, RackConnector, RackLabel_0..3, ColumnGuard, LoadSign.
+- MovableProp.BuildPallet copies a pallet model by the spec's id (half new, a third weathered, the rest old; the planks
+  if it is missing). OfficeChunkBuilder.Warehouse: base plates, a beam connector at each beam end, a location label on
+  most beams, guards on some uprights, a capacity plate on some end frames, all from their own dice (hrng) so the
+  racks' loads, movable boxes with ids, stay as they were.
+- Checked: World 3, a rack from its aisle (labels, a guard, the floor) and a loaded pallet.
+
 ## 2026-11-04 06:30  Claude Code  Baked textures; the good rooms' furniture, the ceiling lights' parts and the items remade
 - Owner: remake the models not yet given the realism pass (lights, items, the good rooms, warehouse, Poolrooms),
   "focusing on texture, look, realism".

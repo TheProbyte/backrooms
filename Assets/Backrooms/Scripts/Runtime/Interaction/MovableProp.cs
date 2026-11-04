@@ -205,9 +205,29 @@ namespace Backrooms.Interaction
             OneRenderer(root, spec, meshes, "Carton", new[] { board, tape, print });
         }
 
-        /// <summary>Builds a pallet's planks.</summary>
+        /// <summary>
+        /// Builds a pallet: the modelled stringer pallet (Generation.FittingModels "Pallet_0..2", 2026-11-04: new pine,
+        /// weathered grey, or old with a broken board, by its id), or the planks if the models are not loaded.
+        /// </summary>
         static void BuildPallet(GameObject root, MovableSpec spec, System.Collections.Generic.List<Mesh> meshes)
         {
+            uint pick = (uint)(spec.id * 2654435761UL >> 7) % 10u;
+            var parts = Generation.FittingModels.Ready ? Generation.FittingModels.Get(pick < 5 ? "Pallet_0" : pick < 8 ? "Pallet_1" : "Pallet_2") : null;
+            if (parts != null)
+            {
+                var writers = new System.Collections.Generic.List<MeshWriter>();
+                var mats = new System.Collections.Generic.List<Material>();
+                foreach (var part in parts)
+                {
+                    if (!part.material) continue;
+                    int k = mats.IndexOf(part.material);
+                    if (k < 0) { k = mats.Count; mats.Add(part.material); writers.Add(new MeshWriter { worldOffset = spec.position }); }
+                    writers[k].AddMesh(part.vertices, part.normals, part.tangents, part.uv, part.triangles, Vector3.zero, Quaternion.identity);
+                }
+                spec.materials = mats.ToArray();
+                OneRenderer(root, spec, meshes, "Pallet", writers.ToArray());
+                return;
+            }
             var wood = new MeshWriter { worldOffset = spec.position };
             PalletGeometry.Build(wood, Vector3.zero);
             OneRenderer(root, spec, meshes, "Pallet", new[] { wood });
