@@ -263,15 +263,19 @@ namespace Backrooms.EditorTools
             var plastic = Lit("M_PropPlastic", new Color(0.12f, 0.12f, 0.125f), null, null, 0.35f);
             var glass = Lit("M_PropGlass", new Color(0.95f, 0.92f, 0.85f), null, null, 0.85f);
             var clockFace = Lit("M_ClockFace", new Color(0.92f, 0.91f, 0.87f), null, null, 0.3f);
+            // (2026-11-03, Tools/Blender/build_furniture.py) the clock's printed dial and its red second hand.
+            var dial = Lit("ClockDial", Color.white, AssetDatabase.LoadAssetAtPath<Texture2D>(BackroomsTextureGenerator.Folder + "/ClockDial.png"), null, 0.35f);
+            var handRed = Lit("ClockHandRed", new Color(0.62f, 0.05f, 0.04f), null, null, 0.4f);
 
             GameObject Make(string fbx, string prefabName, Material fabric, Material laminate = null, bool collider = true)
             {
                 string path = $"{ModelFolder}/{fbx}.fbx";
                 var imp = AssetImporter.GetAtPath(path) as ModelImporter;
                 if (!imp) { Debug.LogWarning("[Backrooms] Missing prop model " + path); return null; }
-                if (imp.globalScale != 1f || imp.isReadable || imp.importAnimation || !imp.useFileScale)
+                // Readable: a hand placed on a movable prop finds its surface from the mesh (MovableProp.PlaceHand).
+                if (imp.globalScale != 1f || !imp.isReadable || imp.importAnimation || !imp.useFileScale)
                 {
-                    imp.globalScale = 1f; imp.useFileScale = true; imp.isReadable = false;
+                    imp.globalScale = 1f; imp.useFileScale = true; imp.isReadable = true;
                     imp.importAnimation = false; imp.importCameras = false; imp.importLights = false;
                     imp.SaveAndReimport();
                 }
@@ -284,7 +288,10 @@ namespace Backrooms.EditorTools
                     for (int i = 0; i < mats.Length; i++)
                     {
                         string n = mats[i] ? mats[i].name : "";
-                        mats[i] = n.StartsWith("Fabric") ? fabric
+                        mats[i] = n.StartsWith("ClockDial") ? dial
+                                : n.StartsWith("Hand") ? handRed
+                                : n.StartsWith("Underside") ? (a.cardboard ? a.cardboard : plastic)
+                                : n.StartsWith("Fabric") ? fabric
                                 : n.StartsWith("WoodWorn") ? (AssetDatabase.LoadAssetAtPath<Material>(MatFolder + "/WoodWorn.mat") ?? a.wood)
                                 : n.StartsWith("Felt") ? a.chairFabric
                                 : n.StartsWith("Wood") ? a.wood

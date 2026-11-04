@@ -1472,8 +1472,7 @@ namespace Backrooms.Generation
                     float L = p.size.x;
                     var table = Movable(p.id, MovableKind.Table, at, p.yaw, col);
                     table.size = new Vector3(L, 0.74f, 1.1f);
-                    table.AddPrefab(_a.tableModulePrefab, Vector3.zero, 0f, new Vector3(L, 1f, 1f));
-                    for (int i = -1; i <= 1; i += 2) table.AddPrefab(_a.tableLegPrefab, new Vector3(i * L * 0.32f, 0, 0));
+                    table.AddTable(_a.tableModulePrefab, _a.tableLegPrefab, L);
                     int chair = 0;
                     var rng = new System.Random(DistrictGenerator.Hash(_L.coord.x, _L.coord.y, (int)(p.position.x * 100), (int)(p.position.y * 100)));
                     int perSide = Mathf.Max(1, Mathf.FloorToInt(L / 0.75f));

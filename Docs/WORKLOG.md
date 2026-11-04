@@ -15,6 +15,33 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-03 23:40  Claude Code  The furniture remade: sofas, armchair, office chair, floor lamp, conference table, clock, door details
+- Owner: yes to the older furniture getting the realism pass after the fittings.
+- New Tools/Blender/build_furniture.py (build_items2.py's helpers, loaded): Sofa_Chesterfield (deep-buttoned back and arm
+  insides in a diamond with the pleats between and down from the lowest row, one rolled top swept round arms and back,
+  gathered roll ends with a button, nailheads down the arm fronts, a crowned piped bench cushion, plinth with its welt,
+  turned bun feet), Sofa_Modern (track arms with welts, three crowned piped seat cushions sagging most in the middle, three
+  back cushions leaning on the frame, tapered splayed feet), Armchair (rolled arms with gathered scrolls, piped seat and
+  back cushions, welted base, turned legs), OfficeChair (seat lofted with a dish and a waterfall front on its shell, a
+  back with a lumbar curve, steel spine, mechanism and paddles, chrome lift in a telescoping shroud, rounded spokes,
+  twin-wheel casters, T-arms), FloorLamp (weighted dome base on felt, pole in sections, socket and pull chain, harp and
+  finial, the shade bound top and bottom on its spider, a cord), ConferenceTable_Module (laminate with T-moulded edges,
+  board core, rails) and _Leg (a T-leg with caps and glides), WallClock (cased dial printed by
+  Tools/Textures/make_clock_dial.py, shaped hands, a red second hand; no glass: an opaque dome hid the dial). Same names,
+  frames, sizes and slots as before (checked: bounds within a few cm), upholstery UVs at the fabric's 0.25 m, wood along
+  its grain. build_props.py builds nothing now unless asked (it would overwrite these).
+- build_door.py: the casing's back band, a bead round each panel, the hinges' pin caps and screws, the strike's screws, a
+  round tapering lever on a stepped rose. The door's hierarchy and names (Leaf, Slab, HandleFront/Back) unchanged.
+- Tables are laid in ~1.2 m sections end to end (MovableSpec.AddTable, from OfficeChunkBuilder and ItemCatalog): one
+  module stretched to the whole length stretched its edges and grain. InfiniteWorldBuilder maps ClockDial, Hand
+  (Materials/ClockDial.mat, ClockHandRed.mat) and Underside; the prefabs were remade with its CreatePropPrefabs.
+- Checked: all 179 EditMode tests; Blender previews of each; World 3 close-ups of the sofas, office chair, lamp and door
+  (LeftoversTour.meshes: finds a model by its mesh); the clock's dial rendered in Blender with its texture (the editor's
+  preview camera stopped drawing anything after a reload, so not there). Conference tables and wall clocks are not
+  generated in Level 0 now (build mode only).
+- CreatePropPrefabs had been turning the models' Read/Write off on re-import, undoing 980f51c (MovableProp.PlaceHand
+  reads the mesh to find where a hand goes): it now keeps them readable, and the nine models were set back.
+
 ## 2026-11-03 22:30  Claude Code  The Level 0 fittings and leftovers remade as real models
 - Owner: "for all models, please improve realism 10x" (taken as the models of the batch just added).
 - New Tools/Blender/build_fittings.py (uses build_items2.py's helpers, loaded from it): 28 models into

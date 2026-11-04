@@ -17,6 +17,8 @@ namespace Backrooms.DebugTools
     {
         public string folder;
         public string[] kinds;
+        /// <summary>Models to find by their mesh's name (furniture has no F5 > PLACES entry): the nearest of each.</summary>
+        public string[] meshes;
         public float spacing = 36f;
         public int ring = 2;
         /// <summary>Seconds to wait where each one is (its chunk may have to be built again).</summary>
@@ -79,6 +81,41 @@ namespace Backrooms.DebugTools
                 yield return new WaitForSeconds(0.4f);
                 sb.Append(k).Append(": ").Append(list.Count).Append("; ");
             }
+            // Furniture by its model's mesh: the nearest of each, from the side with room, at a distance for its size.
+            if (meshes != null)
+                foreach (var mn in meshes)
+                {
+                    MeshFilter best = null; float bd = float.MaxValue;
+                    foreach (var mf in FindObjectsByType<MeshFilter>(FindObjectsSortMode.None))
+                    {
+                        if (!mf.sharedMesh || !mf.sharedMesh.name.StartsWith(mn)) continue;
+                        float d = (mf.transform.position - home).sqrMagnitude;
+                        if (d < bd) { bd = d; best = mf; }
+                    }
+                    if (!best) { sb.Append(mn).Append(": none; "); continue; }
+                    var rd = best.GetComponent<Renderer>();
+                    var c = rd ? rd.bounds.center : best.transform.position;
+                    float size = rd ? rd.bounds.extents.magnitude : 0.5f;
+                    float floor = Mathf.Floor((c.y + 0.01f) / 9f) * 9f;
+                    var dir = best.transform.forward; dir.y = 0f;
+                    if (dir.sqrMagnitude < 0.01f) dir = Vector3.forward;
+                    dir.Normalize();
+                    float dist = Mathf.Clamp(size * 1.6f, 0.8f, 3f);
+                    // In front if there is room, else whichever side has most.
+                    Vector3 pick = dir; float room = -1f;
+                    foreach (var dd in new[] { dir, Quaternion.Euler(0f, 40f, 0f) * dir, Quaternion.Euler(0f, -40f, 0f) * dir, -dir })
+                    {
+                        float r = Physics.Raycast(new Vector3(c.x, floor + 1.2f, c.z) + dd * (size * 0.6f), dd, out var h3, dist + 0.5f) ? h3.distance : dist + 0.5f;
+                        if (r > room + 0.3f) { room = r; pick = dd; }
+                    }
+                    var stand = new Vector3(c.x, floor, c.z) + pick * Mathf.Min(dist, room + size * 0.6f - 0.3f);
+                    var look = c - (stand + Vector3.up * 1.6f);
+                    ctrl.TeleportSafe(stand, Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg, Mathf.Atan2(-look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg);
+                    yield return new WaitForSeconds(settle);
+                    ScreenCapture.CaptureScreenshot(Path.Combine(folder, "mesh_" + mn + ".png"));
+                    yield return new WaitForSeconds(0.4f);
+                    sb.Append(mn).Append(" at ").Append(c.ToString("F0")).Append("; ");
+                }
             ctrl.TeleportSafe(home, yaw0);
             result = sb.ToString();
             done = true;

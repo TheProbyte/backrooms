@@ -200,10 +200,24 @@ def frame(root):
         m.box((-hx - cw + JAMB - rev - JAMB, 0, z0), (-hx + JAMB - rev, H - JAMB - rev + cw, z1), 0, "y", skip=("-y",))
         m.box((hx - JAMB + rev, 0, z0), (hx + cw - JAMB + rev + JAMB, H - JAMB - rev + cw, z1), 0, "y", skip=("-y",))
         m.box((-hx + JAMB - rev, H - JAMB - rev, z0), (hx - JAMB + rev, H - JAMB - rev + cw, z1), 0, "x")
+        # (2026-11-03) the back band: a raised step along the casing's outer edge, the stepped profile of a real casing.
+        bw, bh = 0.014, 0.007
+        out = (z1, z1 + bh) if z0 > 0 else (z0 - bh, z0)
+        xl, xr = -hx - cw + JAMB - rev - JAMB, hx + cw - JAMB + rev + JAMB
+        top = H - JAMB - rev + cw
+        m.box((xl, 0, out[0]), (xl + bw, top, out[1]), 0, "y", skip=("-y",))
+        m.box((xr - bw, 0, out[0]), (xr, top, out[1]), 0, "y", skip=("-y",))
+        m.box((xl + bw, top - bw, out[0]), (xr - bw, top, out[1]), 0, "x")
     # Strike plate on the latch jamb, hinge leaves on the hinge jamb.
     m.box((hx - JAMB - 0.002, SPINDLE[1] - 0.04, HINGE_Z - SLAB_T + 0.003), (hx - JAMB, SPINDLE[1] + 0.04, HINGE_Z - 0.006), 1, "y")
     for y in (0.2, 1.0, 1.84):
         m.box((-hx + JAMB - 0.002, y - 0.045, HINGE_Z - 0.032), (-hx + JAMB, y + 0.045, HINGE_Z), 1, "y")
+        # (2026-11-03) its three screws.
+        for dy in (-0.03, 0.0, 0.03):
+            m.cylinder((-hx + JAMB - 0.0026, y + dy, HINGE_Z - 0.016), "x", 0.0035, 0.0012, 1, seg=10)
+    # The strike plate's screws.
+    for dy in (-0.03, 0.03):
+        m.cylinder((hx - JAMB - 0.0026, SPINDLE[1] + dy, (HINGE_Z - SLAB_T + 0.003 + HINGE_Z - 0.006) / 2), "x", 0.003, 0.0012, 1, seg=10)
     return m.finish(root)
 
 
@@ -240,9 +254,21 @@ def slab(leaf):
             # Raised fields, both faces.
             m.frustum((px0 + 0.006, ya + 0.006), (px1 - 0.006, yb - 0.006), 0.042, zc + hz, zc + hz + 0.0055, 0, "y")
             m.frustum((px0 + 0.006, ya + 0.006), (px1 - 0.006, yb - 0.006), 0.042, zc - hz, zc - hz - 0.0055, 0, "y")
+            # (2026-11-03) the sticking: a fine bead round the panel where the frame meets it, both faces.
+            bd, bp = 0.007, 0.004
+            for zt, zs in ((zf, -1), (zb, 1)):
+                z0b, z1b = (zt - bp, zt) if zs < 0 else (zt, zt + bp)
+                z0b, z1b = (zc + hz, zc + hz + bp) if zs < 0 else (zc - hz - bp, zc - hz)
+                m.box((px0, ya, z0b), (px0 + bd, yb, z1b), 0, "y", skip=("-y", "+y"))
+                m.box((px1 - bd, ya, z0b), (px1, yb, z1b), 0, "y", skip=("-y", "+y"))
+                m.box((px0 + bd, ya, z0b), (px1 - bd, ya + bd, z1b), 0, "x", skip=("-x", "+x"))
+                m.box((px0 + bd, yb - bd, z0b), (px1 - bd, yb, z1b), 0, "x", skip=("-x", "+x"))
     # Hinge knuckles on the hinge edge.
     for y in (0.2, 1.0, 1.84):
         m.cylinder((-0.002, y - 0.045, 0.004), "y", 0.0068, 0.09, 1, seg=12)
+        # (2026-11-03) the pin's caps, a little wider, top and bottom.
+        m.cylinder((-0.002, y - 0.049, 0.004), "y", 0.0074, 0.004, 1, seg=12)
+        m.cylinder((-0.002, y + 0.045, 0.004), "y", 0.0074, 0.004, 1, seg=12)
     return m.finish(leaf)
 
 
@@ -251,12 +277,18 @@ def handle(name, leaf, back):
     origin = (SPINDLE[0], SPINDLE[1], -SLAB_T if back else 0.0)
     m = Mesh(name, [METAL])
     # Rose, neck, lever toward the hinge with a slight turn back toward the door at its end.
-    m.cylinder((0, 0, 0), "z", 0.027, 0.008 * s, 0, seg=24)
-    m.cylinder((0, 0, 0.008 * s), "z", 0.0085, 0.045 * s, 0, seg=16)
-    za, zb = 0.044 * s, 0.062 * s
-    lo, hi = (min(za, zb), max(za, zb))
-    m.box((-0.1, -0.0085, lo), (0.0095, 0.0085, hi), 0, "x")
-    m.cylinder((-0.1, 0, lo), "z", 0.0085, hi - lo, 0, seg=16)
+    m.cylinder((0, 0, 0), "z", 0.027, 0.006 * s, 0, seg=32)
+    m.cylinder((0, 0, 0.006 * s), "z", 0.023, 0.004 * s, 0, seg=32)            # (the rose stepped, 2026-11-03)
+    m.cylinder((0, 0, 0.01 * s), "z", 0.0105, 0.004 * s, 0, seg=20)
+    m.cylinder((0, 0, 0.014 * s), "z", 0.0085, 0.039 * s, 0, seg=16)
+    # The lever: round, tapering from the neck toward its end, the end rounded off.
+    zc = 0.053 * s
+    n = 8
+    for k in range(n):
+        x0, x1 = -0.1 * k / n, -0.1 * (k + 1) / n
+        r = 0.0092 - 0.0016 * (k / n)
+        m.cylinder((x1, 0, zc), "x", r, x0 - x1 + 0.0004, 0, seg=14, caps=(k == n - 1))
+    m.cylinder((-0.1, 0, zc), "x", 0.0068, -0.006, 0, seg=14)
     return m.finish(leaf, at=origin)
 
 

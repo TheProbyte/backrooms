@@ -110,8 +110,7 @@ namespace Backrooms.Interaction
                     {
                         const float L = 2.0f;
                         s.size = new Vector3(L, 0.74f, 1.1f);
-                        s.AddPrefab(a.tableModulePrefab, Vector3.zero, 0f, new Vector3(L, 1f, 1f));
-                        for (int i = -1; i <= 1; i += 2) s.AddPrefab(a.tableLegPrefab, new Vector3(i * L * 0.32f, 0, 0));
+                        s.AddTable(a.tableModulePrefab, a.tableLegPrefab, L);
                     }) });
             var board = a.cardboard ? a.cardboard : a.wood;
             if (board)

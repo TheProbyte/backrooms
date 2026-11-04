@@ -46,6 +46,19 @@ namespace Backrooms.Interaction
         public void AddBox(Material m, Vector3 centre, Vector3 size, float yaw = 0f)
             => parts.Add(new Part { material = m, position = centre, yaw = yaw, scale = size });
 
+        /// <summary>
+        /// A conference table L long: its top laid in sections of about 1.2 m end to end (each module stretched only to its
+        /// own length, so its edges and grain keep their size; a seam at each join, as a modular table has), its two
+        /// T-legs at a third of the way in from each end.
+        /// </summary>
+        public void AddTable(GameObject module, GameObject leg, float L)
+        {
+            int n = Mathf.Max(1, Mathf.RoundToInt(L / 1.2f));
+            float l = L / n;
+            for (int i = 0; i < n; i++) AddPrefab(module, new Vector3(-L * 0.5f + l * (i + 0.5f), 0f, 0f), 0f, new Vector3(l, 1f, 1f));
+            for (int i = -1; i <= 1; i += 2) AddPrefab(leg, new Vector3(i * L * 0.32f, 0, 0));
+        }
+
         /// <summary>Id for the n-th piece that belongs to one generated prop (the chairs around a table).</summary>
         public static ulong SubId(ulong id, int n) => id ^ (((ulong)(n + 1) * 0x9E3779B97F4A7C15ul) & ~0xFFFFul);
     }

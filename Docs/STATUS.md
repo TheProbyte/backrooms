@@ -6,6 +6,12 @@ Last updated 2026-11-03 (world version 13).
 
 ## Newest (2026-11-03)
 
+- **The furniture remade** (Tools/Blender/build_furniture.py): the chesterfield (deep buttoned in a diamond with its
+  pleats, one rolled top round arms and back, nailheads, bun feet), the modern sofa and armchair (crowned, piped cushions
+  that sag where sat on), the office chair (contoured seat with a waterfall front, lumbar back, gas lift, twin-wheel
+  casters), the floor lamp (harp, finial, bound shade, pull chain), the conference table (laminate sections with
+  T-moulded edges end to end on T-legs) and the wall clock (a printed dial); the door's casing, panel beads, hinges and
+  lever refined. Same sizes and slots, so the prefabs and their colliders are unchanged.
 - **Level 0's rarer things** (Docs/WorldGeneration.md, "Water, old fittings and what the office left behind"): damp
   carpet (it squelches), water run down walls, leaks dripping into puddles and buckets, mould in corners; blackened and
   failing tubes; fire extinguishers, pull stations, horn strobes, thermostats, low vents, drinking fountains in alcoves,

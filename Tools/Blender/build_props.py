@@ -387,8 +387,13 @@ def wooden_chair():
     finish("WoodenChair", parts)
 
 
+# (2026-11-03) Superseded: these models are built by Tools/Blender/build_furniture.py (the sofas, armchair, office chair,
+# floor lamp, conference table, wall clock) and build_fittings.py (the wooden chair), with real detail. Kept for the record;
+# building them here would overwrite those, so nothing is built unless asked for by name with --only.
 reset()
 for build in (chesterfield, modern_sofa, armchair, floor_lamp, office_chair, conference_table, wall_clock, wooden_chair):
+    if not ONLY:
+        break
     if ONLY and build.__name__ not in ONLY:
         continue
     reset()
