@@ -62,10 +62,17 @@ namespace Backrooms.Interaction
                 m.name = "Model";
                 m.transform.localRotation = model.transform.localRotation;     // keep the import's axis fix
                 foreach (var c in m.GetComponentsInChildren<Collider>()) Destroy(c);
+                // Its baked colour (Tools/Blender/build_items.py with bake_kit.py, 2026-11-04): label, wear, grime.
+                var albedo = Resources.Load<Texture2D>("Items/SprayCan_Albedo");
+                float density = albedo ? Generation.BakedMaterials.Density("Items/SprayCan") : 0f;
                 foreach (var r in m.GetComponentsInChildren<Renderer>())
                 {
                     var mats = r.sharedMaterials;
-                    for (int i = 0; i < mats.Length; i++) mats[i] = Mat(mats[i] ? mats[i].name.Replace(" (Instance)", "") : "CanRed");
+                    for (int i = 0; i < mats.Length; i++)
+                    {
+                        var fin = Mat(mats[i] ? mats[i].name.Replace(" (Instance)", "") : "CanRed");
+                        mats[i] = albedo ? Generation.BakedMaterials.FromTemplate(fin, albedo, density) : fin;
+                    }
                     r.sharedMaterials = mats;
                     r.lightProbeUsage = LightProbeUsage.Off; r.reflectionProbeUsage = ReflectionProbeUsage.Off;
                     r.renderingLayerMask = 0xFFFFFFFFu;            // lit by whatever lights the spot it is in

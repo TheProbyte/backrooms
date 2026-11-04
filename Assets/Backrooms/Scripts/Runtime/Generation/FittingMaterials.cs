@@ -73,6 +73,8 @@ namespace Backrooms.Generation
         // ---------------- The modelled fittings' slots (FittingModels) ----------------
 
         static Material s_src;
+        /// <summary>The lit material the fittings' finishes are copied from (BakedMaterials copies it too).</summary>
+        public static Material Source => s_src;
         static readonly System.Collections.Generic.Dictionary<string, Material> s_slots = new System.Collections.Generic.Dictionary<string, Material>();
         /// <summary>The bucket's water: dirty, grey-brown, glossy.</summary>
         public static Material BucketWater { get; private set; }

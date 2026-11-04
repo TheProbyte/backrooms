@@ -15,6 +15,36 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-04 06:30  Claude Code  Baked textures; the good rooms' furniture, the ceiling lights' parts and the items remade
+- Owner: remake the models not yet given the realism pass (lights, items, the good rooms, warehouse, Poolrooms),
+  "focusing on texture, look, realism".
+- New Tools/Blender/bake_kit.py: bake(ob or [obs], name, out_dir) lays a second UV map out at one texel density (the
+  model's smart projection, packed, its size settled from the density wanted), rewires each slot's material to emit its
+  aged colour (mottle; AO dirt over a few cm scaled with the model; Bevel-normal edge wear broken by noise, chipped
+  paint to metal, plastic paler; grime, streaks down vertical faces, dust on faces looking up; m["grain"] wood rings
+  round a slightly tilted log; m["speckle"] flecks; m["print"] a Canvas print through the old UVs), bakes EMIT on the GPU
+  (OptiX), writes <name>_Albedo.png and <name>_Bake.json (UV units a metre), makes the bake UV the only one.
+  Canvas: block-capital prints in Python. preview_lit: a lit Cycles picture. Older models' colours go through lin()
+  (the game had read them from the FBX as sRGB), so items keep their colours.
+- Generation/BakedMaterials.cs: For(slot, albedo, density) by the slot's finish prefix (Enamel_, Paint_, Stainless_ ...),
+  FromTemplate(material, albedo, density) for the items (keeps the finish and the name: the bulb and globe are found by
+  it); the fine normal map goes to the detail slot tiled 4/density. FittingModels and ItemModels/SprayCan load
+  <name>_Albedo when there is one.
+- Tools/Blender/build_rooms.py -> Resources/Fittings: Fridge, Microwave, DiningTable, Desk, CrtMonitor, Keyboard,
+  MopSink, ServiceFaucet, Mop, BreakerPanel, Shelving_100/_110, CounterCabinet, CounterSink, PaintCan, CleanerJug.
+  OfficeChunkBuilder.Special: SpecialModel() places them (the old boxes stay as the fallback); counters are cabinets
+  repeated and stretched to their share (MeshWriter.AddMesh with a scale; every other one mirrored, the winding kept),
+  a post-formed worktop extruded to the length with a hole for the sink (Worktop); ShelfLoad puts cans and jugs on the
+  shelves. The mop sink is 254 mm high now (SpecialRooms). The breaker's main switch moved to the new cover's front.
+- Tools/Blender/build_lights.py -> TrofferFrame (door frame, mitres, latches, pins), TrofferHousing (shown when a
+  fitting hangs askew; moved with it: ModelTracked/_tracked), StripChannel, StripTube (drawn in the lens writer, scaled
+  for the blackened ends), ChainLinks (drops up to 1.2 m), CableGripper/CableAnchor (longer drops: median 2.2 m).
+- Items: all but the wall plates baked; nail box printed (Canvas), spray can label printed round it.
+- Note: Unity mirrors x from Blender (handedness); models built in a prop's frame must put things the game places by x on
+  the other side (the breaker panel's opening, the mop).
+- Checked: World 3 shots of each good room's furniture (counter, desk with CRTs, table, shelving, fridge, mop sink,
+  breaker), a strip in a warehouse, the items spawned in a row; Blender previews of every model.
+
 ## 2026-11-03 23:40  Claude Code  The furniture remade: sofas, armchair, office chair, floor lamp, conference table, clock, door details
 - Owner: yes to the older furniture getting the realism pass after the fittings.
 - New Tools/Blender/build_furniture.py (build_items2.py's helpers, loaded): Sofa_Chesterfield (deep-buttoned back and arm

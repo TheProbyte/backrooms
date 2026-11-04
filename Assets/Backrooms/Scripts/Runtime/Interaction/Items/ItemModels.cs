@@ -98,6 +98,9 @@ namespace Backrooms.Interaction
             GameObject m;
             if (prefab)
             {
+                // A baked model (Tools/Blender/bake_kit.py, 2026-11-04): its own colour texture, a material a slot on it.
+                var albedo = Resources.Load<Texture2D>("Items/" + resource + "_Albedo");
+                float density = albedo ? Generation.BakedMaterials.Density("Items/" + resource) : 0f;
                 m = Object.Instantiate(prefab, parent, false);
                 m.transform.localRotation = prefab.transform.localRotation;
                 foreach (var c in m.GetComponentsInChildren<Collider>()) Object.Destroy(c);
@@ -110,7 +113,9 @@ namespace Backrooms.Interaction
                         Color? col = null;
                         if (src && src.HasProperty("_BaseColor")) col = src.GetColor("_BaseColor");
                         else if (src && src.HasProperty("_Color")) col = src.GetColor("_Color");
-                        mats[i] = Mat(src ? src.name : fallbackSlot, col);
+                        string slot = (src ? src.name : fallbackSlot).Replace(" (Instance)", "");
+                        var finish = Mat(slot, col);
+                        mats[i] = albedo ? Generation.BakedMaterials.FromTemplate(finish, albedo, density) : finish;
                     }
                     r.sharedMaterials = mats;
                     Prepare(r);

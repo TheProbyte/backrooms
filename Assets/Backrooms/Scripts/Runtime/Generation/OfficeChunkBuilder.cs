@@ -1223,9 +1223,20 @@ namespace Backrooms.Generation
                     var fr = _L.RoomAt(f.cell.x, f.cell.y);
                     float ceil = fr.role == AnnexRole.StairHall ? h + 0.45f : fr.ceiling;      // stair hall battens hang from the sloping ceiling
                     var hw = W(_a.fixtureHousing, f.roomColor);
-                    hw.Box(c + Vector3.up * 0.03f, new Vector3(1.24f, 0.06f, 0.16f), 63, MeshWriter.MetreUV);
-                    lens.Box(c + new Vector3(0, -0.012f, 0.04f), new Vector3(1.18f, 0.028f, 0.028f), 1 | 2 | 4 | 16 | 32, MeshWriter.MetreUV);
-                    lens.Box(c + new Vector3(0, -0.012f, -0.04f), new Vector3(1.18f, 0.028f, 0.028f), 1 | 2 | 4 | 16 | 32, MeshWriter.MetreUV);
+                    // The modelled strip (Tools/Blender/build_lights.py, 2026-11-04): its reflector hood, lampholders and the
+                    // tubes' caps; the round tubes drawn with the fitting's lit or unlit material.
+                    var tubeModel = FittingModels.Ready ? FittingModels.Get("StripTube") : null;
+                    bool modelled = tubeModel != null && Model("StripChannel", LayerBit(f.roomColor), c, Quaternion.identity);
+                    if (modelled)
+                        for (int t = -1; t <= 1; t += 2)
+                            foreach (var part in tubeModel)
+                                lens.AddMesh(part.vertices, part.normals, part.tangents, part.uv, part.triangles, c + new Vector3(0f, -0.012f, t * 0.04f), Quaternion.identity);
+                    else
+                    {
+                        hw.Box(c + Vector3.up * 0.03f, new Vector3(1.24f, 0.06f, 0.16f), 63, MeshWriter.MetreUV);
+                        lens.Box(c + new Vector3(0, -0.012f, 0.04f), new Vector3(1.18f, 0.028f, 0.028f), 1 | 2 | 4 | 16 | 32, MeshWriter.MetreUV);
+                        lens.Box(c + new Vector3(0, -0.012f, -0.04f), new Vector3(1.18f, 0.028f, 0.028f), 1 | 2 | 4 | 16 | 32, MeshWriter.MetreUV);
+                    }
                     // Old bare tubes blackened near their ends (2026-11-03): dark bands over the glass a few centimetres in.
                     if (f.on && FittingMaterials.TubeEnd && Dice(GX(f.cell.x), GZ(f.cell.y), 3052) < 0.06f * DetailRates.CeilingWear)
                     {
@@ -1234,12 +1245,18 @@ namespace Backrooms.Generation
                         for (int e = -1; e <= 1; e += 2)
                         {
                             float len = 0.025f + 0.03f * Dice(GX(f.cell.x), GZ(f.cell.y), 3053 + t + e * 3);
-                            dark.Box(c + new Vector3(e * (0.59f - 0.035f - len * 0.5f), -0.012f, t * 0.04f), new Vector3(len, 0.0292f, 0.0292f), 1 | 2 | 4 | 16 | 32, MeshWriter.MetreUV);
+                            if (modelled)
+                                foreach (var part in tubeModel)     // a dark sleeve over the glass by the cap
+                                    dark.AddMesh(part.vertices, part.normals, part.tangents, part.uv, part.triangles,
+                                        c + new Vector3(e * (0.577f - len * 0.5f), -0.012f, t * 0.04f), Quaternion.identity, new Vector3(len / 1.158f, 1.03f, 1.03f));
+                            else
+                                dark.Box(c + new Vector3(e * (0.59f - 0.035f - len * 0.5f), -0.012f, t * 0.04f), new Vector3(len, 0.0292f, 0.0292f), 1 | 2 | 4 | 16 | 32, MeshWriter.MetreUV);
                         }
                         Saw(c + Vector3.down * 0.03f, Vector3.down, "tube_ends");
                     }
                     float drop = ceil - (h + 0.06f);
-                    if (drop > 0.02f)
+                    if (modelled) StripHangers(c, h, ceil, f.roomColor);
+                    else if (drop > 0.02f)
                         for (int k = -1; k <= 1; k += 2)
                             W(_a.lampMetal, f.roomColor).Box(c + new Vector3(k * 0.45f, 0.06f + drop * 0.5f, 0), new Vector3(0.012f, drop, 0.012f), 1 | 2 | 16 | 32, MeshWriter.MetreUV);
                 }
@@ -1256,11 +1273,20 @@ namespace Backrooms.Generation
                     var hw = W(_a.fixtureHousing, f.roomColor);
                     int lensStart = lens.VertexCount, hwStart = hw.VertexCount;
                     lens.Box(sc + Vector3.down * 0.004f, new Vector3(0.57f, 0.006f, 0.57f), 4 | 1 | 2 | 16 | 32, MaterialMaps.TrofferUV(_origin + sc, 0.57f));
-                    const int m = 1 | 2 | 4 | 16 | 32;
-                    hw.Box(sc + new Vector3(0, -0.009f, 0.291f), new Vector3(0.6f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
-                    hw.Box(sc + new Vector3(0, -0.009f, -0.291f), new Vector3(0.6f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
-                    hw.Box(sc + new Vector3(0.291f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
-                    hw.Box(sc + new Vector3(-0.291f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
+                    // The door frame round the lens (TrofferFrame, 2026-11-04: the die-formed C-channel, its mitres, latches
+                    // and hinge pins), its latch side any of the four; the old four bars if it is not loaded.
+                    _tracked.Clear();
+                    var frame = FittingModels.Ready ? FittingModels.Get("TrofferFrame") : null;
+                    if (frame != null)
+                        ModelTracked(frame, LayerBit(f.roomColor), sc, Quaternion.Euler(0f, 90f * ((int)(Dice(GX(f.cell.x), GZ(f.cell.y), 3060) * 4f) & 3), 0f));
+                    else
+                    {
+                        const int m = 1 | 2 | 4 | 16 | 32;
+                        hw.Box(sc + new Vector3(0, -0.009f, 0.291f), new Vector3(0.6f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
+                        hw.Box(sc + new Vector3(0, -0.009f, -0.291f), new Vector3(0.6f, 0.016f, 0.018f), m, MeshWriter.MetreUV);
+                        hw.Box(sc + new Vector3(0.291f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
+                        hw.Box(sc + new Vector3(-0.291f, -0.009f, 0), new Vector3(0.018f, 0.016f, 0.6f), m, MeshWriter.MetreUV);
+                    }
                     if (!Pool) TrofferWear(f.cell, f.roomColor, sc, h, lens, lensStart, hw, hwStart);
                 }
                 if (f.on)

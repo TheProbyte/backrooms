@@ -105,9 +105,7 @@ def spray_can():
     # Base: a rolled rim and a domed (concave) bottom, in metal.
     parts.append(lathe("Base", [(0.0, 0.010), (0.022, 0.006), (0.030, 0.0015), (R - 0.0012, 0.0), (R, 0.0025), (R, 0.006)], metal, cap_bottom=False, cap_top=False))
     # Body: the painted cylinder, with a printed band.
-    parts.append(lathe("Body", [(R, 0.006), (R, 0.058)], red, cap_bottom=False, cap_top=False))
-    parts.append(lathe("Label", [(R + 0.0002, 0.058), (R + 0.0002, 0.118)], label, cap_bottom=False, cap_top=False))
-    parts.append(lathe("Body2", [(R, 0.118), (R, H)], red, cap_bottom=False, cap_top=False))
+    parts.append(lathe("Body", [(R, 0.006), (R, H)], red, cap_bottom=False, cap_top=False))
     # Shoulder dome up to the valve cup rim, in metal.
     dome = [(R, H), (R - 0.0015, H + 0.006), (0.029, H + 0.013), (0.024, H + 0.020), (0.0175, H + 0.025), (0.0135, H + 0.027),
             (0.0130, H + 0.0295), (0.0118, H + 0.031), (0.0105, H + 0.030), (0.0, H + 0.030)]
@@ -140,6 +138,48 @@ def spray_can():
     bpy.ops.mesh.quads_convert_to_tris()
     bpy.ops.object.mode_set(mode="OBJECT")
     uv_world(can)
+    # (2026-11-04) The printed label round the body, its own UVs (u round the can, v up), joined on.
+    lab = Canvas(512, 256, (0.62, 0.03, 0.025))
+    lab.rect(0, 40, 512, 216, (0.06, 0.06, 0.065))
+    lab.rect(0, 46, 512, 52, (0.9, 0.85, 0.2))
+    lab.rect(0, 204, 512, 210, (0.9, 0.85, 0.2))
+    lab.text("SPRAY PAINT", 40, 64, 4, (0.96, 0.95, 0.92))
+    lab.text("GLOSS RED", 40, 112, 3, (0.85, 0.12, 0.08))
+    lab.text("PROTECTIVE ENAMEL", 40, 146, 2, (0.9, 0.9, 0.88))
+    lab.text("NET WT 12 OZ", 40, 174, 2, (0.9, 0.9, 0.88))
+    lab.rect(300, 60, 470, 190, (0.92, 0.92, 0.9))
+    lab.text("DANGER", 318, 70, 2, (0.75, 0.05, 0.04))
+    lab.lines(312, 96, 460, 9, 9, (0.3, 0.3, 0.3), seed=3)
+    for i in range(30):
+        lab.rect(300 + i * 5, 222, 302 + i * 5 + (i % 3), 250, (0.05, 0.05, 0.05))
+    LB = print_mat("CanLabel", lab)
+    bm = bmesh.new()
+    segs, z0, z1 = 48, 0.03, 0.15
+    rr = R + 0.0003
+    r0 = [bm.verts.new((math.cos(2 * math.pi * i / segs) * rr, math.sin(2 * math.pi * i / segs) * rr, z0)) for i in range(segs + 1)]
+    r1 = [bm.verts.new((math.cos(2 * math.pi * i / segs) * rr, math.sin(2 * math.pi * i / segs) * rr, z1)) for i in range(segs + 1)]
+    for i in range(segs):
+        bm.faces.new((r0[i], r0[i + 1], r1[i + 1], r1[i]))
+    me2 = bpy.data.meshes.new("Label")
+    bm.to_mesh(me2)
+    bm.free()
+    me2.materials.append(LB)
+    lob = bpy.data.objects.new("Label", me2)
+    bpy.context.collection.objects.link(lob)
+    uvl = me2.uv_layers.new(name=can.data.uv_layers[0].name).data
+    for f in me2.polygons:
+        f.use_smooth = True
+        for li in f.loop_indices:
+            vi = me2.loops[li].vertex_index
+            i = vi % (segs + 1)
+            uvl[li].uv = (i / segs, 0.0 if vi < segs + 1 else 1.0)
+    bpy.ops.object.select_all(action="DESELECT")
+    can.select_set(True)
+    lob.select_set(True)
+    bpy.context.view_layer.objects.active = can
+    bpy.ops.object.join()
+    can = bpy.context.active_object
+    can.name = "SprayCan"
     return can
 
 
@@ -172,7 +212,10 @@ def preview(obj, path):
     bpy.ops.render.render(write_still=True)
 
 
+exec(compile(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "bake_kit.py"), encoding="utf-8").read(), "bake_kit", "exec"))
 can = spray_can()
+info = bake(can, "SprayCan", OUT, scale=0.2, px_per_m=1600.0)
+print("BAKED SprayCan", info)
 tris = len(can.data.polygons)
 export(can, os.path.join(OUT, "SprayCan.fbx"))
 if PREVIEW:

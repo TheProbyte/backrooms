@@ -203,7 +203,7 @@ namespace Backrooms.Generation
             if (Corner(L, r, occ, rng, out var cx, out var cz, out var cs))
             {
                 var (pos, yaw) = OnWall(cx, cz, cs, 0.5f, (cs < 2 ? (cz == r.rect.yMin ? 0.3f : 0.7f) : (cx == r.rect.xMin ? 0.3f : 0.7f)));
-                Add(L, r, PropKind.MopSink, pos, yaw, new Vector3(0.6f, 0.45f, 0.5f), rng.Next(1 << 16));
+                Add(L, r, PropKind.MopSink, pos, yaw, new Vector3(0.6f, 0.254f, 0.5f), rng.Next(1 << 16));
                 occ.Add(new Vector2Int(cx, cz));
             }
             foreach (var (x, z, side) in Runs(L, r, occ, 1, rng, 2, s => true))

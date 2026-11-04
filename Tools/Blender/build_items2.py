@@ -320,13 +320,15 @@ def export(obj, path):
                              use_mesh_modifiers=True, mesh_smooth_type="FACE", add_leaf_bones=False)
 
 
-def preview(obj, path, view=(0.75, -1.0, 0.6), res=640, margin=1.12, color_type="MATERIAL"):
-    """Workbench render with the camera framed so the object(s) fill the image."""
+def preview(obj, path, view=(0.75, -1.0, 0.6), res=640, margin=1.12, color_type="MATERIAL", keep_engine=False):
+    """Workbench render with the camera framed so the object(s) fill the image (keep_engine: the scene's own engine,
+    for bake_kit's lit preview)."""
     scene = bpy.context.scene
-    try:
-        scene.render.engine = "BLENDER_WORKBENCH"
-    except TypeError:
-        pass
+    if not keep_engine:
+        try:
+            scene.render.engine = "BLENDER_WORKBENCH"
+        except TypeError:
+            pass
     scene.display.shading.light = "STUDIO"
     scene.display.shading.color_type = color_type
     scene.display.shading.show_cavity = True
@@ -379,6 +381,10 @@ def reset():
 
 
 # ------------------------------------------------------------------------------------------------------------ models
+# (2026-11-04) The items are baked (bake_kit.py): their own colour texture, worn and grubby, prints in it.
+exec(compile(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "bake_kit.py"), encoding="utf-8").read(), "bake_kit", "exec"))
+
+
 def chalk():
     white = mat("ChalkWhite", (0.93, 0.92, 0.88), 0.95)
     R, L, seg = 0.008, 0.090, 20
@@ -1577,12 +1583,26 @@ def nails():
     metal = mat("NailMetal", (0.52, 0.52, 0.50), 0.4, 0.9)
     W, D, H, t = 0.110, 0.070, 0.050, 0.0016
     parts = [rbox("Bottom", (W, D, t), (0, 0, t / 2), board)]
+    labels = []
+    front = Canvas(256, 128, (0.72, 0.1, 0.07))
+    front.rect(0, 0, 256, 10, (0.95, 0.9, 0.75))
+    front.rect(0, 118, 256, 128, (0.95, 0.9, 0.75))
+    front.text_c("COMMON NAILS", 128, 20, 3, (0.97, 0.95, 0.88))
+    front.text_c("2 IN  6D", 128, 54, 4, (0.97, 0.95, 0.88))
+    front.text_c("BRIGHT  1 LB", 128, 94, 2, (0.97, 0.95, 0.88))
+    endc = Canvas(128, 128, (0.72, 0.1, 0.07))
+    endc.rect(0, 0, 128, 10, (0.95, 0.9, 0.75))
+    endc.rect(0, 118, 128, 128, (0.95, 0.9, 0.75))
+    endc.text_c("6D", 64, 30, 5, (0.97, 0.95, 0.88))
+    endc.lines(16, 84, 112, 3, 8, (0.95, 0.85, 0.8), seed=6)
+    LF = print_mat("NailBoxLabel", front)
+    LE = print_mat("NailBoxLabelEnd", endc)
     for s in (-1, 1):
         parts.append(rbox("Long", (W, t, H), (0, s * (D - t) / 2, H / 2), board))
         parts.append(rbox("End", (t, D - 2 * t, H), (s * (W - t) / 2, 0, H / 2), board))
-        # The label round the outside, its top and bottom edges a little in.
-        parts.append(rbox("LabelLong", (W - 0.004, 0.0004, H * 0.62), (0, s * (D / 2 + 0.0002), H * 0.47), label))
-        parts.append(rbox("LabelEnd", (0.0004, D - 0.004, H * 0.62), (s * (W / 2 + 0.0002), 0, H * 0.47), label))
+        # The printed label round the outside, its top and bottom edges a little in.
+        labels.append(card("LabelLong", W - 0.004, H * 0.62, (0, s * (D / 2 + 0.0003), H * 0.47), LF, normal=(0, s, 0)))
+        labels.append(card("LabelEnd", D - 0.004, H * 0.62, (s * (W / 2 + 0.0003), 0, H * 0.47), LE, normal=(s, 0, 0)))
     # The back flap, folded open past upright (hinged on the back top edge, +Y).
     flap = rbox("Flap", (W - 0.002, D * 0.5, t), (0, -D * 0.25, 0), board)
     flap.data.transform(Matrix.Rotation(math.radians(-112), 4, "X"))
@@ -1603,6 +1623,7 @@ def nails():
         z = t + H * 0.55 + rnd.uniform(0.0004, 0.0085)
         nail(Vector((cx, cy, z)), d, L, parts, metal)
     ob = finish(parts, "Nails", sharp_deg=40, merge=0.00001)
+    ob = join([ob] + labels, "Nails")
     REPORT["Nails"] = {"origin": "bottom centre", "size (Unity x, y, z)": (W, H, D)}
     return ob
 
@@ -1625,7 +1646,19 @@ MODELS = [
     ("WallOutlet", wall_outlet, (0.45, -1.0, 0.3)),
     ("LightSwitch", light_switch, (0.45, -1.0, 0.3)),
 ]
-UV_PREVIEW = {"TapeRoll", "DeskLamp", "RubberChicken", "CordBundle", "WallOutlet"}
+UV_PREVIEW = set()
+NO_BAKE = {"WallOutlet", "LightSwitch"}
+# How each is baked: its size (noise and creases scale with it) and the texels a metre of its surface gets.
+BAKE_OPTS = {
+    "Hammer": {"scale": 0.35, "px_per_m": 1100.0},
+    "DeskLamp": {"scale": 0.45, "px_per_m": 900.0},
+    "UtilityShelf": {"scale": 1.0, "px_per_m": 330.0},
+    "SleepingBag": {"scale": 0.8, "px_per_m": 400.0},
+    "CordCoil": {"scale": 0.4, "px_per_m": 450.0},
+    "CordBundle": {"scale": 0.35, "px_per_m": 800.0},
+    "RubberChicken": {"scale": 0.35, "px_per_m": 900.0},
+    "Lantern": {"scale": 0.3, "px_per_m": 1100.0},
+}
 
 
 def uv_checker_preview(res, path, view):
@@ -1664,10 +1697,17 @@ for name, fn, view in MODELS:
     min_u = (lo[0], lo[2], -hi[1])
     max_u = (hi[0], hi[2], -lo[1])
     path = os.path.join(OUT, name + ".fbx")
+    baked = name not in NO_BAKE
+    if baked:
+        info = bake(ms, name, OUT, **BAKE_OPTS.get(name, {"scale": 0.25, "px_per_m": 1400.0}))
+        print("   BAKED", name, info["res"], "uv/m", info["uv_per_m"])
     export(res, path)
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        preview(res, os.path.join(PREVIEW, name + ".png"), view)
+        if baked:
+            preview_lit(ms, os.path.join(PREVIEW, name + ".png"), albedo=bpy.data.images[name + "_Albedo"], view=view)
+        else:
+            preview(res, os.path.join(PREVIEW, name + ".png"), view)
         if name == "RubberChicken":
             ob = ms[0]
             sq = [k.co.copy() for k in ob.data.shape_keys.key_blocks["Squeeze"].data]

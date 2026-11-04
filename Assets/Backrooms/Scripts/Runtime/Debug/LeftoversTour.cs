@@ -19,6 +19,11 @@ namespace Backrooms.DebugTools
         public string[] kinds;
         /// <summary>Models to find by their mesh's name (furniture has no F5 > PLACES entry): the nearest of each.</summary>
         public string[] meshes;
+        /// <summary>Props to find in the plan by their kind's name (PropKind: the good rooms' furniture, merged into the
+        /// chunk's meshes), the nearest of each; "Kind:n" takes the n-th nearest.</summary>
+        public string[] props;
+        /// <summary>How far in front of a prop to stand (0: from its size).</summary>
+        public float propDistance = 0f;
         public float spacing = 36f;
         public int ring = 2;
         /// <summary>Seconds to wait where each one is (its chunk may have to be built again).</summary>
@@ -115,6 +120,44 @@ namespace Backrooms.DebugTools
                     ScreenCapture.CaptureScreenshot(Path.Combine(folder, "mesh_" + mn + ".png"));
                     yield return new WaitForSeconds(0.4f);
                     sb.Append(mn).Append(" at ").Append(c.ToString("F0")).Append("; ");
+                }
+            // The good rooms' furniture, from the plan: stand in front of it, looking at it.
+            if (props != null && ws.World != null)
+                foreach (var pk in props)
+                {
+                    string kname = pk; int nth = 0;
+                    int colon = pk.IndexOf(':');
+                    if (colon > 0) { kname = pk.Substring(0, colon); int.TryParse(pk.Substring(colon + 1), out nth); }
+                    if (!System.Enum.TryParse<PropKind>(kname, out var kind)) { sb.Append(pk).Append(": no such kind; "); continue; }
+                    float C = OfficeBiome.CellSize, D = WorldGenSettings.DistrictCells * C;
+                    var found = new System.Collections.Generic.List<(Vector3 pos, float yaw, Vector3 size, float dist)>();
+                    int hx = Mathf.FloorToInt(home.x / D), hz = Mathf.FloorToInt(home.z / D);
+                    for (int dx = -2; dx <= 2; dx++)
+                    for (int dz = -2; dz <= 2; dz++)
+                    {
+                        var L = ws.World.District(new Vector3Int(hx + dx, 0, hz + dz));
+                        if (L == null) continue;
+                        var origin = new Vector3((hx + dx) * D, 0f, (hz + dz) * D);
+                        foreach (var pr in L.props)
+                            if (pr.kind == kind)
+                            {
+                                var wp = origin + new Vector3(pr.position.x, 0f, pr.position.y);
+                                found.Add((wp, pr.yaw, pr.size, (wp - home).sqrMagnitude));
+                            }
+                    }
+                    if (found.Count <= nth) { sb.Append(pk).Append(": none; "); continue; }
+                    found.Sort((x, y) => x.dist.CompareTo(y.dist));
+                    var f = found[nth];
+                    var fwd = Quaternion.Euler(0f, f.yaw, 0f) * Vector3.forward;
+                    float dist = propDistance > 0f ? propDistance : Mathf.Clamp(Mathf.Max(f.size.x, f.size.y) * 1.1f, 1.0f, 2.6f);
+                    var stand = f.pos + fwd * dist + Quaternion.Euler(0f, f.yaw, 0f) * Vector3.right * (dist * 0.25f);
+                    float ty = kind == PropKind.BreakerPanel ? f.size.y : f.size.y * 0.55f;
+                    var look = f.pos + Vector3.up * ty - (stand + Vector3.up * 1.6f);
+                    ctrl.TeleportSafe(stand, Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg, Mathf.Atan2(-look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg);
+                    yield return new WaitForSeconds(settle);
+                    ScreenCapture.CaptureScreenshot(Path.Combine(folder, "prop_" + pk.Replace(':', '_') + ".png"));
+                    yield return new WaitForSeconds(0.4f);
+                    sb.Append(pk).Append(" at ").Append(f.pos.ToString("F0")).Append("; ");
                 }
             ctrl.TeleportSafe(home, yaw0);
             result = sb.ToString();

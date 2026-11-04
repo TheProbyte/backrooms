@@ -80,6 +80,61 @@ namespace Backrooms.Generation
         /// A square troffer just built (its lens from lensStart, its frame from hwStart in their writers): now and then hanging
         /// askew, one side come off the grid (the dark above shows in the gap), or its lens cracked.
         /// </summary>
+        /// <summary>The writers a modelled fitting went into and where it started in each (to move it after, as one).</summary>
+        readonly List<(MeshWriter w, int start)> _tracked = new List<(MeshWriter, int)>();
+
+        /// <summary>Copies a model into the chunk's meshes as <see cref="Model"/> does, noting where it starts in each writer.</summary>
+        void ModelTracked(FittingModels.Part[] parts, uint m, Vector3 pos, Quaternion rot)
+        {
+            foreach (var p in parts)
+            {
+                if (!p.material) continue;
+                var w = WMask(p.material, m);
+                bool seen = false;
+                foreach (var (tw, _) in _tracked) if (tw == w) { seen = true; break; }
+                if (!seen) _tracked.Add((w, w.VertexCount));
+                w.AddMesh(p.vertices, p.normals, p.tangents, p.uv, p.triangles, pos, rot);
+            }
+        }
+
+        /// <summary>
+        /// A strip's hangers from its two hooks (c: the channel's underside) up to the roof: sash chain on a short drop
+        /// (ChainLinks, 100 mm at a time), a steel cable on a long one (a cable kit: a gripper on the hook, the cable, an
+        /// anchor at the roof), as warehouses hang them.
+        /// </summary>
+        void StripHangers(Vector3 c, float h, float ceil, int roomColor)
+        {
+            uint m = LayerBit(roomColor);
+            const float hookTop = 0.108f;
+            float run = ceil - (h + hookTop);
+            if (run < 0.02f) return;
+            var chain = FittingModels.Get("ChainLinks");
+            for (int k = -1; k <= 1; k += 2)
+            {
+                var foot = c + new Vector3(k * 0.45f, hookTop, 0f);
+                if (run <= 1.2f && chain != null)
+                {
+                    int n = Mathf.FloorToInt(run / 0.1f);
+                    float rest = run - n * 0.1f;
+                    var turn = Quaternion.Euler(0f, k * 20f, 0f);
+                    for (int i = 0; i < n; i++)
+                        foreach (var p in chain)
+                            if (p.material) WMask(p.material, m).AddMesh(p.vertices, p.normals, p.tangents, p.uv, p.triangles, foot + Vector3.up * (i * 0.1f), turn);
+                    if (rest > 0.01f)
+                        foreach (var p in chain)
+                            if (p.material) WMask(p.material, m).AddMesh(p.vertices, p.normals, p.tangents, p.uv, p.triangles, foot + Vector3.up * (n * 0.1f), turn, new Vector3(1f, rest / 0.1f, 1f));
+                }
+                else
+                {
+                    Model("CableGripper", m, foot + Vector3.up * 0.026f, Quaternion.identity);
+                    Model("CableAnchor", m, new Vector3(foot.x, ceil, foot.z), Quaternion.identity);
+                    float y0 = foot.y + 0.066f, y1 = ceil - 0.02f;
+                    if (y1 > y0)
+                        W(_a.lampMetal, roomColor).Box(new Vector3(foot.x, (y0 + y1) * 0.5f, foot.z), new Vector3(0.0018f, y1 - y0, 0.0018f), 1 | 2 | 16 | 32, MeshWriter.MetreUV);
+                }
+            }
+        }
+
         void TrofferWear(Vector2Int cell, int roomColor, Vector3 sc, float h, MeshWriter lens, int lensStart, MeshWriter hw, int hwStart)
         {
             int gx = GX(cell.x), gz = GZ(cell.y);
@@ -95,10 +150,14 @@ namespace Backrooms.Generation
                 var q = Quaternion.AngleAxis(deg, axis);
                 if ((q * (-toHinge)).y > 0f) q = Quaternion.AngleAxis(-deg, axis);       // the free side hangs down
                 Saw(new Vector3(sc.x, h, sc.z), Vector3.down, "light_askew");
-                // The fitting's sheet-metal body above its lens, seen now that it hangs out of the grid.
-                hw.Box(new Vector3(sc.x, h + 0.05f, sc.z), new Vector3(0.56f, 0.1f, 0.56f), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
+                // The fitting's sheet-metal body above its lens, seen now that it hangs out of the grid (the modelled pan,
+                // its ballast channel and the conduit whip up into the plenum; a box if it is not loaded).
+                var housing = FittingModels.Ready ? FittingModels.Get("TrofferHousing") : null;
+                if (housing != null) ModelTracked(housing, LayerBit(roomColor), new Vector3(sc.x, h, sc.z), Quaternion.Euler(0f, 90f * e, 0f));
+                else hw.Box(new Vector3(sc.x, h + 0.05f, sc.z), new Vector3(0.56f, 0.1f, 0.56f), 1 | 2 | 8 | 16 | 32, MeshWriter.MetreUV);
                 lens.RotateFrom(lensStart, pivot, q);
                 hw.RotateFrom(hwStart, pivot, q);
+                foreach (var (tw, ts) in _tracked) tw.RotateFrom(ts, pivot, q);
                 // Its hole in the grid opens on the space above the ceiling (joists, ducts, hanger wires: BuildPlenums).
                 _gaps.Add((new Vector3(sc.x, h, sc.z), h, CellMask(cell.x, cell.y), room));
                 return;

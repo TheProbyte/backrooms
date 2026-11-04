@@ -2,7 +2,23 @@
 
 The game is called **Still Recording** (working title).
 
-Last updated 2026-11-03 (world version 13).
+Last updated 2026-11-04 (world version 13).
+
+## Newest (2026-11-04)
+
+- **Baked textures** (Tools/Blender/bake_kit.py, Generation/BakedMaterials.cs): a model can carry its own colour texture,
+  painted by Cycles from its shape (dirt in the creases from AO, worn edges from a Bevel-node curvature mask broken up
+  with noise, grime and streaks, dust on top, wood grain, flecks, prints); its slots keep their gloss and the fine grain
+  as the shader's detail normal map over the bake's UVs (the carpet's _NORMALMAP + _DETAIL_MULX2 variants: none new).
+- **The good rooms' furniture modelled** (Tools/Blender/build_rooms.py): a 28" top-freezer fridge with a food notice, a
+  countertop microwave, base cabinets and a post-formed worktop made to each counter's length with a drop-in sink, a
+  steel tanker desk with 15" CRTs and a keyboard, a break-room table, a moulded-stone mop sink with its service faucet,
+  hose and a string mop, the breaker panel with its labels and conduit, boltless shelving with paint cans and cleaner.
+- **The ceiling lights' parts modelled** (Tools/Blender/build_lights.py): the troffer's door frame and its hanging-out
+  housing; the warehouse strip's reflector, lampholders, round T8 tubes with their caps, chains on a short drop and
+  a cable kit on a long one.
+- **The hand-held items baked** (build_items2.py, build_items.py): wear and grime on all of them, a printed spray paint
+  label and a printed nail box.
 
 ## Newest (2026-11-03)
 

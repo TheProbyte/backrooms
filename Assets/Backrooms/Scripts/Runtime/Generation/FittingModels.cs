@@ -31,6 +31,11 @@ namespace Backrooms.Generation
             "CornerGuardL", "CornerGuardR", "CloserBody", "CloserArm", "CloserForearm", "CloserShoe", "KickPlate", "DoorWedge",
             "FloorBoxRound", "FloorBoxSquare", "FloorBoxOpen", "Bucket", "Partition_120_135", "Partition_120_165",
             "Partition_90_135", "Partition_90_165",
+            // The good rooms' furniture (Tools/Blender/build_rooms.py, 2026-11-04: baked).
+            "Fridge", "Microwave", "DiningTable", "Desk", "CrtMonitor", "Keyboard", "MopSink", "ServiceFaucet", "Mop",
+            "BreakerPanel", "Shelving_100", "Shelving_110", "CounterCabinet", "CounterSink", "PaintCan", "CleanerJug",
+            // The ceiling lights' parts (Tools/Blender/build_lights.py, 2026-11-04).
+            "TrofferFrame", "TrofferHousing", "StripChannel", "StripTube", "ChainLinks", "CableGripper", "CableAnchor",
         };
 
         static readonly Dictionary<string, Part[]> s_models = new Dictionary<string, Part[]>();
@@ -62,6 +67,25 @@ namespace Backrooms.Generation
             var root = prefab.transform;
             var toModel = Matrix4x4.TRS(Vector3.zero, root.localRotation, root.localScale) * root.worldToLocalMatrix;
             var parts = new List<Part>();
+            // A baked model (Tools/Blender/bake_kit.py): its own colour texture through uv0, a material a slot on it.
+            var albedo = Resources.Load<Texture2D>("Fittings/" + name + "_Albedo");
+            float density = 0f;
+            if (albedo)
+            {
+                var allV = new List<Vector3>(); var allUv = new List<Vector2>(); var allT = new List<int>();
+                foreach (var mf in prefab.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    var mesh = mf.sharedMesh;
+                    if (!mesh || !mesh.isReadable) continue;
+                    var mm = toModel * mf.transform.localToWorldMatrix;
+                    int b0 = allV.Count;
+                    foreach (var p in mesh.vertices) allV.Add(mm.MultiplyPoint3x4(p));
+                    var u = mesh.uv;
+                    for (int i = 0; i < mesh.vertexCount; i++) allUv.Add(i < u.Length ? u[i] : Vector2.zero);
+                    foreach (int i in mesh.triangles) allT.Add(b0 + i);
+                }
+                density = BakedMaterials.UvPerMetre(allV, allUv, allT);
+            }
             foreach (var mf in prefab.GetComponentsInChildren<MeshFilter>(true))
             {
                 var mesh = mf.sharedMesh;
@@ -85,7 +109,8 @@ namespace Backrooms.Generation
                     string slot = s < mats.Length && mats[s] ? mats[s].name.Replace(" (Instance)", "") : "Default";
                     parts.Add(new Part
                     {
-                        slot = slot, material = FittingMaterials.ForSlot(slot),
+                        slot = slot,
+                        material = albedo ? BakedMaterials.For(slot, albedo, density, FittingMaterials.Source) ?? FittingMaterials.ForSlot(slot) : FittingMaterials.ForSlot(slot),
                         vertices = outV, normals = outN, tangents = outT, uv = uv, triangles = mesh.GetTriangles(s),
                     });
                 }
