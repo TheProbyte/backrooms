@@ -56,6 +56,10 @@ namespace Backrooms.Camcorder
             ("partitions", "PARTITIONS", "cubicle partitions"),
             ("window_filled", "FILLED WINDOW", "a filled-in window"),
             ("wooden_chair", "WOODEN CHAIR", "a wooden chair on its own"),
+            ("vending", "VENDING MACHINE", "a drinks vending machine"),
+            ("stop_sign", "STOP SIGN", "a stop sign at a warehouse crossing"),
+            ("lawn_chair", "LAWN CHAIR", "a plastic lawn chair"),
+            ("school_chair", "SCHOOL CHAIRS", "school chairs left in a room"),
             ("cord", "EXTENSION CORD", "an extension cord taped down"),
         };
 

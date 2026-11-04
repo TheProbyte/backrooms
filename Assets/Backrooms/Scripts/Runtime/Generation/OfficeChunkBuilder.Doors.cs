@@ -18,6 +18,7 @@ namespace Backrooms.Generation
             public float yaw;             // turns the model's +z (the side it swings to) to face its room
             public float angle;           // degrees open as built
             public uint mask;             // both rooms' light layers
+            public uint maskFront, maskBack;  // the +z (swing) side's room's layer, the other side's
             public string key;
             public DoorEdges.Edge edge;   // the doorway in world cells (shut, it is a wall to light and sound)
             public int roomFront, roomBack; // rooms on the +z (swing) side and the other side (this chunk's indices)
@@ -100,6 +101,8 @@ namespace Backrooms.Generation
                     {
                         position = pos, yaw = yaw, angle = angle,
                         mask = LayerBit(ra.color) | LayerBit(rb.color),
+                        maskFront = toB ? LayerBit(rb.color) : LayerBit(ra.color),
+                        maskBack = toB ? LayerBit(ra.color) : LayerBit(rb.color),
                         key = $"{_L.coord.x},{_L.storey},{_L.coord.y},{(vertical ? 1 : 0)},{line},{along}",
                         edge = new DoorEdges.Edge
                         {
@@ -130,6 +133,7 @@ namespace Backrooms.Generation
                 var door = go.AddComponent<Interaction.Door>();
                 door.Init(model, d.angle, d.key, d.edge, d.roomFront, d.roomBack);
                 if (d.boltSide != 0) door.AddBolt(d.boltSide);
+                door.SetLightMasks(d.maskFront, d.maskBack);
                 if (d.wedge) DoorHardware.Wedge(root, model, d.mask);
                 DoorMarks(model, d, root.GetComponent<GeneratedChunkResources>());
             }

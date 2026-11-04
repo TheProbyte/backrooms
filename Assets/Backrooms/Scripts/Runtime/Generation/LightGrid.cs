@@ -147,6 +147,7 @@ namespace Backrooms.Generation
             _tileLights = new ComputeBuffer(8192, 4);
             _fixtureLookup = new ComputeBuffer(4, 4); _fixtureLookup.SetData(new uint[4]);
             if (streamer) { streamer.ChunkLoaded += OnChunkChanged; streamer.ChunkUnloaded += OnChunkUnloaded; }
+            DoorEdges.LightChanged += OnDoorLight;
             DoorEdges.Changed += OnDoorChanged;
             if (bindGlobals)
             {
@@ -162,6 +163,7 @@ namespace Backrooms.Generation
             Ready = false;
             if (bindGlobals) LightGridGlobals.BindFallbacks();          // never leave the shader pointing at released resources
             if (streamer) { streamer.ChunkLoaded -= OnChunkChanged; streamer.ChunkUnloaded -= OnChunkUnloaded; }
+            DoorEdges.LightChanged -= OnDoorLight;
             DoorEdges.Changed -= OnDoorChanged;
             void Rel(RenderTexture r) { if (r) { r.Release(); if (Application.isPlaying) Destroy(r); else DestroyImmediate(r); } }
             Rel(_a); Rel(_b); Rel(_bounceSrc); Rel(_bounce0); Rel(_bounce1);
@@ -289,6 +291,8 @@ namespace Backrooms.Generation
 
         /// <summary>A door shut or opened: its chunk is encoded again (the edge is a wall or an opening) and the light
         /// around it is drawn again.</summary>
+        void OnDoorLight(DoorEdges.Edge e, float openness) => OnDoorChanged(e, openness <= 0f);
+
         void OnDoorChanged(DoorEdges.Edge e, bool shut)
         {
             _encoded.Remove(e.chunk);

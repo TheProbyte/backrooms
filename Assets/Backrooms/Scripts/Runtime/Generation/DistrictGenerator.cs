@@ -902,7 +902,7 @@ namespace Backrooms.Generation
                 int seg = 0;
                 for (int x = rc.xMin + 2; x + 2 <= rc.xMax - 2; x += 2)
                 {
-                    if (++seg % (crossEvery + 1) == 0) continue;               // cross aisle
+                    if (++seg % (crossEvery + 1) == 0) { CrossingSign(L, r, x, z); continue; }   // cross aisle (a stop sign now and then)
                     bool blocked = false;
                     foreach (var p in L.pillars)
                         if (p.vertex.x >= x - 1 && p.vertex.x <= x + 3 && p.vertex.y >= z - 1 && p.vertex.y <= z + 2) blocked = true;
@@ -911,6 +911,21 @@ namespace Backrooms.Generation
                         yaw = 0f, size = new Vector3(2.3f, h, 0.95f), variant = rng.Next(1 << 16), roomColor = r.color });
                 }
             }
+        }
+
+        /// <summary>
+        /// Now and then a stop sign where an aisle meets a cross aisle (2026-11-04), as warehouses mark forklift crossings: in
+        /// the aisle north of rack row z, against the row's end, facing the traffic coming up the aisle. Its own dice, so the
+        /// racks stay as they were.
+        /// </summary>
+        static void CrossingSign(OfficeLayout L, Room r, int x, int z)
+        {
+            if (z + 3 > r.rect.yMax - 3 || x - 1 < r.rect.xMin) return;           // an aisle beyond the row, a rack before the crossing
+            var sr = new System.Random(Hash(r.rect.x * 31 + x, r.rect.y * 17 + z, 0x5709, 3));
+            if (sr.NextDouble() > 0.3) return;
+            float C = OfficeBiome.CellSize;
+            L.props.Add(new Prop { kind = PropKind.StopSign, position = new Vector2(x * C - 0.32f, (z + 1) * C + 0.34f), yaw = -90f,
+                size = new Vector3(0.61f, 2.06f, 0.5f), variant = sr.Next(1 << 16), roomColor = r.color });
         }
 
         static void TryHalfWall(OfficeLayout L, System.Random rng, Room r)

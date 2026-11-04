@@ -24,6 +24,7 @@ namespace Backrooms.Generation
         {
             var zones = PoolMaterials.Zones;
             if (zones == null || zones.Length < 4 || r == null) return TileMat;
+            if (r.poolTile >= 0 && r.poolTile < zones.Length && zones[r.poolTile]) return zones[r.poolTile];   // build mode's choice
             var d = WorldGenerator.DistrictOf(_L.coord);
             uint h = (uint)(r.globalId * 73856093) ^ (uint)(d.x * 19349663) ^ (uint)(d.y * 83492791) ^ (uint)(_L.storey * 2654435761u);
             h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15;

@@ -68,6 +68,8 @@ namespace Backrooms.CustomRooms
                 for (int z = 1; z < n; z++)
                     if (!L.rooms[L.roomOf[x, z - 1]].custom && !L.rooms[L.roomOf[x, z]].custom) L.hEdges[x, z] = EdgeKind.Open;
 
+                // A Poolrooms room: the preview is built as the Poolrooms (their tiles, water and light) round it.
+                if (PoolRoomStamp.Any(v)) { L.style = ZoneStyle.Pool; L.pool = new PoolCell[n, n]; }
                 Landmarks.Connect(L, placement, rooms);
                 foreach (var r in L.rooms) r.color = r.id;
                 DistrictGenerator.PlaceFixtures(L, new System.Random(7));

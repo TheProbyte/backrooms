@@ -41,6 +41,12 @@ namespace Backrooms.Generation
             "RackLabel_3", "ColumnGuard", "LoadSign",
             // The Poolrooms' fittings (Tools/Blender/build_pool.py, 2026-11-04; drawn there with PoolLit copies).
             "LifeguardChair", "PoolShower", "LadderTread", "StallBracket", "CoatHook", "BleacherCap", "BleacherBracket",
+            // The drinks vending machine (Tools/Blender/build_vending.py, 2026-11-04).
+            "VendingMachine", "VendingGlow", "VendingPlug",
+            // Signs (Tools/Blender/build_signs.py, 2026-11-04).
+            "ExitSign", "ExitCombo", "ExitFace", "StopSign",
+            // Chairs (Tools/Blender/build_chairs.py, 2026-11-04): movable, built from these at spawn.
+            "LawnChair_White", "LawnChair_Green", "SchoolChair_Blue", "SchoolChair_Orange",
         };
 
         static readonly Dictionary<string, Part[]> s_models = new Dictionary<string, Part[]>();

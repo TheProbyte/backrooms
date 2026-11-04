@@ -51,6 +51,7 @@ namespace Backrooms.Generation
         public bool noDoors;          // no random doors (stair halls and elevator shafts get their doors from their landmark)
         public AnnexRole role;        // stair hall, shaft ... (see AtriumAnnex)
         public bool custom;           // part of a player-built room: its own lights, doors and dressing (see CustomRooms)
+        public int poolTile = -1;     // a build-mode Poolrooms room's tiles (PoolMaterials.Zones 0..3), -1 the world's choice
         public bool spiral;           // Poolrooms: the tower of a spiral stair (storey 0: the stair; storey 1: its well and landing)
         /// <summary>An emptied-out early-2000s living room (the Living rooms biome, BiomeRules.homeChance): orange-peel or
         /// clouds walls, carpet, baseboards, a flat plaster ceiling with flush-mount lights, sparse furniture.</summary>
@@ -283,6 +284,20 @@ namespace Backrooms.Generation
         Partition,
         /// <summary>A wooden chair on its own in the middle of a room (DistrictGenerator.PlaceLeftovers): movable.</summary>
         WoodenChair,
+        /// <summary>A drinks vending machine backed against a wall (SpecialRooms.TryVending: break rooms, and now and then a
+        /// hallway or an office): position the middle of its foot, yaw its front, size its width x height x depth;
+        /// variant bit 0 on its own power (else the district's breaker), bit 1 unplugged, bit 2 its outlet on its left,
+        /// the rest its own dice. Fixed in place (about 290 kg).</summary>
+        VendingMachine,
+        /// <summary>A stop sign on its post in a rubber base at a warehouse's aisle crossing (DistrictGenerator.Racks): position
+        /// the middle of its base, yaw its face. Fixed in place.</summary>
+        StopSign,
+        /// <summary>A one-piece resin lawn chair (DistrictGenerator.PlaceLeftovers: an odd room, a pool's deck): movable;
+        /// variant bit 0 green (else white).</summary>
+        LawnChair,
+        /// <summary>A classroom chair, plastic shell on a steel frame (an office left with a few): movable; variant bit 0
+        /// orange (else blue).</summary>
+        SchoolChair,
     }
 
     /// <summary>Level 0's kinds of room (DistrictGenerator.StyleOf): the backrooms (wallpaper), living rooms (painted,

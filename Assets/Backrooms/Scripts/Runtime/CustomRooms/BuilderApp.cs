@@ -231,6 +231,10 @@ namespace Backrooms.CustomRooms
             ClearPreview();
             if (!assets) { SetStatus("The builder has no office assets assigned."); return; }
             _bp.Validate();
+            // The modelled fittings and furniture, and the Poolrooms' materials, as the world loads them (2026-11-04).
+            FittingModels.Ensure(assets);
+            PoolMaterials.Ensure();
+            PoolMaterials.PrepareBaked();
             var L = CustomRoomHarness.BuildLayout(_bp, _vi, 0, out _placement);
             _layoutN = L.N;
             _origin = new Vector2(_placement.rect.x, _placement.rect.y) * C;

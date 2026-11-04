@@ -39,6 +39,9 @@ namespace Backrooms.Interaction
                 case MovableKind.OfficeChair: return "OFFICE CHAIR";
                 case MovableKind.Table: return "TABLE";
                 case MovableKind.Pallet: return "PALLET";
+                case MovableKind.WoodenChair: return "WOODEN CHAIR";
+                case MovableKind.LawnChair: return "LAWN CHAIR";
+                case MovableKind.SchoolChair: return "CHAIR";
                 default: return "BOX";
             }
         }

@@ -357,6 +357,22 @@ namespace Backrooms.Generation
             Vector3 into = -outDir, right = Vector3.Cross(Vector3.up, outDir);
             float y = OfficeBiome.DoorHeaderHeight + 0.05f + 0.095f;
             Vector3 back = edge - outDir * (T * 0.5f);
+            // The modelled sign (Tools/Blender/build_signs.py, 2026-11-04): a thermoplastic housing, its stencil face lit
+            // from inside, its test button and AC lamp; one in three a combo with its two emergency lamp heads on top.
+            var face = FittingModels.Ready && MaterialMaps.ExitFace ? FittingModels.Get("ExitFace") : null;
+            if (face != null)
+            {
+                var q = Quaternion.LookRotation(into);
+                var at = back + Vector3.up * y;
+                int gx = Mathf.RoundToInt((_origin.x + at.x) * 4f), gz = Mathf.RoundToInt((_origin.z + at.z) * 4f);
+                bool combo = Dice(gx, gz, 3070) < 0.33f;
+                if (Model(combo ? "ExitCombo" : "ExitSign", m, at, q))
+                {
+                    foreach (var part in face)
+                        WMask(MaterialMaps.ExitFace, m).AddMesh(part.vertices, part.normals, part.tangents, part.uv, part.triangles, at, q);
+                    return;
+                }
+            }
             WMask(_a.fixtureHousing, m).Box(back + into * 0.0275f + Vector3.up * y, Mathf.Abs(right.x) > 0.5f ? new Vector3(0.32f, 0.19f, 0.055f) : new Vector3(0.055f, 0.19f, 0.32f),
                                             1 | 2 | 4 | 8 | 16 | 32, MeshWriter.MetreUV);
             Vector3 c = back + into * 0.0558f + Vector3.up * y;

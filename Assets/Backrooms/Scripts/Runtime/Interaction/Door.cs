@@ -82,17 +82,81 @@ namespace Backrooms.Interaction
         void OnDestroy()
         {
             if (_shutRegistered) DoorEdges.Set(_edge, false);
+            DoorEdges.ClearLight(_edge);
             foreach (var r in new[] { _spillFront, _spillBack })
                 if (r) { var mf = r.GetComponent<MeshFilter>(); if (mf && mf.sharedMesh) Destroy(mf.sharedMesh); }
         }
 
-        /// <summary>Shut (or as good as), the doorway is a wall to light and sound.</summary>
+        /// <summary>Shut (or as good as), the doorway is a wall to sound; to light it opens by degrees.</summary>
         void UpdateShut()
         {
+            UpdateLight(false);
             bool shut = Angle < ShutBelow;
             if (shut == _shutRegistered) return;
             _shutRegistered = shut;
             DoorEdges.Set(_edge, shut);
+        }
+
+        // ---------------- Light through the doorway (2026-11-04) ----------------
+        // The owner: light showed through shut doors in spots, and came through all at once as one opened. Now (1) the
+        // doorway lets light by in proportion to how far the door is open (DoorEdges.SetLight: the light grid narrows
+        // the opening), in tenths, a few times a second as it swings; (2) while it is nearly shut the door and its frame
+        // take the light of the room on the side they are seen from only (they had both rooms' layers, so the lit
+        // room's lamps shone on their edges and showed through on the dark side as bright lines).
+
+        const float LightShut = 1.2f, LightFull = 62f, OneSided = 14f;
+        float _lightOpen = -1f, _lightAt = -10f;
+        uint _maskFront, _maskBack;
+        Renderer[] _lit;
+        int _litSide = 2;
+        static Camera s_cam;
+
+        /// <summary>How open to light the doorway is at this angle: 0 shut, eased up to 1 wide open, in tenths.</summary>
+        static float LightAt(float angle)
+        {
+            if (angle < LightShut) return 0f;
+            float t = Mathf.InverseLerp(LightShut, LightFull, angle);
+            float o = Mathf.Sin(t * Mathf.PI * 0.5f);                  // the gap widens fastest at first, as a door's does
+            return Mathf.Max(0.1f, Mathf.Round(o * 10f) / 10f);
+        }
+
+        void UpdateLight(bool force)
+        {
+            float o = LightAt(Angle);
+            if (!force && Mathf.Approximately(o, _lightOpen)) return;
+            // (A few times a second at most: each change has the light grid redraw around the door.)
+            if (!force && _lightOpen >= 0f && Time.time - _lightAt < 0.12f && o > 0f && o < 1f) return;
+            _lightOpen = o; _lightAt = Time.time;
+            DoorEdges.SetLight(_edge, o);
+        }
+
+        /// <summary>The two rooms' light layers (the +z side's, the other's): the door's renderers take one or both.</summary>
+        public void SetLightMasks(uint front, uint back)
+        {
+            _maskFront = front; _maskBack = back;
+            var list = new List<Renderer>();
+            foreach (var r in GetComponentsInChildren<Renderer>(true))
+                if (r != _spillFront && r != _spillBack) list.Add(r);
+            _lit = list.ToArray();
+            _litSide = 2;
+            UpdateLitSide();
+        }
+
+        /// <summary>Nearly shut: lit by the room it is seen from; open: by both.</summary>
+        void UpdateLitSide()
+        {
+            if (_lit == null || _maskFront == 0 || _maskBack == 0) return;
+            if (!s_cam) s_cam = Camera.main;
+            int side = 0;
+            if (Angle < OneSided && s_cam)
+            {
+                Vector3 local = transform.InverseTransformPoint(s_cam.transform.position);
+                side = local.z > 0.25f ? 1 : local.z < -0.25f ? -1 : 0;
+            }
+            if (side == _litSide) return;
+            _litSide = side;
+            uint mask = side > 0 ? _maskFront : side < 0 ? _maskBack : _maskFront | _maskBack;
+            foreach (var r in _lit) if (r) r.renderingLayerMask = mask;
         }
 
         // ---------------- Light under the door ----------------
@@ -138,7 +202,8 @@ namespace Backrooms.Interaction
             if (!_spillFront || now < _nextSpill) return;
             _nextSpill = now + 0.12f + (_driftSeed % 0.08f);
             var lights = FindLights();
-            float shut = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(ShutBelow * 0.5f, 8f, Angle));
+            // (It fades as the gap opens and the room's own light comes in by it, over the first 20 degrees.)
+            float shut = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(ShutBelow * 0.5f, 20f, Angle));
             float front = lights ? lights.RoomLight(_edge.chunk, _roomBack, now) : 0f;       // the front floor shows the back room
             float back = lights ? lights.RoomLight(_edge.chunk, _roomFront, now) : 0f;
             _spillF = front * shut; _spillB = back * shut;
@@ -419,6 +484,8 @@ namespace Backrooms.Interaction
         {
             float dt = Time.deltaTime;
             UpdateSpill(Time.time);
+            UpdateLitSide();
+            if (_lightOpen >= 0f && !Mathf.Approximately(LightAt(Angle), _lightOpen)) UpdateLight(false);
             Drift(dt);
             // Levers spring back up when not held.
             bool posed = false;

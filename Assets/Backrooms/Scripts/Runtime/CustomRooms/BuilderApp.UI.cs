@@ -346,6 +346,7 @@ namespace Backrooms.CustomRooms
             int ki = System.Array.IndexOf(_kinds, rs.kind); if (ki < 0) ki = 0;
             if (ImUi.Button(col.Row(), "KIND: " + _kindNames[ki], false, "The kind of room: how the world dresses and lights around it."))
             { PushUndo(); rs.kind = _kinds[(ki + 1) % _kinds.Length]; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick); }
+            DrawPoolOptions(ref col, rs);
             col.Space(6);
             var cr = col.Row();
             if (ImUi.Button(new Rect(cr.x, cr.y, cr.width * 0.5f - 3, cr.height), "COPY ROOM", false, "Copy its cells, settings, walls, doors, lights and things. [Ctrl+C]")) CopyArea();
@@ -360,6 +361,84 @@ namespace Backrooms.CustomRooms
                 v.rooms.RemoveAt(gone); _activeRoom = 0; _selected = Selection.None; Changed();
                 BuilderSounds.Play(BuilderSounds.Sfx.Delete);
             }
+        }
+
+        static readonly string[] PoolTileNames = { "WORLD'S CHOICE", "SAGE", "CREAM", "MINT", "AQUA" };
+        static readonly string[] PoolShapeNames = { "POOL WITH A DECK", "FLOODED", "DECK ONLY" };
+        static readonly string[] PoolRoofNames = { "CLOSED", "SQUARE OPENINGS", "ROUND OPENINGS", "A LONG STRIP", "OPEN SKY" };
+
+        /// <summary>
+        /// POOLROOMS (2026-11-04): the room made in the Poolrooms' style, and everything about it: its tiles, its water (a
+        /// pool inset with a deck round it, the whole room flooded, or only a deck), how wide the deck is, how deep the
+        /// shallow and deep ends are and whether the floor slopes between them, lanes, the roof's openings to the sky, and
+        /// its fittings (ladders, a lifeguard's chair, showers, bleachers, lawn chairs, a drain). Turning it on adds the
+        /// Poolrooms to where the room spawns.
+        /// </summary>
+        void DrawPoolOptions(ref ImUi.Column col, RoomSettings rs)
+        {
+            if (rs.pool == null) rs.pool = new PoolRoomSettings();
+            var ps = rs.pool;
+            col.Space(6);
+            bool on = ps.enabled;
+            Toggled(ref on, col.Row(), "POOLROOMS ROOM", "Tiled, with water, under the Poolrooms' light. It spawns in the Poolrooms.");
+            if (on != ps.enabled)
+            {
+                PushUndo(); ps.enabled = on;
+                if (on && !_bp.zones.Contains("Poolrooms")) _bp.zones.Add("Poolrooms");
+                if (!on && !AnyPoolRoom()) _bp.zones.Remove("Poolrooms");
+                Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick);
+            }
+            if (!ps.enabled) return;
+            int ti = Mathf.Clamp(ps.tiles + 1, 0, PoolTileNames.Length - 1);
+            if (ImUi.Button(col.Row(), "TILES: " + PoolTileNames[ti], false, "Its tiles' colour (the world's choice: mostly sage, some cream, mint or aqua)."))
+            { PushUndo(); ps.tiles = (ti + 1) % PoolTileNames.Length - 1; Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick); }
+            if (ImUi.Button(col.Row(), "WATER: " + PoolShapeNames[(int)ps.shape], false, "A pool with a deck round it, the whole room flooded, or only a tiled deck."))
+            { PushUndo(); ps.shape = (PoolShape)(((int)ps.shape + 1) % PoolShapeNames.Length); Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick); }
+            if (ps.shape == PoolShape.Inset)
+            {
+                float dk = Slide(col.Row(), "Deck (cells)", ps.deck, 1f, 4f, "0", "How wide the deck round the pool is.");
+                int dki = Mathf.RoundToInt(dk);
+                if (dki != ps.deck) { PushUndo(); ps.deck = dki; Changed(); }
+            }
+            if (ps.shape != PoolShape.Deck)
+            {
+                float sh = Slide(col.Row(), "Shallow end (m)", ps.shallow, 0.3f, 2.5f, "0.0", "How deep the water is at the shallow end.");
+                sh = Mathf.Round(sh * 10f) / 10f;
+                if (Mathf.Abs(sh - ps.shallow) > 0.001f) { PushUndo(); ps.shallow = sh; if (ps.deep < sh) ps.deep = sh; Changed(); }
+                float dp = Slide(col.Row(), "Deep end (m)", ps.deep, 0.3f, 4.5f, "0.0", "How deep the water is at the deep end.");
+                dp = Mathf.Round(dp * 10f) / 10f;
+                if (Mathf.Abs(dp - ps.deep) > 0.001f) { PushUndo(); ps.deep = Mathf.Max(dp, ps.shallow); Changed(); }
+                bool slope = ps.slope;
+                Toggled(ref slope, col.Row(), "Floor slopes shallow to deep", "Along the pool's length; else it is all the deep end's depth.");
+                if (slope != ps.slope) { PushUndo(); ps.slope = slope; Changed(); }
+                float ln = Slide(col.Row(), "Lanes", ps.lanes, 0f, 8f, "0", "Lanes marked on its floor and roped off (0: none).");
+                int lni = Mathf.RoundToInt(ln);
+                if (lni != ps.lanes) { PushUndo(); ps.lanes = lni; Changed(); }
+            }
+            if (ImUi.Button(col.Row(), "ROOF: " + PoolRoofNames[(int)ps.roof], false, "Openings in the roof to the sky (the sun comes in through them)."))
+            { PushUndo(); ps.roof = (PoolRoof)(((int)ps.roof + 1) % PoolRoofNames.Length); Changed(); BuilderSounds.Play(BuilderSounds.Sfx.Tick); }
+            ImUi.Text_(col.Row(22), "Fittings");
+            void Flag(Rect row, ref bool f, string label, string tip)
+            {
+                bool x = f;
+                Toggled(ref x, row, label, tip);
+                if (x != f) { PushUndo(); f = x; Changed(); }
+            }
+            if (ps.shape != PoolShape.Deck)
+            {
+                Flag(col.Row(), ref ps.ladders, "Ladders into the water", "Chrome ladders at the shallow end's sides.");
+                Flag(col.Row(), ref ps.lifeguard, "A lifeguard's chair", "On the deck at the middle of a long side.");
+                Flag(col.Row(), ref ps.drain, "A drain in the deep end", "A grate in the deepest part of the floor.");
+            }
+            Flag(col.Row(), ref ps.showers, "Showers", "On a wall, a column each with its push-button valve.");
+            Flag(col.Row(), ref ps.bleachers, "Bleachers", "Three tiled tiers with aluminium planks, against a wall (needs a deck about two cells deep).");
+            Flag(col.Row(), ref ps.lawnChairs, "Lawn chairs", "Two or three on the deck, facing the water.");
+        }
+
+        bool AnyPoolRoom()
+        {
+            foreach (var v in _bp.variants) if (PoolRoomStamp.Any(v)) return true;
+            return false;
         }
 
         /// <summary>PUT IN THE WORLD: whether the room spawns, how often, where.</summary>

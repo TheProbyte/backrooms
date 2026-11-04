@@ -26,6 +26,7 @@ namespace Backrooms.Interaction
         /// <summary>Taken up and carried rather than pushed: a light box, an office chair, an empty pallet.</summary>
         public bool IsLight(MovableProp p) => p && ((p.Spec.kind == MovableKind.Box && p.Mass <= carryMass)
                                                      || p.Spec.kind == MovableKind.OfficeChair || p.Spec.kind == MovableKind.WoodenChair
+                                                     || p.Spec.kind == MovableKind.LawnChair || p.Spec.kind == MovableKind.SchoolChair
                                                      || (p.Spec.kind == MovableKind.Pallet && !PalletLoaded(p)));
 
         /// <summary>An empty pallet, taken or being taken under the arm: one hand, the camcorder kept at the eye (round 14:
@@ -115,6 +116,8 @@ namespace Backrooms.Interaction
                     break;
                 }
                 case MovableKind.OfficeChair:
+                case MovableKind.LawnChair:
+                case MovableKind.SchoolChair:
                 {
                     // Facing your way, its back toward you; ahead on the hand's side, 8 cm off the floor.
                     _carryRot = Quaternion.identity;

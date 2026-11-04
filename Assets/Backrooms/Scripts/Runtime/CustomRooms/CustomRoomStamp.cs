@@ -339,6 +339,7 @@ namespace Backrooms.CustomRooms
                 // For now loot is a loose cardboard box; the item name travels in the blueprint for the systems that will use it.
                 L.props.Add(new Prop { kind = PropKind.Box, position = pos, yaw = (float)(rng.NextDouble() * 360.0), size = new Vector3(0.5f, 0.38f, 0.4f), variant = rng.Next(1 << 16), roomColor = L.roomOf[cx, cz] });
             }
+            PoolRoomStamp.Apply(L, p, v, xf, origin);      // its Poolrooms rooms' water, roof and fittings (2026-11-04)
             Extras(L, p, v, xf, origin);
         }
 

@@ -284,6 +284,45 @@ namespace Backrooms.Generation
                     Add(L, r, PropKind.OfficeChair, at, tyaw + (s > 0 ? 180f : 0f) + (float)(rng.NextDouble() - 0.5) * 40f, new Vector3(0.6f, 1f, 0.6f), rng.Next(8));
                 }
             }
+            // A drinks machine against a free wall, more often than not (2026-11-04; its own dice).
+            var vr = new System.Random(DistrictGenerator.Hash(r.rect.x, r.rect.y, r.rect.width, 0x51E1D));
+            if (vr.NextDouble() < 0.6) TryVending(L, r, vr, occ, doorSide, true);
+        }
+
+        /// <summary>The vending machine's footprint (m): width, height, depth (Tools/Blender/build_vending.py).</summary>
+        public static readonly Vector3 VendingSize = new Vector3(0.99f, 1.83f, 0.84f);
+
+        /// <summary>
+        /// A drinks vending machine backed against a free wall cell of the room (not by a door, nothing in front of it), its
+        /// outlet put in beside it at 0.3 m on the same wall. goodRoom: the break room's (power of its own); elsewhere most
+        /// are on their own circuit too, some on the district's breaker, a few unplugged. True if one went in.
+        /// </summary>
+        internal static bool TryVending(OfficeLayout L, Room r, System.Random rng, HashSet<Vector2Int> occ, int doorSide, bool goodRoom)
+        {
+            var slots = WallSlots(L, r, occ, 1, s => s != doorSide);
+            // Not where it would stand in a doorway's swing or block the way: the cell in front must be the room's and clear.
+            for (int i = slots.Count - 1; i >= 0; i--)
+            {
+                var (x, z, s) = slots[i];
+                int fx = x + (s == 0 ? 1 : s == 1 ? -1 : 0), fz = z + (s == 2 ? 1 : s == 3 ? -1 : 0);
+                bool ok = r.rect.Contains(new Vector2Int(fx, fz)) && !occ.Contains(new Vector2Int(fx, fz)) && !DistrictGenerator.CellHasDoor(L, fx, fz)
+                          && Mathf.Min(r.rect.width, r.rect.height) >= 2;
+                foreach (var pr in L.props)
+                    if ((pr.position - new Vector2((x + 0.5f) * C, (z + 0.5f) * C)).sqrMagnitude < 1.4f * 1.4f) { ok = false; break; }
+                if (!ok) slots.RemoveAt(i);
+            }
+            if (slots.Count == 0) return false;
+            var (vx, vz, vs) = slots[rng.Next(slots.Count)];
+            var (pos, yaw) = OnWall(vx, vz, vs, VendingSize.z + 0.06f, 0.5f);
+            bool left = rng.NextDouble() < 0.5;
+            double power = rng.NextDouble();
+            bool own = goodRoom || power < 0.65, unplugged = !goodRoom && power > 0.92;
+            int variant = (own ? 1 : 0) | (unplugged ? 2 : 0) | (left ? 4 : 0) | (rng.Next(1 << 20) << 3);
+            L.props.Add(new Prop { kind = PropKind.VendingMachine, position = pos, yaw = yaw, size = VendingSize, variant = variant, roomColor = r.color });
+            occ.Add(new Vector2Int(vx, vz));
+            // Its outlet, just past its side on the same wall.
+            L.plates.Add(new WallPlate { cell = new Vector2Int(vx, vz), side = vs, t = left ? 0.045f : 0.955f, height = 0.3f, roomColor = r.color, live = own });
+            return true;
         }
 
         static void Stock(OfficeLayout L, System.Random rng, Room r, HashSet<Vector2Int> occ, int doorSide)
@@ -344,7 +383,7 @@ namespace Backrooms.Generation
             return (pos, yaw);
         }
 
-        static bool Free(OfficeLayout L, HashSet<Vector2Int> occ, int x, int z, int side) =>
+        internal static bool Free(OfficeLayout L, HashSet<Vector2Int> occ, int x, int z, int side) =>
             L.EdgeOf(x, z, side) == EdgeKind.Wall && !occ.Contains(new Vector2Int(x, z)) && !DistrictGenerator.CellHasDoor(L, x, z);
 
         /// <summary>Single wall cells (for wall-mounted things).</summary>

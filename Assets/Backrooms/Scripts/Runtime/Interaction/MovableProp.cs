@@ -94,6 +94,14 @@ namespace Backrooms.Interaction
             var builtMeshes = new System.Collections.Generic.List<Mesh>();
             if (spec.cardboard && spec.materials != null) BuildCardboard(root, spec, builtMeshes);
             if (spec.kind == MovableKind.Pallet && spec.materials != null && spec.materials.Length > 0) BuildPallet(root, spec, builtMeshes);
+            if (spec.kind == MovableKind.LawnChair || spec.kind == MovableKind.SchoolChair)
+            {
+                // The modelled chair (Generation.FittingModels, its colour by the variant), lit by the Poolrooms' light there.
+                string model = spec.kind == MovableKind.LawnChair ? ((spec.variant & 1) != 0 ? "LawnChair_Green" : "LawnChair_White")
+                                                                 : ((spec.variant & 1) != 0 ? "SchoolChair_Orange" : "SchoolChair_Blue");
+                BuildModel(root, spec, builtMeshes, model);
+                Generation.PoolLitSwitch.Attach(root);
+            }
 
             var shape = MovableShapes.Build(spec, root);
             // (Casters: only the base rolls, and only while it stands on them: MovableProp.FixedUpdate.)
@@ -203,6 +211,24 @@ namespace Backrooms.Interaction
             var print = new MeshWriter { worldOffset = spec.position };
             CardboardBoxGeometry.Build(board, tape, print, Vector3.zero, spec.size, 0f, new System.Random(spec.variant));
             OneRenderer(root, spec, meshes, "Carton", new[] { board, tape, print });
+        }
+
+        /// <summary>A movable built from a modelled fitting's parts (FittingModels): one renderer, a submesh a material.</summary>
+        static void BuildModel(GameObject root, MovableSpec spec, System.Collections.Generic.List<Mesh> meshes, string model)
+        {
+            var parts = Generation.FittingModels.Ready ? Generation.FittingModels.Get(model) : null;
+            if (parts == null) return;
+            var writers = new System.Collections.Generic.List<MeshWriter>();
+            var mats = new System.Collections.Generic.List<Material>();
+            foreach (var part in parts)
+            {
+                if (!part.material) continue;
+                int k = mats.IndexOf(part.material);
+                if (k < 0) { k = mats.Count; mats.Add(part.material); writers.Add(new MeshWriter { worldOffset = spec.position }); }
+                writers[k].AddMesh(part.vertices, part.normals, part.tangents, part.uv, part.triangles, Vector3.zero, Quaternion.identity);
+            }
+            spec.materials = mats.ToArray();
+            OneRenderer(root, spec, meshes, model, writers.ToArray());
         }
 
         /// <summary>

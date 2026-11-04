@@ -64,7 +64,7 @@ namespace Backrooms.Audio
                 switch (prop.Spec.kind)
                 {
                     case Interaction.MovableKind.Sofa: case Interaction.MovableKind.Armchair: body = ImpactBody.Soft; break;
-                    case Interaction.MovableKind.OfficeChair: body = ImpactBody.Chair; break;
+                    case Interaction.MovableKind.OfficeChair: case Interaction.MovableKind.LawnChair: case Interaction.MovableKind.SchoolChair: body = ImpactBody.Chair; break;
                     case Interaction.MovableKind.Table: case Interaction.MovableKind.Pallet: case Interaction.MovableKind.WoodenChair: body = ImpactBody.Wood; break;
                     case Interaction.MovableKind.Box: body = ImpactBody.Cardboard; break;
                 }

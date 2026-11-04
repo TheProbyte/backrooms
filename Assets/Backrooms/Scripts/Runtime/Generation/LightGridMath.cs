@@ -124,16 +124,19 @@ namespace Backrooms.Generation
             var room = L.RoomAt(x, z);
             uint o = Loaded;
             uint west = Kind(L.vEdges[x, z]), south = Kind(L.hEdges[x, z]);
-            // A shut door is a wall to light (DoorEdges): the edge's world cell line and position.
-            if (DoorEdges.Count > 0)
+            // A door is a wall to light when shut, and lets light by as it opens (DoorEdges.LightOpenness, 2026-11-04): its
+            // opening's top comes down to that share of its height, so the light from the room behind comes in a little at
+            // a time, low first, as a door's gap does. The edge's world cell line and position.
+            float openW = 1f, openS = 1f;
+            if (DoorEdges.LightCount > 0 || DoorEdges.Count > 0)
             {
                 int n = L.N, gx = L.coord.x * n + x, gz = L.coord.y * n + z;
-                if (west != Wall && DoorEdges.IsShut(true, gx, gz, L.storey)) west = Wall;
-                if (south != Wall && DoorEdges.IsShut(false, gz, gx, L.storey)) south = Wall;
+                if (west != Wall) { openW = DoorEdges.LightOpenness(true, gx, gz, L.storey); if (openW <= 0f) west = Wall; }
+                if (south != Wall) { openS = DoorEdges.LightOpenness(false, gz, gx, L.storey); if (openS <= 0f) south = Wall; }
             }
             o |= west | (south << 2);
-            if (west != Wall) o |= PackTop(Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, true, x, z, 1).top), 4, 27);
-            if (south != Wall) o |= PackTop(Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, false, z, x, 1).top), 10, 28);
+            if (west != Wall) o |= PackTop(Math.Max(1u, Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, true, x, z, 1).top * openW)), 4, 27);
+            if (south != Wall) o |= PackTop(Math.Max(1u, Tenths(OfficeChunkBuilder.ViewOpening(L, neighbour, false, z, x, 1).top * openS)), 10, 28);
             // A broken wall (Destruction.WallDamage): still a wall, flagged as holed (the hole table says where it is open).
             if (Destruction.WallDamage.Count > 0)
             {

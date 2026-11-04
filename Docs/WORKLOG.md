@@ -15,6 +15,69 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-04 11:30  Claude Code  A plastic lawn chair and a school chair; a POOLROOMS ROOM option in the room builder
+- Owner: "fully render and recheck making a plastic lawn chair and a school chair"; "add poolrooms option for creating
+  a poolrooms room in the room builder. with full options for everything".
+- New Tools/Blender/build_chairs.py -> Resources/Fittings: LawnChair_White/_Green (one-piece resin stacking chair:
+  a moulded back panel curved round the sitter with slots through it and a rolled top rim, arms down into the front
+  legs, flared legs with feet) and SchoolChair_Blue/_Orange (a moulded polypropylene shell with a hand hole, on a
+  tubular steel frame with glides). curved_panel() builds a curved sheet and solidifies it (both faces and the rim).
+- Movable: MovableKind LawnChair (2.5 kg) and SchoolChair (4.5 kg), carried like the office chair, named in the grab
+  hint, chair impact sounds. PropKind LawnChair / SchoolChair built by MovableProp.BuildModel (PoolLit in the Poolrooms).
+- Where: rare in offices (DistrictGenerator.Leftovers.TryPlastic: a lawn chair 2%, a few school chairs 1.5%, rooms of
+  2x2 and 3x3 cells or more); a third of Poolrooms rooms get one or two lawn chairs on the deck facing the water.
+- Room builder: a room's panel has POOLROOMS ROOM under KIND. On, it shows TILES (the world's choice, sage, cream,
+  mint, aqua), WATER (a pool with a deck / flooded / deck only), Deck (cells), Shallow end, Deep end, the floor
+  sloping between them, Lanes, ROOF (closed, square or round openings, a long strip, open sky) and fittings (ladders,
+  a lifeguard's chair, a drain, showers, bleachers, lawn chairs). Turning it on adds the Poolrooms to where the room
+  spawns. New CustomRooms/PoolRoomStamp.cs (PoolRoomSettings in RoomSettings.pool, deep-cloned): after the blueprint
+  is stamped it rewrites the room's pool cells, its tiles (Room.poolTile) and its features. The builder's preview is
+  built as the Poolrooms round a Poolrooms room (CustomRoomHarness), and BuilderApp.Rebuild now loads the fittings'
+  models and their PoolLit copies.
+- Checked: World 3, a lawn chair (its carry hint) and school chairs in a room; in BuildMode an 8x6 Poolrooms room with
+  3 lanes, square openings, sage tiles, a 2.2 m deep end, ladders and a lifeguard's chair (preview and panel).
+- Not in the builder's options: the Poolrooms' spouts and slides.
+
+## 2026-11-04 10:30  Claude Code  The exit sign remodelled, a stop sign; doors let light through by degrees and no longer leak it when shut
+- Owner: "improve the exit sign and add a stop sign fully rendered"; "spots where light shines through ... the door when
+  closed ... when opening it's not as smooth as could be".
+- New Tools/Blender/build_signs.py -> Resources/Fittings: ExitSign (the common 12.5 x 7.75 in thermoplastic LED sign:
+  a rolled front, its face plate held by two screws, the test button and green AC lamp underneath), ExitCombo (the same
+  with two emergency lamp heads on top, a third of the signs), ExitFace (stencil EXIT in 6 in letters, the chevrons
+  knocked out; ExitFace_Emission.png so only the letters glow), StopSign (24 in, the MUTCD R1-1 at its smallest, on a
+  perforated square post in a rubber base, as at forklift crossings). The faces' art is rendered from real type
+  (Arial Bold). MaterialMaps.ExitFace.
+- Stop signs: at a third of the warehouse's cross aisles (DistrictGenerator.CrossingSign, its own dice), solid.
+- Doors: (1) the light grid narrowed a doorway's opening by how far the door is open (DoorEdges.SetLight /
+  LightOpenness / LightChanged; LightGridMath encodes the opening's top times it, in tenths), eased with a sine from
+  1.2 to 62 degrees and updated at most every 0.12 s, so light comes through gradually as it opens instead of all at
+  once at 3 degrees; (2) a door and its frame had both rooms' light layers, so the lit room's lamps lit their edges and
+  showed on the dark side as bright lines: below 14 degrees they now take only the light of the room they are seen
+  from (Door.SetLightMasks, UpdateLitSide; OfficeChunkBuilder.Doors passes each side's mask); (3) the glow under the
+  door fades over the first 20 degrees, not 8. An edge shut (DoorEdges.Set) with no light state of its own is still
+  a wall to light (RoundFourTests.AShutDoorIsAWallToLight).
+- Checked: World 3, an exit sign and a combo; a stop sign at a crossing; a door at 0, 12, 35 and 75 degrees from the
+  dark side (no lines when shut, light widening with the gap). Judged from stills, not a recording of a swing.
+
+## 2026-11-04 09:30  Claude Code  A drinks vending machine: modelled, lit, humming, plugged in, placed where they stand
+- Owner: "a fully rendered vending machine, for drinks, with a hum to it and glow with a plug in etc ... placed randomly
+  into the world fitting realistically where it sits".
+- New Tools/Blender/build_vending.py -> Resources/Fittings: VendingMachine (a 72 in can and bottle machine, 1.83 x 0.99
+  x 0.84 m: a lit ad panel with drinks on ice, the selection buttons, coin slot and bill validator, the delivery door,
+  vents at the bottom, levelling feet), VendingGlow (its lit panel) and VendingPlug (a heavy three-prong plug). The ad
+  art is rendered in Blender (sign_render) and printed on.
+- New Interaction/VendingMachine.cs: the panel glows (a copy of the lit lens material), a red-white spot lights the floor
+  in front (the room's layer only, no shadows); sounds made in code: the fan, the compressor (60 Hz and its harmonics,
+  on 40-90 s, off 25-60 s), a 120 Hz ballast buzz, relay clicks; now and then the panel flickers. Some are on their own
+  circuit, some unplugged (dark and silent); otherwise it follows the room's power. Poke it: a beep, the motor, a can
+  dropping (two of the buttons are sold out).
+- New Generation/OfficeChunkBuilder.Vending.cs: the model and its collider, the cord running from its back to the
+  nearest outlet's socket (Catmull-Rom tube), the plug in the socket or lying on the floor. A camcorder sighting.
+- Where: 60% of break rooms (SpecialRooms.TryVending, against a wall clear of the door, its own dice); rarely against
+  a hallway wall (1%) or in an office (0.4%), about 33 in 81 districts.
+- Checked: World 3, in a corridor, front on and from the side (the glow, the floor light, the cord and plug).
+- Sources: vendinggroup.com size guide; Dixie Narco machines (capitalvending.com); vendiscuss.net on machine noise.
+
 ## 2026-11-04 08:30  Claude Code  The Poolrooms' fittings modelled: lifeguard stand, showers, ladder treads, changing stalls, bleacher planks
 - Owner: the Poolrooms pieces in the realism pass.
 - New Tools/Blender/build_pool.py -> Resources/Fittings: LifeguardChair, PoolShower, LadderTread, StallBracket, CoatHook,

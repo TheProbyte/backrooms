@@ -133,7 +133,7 @@ namespace Backrooms.Generation
         {
             _neighbours = neighbours;
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); _lampItems.Clear(); _breakers.Clear(); _deskLamps.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
-            _capsules.Clear(); _rugs.Clear(); _cordEnds.Clear(); poolMap = null; poolMap2 = null; _sounds.Clear();
+            _capsules.Clear(); _rugs.Clear(); _cordEnds.Clear(); poolMap = null; poolMap2 = null; _sounds.Clear(); _vendings.Clear();
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             // Square panels sit inside a ceiling tile and need no gap in the grid; only round domes sit on a cross tee.
@@ -337,6 +337,15 @@ namespace Backrooms.Generation
                 go.transform.localPosition = pos;
                 go.transform.localRotation = rot;
                 go.AddComponent<Interaction.BreakerPanel>().Init(Interaction.PowerGrid.CircuitOf(chunkKey), LayerBit(color));
+            }
+            // Vending machines: their glow, light, hum and buttons (2026-11-04).
+            foreach (var (at, rot, variant, color) in _vendings)
+            {
+                var go = new GameObject("VendingMachine");
+                go.transform.SetParent(root.transform, false);
+                go.transform.localPosition = at;
+                go.transform.localRotation = rot;
+                go.AddComponent<Interaction.VendingMachine>().Init(variant, LayerBit(color), Interaction.PowerGrid.CircuitOf(chunkKey));
             }
 
             InstantiatePortals(root.transform);
@@ -1413,6 +1422,15 @@ namespace Backrooms.Generation
             if (p.kind == PropKind.Rug) { Rug(p, at, rot); return; }                 // a rug on the floor (.Rugs.cs)
             if (p.kind == PropKind.Partition) { Partition(p, at, rot); return; }     // a cubicle panel left standing (.Leftovers.cs)
             if (p.kind == PropKind.WoodenChair) { WoodenChair(p, at); return; }      // a chair in the middle of a room
+            if (p.kind == PropKind.VendingMachine) { Vending(p, at, rot); return; }   // a drinks machine against a wall (.Vending.cs)
+            if (p.kind == PropKind.StopSign) { StopSign(p, at, rot); return; }        // a stop sign at a warehouse crossing (.Vending.cs)
+            if (p.kind == PropKind.LawnChair || p.kind == PropKind.SchoolChair)        // a plastic chair (movable, its model at spawn)
+            {
+                var spec = Movable(p.id, p.kind == PropKind.LawnChair ? MovableKind.LawnChair : MovableKind.SchoolChair, at, p.yaw, p.roomColor);
+                spec.variant = p.variant;
+                Saw(at + Vector3.up * 0.45f, Vector3.up, p.kind == PropKind.LawnChair ? "lawn_chair" : "school_chair");
+                return;
+            }
             if (p.kind >= PropKind.Counter) { SpecialProp(p, at, rot); return; }     // the good rooms' furniture
             if (modelled) { PlaceModelled(p, at, rot, lights); return; }
             switch (p.kind)

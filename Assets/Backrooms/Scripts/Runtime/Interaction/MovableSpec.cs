@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Backrooms.Interaction
 {
-    public enum MovableKind { Sofa, Armchair, OfficeChair, Table, Box, Pallet, WoodenChair }
+    public enum MovableKind { Sofa, Armchair, OfficeChair, Table, Box, Pallet, WoodenChair, LawnChair, SchoolChair }
 
     /// <summary>
     /// Everything needed to (re)create one movable prop: what it looks like and what kind of thing it is.
@@ -131,6 +131,19 @@ namespace Backrooms.Interaction
                     s.mass = 12f;
                     s.centreOfMass = new Vector3(cx, B.min.y + 0.22f, cz);
                     s.rolls = true;
+                    break;
+                }
+                case MovableKind.LawnChair:
+                case MovableKind.SchoolChair:
+                {
+                    // As the wooden chair: legs to the seat, the seat, the back at -Z; light (2.5 and 4.5 kg).
+                    float seat0 = B.min.y + h * 0.46f, seat1 = B.min.y + h * 0.53f;
+                    Box(s, x0, x1, B.min.y, seat0, z0, z1);
+                    Box(s, x0, x1, seat0, seat1, z0, z1);
+                    Box(s, x0, x1, seat1, top, z0, z0 + Mathf.Min(0.08f, B.size.z * 0.18f));
+                    s.mass = spec.kind == MovableKind.LawnChair ? 2.5f : 4.5f;
+                    s.friction = spec.kind == MovableKind.LawnChair ? 0.4f : 0.5f;
+                    s.centreOfMass = new Vector3(B.center.x, B.min.y + h * 0.4f, B.center.z - B.size.z * 0.05f);
                     break;
                 }
                 case MovableKind.WoodenChair:

@@ -58,8 +58,15 @@ namespace Backrooms.CustomRooms
         public WallFinish wallFinish;
         public FloorFinish floorFinish;
         public LightMode lights = LightMode.AllOn;
+        [Tooltip("Made in the Poolrooms' style: tiles, water, the Poolrooms' light (2026-11-04).")]
+        public PoolRoomSettings pool = new PoolRoomSettings();
 
-        public RoomSettings Clone() => (RoomSettings)MemberwiseClone();
+        public RoomSettings Clone()
+        {
+            var c = (RoomSettings)MemberwiseClone();
+            c.pool = pool != null ? pool.Clone() : new PoolRoomSettings();
+            return c;
+        }
     }
 
     [Serializable] public class PillarDef { public int x, z; public float size = 0.6f; }
@@ -259,6 +266,7 @@ namespace Backrooms.CustomRooms
         {
             width = Mathf.Clamp(width, MinSize, MaxSize); depth = Mathf.Clamp(depth, MinSize, MaxSize);
             if (rooms == null || rooms.Count == 0) rooms = new List<RoomSettings> { new RoomSettings() };
+            foreach (var r in rooms) if (r.pool == null) r.pool = new PoolRoomSettings();
             if (cellRoom == null || cellRoom.Length != width * depth || vEdges == null || vEdges.Length != (width + 1) * depth || hEdges == null || hEdges.Length != width * (depth + 1))
             {
                 var old = (cellRoom, vEdges, hEdges);

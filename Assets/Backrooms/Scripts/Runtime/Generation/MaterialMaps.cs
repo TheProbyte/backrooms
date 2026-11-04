@@ -263,6 +263,9 @@ namespace Backrooms.Generation
         public static Material CeilingCracked;
         /// <summary>Small things on the ceiling and floor: an exit sign's glowing face, a smoke detector's red light, aluminium (threshold strips).</summary>
         public static Material ExitSign, LedRed, Aluminium;
+        /// <summary>The modelled exit sign's face (2026-11-04): its baked print, the stencil letters glowing through their
+        /// own emission map (Resources/Fittings/ExitFace_Emission.png), the same deep red as the old face.</summary>
+        public static Material ExitFace;
         static Texture2D s_cracked, s_exit, s_exitFace;
 
         /// <summary>One of the world's dressing copies (none of them casts a shadow-map shadow).</summary>
@@ -394,6 +397,18 @@ namespace Backrooms.Generation
             ExitSign.SetColor(BaseColor, Color.white);
             ExitSign.SetTexture(EmissionMap, s_exit);
             ExitSign.SetColor(EmissionColor, new Color(2.2f, 0.07f, 0.045f));
+            var faceTex = Resources.Load<Texture2D>("Fittings/ExitFace_Albedo");
+            var glowTex = Resources.Load<Texture2D>("Fittings/ExitFace_Emission");
+            ExitFace = null;
+            if (faceTex && glowTex)
+            {
+                ExitFace = new Material(a.lensOn) { name = "Exit sign face (modelled)", hideFlags = HideFlags.DontSave };
+                ExitFace.SetTexture(BaseMap, faceTex);
+                ExitFace.SetTextureScale(BaseMap, Vector2.one); ExitFace.SetTextureOffset(BaseMap, Vector2.zero);
+                ExitFace.SetColor(BaseColor, Color.white);
+                ExitFace.SetTexture(EmissionMap, glowTex);
+                ExitFace.SetColor(EmissionColor, new Color(2.3f, 1.75f, 1.5f));
+            }
             LedRed = new Material(a.lensOn) { name = "Indicator light", hideFlags = HideFlags.DontSave };
             LedRed.SetTexture(BaseMap, Texture2D.whiteTexture);
             LedRed.SetColor(BaseColor, new Color(0.5f, 0.05f, 0.04f));
