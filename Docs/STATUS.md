@@ -6,6 +6,12 @@ Last updated 2026-11-04 (world version 13).
 
 ## Newest (2026-11-04)
 
+- **Carts** (Tools/Blender/build_carts.py, Interaction/CartWheels.cs): a two-shelf utility cart (stock rooms, now and then
+  an office or a break room), a janitor's cart (some janitor's closets) and a platform trolley (warehouses). Pushed by
+  the handle with both hands; the far end's fixed wheels steer it, the swivel casters trail, the wheels turn; it rumbles
+  and rattles, quieter on carpet; what is on its decks rides along. L menu FURNITURE.
+- **Sitting** (Interaction/Seating.cs): E with the hand empty on a chair, an armchair or a sofa sits you down (a sofa has
+  two or three places); look about; an office chair swivels with you and rolls on W/A/S/D; E or Space stands you up.
 - **A backpack** (Tools/Blender/build_backpack.py, Interaction/Items/Backpack.cs, PropGrabber.Backpack.cs): a daypack
   (NORREN, invented; navy, red or forest) found in about one office in thirty and a break room in four, now and then
   with chalk, tape, paint, nails or a cassette in it. Set down, click its pulls to unzip it (the front flops open);

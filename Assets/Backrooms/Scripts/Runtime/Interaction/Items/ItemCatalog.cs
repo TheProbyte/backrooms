@@ -136,6 +136,10 @@ namespace Backrooms.Interaction
             if (palletWood)
                 list.Add(new Entry { name = "Pallet", category = "FURNITURE", clearance = 1.2f,
                     spawn = (p, r, pv) => Movable(MovableKind.Pallet, p, r, pv, s => s.materials = new[] { palletWood }) });
+            // Carts (2026-11-04): their front away from you, the handle toward you.
+            list.Add(new Entry { name = "Utility cart", category = "FURNITURE", clearance = 1.2f, spawn = (p, r, pv) => Movable(MovableKind.UtilityCart, p, r, pv, s => { }) });
+            list.Add(new Entry { name = "Janitor's cart", category = "FURNITURE", clearance = 1.3f, spawn = (p, r, pv) => Movable(MovableKind.JanitorCart, p, r, pv, s => { }) });
+            list.Add(new Entry { name = "Platform trolley", category = "FURNITURE", clearance = 1.1f, spawn = (p, r, pv) => Movable(MovableKind.PlatformTruck, p, r, pv, s => { }) });
             if (a.floorLampPrefab)
                 list.Add(new Entry { name = "Floor lamp", category = "ITEMS", clearance = 0.9f, spawn = (p, r, pv) => FloorLamp.Create(p, r).gameObject });
             return list;

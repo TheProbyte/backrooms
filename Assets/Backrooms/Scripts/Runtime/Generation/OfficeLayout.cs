@@ -305,6 +305,9 @@ namespace Backrooms.Generation
         /// (Interaction.Backpack), loot until taken; position its foot's middle, yaw its front; variant: bits 0-1 its
         /// colour (0-2), bit 2 lying on its back, the rest the dice for what is in it.</summary>
         Backpack,
+        /// <summary>Carts (DistrictGenerator.TryCart, 2026-11-04): movable (Interaction.CartWheels); position the middle of
+        /// its foot, yaw its front (the end away from the handle). A two-shelf utility cart, a janitor's cart, a platform truck.</summary>
+        UtilityCart, JanitorCart, PlatformTruck,
     }
 
     /// <summary>Level 0's kinds of room (DistrictGenerator.StyleOf): the backrooms (wallpaper), living rooms (painted,

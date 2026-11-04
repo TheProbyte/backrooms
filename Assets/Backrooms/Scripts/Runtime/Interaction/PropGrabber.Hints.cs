@@ -42,6 +42,9 @@ namespace Backrooms.Interaction
                 case MovableKind.WoodenChair: return "WOODEN CHAIR";
                 case MovableKind.LawnChair: return "LAWN CHAIR";
                 case MovableKind.SchoolChair: return "CHAIR";
+                case MovableKind.UtilityCart: return "CART";
+                case MovableKind.JanitorCart: return "JANITOR'S CART";
+                case MovableKind.PlatformTruck: return "TROLLEY";
                 default: return "BOX";
             }
         }
@@ -83,6 +86,11 @@ namespace Backrooms.Interaction
                 return;
             }
             if (Current != State.Idle || _fetch || OnDoor || QuickDooring || _poke != PokePhase.None || !_player.HasFocus) return;
+            if (_seating && _seating.Seated && !HeldItem && _seating.Hint != null && !AimedItem)
+            {
+                // (Seated: what stands you up, unless the view is on something to take.)
+                if (!Look(lookRange, out _, out var near) || !near) { _hint = _seating.Hint; return; }
+            }
             if (!HeldItem || (!Stowing && _itemT >= 1f))
             {
                 var bh = BagHint();
@@ -100,7 +108,11 @@ namespace Backrooms.Interaction
             if (AimedItem) { _hint = AimedCordPoint.HasValue ? "CLICK TO TAKE THE PLUG" : "CLICK TO PICK UP " + AimedItem.displayName.ToUpperInvariant(); return; }
             if (AimedPoke != null) { _hint = "CLICK TO PRESS"; return; }
             if (AimedDoorGrip.HasValue) { _hint = "CLICK TO OPEN OR SHUT · HOLD TO MOVE IT SLOWLY"; return; }
-            if (AimedProp(out var prop, out var grip, out var v)) { _hint = $"HOLD TO {v} {NameOf(prop)}"; _hintMark = grip; }
+            if (AimedProp(out var prop, out var grip, out var v))
+            {
+                _hint = $"HOLD TO {v} {NameOf(prop)}" + (Seating.CanSitOn(prop) && (!_seating || !_seating.Seated) ? " · E SIT" : "");
+                _hintMark = grip;
+            }
             SmoothMark();
         }
 

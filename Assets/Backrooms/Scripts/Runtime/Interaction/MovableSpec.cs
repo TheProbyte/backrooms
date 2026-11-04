@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Backrooms.Interaction
 {
-    public enum MovableKind { Sofa, Armchair, OfficeChair, Table, Box, Pallet, WoodenChair, LawnChair, SchoolChair }
+    public enum MovableKind { Sofa, Armchair, OfficeChair, Table, Box, Pallet, WoodenChair, LawnChair, SchoolChair, UtilityCart, JanitorCart, PlatformTruck }
 
     /// <summary>
     /// Everything needed to (re)create one movable prop: what it looks like and what kind of thing it is.
@@ -167,6 +167,20 @@ namespace Backrooms.Interaction
                     s.mass = 20f + 16f * L;
                     s.friction = 0.4f;
                     s.centreOfMass = new Vector3(0f, T * 0.6f, 0f);
+                    break;
+                }
+                case MovableKind.UtilityCart:
+                case MovableKind.JanitorCart:
+                case MovableKind.PlatformTruck:
+                {
+                    // A cart (2026-11-04, CartWheels): its boxes from its layout, the casters' box first (it rolls).
+                    var cart = CartLayouts.Get(spec.kind);
+                    if (cart == null) { Box(s, x0, x1, B.min.y, top, z0, z1); s.mass = 15f; break; }
+                    foreach (var b in cart.boxes) s.boxes.Add(b);
+                    s.mass = cart.mass;
+                    s.friction = 0.5f;
+                    s.centreOfMass = new Vector3(0f, spec.kind == MovableKind.PlatformTruck ? 0.2f : 0.38f, 0f);
+                    s.rolls = true;
                     break;
                 }
                 case MovableKind.Pallet:

@@ -47,6 +47,9 @@ namespace Backrooms.Generation
             "ExitSign", "ExitCombo", "ExitFace", "StopSign",
             // Chairs (Tools/Blender/build_chairs.py, 2026-11-04): movable, built from these at spawn.
             "LawnChair_White", "LawnChair_Green", "SchoolChair_Blue", "SchoolChair_Orange",
+            // Carts (Tools/Blender/build_carts.py, 2026-11-04): movable; their casters' forks and wheels move (CartWheels).
+            "UtilityCart", "JanitorCart", "PlatformTruck", "Caster4Swivel", "Caster4Rigid", "Caster5Swivel", "Caster5Rigid",
+            "Wheel4", "Wheel5", "Wheel8",
         };
 
         static readonly Dictionary<string, Part[]> s_models = new Dictionary<string, Part[]>();

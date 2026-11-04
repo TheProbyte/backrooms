@@ -978,6 +978,7 @@ namespace Backrooms.Interaction
             _hipsYOff = Springs.Damper(_hipsYOff, ref _hipsYVel, -drop + _bob, 0.04f, dt);
 
             Vector3 hipsBase = _body.position + up * (_hipsHeight + _hipsYOff) + right * _sway - fwd * (squat * 0.12f) + _bumpHips;
+            SeatHips(ref hipsBase, dt);                                   // sitting: the hips on the seat (FirstPersonBody.Seat)
 
             // Feet: where each sole is this frame.
             var soles = new Vector3[2]; var fwds = new Vector3[2]; var pitches = new float[2];
@@ -1064,6 +1065,7 @@ namespace Backrooms.Interaction
                 }
                 soles[i] = sole; fwds[i] = footFwd; pitches[i] = pitch;
             }
+            SeatFeet(legs, soles, fwds, pitches);                         // sitting: the feet on the floor in front of the seat
             // The feet never in each other: a swinging foot passing the standing one goes round it (side to side).
             if (_legA != null && _legB != null)
             {

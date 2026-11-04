@@ -55,7 +55,7 @@ namespace Backrooms.Interaction
         /// pallet: closed shapes, and fewer objects for the many on a warehouse's racks; the plastic chairs, 2026-11-04: a
         /// box over the seat shaded the seat itself and the legs cast one block).</summary>
         static bool OwnShadow(MovableSpec s) => OwnShadow(s.kind) || s.cardboard || s.kind == MovableKind.Pallet
-                                                || s.kind == MovableKind.LawnChair || s.kind == MovableKind.SchoolChair;
+                                                || s.kind == MovableKind.LawnChair || s.kind == MovableKind.SchoolChair || CartLayouts.IsCart(s.kind);
 
         public static MovableProp Spawn(MovableSpec spec, Transform parent, Vector3 position, Quaternion rotation)
         {
@@ -104,6 +104,7 @@ namespace Backrooms.Interaction
                 BuildModel(root, spec, builtMeshes, model);
                 Generation.PoolLitSwitch.Attach(root);
             }
+            if (CartLayouts.IsCart(spec.kind)) BuildModel(root, spec, builtMeshes, CartLayouts.Model(spec.kind));   // a cart (its wheels: CartWheels)
 
             var shape = MovableShapes.Build(spec, root);
             // (Casters: only the base rolls, and only while it stands on them: MovableProp.FixedUpdate.)
@@ -111,7 +112,7 @@ namespace Backrooms.Interaction
             foreach (var (c, s) in shape.boxes)
             {
                 var bc = root.AddComponent<BoxCollider>();
-                bc.center = c; bc.size = s; bc.sharedMaterial = shape.rolls && !baseCollider ? Rolling : Sliding(shape.friction);
+                bc.center = c; bc.size = s; bc.sharedMaterial = shape.rolls && !baseCollider ? (CartLayouts.IsCart(spec.kind) ? Wheels : Rolling) : Sliding(shape.friction);
                 if (!baseCollider) baseCollider = bc;
                 if (spec.proxyMaterial && !OwnShadow(spec))
                 {
@@ -154,6 +155,7 @@ namespace Backrooms.Interaction
             mp._lastGoodPos = position; mp._lastGoodRot = rotation;
             s_live[spec.id] = mp;
             NailWork.Attach(mp);                                  // nails driven into it before (this session or a save)
+            CartWheels.Attach(mp);                                // a cart's casters and how it rolls
             RuntimeIndoorReflections.Instance?.Prepare(root);
             PoolLitSwitch.Attach(root);                           // lit by the Poolrooms' light while it is in them
             return mp;
@@ -163,6 +165,14 @@ namespace Backrooms.Interaction
         {
             dynamicFriction = 0.04f, staticFriction = 0.06f, frictionCombine = PhysicsMaterialCombine.Minimum, bounciness = 0.05f,
         });
+        static PhysicsMaterial _wheels;
+        /// <summary>A cart's wheels on the floor (2026-11-04): next to no friction here; CartWheels does what the wheels do (the
+        /// fixed ones' grip sideways, the rolling resistance of the floor under them).</summary>
+        static PhysicsMaterial Wheels => _wheels ? _wheels : (_wheels = new PhysicsMaterial("CartWheels")
+        {
+            dynamicFriction = 0.003f, staticFriction = 0.006f, frictionCombine = PhysicsMaterialCombine.Minimum, bounciness = 0.02f,
+        });
+        PhysicsMaterial RollingFor => CartLayouts.IsCart(Spec.kind) ? Wheels : Rolling;
 
         static PhysicsMaterial Sliding(float f)
         {
@@ -333,7 +343,7 @@ namespace Backrooms.Interaction
             // knocked over skated 10 m across the carpet).
             if (_casters)
             {
-                var want = transform.up.y > 0.8f ? Rolling : Sliding(Shape.friction);
+                var want = transform.up.y > 0.8f ? RollingFor : Sliding(Shape.friction);
                 if (_casters.sharedMaterial != want) _casters.sharedMaterial = want;
             }
             if (held) { _still = 0f; return; }

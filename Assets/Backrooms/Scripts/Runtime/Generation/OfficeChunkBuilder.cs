@@ -1438,6 +1438,14 @@ namespace Backrooms.Generation
             if (p.kind == PropKind.StopSign) { StopSign(p, at, rot); return; }        // a stop sign at a warehouse crossing (.Vending.cs)
             if (p.kind == PropKind.Boombox) { _finds.Add((at, p.yaw, p.id, p.kind, p.variant)); Saw(at + Vector3.up * 0.12f, Vector3.up, "boombox"); return; }   // an item left there
             if (p.kind == PropKind.Backpack) { _finds.Add((at, p.yaw, p.id, p.kind, p.variant)); Saw(at + Vector3.up * 0.2f, Vector3.up, "backpack"); return; }
+            if (p.kind == PropKind.UtilityCart || p.kind == PropKind.JanitorCart || p.kind == PropKind.PlatformTruck)   // a cart (movable)
+            {
+                var kind = p.kind == PropKind.UtilityCart ? MovableKind.UtilityCart : p.kind == PropKind.JanitorCart ? MovableKind.JanitorCart : MovableKind.PlatformTruck;
+                var spec = Movable(p.id, kind, at, p.yaw, p.roomColor);
+                spec.variant = p.variant;
+                Saw(at + Vector3.up * 0.5f, Vector3.up, p.kind == PropKind.UtilityCart ? "utility_cart" : p.kind == PropKind.JanitorCart ? "janitor_cart" : "platform_truck");
+                return;
+            }
             if (p.kind == PropKind.LawnChair || p.kind == PropKind.SchoolChair)        // a plastic chair (movable, its model at spawn)
             {
                 var spec = Movable(p.id, p.kind == PropKind.LawnChair ? MovableKind.LawnChair : MovableKind.SchoolChair, at, p.yaw, p.roomColor);

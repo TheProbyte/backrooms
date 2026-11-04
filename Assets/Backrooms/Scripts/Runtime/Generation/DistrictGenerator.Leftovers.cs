@@ -33,6 +33,9 @@ namespace Backrooms.Generation
                 double u = rng.NextDouble(), v = rng.NextDouble();
                 // (2026-11-04) A backpack left by a wall: in some offices, often in a break room. Dice of its own.
                 TryBackpack(L, r);
+                // A cart: a utility cart in stock rooms (and now and then an office or a break room), a janitor's cart by the
+                // closets and in a hallway now and then. Dice of its own.
+                TryCart(L, r);
                 if (r.landmark != null || r.noFloor || r.special != GoodRoom.None || r.feature == RoomFeature.Pit || r.ramp != 0 || r.custom || r.home) continue;
                 // Now and then a drinks machine humming against a hallway's or an office's wall (2026-11-04; dice of its own,
                 // from the room's draws, so nothing else moves).
@@ -56,6 +59,92 @@ namespace Backrooms.Generation
         }
 
         const double BackpackOffice = 0.03, BackpackBreak = 0.25;
+        const double CartStock = 0.5, CartOffice = 0.004, CartBreak = 0.12, JanitorCloset = 0.45, JanitorHall = 0.006;
+
+        /// <summary>
+        /// A cart left in a room (2026-11-04): a two-shelf utility cart in half the stock rooms, now and then in an office or a
+        /// break room; a janitor's cart in some janitor's closets (if it fits beside the sink) and very now and then in a
+        /// hallway. Along a wall, its length with it, a little off it; never across a doorway.
+        /// </summary>
+        static void TryCart(OfficeLayout L, Room r)
+        {
+            if (r.noFloor || r.custom || r.home || r.landmark != null || r.ramp != 0 || r.feature == RoomFeature.Pit) return;
+            var rr = new System.Random(Hash(r.rect.x * 7 + 3, r.rect.y, L.storey * 17 + r.rect.height, 0xCA27));
+            double roll = rr.NextDouble();
+            PropKind kind;
+            if (r.special == GoodRoom.StockRoom && roll < CartStock) kind = PropKind.UtilityCart;
+            else if (r.special == GoodRoom.BreakRoom && roll < CartBreak) kind = PropKind.UtilityCart;
+            else if (r.special == GoodRoom.JanitorCloset && roll < JanitorCloset) kind = PropKind.JanitorCart;
+            else if (r.special == GoodRoom.None && StyleOf(r) == RoomStyle.Backrooms && r.kind == RoomKind.Hallway && roll < JanitorHall) kind = PropKind.JanitorCart;
+            else if (r.special == GoodRoom.None && StyleOf(r) == RoomStyle.Backrooms && (r.kind == RoomKind.Office || r.kind == RoomKind.BigOffice) && roll < CartOffice) kind = PropKind.UtilityCart;
+            else return;
+            var size = kind == PropKind.UtilityCart ? new Vector2(0.56f, 1.03f) : new Vector2(0.62f, 1.24f);
+            TryAlongWall(L, r, rr, kind, size, 0.12f, rr.Next(1 << 20));
+        }
+
+        /// <summary>A thing of this footprint (across, along) along one of the room's walls, a gap off it; false if none fits.</summary>
+        static bool TryAlongWall(OfficeLayout L, Room r, System.Random rr, PropKind kind, Vector2 size, float gap, int variant)
+        {
+            float C = OfficeBiome.CellSize;
+            for (int attempt = 0; attempt < 8; attempt++)
+            {
+                int side = rr.Next(4);
+                float t = (float)rr.NextDouble();
+                float x0 = r.rect.xMin * C, x1 = r.rect.xMax * C, z0 = r.rect.yMin * C, z1 = r.rect.yMax * C;
+                float off = size.x * 0.5f + gap, run = size.y * 0.5f + 0.1f;
+                Vector2 c; float yaw;
+                // its length along the wall (its front one way or the other)
+                bool flip = rr.NextDouble() < 0.5;
+                switch (side)
+                {
+                    case 0: c = new Vector2(Mathf.Lerp(x0 + run, x1 - run, t), z0 + off); yaw = flip ? 90f : 270f; break;
+                    case 1: c = new Vector2(Mathf.Lerp(x0 + run, x1 - run, t), z1 - off); yaw = flip ? 90f : 270f; break;
+                    case 2: c = new Vector2(x0 + off, Mathf.Lerp(z0 + run, z1 - run, t)); yaw = flip ? 0f : 180f; break;
+                    default: c = new Vector2(x1 - off, Mathf.Lerp(z0 + run, z1 - run, t)); yaw = flip ? 0f : 180f; break;
+                }
+                if (x1 - x0 < 2f * run && (side == 0 || side == 1)) continue;
+                if (z1 - z0 < 2f * run && (side == 2 || side == 3)) continue;
+                yaw += ((float)rr.NextDouble() - 0.5f) * 10f;
+                FootBounds(yaw, new Vector2(size.x, size.y), out float hx, out float hz);
+                if (!RugFits(L, r, c, size, yaw, hx, hz)) continue;
+                if (!ClearOfProps(L, c, hx, hz, 0.12f)) continue;
+                L.props.Add(new Prop { kind = kind, position = c, yaw = yaw, size = new Vector3(size.x, 1f, size.y), variant = variant, roomColor = r.color });
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>No other prop's footprint within margin of this one's (both as boxes square to the grid).</summary>
+        static bool ClearOfProps(OfficeLayout L, Vector2 c, float hx, float hz, float margin)
+        {
+            foreach (var pr in L.props)
+            {
+                FootBounds(pr.yaw, new Vector2(pr.size.x, pr.size.z), out float px, out float pz);
+                if (Mathf.Abs(pr.position.x - c.x) < hx + px + margin && Mathf.Abs(pr.position.y - c.y) < hz + pz + margin) return false;
+            }
+            return true;
+        }
+
+        /// <summary>A platform trolley left in a warehouse (2026-11-04): in about one rack room in five, along a wall or at an aisle's end.</summary>
+        internal static void TryTruck(OfficeLayout L, Room r)
+        {
+            var rr = new System.Random(Hash(r.rect.x * 13 + 1, r.rect.y * 5, L.storey * 29 + r.rect.width, 0x7A0C));
+            if (rr.NextDouble() >= 0.2) return;
+            if (TryAlongWall(L, r, rr, PropKind.PlatformTruck, new Vector2(0.62f, 0.95f), 0.25f, rr.Next(1 << 20))) return;
+            // Else anywhere clear on the floor (an aisle's end, a cross aisle), square to the racks.
+            float C = OfficeBiome.CellSize;
+            var size = new Vector2(0.62f, 0.95f);
+            for (int attempt = 0; attempt < 24; attempt++)
+            {
+                var c = new Vector2((r.rect.xMin + 0.6f + (float)rr.NextDouble() * (r.rect.width - 1.2f)) * C,
+                                    (r.rect.yMin + 0.6f + (float)rr.NextDouble() * (r.rect.height - 1.2f)) * C);
+                float yaw = rr.Next(4) * 90f + ((float)rr.NextDouble() - 0.5f) * 14f;
+                FootBounds(yaw, size, out float hx, out float hz);
+                if (!RugFits(L, r, c, size, yaw, hx, hz) || !ClearOfProps(L, c, hx, hz, 0.35f)) continue;
+                L.props.Add(new Prop { kind = PropKind.PlatformTruck, position = c, yaw = yaw, size = new Vector3(size.x, 1f, size.y), variant = rr.Next(1 << 20), roomColor = r.color });
+                return;
+            }
+        }
 
         /// <summary>
         /// A backpack left in a room (2026-11-04, the owner: "found fairly common"): in about one office in thirty and a

@@ -138,8 +138,14 @@ namespace Backrooms.Interaction
             _powered = p;
             SetGlow(p ? _on : _off);
             if (_light) _light.enabled = p;
-            if (p) { _fan.Play(); _buzz.Play(); if (_compOn) _comp.Play(); }
+            // (Made while its chunk is still hidden: its hum starts when it is shown, OnEnable.)
+            if (p) { if (_fan.isActiveAndEnabled) { _fan.Play(); _buzz.Play(); if (_compOn) _comp.Play(); } }
             else { _fan.Stop(); _buzz.Stop(); _comp.Stop(); }
+        }
+
+        void OnEnable()
+        {
+            if (_powered && _fan && !_fan.isPlaying) { _fan.Play(); _buzz.Play(); if (_compOn) _comp.Play(); }
         }
 
         void Update()

@@ -844,6 +844,7 @@ namespace Backrooms.Generation
                     for (int i = 0; i < runs; i++) TryHalfWall(L, rng, r);
                     if (racks) PlaceRacks(L, rng, r);
                     if (r.Tall && rng.NextDouble() < 0.75) PlacePallets(L, rng, r);
+                    if (racks) TryTruck(L, r);                                   // a platform trolley now and then (its own dice)
                 }
                 else if ((r.kind == RoomKind.Office) && rc.width >= 4 && rc.height >= 4)
                 {
@@ -963,7 +964,7 @@ namespace Backrooms.Generation
             foreach (var r in rooms)
             {
                 r.landmark = null;
-                if (StyleOf(r) == RoomStyle.Warehouse) { PlaceRacks(L, rng, r); PlacePallets(L, rng, r); continue; }
+                if (StyleOf(r) == RoomStyle.Warehouse) { PlaceRacks(L, rng, r); PlacePallets(L, rng, r); TryTruck(L, r); continue; }
                 int before = L.props.Count;
                 for (int i = 0; i < 6 && L.props.Count == before; i++) Furnish(L, rng, r, occupied);
             }

@@ -82,7 +82,32 @@ namespace Backrooms
 
         public Vector3 PlanarVelocity { get; private set; }
         public bool IsRunning { get; private set; }
-        public bool IsGrounded => _controller.isGrounded;
+        public bool IsGrounded => seated || _controller.isGrounded;
+
+        // ---------------- Seated (Interaction.Seating, 2026-11-04) ----------------
+        /// <summary>Sitting on something: no walking, the feet where the seat puts them, the eye at seatEye over them, the
+        /// view within seatYawRange degrees either way of seatYaw.</summary>
+        [System.NonSerialized] public bool seated;
+        [System.NonSerialized] public Vector3 seatFeet;
+        [System.NonSerialized] public float seatEye = 1.2f, seatYaw, seatYawRange = 360f;
+        /// <summary>The standing eye height (what a seat eases from and back to).</summary>
+        public float BaseEyeStanding => standEye;
+
+        /// <summary>Sits (the controller off: the seat holds you) or stands again.</summary>
+        public void SetSeated(bool on)
+        {
+            if (on == seated) return;
+            seated = on;
+            EndSlide();
+            if (on) { seatFeet = transform.position; seatEye = _eye; _controller.enabled = false; CurrentStance = Stance.Stand; }
+            else
+            {
+                transform.position = seatFeet;
+                _controller.enabled = !noclip;
+                _verticalVelocity = 0f;
+            }
+            PlanarVelocity = Vector3.zero;
+        }
         /// <summary>0 when still, 1 at walk speed, ~2.7 at run speed.</summary>
         public float NormalizedSpeed => walkSpeed > 0f ? PlanarVelocity.magnitude / walkSpeed : 0f;
 
@@ -259,8 +284,18 @@ namespace Backrooms
             if (hasFocus) UpdateLook(mouse.delta.ReadValue() * FovMultiplier * lookScale);   // aim slows down when zoomed in
             if (hasFocus && keyboard.vKey.wasPressedThisFrame) SetNoclip(!noclip);             // V: fly through everything (quick testing)
             UpdateZoom(keyboard, hasFocus);
-            UpdateStance(keyboard, hasFocus);
-            UpdateMove(keyboard, hasFocus);
+            if (seated)
+            {
+                // On a seat: where it puts you, nothing of walking (Interaction.Seating moves you with it).
+                transform.position = seatFeet;
+                PlanarVelocity = Vector3.zero;
+                _verticalVelocity = 0f;
+            }
+            else
+            {
+                UpdateStance(keyboard, hasFocus);
+                UpdateMove(keyboard, hasFocus);
+            }
             UpdateLean(keyboard, hasFocus);
             UpdateEye();
         }
@@ -354,6 +389,7 @@ namespace Backrooms
         /// <summary>Moves the player instantly (spawning, room transitions) and resets look and velocity.</summary>
         public void Teleport(Vector3 position, float yaw, float pitch = 0f)
         {
+            if (seated) SetSeated(false);                     // taken off the seat (Seating lets go of it)
             EndSlide();
             _controller.enabled = false;
             transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
@@ -398,6 +434,12 @@ namespace Backrooms
             _lookDelta = new Vector2(delta.x * mouseSensitivity, dp);
             _lookFrame = Time.frameCount;
             _pitch = Mathf.Clamp(_pitch, -pitchLimit, pitchLimitDown);
+            // Seated: no further round than a seated body turns (an office chair turns with you: Seating).
+            if (seated && seatYawRange < 179f)
+            {
+                float d = Mathf.DeltaAngle(seatYaw, _yaw);
+                if (Mathf.Abs(d) > seatYawRange) _yaw = seatYaw + Mathf.Sign(d) * seatYawRange;
+            }
             transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
             ApplyPivotRotation();
         }
@@ -596,7 +638,7 @@ namespace Backrooms
 
         /// <summary>Eye height for the current stance (before stooping, jumps and landing dips).</summary>
         public float BaseEye => EyeTarget;
-        float EyeTarget => CurrentStance == Stance.Crawl ? crawlEye : CurrentStance == Stance.Crouch ? crouchEye : standEye;
+        float EyeTarget => seated ? seatEye : CurrentStance == Stance.Crawl ? crawlEye : CurrentStance == Stance.Crouch ? crouchEye : standEye;
         float HeightFor(Stance st) => st == Stance.Crawl ? crawlHeight : st == Stance.Crouch ? crouchHeight : standHeight;
 
         void UpdateStance(Keyboard kb, bool hasFocus)

@@ -15,6 +15,54 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-04 22:40  Claude Code  Carts: a two-shelf utility cart, a janitor's cart and a platform trolley, pushed on casters that swivel and wheels that turn; and sitting down on chairs, armchairs and sofas
+- Owner: "do 1 [a cart and a backpack] and 6 [sitting]"; asked, they chose all three carts (utility, janitor's, platform
+  trolley) and seats: chairs, sofas, armchairs (the office chair swivelling and rolling a little).
+- New Tools/Blender/build_carts.py -> Resources/Fittings (an invented maker, HAULWELL): UtilityCart (a moulded two-tray
+  service cart, 1.0 x 0.55 m, ribs under its trays, round posts, a moulded handle, a load label), JanitorCart (yellow:
+  a top tray with two trigger spray bottles (an invented SHINEBRITE), two shelves, a vinyl bag in its steel hoop at one
+  end, a low platform with a mop bucket, its wringer and a mop at the other, a grey grab bar), PlatformTruck (a blue
+  36 x 24 in steel deck with a ribbed rubber mat, turned-down edges, channels under it, a tubular U handle in sockets);
+  Caster4/5 Swivel and Rigid (zinc forks on top plates with their bolts, a swivel's raceway and its lead behind the
+  axis), Wheel4, Wheel5, Wheel8 (rubber treads on grey hubs); Cart_Layout.json (each cart's collision boxes, decks,
+  handle, casters; each fork's axle). Real heights: 4 in casters 128 mm, 5 in 165 mm overall.
+- New Interaction/CartWheels.cs: CartLayouts reads the layout; a cart is a MovableProp (MovableKind UtilityCart,
+  JanitorCart, PlatformTruck: never light, so pushed with both hands by the handle like heavy furniture,
+  PropGrabber.Furniture), its casters' box on the floor with next to no friction (MovableProp: its own material), and
+  CartWheels does what wheels do: the fixed wheels at the far end hold it from sliding sideways (a force at their axle,
+  up to the tyres' grip), so it steers from the handle about them; rolling resistance by the floor (carpet 0.04, hard
+  floors 0.013); the swivel casters trail the way they move, every wheel turns as far as it rolls; it rumbles (duller and
+  quieter on carpet) and rattles (the trays, the bottles, the steel); things on its decks ride with it (their speed eased
+  to the deck's, and anything frozen on a deck woken as it starts to roll).
+- Where: DistrictGenerator.TryCart (own dice): a utility cart in half the stock rooms, one break room in eight, now and
+  then an office; a janitor's cart in some janitor's closets (where it fits) and very now and then a hallway; TryTruck: a
+  platform trolley in about one warehouse rack room in five (along a wall, else anywhere clear on the floor). In 256
+  districts: 40 utility carts, 28 janitor's carts, 97 trolleys. L menu FURNITURE "Utility cart", "Janitor's cart",
+  "Platform trolley"; F5 > PLACES UTILITY CART, JANITOR'S CART, PLATFORM TROLLEY.
+- New Interaction/Seating.cs (+ FirstPersonBody.Seat.cs, CamcorderPlayerController's seated mode): with the hand empty,
+  E on a chair (office, wooden, lawn, school), an armchair or a sofa (two or three places by its width, the one nearest
+  the view) sits you on it: you turn to face its front as you go down, your eye at a seated person's height over the seat
+  (the controller off, the seat holding you); you look about within 110 degrees either way; an office chair swivels with
+  you past 35 degrees and W/A/S/D roll it (swept, not through walls). E or Space stands you up where there is room (in
+  front, else beside, else behind); W too on anything but an office chair. A cushion's thump or a chair's knock as you sit.
+  The seat is frozen while you sit (saved where you leave it). The body sits: hips on the seat, feet on the floor in
+  front (its shadow too). Hints: "HOLD TO PUSH ARMCHAIR · E SIT", seated "E STAND UP (· W/A/S/D ROLL)". A teleport stands
+  you up.
+- Also: VendingMachine no longer starts its hum while its chunk is still hidden ("Can not play a disabled audio source"
+  five times at every load); it starts when shown.
+- Checked: World 3: the three carts modelled and on their casters in the game; a utility cart pushed by its handle (the
+  hand's hold and W): 7.3 m in 6 s at 1.2 m/s, straight and level, the swivel casters trailing; a shove sideways at the
+  handle swings it 30 degrees about its fixed wheels (the fixed end slides 11 cm); two boxes rode a trolley started at
+  1.3 m/s (8 mm and 6 cm of slip); an armchair, an office chair and a sofa sat on and stood up from (eye 1.21-1.34 m,
+  facing the seat's front, the hips at the seat and the feet 0.42 m in front); the office chair swivelled with the view
+  and rolled 0.47 m; EditMode tests.
+- Not done: how pushing and sitting feel (the owner); the carts' sounds judged by ear; benches and bleachers to sit on.
+- Sources: R.E.P.O.'s physics carts and the mods that retune their weight and speed (the community's complaints were
+  sluggish loaded carts); Unity's WheelCollider is for driven vehicles (slip friction, one steering axis), so casters are
+  done by hand, as the Unity forums' trolley threads suggest (a car whose pivot is the handle); service, janitor and
+  platform cart sizes and caster heights from manufacturers' catalogues; first-person seats as a constrained look with
+  the body driven to the seat.
+
 ## 2026-11-04 21:10  Claude Code  A backpack: found in offices and break rooms, set down and unzipped, the things in it real things; worn with B
 - Owner: of the top ten ideas, "do 1 [a cart and a backpack] and 6 [sitting] and 7 [sound walls block]"; asked, they chose:
   the backpack is set down and opened (nothing in or out while worn), found fairly often, more than one can be carried

@@ -181,10 +181,12 @@ namespace Backrooms.Interaction
         {
             _body = GetComponent<FirstPersonBody>();
             _cam = Camera.main;
+            _seating = GetComponent<Seating>() ?? gameObject.AddComponent<Seating>();
             _shake = FindAnyObjectByType<HandheldCameraShake>();
         }
 
         void OnDisable() { Release(); if (HeldItem) Drop(); if (_fetch) EndFetch(); UpdatePalletStep(); }
+        Seating _seating;
 
         void Update()
         {
@@ -325,6 +327,7 @@ namespace Backrooms.Interaction
             }
             if (best == float.MaxValue) return false;
             prop = hit.collider.GetComponentInParent<MovableProp>();
+            if (prop && _seating && _seating.Chair == prop) prop = null;        // not the seat you sit on
             return prop;
         }
 
