@@ -6,6 +6,10 @@ Last updated 2026-11-04 (world version 13).
 
 ## Newest (2026-11-04)
 
+- **The spray can and its paint remade** (Tools/Blender/build_spraycan.py, SprayPaint.cs, SprayCanvas.shader): a real
+  400 ml aerosol can (an invented maker, FERRON); paint builds up in textures on the surfaces as a real spray's pattern
+  (a line close, a stroke at a hand's span, a dusting from far), speckled at its edges, running only where wet paint
+  piles up. The mist is a faint jet and a hanging haze. Docs/MultiplayerPlan.md: how co-op over Hamachi would work.
 - **A settings page** (Menu/SettingsMenu.cs, Menu/GameSettings.cs): from the main menu and the Escape menu: sound
   (master, ambience, music), controls (sensitivity, invert Y), camera comfort (shake, motion blur, brightness, REDUCE
   MOTION), graphics (quality, resolution, frame rate, vsync), screen, and every key.

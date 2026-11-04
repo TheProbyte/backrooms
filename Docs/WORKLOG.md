@@ -15,6 +15,44 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-05 01:20  Claude Code  The spray can remodelled as a real aerosol can; spray paint that builds up like paint (canvases, a real spray pattern, speckled edges, runs from wet paint); the mist a jet and a haze; a multiplayer plan
+- Owner: "work on improving spray paint can 10x model and also I don't like how the spray paint itself looks coming out
+  or on wall"; then "write out a plan for how you would make multiplayer work, maybe even just with Hamachi".
+- New Tools/Blender/build_spraycan.py -> Resources/Items/SprayCan: a 400 ml three-piece tinplate can, 65 mm across, 207.5 mm
+  to the actuator's top: the lithographed body with a welded side seam and a soft dent, the bottom end double-seamed on
+  with its chime and concave dome, the top cone double-seamed on with two embossed rings, the one-inch valve mounting
+  cup crimped in its curl, the actuator (a dished finger pad with an arrow toward the nozzle, a black orifice insert in
+  its front, in the paint's red); dried overspray flecked over the cone and a run of it down from the nozzle. The wrap
+  (an invented maker, FERRON; real fonts through build_vending's Art): SPRAY PAINT, the brand on a slanted band,
+  ALL-SURFACE ENAMEL, GLOSS RED and a swatch, a flame pictogram and the warnings, the directions, NET WT 12 OZ, a barcode,
+  the lot. SprayCan.cs: its size and the nozzle at the orifice.
+- SprayPaint.cs rewritten: paint builds up in canvases (a 0.5 m, 256-texel byte texture on each flat surface it lands on,
+  tiled; the coats in it), each traced ray of the spray laying small Gaussians there (four splats spread as the cone
+  spreads, so a stroke's middle is a film and only its edges a grain); random rounding keeps a far dusting's paint as a
+  sparse speckle. Wet paint per 1.6 cm cell dries over seconds; past 3.4 coats on a vertical surface the excess runs: a
+  drip crawls down slowing and wavering, laying its paint into the canvas, and ends in a bead (it stops where the wall
+  does). Saved as the canvases deflated (version 2); version 1 saves' dots and runs are painted into canvases.
+  New Resources/Shaders/SprayCanvas.shader: coverage 1 - exp(-2.3 coats); thin paint as separate droplets (0.7 mm cells,
+  each a dot growing with the paint, smoothed where cells are under a pixel); lit by the light on the wall under it (the
+  opaque copy, six samples over 2 cm, as chalk and tape are); clipped where the surface under it ends (the depth).
+- SprayCan.cs: 900 rays a second in a 4.5 degree cone; each ray's paint calibrated so a stroke at 25 cm moved at 35 cm/s lays
+  a coat and a half at its middle, less arriving from far (it dries and drifts). The mist rebuilt: a jet of fast faint
+  streaks along the rays, each living till its ray ends; and a haze of overspray where they land, hanging a second or two
+  and drifting. SprayMist.shader: lit by what is behind it (dark in a dark room; it used to glow).
+- New Docs/MultiplayerPlan.md: host and join by IP over Hamachi (Netcode for GameObjects 2.x with Unity Transport, UDP
+  7777; Relay or Steam later); the world shared as its seed and its changes; who owns what; what in the game must change;
+  steps and times; what the two players do with Hamachi.
+- Checked: World 3: the before and after on one wall (a stroke at 25 cm, a spot held at 8 cm, a dusting from 1.2 m, a
+  zigzag at 18 cm): no pink circles, a red band soft and speckled at its edges, one thin run with its bead from the close
+  spot, a pink overspray cloud from far; sprayed from the hand (the new can in view); a spot held ten seconds ran in a
+  curtain of runs; EditMode tests 179/179.
+- Not done: the jet is faint (as a real can's is, unless lit from behind); the paint's colour is one red (the can's);
+  paint on furniture and items (as before: building only).
+- Sources: Konieczny, Heckman, Meyer (automotive spray painting simulation: fewer rays, each spreading paint over an
+  area); a 2025 Unity graffiti painter (paint amount in a texture, drips from it); aerosol painting guides (about 25 cm
+  off; too close runs, too far dries dusty); aerosol can patents (three-piece cans, the double-seamed ends, the one-inch
+  mounting cup crimped to the can).
+
 ## 2026-11-05 01:10  Claude Code  A settings page for whoever plays: sound, controls, camera comfort, graphics, screen, keys (from the main menu and the Escape menu)
 - Owner: "create a settings page yes" (item 10 of the top-ten list; the hand: "no, there shouldn't be hand specific stuff
   in first person anymore": left as it is).
