@@ -22,15 +22,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 0d7a42f3e40e5164ea8cf6c01bcfdedb, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 1
+      value: 0.7071067
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 0d7a42f3e40e5164ea8cf6c01bcfdedb, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0
+      value: -0.7071068
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 0d7a42f3e40e5164ea8cf6c01bcfdedb, type: 3}
       propertyPath: m_LocalRotation.y
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 0d7a42f3e40e5164ea8cf6c01bcfdedb, type: 3}
       propertyPath: m_LocalRotation.z
@@ -60,6 +60,14 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: fd6597c742be97643b830ac5f81d8bb7, type: 2}
+    - target: {fileID: -7511558181221131132, guid: 0d7a42f3e40e5164ea8cf6c01bcfdedb, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: b7096cbb1e8d971449e4211d6a422e28, type: 2}
+    - target: {fileID: -7511558181221131132, guid: 0d7a42f3e40e5164ea8cf6c01bcfdedb, type: 3}
+      propertyPath: 'm_Materials.Array.data[2]'
+      value: 
+      objectReference: {fileID: 2100000, guid: f971d462545336b4f8cdb6174781af26, type: 2}
     - target: {fileID: 919132149155446097, guid: 0d7a42f3e40e5164ea8cf6c01bcfdedb, type: 3}
       propertyPath: m_Name
       value: WoodenChair
@@ -96,5 +104,5 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.43770927, y: 0.86, z: 0.45825118}
-  m_Center: {x: 0, y: 0.43, z: -0.015316278}
+  m_Size: {x: 0.434, y: 0.86, z: 0.46321958}
+  m_Center: {x: 0, y: 0.42999998, z: -0.020609796}

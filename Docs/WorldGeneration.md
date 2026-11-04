@@ -249,6 +249,24 @@ one in fifteen to twenty. Scaled by F5 > WORLD GEN > HOW OFTEN (wall wear, ceili
   fallen flat (`partitions`); a wooden chair (`PropKind.WoodenChair`, `Tools/Blender/build_props.py wooden_chair`,
   movable and carried like the office chair) near the middle of 5 % of rooms (`wooden_chair`). The two prop kinds are
   placed after everything else with their own dice, so no other prop moves or renumbers.
+- **The models** (remade the same day for realism): `Tools/Blender/build_fittings.py` builds 28 of them into
+  `Resources/Fittings` (plus `Models/WoodenChair.fbx`) at real products' sizes, every edge bevelled, normals weighted,
+  1 UV unit = 0.25 m (the items' fine detail normal maps: brushed metal, painted metal, plastic, rubber, card), printed
+  parts with their own UVs: a 5 lb ABC extinguisher (108 mm drawn body, chrome valve, pressed handle and lever, pull pin
+  and green tamper seal, gauge with its dial, hose to a nozzle in its clip, wrap-round label with ABC and the class icons,
+  inspection tag on a string), its cabinet (rolled flange, door frame with shards of its glass left), its hook bracket,
+  the pull station (raised FIRE, PULL DOWN handle, keyhole), the horn strobe (grille slots, ribbed lens), the two
+  thermostats (LCD; a dial with its scale ring), the stamped grille, the fountain (one lofted basin from rim to drain,
+  bubbler and guard, push bar, shroud, backsplash), three filled windows, left and right corner guards, the closer's body,
+  arm, forearm and shoe, the kick plate, the ribbed wedge, three floor boxes (flip lids; carpet insert; open with a
+  receptacle and cut cables), the mop bucket (ribs, rolled rim, folded handle with its grip) and four cubicle panels
+  (extrusion, fabric faces, top cap, raceway with knockouts, glides). `FittingModels` reads them once (like
+  `WallPlateModels`) and the chunk builder copies them into its meshes; `FittingMaterials.ForSlot` gives each slot its
+  finish and paints the prints. The wooden chair: octagonal tapered legs, raked back posts, a dished seat, curved top rail
+  and slats, turned stretchers, corner blocks, felt glides, grain along each piece and lighter worn wood where hands and
+  heels go (`Materials/WoodWorn.mat`). The cord ends are the game's own plug and socket models. Grime where hands and
+  carts have been (round thermostats, pull stations and fountains, scuffs beside corner guards, a trodden ring round floor
+  boxes). Checked close up in World 3 (`DebugTools.LeftoversTour.closeUp`).
 
 ### Realism pass (2026-10-29, Docs/RealismPlan.md)
 

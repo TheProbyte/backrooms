@@ -33,8 +33,10 @@ namespace Backrooms.Generation
             _drop.SetParent(transform, false);
             _drop.gameObject.AddComponent<MeshFilter>().sharedMesh = s_drop;
             _dropR = _drop.gameObject.AddComponent<MeshRenderer>();
-            _dropR.sharedMaterial = FittingMaterials.Water;
+            _dropR.sharedMaterial = FittingMaterials.Drop ? FittingMaterials.Drop : FittingMaterials.Water;
             _dropR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            // (No motion vectors: the camcorder's shutter blur drew the falling drop as a long dark streak.)
+            _dropR.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
             if (water && RingMaterial())
             {
                 if (!s_ring) s_ring = RingMesh();

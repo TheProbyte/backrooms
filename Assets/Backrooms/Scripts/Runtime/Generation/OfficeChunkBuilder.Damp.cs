@@ -34,6 +34,10 @@ namespace Backrooms.Generation
         /// <summary>Damp patches on the floor (world x, z and radius in y), for footsteps (DampFloor).</summary>
         readonly List<Vector3> _damp = new List<Vector3>();
 
+        /// <summary>A floor that soaks water up rather than pooling it: any carpet (the office's, a home's, the reference
+        /// room's), not concrete, wood or laminate.</summary>
+        bool SoftFloor(Room r) => !OfficeBiomeAssets.ConcreteFloor(r) && r.floorFinish != FloorFinish.DarkWood && r.floorFinish != FloorFinish.Laminate;
+
         /// <summary>How wet the building is here, 0..1: the slow field the stained tiles follow (DressCeiling).</summary>
         float Wetness(int gx, int gz) => Field(gx * 0.17f, gz * 0.17f, 901);
 
@@ -221,10 +225,10 @@ namespace Backrooms.Generation
                 if (Dice(gx, gz, 3030 + i) >= 0.035f * DetailRates.CeilingWear) continue;
                 var at = new Vector3(c.x + (Dice(gx, gz, 3032 + i) - 0.5f) * 0.36f, 0f, c.z + (Dice(gx, gz, 3034 + i) - 0.5f) * 0.36f);
                 if (!Clear(at, 0.3f)) continue;
-                bool carpet = Carpeted(r);
+                bool carpet = SoftFloor(r);
                 uint m = CellMask(x, z);
                 int seed = gx * 7349 + gz * 2791 + i;
-                bool bucket = FittingMaterials.Bucket && Dice(gx, gz, 3036 + i) < (carpet ? 0.4f : 0.3f);
+                bool bucket = FittingModels.Ready && Dice(gx, gz, 3036 + i) < (carpet ? 0.4f : 0.3f);
                 float land = 0f;
                 if (carpet) DampPatch(at, Mathf.Max(0.12f, Mathf.Min(0.35f + 0.25f * Dice(gx, gz, 3038 + i), WallRoom(x, z, at) / 1.5f)), seed);
                 if (!carpet) Puddle(at, 0.2f + 0.25f * Dice(gx, gz, 3038 + i), m, seed, bucket);
@@ -259,39 +263,16 @@ namespace Backrooms.Generation
             if (!small) _damp.Add(new Vector3(_origin.x + c.x, rad, _origin.z + c.z));
         }
 
-        /// <summary>A plastic bucket put under a leak, some water in it; returns the water's height.</summary>
+        /// <summary>A plastic bucket put under a leak (the model: ribbed, rolled rim, its handle folded down), dirty water in it;
+        /// returns the water's height.</summary>
         float Bucket(Vector3 at, uint m, int seed)
         {
-            var w = WMask(FittingMaterials.Bucket, m);
-            var MU = (MeshWriter.UVProjector)MeshWriter.MetreUV;
-            const float rb = 0.12f, rt = 0.148f, h = 0.28f;
-            w.Frustum(at, rb, rt, h, 22, true, MU);                                   // the outside
-            w.Frustum(at + Vector3.up * 0.012f, rb - 0.007f, rt - 0.007f, h - 0.012f, 22, false, MU);   // the inside
-            w.Disc(at + Vector3.up * 0.012f, rb - 0.007f, 22, Vector3.up, MU);
-            w.Frustum(at + Vector3.up * (h - 0.012f), rt + 0.004f, rt + 0.004f, 0.012f, 22, true, MU);   // the rolled rim
-            w.Disc(at + Vector3.up * 0.0005f, rb, 22, Vector3.down, MU);
-            // The handle, folded down against the side.
             var rng = new System.Random(seed);
-            float turn = (float)rng.NextDouble() * 360f;
-            var q = Quaternion.Euler(0f, turn, 0f);
-            Vector3 prev = Vector3.zero;
-            const int segs = 10;
-            for (int s = 0; s <= segs; s++)
-            {
-                float ang = Mathf.PI * s / segs;
-                var local = new Vector3(Mathf.Cos(ang) * (rt + 0.012f), h - 0.03f - Mathf.Sin(ang) * 0.11f, Mathf.Sin(ang) * 0.06f);
-                var p = at + q * local;
-                if (s > 0)
-                {
-                    var mid = (p + prev) * 0.5f;
-                    var dir = p - prev;
-                    w.Box(mid, new Vector3(0.006f, 0.006f, dir.magnitude + 0.002f), Quaternion.LookRotation(dir.normalized), 63, MU);
-                }
-                prev = p;
-            }
+            const float rb = 0.12f, rt = 0.148f, h = 0.28f;
+            Model("Bucket", m, at, Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f));
             float water = 0.06f + 0.1f * (float)rng.NextDouble();
-            if (FittingMaterials.Water)
-                WMask(FittingMaterials.Water, m).Disc(at + Vector3.up * water, Mathf.Lerp(rb, rt, water / h) - 0.007f, 22, Vector3.up, MU);
+            var wm = FittingMaterials.BucketWater ? FittingMaterials.BucketWater : FittingMaterials.Water;
+            if (wm) WMask(wm, m).Disc(at + Vector3.up * water, Mathf.Lerp(rb, rt, water / h) - 0.009f, 32, Vector3.up, MeshWriter.MetreUV);
             _boxes.Add((at + Vector3.up * (h * 0.5f), new Vector3(rt * 2f, h, rt * 2f)));
             return water;
         }

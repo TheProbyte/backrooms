@@ -11,7 +11,9 @@ Last updated 2026-11-03 (world version 13).
   failing tubes; fire extinguishers, pull stations, horn strobes, thermostats, low vents, drinking fountains in alcoves,
   filled-in windows, corner guards; door closers, kick plates, wedges; floor boxes and cut cables, a taped-down extension
   cord, cubicle partitions, and a modelled wooden chair alone in the middle of a room. All rare; every kind has its own
-  teleport in F5 > PLACES > WEAR AND DETAIL.
+  teleport in F5 > PLACES > WEAR AND DETAIL. All of them are now real models (Tools/Blender/build_fittings.py): real
+  sizes, bevelled, printed labels and dials, real parts (an extinguisher's pin, seal, gauge, hose and tag; a closer's
+  working arm), the chair's wood grained and worn.
 - **More real handheld motion** (Docs/Camcorder.md, "Standing, side-steps, turning and the walk jitter"): standing still,
   side-stepping and the shake of turning now come from the owner's phone recordings too, and the walk has a third take.
   Camera menu > CAMERA SHAKE > Walk jitter turns the walk's step-to-step irregularity down (or up) without recording again.

@@ -285,6 +285,8 @@ namespace Backrooms.EditorTools
                     {
                         string n = mats[i] ? mats[i].name : "";
                         mats[i] = n.StartsWith("Fabric") ? fabric
+                                : n.StartsWith("WoodWorn") ? (AssetDatabase.LoadAssetAtPath<Material>(MatFolder + "/WoodWorn.mat") ?? a.wood)
+                                : n.StartsWith("Felt") ? a.chairFabric
                                 : n.StartsWith("Wood") ? a.wood
                                 : n.StartsWith("Metal") ? a.lampMetal
                                 : n.StartsWith("Shade") ? a.lampShadeOff

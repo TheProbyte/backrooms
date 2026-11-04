@@ -27,7 +27,9 @@ namespace Backrooms.Tests
             FurnitureMaterials.Ensure(a);
             FittingMaterials.Ensure(a);
             DoorModels.Ensure(a);
+            FittingModels.Ensure(a);
             Assert.IsTrue(FittingMaterials.Ready, "the fittings' materials");
+            Assert.IsTrue(FittingModels.Ready, "the fittings' models (Resources/Fittings)");
             return a;
         }
 

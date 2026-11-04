@@ -15,11 +15,31 @@ namespace Backrooms.Generation
     /// </summary>
     public partial class OfficeChunkBuilder
     {
+        /// <summary>The cords' plug and socket (Resources/Items models, made on the main thread): chunk-local place, turn, model, light layers.</summary>
+        readonly List<(Vector3 at, Quaternion rot, string model, uint mask)> _cordEnds = new List<(Vector3, Quaternion, string, uint)>();
+
+        void InstantiateCordEnds(Transform root)
+        {
+            foreach (var (at, rot, model, mask) in _cordEnds)
+            {
+                var go = new GameObject(model);
+                go.transform.SetParent(root, false);
+                go.transform.localPosition = at;
+                go.transform.localRotation = rot;
+                Interaction.ItemModels.Attach(go.transform, model, new Vector3(0.04f, 0.03f, 0.05f), "CordOrange");
+                foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
+                {
+                    r.renderingLayerMask = mask;
+                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                }
+            }
+        }
+
         // ---------------- Floor boxes ----------------
 
         void FloorBox(int x, int z, Room r, bool carpet, uint m)
         {
-            if (!carpet || r.kind == RoomKind.Hallway || r.kind == RoomKind.Crawl || r.custom || r.home || !FittingMaterials.Brass) return;
+            if (!carpet || r.kind == RoomKind.Hallway || r.kind == RoomKind.Crawl || r.custom || r.home || !FittingModels.Ready) return;
             if (DistrictGenerator.StyleOf(r) != RoomStyle.Backrooms) return;
             // A room has them or not (the same in every chunk it runs through), then only away from its walls.
             if (Dice(r.globalId, _L.storey, 3200) >= 0.1f * DetailRates.FloorMarks) return;
@@ -28,53 +48,14 @@ namespace Backrooms.Generation
             if (Dice(gx, gz, 3201) >= 0.22f) return;
             var c = new Vector3((x + 0.5f + (Dice(gx, gz, 3202) - 0.5f) * 0.3f) * C, 0f, (z + 0.5f + (Dice(gx, gz, 3203) - 0.5f) * 0.3f) * C);
             if (!Clear(c, 0.15f)) return;
-            var brass = WMask(FittingMaterials.Brass, m);
             bool round = Dice(gx, gz, 3204) < 0.6f, open = Dice(gx, gz, 3205) < 0.35f;
-            float turn = Dice(gx, gz, 3206) < 0.5f ? 0f : 90f;
-            var q = Quaternion.Euler(0f, turn, 0f);
-            const float lip = 0.0045f;
-            if (round)
-            {
-                brass.Frustum(c, 0.105f, 0.1f, lip, 24, true, MU);
-                if (!open) brass.Disc(c + Vector3.up * lip, 0.1f, 24, Vector3.up, MU);
-                else brass.Frustum(c + Vector3.up * lip, 0.1f, 0.085f, 0.0005f, 24, true, MU);
-            }
-            else
-            {
-                const float hs = 0.11f, ins = 0.085f;
-                brass.Box(c + q * new Vector3(0f, lip * 0.5f, hs - (hs - ins) * 0.5f), new Vector3(hs * 2f, lip, hs - ins), q, 63 & ~4, MU);
-                brass.Box(c + q * new Vector3(0f, lip * 0.5f, -hs + (hs - ins) * 0.5f), new Vector3(hs * 2f, lip, hs - ins), q, 63 & ~4, MU);
-                brass.Box(c + q * new Vector3(hs - (hs - ins) * 0.5f, lip * 0.5f, 0f), new Vector3(hs - ins, lip, ins * 2f), q, 63 & ~4, MU);
-                brass.Box(c + q * new Vector3(-hs + (hs - ins) * 0.5f, lip * 0.5f, 0f), new Vector3(hs - ins, lip, ins * 2f), q, 63 & ~4, MU);
-                if (!open)
-                {
-                    var insert = WMask(_a.FloorMaterial(r), m);
-                    var ic = c + Vector3.up * (lip - 0.0005f);
-                    insert.Quad(ic + q * new Vector3(-ins, 0f, -ins), ic + q * new Vector3(ins, 0f, -ins), ic + q * new Vector3(ins, 0f, ins), ic + q * new Vector3(-ins, 0f, ins), Vector3.up, MeshWriter.FloorUV);
-                }
-            }
-            if (open)
-            {
-                // The lid gone, the box dark inside, the cut ends of the cables that fed a desk.
-                if (MaterialMaps.Plenum) WMask(MaterialMaps.Plenum, m).Disc(c + Vector3.up * 0.0006f, 0.084f, 18, Vector3.up, MU);
-                var rng = new System.Random(gx * 4561 + gz * 1931);
-                int n = 2 + rng.Next(3);
-                for (int k = 0; k < n; k++)
-                {
-                    var cable = WMask(k % 2 == 0 ? FurnitureMaterials.Dark : FurnitureMaterials.Beige, m);
-                    float ang = (float)rng.NextDouble() * 6.28f, off = 0.02f + 0.04f * (float)rng.NextDouble();
-                    var b = c + new Vector3(Mathf.Cos(ang) * off, 0f, Mathf.Sin(ang) * off);
-                    float tall = 0.03f + 0.07f * (float)rng.NextDouble(), lean = 20f + 50f * (float)rng.NextDouble();
-                    var dir = Quaternion.AngleAxis(lean, new Vector3(-Mathf.Sin(ang), 0f, Mathf.Cos(ang))) * Vector3.up;
-                    var mid = b + Vector3.up * (tall * 0.5f);
-                    cable.Box(mid, new Vector3(0.008f, tall, 0.008f), Quaternion.identity, 63 & ~4, MU);
-                    var tip0 = b + Vector3.up * tall;
-                    cable.Box(tip0 + dir * 0.025f, new Vector3(0.008f, 0.008f, 0.05f), Quaternion.LookRotation(dir), 63, MU);
-                    brass.Box(tip0 + dir * 0.052f, new Vector3(0.004f, 0.004f, 0.006f), Quaternion.LookRotation(dir), 63, MU);   // copper
-                }
-                Saw(c, Vector3.up, "cable_stubs");
-            }
-            else Saw(c, Vector3.up, "floor_box");
+            float turn = Dice(gx, gz, 3206) * 360f;
+            var q = Quaternion.Euler(0f, round ? turn : (Dice(gx, gz, 3206) < 0.5f ? 0f : 90f), 0f);
+            var floor = _a.FloorMaterial(r);
+            if (!Model(open ? "FloorBoxOpen" : round ? "FloorBoxRound" : "FloorBoxSquare", m, c, q, sl => sl == "CarpetInsert" ? floor : null)) return;
+            // The carpet round it trodden darker, its pile worn back from the brass.
+            _floorWear.Rect(c + Vector3.up * 0.0015f, Vector3.right, Vector3.forward, 0.16f, 0.16f, new Color32(170, 160, 142, 120), new Vector2(-0.55f, 0.4f));
+            Saw(c, Vector3.up, open ? "cable_stubs" : "floor_box");
         }
 
         // ---------------- Extension cord ----------------
@@ -145,19 +126,28 @@ namespace Backrooms.Generation
             var cord = WMask(FittingMaterials.Cord, m);
             if (plug.HasValue)
             {
-                // The plug in the outlet, the cord down the wall to the floor and out to the run.
-                var pf = plug.Value + plugN.Value * 0.012f;
-                cord.Box(pf + plugN.Value * 0.014f, new Vector3(0.03f, 0.038f, 0.03f), Quaternion.LookRotation(plugN.Value), 63, MU);
-                var foot = new Vector3(pf.x, y, pf.z) + plugN.Value * 0.03f;
-                Tube(cord, pf + plugN.Value * 0.03f - Vector3.up * 0.02f, foot + Vector3.up * 0.02f, 0.0045f);
-                Tube(cord, foot + Vector3.up * 0.02f, foot, 0.0045f);
+                // The plug in the outlet (the plug-in cords' own model: prongs into the wall, its cord out of the back),
+                // the cord curving down the wall to the floor and out to the run.
+                var pf = plug.Value + plugN.Value * 0.011f + Vector3.down * 0.012f;
+                _cordEnds.Add((pf, Quaternion.LookRotation(-plugN.Value, Vector3.up), "Plug", m));
+                var back = pf + plugN.Value * 0.046f;
+                var foot = new Vector3(back.x, y, back.z) + plugN.Value * 0.02f;
+                var bend = new List<Vector3>();
+                for (int k = 0; k <= 8; k++)
+                {
+                    float t = k / 8f;
+                    var a = Vector3.Lerp(back, new Vector3(back.x, y + 0.03f, back.z) + plugN.Value * 0.02f, t);
+                    bend.Add(Vector3.Lerp(a, foot, t * t) + plugN.Value * (0.012f * Mathf.Sin(t * Mathf.PI)));
+                }
+                for (int k = 0; k + 1 < bend.Count; k++) Tube(cord, bend[k], bend[k + 1], 0.0045f);
                 pts.Insert(0, foot);
             }
             for (int i = 0; i + 1 < pts.Count; i++) Tube(cord, pts[i], pts[i + 1], 0.0045f);
-            // The loose end: a socket lying on the floor.
+            // The loose end: the orange socket (the cords' own model) lying on the floor, its cord out of its back.
             var tip = pts[pts.Count - 1];
             var dirEnd = (tip - pts[pts.Count - 2]).normalized;
-            cord.Box(tip + dirEnd * 0.03f + Vector3.up * 0.01f, new Vector3(0.045f, 0.03f, 0.06f), Quaternion.LookRotation(dirEnd), 63, MU);
+            Tube(cord, tip, tip + dirEnd * 0.006f + Vector3.up * 0.009f, 0.0045f);
+            _cordEnds.Add((new Vector3(tip.x, 0f, tip.z) + dirEnd * 0.066f, Quaternion.LookRotation(dirEnd, Vector3.up), "CordSocket", m));
             // Duct tape across it every metre or two.
             var tape = WMask(FittingMaterials.Tape, m);
             float next = 0.6f + 0.6f * (float)rng.NextDouble(), run = 0f;
@@ -170,12 +160,31 @@ namespace Backrooms.Generation
                 var side = Vector3.Cross(Vector3.up, dir);
                 float tw = 0.024f, tl = 0.09f + 0.05f * (float)rng.NextDouble(), skew = ((float)rng.NextDouble() - 0.5f) * 20f;
                 var q = Quaternion.LookRotation(Quaternion.AngleAxis(skew, Vector3.up) * side);
-                var tc = new Vector3(pts[i].x, 0.0005f, pts[i].z);
-                // Flat either side, over the cord in the middle.
-                tape.Box(tc + Vector3.up * 0.0005f, new Vector3(tw * 2f, 0.001f, tl * 2f), q, 63 & ~4, MU);
-                tape.Box(tc + Vector3.up * 0.009f, new Vector3(tw * 2f, 0.001f, 0.024f), q, 63 & ~4, MU);
+                var tc = new Vector3(pts[i].x, 0f, pts[i].z);
+                TapeStrip(tape, tc, q * Vector3.forward, q * Vector3.right, tl, tw, rng);
             }
             Saw(pts[pts.Count / 2], Vector3.up, "cord");
+        }
+
+        /// <summary>
+        /// A strip of duct tape across a cord on the floor: flat to the carpet either side, humped over the cord in the middle,
+        /// its torn ends ragged. c on the floor; along: across the cord (its length); side: along the cord (its width).
+        /// </summary>
+        static void TapeStrip(MeshWriter w, Vector3 c, Vector3 along, Vector3 side, float halfLen, float halfW, System.Random rng)
+        {
+            const int n = 10;
+            float Hump(float s) { float a = Mathf.Abs(s); return a < 0.006f ? 0.0098f : a < 0.016f ? Mathf.Lerp(0.0098f, 0.0012f, (a - 0.006f) / 0.01f) : 0.0012f; }
+            for (int i = 0; i < n; i++)
+            {
+                float s0 = -halfLen + 2f * halfLen * i / n, s1 = -halfLen + 2f * halfLen * (i + 1) / n;
+                // The torn ends: the last piece each way jagged across.
+                float j0 = i == 0 ? ((float)rng.NextDouble() - 0.5f) * 0.012f : 0f, j1 = i == n - 1 ? ((float)rng.NextDouble() - 0.5f) * 0.012f : 0f;
+                Vector3 P(float s, float t, float jag) => c + along * (s + jag * t) + side * (t * halfW) + Vector3.up * Hump(s);
+                Vector3 a = P(s0, -1f, j0), b = P(s1, -1f, j1), d = P(s0, 1f, -j0), e = P(s1, 1f, -j1);
+                var nrm = Vector3.Cross(e - a, b - a).normalized;
+                if (nrm.y < 0f) nrm = -nrm;
+                w.Quad(a, b, e, d, nrm, MeshWriter.MetreUV);
+            }
         }
 
         /// <summary>A cord's piece from a to b: an eight-sided tube of radius rad.</summary>
@@ -204,34 +213,24 @@ namespace Backrooms.Generation
         /// </summary>
         void Partition(Prop p, Vector3 at, Quaternion rot)
         {
-            if (!FittingMaterials.Fabric || !FurnitureMaterials.Steel) return;
+            if (!FittingModels.Ready) return;
             uint m = LayerBit(p.roomColor);
-            var fabric = WMask(FittingMaterials.Fabric, m);
-            var steel = WMask(FurnitureMaterials.Steel, m);
             float w = p.size.x, h = p.size.y, t = p.size.z;
             bool fallen = (p.variant & 1) != 0;
             if ((p.variant & 2) != 0) Saw(at + Vector3.up * 0.6f, Vector3.up, "partitions");
-            // Built standing in its own frame (x across, y up, z through), then laid down if it fell: about its foot's
-            // long edge, onto its face (its middle, where the plan put it, half its height out from its foot).
-            var q = fallen ? rot * Quaternion.Euler(90f, 0f, 0f) : rot;
-            var footAt = fallen ? at - rot * Vector3.forward * (h * 0.5f) : at;
-            Vector3 L(float x, float y, float z) => footAt + q * new Vector3(x, y, z) + (fallen ? Vector3.up * (t * 0.5f) : Vector3.zero);
-            const float frame = 0.03f, foot = 0.025f;
-            float y0 = fallen ? 0f : foot;
-            // The fabric faces and the frame round them.
-            fabric.Box(L(0f, y0 + (h - foot) * 0.5f, 0f), new Vector3(w - 2f * frame, h - foot - 2f * frame, t), q, 16 | 32, MU);
-            steel.Box(L(0f, y0 + h - foot - frame * 0.5f, 0f), new Vector3(w, frame, t + 0.004f), q, 63, MU);
-            steel.Box(L(0f, y0 + frame * 0.5f, 0f), new Vector3(w, frame, t + 0.004f), q, 63, MU);
-            steel.Box(L(-w * 0.5f + frame * 0.5f, y0 + (h - foot) * 0.5f, 0f), new Vector3(frame, h - foot - 2f * frame, t + 0.004f), q, 63, MU);
-            steel.Box(L(w * 0.5f - frame * 0.5f, y0 + (h - foot) * 0.5f, 0f), new Vector3(frame, h - foot - 2f * frame, t + 0.004f), q, 63, MU);
+            string name = "Partition_" + (w > 1f ? "120" : "90") + "_" + (h > 1.5f ? "165" : "135");
             if (!fallen)
             {
-                // Its feet: steel glides across under each end, a little wider than the panel.
-                for (int s = -1; s <= 1; s += 2)
-                    steel.Box(L(s * (w * 0.5f - 0.06f), foot * 0.5f, 0f), new Vector3(0.04f, foot, t + 0.22f), q, 63 & ~4, MU);
+                Model(name, m, at, rot);
                 _rotBoxes.Add((at + Vector3.up * (h * 0.5f), new Vector3(w, h, t + 0.02f), p.yaw));
             }
-            else _rotBoxes.Add((at + Vector3.up * (t * 0.5f + 0.01f), new Vector3(w, t + 0.02f, h), p.yaw));
+            else
+            {
+                // Fallen on its face about its foot's long edge: its middle (where the plan put it) half its height out.
+                var foot = at - rot * Vector3.forward * (h * 0.5f) + Vector3.up * 0.032f;
+                Model(name, m, foot, rot * Quaternion.Euler(90f, 0f, 0f));
+                _rotBoxes.Add((at + Vector3.up * 0.04f, new Vector3(w, 0.08f, h), p.yaw));
+            }
         }
 
         // ---------------- The wooden chair ----------------

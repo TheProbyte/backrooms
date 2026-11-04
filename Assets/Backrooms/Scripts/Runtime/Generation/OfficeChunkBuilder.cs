@@ -133,7 +133,7 @@ namespace Backrooms.Generation
         {
             _neighbours = neighbours;
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); _lampItems.Clear(); _breakers.Clear(); _deskLamps.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
-            _capsules.Clear(); _rugs.Clear(); poolMap = null; poolMap2 = null; _sounds.Clear();
+            _capsules.Clear(); _rugs.Clear(); _cordEnds.Clear(); poolMap = null; poolMap2 = null; _sounds.Clear();
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             // Square panels sit inside a ceiling tile and need no gap in the grid; only round domes sit on a cross tee.
@@ -346,6 +346,7 @@ namespace Backrooms.Generation
             InstantiateCustomRoomExtras(root.transform);
             InstantiateRugs(root.transform);
             InstantiateLeaks(root.transform);
+            InstantiateCordEnds(root.transform);
             if (outlets.Count > 0) root.AddComponent<Interaction.ChunkOutlets>().Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), outlets);
             if (poolMap != null) { var pc = root.AddComponent<PoolChunk>(); pc.Set(_L.coord, _L.storey, poolMap, poolMap2, poolFittings.ToArray(), poolFittingDirs.ToArray()); pc.ropes = poolRopes.ToArray(); pc.ropeEnds = poolRopeEnds.ToArray(); }
 

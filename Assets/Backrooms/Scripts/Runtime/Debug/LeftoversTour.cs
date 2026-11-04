@@ -21,6 +21,8 @@ namespace Backrooms.DebugTools
         public int ring = 2;
         /// <summary>Seconds to wait where each one is (its chunk may have to be built again).</summary>
         public float settle = 5f;
+        /// <summary>Close up: stand this far from each (0: where F5 > PLACES puts you).</summary>
+        public float closeUp = 0f;
         public bool done;
         public string result = "";
 
@@ -45,7 +47,33 @@ namespace Backrooms.DebugTools
             {
                 var list = RealismSightings.Of(k, home);
                 if (list.Count == 0) { sb.Append(k).Append(": none; "); continue; }
-                menu.GoRealism(k);
+                if (closeUp > 0f)
+                {
+                    // Near the nearest one, looking straight at it.
+                    var s = list[0];
+                    var p = s.position;
+                    float floor = Mathf.Floor((p.y + 0.01f) / 9f) * 9f;                   // (the storey's floor: a ray hit the thing itself)
+                    Vector3 n = new Vector3(s.facing.x, 0f, s.facing.z);
+                    if (n.sqrMagnitude < 0.01f) n = Vector3.forward;
+                    n.Normalize();
+                    if (Mathf.Abs(s.facing.y) > 0.5f)
+                    {
+                        // On the floor: from whichever side has room.
+                        float best = -1f;
+                        foreach (var d in new[] { Vector3.forward, Vector3.back, Vector3.left, Vector3.right })
+                        {
+                            float room = Physics.Raycast(new Vector3(p.x, floor + 1f, p.z), d, out var h2, 2f) ? h2.distance : 2f;
+                            if (room > best) { best = room; n = d; }
+                        }
+                    }
+                    float dist = Mathf.Abs(s.facing.y) > 0.5f ? closeUp * 1.2f : closeUp;
+                    var stand = new Vector3(p.x, floor, p.z) + n * dist;
+                    var look = p - (stand + Vector3.up * 1.6f);
+                    float yaw = Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg;
+                    float pitch = Mathf.Atan2(-look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg;
+                    ctrl.TeleportSafe(stand, yaw, pitch);                                   // (held until its chunk has a floor)
+                }
+                else menu.GoRealism(k);
                 yield return new WaitForSeconds(settle);
                 ScreenCapture.CaptureScreenshot(Path.Combine(folder, k + ".png"));
                 yield return new WaitForSeconds(0.4f);

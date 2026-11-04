@@ -15,6 +15,24 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-03 22:30  Claude Code  The Level 0 fittings and leftovers remade as real models
+- Owner: "for all models, please improve realism 10x" (taken as the models of the batch just added).
+- New Tools/Blender/build_fittings.py (uses build_items2.py's helpers, loaded from it): 28 models into
+  Resources/Fittings and the wooden chair into Models/WoodenChair.fbx, at real sizes (a 5 lb ABC extinguisher: 108 mm,
+  390 mm to the valve), bevels on every edge, weighted normals, world-scale UVs for the detail maps, printed parts with
+  their own UVs, wood UVs along its grain. Previews checked in Blender before use.
+- New FittingModels (reads them once, like WallPlateModels; MakeMesh/Spawn for door hardware that moves);
+  FittingMaterials.ForSlot (a finish per slot, ItemModels' detail normals, labels glossier than their paint) and the
+  printed textures (the extinguisher's label and gauge, the thermostat's scale, FIRE / PULL DOWN / FIRE EXTINGUISHER
+  strips, the LCD). OfficeChunkBuilder.Fittings/Leftovers/Damp and DoorHardware place the models instead of boxes; the
+  cord's ends are the items' Plug and CordSocket; duct tape humped over the cord with torn ends; grime round fittings.
+  Chair prefab remade (Wood, WoodWorn.mat, Felt); InfiniteWorldBuilder maps the new slots.
+- Fixes found by looking: the extinguisher's label was mirrored (its U ran right to left) and its hose clip crossed it;
+  a leak's falling drop smeared into a long black streak in the camcorder's shutter blur (now a bright speck with no
+  motion vectors); "puddles" on homes' carpet (leaks now soak into any carpet); standing water no longer a black disc.
+- Checked: all 179 EditMode tests; DebugTools.LeftoversTour with a close-up mode in World 3 (every model at 0.7 m).
+- Not done: the other furniture (sofas, office chair, lamps, doors) is unchanged.
+
 ## 2026-11-03 20:30  Claude Code  Level 0's rarer things: water, old fittings, door hardware, leftovers, a wooden chair
 - Owner's list (items 1-4, 6-8, 10-16, 20 and a modelled wooden chair), rare and random, each with a teleport.
 - New: OfficeChunkBuilder.Damp.cs (damp carpet, water down walls, leaks, mould; DampFloor for footsteps), CeilingLeak.cs

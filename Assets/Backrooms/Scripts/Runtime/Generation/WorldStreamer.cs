@@ -165,6 +165,7 @@ namespace Backrooms.Generation
             if (Application.isPlaying && !GetComponent<Audio.SteamAudioWorld>()) gameObject.AddComponent<Audio.SteamAudioWorld>().streamer = this;   // walls for Steam Audio
 #endif
             WallPlateModels.Ensure();                     // outlet and switch models, copied into the chunk meshes
+            FittingModels.Ensure(assets);                 // the fittings and leftovers' models (2026-11-03), copied the same way
             DoorModels.Ensure(assets);                    // the wooden doors in some doorways
             MaterialMaps.Ensure(assets);                  // normal maps for the materials that had none
             CustomRooms.CustomModels.Ensure(assets);      // models the player brought in (build mode)
