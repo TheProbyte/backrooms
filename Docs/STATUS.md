@@ -6,6 +6,9 @@ Last updated 2026-11-04 (world version 13).
 
 ## Newest (2026-11-04)
 
+- **A settings page** (Menu/SettingsMenu.cs, Menu/GameSettings.cs): from the main menu and the Escape menu: sound
+  (master, ambience, music), controls (sensitivity, invert Y), camera comfort (shake, motion blur, brightness, REDUCE
+  MOTION), graphics (quality, resolution, frame rate, vsync), screen, and every key.
 - **Sound round corners** (Audio/SoundRoute.cs): a boombox playing, a cart rolling, a drinks machine, the dark's
   scrapes and the elevator are heard through the doorway they come through, as far off as the way round (no longer
   muffled as if through the wall with the door open beside you); through the wall only when that is louder. The

@@ -428,10 +428,13 @@ namespace Backrooms
         void UpdateLook(Vector2 delta)
         {
             float py = _pitch;
-            _yaw += delta.x * mouseSensitivity;
-            _pitch += (invertY ? delta.y : -delta.y) * mouseSensitivity * pitchScale;
+            // (the player's sensitivity and invert Y, Settings, on top of the tuned ones)
+            float sens = mouseSensitivity * GameSettings.Sensitivity;
+            bool inv = invertY != GameSettings.InvertY;
+            _yaw += delta.x * sens;
+            _pitch += (inv ? delta.y : -delta.y) * sens * pitchScale;
             float dp = Mathf.Clamp(_pitch, -pitchLimit, pitchLimitDown) - py;
-            _lookDelta = new Vector2(delta.x * mouseSensitivity, dp);
+            _lookDelta = new Vector2(delta.x * sens, dp);
             _lookFrame = Time.frameCount;
             _pitch = Mathf.Clamp(_pitch, -pitchLimit, pitchLimitDown);
             // Seated: no further round than a seated body turns (an office chair turns with you: Seating).

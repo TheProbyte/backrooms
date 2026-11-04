@@ -475,7 +475,7 @@ namespace Backrooms.Audio
                 // A brownout: the hum drops and slurs with the sagging supply.
                 float mains = lights ? lights.Mains : 1f;
                 v.src.pitch = pitch * v.detune * (1f - (1f - mains) * 0.35f);
-                v.src.volume = baseLvl * catVol * v.level * pathGain * _compSmoothed * Smooth(v.fade) * power * mains * mains * mains;
+                v.src.volume = baseLvl * catVol * v.level * pathGain * _compSmoothed * Smooth(v.fade) * power * mains * mains * mains * GameSettings.Ambience;
 
                 // Faulty stutter and strike edges come from the same curve as the light.
                 if (v.lastPower < 0.35f && power > 0.75f)
@@ -565,7 +565,7 @@ namespace Backrooms.Audio
                 v.lpf.cutoffFrequency = Mathf.Exp(Mathf.Lerp(Mathf.Log(Mathf.Max(10f, v.lpf.cutoffFrequency)), Mathf.Log(r.cutoff), posK));
                 v.src.pitch = SoundCatalog.Pitch(id);
                 float stutterGate = power > 0.5f ? 0.6f : 1f;    // louder arcing in the dark dips
-                v.src.volume = baseLvl * catVol * Mathf.Clamp(crackle, 0f, 2f) * v.buzzEnv * stutterGate * pathGainB * Smooth(v.fade);
+                v.src.volume = baseLvl * catVol * Mathf.Clamp(crackle, 0f, 2f) * v.buzzEnv * stutterGate * pathGainB * Smooth(v.fade) * GameSettings.Ambience;
             }
             BuzzActive = count;
         }
@@ -604,7 +604,7 @@ namespace Backrooms.Audio
 
         void UpdateBeds(float dt)
         {
-            float amb = Mathf.Clamp(Dev.ambience, 0f, 2f) * Mathf.Clamp01(Duck) * Mathf.Clamp01(HomeQuiet);
+            float amb = Mathf.Clamp(Dev.ambience, 0f, 2f) * Mathf.Clamp01(Duck) * Mathf.Clamp01(HomeQuiet) * GameSettings.Ambience;
             float bedK = 1f - Mathf.Exp(-dt / 1.5f);
 
             _distantSmoothed = Mathf.Lerp(_distantSmoothed, DistantLevel, bedK);
@@ -618,7 +618,7 @@ namespace Backrooms.Audio
             float ventT = SoundBank.BaseLevel(SoundIds.Ventilation) * SoundCatalog.Volume(SoundIds.Ventilation) * amb
                           * Mathf.Lerp(0.55f, 1.15f, size) * Mathf.Lerp(0.45f, 1f, _poweredNearby) * drift;
             _ventSmoothed = Mathf.Lerp(_ventSmoothed, ventT, bedK);
-            _vent.volume = _ventSmoothed;
+            _vent.volume = _ventSmoothed * GameSettings.Ambience;
             _vent.pitch = SoundCatalog.Pitch(SoundIds.Ventilation);
             _ventLpf.cutoffFrequency = Mathf.Lerp(_ventLpf.cutoffFrequency, Mathf.Lerp(1800f, 6000f, Mathf.Max(size * 0.6f, hard)), bedK);
 

@@ -191,7 +191,7 @@ namespace Backrooms.Camcorder
             {
                 exposure.autoExposure = s.autoExposure;
                 exposure.snap = freezeForStills;
-                exposure.exposureBias = s.exposureBias;
+                exposure.exposureBias = s.exposureBias + GameSettings.Brightness;          // (the player's brightness: Settings)
                 // In the Poolrooms' daylight it adapts faster (2026-11-01, the review: a sunlit hall stayed blown out for a
                 // few seconds); a consumer camcorder in daylight is quick, Level 0's slow pace is for its dim rooms.
                 exposure.speedScale = s.exposureSpeed * (Generation.PoolWorld.CameraInPool ? 2.5f : 1f);
@@ -234,7 +234,7 @@ namespace Backrooms.Camcorder
 
             if (shake)
             {
-                shake.shakeIntensity = s.shakeIntensity;
+                shake.shakeIntensity = s.shakeIntensity * GameSettings.Shake;              // (camera comfort: Settings)
                 shake.breathingDegrees = _baseBreathDeg * s.breathing;
                 shake.breathingHeight = _baseBreathHeight * s.breathing;
                 shake.stabilization = s.stabilization;
@@ -303,7 +303,7 @@ namespace Backrooms.Camcorder
             p.meterOnly = !s.camcorderLook;
             p.exposure = exposure ? exposure.Exposure : 0.8f;
             p.shutterTime = T;
-            p.motionBlur = s.motionBlur;
+            p.motionBlur = s.motionBlur * GameSettings.MotionBlur;
             p.softness = Mathf.Max(0f, s.softness);
             p.frameIndex = frameIndex;
             p.noiseReduction = s.noiseReduction > 0.001f;

@@ -124,6 +124,7 @@ namespace Backrooms.Menu
                 return;
             }
 
+            if (SettingsMenu.IsOpen || SettingsMenu.ClosedFrame == Time.frameCount) return;     // the settings page has the keys
             var kb = Keyboard.current;
             if (kb == null || _leaving || _items.Count == 0) return;
             bool left = kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame, right = kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame;
@@ -232,7 +233,7 @@ namespace Backrooms.Menu
                 case Page.Top:
                     _pageLabel.text = "";
                     Item("PLAY", () => { Beep(1); Show(Page.Saves); });
-                    Item("SETTINGS", () => { Beep(1); Show(Page.Settings); });
+                    Item("SETTINGS", OpenSettings);
                     Item("QUIT", Quit);
                     break;
                 case Page.Saves:
@@ -282,6 +283,14 @@ namespace Backrooms.Menu
             Refresh();
             _steps[_items.Count] = d => { step(d); Refresh(); };
             Add(row, () => { step(1); Refresh(); Beep(0); });
+        }
+
+        /// <summary>The settings page (Menu/SettingsMenu.cs) in place of the menu; the F5 tabs from it as ADVANCED.</summary>
+        void OpenSettings()
+        {
+            Beep(1);
+            _panel.style.display = DisplayStyle.None;
+            SettingsMenu.Open(() => { if (!_vmShown) _panel.style.display = DisplayStyle.Flex; Select(_sel, false); }, _vm ? (Action)OpenCamcorderMenu : null);
         }
 
         /// <summary>The F5 menu's picture, sound, display and light tabs over the menu (the room behind shows each change).</summary>
@@ -416,7 +425,7 @@ namespace Backrooms.Menu
         /// <summary>The same monospaced system font as the F5 menu (a camcorder's character generator).</summary>
         static UnityEngine.TextCore.Text.FontAsset s_font;
 
-        static void ApplyMenuFont(VisualElement root)
+        internal static void ApplyMenuFont(VisualElement root)
         {
             // Made once and kept across scene loads (the menu comes back with every load of the world scene).
             if (!s_font)

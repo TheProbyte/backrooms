@@ -73,6 +73,7 @@ namespace Backrooms.CustomRooms
         {
             var kb = Keyboard.current;
             if (kb == null) return;
+            if (Menu.SettingsMenu.IsOpen || Menu.SettingsMenu.ClosedFrame == Time.frameCount) return;   // the settings page has Escape
             if (kb.escapeKey.wasPressedThisFrame && ToggledFrame != Time.frameCount)
             {
                 if (_open) Close();
@@ -117,14 +118,14 @@ namespace Backrooms.CustomRooms
 
         void OnGUI()
         {
-            if (!_open) return;
+            if (!_open || Menu.SettingsMenu.IsOpen) return;
             ImUi.Begin();
             string scene = SceneManager.GetActiveScene().name;
             ImUi.Fill(new Rect(0, 0, ImUi.Width, ImUi.Height), new Color(0, 0, 0, 0.62f));
             float w = 420, cx = ImUi.Width * 0.5f - w * 0.5f;
             bool testing = BuildSession.Testing && scene == SceneIds.World && !CustomRoomTest.Reference;
             bool offerReference = !(CustomRoomTest.Reference && scene == SceneIds.World);
-            int rows = 4 + (testing ? 1 : 0) + (offerReference ? 1 : 0);
+            int rows = 5 + (testing ? 1 : 0) + (offerReference ? 1 : 0);
             float h = 24 + 40 + 10 + rows * 56 + 24;
             var box = new Rect(cx, ImUi.Height * 0.5f - h * 0.5f, w, h);
             ImUi.PanelBox(box);
@@ -134,6 +135,8 @@ namespace Backrooms.CustomRooms
 
             string resume = InBuilder ? "BACK TO BUILDING" : "RESUME";
             if (ImUi.Button(col.Row(), resume, true)) Close();
+            // (2026-11-04) The player's settings page, over the paused game.
+            if (ImUi.Button(col.Row(), "SETTINGS")) Menu.SettingsMenu.Open(() => { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; CamcorderPlayerController.InputBlocked = true; });
             if (testing)
             {
                 if (ImUi.Button(col.Row(), "BACK TO THE BUILDER")) { Close(); Load(SceneIds.Build); }

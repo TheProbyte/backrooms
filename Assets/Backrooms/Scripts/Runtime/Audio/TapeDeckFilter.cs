@@ -86,7 +86,7 @@ namespace Backrooms.Audio
         {
             if (channels <= 0) return;
             float dt = 1f / _sr;
-            float lvl = Mathf.Clamp01(level) * 1.35f;
+            float lvl = Mathf.Clamp01(level) * 1.35f * GameSettings.MusicLevel;     // (music's volume: Settings)
             bool run = running;
             float hiss = run ? (0.0025f + 0.0015f * wear) : 0f;
             int frames = data.Length / channels;

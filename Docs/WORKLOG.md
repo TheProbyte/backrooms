@@ -15,6 +15,26 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-05 01:10  Claude Code  A settings page for whoever plays: sound, controls, camera comfort, graphics, screen, keys (from the main menu and the Escape menu)
+- Owner: "create a settings page yes" (item 10 of the top-ten list; the hand: "no, there shouldn't be hand specific stuff
+  in first person anymore": left as it is).
+- New Menu/GameSettings.cs (saved under Backrooms.Player.v1, apart from the developer's F5 tuning, which it scales):
+  master volume (the listener's), ambience (BuildingAudio: the lights' hum and buzz, the beds, the ventilation, the room
+  tone), music (TapeDeckFilter: what a tape plays); mouse sensitivity (a multiple of the tuned one) and invert Y (on top of
+  the tuned one: CamcorderPlayerController.UpdateLook); camera shake and motion blur as shares of the camcorder look's own
+  and brightness as an exposure offset (CamcorderRig), and REDUCE MOTION (a quarter of the shake, no blur).
+- New Menu/SettingsMenu.cs: the page, styled as the main menu (the camcorder's menu): SOUND, CONTROLS, CAMERA COMFORT,
+  GRAPHICS (quality Low .. Ultra from GraphicsOptions' presets, CUSTOM when tuned by hand; resolution scale; frame rate cap
+  30 .. 144 or unlimited; vsync), SCREEN (the window and its size), KEYS (every key), and from the main menu the F5 tabs as
+  CAMCORDER MENU (ADVANCED). Mouse or keys (◄ ► change, Escape back); saved as it changes. The main menu's SETTINGS opens
+  it; the Escape menu has SETTINGS over the paused game.
+- Checked: the main menu (the page, its sub-pages, a value stepped: camera shake 80 % reached the camera, 1.23 x 0.8);
+  in a world, Escape > SETTINGS over the paused game; EditMode tests 179/179.
+- Not done: key rebinding; field of view (the camcorder's lens, part of the look); separate effects volume (there is no
+  mixer; master, ambience and music only).
+- Sources: Xbox Accessibility Guideline 117 (camera shake, bob and blur as sliders; Halo Infinite's 0-100 %), Blizzard's
+  camera shake levels, Resident Evil 4 Remake's motion sickness preset.
+
 ## 2026-11-04 23:50  Claude Code  Things' sounds go round walls through doorways (a boombox, carts, drinks machines, the dark's scrapes, the elevator); the elevator's sounds
 - Owner: "do ... 7" (my top-ten list: sound that walls block and echo, the elevator's hum and ding). Found: the status
   notes' "Steam Audio geometry per chunk" was already done (Audio/SteamAudioWorld.cs, 2026-10-26: walls, floors, ceilings
