@@ -24,7 +24,17 @@ namespace Backrooms.Interaction
             Color c = imported ?? Fallback(slot);
             float metal = 0f, smooth = 0.35f;
             string s = slot.ToLowerInvariant();
-            if (s.Contains("metal") || s.Contains("prong")) { metal = 0.9f; smooth = 0.65f; }
+            // (2026-11-04, the boombox and the cassette) silver-painted plastic, chrome trim, smoked plastic, an LCD...
+            if (s.Contains("silver")) { metal = 0.45f; smooth = 0.5f; }
+            else if (s.Contains("chrome")) { metal = 1f; smooth = 0.82f; }
+            else if (s.Contains("smoke")) smooth = 0.9f;
+            else if (s.Contains("lcd") || s.Contains("glow")) smooth = 0.75f;
+            else if (s.Contains("grille")) { metal = 0.15f; smooth = 0.3f; }
+            else if (s.Contains("cassetteshell")) smooth = 0.62f;
+            else if (s.Contains("screw") || s.Contains("steel")) { metal = 0.9f; smooth = 0.5f; }
+            else if (s.Contains("rubber")) smooth = 0.15f;
+            else if (s.Contains("paper") || s.Contains("print")) smooth = 0.2f;
+            else if (s.Contains("metal") || s.Contains("prong")) { metal = 0.9f; smooth = 0.65f; }
             else if (s.Contains("plate")) smooth = 0.55f;                         // wall plates: smooth moulded plastic
             else if (s.Contains("plug") || s.Contains("cord") || s.Contains("socket") || s.Contains("switch")) smooth = 0.55f;
             else if (s.Contains("chicken")) smooth = 0.6f;                         // rubber

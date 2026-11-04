@@ -131,6 +131,18 @@ namespace Backrooms.Interaction
                     loot.Add((at, Quaternion.LookRotation(Vector3.Cross(along, Vector3.up), along), "sledgehammer"));     // on the head's side
                 }
             }
+            // A cassette (2026-11-04: "lunch break mix") lying by a wall, now and then: its own dice, last on the list.
+            {
+                var cd = new System.Random(unchecked((int)(id ^ (id >> 27)) ^ 0xCA55E7));
+                if (cd.NextDouble() < 0.4)
+                {
+                    float t = (float)cd.NextDouble() - 0.5f;
+                    int wall = cd.Next(3);
+                    var at = wall == 0 ? At(D - 0.2f, t * (W - 0.8f), 0.012f)
+                                       : At(0.7f + (t + 0.5f) * Mathf.Max(0.1f, D - 1.2f), (wall == 1 ? -1f : 1f) * (W * 0.5f - 0.2f), 0.012f);
+                    loot.Add((at, Quaternion.Euler(0f, (float)cd.NextDouble() * 360f, 0f), "cassette"));
+                }
+            }
             for (int i = 0; i < loot.Count; i++)
             {
                 ulong lootId = (id * 0x9E3779B97F4A7C15ul) ^ (ulong)(i + 1) * 0xC2B2AE3D27D4EB4Ful;

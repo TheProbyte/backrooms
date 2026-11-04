@@ -218,6 +218,30 @@ def chairs(prefix, names):
     shot(prefix + "_back", (-1.2, 1.0, 1.1), (0.0, 0.0, 0.45), 35, (1300, 950))
 
 
+def boombox(lit=True):
+    """The boombox put together as the game does (its parts at their pivots from Boombox_Layout.json), the cassette
+    beside it, and the cassette alone."""
+    import json
+    clear()
+    sc = bpy.context.scene
+    gpu(sc)
+    room(wall_y=0.6, light=(0.3, -0.6, 2.85), energy=120)
+    lay = json.load(open(os.path.join(SRC, "Boombox_Layout.json"), encoding="utf-8"))
+    load("Boombox")
+    load("BoomboxFace", emit=1.2 if lit else 0.0)
+    for i in range(6):
+        load("BoomboxKey%d" % i, tuple(lay["key%d" % i]))
+    load("BoomboxDoor", tuple(lay["door"]))
+    load("BoomboxHandle", tuple(lay["handle"]))
+    load("Cassette", (0.34, -0.12, 0.0), 25)
+    shot("boombox_front", (0.0, -0.95, 0.42), (0.0, 0.0, 0.1), 40, (1300, 900))
+    shot("boombox_three_quarter", (-0.62, -0.75, 0.55), (0.0, 0.0, 0.08), 40, (1300, 900))
+    shot("boombox_panel", (0.05, -0.42, 0.2), (0.0, -0.14, 0.11), 45, (1300, 900))
+    shot("boombox_top", (0.25, -0.35, 0.75), (0.0, 0.0, 0.18), 40, (1300, 900))
+    shot("boombox_back", (0.5, 0.56, 0.42), (0.0, 0.08, 0.1), 38, (1300, 900))
+    shot("cassette_close", (0.42, -0.25, 0.16), (0.34, -0.12, 0.005), 45, (1300, 900))
+
+
 os.makedirs(OUT, exist_ok=True)
 for s in SETS:
     if s == "vending":
@@ -228,6 +252,8 @@ for s in SETS:
         stop_sign()
     elif s == "lawn":
         chairs("lawn", ["LawnChair_White", "LawnChair_Green"])
+    elif s == "boombox":
+        boombox()
     elif s == "school":
         chairs("school", ["SchoolChair_Blue", "SchoolChair_Orange"])
 print("[showcase] done ->", OUT)

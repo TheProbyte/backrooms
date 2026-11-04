@@ -133,7 +133,7 @@ namespace Backrooms.Generation
         {
             _neighbours = neighbours;
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); _lampItems.Clear(); _breakers.Clear(); _deskLamps.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
-            _capsules.Clear(); _rugs.Clear(); _cordEnds.Clear(); poolMap = null; poolMap2 = null; _sounds.Clear(); _vendings.Clear();
+            _capsules.Clear(); _rugs.Clear(); _cordEnds.Clear(); poolMap = null; poolMap2 = null; _sounds.Clear(); _vendings.Clear(); _finds.Clear();
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             // Square panels sit inside a ceiling tile and need no gap in the grid; only round domes sit on a cross tee.
@@ -327,6 +327,17 @@ namespace Backrooms.Generation
                 lamp.lootId = lootId;
                 lamp.startPlugged = lit;
                 lamp.transform.SetParent(root.transform, true);
+                yield return root;
+            }
+            // Things left lying (a boombox upstairs): loot, made until taken.
+            foreach (var (at, yaw, id) in _finds)
+            {
+                ulong lootId = (id * 0x9E3779B97F4A7C15ul) ^ 0xB0B0u;
+                if (lootId == 0) lootId = 1;
+                if (Saves.LootRegistry.IsTaken(lootId)) continue;
+                var bb = Interaction.Boombox.Create(_origin + at + Vector3.up * 0.003f, Quaternion.Euler(0f, yaw, 0f));
+                bb.lootId = lootId;
+                bb.transform.SetParent(root.transform, true);
                 yield return root;
             }
             // Breaker panels: the district's main switch (PowerGrid).
@@ -1424,6 +1435,7 @@ namespace Backrooms.Generation
             if (p.kind == PropKind.WoodenChair) { WoodenChair(p, at); return; }      // a chair in the middle of a room
             if (p.kind == PropKind.VendingMachine) { Vending(p, at, rot); return; }   // a drinks machine against a wall (.Vending.cs)
             if (p.kind == PropKind.StopSign) { StopSign(p, at, rot); return; }        // a stop sign at a warehouse crossing (.Vending.cs)
+            if (p.kind == PropKind.Boombox) { _finds.Add((at, p.yaw, p.id)); Saw(at + Vector3.up * 0.12f, Vector3.up, "boombox"); return; }   // an item left there
             if (p.kind == PropKind.LawnChair || p.kind == PropKind.SchoolChair)        // a plastic chair (movable, its model at spawn)
             {
                 var spec = Movable(p.id, p.kind == PropKind.LawnChair ? MovableKind.LawnChair : MovableKind.SchoolChair, at, p.yaw, p.roomColor);
@@ -1451,6 +1463,8 @@ namespace Backrooms.Generation
         readonly List<MovableSpec> _movables = new List<MovableSpec>();
         /// <summary>Floor lamps to make as items (chunk-local foot, yaw, plugged in, the prop's id).</summary>
         readonly List<(Vector3 at, float yaw, bool lit, ulong id)> _lampItems = new List<(Vector3, float, bool, ulong)>();
+        /// <summary>Items left lying in the plan (a boombox upstairs): made as loot with the chunk, until taken.</summary>
+        readonly List<(Vector3 at, float yaw, ulong id)> _finds = new List<(Vector3, float, ulong)>();
 
         MovableSpec Movable(ulong id, MovableKind kind, Vector3 at, float yaw, int color)
         {

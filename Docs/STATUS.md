@@ -6,6 +6,16 @@ Last updated 2026-11-04 (world version 13).
 
 ## Newest (2026-11-04)
 
+- **A boombox and a cassette** (Tools/Blender/build_boombox.py, Interaction/Items/Boombox.cs, Cassette.cs): a silver
+  late-90s CD radio cassette player after the owner's photo, found on about two atrium balconies in five (upstairs);
+  a cassette ("lunch break mix", an original piece: Tools/Audio/make_cassette_music.py) in two vent rooms in five. Carry
+  it by its handle; set down, press its keys (PLAY, PAUSE, F.FWD, REWIND, STOP/EJECT; REC will not go down). The tape
+  plays through Audio/TapeDeckFilter.cs (flutter, the tape's roll-off and saturation, hiss, dropouts, a small speaker)
+  before the camcorder hears it. Both in the L menu.
+- **The dark moves things while you are away** (Atmosphere/DarkChanges.cs): now and then a chair or a box in a room that
+  has been dark a while, out of your sight, is found moved with drag marks in the carpet (or a chair knocked over);
+  heard, slowly, within 26 m. Never what you moved, nothing near a lamp of yours that is lit. Saved. K menu > THE DARK
+  tries it. The first pass: ceiling tiles, shifted cabinets and doors to come.
 - **Baked textures** (Tools/Blender/bake_kit.py, Generation/BakedMaterials.cs): a model can carry its own colour texture,
   painted by Cycles from its shape (dirt in the creases from AO, worn edges from a Bevel-node curvature mask broken up
   with noise, grime and streaks, dust on top, wood grain, flecks, prints); its slots keep their gloss and the fine grain

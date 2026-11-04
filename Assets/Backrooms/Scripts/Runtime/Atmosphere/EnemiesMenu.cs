@@ -169,6 +169,24 @@ namespace Backrooms.Atmosphere
                 y = Buttons(_actions, y, cw) + 10f;
             }
 
+            // The dark changing things while you are away (DarkChanges).
+            var dc = DarkChanges.Instance;
+            if (dc)
+            {
+                ImUi.Header(new Rect(0, y, cw, 26), "The dark"); y += 30f;
+                string dst = $"{DarkChanges.Count} changed so far; last: {DarkChanges.LastEvent}";
+                float dh = s_wrap.CalcHeight(new GUIContent(dst), cw);
+                ImUi.Dimmed(new Rect(0, y, cw, dh + 4), dst); y += dh + 8f;
+                _actions.Clear();
+                _actions.Add(new DevAction("Something moves", () => Said(dc.Force(false), "Something in a dark room out of sight was moved."),
+                    "A piece of furniture in a dark room out of sight (11 m or more away) is moved or knocked over now."));
+                _actions.Add(new DevAction("You hear it move", () => Said(dc.Force(true), "Something out of sight is being dragged."),
+                    "The same within earshot (6-26 m): slowly, with the sound of it."));
+                _actions.Add(new DevAction("Even in the light", () => Said(dc.Force(true, true), "Something out of sight is being dragged (lit room)."),
+                    "As above, but the room need not be dark (to try it anywhere)."));
+                y = Buttons(_actions, y, cw) + 10f;
+            }
+
             foreach (var e in EnemyDebug.All)
             {
                 ImUi.Header(new Rect(0, y, cw, 26), e.DevName); y += 30f;

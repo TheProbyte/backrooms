@@ -250,6 +250,19 @@ namespace Backrooms.Interaction
             Count++;
         }
 
+        /// <summary>A drag mark on the floor (Atmosphere.DarkChanges, 2026-11-04): a faint chalk-kind strip along a path
+        /// (broken by the grain like chalk), the colour of crushed carpet pile or a scuff on concrete. Saved as a mark.</summary>
+        public void AddScrape(IReadOnlyList<Vector3> points, float width, Color32 col)
+        {
+            if (points == null || points.Count < 2) return;
+            var b = Current();
+            if (b.Quads + points.Count > QuadsPerBatch) { _current = null; b = Current(); }
+            var normals = new List<Vector3>(points.Count);
+            for (int i = 0; i < points.Count; i++) normals.Add(Vector3.up);
+            Path(b, points, normals, width, KindChalk, col);
+            Count++;
+        }
+
         /// <summary>The strip being pulled off a roll, as a path.</summary>
         public void SetPreview(IReadOnlyList<Vector3> points, IReadOnlyList<Vector3> normals)
         {

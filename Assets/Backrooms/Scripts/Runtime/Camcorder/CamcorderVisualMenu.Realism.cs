@@ -60,6 +60,7 @@ namespace Backrooms.Camcorder
             ("stop_sign", "STOP SIGN", "a stop sign at a warehouse crossing"),
             ("lawn_chair", "LAWN CHAIR", "a plastic lawn chair"),
             ("school_chair", "SCHOOL CHAIRS", "school chairs left in a room"),
+            ("boombox", "BOOMBOX", "a boombox left upstairs"),
             ("cord", "EXTENSION CORD", "an extension cord taped down"),
         };
 

@@ -5,7 +5,7 @@ namespace Backrooms.Interaction
     /// <summary>Makes an item from its id (WorldItem.itemId): for saves and the special rooms' loot.</summary>
     public static class ItemFactory
     {
-        public static readonly string[] Ids = { "spraycan", "chalk", "tape", "desklamp", "floorlamp", "extensioncord", "rubberchicken", "sledgehammer", "hammer", "nails" };
+        public static readonly string[] Ids = { "spraycan", "chalk", "tape", "desklamp", "floorlamp", "extensioncord", "rubberchicken", "sledgehammer", "hammer", "nails", "boombox", "cassette" };
 
         public static WorldItem Spawn(string id, Vector3 position, Quaternion rotation)
         {
@@ -21,6 +21,8 @@ namespace Backrooms.Interaction
                 case "sledgehammer": return Sledgehammer.Create(position, rotation);
                 case "hammer": return Hammer.Create(position, rotation);
                 case "nails": return Nails.Create(position, rotation);
+                case "boombox": return Boombox.Create(position, rotation);
+                case "cassette": return Cassette.Create(position, rotation);
             }
             return null;
         }

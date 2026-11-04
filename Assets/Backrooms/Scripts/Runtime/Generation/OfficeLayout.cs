@@ -298,6 +298,9 @@ namespace Backrooms.Generation
         /// <summary>A classroom chair, plastic shell on a steel frame (an office left with a few): movable; variant bit 0
         /// orange (else blue).</summary>
         SchoolChair,
+        /// <summary>A boombox left on an atrium's upper storey (DistrictGenerator.UpstairsFinds, 2026-11-04): an item
+        /// (Interaction.Boombox) lying there until it is taken (loot); position its foot's middle, yaw its front.</summary>
+        Boombox,
     }
 
     /// <summary>Level 0's kinds of room (DistrictGenerator.StyleOf): the backrooms (wallpaper), living rooms (painted,

@@ -25,6 +25,7 @@ namespace Backrooms.Generation
 
         static void PlaceLeftovers(OfficeLayout L, System.Random rng, List<Room> rooms)
         {
+            if (L.storey > 0) UpstairsFinds(L, rooms);
             if (L.style == ZoneStyle.Pool) { PoolChairs(L, rooms); return; }
             foreach (var r in rooms)
             {
@@ -49,6 +50,35 @@ namespace Backrooms.Generation
                 double c1 = cr.NextDouble(), c2 = cr.NextDouble();
                 if (r.rect.width >= 2 && r.rect.height >= 2 && c1 < LawnChance) TryPlastic(L, cr, r, PropKind.LawnChair, 1);
                 if (r.rect.width >= 3 && r.rect.height >= 3 && c2 < SchoolChance) TryPlastic(L, cr, r, PropKind.SchoolChair, 2 + cr.Next(2));
+            }
+        }
+
+        /// <summary>How often each side of an atrium's balcony has a boombox left on it (about two atriums in five).</summary>
+        const double BoomboxChance = 0.12;
+
+        /// <summary>
+        /// Upstairs (2026-11-04): on an atrium's upper storey, its balcony's four sides each now and then have something left
+        /// on them, rare: a boombox (PropKind.Boombox, an item). Dice of its own from the room's place and storey.
+        /// </summary>
+        static void UpstairsFinds(OfficeLayout L, List<Room> rooms)
+        {
+            float C = OfficeBiome.CellSize;
+            foreach (var r in rooms)
+            {
+                if (r.noFloor || r.landmark == null || r.kind != RoomKind.Hallway || r.role != AnnexRole.None || r.custom) continue;
+                bool atrium = false;
+                foreach (var lm in L.landmarks) if (lm.kind == LandmarkKind.Atrium && lm.name == r.landmark) { atrium = true; break; }
+                if (!atrium) continue;
+                var fr = r.fullRect.width > 0 ? r.fullRect : r.rect;
+                var rr = new System.Random(Hash(fr.x, fr.y, L.storey, 0xB00B5));
+                if (rr.NextDouble() >= BoomboxChance) continue;
+                var c = new Vector2((r.rect.xMin + 0.5f + (float)rr.NextDouble() * Mathf.Max(0, r.rect.width - 1)) * C,
+                                    (r.rect.yMin + 0.5f + (float)rr.NextDouble() * Mathf.Max(0, r.rect.height - 1)) * C);
+                bool clear = true;
+                foreach (var pr in L.props) if ((pr.position - c).sqrMagnitude < 0.8f * 0.8f) { clear = false; break; }
+                if (!clear) continue;
+                L.props.Add(new Prop { kind = PropKind.Boombox, position = c, yaw = (float)rr.NextDouble() * 360f, size = new Vector3(0.5f, 0.21f, 0.3f),
+                    variant = rr.Next(1 << 20), roomColor = r.color });
             }
         }
 

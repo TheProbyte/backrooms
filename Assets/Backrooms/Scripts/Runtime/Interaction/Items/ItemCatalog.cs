@@ -54,6 +54,9 @@ namespace Backrooms.Interaction
             // Lying on its side, the handle toward you; the nails' open flap away from you.
             list.Add(new Entry { name = "Hammer", category = "ITEMS", clearance = 0.8f, spawn = (p, r, pv) => Hammer.Create(p + Vector3.up * 0.016f, r * Quaternion.Euler(-90f, 0f, 0f) * Quaternion.Euler(0f, 90f, 0f)).gameObject });
             list.Add(new Entry { name = "Box of nails", category = "ITEMS", clearance = 0.7f, spawn = (p, r, pv) => Nails.Create(p, r * Quaternion.Euler(0f, 180f, 0f)).gameObject });
+            // Its front toward you; the cassette lying flat, its label up.
+            list.Add(new Entry { name = "Boombox", category = "ITEMS", clearance = 0.9f, spawn = (p, r, pv) => Boombox.Create(p + Vector3.up * 0.005f, r * Quaternion.Euler(0f, 180f, 0f)).gameObject });
+            list.Add(new Entry { name = "Cassette (lunch break mix)", category = "ITEMS", clearance = 0.7f, spawn = (p, r, pv) => Cassette.Create(p + Vector3.up * 0.005f, r * Quaternion.Euler(0f, 180f, 0f)).gameObject });
             if (!a) return list;
 
             uint MaskAt(Vector3 p)

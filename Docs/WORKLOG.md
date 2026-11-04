@@ -15,6 +15,52 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-04 18:30  Claude Code  A boombox (found upstairs) and a cassette (in the vent rooms) that plays through a tape filter; the dark moves things while you are away
+- Owner: "model this very realistically, as a holdable item found upstairs sometimes rarely. then some cassettes will be
+  found in the vent rooms. create one cassette ... you can put cassette in and listen to the audio (with cassette filters
+  below your own camcorder filters)", "then start work on the dark changing things while you're away".
+- New Tools/Blender/build_boombox.py -> Resources/Items: Boombox (after the owner's photo of a late-1990s silver CD
+  radio cassette player, the Aiwa CSD-ED37's kind: 507 x 206 x 300 mm, 4.4 kg; an invented brand, KOHARA CX-470):
+  a shell round in plan, dark grey below with the speaker grilles round its ends (a repeated print of their holes,
+  bake_kit's new print_repeat), ribbed silver shoulders, the centre panel standing proud, the deck's well behind the
+  door, the knob, the buttons, the LCD's bezel, the top deck and CD lid, the mic, the battery door, the AC inlet, the
+  antenna, feet. BoomboxFace (every print on its own 2048 texture so the small print reads, and what lights: the LCD
+  and the power LED; BoomboxFace_Emission), BoomboxKey0..5 (the piano keys, each on its hinge), BoomboxDoor (on its
+  hinge), BoomboxHandle (on its pivot), Boombox_Layout.json (the pivots). Cassette: a C60 normal-position cassette
+  (100.4 x 63.8 x 12 mm), a store-bought blank's label (SENTRA, invented) written on in ballpoint "lunch break mix".
+- New Tools/Audio/make_cassette_music.py -> Resources/Audio/Cassette_LunchBreakMix.wav: an original piece composed and
+  synthesized there (no samples): 2:50 of late-90s easy listening at 84 bpm in D (FM electric piano, finger bass,
+  brushes, a pad in the bridge, vibraphone tune), 24 kHz mono, a little blank tape either end. Streamed.
+- New Interaction/Items/Boombox.cs: carried by its handle (it swings up; click while carrying: play/stop); set down, the
+  finger presses its keys: PLAY, PAUSE, F.FWD, REWIND latch; STOP/EJECT stops, or (stopped) opens and shuts the door;
+  REC will not go down (the tab is out); the knob steps the volume. Wow on the source's pitch, the motor's whir, the
+  mechanism's sounds (made in code), auto-stop at the side's end, the LCD and LED lit while in use, batteries that never
+  run down. New Interaction/Items/Cassette.cs: pocketable; clicked on a boombox it goes in (the door opens round it);
+  taken back out with the door open; where the tape is is its saved Amount (a cassette in a deck is taken back in on
+  load). New Audio/TapeDeckFilter.cs on the speaker's source, before it is placed in the world (spatializePostEffects),
+  so the camcorder's sound chain comes after it: flutter (a modulated delay), a type-I playback's roll-off and head
+  bump, tape saturation, hiss while the tape runs, dropouts, then a 4 in speaker's response; the volume applied there.
+- Where: ItemFactory "boombox", "cassette"; ItemCatalog (L menu) entries; a cassette in two vent rooms in five
+  (SpecialRoom, its own dice, last); a boombox on about two atrium balconies in five (DistrictGenerator.UpstairsFinds,
+  PropKind.Boombox, loot from the chunk); F5 > PLACES "BOOMBOX".
+- New Atmosphere/DarkChanges.cs (the brief's "unattended dark areas undergo persistent disturbances"): every 5-11
+  minutes at most, a chair, a box, now and then an armchair, a table or a sofa standing in a room that has been dark
+  20 s or more (its lights off at the switch, or never lit), out of sight and 11 m or more away, is slid 0.3-1.5 m and
+  turned (or a light chair knocked over), leaving faint drag marks of its legs or edges (Marks.AddScrape, saved as
+  marks); within 26 m it happens slowly with the scrape of it, further off it has just happened. Never anything you
+  moved, the build mode's pinned pieces, the good rooms, homes or built rooms, or within 5 m of a lamp of yours that is
+  lit. Saved with the moved props. K menu > THE DARK: try it now (out of sight, heard, or even in a lit room).
+- Checked: World 3: the boombox on the floor (front, lit LCD), a cassette put in, PLAY (the tape plays, its position
+  runs), STOP, EJECT (the door opens, the cassette is taken back out), REC refused; carried (the handle up); the
+  upstairs placement in the plans (atriums are rare: 3 in 625 districts); the dark moving boxes (with nearby rooms
+  switched off) and its drag marks; EditMode tests.
+- Not done yet: the brief's other disturbances (a fallen ceiling tile with its debris, a fixed cabinet shifted, a
+  door found shut); changes while a chunk is unloaded (only loaded, unwatched places change for now); the tape's sound
+  judged by ear (it was checked by its levels and spectrum only); the boombox's RADIO and CD (they click, nothing else).
+- Sources: Aiwa CSD-ED37 manual (507 x 206 x 299.5 mm, 4.4 kg); boombox tape specs (We Are Rewind GB-001: 40-12,500 Hz,
+  55 dB, 0.15 % W&F); tape emulators (Dusk Audio TapeMachine, Aberrant DSP SketchCassette II, Wavesfactory Cassette;
+  the HISE forum on a modulated delay for wow and flutter); "unobserved change" in horror (80.lv; Layers of Fear).
+
 ## 2026-11-04 14:30  Claude Code  The vending machine and lawn chair remade after the owner's photos; the school chair, exit sign and stop sign improved
 - Owner: "go thru and improve the models you just make. use this as inspo for the vending machine. and this for lawn
   chair" (a photo of a 1990s can vendor, a photo of a white fan-back resin armchair).

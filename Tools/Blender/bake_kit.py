@@ -257,7 +257,7 @@ def paint_material(m, image, seed, scale=1.0, ao_dist=0.05, wear=1.0, dirt=1.0, 
         tex = _n(nt, "ShaderNodeTexImage", -1200, 300)
         tex.image = bpy.data.images[pimg]
         tex.interpolation = "Closest" if m.get("print_sharp") else "Linear"
-        tex.extension = "EXTEND"
+        tex.extension = "REPEAT" if m.get("print_repeat") else "EXTEND"      # (a speaker grille's holes: a tile repeated)
         nt.links.new(uvn.outputs["UV"], tex.inputs["Vector"])
         base = tex.outputs["Color"]
     else:
