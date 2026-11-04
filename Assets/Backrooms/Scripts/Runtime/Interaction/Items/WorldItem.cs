@@ -119,6 +119,9 @@ namespace Backrooms.Interaction
         /// <summary>Held in place by something other than the hand (a plug in a socket): stays kinematic.</summary>
         protected virtual bool Pinned => false;
 
+        /// <summary>In a backpack (2026-11-04): carried in it, kinematic, until a hand takes it out (Backpack).</summary>
+        public Backpack InBag { get; internal set; }
+
         bool _playerIgnored;
 
         /// <summary>Small things (a plug, chalk, tape) do not trip the player up: walking over them would bump the view.</summary>
@@ -139,7 +142,7 @@ namespace Backrooms.Interaction
         {
             if (!_playerIgnored) IgnorePlayer();
             if (Held || settling) return;
-            if (Pinned) { if (!Body.isKinematic) Body.isKinematic = true; return; }
+            if (Pinned || InBag) { if (!Body.isKinematic) Body.isKinematic = true; return; }
             // Frozen while the ground under it is unloaded (it would fall forever), awake otherwise.
             if (!_streamer) _streamer = FindAnyObjectByType<WorldStreamer>();
             bool ground = !_streamer || _streamer.LayoutAt(WorldStreamer.ChunkOf(transform.position)) != null;
@@ -158,6 +161,7 @@ namespace Backrooms.Interaction
             _colliders = GetComponentsInChildren<Collider>(true);
             foreach (var c in _colliders) if (c) c.enabled = !held;
 
+            if (held && InBag) InBag.Removed(this);                       // taken out of a backpack
             if (held && lootId != 0) { Saves.LootRegistry.Take(lootId); lootId = 0; transform.SetParent(null, true); }   // taken from its room: a free item from now on
             if (held) OnPickedUp(); else OnDropped();
         }

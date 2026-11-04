@@ -696,6 +696,7 @@ namespace Backrooms.Interaction
             }
             // Into or out of a pocket (PropGrabber.Pockets).
             PocketPose(ref pos, ref rot);
+            BagPose(ref pos, ref rot);
             bool reaching = false;
             float tiltLeft = 0f;
             Vector3 reachGrip = Vector3.zero;

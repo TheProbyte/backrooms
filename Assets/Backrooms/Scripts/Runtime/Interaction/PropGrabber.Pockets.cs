@@ -236,6 +236,13 @@ namespace Backrooms.Interaction
         /// <summary>Every pocket's thing back out into the world (the player is gone: a world ending, a reset).</summary>
         public void EmptyPockets()
         {
+            if (WornBag)
+            {
+                var bag = WornBag;
+                WornBag = null;
+                bag.TakeOff();
+                bag.Body.isKinematic = false;
+            }
             for (int i = 0; i < PocketCount; i++)
             {
                 var it = _pockets[i];
@@ -256,7 +263,8 @@ namespace Backrooms.Interaction
             if (_pocketStyle == null) _pocketStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
             _pocketStyle.fontSize = Mathf.Max(10, Mathf.RoundToInt(21f * scale));
             float w = 250f * scale, h = 54f * scale, gap = 10f * scale;
-            float x0 = (Screen.width - (w * PocketCount + gap * (PocketCount - 1))) * 0.5f, y = Screen.height - h - 70f * scale;
+            int cells = PocketCount + (WornBag ? 1 : 0);
+            float x0 = (Screen.width - (w * cells + gap * (cells - 1))) * 0.5f, y = Screen.height - h - 70f * scale;
             var old = GUI.color;
             for (int i = 0; i < PocketCount; i++)
             {
@@ -274,6 +282,19 @@ namespace Backrooms.Interaction
                 GUI.color = new Color(0f, 0f, 0f, 0.8f * a);
                 GUI.Label(new Rect(r.x + 2f, r.y + 2f, r.width, r.height), text, _pocketStyle);
                 GUI.color = lit ? new Color(1f, 1f, 1f, a) : new Color(1f, 1f, 1f, 0.5f * a);
+                GUI.Label(r, text, _pocketStyle);
+            }
+            if (WornBag)
+            {
+                // The backpack on your back, a fifth place (B).
+                var r = new Rect(x0 + PocketCount * (w + gap), y, w, h);
+                GUI.color = new Color(0f, 0f, 0f, 0.35f * a);
+                GUI.DrawTexture(r, Texture2D.whiteTexture);
+                int n = WornBag.Count;
+                string text = "B BACK\nBACKPACK" + (n > 0 ? $" ({n} IN IT)" : "");
+                GUI.color = new Color(0f, 0f, 0f, 0.8f * a);
+                GUI.Label(new Rect(r.x + 2f, r.y + 2f, r.width, r.height), text, _pocketStyle);
+                GUI.color = new Color(1f, 1f, 1f, a);
                 GUI.Label(r, text, _pocketStyle);
             }
             if (!string.IsNullOrEmpty(_pocketNote))

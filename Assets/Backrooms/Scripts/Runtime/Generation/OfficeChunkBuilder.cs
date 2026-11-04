@@ -330,11 +330,12 @@ namespace Backrooms.Generation
                 yield return root;
             }
             // Things left lying (a boombox upstairs): loot, made until taken.
-            foreach (var (at, yaw, id) in _finds)
+            foreach (var (at, yaw, id, kind, variant) in _finds)
             {
-                ulong lootId = (id * 0x9E3779B97F4A7C15ul) ^ 0xB0B0u;
+                ulong lootId = (id * 0x9E3779B97F4A7C15ul) ^ (kind == PropKind.Backpack ? 0xBA6Bu : 0xB0B0u);
                 if (lootId == 0) lootId = 1;
                 if (Saves.LootRegistry.IsTaken(lootId)) continue;
+                if (kind == PropKind.Backpack) { Interaction.Backpack.MakeFound(_origin + at, yaw, variant, lootId, root.transform); yield return root; continue; }
                 var bb = Interaction.Boombox.Create(_origin + at + Vector3.up * 0.003f, Quaternion.Euler(0f, yaw, 0f));
                 bb.lootId = lootId;
                 bb.transform.SetParent(root.transform, true);
@@ -1435,7 +1436,8 @@ namespace Backrooms.Generation
             if (p.kind == PropKind.WoodenChair) { WoodenChair(p, at); return; }      // a chair in the middle of a room
             if (p.kind == PropKind.VendingMachine) { Vending(p, at, rot); return; }   // a drinks machine against a wall (.Vending.cs)
             if (p.kind == PropKind.StopSign) { StopSign(p, at, rot); return; }        // a stop sign at a warehouse crossing (.Vending.cs)
-            if (p.kind == PropKind.Boombox) { _finds.Add((at, p.yaw, p.id)); Saw(at + Vector3.up * 0.12f, Vector3.up, "boombox"); return; }   // an item left there
+            if (p.kind == PropKind.Boombox) { _finds.Add((at, p.yaw, p.id, p.kind, p.variant)); Saw(at + Vector3.up * 0.12f, Vector3.up, "boombox"); return; }   // an item left there
+            if (p.kind == PropKind.Backpack) { _finds.Add((at, p.yaw, p.id, p.kind, p.variant)); Saw(at + Vector3.up * 0.2f, Vector3.up, "backpack"); return; }
             if (p.kind == PropKind.LawnChair || p.kind == PropKind.SchoolChair)        // a plastic chair (movable, its model at spawn)
             {
                 var spec = Movable(p.id, p.kind == PropKind.LawnChair ? MovableKind.LawnChair : MovableKind.SchoolChair, at, p.yaw, p.roomColor);
@@ -1464,7 +1466,7 @@ namespace Backrooms.Generation
         /// <summary>Floor lamps to make as items (chunk-local foot, yaw, plugged in, the prop's id).</summary>
         readonly List<(Vector3 at, float yaw, bool lit, ulong id)> _lampItems = new List<(Vector3, float, bool, ulong)>();
         /// <summary>Items left lying in the plan (a boombox upstairs): made as loot with the chunk, until taken.</summary>
-        readonly List<(Vector3 at, float yaw, ulong id)> _finds = new List<(Vector3, float, ulong)>();
+        readonly List<(Vector3 at, float yaw, ulong id, PropKind kind, int variant)> _finds = new List<(Vector3, float, ulong, PropKind, int)>();
 
         MovableSpec Movable(ulong id, MovableKind kind, Vector3 at, float yaw, int color)
         {

@@ -31,6 +31,8 @@ namespace Backrooms.Generation
             {
                 // Two draws a room whatever happens, so each room's dice do not depend on the others'.
                 double u = rng.NextDouble(), v = rng.NextDouble();
+                // (2026-11-04) A backpack left by a wall: in some offices, often in a break room. Dice of its own.
+                TryBackpack(L, r);
                 if (r.landmark != null || r.noFloor || r.special != GoodRoom.None || r.feature == RoomFeature.Pit || r.ramp != 0 || r.custom || r.home) continue;
                 // Now and then a drinks machine humming against a hallway's or an office's wall (2026-11-04; dice of its own,
                 // from the room's draws, so nothing else moves).
@@ -50,6 +52,50 @@ namespace Backrooms.Generation
                 double c1 = cr.NextDouble(), c2 = cr.NextDouble();
                 if (r.rect.width >= 2 && r.rect.height >= 2 && c1 < LawnChance) TryPlastic(L, cr, r, PropKind.LawnChair, 1);
                 if (r.rect.width >= 3 && r.rect.height >= 3 && c2 < SchoolChance) TryPlastic(L, cr, r, PropKind.SchoolChair, 2 + cr.Next(2));
+            }
+        }
+
+        const double BackpackOffice = 0.03, BackpackBreak = 0.25;
+
+        /// <summary>
+        /// A backpack left in a room (2026-11-04, the owner: "found fairly common"): in about one office in thirty and a
+        /// break room in four, standing against a wall with its back to it, or now and then lying on its back by it.
+        /// Its own dice from the room's place and storey (nothing else moves).
+        /// </summary>
+        static void TryBackpack(OfficeLayout L, Room r)
+        {
+            if (r.noFloor || r.custom || r.home || r.landmark != null || r.ramp != 0 || r.feature == RoomFeature.Pit) return;
+            bool office = r.special == GoodRoom.None && StyleOf(r) == RoomStyle.Backrooms
+                          && (r.kind == RoomKind.Office || r.kind == RoomKind.BigOffice || r.kind == RoomKind.Lounge || r.kind == RoomKind.Conference);
+            bool breakRoom = r.special == GoodRoom.BreakRoom;
+            if (!office && !breakRoom) return;
+            var rr = new System.Random(Hash(r.rect.x, r.rect.y, L.storey * 31 + r.rect.width, 0xBA6B));
+            if (rr.NextDouble() >= (breakRoom ? BackpackBreak : BackpackOffice)) return;
+            float C = OfficeBiome.CellSize;
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                int side = rr.Next(4);
+                float t = (float)rr.NextDouble();
+                bool lying = rr.NextDouble() < 0.3;
+                float off = lying ? 0.45f : 0.2f;
+                float x0 = r.rect.xMin * C, x1 = r.rect.xMax * C, z0 = r.rect.yMin * C, z1 = r.rect.yMax * C;
+                Vector2 c; float yaw;
+                switch (side)
+                {
+                    case 0: c = new Vector2(Mathf.Lerp(x0 + 0.5f, x1 - 0.5f, t), z0 + off); yaw = 0f; break;
+                    case 1: c = new Vector2(Mathf.Lerp(x0 + 0.5f, x1 - 0.5f, t), z1 - off); yaw = 180f; break;
+                    case 2: c = new Vector2(x0 + off, Mathf.Lerp(z0 + 0.5f, z1 - 0.5f, t)); yaw = 90f; break;
+                    default: c = new Vector2(x1 - off, Mathf.Lerp(z0 + 0.5f, z1 - 0.5f, t)); yaw = 270f; break;
+                }
+                yaw += ((float)rr.NextDouble() - 0.5f) * (lying ? 70f : 18f);
+                int cx = Mathf.FloorToInt(c.x / C), cz = Mathf.FloorToInt(c.y / C);
+                if (!L.InChunk(cx, cz) || L.roomOf[cx, cz] != r.id) continue;
+                bool clear = true;
+                foreach (var pr in L.props) if ((pr.position - c).sqrMagnitude < 0.6f * 0.6f) { clear = false; break; }
+                if (!clear) continue;
+                int variant = rr.Next(3) | (lying ? 4 : 0) | (rr.Next(1 << 20) << 3);
+                L.props.Add(new Prop { kind = PropKind.Backpack, position = c, yaw = yaw, size = new Vector3(0.31f, 0.44f, 0.2f), variant = variant, roomColor = r.color });
+                return;
             }
         }
 

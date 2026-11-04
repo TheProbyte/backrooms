@@ -6,6 +6,11 @@ Last updated 2026-11-04 (world version 13).
 
 ## Newest (2026-11-04)
 
+- **A backpack** (Tools/Blender/build_backpack.py, Interaction/Items/Backpack.cs, PropGrabber.Backpack.cs): a daypack
+  (NORREN, invented; navy, red or forest) found in about one office in thirty and a break room in four, now and then
+  with chalk, tape, paint, nails or a cassette in it. Set down, click its pulls to unzip it (the front flops open);
+  a thing in the hand clicked on it goes in where it fits (a height map of what is in it, lowest first); take things
+  out by hand. B puts the one in your hand on your back and takes it off again. Saved with what is in it.
 - **A boombox and a cassette** (Tools/Blender/build_boombox.py, Interaction/Items/Boombox.cs, Cassette.cs): a silver
   late-90s CD radio cassette player after the owner's photo, found on about two atrium balconies in five (upstairs);
   a cassette ("lunch break mix", an original piece: Tools/Audio/make_cassette_music.py) in two vent rooms in five. Carry

@@ -301,6 +301,10 @@ namespace Backrooms.Generation
         /// <summary>A boombox left on an atrium's upper storey (DistrictGenerator.UpstairsFinds, 2026-11-04): an item
         /// (Interaction.Boombox) lying there until it is taken (loot); position its foot's middle, yaw its front.</summary>
         Boombox,
+        /// <summary>A backpack left in an office or a break room (DistrictGenerator.TryBackpack, 2026-11-04): an item
+        /// (Interaction.Backpack), loot until taken; position its foot's middle, yaw its front; variant: bits 0-1 its
+        /// colour (0-2), bit 2 lying on its back, the rest the dice for what is in it.</summary>
+        Backpack,
     }
 
     /// <summary>Level 0's kinds of room (DistrictGenerator.StyleOf): the backrooms (wallpaper), living rooms (painted,

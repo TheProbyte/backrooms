@@ -61,6 +61,7 @@ namespace Backrooms.Camcorder
             ("lawn_chair", "LAWN CHAIR", "a plastic lawn chair"),
             ("school_chair", "SCHOOL CHAIRS", "school chairs left in a room"),
             ("boombox", "BOOMBOX", "a boombox left upstairs"),
+            ("backpack", "BACKPACK", "a backpack left in an office"),
             ("cord", "EXTENSION CORD", "an extension cord taped down"),
         };
 

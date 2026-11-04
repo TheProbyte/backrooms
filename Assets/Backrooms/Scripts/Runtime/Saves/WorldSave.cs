@@ -119,6 +119,11 @@ namespace Backrooms.Saves
         public int pocket = -1;
         /// <summary>Held: the pocket that is its own (kept for it while it is out), or -1.</summary>
         public int home = -1;
+        /// <summary>In a backpack (2026-11-04): 1 + the backpack's index in the items, its position and rotation then the
+        /// bag's own (where it lies in it); 0 not in one.</summary>
+        public int bag;
+        /// <summary>A backpack on the player's back.</summary>
+        public bool worn;
         // Cords: where the plug is, and what it is in: -1 nothing, 0 the wall socket at plugWall, n > 0 socket plugSocket
         // of the extension cord that is item n - 1.
         public bool hasPlug;

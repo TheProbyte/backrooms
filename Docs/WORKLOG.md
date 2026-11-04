@@ -15,6 +15,43 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-04 21:10  Claude Code  A backpack: found in offices and break rooms, set down and unzipped, the things in it real things; worn with B
+- Owner: of the top ten ideas, "do 1 [a cart and a backpack] and 6 [sitting] and 7 [sound walls block]"; asked, they chose:
+  the backpack is set down and opened (nothing in or out while worn), found fairly often, more than one can be carried
+  but only one on the back. (Carts, sitting and the sound come in their own commits.)
+- New Tools/Blender/build_backpack.py -> Resources/Items: a late-90s daypack (about 22 L: 0.31 m wide at the foot, 0.27 at
+  the shoulders, 0.44 tall, 0.16 deep, less toward the top), an invented brand NORREN, three colours (Navy, Red, Forest):
+  Backpack_<Colour> (the shell: gusset, padded back of air mesh, suede-look base with a straight seam, piping round the
+  back, S-shaped padded straps into webbing and ladder locks, the grab loop, the grey lining and a care label inside, the
+  zip's shell half), BackpackLid_<Colour> (the front panel on its hinge along the foot: the zipped front pocket with its
+  pull, the suede lash tab, the rubber patch, the zip's other half), BackpackPull (a slider and cord pull, two run along
+  the zip), Backpack_Layout.json (the hinge, the zip's path, the inside's box, the grab loop).
+- New Interaction/Items/Backpack.cs: carried by its grab loop; set down upright or on its back, a click on its two pulls
+  at the top unzips it (they run down both sides, the zip's sound made in code) and the front panel flops open onto the
+  floor (lying on its back: up and over, to 135 degrees); a click on the open panel zips it shut. Open, a thing in the
+  hand clicked on it goes in where it fits: a height map over the bag's floor (1 cm cells, whichever of its axes points
+  down now), every square way the thing can lie, lowest first, then lying flat, toward the back ("IT WON'T FIT"
+  otherwise; lamps, cords, plugs, the sledgehammer, the boombox and other backpacks never go in). A thing inside is taken
+  out with the empty hand like anything lying about, and what lay on it settles; set down another way up, what is in it
+  is packed again (what no longer fits falls out in front). Shut, its contents are switched off and carried with it (their
+  weight in its mass). New Interaction/PropGrabber.Backpack.cs: B swings the one in the hand up over the shoulder onto
+  your back (shadow only, carried behind you, lower when you crouch), B with the hand empty takes it off into the hand;
+  the pocket strip shows it as a fifth place, "B BACK"; hints "CLICK TO UNZIP IT", "CLICK TO PUT IT IN THE BACKPACK".
+- WorldItem.InBag: kinematic while in one, out of it when a hand takes it (SetHeld). Saves: ItemData.bag (1 + the bag's
+  index; position and rotation in the bag), ItemData.worn; a bag's colour and open state are its Amount.
+- Found: DistrictGenerator.TryBackpack (its own dice): about one office in thirty and a break room in four, against a wall
+  (or now and then lying on its back by it), PropKind.Backpack -> OfficeChunkBuilder's finds, loot until taken or opened;
+  sometimes a thing or two in it (chalk, tape, spray paint, nails, a cassette; each loot of its own). ItemFactory
+  "backpack", L menu "Backpack (navy / red / forest)", F5 > PLACES "BACKPACK".
+- Checked: World 3: a bag spawned, opened (the panel down on the carpet), six things put in, the hammer refused upright;
+  lying on its back eight in (the hammer too), the rubber chicken (46 cm) refused; worn and taken off again with B
+  (shadows only, no colliders); stopped and played again: the open bag came back open with its six things in it, found
+  bags in the offices round the spawn (some with chalk, tape or a cassette in); EditMode tests 179/179.
+- Not done: the hand's click into a bag was checked through Backpack.TryPut, not by aiming the mouse in play; how it
+  feels (the owner).
+- Sources: daypack sizes (20-25 L school packs); physical bags in games (PEAK's backpack set down and opened by anyone;
+  Into the Radius's bag where each item takes up physical space rather than slots; Half-Life: Alyx's unused backpack).
+
 ## 2026-11-04 18:30  Claude Code  A boombox (found upstairs) and a cassette (in the vent rooms) that plays through a tape filter; the dark moves things while you are away
 - Owner: "model this very realistically, as a holdable item found upstairs sometimes rarely. then some cassettes will be
   found in the vent rooms. create one cassette ... you can put cassette in and listen to the audio (with cassette filters

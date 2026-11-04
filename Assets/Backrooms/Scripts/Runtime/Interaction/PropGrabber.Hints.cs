@@ -83,6 +83,11 @@ namespace Backrooms.Interaction
                 return;
             }
             if (Current != State.Idle || _fetch || OnDoor || QuickDooring || _poke != PokePhase.None || !_player.HasFocus) return;
+            if (!HeldItem || (!Stowing && _itemT >= 1f))
+            {
+                var bh = BagHint();
+                if (bh != null) { _hint = bh; return; }
+            }
             if (HeldItem)
             {
                 if (Stowing || _itemT < 1f) return;

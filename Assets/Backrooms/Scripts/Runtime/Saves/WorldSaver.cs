@@ -122,12 +122,16 @@ namespace Backrooms.Saves
             int heldHome = -1;
             var spawned = new List<WorldItem>();
             var pocketed = new List<(WorldItem item, int slot)>();
+            Backpack worn = null;
             foreach (var it in _data.items)
             {
                 var item = SpawnItem(it);
                 spawned.Add(item);
-                if (item && it.pocket >= 0) pocketed.Add((item, it.pocket));
+                // In a backpack: back where it lay in it (the bag comes before what is in it).
+                if (item && it.bag > 0 && it.bag - 1 < spawned.Count && spawned[it.bag - 1] is Backpack bag) bag.AdoptSaved(item, it.position, it.rotation);
+                else if (item && it.pocket >= 0) pocketed.Add((item, it.pocket));
                 else if (item && it.held) { held = item; heldHome = it.home; }
+                if (item is Backpack b && it.worn) worn = b;
             }
             yield return null;            // lamps make their plugs and cords
             RestorePlugs(spawned);
@@ -144,6 +148,7 @@ namespace Backrooms.Saves
             }
             var grabber = _streamer && _streamer.player ? _streamer.player.GetComponent<PropGrabber>() : null;
             if (grabber) foreach (var (item, slot) in pocketed) grabber.PutInPocket(item, slot);
+            if (grabber && worn) grabber.WearNow(worn);
             if (held && grabber) { grabber.PickUp(held); grabber.SetHeldHome(held, heldHome); }
             _restored = true;
         }
@@ -225,8 +230,9 @@ namespace Backrooms.Saves
             var users = new List<WorldItem>();
             foreach (var it in FindObjectsByType<WorldItem>())
             {
-                // Plugs go with their lamp or cord; things still lying in a special room are its own (made again there).
-                if (string.IsNullOrEmpty(it.itemId) || it is Plug || it.IsLoot) continue;
+                // Plugs go with their lamp or cord; things still lying in a special room are its own (made again there);
+                // what is in a backpack goes with it (below).
+                if (string.IsNullOrEmpty(it.itemId) || it is Plug || it.IsLoot || it.InBag) continue;
                 users.Add(it);
             }
             foreach (var it in users)
@@ -234,6 +240,7 @@ namespace Backrooms.Saves
                 // A plug held in the hand is saved where the hand holds it, as an item would be.
                 var data = new ItemData { id = it.itemId, position = it.transform.position, rotation = it.transform.rotation, held = it.Held, amount = it.Amount };
                 if (it.Held && _streamer && _streamer.player && _streamer.player.GetComponent<PropGrabber>() is PropGrabber g && g.HeldItem == it) data.home = g.HeldHome;
+                if (it is Backpack worn && worn.Worn) data.worn = true;
                 if (it is SprayCan can) data.amount = can.paint;
                 if (it is PowerUser user && user.Plug)
                 {
@@ -247,6 +254,18 @@ namespace Backrooms.Saves
                     }
                 }
                 d.items.Add(data);
+            }
+            // What is in each backpack (switched off while it is shut, so not found above), where it lies in it.
+            for (int bi = 0; bi < users.Count; bi++)
+            {
+                if (!(users[bi] is Backpack bag)) continue;
+                foreach (var it in bag.Contents)
+                {
+                    if (string.IsNullOrEmpty(it.itemId)) continue;
+                    var data = new ItemData { id = it.itemId, position = it.transform.localPosition, rotation = it.transform.localRotation, amount = it.Amount, bag = bi + 1 };
+                    if (it is SprayCan can) data.amount = can.paint;
+                    d.items.Add(data);
+                }
             }
             // Things in the pockets (switched off, so not found above).
             var hand = _streamer && _streamer.player ? _streamer.player.GetComponent<PropGrabber>() : null;

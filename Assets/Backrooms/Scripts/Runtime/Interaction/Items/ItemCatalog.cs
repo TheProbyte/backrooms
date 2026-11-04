@@ -57,6 +57,13 @@ namespace Backrooms.Interaction
             // Its front toward you; the cassette lying flat, its label up.
             list.Add(new Entry { name = "Boombox", category = "ITEMS", clearance = 0.9f, spawn = (p, r, pv) => Boombox.Create(p + Vector3.up * 0.005f, r * Quaternion.Euler(0f, 180f, 0f)).gameObject });
             list.Add(new Entry { name = "Cassette (lunch break mix)", category = "ITEMS", clearance = 0.7f, spawn = (p, r, pv) => Cassette.Create(p + Vector3.up * 0.005f, r * Quaternion.Euler(0f, 180f, 0f)).gameObject });
+            // A backpack, its front toward you (navy, red, forest green: one each).
+            for (int c = 0; c < Backpack.Colours.Length; c++)
+            {
+                int col = c;
+                list.Add(new Entry { name = "Backpack (" + Backpack.Colours[c].ToLowerInvariant() + ")", category = "ITEMS", clearance = 0.8f,
+                                     spawn = (p, r, pv) => Backpack.Create(p + Vector3.up * 0.005f, r * Quaternion.Euler(0f, 180f, 0f), col).gameObject });
+            }
             if (!a) return list;
 
             uint MaskAt(Vector3 p)

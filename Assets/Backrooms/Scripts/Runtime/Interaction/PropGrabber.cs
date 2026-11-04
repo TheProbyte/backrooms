@@ -200,7 +200,7 @@ namespace Backrooms.Interaction
             Vector2 md = botHold.HasValue ? botMouse : focus && mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
             UpdateStrap();
             UpdateYawRate();
-            bool stowing = UpdatePockets(focus);
+            bool stowing = UpdatePockets(focus) | UpdateBackpack(focus);
 
             bool free = !HeldItem && !_fetch && Current == State.Idle && _poke == PokePhase.None && !OnDoor && focus;
             AimedPoke = free ? LookPoke() : null;
@@ -214,7 +214,8 @@ namespace Backrooms.Interaction
             }
             // Something small in the hand that is not aimed at things (the hammer, the nails, the chicken), and a click on a prop
             // within reach: the hand puts it in its pocket and takes the prop (it comes back out on letting go).
-            if (HeldItem && pressed && !stowing && TryGrabWithItem()) { }
+            if (HeldItem && pressed && !stowing && TryPutInBag()) { }
+            else if (HeldItem && pressed && !stowing && TryGrabWithItem()) { }
             else if (HeldItem) { if (!stowing) UpdateHeldItem(focus, mouse); }
             else switch (Current)
             {
