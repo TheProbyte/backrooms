@@ -1,0 +1,18 @@
+// Test probe: LGrid_EmitterVisible (how much of a ceiling panel a point sees past the layout's walls and headers) for
+// floor receivers, compared in ShadowLightTests against counting rays to the whole panel.
+#pragma kernel Visible
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Assets/Backrooms/Shaders/LightGridSample.hlsl"
+
+StructuredBuffer<float4> _Queries;   // xyz: receiver on the floor
+RWStructuredBuffer<float> _Out;
+int _QueryCount;
+float4 _Panel;                       // xyz: the panel's centre
+float4 _PanelSize;                   // xy: its half sizes along x and z
+
+[numthreads(64, 1, 1)]
+void Visible(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= (uint)_QueryCount) return;
+    _Out[id.x] = LGrid_EmitterVisible(_Queries[id.x].xyz, float3(0, 1, 0), _Panel.xyz, _PanelSize.xy);
+}

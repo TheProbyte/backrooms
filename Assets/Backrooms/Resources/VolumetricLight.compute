@@ -1,0 +1,157 @@
+// Volumetric light for the player's camera (VolumetricLight.cs): the haze lit in a grid of froxels (cells of the view's
+// frustum, 64 across, sliced exponentially in depth out to 40 m), integrated toward the camera and laid over the picture
+// (Resources/Shaders/VolumetricComposite.shader). Frostbite's unified volumetrics (Hillaire 2015), as most engines now do:
+//  - Inject: the light each froxel scatters toward the eye. Within about 12 m every fixture of its tile is worked out
+//    exactly, with the walls, door headers and shut doors between (the light grid's own line test, so light through a
+//    doorway falls in a shaft), what furniture shadows near it, and a Henyey-Greenstein phase function (the air glows
+//    looking toward a light). Farther away, the light grid's stored luminance (walls already stop it), isotropic, as the
+//    older haze had. Jittered in depth every frame and blended with the last frames (reprojected).
+//  - Integrate: front to back along each column, energy-conserving (the in-scatter integrated over each slice against
+//    its own extinction), giving the light scattered in front of each depth and what still gets through.
+#pragma kernel Inject
+#pragma kernel Integrate
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Assets/Backrooms/Shaders/LightGridSample.hlsl"
+
+RWTexture3D<float4> _VolOut;            // rgb in-scatter per metre, a extinction per metre
+Texture3D<float4> _VolPrev;             // the last frame's
+RWTexture3D<float4> _VolIntegrated;     // rgb scattered toward the eye in front of the slice's far end, a transmittance
+Texture3D<float4> _VolIn;
+SamplerState vol_linear_clamp_sampler;
+
+float4x4 _VolInvVP, _VolPrevVP;
+float4 _VolCam;        // xyz camera, w frame
+float4 _VolFwd;        // xyz forward, w near device depth
+float4 _VolPrevCam;    // xyz, w 1 if the history is valid
+float4 _VolDims;       // xyz froxels
+float4 _VolDepth;      // x near, y far, z ln(far / near), w exact-light range
+float4 _VolParams;     // x extinction, y scattering, z anisotropy g, w history blend (new share)
+float4 _VolTint;       // rgb the fixtures' colour for the grid's luminance
+float _VolFlipY;
+
+float VolIGN(float2 p) { return frac(52.9829189 * frac(dot(p, float2(0.06711056, 0.00583715)))); }
+float VolHash(float3 p) { p = frac(p * 0.3183099 + 0.1); p *= 17.0; return frac(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float VolNoise(float3 x)
+{
+    float3 i = floor(x), f = frac(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return lerp(lerp(lerp(VolHash(i), VolHash(i + float3(1, 0, 0)), f.x), lerp(VolHash(i + float3(0, 1, 0)), VolHash(i + float3(1, 1, 0)), f.x), f.y),
+                lerp(lerp(VolHash(i + float3(0, 0, 1)), VolHash(i + float3(1, 0, 1)), f.x), lerp(VolHash(i + float3(0, 1, 1)), VolHash(i + 1), f.x), f.y), f.z);
+}
+
+float SliceDepth(float s) { return _VolDepth.x * exp(s / _VolDims.z * _VolDepth.z); }
+
+float3 RayAt(float2 uv)
+{
+    float4 c = float4(uv.x * 2.0 - 1.0, (uv.y * 2.0 - 1.0) * _VolFlipY, _VolFwd.w, 1.0);
+    float4 w = mul(_VolInvVP, c);
+    return normalize(w.xyz / w.w - _VolCam.xyz);
+}
+
+float3 FroxelWorld(float3 c)
+{
+    float3 ray = RayAt(c.xy / _VolDims.xy);
+    return _VolCam.xyz + ray * (SliceDepth(c.z) / max(dot(ray, _VolFwd.xyz), 1e-3));
+}
+
+[numthreads(4, 4, 4)]
+void Inject(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id >= (uint3)_VolDims.xyz)) return;
+    float frame = fmod(_VolCam.w, 64.0);
+    float jitter = frac(VolIGN(id.xy + 7.0 * id.z) + 0.618034 * frame);
+    float3 P = FroxelWorld(float3(id.xy + 0.5, id.z + jitter));
+    float3 V = normalize(_VolCam.xyz - P);
+    float dist = length(P - _VolCam.xyz);
+    float3 light = 0;
+    bool inside = _LGridParams.x > 0.5 && all(P.xz > _LGridWindow.xy + 0.6) && all(P.xz < _LGridWindow.zw - 0.6);
+    if (inside)
+    {
+        float nearR = _VolDepth.w;
+        float farW = smoothstep(nearR - 3.0, nearR, dist);
+        float3 nearLight = 0;
+        [branch] if (farW < 1.0)
+        {
+            float g = _VolParams.z, g2 = g * g;
+            uint2 tile = LGrid_TileRange(P);
+            [loop] for (uint j = 0; j < tile.y; j++)
+            {
+                LGridLight f = _LGridLights[_LGridTileLights[tile.x + j]];
+                if (dot(f.colorAll, f.colorAll) < 1e-10) continue;
+                float3 d = f.pos - P;
+                float d2 = dot(d, d);
+                if (d2 >= f.range * f.range) continue;
+                float3 L = d * rsqrt(max(d2, 1e-4));
+                // A panel is not a point: close to it the light it gives stops growing (its form factor is at most 1), so
+                // the air right under a fixture does not blaze. About a panel's size.
+                float a = LGrid_DistAtten(max(d2, 0.36 + dot(f.halfSize, f.halfSize)), f.range);
+                if (dot(f.dir, f.dir) > 0.5) a *= LGrid_Profile(dot(f.dir, -L), f.cosOuter, f.cosInner, f.padding.y);
+                if (a < 1e-5) continue;
+                float vis = LGrid_LightVisible(P, L, f.pos);
+                if (vis <= 0.0) continue;
+                vis *= LocalLightVisibility(P, L, f.pos);
+                // Henyey-Greenstein, in URP's units (pi x the phase: 0.25 when isotropic).
+                float cosT = dot(-L, V);
+                float phase = 0.25 * (1.0 - g2) / pow(max(1.0 + g2 - 2.0 * g * cosT, 1e-3), 1.5);
+                nearLight += f.colorAll * (a * vis * phase);
+            }
+            nearLight *= _LGridParams.y;
+        }
+        float3 farLight = 0;
+        [branch] if (farW > 0.0)
+        {
+            float3 uvw = float3(P.x / (LG_TEXEL * _LGridSize.x), P.y / (LG_TEXEL * _LGridSize.y), P.z / (LG_TEXEL * _LGridSize.z));
+            float lum = _LGridB.SampleLevel(vol_linear_clamp_sampler, uvw, 0).z;
+            farLight = lum * 0.25 * _LGridParams.y * _VolTint.rgb;
+        }
+        light = lerp(nearLight, farLight, farW);
+    }
+    // Dust in the air is never even: a slow, faint drift in its density.
+    float dens = 0.8 + 0.4 * VolNoise(P * 0.6 + float3(0.0, -0.03, 0.02) * _VolCam.w * 0.016);
+    float4 v = float4(light * _VolParams.y * dens, _VolParams.x * dens);
+    if (!all(isfinite(v))) v = float4(0, 0, 0, _VolParams.x);
+
+    // The last frames, at this froxel's centre as it was then.
+    if (_VolPrevCam.w > 0.5)
+    {
+        float3 P0 = FroxelWorld(float3(id.xy + 0.5, id.z + 0.5));
+        float4 c = mul(_VolPrevVP, float4(P0, 1.0));
+        if (c.w > 1e-3)
+        {
+            float2 uv = c.xy / c.w;
+            uv = float2(uv.x * 0.5 + 0.5, uv.y * _VolFlipY * 0.5 + 0.5);
+            float depth = dot(P0 - _VolPrevCam.xyz, _VolFwd.xyz);       // near enough: the view turns little in a frame
+            float s = log(max(depth, 1e-3) / _VolDepth.x) / _VolDepth.z;
+            if (all(uv > 0.0) && all(uv < 1.0) && s > 0.0 && s < 1.0)
+            {
+                float4 h = _VolPrev.SampleLevel(vol_linear_clamp_sampler, float3(uv, s), 0);
+                if (all(isfinite(h))) v = lerp(h, v, _VolParams.w);
+            }
+        }
+    }
+    _VolOut[id] = v;
+}
+
+[numthreads(8, 8, 1)]
+void Integrate(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= (uint2)_VolDims.xy)) return;
+    float3 ray = RayAt((id.xy + 0.5) / _VolDims.xy);
+    float stretch = 1.0 / max(dot(ray, _VolFwd.xyz), 1e-3);       // metres along the ray per metre of depth
+    float3 S = 0;
+    float T = 1.0;
+    float z0 = 0.0;
+    int n = (int)_VolDims.z;
+    [loop] for (int k = 0; k < n; k++)
+    {
+        float z1 = SliceDepth(k + 1.0);
+        float ds = (z1 - z0) * stretch;
+        float4 v = _VolIn[uint3(id.xy, k)];
+        float ext = max(v.a, 1e-6);
+        float tr = exp(-ext * ds);
+        S += T * v.rgb * (1.0 - tr) / ext;
+        T *= tr;
+        _VolIntegrated[uint3(id.xy, k)] = float4(S, T);
+        z0 = z1;
+    }
+}

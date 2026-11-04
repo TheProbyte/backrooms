@@ -1,0 +1,425 @@
+# Runtime lighting for the procedural world
+
+The supported procedural-world GI path is the existing compute light grid, extended at runtime. It does not depend
+on a prebaked world, APV scenarios or baked-only URP Area lights. No package or pipeline replacement is required.
+The handmade ReferenceMatch scene keeps its stand-in lighting; it is not a benchmark for the procedural grid.
+
+## Direct fixtures and shadows
+
+GridLight is an 80-byte record shared by C#, compute and the forward shader. Horizontal half-extents follow each visible
+fitting: 0.57 m square diffuser, 1.18 x 0.11 m tube envelope, or a small square approximation to the round dome. Floor
+lamps remain point sources. F5 > LIGHT > Panel size scales the source at constant total output (0 restores a point).
+Energy-normalised four-point quadrature averages the finite source. Between 6 and 8 m the offsets smoothly converge to
+one centre sample to avoid a sampling-distance pop. This is an area approximation, not an LTC/path-traced area light.
+
+Per-pixel grid fixtures and real fixtures both use URP's material BRDF, including roughness/specular, the same cone,
+contrast and optional diffuse wrap. Grid direct no longer enters bakedGI. Full-power intensity determines contrast,
+so real/grid shares remain complementary during handover. The coarse texture fallback remains diffuse-only by design.
+
+Walls and door headers (`LGrid_EmitterVisible`, LightGridSample.hlsl): how much of the panel a point sees past them,
+not a yes/no line test. Walls are full height on 1.2 m cell edges and a fitting lies inside its own cell, so the walls
+that can hide any part of it lie on the cell lines the line to its centre crosses: the same walk as the old test, and at
+each crossing the wall pieces inside the cone to the panel hide the share of its width they cover, seen from the point
+(weighted by the panel's area across that direction, so a square seen corner-on fades in an S). A header hides the
+share of the panel's depth whose rays pass above the opening's top. The result is the penumbra a real panel casts:
+sharp at a wall end and widening away from it (panel width x distance from the wall end / distance from the wall end to
+the panel), so there are no hard wedges on the floor past wall ends and doorways. `Editor/Tests/ShadowLightTests`
+checks it against counting rays to 1600 points over the panel. Lamps (point sources) keep the line test.
+
+Furniture uses the real lights' shadow maps. URP spreads a spot light's map over its whole cone, and the fixtures' soft
+falloff runs to 150-179 degrees, where a 512 map's texels were 17-60 cm on the floor (a chair left almost no shadow).
+The maps now cover 120 degrees (`FixtureLightManager.shadowCone`): everything a fixture reaches on the floor (6 m range,
+2.6 m up) is within about 128 degrees, and at the 120 degree edge the floor gets about 1 % of the light right under the
+fixture; the texels are about 1.8 cm at 512 (0.9 cm at 1024). The real light skips points more than 58 degrees off its
+axis and the grid's per-pixel lights draw its share there instead (`BR_InShadowCone`, `_BRShadowCone`), with local box
+occlusion for furniture; where that share is under about 0.5 % of the light right under the fixture (the floor several
+metres out) it fades out instead of being worked out. Without the per-pixel distant light (F5) the light's own cone is used.
+Real shadows independently ease strength and retain atlas capacity until fade-out;
+new shadow maps wait if needed instead of oversubscribing the 64-map budget (point lamps cost six maps). Distance fade
+and selection hysteresis apply independently of the real/grid energy handover.
+
+### How a panel throws light (2026-10-27)
+
+A flat diffuser panel is Lambertian: its intensity falls off as cos(angle) from straight down. `LGrid_AngleAtten` (shader,
+`LightGrid.compute`, `LightGridMath.PanelProfile`) is linear between the cone's two cosines, and `TrofferCone` gives
+179 / 0 degrees at full spread, so a spread of 1 is exactly Lambertian; the default 0.8 is within 0.03 of it (tested in
+`ReferenceRoomTests`). It used to be a squared (URP spot) falloff, about cos^2: walls beside a panel had round hot spots
+halfway down instead of a fade from the top, and rooms were darker and patchier. A rectangular panel's form factor is
+already Lambertian, so there the profile now divides out.
+
+### What the panel looks like (2026-10-27)
+
+A square troffer's lens is a copy of the lit lens material with an emission map made at startup
+(`MaterialMaps.Troffers`, 512 px, no asset and no new shader variant: `_EmissionMap` under the `_EMISSION` the lens
+already had): three soft bands where its T8 tubes are (15 cm apart, spread about 3.5 cm by the diffuser, with a wide
+halo), the reflector's fill between them at about 60 % of the bands, darker at the tubes' ends and toward the frame,
+and a fine diagonal grid of prismatic pyramids that catch the light over the tubes. Each lens is mapped 0..1
+(`MaterialMaps.TrofferUV`). The emission is scaled by the map's mean, so a lens gives the same light as before. From
+across a room it is the same blown-out white; looked at up close, when the camcorder stops down for it, the tubes show
+through the diffuser instead of a flat white tile. Unlit troffers get the pyramids in their albedo.
+
+### Light as it falls: bounce and AO (2026-10-27)
+
+- `multiBounce` 1 (was 0.7): every bounce passes on all of the light its surface reflects (the surfaces' albedo already
+  takes its share). In a room with light walls that is what evens the light out; at 0.7 the wall facing away from the
+  lights was 10x darker than the lit one, against about 2-3x in a real room (and in the reference footage).
+- `darkSpots` 0 (was 0.35): no extra curve pushing dim surfaces darker than their light.
+- Saved options (graphics options version 3) take both values once, if the player had not changed them.
+- Screen-space AO (`GraphicsController`, set at runtime; the renderer asset is not edited): direct lighting strength 0
+  (it darkened direct light by 60 % in corners: a dark, grainy band where a lit pillar met the ceiling, and the dark
+  lines beside the ceiling grid), radius 0.2 m, intensity 0.6. AO stands in for bounced light a nearby surface blocks and
+  assumes the blocker is black, while here it is usually a lit wall or ceiling, and the traced bounce already handles
+  occlusion at room scale; what is left is the tight darkening where floors meet walls.
+
+Measured against the reference footage in the reference room (ReferenceMatch.md): with the old falloff and bounce the
+floor was 1-1.5 stops darker than the photo and the shadowed left wall 3 stops; now every area is within about a quarter
+stop.
+
+### Light through broken walls (2026-10-27)
+A wall broken with the sledgehammer is still a wall in the occupancy, flagged as holed (bits 29 and 30 for the west and
+south edge), with a record in the hole table (`LightGrid.Holes.cs`, `LightGridCommon.hlsl`: which 0.15 m blocks are open
+right through, 8 across by 18 up, and which have any opening) found through a per-cell index laid out as the occupancy
+(no search inside the walks: FXC compiles loops nested in them very slowly). The shaders test a light's footprint on the
+wall, not the one block its centre line meets (`LG_HoleOpenBox`: the share of a box that is open, each block weighted by
+how much of it the box covers, rows in four fixed samples so there is no loop): for a ceiling panel the box is its cone
+where it crosses the wall (as wide along the wall as the cone, as tall as the panel's depth spreads, at least a block),
+for a point test a block round the crossing. Lights with a shadow map pass a holed wall where any of the footprint has
+an opening, except at its posts (`LGrid_EmitterVisibleH` / `LGrid_LightVisibleH` with shadowMapped, chosen per light from
+its shadow parameters), and the broken panel's pieces cast the shadows (each piece as a block through the whole wall
+thickness, so the shadow bias cannot eat the 12.7 mm boards): the real lights near you come through a hole exactly,
+broken by the studs; a footprint that is all whole wall stops them. The grid's lights and the far part of real lights
+pass the footprint's open share: soft-edged light through a hole, as a panel's would be, not hard 0.15 m squares (what
+they drew before, on the wall opposite a hole). The traced bounce (rays go on through an open block), the probe filter
+(a wall more than half open joins its two sides) and the CPU mirror `LightGridMath.Visible` read the blocks. A wall that
+breaks more is encoded again and the light around it redrawn (14 m). See BreakingWalls.md.
+
+### Doorway headers in the traced bounce (2026-10-27)
+The probe lookup (`LGrid_ProbeIrradiance`) blends a sample with the next cell's probes across open floor and openings.
+Above a doorway's or arch's top the edge is wall (the header), but it blended there too, so in a dark room the wall
+above a doorway to a lit room, and the ceiling in front of it, showed the lit room's bounce: a bright cell-wide band
+with sharp sides. Now a door or arch counts as wall above its top.
+
+## Runtime indirect light
+
+Three half-float atlases contain floor radiance, wall radiance and the wall field's first directional moment. Each has
+two separate storey layers; ordinary upper rooms use their own floor, while an upper well can sample the ground well's
+floor. Sampling wraps inside a layer without filtering between floors. Occupancy still blocks closed walls and slabs.
+
+Main-thread code downsamples each distinct existing base texture once and multiplies its linear base colour to estimate
+surface reflectance; imported texture readability/settings and materials are not modified. Floor, wall and ceiling
+finishes therefore tint and attenuate reflected light. Generation workers still publish only managed layout/finish data.
+The legacy Floor albedo field scales floor reflectance relative to its old 0.25 default. Reflectance is bounded below 1.
+
+The source kernel samples floor and actual solid-wall patches. The direction moment makes a wall facing a lit side
+respond differently from one facing away. Diffusion stays inside open floor edges: doors/arches do not smear indirect
+light through their walls. Direct rays passing through an opening create reflected sources in the receiving room.
+A restrained ceiling-reflectance term approximates second-order floor-to-ceiling-to-room light. It belongs to the fixed
+source, so repeated smoothing cannot accumulate extra energy, and its isotropic energy enters the direction moment. This is low-frequency
+transport with architectural occlusion, not a general physical multi-bounce GI solver; small recesses and exact colour
+bleeding/energy transport remain approximations. Empty unlit areas receive no invented ambient source.
+
+Sources/diffusion and GPU uploads are invalidated by actual relevant changes (power, geometry, surfaces, window, tuning),
+not by an unchanged frame or real/grid share alone. Light records have stable position order independent of distance rank.
+The window follows the player locomotion root, so handheld shake at a cell boundary cannot churn its inputs. Faulty
+tubes retain their exact power waveform; other distance/power fades retain the existing 64-step quantisation.
+Upload timing includes immediate startup chunks as well as accumulated phased upload time. Generated mesh ownership
+is serialized so surviving objects retain their mesh list through a Unity script reload.
+
+## Validation and costs
+
+PerformanceLightingTests covers stable caching, mode switches, ownership, phased publication and deterministic eviction.
+Fallback globals explicitly release their eight buffers and two empty textures at assembly reload, lifetime reset and
+quit, then rebind in editor/gridless scenes. ExitingPlayMode retains bindings until rendering stops. A teardown guard
+blocks late OnDisable allocation.
+An EditMode regression verifies invalidation, guarded shutdown and valid rebinding; the current full suite has 48 tests.
+RuntimeBounceTests dispatches the real GPU source kernel and reads it back: upper-storey illumination, closed-floor
+isolation, changed floor reflectance/colour and the direction of west-wall bounce. Shader compilation and fixed-pose
+LightingTour views are also checked. Baseline, efficiency and lighting captures are local under Temp/LightingPerformance.
+
+Finite samples and material BRDF lighting cost more than the old grid diffuse shortcut. Four light samples must not be
+sold as a free FPS gain. Reused centre architectural visibility and filtered atlas taps reduce redundant shader work;
+profile the final warmed player build on representative rooms, streaming routes and portal views before choosing budgets.
+
+
+## Furniture contact and reflections
+
+LightingOccluder registers existing furniture BoxColliders. A tiled list of up to 160 boxes within 14 m follows actual
+transforms, including dragged/rotated props. Stable boxes reuse GPU data. Four short hemisphere rays add restrained
+indirect contact; local direct rays also occlude the grid's unshadowed fixtures and floor-bounce sources. Native shadow
+maps remain responsible for nearby direct furniture shadows. Existing SSAO and local indirect visibility combine by
+minimum rather than multiplying the same contact cue. This uses collision proxies, not exact triangle silhouettes, and
+has a finite reach (indirect 1.15 m, direct 2 m). F5 > LIGHT > Furniture contact controls it; zero disables collection.
+
+RuntimeIndoorReflections keeps two 128-pixel HDR probes at most and permits one time-sliced capture at a time. It grows
+a loaded-cell rectangle only across completely open edges of the same room identity, so even an internal wall inside
+one custom area bounds the reflection volume. Probe volumes include floor/ceiling surfaces. Captures use black clearing,
+box projection, a bounded clip distance and exclude portal quads. Portal preparation/warping runs only in a context that
+contains the main camera, not reflection-only contexts. Newly captured reflections ease their intensity in.
+
+Captures refresh after light/prop/streaming changes with a four-second minimum interval; unchanged probes remain cached.
+They are room reflections, not live mirrors, and moving props/flicker can temporarily differ between the scene and its
+cached reflection. Only the current room is refreshed; a nearby previous room keeps the second cache. The world renderer
+uses per-pixel probe volumes in the existing Forward+ path with probe blending/box projection already enabled.
+
+Reflective materials with environment reflections disabled get shared temporary variants; base asset materials remain
+unchanged. Variants/probes are released and original materials restored on disable, including script reloads. The project disables realtime reflection probes in
+quality settings; this component enables that setting in memory during its lifetime and restores its original value.
+No ProjectSettings file is edited. F5 > LIGHT > Indoor reflections switches the probes off/on.
+
+Unity 6000.4 Forward+ has a scripted-probe atlas refresh bug. After a completed capture the code calls
+Texture.IncrementUpdateCount(), Unity's published workaround for
+[UUM-129405](https://issuetracker.unity.com/issues/4781/urp-realtime-reflection-probes-do-not-update-when-renderprobe-is-being-called-once-per-second).
+
+
+## FPS follow-up
+
+Real fixtures use a cached position index instead of repeatedly scanning the receiver tile's light list. Conservative
+finite-emitter range/cone tests precede rays; layout-blocked real fixtures skip URP shadow-map sampling. Contact rays
+run only for surviving distant fixtures. Source samples, shadows, bounce, materials and saved budgets are unchanged.
+World replacement cancels old probe captures; a time-sliced probe remains enabled until completion across distant moves.
+See FpsRecovery.md for verified same-view editor timings, GPU regressions and remaining standalone-player checks.
+
+2026-10-27: frames are capped at 60 a second by default (F5 > DISPLAY, `GraphicsOptions.frameCap`; settings saved with no
+limit move to 60 once). With vsync on a 240 Hz display there was no limit at all: the graphics card drew every frame it
+could (about 146 W, fans loud) for frames nobody sees. With vsync, a build syncs to every Nth refresh nearest the cap
+(240 Hz and 60: every 4th); the editor holds the cap with the frame-rate limit.
+
+Measured again at 60 fps (RTX 4070, 1080p, the user's settings: 24 shadowed lights, high shadows): 72 % GPU, 158 W, fans
+at 100 %. Most of it was pixels: (1) the 3D view drew the full 1080 lines while the camcorder records and processes
+480-540: with the camcorder picture on it now draws at 1.35 x the recording's lines (F5 > DISPLAY > Match the recording,
+on by default; render scale stays the most it draws): 67 % -> 46 %; (2) SSAO at full resolution with 12 samples and a
+bilateral blur: now at half resolution (set at runtime, `GraphicsController.PhysicalAO`), about a fifth of the card
+down to about 6 %; (3) the indoor reflection probes re-captured every 4 s (six faces with full lighting and shadows)
+because the lighting revision moves all the time (faulty tubes): a room is now captured when you enter it and again for
+a change of light at most every 30 s. Together: 47 % GPU, 117 W, 67 C, fans 53 %.
+
+SSAO is softer (intensity 0.3 over 0.1 m, was 0.6 over 0.2 m): close to a wall the ceiling line and corners darkened in
+a heavy band that seemed to load in as you came near (0.2 m is many pixels up close and a hairline far off). Measured
+against the reference footage with the stronger setting: floor corners are now a little lighter than that match.
+
+
+## Look panel and the light it controls (2026-10-26)
+
+**F5 > LIGHT** is the look of the building's light. Every control lives in `Camcorder/GraphicsOptions.cs` (look fields
+carry `[Look]`: presets, "my look" and reset copy only those, never quality settings) and is applied each frame by
+`GraphicsController`. Built-in looks: STILL RECORDING (the defaults), EVEN & PALE, DIM & MOODY, HARSH TUBES, WARM & OLD;
+SAVE MY LOOK keeps one of your own (PlayerPrefs). Moving a control marks the look as changed.
+
+- **Colour**: light colour in kelvin (4500 = as built) and a green/magenta tube tint shift every fixture's colour
+  (tubes, strips and lamps together, brightness kept: `GraphicsOptions.ColourShift`); the fittings' own glow follows
+  (`_BREmissionTint`, also scaled by Panel glow).
+- **Rectangular panels** (`Shaders/BackroomsAreaLight.hlsl`, `BackroomsRectFixture` in the forward pass): a ceiling
+  panel's diffuse light is the exact form factor of its rectangle (edge integrals, Heitz & Hill's fitted arc term);
+  where a surface cuts through the panel its far corners are moved onto the surface's plane, which matches clipping
+  without branches. Specular uses the point of the panel nearest the mirror reflection with the lobe widened by the
+  panel's size (Karis), so glossy floors show long rectangular reflections. Far away (6-8 m) the panel shrinks to a
+  point, as before; with the toggle off every fixture is a point. Tested against brute-force integration
+  (`LightingLookTests.RectangularPanelMatchesNumericIntegral`).
+- **Traced bounce** (`LightGrid.Probes.cs`, kernels FaceLight / ProbeCopy / ProbeTrace in `Resources/LightGrid.compute`,
+  sampled by `LGrid_ProbeIrradiance`): two probes per 1.2 m layout cell and storey (low and high), each an L1 spherical
+  harmonic per colour. A face cache holds the direct light leaving every cell's floor, ceiling and walls (all powered
+  fixtures, real or not, times the surface colour with the colour-bleed setting), refreshed a quarter of the cells per
+  frame while anything changes. Each frame a quarter of the probes trace 64 rays through the layout (walls, shut doors,
+  slabs, header beams, the nearby furniture boxes), read the face cache where they hit plus that surface's bounce from
+  last frame's probes (second bounce), and blend into their history (hysteresis 0.95, and longer the longer the probe
+  goes without a real change: up to 0.99 after about a hundred updates, `settle`; the count rides in the top 8 bits of
+  `_ProbeKey`, so a still room's bounce no longer shimmers with each update's 64 new rays). An update blends in fast only
+  when it differs from the history by more than its own rays' spread explains (the standard error of the estimate from
+  the 64 rays' luminance): a light switched or a door opened shows within a few frames, while the noise of a few rays
+  finding light in a dark room does not (the first version blended fast on any big relative change, which made dark
+  places shimmer and pop like a slow disco; measured in a switched-off room: 1.75% -> 0.18% average change per frame,
+  worst 16-pixel block 6.6% -> 0.6%). The shaders read the probes after a small wall-aware smoothing pass (each with its
+  open neighbours; `ProbeFilter`), the traced history stays unsmoothed. Bounce and haze use each fixture's power smoothed
+  over ~0.35 s (`GridLight.padding.x`, `FixtureLightManager.smoothBounce`): a stuttering faulty tube's direct light keeps
+  its exact waveform, but its bounce (face cache in slices) and haze (redrawn in boxes) no longer pop in patches. Probes
+  are keyed to their cell, so the moving window never shows stale light. The shader keeps its sample on the room's own
+  side of walls and blends across open floor and openings. The far crawl-hole site grid has its own probes.
+  **Crawl holes**: a ray that goes into a crawl hole carries the light of the room at the duct's far end (the duct mouth
+  light CrawlPortalSystem samples each frame, `_DuctMouthLight`) times what a 1.9 m sheet-metal duct passes
+  (`LightGrid.holeTransmission`, 0.15): a lit room glows faintly out of a hole into a dark one. Holes whose duct is not
+  among the four lit ones are dark. Off: the older diffused floor-light field.
+  `Debug/FlickerProbe.cs` measures frame-to-frame light change in a dark place (the camcorder's sensor noise switched off
+  for its renders).
+- **Shadow softness** (`BackroomsSoftShadow`): for real spot-light fixtures, a blocker search in URP's own shadow atlas
+  (linear depths recovered from the shadow matrix; the fitting's own body within 0.3 m is ignored), then a filter the
+  shape of the panel scaled by (receiver - blocker) / blocker depth on each of its axes: a uniform rectangle of light
+  casts the occluder's shadow averaged over its own shape, so a square panel gives a square filter and a tube a long,
+  narrow one (soft along the tube, sharp across it). A jittered 3 x 3 grid for the search and 4 x 4 for the filter (one
+  shift per pixel, which the camcorder's raster averages), capped at 0.6 m and kept inside the map's own atlas tile.
+  Each sample's depth reference is moved by the receiver's slope (otherwise a wall the light skims along shadows
+  itself). Lamps (point-light shadows) keep URP's filter. Shadow maps are not cached (URP redraws them every frame;
+  there is no supported way to keep static ones).
+- **Contact shadows** (`Generation/ContactShadows.cs`, `Resources/Shaders/ContactShadowMask.shader`): a render pass of its
+  own on the player's camera, after the depth prepass, marches 8 steps toward the two strongest fixtures at each pixel
+  through the camera depth and writes a mask; Backrooms/Lit looks it up per light. The pass declares the depth texture
+  it reads, as the render graph requires: reading `_CameraDepthTexture` inside the opaque pass itself is not declared
+  there and is not safe. Portal views, probes and the scene view get none.
+- **Haze**: the direct-light pass also stores every fixture's whole light (luminance) in `_LGridB.z` (real lights too:
+  their power changes redraw their reach, flicker at most every 0.15 s); Backrooms/Lit marches it in 8 jittered steps
+  from the camera (`BackroomsHaze`). Isotropic, tinted by the fixtures' colour. 0.25 scatters about 2.5% per 10 m.
+- **Poolrooms**: sun, sky (and ambient), tile bounce and sun warmth scale `PoolWorld`'s own light.
+
+All of these are uniform branches (`_BRLook`, `_LGridGI`, `_LGridHaze`, `_BRContact`), never shader keywords; zero (what
+the fallbacks bind) is off. Measured together in the editor (RTX 4070, same views): about 0.3-1.5 ms of GPU time on
+Direct3D 12 (`Debug/LightingProbe.cs` captures each feature off/on and every look, with timings).
+
+### Shader compile times and the Direct3D 12 crash (2026-10-26)
+
+A Backrooms/Lit variant took 9 s to compile before this work and 28 s with the first version of it (a 4-step unrolled
+wall test inside the panel code, inlined twice, and a second copy of URP's shadow filter); now about 13 s. Cameras that
+render into textures (the exposure probe, portal views, reflection probes) compile shaders synchronously, so after a
+shader change Play Mode stalled for minutes mid-frame, and on Direct3D 12 the editor then lost its graphics device and
+crashed ("failed to wait for fence", "command lists ... corrupted"), even with every new feature switched off. On
+Direct3D 11 the same stall survived. `Editor/LitShaderWarmup.cs` compiles the variants a play session used
+(`Shaders/BackroomsLitVariants.shadervariants`) in Edit Mode whenever the shader changes, and holds Play until they are
+in the shader cache (Backrooms > Compile Lit Shader Variants runs it by hand). Re-record the list (Project Settings >
+Graphics > Save to asset, same path) after adding materials with new keyword sets. 2026-10-27: the crawl holes' portal
+views drew 2 variants the list lacked (soft shadows off), which compiled mid-play (the "Compiling shader" box while
+walking around); every portal variant now also has its plain-shadow twin, and the plain (no keyword) forward and shadow
+passes are in (76 variants). The warmup now takes about 17 minutes here after a lit shader change.
+
+## Measured light shapes (IES) (2026-10-28)
+
+`Generation/PhotometricProfiles.cs`, `Resources/Lighting/IES/{Troffer,Dome,Strip}.txt`. Each fixture type's photometric
+file (IES LM-63: candela at each angle from straight down) is read, averaged over the horizontal planes and fitted with
+intensity ~ cos(angle)^k (solid-angle weighted). The bundled files are generic typical shapes (a 2 x 2 prismatic troffer:
+k 1.27, an opal dome: 0.51, a bare twin-tube batten: 0.31); put a real fixture's .ies there (renamed .txt) to use its
+measurement. The exponent goes to each grid light (`GridLight.padding.y`) with its cone opened to 90 degrees (so every test
+that culls by the cone stays valid) and `LGrid_Profile` / `LightGridMath.FixtureProfile` replace the cone in the forward
+pass (rectangular panels, point fixtures, reach), the light grid compute, portal lighting and the contact shadow mask.
+Effect: the tops of walls and pillars get the light a real fixture throws there (the cone cut it off at 75 degrees); in a
+test room the top third of the frame was about 8 % brighter. Lighting menu > Measured light shape (IES); off restores the
+cone (Fixture spread).
+
+## Screen-space light (2026-11-01)
+
+F5 > LIGHT > SCREEN LIGHT. `Generation/ScreenLighting.cs`, `Resources/ScreenLighting.compute`, read by Backrooms/Lit
+(`BackroomsGlobalIllumination`, `BackroomsLook.hlsl`) and the Poolrooms' tile and lit shaders (`PoolScreenBounce`).
+A render pass of its own on the player's camera, after the depth-normals prepass and before the opaque pass, at half
+resolution, from this frame's depth and normals and the last frame's lit picture (copied after the transparents, half
+size with mips). What the traced probes (1.2 m apart) cannot resolve, it finds in the picture:
+
+- **Near bounce and occlusion with a visibility bitmask** (Therrien, Levesque & Gilet, "Screen Space Indirect Lighting
+  with Visibility Bitmask", 2023; the approach of the RTGI ReShade shader and of Blender EEVEE's horizon scan). Along
+  two slices round each pixel (rotated every frame), 8 steps a side out to 1.5 m, each sample sets the sectors of the
+  hemisphere its front and its back (0.25 m behind it, more far off) cover in a 32-bit mask; sectors it newly covers
+  take its light from the last frame (reprojected; only where its own surface was seen there). Unlike a horizon (GTAO)
+  light passes behind thin things (chair legs, table edges), and unlike plain AO what hides part of the hemisphere is not
+  black: its own light comes back. The sectors are spaced evenly in sin(angle from the normal), so each holds an equal
+  share of cosine-weighted light, and the slices are weighted by the projected normal as in GTAO. Emitters (a lit lens or
+  shade: the depth-normals pass writes -1 in the normals' alpha for materials with emission) neither hide nor give
+  light: their light is the fixtures' own, drawn exactly. The last frame's light is capped at 6 (fireflies).
+  The hemisphere is the surface's own plane, its normal rebuilt from the depth (a carpet's bump map tilted the shading
+  normal so the flat floor round each point hid part of it). What it hides is taken from the probe bounce only as much
+  as the probes had in those directions (`ProbeShare`: their L1 irradiance facing the hidden directions' mean against
+  facing the normal, 0.25-1.25; the probes' bounce only, not the grid's direct light). Without it a wall's foot beside a
+  dark carpet lost an even share of the probe light and got the carpet's dark light back: the probes already knew the
+  floor was dark, and a hard-topped dark band ran along every wall. The lit shader then takes the probe bounce times
+  the visibility plus the bounce found: in a corner between lit walls the share the walls hide is replaced by their
+  real light, so it stays lit (the old SSAO assumed black blockers and was cut to 0.3 for that reason). Measured in a
+  Level 0 view against no occlusion at all: the same mean brightness (1.00), corners and contact a little darker, faces
+  beside lit surfaces a little brighter. `Editor/Tests/ScreenLightingTests` checks it on a made-up floor meeting a wall where every
+  surface gives the same light: open floor has visibility 1 and no bounce, and in the corner and at the wall's foot the
+  visibility drops and visibility + bounce stays 1.
+- **The visibility as URP's SSAO**: bound as URP's own occlusion texture with its keyword (`_SCREEN_SPACE_OCCLUSION`),
+  so every shader that reads SSAO gets it without a new shader variant, and URP's SSAO feature is switched off on the
+  player's renderer while this runs (the crawl holes' views keep it). Direct light is not darkened by it.
+- **Screen-space reflections** (stochastic, as FidelityFX SSSR and Stachowiak 2015): one ray a pixel for smoothness
+  above 0.45, its direction drawn from the GGX lobe (visible normals, Heitz 2018, at 0.6 of the surface's roughness),
+  marched 28 steps out to 14 m through the half-size depth and refined by bisection; a hit takes the last frame's light
+  from a mip as wide as the lobe's cone there. Hits on the back of something, off screen or near its edge fade out, and
+  there the room's reflection probe stays. The probes' own reflections get **reflection occlusion** from the visibility
+  (Lagarde & de Rousiers 2014), so they no longer glow in corners and under furniture.
+- **Over frames and up to the full picture**: the bounce blends up to 24 frames (its history in full floats: the frame
+  count rides with the visibility, and in half floats a long history's small steps rounded away, so it stuck dark) where the surface was seen last frame
+  (reset where it was not: a disocclusion, a teleport, a turn of more than about 37 degrees in a frame); reflections
+  blend 5 frames kept within this frame's neighbours (they move with the view). Then a 5 x 5 edge-aware filter (by plane
+  distance and normal, wider while the history is short) and a joint bilateral upsample to the full picture.
+- **Specular anti-aliasing** for Backrooms/Lit (Tokuyoshi & Kaplanyan, as the Poolrooms' tiles had it; Graphics >
+  Specular anti-aliasing): highlights on bevels, handles and far fittings widen instead of sparkling.
+
+Other cameras (portal views, the water mirror, reflection captures, the scene view) get none of it (`_BRScreen.x` is 0
+for them, as with contact shadows). Off (Screen light), everything is as before: URP's SSAO at 0.3 and the probes.
+
+## Volumetric light (2026-11-01)
+
+F5 > LIGHT > AIR > Volumetric light, Glow toward lights. `Generation/VolumetricLight.cs`, `Resources/VolumetricLight.compute`,
+`Resources/Shaders/VolumetricComposite.shader`. Frostbite's unified volumetrics (Hillaire, SIGGRAPH 2015), the froxel
+approach most engines use now: the haze is lit in a grid of cells of the view's frustum (64 x 48 across, 48 slices spaced
+exponentially from 0.3 to 40 m), integrated toward the camera, and laid over the opaque picture before the transparents
+(colour x transmittance + in-scatter).
+
+- **Inject**: within 12 m of the camera every fixture in the froxel's 4.8 m tile is worked out exactly: its distance
+  falloff and measured shape, the light grid's own line test (walls, door headers, shut doors, broken-wall holes), the
+  nearby furniture boxes (`LocalLightVisibility`) and a Henyey-Greenstein phase (g 0.35 by default): light through a
+  doorway falls in a shaft with a soft edge, a lit room's air glows seen from a dark corridor, and the air brightens
+  round a fixture you look toward. Within a panel's size of a fixture its light stops growing (a panel is not a point:
+  as 1/d^2 the air under each fixture blazed and veiled the whole picture). Farther away (a 3 m blend) the light grid's luminance channel, isotropic, as the old
+  haze had it. The density drifts slowly with a faint 3D noise (dust is never even). Jittered in depth every frame and
+  blended with the last frames' froxels (12 % new, reprojected; reset on a teleport or a fast turn).
+- **Integrate**: front to back along each column, each slice's in-scatter integrated against its own extinction
+  (energy-conserving), giving the light in front of each depth and what still gets through.
+- The thickness is the Haze slider, by the light grid's formula (0.25 scatters about 2.5 % per 10 m). On this camera
+  it replaces Backrooms/Lit's 8-step march (`_LGridHaze.w` is 0 while it draws); portal views and reflection captures keep
+  the march. Off in the Poolrooms, whose air has its own sun shafts (PoolAir).
+
+## Ray-traced light (2026-11-02)
+
+F5 > LIGHT > RAY TRACING. `Generation/RayTracedLighting.cs`, `Resources/RayTracedLighting.compute`. Hardware ray queries
+from compute (inline ray tracing, `#pragma require inlineraytracing`), so a card with ray tracing on Direct3D 12 (the
+build's first API; `RayTracedLighting.Supported`). Without one nothing is created and everything is as below.
+
+- **The scene**: each frame `RayTracingAccelerationStructure.CullInstances` gathers the renderers round the camera (36 m,
+  growing from 6 m over about 20 frames after the rays come on or the camera jumps: a dense area joining at once built
+  every mesh's structure in one frame and the card was reset). What casts shadows (shadow casting On or ShadowsOnly:
+  furniture, props, doors, the player's body, the warehouse dressing's proxy boxes) under mask 1; what is drawn (casting
+  or not) under mask 2. Walls, floors and ceilings do not cast: the light grid's line test stops every fixture at them
+  exactly. One component for the session; its structure and textures are freed only in OnDestroy (the render thread runs
+  a frame behind). Its pass runs before ScreenLighting's (AfterRenderingPrePasses + 1). The grid is bound to its kernels
+  (`LightGrid.BindPortalLighting`) as for every compute shader that reads it.
+- **Shadows** (Unreal's MegaLights way, Epic 2025, with the ratio estimator of Heitz, Hill & McGuire 2018): at each pixel
+  one fixture is picked from its 4.8 m tile's list in proportion to the light it gives there (its share drawn per pixel,
+  distance, measured shape, the surface turned toward it and the grid's wall test), by weighted reservoir sampling, and one
+  ray goes to a random point on its panel (a lamp: a 10 cm ball; the fitting's last 8 cm / a lamp's 30 cm are not
+  blockers). Blended over 12 frames, reprojected and kept within the mean of this frame's 7 x 7 neighbours on the same
+  surface give or take half their spread (AMD's FidelityFX shadow denoiser; a 3 x 3 that is all one value may also reach
+  it, so sharp edges stay sharp); history the clamp pulls more than a little starts its count again, so a moving shadow
+  (the player's own) does not trail. Then two passes of a 5 x 5 edge-aware filter (every pixel, then every other: an
+  a-trous filter); faded out from 30 to 34 m. (2026-11-02: it was kept within the 3 x 3's lowest and highest, which with one
+  ray a pixel is 0..1 in any penumbra: the player's soft shadow left a row of old foot shadows behind them, and one filter
+  pass left a grain that slid over the floor.) Backrooms/Lit lights every fixture as
+  before and multiplies their summed light by it (`_BRRTShadow`, `BackroomsRTShadow`; transparent surfaces excepted). So
+  every fixture shadows, with the panel's true penumbra. While the rays run the fixtures have no shadow maps
+  (FixtureLightManager), the contact-shadow pass does not run, and the furniture boxes' direct-light test is left out. URP's
+  `stripShadowsOffVariants` is set on every renderer meanwhile, so with no shadow-mapped light it keeps the lit shader's
+  `_ADDITIONAL_LIGHT_SHADOWS` variants (warmed by LitShaderWarmup) with an empty map instead of switching to unwarmed ones.
+- **Occlusion**: one cosine-weighted ray a pixel, 1 m, against the casters (strength 0.8); ScreenLighting takes the smaller
+  of it and its screen-space visibility (`_BRRTShadow.g`), which then scales the probes' bounce and is URP's SSAO.
+- **Reflections**: ScreenLighting's reflection rays (its half resolution, one GGX ray a pixel) are traced in the scene
+  (`TraceReflections`) instead of marched through the depth, and go through its usual blending and filters. A hit seen
+  last frame takes its light from that picture (a mip as wide as the lobe); off screen, its normal from two neighbouring
+  rays and its light from the grid (every fixture of its tile past the walls, plus the grid's far light and bounce) on an
+  average surface (0.45, warm); a hit on a glowing panel or a miss within 20 m is left to the reflection probe. Measured in
+  a Poolrooms view: a reflection for 98.7 % of the picture, against 59.2 % for the screen march.
+- **Cost** (RTX 4070, 1171 x 658 render): GPU median 5.25 ms for the whole frame with all of it against 7.52 ms with the
+  old 32 shadow maps; gathering the scene 0.9-1.7 ms on the main thread.
+
+## Surface detail (2026-11-02)
+
+F5 > LIGHT > SURFACES. `Shaders/BackroomsSurface.hlsl` (Backrooms/Lit's forward pass), `MaterialMaps.SurfaceDetail`.
+- **Parallax occlusion mapping** (Tatarchuk, GDC 2006): the material is looked up where the view ray meets its relief
+  (up to 16 layers, more at grazing angles, then the crossing between the last two); out to 6 m, fading from 3.6 m.
+- **Cavity**: the relief's own ambient occlusion darkens the bounce light down in a carpet's pile and a tile's fissures.
+- **Micro-shadowing** (Chan, "Material Advances in Call of Duty: WWII", 2018): `saturate(|N.L| + 2 cavity^2 - 1)` on each
+  fixture's direct light, so light raking down a wall or across the carpet brings out the relief.
+- **Fabric sheen** (Charlie distribution, Estevez & Kulla 2017, Neubelt & Pettineo's visibility, as Filament and Unreal's
+  cloth): a soft bright rim on carpet and upholstery toward the light.
+- Per material in properties URP's LitInput declares and this shader never uses for their own keywords (so no new
+  variant and no change to the material layout): `_ParallaxMap` R height, G cavity; `_Parallax` below 0 = on, its size the
+  depth in texture units; `_OcclusionStrength` the cavity's strength; `_ClearCoatMask` / `_ClearCoatSmoothness` the
+  sheen. Set only on MaterialMaps' in-memory copies (keyed by the normal map), never on the project's .mat files.
+- The height and cavity maps (`Resources/Textures/Height`) are made from the normal maps by
+  `Tools/Textures/make_height_maps.py` (Frankot-Chellappa integration, exact for a tiling texture; cavity as a
+  horizon-based AO of the relief). Imported linear, BC5.
+- Chunk meshes now compare their material with the project material it was copied from (`MaterialMaps.Original`) when
+  deciding what casts shadows; before, the copies of the baseboard, ceiling grid and fixture housing cast by mistake.

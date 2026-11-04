@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c8bfa62aac418ad4fb687b2562e80d5c, type: 3}
+  m_Name: Poolrooms
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.BiomeDefinition
+  rules:
+    name: Poolrooms
+    mapColor: {r: 0.45, g: 0.8, b: 0.76, a: 1}
+    bigHallChance: 0.45
+    stopSmall: 0.95
+    stopMedium: 0.85
+    stopLarge: 0.55
+    stopHuge: 0.3
+    maxRoomCells: 16
+    hallChanceShallow: 0.35
+    hallChanceDeep: 0.12
+    hallWideChance: 0.75
+    crawlChance: 0
+    openPlanChance: 0.4
+    loopChance: 0.7
+    loungeChance: 0
+    conferenceChance: 0
+    tallChanceBig: 1
+    tallChanceSmall: 1
+    tallMin: 3.6
+    tallMax: 5.4
+    paintedChance: 1
+    archedDoors: 0.85
+    lightsAllOn: 0
+    lightsMixed: 0
+    mixedOnFraction: 0
+    faultyChance: 0
+    pillarChance: 0.6
+    pillarSpacing: 3
+    halfWalls: 0
+    scatteredSeating: 0
+    rackChance: 0
+    outletChance: 0
+    stripLights: 0
+    skylights: 0.85
+    flooded: 0.8
+    ledges: 0.35

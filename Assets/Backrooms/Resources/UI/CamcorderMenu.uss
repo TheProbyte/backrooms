@@ -35,7 +35,9 @@
 .cc-root .cc-btn:active { background-color: rgb(255, 255, 255); color: rgb(10, 22, 70); }
 .cc-root .cc-tab { font-size: 11px; border-color: rgba(225, 232, 255, 0.35); }
 .cc-root .cc-tab.cc-selected { background-color: rgb(242, 246, 255); color: rgb(10, 22, 70); text-shadow: 0 0 0 rgba(0,0,0,0); }
+.cc-root .cc-btn.cc-selected { background-color: rgb(242, 246, 255); color: rgb(10, 22, 70); text-shadow: 0 0 0 rgba(0,0,0,0); }
 .cc-root .cc-presets .cc-btn { font-size: 12px; }
+.cc-root .cc-presets .cc-btn.cc-selected { background-color: rgb(242, 246, 255); color: rgb(10, 22, 70); text-shadow: 0 0 0 rgba(0,0,0,0); }
 .cc-root .cc-btn.cc-left { -unity-text-align: middle-left; padding-left: 10px; height: 26px; flex-grow: 0; flex-basis: auto; margin: 1px 0; border-width: 0; }
 
 .cc-scroll { flex-grow: 1; margin-top: 4px; }

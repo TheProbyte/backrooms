@@ -49,7 +49,7 @@ Verify these in the project rather than assuming exact implementation details:
 
 The player effectively is the camcorder: slow grounded walking, running, and handheld camera motion.
 
-The F5 panel edits CamcorderSettings, saved to PlayerPrefs and applied through CamcorderRig, post-processing, auto-iris, handheld motion, and Shaders/CamcorderVideo.shader after post-processing in PC_Renderer.
+The F5 panel edits CamcorderSettings, saved to PlayerPrefs and applied through CamcorderRig: the lens (URP post-processing), CamcorderAutoExposure (iris, gain, white balance), handheld motion, and the camcorder picture (CamcorderPipeline + Resources/Shaders/CamcorderPipeline.shader) after post-processing. See Docs/Camcorder.md.
 
 Existing presets:
 

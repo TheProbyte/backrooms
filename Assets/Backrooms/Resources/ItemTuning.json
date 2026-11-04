@@ -1,0 +1,52 @@
+{
+    "items": [
+        {
+            "type": "CordBox",
+            "values": [
+                {
+                    "name": "reelSpeed",
+                    "value": "2"
+                }
+            ]
+        },
+        {
+            "type": "RubberChicken",
+            "values": [
+                {
+                    "name": "mass",
+                    "value": "1.06"
+                }
+            ]
+        },
+        {
+            "type": "Sledgehammer",
+            "values": [
+                {
+                    "name": "crackSpread",
+                    "value": "2.015"
+                },
+                {
+                    "name": "fullWindUp",
+                    "value": "0.391"
+                },
+                {
+                    "name": "power",
+                    "value": "1.5"
+                },
+                {
+                    "name": "swingTime",
+                    "value": "0.166"
+                }
+            ]
+        },
+        {
+            "type": "SprayCan",
+            "values": [
+                {
+                    "name": "dropletsPerSecond",
+                    "value": "515"
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,13 @@
+IESNA:LM-63-2002
+[TEST] Backrooms generic photometry (typical shape, not a specific product)
+[MANUFAC] Generic
+[LUMCAT] ROUND-OPAL-DOME
+[LUMINAIRE] Round surface-mounted ceiling fitting with an opal dome diffuser
+[LAMP] 1 x 32 W circular fluorescent
+[OTHER] An opal dome glows on its sides too, so it throws more light sideways than a flat lens.
+TILT=NONE
+1 2300 1.0 11 1 1 2 0.35 0.35 0.12
+1.0 1.0 34
+0 5 15 25 35 45 55 65 75 85 90
+0
+300 299 296 287 272 250 222 186 145 100 80

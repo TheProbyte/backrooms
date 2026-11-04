@@ -45,3 +45,4 @@ crashlytics-buildsettings.json
 # OS
 .DS_Store
 Thumbs.db
+*.blend1

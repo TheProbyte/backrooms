@@ -1,4 +1,4 @@
-# Backrooms (working title)
+# Still Recording (working title)
 
 Realistic camcorder-style Backrooms exploration game. Unity 6 (6000.4.5f1), URP.
 
@@ -9,8 +9,10 @@ systems, and the audio milestone). Read it before starting new systems.
 
 ## Play
 
-Open `Assets/Backrooms/Scenes/Backrooms_Infinite.unity` and press Play. (The milestone-1 room is still in
-`OfficeRoom_Prototype.unity`.)
+Open `Assets/Backrooms/Scenes/Backrooms_Infinite.unity` and press Play. It starts on the main menu (the camcorder lying
+on the carpet): PLAY picks one of three world saves (a new one gets a random seed); each world saves its seed and what
+you did in it when you quit or stop Play Mode. See [Docs/MainMenuAndSaves.md](Docs/MainMenuAndSaves.md). (The
+milestone-1 room is still in `OfficeRoom_Prototype.unity`.)
 
 | Input | Action |
 | --- | --- |
@@ -21,9 +23,27 @@ Open `Assets/Backrooms/Scenes/Backrooms_Infinite.unity` and press Play. (The mil
 | Space | Jump (tap = small hop, hold = bend the knees for a higher jump) |
 | Hold F | Zoom in (release to zoom back out), with the lens motor sound |
 | Mouse | Look |
-| F5 | Camcorder visual settings panel |
-| Esc | Close the panel / release cursor |
-| Left click | Re-capture cursor |
+| F5 | Camcorder menu (settings; LIGHT is the look of the building's light, with presets; PLACES > TESTING jumps to the nearest crawl space or noclip door) |
+| L | Developer menu: spawn any item or piece of furniture |
+| Esc | Pause menu (resume, save and quit to menu, quit) / close a panel |
+| Left click | Pick up an item; flick a light switch; hold on a door to take its lever (then walk to open it); hold to grab furniture; with an item in hand: use it |
+| Z / X (hold) | Lean left / right (round a corner; stops short of walls) |
+| Q | Tap: drop the item in your hand (a lamp or a cord's box is set down upright). Hold and release: throw it (harder the longer you hold) |
+| Right click | With an extension cord, the desk lamp or a plug in hand: tap to coil / wind up the cord, hold to reel it in. With tape: hold at a wall to line up the start, then hold left click to pull a strip (right click again cancels). On a door within reach: the quick way through (shove it open, tug it open toward you, or shove an open one). Otherwise: shove |
+
+## Items, power, crawl spaces, noclip doors
+
+- **Items** ([Docs/Interaction.md](Docs/Interaction.md)): red spray paint, chalk (draw freehand on walls and floors;
+  wears down), blue painter's tape (pull strips along walls, doorframes, floors), a desk lamp, an orange extension
+  cord, a rubber chicken (squeeze it). Models from `Tools/Blender/build_items.py` and `build_items2.py`. Chalk and tape
+  marks, paint and where everything is are saved with the world.
+- **Power**: every wall outlet in Level 0 is live. Plug the lamp in (click the outlet with it in hand); an extension
+  cord (8 m, physics rope; up to 3 in a row) carries power anywhere. Pull a cord taut and its plug pops out.
+- **Crawl spaces** ([Docs/CrawlSpacesAndNoclipDoors.md](Docs/CrawlSpacesAndNoclipDoors.md)): every crawl vent is a
+  portal to a small sealed special room (a maintenance closet, sealed storage or an old camp) built in the space above
+  the drop ceiling right over it, with things to take. Crawl back out through its vent.
+- **Noclip doors**: rare door-sized parts of ordinary walls, outlined in blue tape, that you walk straight through into
+  the Poolrooms (the camcorder's picture and sound break up on the way). The Poolrooms' taped walls lead back.
 
 ## Infinite offices (milestone 2)
 
@@ -90,18 +110,24 @@ per-sound overrides and preview. Details and limits: `Docs/Audio.md`.
 
 ## Camcorder look (F5)
 
-`CamcorderRig` applies `CamcorderSettings` (saved to PlayerPrefs) to the post-processing volume, auto-iris,
-handheld motion and a full-screen video shader (`Shaders/CamcorderVideo.shader`, added to `PC_Renderer` after
-post-processing). The panel has presets (Default, Hi8 '98, MiniDV '04, Low light gain, Clean) and these groups:
+`CamcorderRig` applies `CamcorderSettings` (saved to PlayerPrefs) to the lens (URP post-processing), the auto
+exposure (`CamcorderAutoExposure`), handheld motion and the camcorder picture (`CamcorderPipeline` with
+`Resources/Shaders/CamcorderPipeline.shader`): a model of a late-1990s camcorder in signal order, on a fixed 640 x 480
+recording raster. See `Docs/Camcorder.md`. Presets: Default (VHS-C SP), Hi8 '98, MiniDV '04, Low light gain, Clean,
+VHS '96, Found footage, Reference Match. Groups:
 
-- Lens: zoom, barrel distortion, chromatic aberration, vignette, bloom.
-- Focus: contrast autofocus with hunting driving depth of field, aperture.
-- Exposure / iris: auto exposure, bias, iris speed, max gain-up, fluorescent flicker beat.
-- Sensor noise: base noise, gain noise that grows with exposure gain, chroma blotches.
-- Image processing: softness, edge enhancement halos, chroma bleed and delay, highlight knee, black pedestal.
-- Colour: white balance temp and tint, saturation, contrast.
-- Handheld: shake, breathing sway, image stabilisation, motion blur.
-- Format: 4:3 pillarbox, viewfinder OSD (REC, counter, date), scanlines, tape tracking noise, frame-rate cap.
+- Lens: zoom, barrel distortion, lateral colour, vignette, lens glare, purple fringing.
+- Focus: contrast autofocus in diopters with hunting; real small-sensor depth of field from the widest aperture.
+- Exposure: iris, then gain, then low-lux slow shutter; bias, compensation, max gain, shutter speed, tube flicker.
+- White balance: auto (slow, limited) plus warmth and tint shifts.
+- Sensor: read noise, noise growth with gain, colour noise, vertical smear, fixed pattern and hot pixels, 3D noise
+  reduction.
+- Camera processing: recording lines, softness, edge enhancement, knee, white clip, setup, saturation, gamma.
+- Handheld: shake, breathing sway, stabilisation, look overshoot and jitter, roughness, shutter motion blur.
+- Format / tape: VHS-C SP, VHS-C EP, Hi8, MiniDV, with the format's colour, timebase wobble, tape noise, dropouts,
+  colour phase noise, cross-colour, head switching, tracking bar, DV compression; recording frame rate, interlaced
+  fields, line doubling, bottom-edge line.
+- Display: 4:3 frame (only that part is rendered), viewfinder OSD, CRT scanlines.
 
 ## Milestone 1 room
 

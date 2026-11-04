@@ -1,0 +1,15 @@
+IESNA:LM-63-2002
+[TEST] Backrooms generic photometry (typical shape, not a specific product)
+[MANUFAC] Generic
+[LUMCAT] 2X2-PRISMATIC-3T8
+[LUMINAIRE] 2 x 2 ft recessed troffer, acrylic prismatic lens, three fluorescent tubes
+[LAMP] 3 x F17T8 fluorescent
+[OTHER] Replace this file with a real fixture's .ies (renamed .txt) to use its measured light.
+TILT=NONE
+3 1400 1.0 11 3 1 2 0.6 0.6 0.1
+1.0 1.0 54
+0 5 15 25 35 45 55 65 75 85 90
+0 45 90
+1260 1256 1222 1141 1013 846 646 424 226 70 0
+1260 1253 1214 1129 996 826 625 408 213 64 0
+1260 1250 1206 1118 982 812 605 391 201 57 0

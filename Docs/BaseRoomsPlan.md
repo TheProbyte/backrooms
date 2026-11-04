@@ -1,0 +1,95 @@
+# Plan: rooms worth making a base (2026-10-29)
+
+The brief's loop is explore → find something → bring it home → improve the refuge → go farther. Exploring and carrying
+things work; "home" does not exist yet, so nothing gives a reason to bring anything back. This plan adds places you want
+to stay in, then the home itself.
+
+## What already exists to build on
+
+- Items you carry are yours and saved wherever you leave them (`Saves.LootRegistry`, free items via `ItemFactory`).
+- Power: wall outlets per chunk (`Power/Sockets.cs`, `ChunkOutlets`: a chunk's outlets are all live or all dead), plugs,
+  extension cords, desk and floor lamps that light only when plugged into a live outlet.
+- Light switches per room, saved (`LightZones`): a room can be dark by choice.
+- Doors with a latch and lever (`Interaction/Door.cs`), now fewer (F5 > WORLD > HOW OFTEN > Doors, half by default).
+- Room styles in Level 0 (`RoomStyle`: backrooms, living room, warehouse), crawl spaces to small special rooms, mezzanines,
+  sunken rooms, the Poolrooms.
+
+## What makes a room a base
+
+1. **Control:** one way in, with a door that shuts (later: something to wedge or bolt it).
+2. **Power:** live outlets, made rare, so a room with them is worth something.
+3. **Your own light and quiet:** dead ceiling lights but working outlets, so you light it yourself, away from the hum.
+4. **A view or a landmark** you remember and can find again.
+5. **Something to work with:** shelves, counters, a sink, furniture.
+6. **It stays put:** if the building ever shifts, bases are the rooms that never do.
+
+## Phase 1: good rooms (rare, one door, live outlets)
+
+New room kinds, placed by the district generator like living rooms, each with one door, live outlets and its own props,
+and a HOW OFTEN slider (about one per few districts):
+
+- **Storage cage** (warehouse): chain-link cage with a gate, shelving inside, its own outlet strip.
+- **Security office**: a small room off a hall, desk, monitors (dark at first), a window into the hall.
+- **Break room**: counter and cupboards, sink, fridge (off), table and chairs, a microwave on a counter.
+- **Janitor's closet**: deep shelves, mop sink, a breaker panel (phase 3).
+- **Mezzanine office**: an office up a stair overlooking a tall hall (uses the mezzanine code).
+
+Checked by: the generator tests (each kind turns up at its rate, always one door, outlets live) and screenshots of each
+in World 3.
+
+## Phase 2: home
+
+- **Claiming:** a room becomes home when you leave a lamp lit in it with its door shut (no menu, nothing to press). The
+  camcorder OSD stamps "HOME" once. One home at a time to start, so it means something (decision below).
+- **It keeps what you do:** items stay exactly where you put them (they already do), its lights stay as you set them,
+  its door as you left it.
+- **Finding it again:** decision below. Options: the F6 map shows home and where you have walked; a "way home" noise
+  through the camcorder mic gets louder toward it; or nothing, and you mark the way yourself with spray paint.
+- **Comfort:** the hum fades inside with the ceiling lights off; a warmer room tone; your lamps' warm light.
+
+## Phase 3: power as something to find
+
+- Most outlets dead; live ones rare (in the good rooms, and a few elsewhere).
+- **Breaker panels** (janitor's closets, electrical rooms): flipping one makes a district's outlets live and saves it.
+  Extension cords carry power into the room you chose.
+- Later: lights you can run from a panel too.
+
+## Phase 4: making it yours
+
+- Moving furniture in (sofas and armchairs already move; carrying them through doors).
+- Wedging a door shut (a chair under the lever), a bolt.
+- Later, with the brief's impossible architecture: home rooms are the ones that never change.
+
+## Status (2026-10-30): built, all phases
+
+Decisions (from the owner): claiming is automatic; homes are unlimited for now; no map help to find home (only your own
+marks); most outlets dead.
+
+- **Good rooms** (`Generation/SpecialRooms.cs`, `Room.special`, F5 > WORLD > HOW OFTEN > Good rooms): janitor's closet
+  (shelving, mop sink, the district's breaker panel), security office (desk with old monitors and a keyboard, a desk lamp
+  plugged in and lit, a chair, shelving), break room (counter with a sink and a microwave, fridge, table and chairs), stock
+  room (loaded steel shelving on the walls and a back-to-back row down the middle; beside the warehouse). Chosen after the
+  rooms are joined up: every doorway but one walled up only if the district stays connected; the one left always has a
+  wooden door, shut when found, with a slide bolt inside. Tubes dead, a switch by the door, at least two live outlets.
+  About 1.35 per district. Not built: the chain-link storage cage (needs see-through walls) and the mezzanine office.
+  Furniture: `OfficeChunkBuilder.Special.cs` in `FurnitureMaterials` finishes.
+- **Power** (`Interaction/Power/PowerGrid.cs`, `BreakerPanel.cs`; `Room.live`, `WallPlate.live`): about 15 % of ordinary
+  rooms have power of their own (HOW OFTEN > Rooms with power); the rest only when their district's breaker is switched on
+  at the panel in a janitor's closet (a handle you push up, a green lamp; saved). Floor lamps spawn lit only in rooms with
+  power. Ceiling lights are not on the breakers (yet).
+- **Home** (`Interaction/Homes.cs`): a lamp you have carried, left lit (plugged in, switched on, not in the hand) in a room
+  whose every way in is shut by a door, for 3 s: the room is home and the camcorder stamps HOME. Inside a home the
+  building's hum and room tone drop to half. Items, lights, doors, bolts and paint are saved as you leave them.
+- **Making it yours:** slide bolts on good rooms' doors (`DoorBolt`, `Door.Bolted`): bolted, the lever turns but the door
+  only rattles. Sofas and armchairs already move. Not built: carrying furniture through doors, wedging a door with a chair.
+
+## Decisions needed
+
+1. Claiming: automatic (lamp lit, door shut) or an explicit act (e.g. writing on the wall with the spray can)?
+2. One home, or several?
+3. Finding home: map, sound, or only your own marks?
+
+## Order
+
+Phase 1 first (visible right away and good to explore for), then 2, 3, 4. Each phase is played and checked in World 3
+before the next.

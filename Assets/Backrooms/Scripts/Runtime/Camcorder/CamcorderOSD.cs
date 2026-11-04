@@ -17,10 +17,21 @@ namespace Backrooms.Camcorder
         Text _debug;
         [Tooltip("Date the tape thinks it is. Time advances from here in real time.")]
         public string startDate = "1998-10-19 22:41:00";
+        [Tooltip("STBY instead of a blinking REC (the main menu).")]
+        public bool standby;
+        /// <summary>Seconds already on the tape when this scene started (the world save's play time).</summary>
+        public static float TapeSeconds;
 
         Canvas _canvas;
         RectTransform _frame, _barL, _barR, _content;
         Text _rec, _counter, _date, _time, _sp;
+        Text _notice;
+        static string s_notice;
+        static float s_noticeAt = -100f;
+        const float NoticeFor = 4f;
+
+        /// <summary>A word stamped in the middle of the picture for a few seconds (HOME), shown with or without the viewfinder display.</summary>
+        public static void Notice(string text) { s_notice = text; s_noticeAt = Time.unscaledTime; }
         Image _recDot;
         DateTime _start;
         float _t0;
@@ -158,6 +169,9 @@ namespace Backrooms.Camcorder
             _time = Label("", new Vector2(0, 0), new Vector2(0, 44), TextAnchor.LowerLeft, 34);
             _date = Label("", new Vector2(0, 0), Vector2.zero, TextAnchor.LowerLeft, 34);
             _debug = Label("", new Vector2(1, 0), Vector2.zero, TextAnchor.LowerRight, 20);
+            _notice = Label("", new Vector2(0.5f, 0.5f), new Vector2(0, -60), TextAnchor.MiddleCenter, 72);
+            _notice.transform.SetParent(_barCanvas.transform, false);
+            var nr = _notice.rectTransform; nr.anchorMin = nr.anchorMax = nr.pivot = new Vector2(0.5f, 0.32f); nr.anchoredPosition = Vector2.zero;
             _debug.transform.SetParent(_barCanvas.transform, false);
             var dr2 = _debug.rectTransform; dr2.anchorMin = dr2.anchorMax = dr2.pivot = new Vector2(1, 0); dr2.anchoredPosition = new Vector2(-16, 12);
             Battery();
@@ -241,7 +255,7 @@ namespace Backrooms.Camcorder
         void LateUpdate()
         {
             if (!_canvas) return;
-            if (_uiCam) EnsureTarget();
+            if (_uiCam) { EnsureTarget(); _uiCam.enabled = visible; }   // nothing to draw while hidden
             var canvasRect = (RectTransform)_barCanvas.transform;
             float w = canvasRect.rect.width, h = canvasRect.rect.height;
             float bar = pillarbox ? Mathf.Max(0f, (w - h * 4f / 3f) * 0.5f) : 0f;
@@ -249,6 +263,15 @@ namespace Backrooms.Camcorder
             _frame.GetComponent<AspectRatioFitter>().aspectRatio = pillarbox ? 4f / 3f : w / Mathf.Max(1f, h);
             _content.gameObject.SetActive(visible);
             _debug.enabled = showDebug;
+            float na = Time.unscaledTime - s_noticeAt;
+            _notice.enabled = na < NoticeFor && !string.IsNullOrEmpty(s_notice);
+            if (_notice.enabled)
+            {
+                _notice.text = s_notice;
+                // Steady, then a few blinks out, like a camcorder's title.
+                bool show = na < NoticeFor - 1f || ((na * 4f) % 1f) < 0.6f;
+                _notice.color = new Color(1f, 1f, 1f, show ? 0.95f : 0f);
+            }
             if (showDebug && Camera.main)
             {
                 var p = Camera.main.transform.position;
@@ -257,10 +280,12 @@ namespace Backrooms.Camcorder
                 _debug.text = $"pos {p.x:F1} {p.y:F1} {p.z:F1}   chunk {ch.x},{ch.y}   seed {(ws ? ws.Seed : 0)}   {1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):F0} fps";
             }
 
-            float elapsed = Time.time - _t0;
-            var now = _start.AddSeconds(elapsed);
-            bool blink = (elapsed % 1.2f) < 0.8f;
-            _recDot.enabled = blink;
+            float elapsed = standby ? 0f : Time.time - _t0 + TapeSeconds;
+            var now = _start.AddSeconds(standby ? Time.time - _t0 : elapsed);
+            bool blink = ((Time.time - _t0) % 1.2f) < 0.8f;
+            _recDot.enabled = blink && !standby;
+            _rec.text = standby ? "STBY" : "REC";
+            _rec.rectTransform.anchoredPosition = new Vector2(standby ? 0 : 32, 0);
             var span = TimeSpan.FromSeconds(elapsed);
             _counter.text = $"{(int)span.TotalHours}:{span.Minutes:00}:{span.Seconds:00}";
             _date.text = now.ToString("MMM. dd yyyy").ToUpperInvariant();

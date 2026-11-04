@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Backrooms.Audio
 {
     /// <summary>Shared procedural clips (built once on first use) and each sound's base level.</summary>
-    public static class SoundBank
+    public static partial class SoundBank
     {
         static AudioClip[] s_hum, s_strike, s_tick, s_steps;
         static AudioClip s_buzz, s_vent, s_tone, s_building;
@@ -40,6 +40,36 @@ namespace Backrooms.Audio
         public static int StepCount { get { LoadRecorded(); return s_recordedSteps != null ? s_recordedSteps.Length : 8; } }
         public static AudioClip Strike(int variant) { if (s_strike == null) { s_strike = new AudioClip[3]; for (int i = 0; i < 3; i++) s_strike[i] = ProceduralSounds.StrikeOn(i); } return s_strike[Mathf.Abs(variant) % 3]; }
         public static AudioClip Tick(int variant) { if (s_tick == null) { s_tick = new AudioClip[4]; for (int i = 0; i < 4; i++) s_tick[i] = ProceduralSounds.Tick(i); } return s_tick[variant & 3]; }
+        static AudioClip[] s_waterSteps;
+        static AudioClip s_wade;
+        public const int WaterStepCount = 8;
+
+        static AudioClip[] s_plops, s_drips;
+        /// <summary>Something going into the water: size 0 small, 1 middling, 2 big (4 variants each).</summary>
+        public static AudioClip Plop(int size, int variant)
+        {
+            if (s_plops == null) s_plops = new AudioClip[12];
+            int i = Mathf.Clamp(size, 0, 2) * 4 + ((variant % 4) + 4) % 4;
+            return s_plops[i] ? s_plops[i] : (s_plops[i] = ProceduralSounds.Plop(Mathf.Clamp(size, 0, 2), i % 4));
+        }
+        /// <summary>A drop off you onto the tiles (6 variants).</summary>
+        public static AudioClip Drip(int variant)
+        {
+            if (s_drips == null) s_drips = new AudioClip[6];
+            int i = ((variant % 6) + 6) % 6;
+            return s_drips[i] ? s_drips[i] : (s_drips[i] = ProceduralSounds.Drip(i));
+        }
+
+        /// <summary>The swish of wading (a loop).</summary>
+        public static AudioClip WadeLoop => s_wade ? s_wade : (s_wade = ProceduralSounds.WadeLoop());
+
+        /// <summary>A step through water (the Poolrooms' basins).</summary>
+        public static AudioClip WaterStep(int variant)
+        {
+            if (s_waterSteps == null) { s_waterSteps = new AudioClip[WaterStepCount]; for (int i = 0; i < WaterStepCount; i++) s_waterSteps[i] = ProceduralSounds.WaterStep(i); }
+            return s_waterSteps[((variant % WaterStepCount) + WaterStepCount) % WaterStepCount];
+        }
+
         public static AudioClip Step(int variant)
         {
             LoadRecorded();
@@ -48,10 +78,21 @@ namespace Backrooms.Audio
             return s_steps[variant & 7];
         }
         static AudioClip s_zoom;
+        static AudioClip[] s_beep;
+        public static AudioClip MenuBeep(int variant) { if (s_beep == null) { s_beep = new AudioClip[3]; for (int i = 0; i < 3; i++) s_beep[i] = ProceduralSounds.MenuBeep(i); } return s_beep[Mathf.Clamp(variant, 0, 2)]; }
         public static AudioClip ZoomMotor => s_zoom ? s_zoom : (s_zoom = ProceduralSounds.ZoomMotor());
         public static AudioClip Buzz => s_buzz ? s_buzz : (s_buzz = ProceduralSounds.FaultyBuzz());
         public static AudioClip Ventilation => s_vent ? s_vent : (s_vent = ProceduralSounds.Ventilation());
         public static AudioClip RoomTone => s_tone ? s_tone : (s_tone = ProceduralSounds.RoomTone());
+        static AudioClip s_pool, s_hiss;
+        static AudioClip[] s_rattle;
+        public static AudioClip PoolAmbience => s_pool ? s_pool : (s_pool = ProceduralSounds.PoolAmbience());
+        public static AudioClip SprayHiss => s_hiss ? s_hiss : (s_hiss = ProceduralSounds.SprayHiss());
+        public static AudioClip CanRattle(int i)
+        {
+            if (s_rattle == null) { s_rattle = new AudioClip[4]; for (int k = 0; k < 4; k++) s_rattle[k] = ProceduralSounds.CanRattle(k); }
+            return s_rattle[((i % 4) + 4) % 4];
+        }
         public static AudioClip BuildingHum => s_building ? s_building : (s_building = ProceduralSounds.BuildingHum());
 
         /// <summary>Volume of each sound before its catalog multiplier, distance and the camcorder chain.</summary>

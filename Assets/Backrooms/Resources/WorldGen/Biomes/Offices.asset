@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c8bfa62aac418ad4fb687b2562e80d5c, type: 3}
+  m_Name: Offices
+  m_EditorClassIdentifier: Assembly-CSharp::Backrooms.Generation.BiomeDefinition
+  rules:
+    name: Offices
+    mapColor: {r: 0.86, g: 0.74, b: 0.36, a: 1}
+    bigHallChance: 0.35
+    stopSmall: 0.9
+    stopMedium: 0.7
+    stopLarge: 0.5
+    stopHuge: 0.25
+    maxRoomCells: 12
+    hallChanceShallow: 0.3
+    hallChanceDeep: 0.1
+    hallWideChance: 0.3
+    crawlChance: 0.35
+    openPlanChance: 0.6
+    loopChance: 0.5
+    loungeChance: 0.18
+    conferenceChance: 0.12
+    tallChanceBig: 0.6
+    tallChanceSmall: 0.2
+    tallMin: 3.9
+    tallMax: 5.4
+    paintedChance: 0.3
+    archedDoors: 0.35
+    lightsAllOn: 0.52
+    lightsMixed: 0.33
+    mixedOnFraction: 0.5
+    faultyChance: 0.025
+    pillarChance: 1
+    pillarSpacing: 3.5
+    halfWalls: 2
+    scatteredSeating: 0.3
+    rackChance: 0
+    outletChance: 0.09
+    stripLights: 0
