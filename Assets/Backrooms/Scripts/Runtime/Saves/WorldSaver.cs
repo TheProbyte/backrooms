@@ -29,6 +29,10 @@ namespace Backrooms.Saves
         bool _restored;
 
         public static double PlaySeconds => Instance ? Instance._playAtStart + (Time.time - Instance._timeAtStart) : 0;
+        /// <summary>What was saved is back in the world (items, paint, the hand's things).</summary>
+        public bool Restored => _restored;
+        /// <summary>Co-op (2026-11-04): the joined players' records, for the host's save (NetWorld keeps them).</summary>
+        public static Func<List<GuestData>> NetGuests;
 
         void Awake()
         {
@@ -100,13 +104,14 @@ namespace Backrooms.Saves
         public void RestoreWorld()
         {
             if (_data == null) { _restored = true; return; }
-            var paint = SaveSlots.ReadPaint(_data.slot);
+            // (A joined world's paint and chalk came with it from the host.)
+            var paint = GameSession.NetClient ? GameSession.NetPaint : SaveSlots.ReadPaint(_data.slot);
             if (paint != null)
             {
                 try { using (var r = new BinaryReader(new MemoryStream(paint))) SprayPaint.Instance.Read(r); }
                 catch (Exception e) { Debug.LogWarning($"[Backrooms] Paint of save {_data.slot + 1} could not be read: {e.Message}"); }
             }
-            var marks = SaveSlots.ReadMarks(_data.slot);
+            var marks = GameSession.NetClient ? GameSession.NetMarks : SaveSlots.ReadMarks(_data.slot);
             if (marks != null)
             {
                 try { using (var r = new BinaryReader(new MemoryStream(marks))) Marks.Instance.Read(r); }
@@ -153,7 +158,7 @@ namespace Backrooms.Saves
             _restored = true;
         }
 
-        static WorldItem SpawnItem(ItemData d)
+        internal static WorldItem SpawnItem(ItemData d)
         {
             var item = ItemFactory.Spawn(d.id, d.position, d.rotation);
             if (!item) { Debug.LogWarning($"[Backrooms] Saved item '{d.id}' is not known; left out."); return null; }
@@ -192,11 +197,22 @@ namespace Backrooms.Saves
 
         public void Save()
         {
-            if (_data == null) return;
+            if (_data == null || GameSession.NetClient) return;          // a joined world is the host's to save
+            if (Collect(out var paint, out var marks)) SaveSlots.Write(_data, paint, marks);
+        }
+
+        /// <summary>
+        /// Brings the save data up to date with the world as it is now (and its paint and chalk), without writing it: what
+        /// Save writes, and what a co-op host sends a joining player (2026-11-04). False before what was saved is back.
+        /// </summary>
+        public bool Collect(out byte[] paint, out byte[] marks)
+        {
+            paint = null; marks = null;
+            if (_data == null) return false;
             if (!_restored)
             {
                 // Quitting before the saved things were put back: keep the file as it is.
-                return;
+                return false;
             }
             var d = _data;
             d.version = WorldSaveData.CurrentVersion;
@@ -232,7 +248,7 @@ namespace Backrooms.Saves
             {
                 // Plugs go with their lamp or cord; things still lying in a special room are its own (made again there);
                 // what is in a backpack goes with it (below).
-                if (string.IsNullOrEmpty(it.itemId) || it is Plug || it.IsLoot || it.InBag) continue;
+                if (string.IsNullOrEmpty(it.itemId) || it is Plug || it.IsLoot || it.InBag || it.NetForeign) continue;   // (another player's: saved with them)
                 users.Add(it);
             }
             foreach (var it in users)
@@ -287,12 +303,12 @@ namespace Backrooms.Saves
                 var w = d.walls.Find(x => x.vertical == deb.key.vertical && x.line == deb.key.line && x.along == deb.key.along && x.storey == deb.key.storey);
                 w?.rubble.Add(new Destruction.WallDamage.Rubble { part = deb.part, side = deb.side, index = deb.index, span = deb.span, position = deb.transform.position, rotation = deb.transform.rotation });
             }
+            if (NetGuests != null) d.guests = NetGuests() ?? d.guests;
             d.hasNoclipOrigin = NoclipTravel.HasOrigin; d.noclipOrigin = NoclipTravel.OriginPosition; d.noclipOriginNormal = NoclipTravel.OriginNormal;
             d.placed.Clear();
             foreach (var p in FindObjectsByType<PlacedThing>())
                 d.placed.Add(new PlacedData { name = p.catalogName, position = p.transform.position, rotation = p.transform.rotation });
 
-            byte[] paint = null;
             var sp = SprayPaint.Existing;
             var ms = new MemoryStream();
             using (var w = new BinaryWriter(ms))
@@ -301,7 +317,6 @@ namespace Backrooms.Saves
                 w.Flush();
                 paint = ms.ToArray();
             }
-            byte[] marks;
             var mk = Marks.Existing;
             var ms2 = new MemoryStream();
             using (var w = new BinaryWriter(ms2))
@@ -310,7 +325,7 @@ namespace Backrooms.Saves
                 w.Flush();
                 marks = ms2.ToArray();
             }
-            SaveSlots.Write(d, paint, marks);
+            return true;
         }
 
         static int IndexOf(IReadOnlyList<Socket> list, Socket s)
@@ -329,7 +344,7 @@ namespace Backrooms.Saves
 
         // ---------------- Props <-> data ----------------
 
-        static PropData FromSpec(MovableSpec s, Vector3 position, Quaternion rotation)
+        internal static PropData FromSpec(MovableSpec s, Vector3 position, Quaternion rotation)
         {
             var d = new PropData
             {
@@ -343,7 +358,7 @@ namespace Backrooms.Saves
             return d;
         }
 
-        static MovableSpec ToSpec(PropData d)
+        internal static MovableSpec ToSpec(PropData d)
         {
             if (!ulong.TryParse(d.id, System.Globalization.NumberStyles.HexNumber, null, out ulong id)) return null;
             var s = new MovableSpec

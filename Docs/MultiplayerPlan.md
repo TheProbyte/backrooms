@@ -1,95 +1,101 @@
-# Multiplayer plan: co-op with a friend (Hamachi or LAN first)
+# Co-op multiplayer (2 to 4 players)
 
-Written 2026-11-04 at the owner's request ("write out a plan for how you would make multiplayer work, maybe even just
-with Hamachi and my friend for now ... a code and adding his Hamachi IP"). Nothing here is built yet.
+Built 2026-11-04 at the owner's request ("plan and work on the full system for multiplayer, double checking for bugs or
+errors, just for co-op 2-4 players"). This replaces the earlier plan; the code is in `Assets/Backrooms/Scripts/Runtime/Net`.
 
-## The goal
+## Playing with friends (Hamachi, a LAN, or any VPN)
 
-Two players (later up to four) in one world. One player **hosts** their saved world; the other **joins** by typing the
-host's IP address (their Hamachi address, 25.x.x.x) and a port. Each player has their own camcorder, body and hands. The
-world is the host's save: the friend keeps nothing when they leave.
+1. Everyone joins the same Hamachi network (or Radmin VPN, ZeroTier, Tailscale, or the same home network). Each player
+   gets a private address: Hamachi's start with 25.
+2. The host picks **MULTIPLAYER > HOST A WORLD** and one of their three worlds (an empty slot makes a new one). The page
+   shows their addresses (the Hamachi one first) and the port (7777, changeable).
+3. The first time, Windows asks whether the game may use the network: allow it for private and public networks
+   (Hamachi's network often counts as public). If friends cannot connect, allow the game (or TCP and UDP port 7777) in
+   Windows Defender Firewall.
+4. Each friend picks **MULTIPLAYER > JOIN A GAME**, types the host's address (25.x.x.x, or `25.x.x.x:7777`) and joins.
+   Set your name on the MULTIPLAYER page first; it is shown over your head and the host keeps your things under it.
+5. Escape opens the menu as usual, but the world does not pause (the others are still playing). The host's menu shows
+   the addresses again and **SAVE AND END THE GAME**; a friend's shows **LEAVE THE GAME**. Tab shows who is here and
+   their ping.
 
-## The technology
+The host's world is the world, saved in the host's slot with everything everyone did in it. A friend keeps nothing in
+their own saves, but the host keeps what each friend was carrying and where they were (by name); joining again under the
+same name puts them back there with their things. Everyone must run the same version of the game: a different version is
+refused, and the two games check after joining that they built the same building.
 
-- **Netcode for GameObjects 2.x** (Unity's own networking, made for Unity 6 LTS) with **Unity Transport** (UDP, port
-  7777). Its host mode is exactly the "one player hosts, the others join" model, and a client can connect straight to an
-  IP and a port, which is what Hamachi needs. Later, the same code can use **Unity Relay** (join with a code, no VPN, no
-  open ports) or **Steam's networking** (invite from the friends list) without changing the game's code.
-- Alternatives considered: Mirror and FishNet (free, community-made, well proven), Photon Fusion (paid above a small
-  size), Steam only (no IPs, but needs a Steam app ID first). Netcode for GameObjects wins on being Unity's own, current
-  with Unity 6, and having Relay ready for later.
+## What is shared
 
-## How the world is shared
-
-The world is generated from its seed, so both machines build the same building on their own: only the seed and the
-**changes** go over the network. The host decides everything that happens in the world (it is the "authority"); a player
-only decides their own movement, and what they are holding while they hold it.
-
-| What | How it is shared |
+| What | How |
 | --- | --- |
-| The world itself | The seed and the world settings, sent when you join. Each machine generates it. |
-| Changes so far | A snapshot of the host's save (moved furniture, broken walls, paint, chalk and tape, lights switched off, breakers, doors, loot taken, every item) sent in pieces when you join, using the save format that already exists (WorldSaver). |
-| Players | Each player's position, view, stance and what they hold (owner-driven, smoothed on the other screen). The other player is shown with the full body that already exists, walking by their speed, their camcorder in hand. |
-| Items | Each item is a networked object made by the host. Picking one up hands it to that player ("ownership"); dropping or throwing hands it back. Its state (paint left, a lamp's switch, a tape's position) goes with it. Pockets and backpacks are which item is inside which. |
-| Furniture and carts | The host moves them; when a player grabs one, it is handed to that player while held (as co-op physics games do: whoever touches it simulates it, the others see it smoothed). Sitting is a player state. |
-| Doors, switches, breakers, the elevator, the vending machine, the boombox | A player asks ("press this button"), the host does it and tells everyone. |
-| Paint, chalk, tape | The spray is sent as what the can did each moment (where the nozzle was, which way, its random seed); every machine traces the same rays and paints the same paint. Chalk and tape strokes are sent as their points. |
-| Walls broken by the sledgehammer | The swing's hit and its seed; every machine breaks the same pieces. |
-| The dark, the shadow, the tension | The host decides, taking every player's view into account ("nobody is looking"), and the moves are shared as furniture moves. |
-| Sound | Each machine makes its own sounds from what happens. Voice chat: Discord at first; later voice in the game that fades with distance (Unity Vivox, Steam Voice or the Dissonance asset). |
-| Saving | The host's save slot, as now. |
+| The building | The seed, the host's world-generation settings (F5) and custom rooms are sent on joining; every game builds the same building from them. A fingerprint of the first chunks is compared. |
+| What had changed | A copy of the host's save made at that moment (moved furniture, broken walls, nails, lights, breakers, doors, homes, loot taken), its paint and its chalk and tape. |
+| The players | Each game sends its player 20 times a second: where, the view, the stance, sitting, the hand, what is held and where. Others are drawn with the full body (their shirt in their colour, a name over the head), a tenth of a second behind, smoothed between updates; feet step by IK, the camcorder held to the eye, the right hand where theirs is. Footsteps are heard from their feet. |
+| Items | Every item has an id (each player gives out ids from their own range). Picking up, pocketing, putting in a backpack, wearing it, a cassette into a boombox, dropping and throwing are told as they happen; the game that let go of a thing moves it until it settles and says where it came to rest. Two players reaching for the same thing: the host says who was first, the other's hand lets go. Paint left, a lamp's switch, a bag open or shut go with the item. Loot taken from a room becomes the same item in every game. |
+| Furniture and carts | Whoever touches a piece moves it (their game simulates it, everyone else's follows it kinematically) and says where it came to rest; the host's record keeps it. A piece someone else is moving cannot be grabbed until it settles. An office chair moves with whoever sits on it. |
+| Doors | Swung by whoever has the handle (the angle streams), left at an angle (kept in the save), bolted. |
+| Lights, breakers, homes | Wall switches, breakers, rooms claimed as home, lights the dark puts out, the shadow's flicker. |
+| Buttons | The elevator's buttons, the drinks machine, the boombox's keys: a press in one game is a press in all. |
+| Paint | What is painted goes as the changed part of each paint canvas, merged by taking the larger (two players spraying one wall both keep their paint). Drips run in the painter's game. The friend's can shows its jet, haze and hiss. |
+| Chalk, tape, scrapes | Each stroke and strip as drawn. |
+| Walls and nails | A sledgehammer blow goes with its random seed: every game breaks the same pieces (their dust and fallen bits made locally). Nails driven in and pulled. |
+| The dark | Its furniture moves happen in the host's game only, out of everyone's sight and away from everyone; the shadow and the tension are each player's own (your own scares), but what they do to the building (a room going dark, a door shutting) is shared and kept out of every player's view. |
 
-## What has to change in the game (the real work)
+## How it works
 
-1. **The world streamer** loads chunks around one player; it must load around every player (the host's machine keeps
-   both areas alive).
-2. **The hand, the body, the pockets** (PropGrabber, FirstPersonBody) assume one local player. They stay local, but every
-   change they make to the world goes through the network (ask the host, or own the object while holding it).
-3. **Single "Instance" systems** (paint, marks, wall damage, the dark, the shadow, the light zones, the tension) must
-   apply changes that come from the network the same way as local ones, and never act on their own on a client.
-4. **Furniture physics**: hand-over of ownership when grabbed, frozen copies on the other machine until then.
-5. **Determinism checks**: both machines must generate exactly the same world from the seed (same build, same settings;
-   the tests can check the generated plans match).
+- **Connection** (`NetTransport.cs`): plain sockets polled once a frame, no package. TCP carries everything that must
+  arrive, in order (framed by length); UDP carries the frequent updates once both ends have heard each other's
+  datagrams, falling back to TCP if a firewall blocks UDP. The host listens on one port for both. 15 s of silence ends a
+  connection; the host says goodbye before closing. This is how Minecraft and Terraria (TCP) and most co-op games (UDP
+  for movement) are built; Unity's Netcode for GameObjects was set aside because its core is networked prefabs and this
+  world is built from code (every object would have gone through custom messages anyway, as Valheim's own system does),
+  and it would have meant installing a package.
+- **Session** (`NetSession.cs`): hosting, joining, the handshake (version, a free player slot, a unique name), the copy
+  of the world for a joiner, the players' list, notices (who joined and left), Tab.
+- **World** (`NetWorld*.cs`): players, items, furniture, doors and the building's changes. Authority as in Valheim:
+  each game simulates what its player touches; the host keeps the record and settles who has what. Hooks in the game
+  (`NetHooks.cs`) say when something changed here; changes from the network are applied with the hooks quiet, so nothing
+  echoes back.
+- **Saves**: the host's save gains `guests` (each friend's position and carried things). A joined world is never written
+  on the friend's machine.
+- **Bandwidth**: about 2-3 KB/s per player while moving; joining sends the world once (a few KB to a few hundred KB
+  with a lot of paint).
 
-## Steps
+## Tested (2026-11-04)
 
-| Step | What works at the end | Rough time |
-| --- | --- | --- |
-| 0 | A MULTIPLAYER page: HOST (shows your IP addresses, the Hamachi one marked) and JOIN (type an IP and port). The package installed; the two games connect and say so. | a day or two |
-| 1 | Two players walking in the same world: the seed shared, each other's bodies, chunks loaded round both. | a week |
-| 2 | Doors, switches, lights, breakers, the elevator; items picked up, dropped, thrown, pocketed; the backpack. | 1-2 weeks |
-| 3 | Furniture and carts handed to whoever holds them; sitting; paint, chalk, tape; the sledgehammer. | 1-2 weeks |
-| 4 | Joining a world already played (the snapshot); saving; the dark and the shadow with two players. | a week |
-| 5 | Polish: voice, disconnects and rejoining, testing over Hamachi with real lag; then Relay or Steam so no VPN is needed. | open |
+On one PC with the editor hosting World 3 and one or two built copies joining over the loopback, driven by the test
+remote control (below): joining and the world check; seeing each other walk, crouch, sit on a sofa; picking up, holding,
+spraying (paint and the jet seen by the others), throwing (landing in the same place), pocketing (gone from the others'
+world), leaving and coming back (put back where they left, with the chalk back in the pocket); loot (a found backpack)
+taken; two players grabbing one can at once (the host's player got it, the other's hand let go); a light switch from
+either side; a door opened by its handle; a box knocked off a stack and one carried; the host quitting (everyone told
+"THE HOST QUIT"); a failed join and a taken port. EditMode tests: `Editor/Tests/NetTests.cs` (messages, the world copy, a
+real connection on this machine with both channels and the goodbye).
 
-A first playable "walk around together" is about a week of work; everything synced and solid is one to two months.
+**Not tested**: over real Hamachi between two PCs with real lag and packet loss (only the loopback on one machine).
 
-## Playing over Hamachi (what you and your friend do)
+## Known limits
 
-1. Both install Hamachi. One makes a network (a name and a password); the other joins it. Each now has a 25.x.x.x
-   address.
-2. The host starts the game and picks MULTIPLAYER > HOST. The page shows their addresses; the 25.x.x.x one is for the
-   friend.
-3. The first time, Windows asks whether the game may use the network: allow it (tick both private and public, because
-   Hamachi's network often counts as public). If the friend cannot connect, add an inbound rule in Windows Firewall
-   for the game (or UDP port 7777).
-4. The friend picks MULTIPLAYER > JOIN, types the host's 25.x.x.x address and port 7777, and joins.
-5. If Hamachi will not connect, Radmin VPN, ZeroTier or Tailscale work the same way (a private address to type in).
+- A lamp's cord: where its plug is plugged in is shared; the cord's hang is each game's own.
+- The elevator: its buttons are shared and each game runs its own car, so a rider can be a moment out of step.
+- A tape's position in a boombox can drift a little between games (its keys are shared, not every second of play).
+- Voice: none built (use Discord); later, in-game voice that fades with distance.
+- Over the internet without a VPN: the host must forward the port; Unity Relay or Steam's networking would remove that.
+- Joining when someone is spraying finishes any drips running at that moment.
 
-## Risks
+## Testing it (developers)
 
-- The hand and the furniture physics are the most delicate part: grabbing something the other player is holding, or
-  two players pushing one couch, needs clear rules (the first to grab holds it; the second is refused until it is let go).
-- The dark's "while you are away" needs a rule for two players (away from both).
-- Bandwidth is small except the join snapshot (paint canvases are compressed; a big mural is a few hundred kilobytes once).
-- The game's tone: alone is the brief. Co-op would be a separate mode, solo staying the default.
+A copy started with `-netdebug -netjoin 127.0.0.1:7777 -netname SAM` joins at once and obeys the host's
+`Backrooms.Net.NetDebug.Send(peer, "command")` (from the editor): `pos`, `tp x y z yaw`, `walk x z seconds`,
+`look yaw pitch`, `lookat x y z`, `items`, `pick [id]`, `drop`, `throw speed`, `pocket i`, `hold`, `unhold`,
+`use seconds`, `e`, `sit`, `press`, `prop HEXID`, `door KEY`, `light cx cy cz room`, `paint`, `shot path`, `leave`,
+`quit`. Replies appear in the host's console as `[NetDebug] NAME: ...`. Without `-netdebug` a copy ignores them.
 
 ## Sources
 
-- Netcode for GameObjects 2.x (Unity 6 LTS), its FAQ on hosting and connecting by IP, and Relay:
-  docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.6, mp-docs.dl.it.unity3d.com/netcode/2.0.0/relay
-- A Unity 6 / Netcode 2.x walk-through of playing with a friend through Relay and Lobby (uhiyama-lab.com).
-- Hamachi and Unity: the firewall rule a Unity build or the editor needs for its UDP port (discussions.unity.com);
-  players' reports of joining by the 25.x address, and Radmin VPN where Hamachi failed (forums).
-- Co-op physics ownership: whoever touches a rigidbody simulates it (Microsoft Mesh's physics), and a request-and-grant
-  hand-over (coherence's tutorial).
+- Valheim's networking: each object simulated by one peer, relayed through the host; ownership to whoever is near or
+  using it (Edgegap's Valheim backend deep dive; the SpreadTheLoad mod's notes).
+- Physics authority: non-owners keep the body kinematic and follow; ownership changes on touch (coherence's physics and
+  authority-transfer tutorial; Unity Netcode's NetworkRigidbody notes; Microsoft Mesh physics).
+- Snapshot interpolation: render remote entities about 100 ms (two send intervals at 20 Hz) behind, extrapolate briefly
+  when starved (geckos.io snapshot-interpolation docs; Gabriel Gambetta's entity interpolation).
+- Netcode for GameObjects 2.x for Unity 6 (its repository and release notes), considered and set aside as above.

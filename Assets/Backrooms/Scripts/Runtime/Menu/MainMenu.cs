@@ -45,7 +45,7 @@ namespace Backrooms.Menu
         Quaternion _rot;
         AudioSource _beep;
 
-        enum Page { Top, Saves, Settings }
+        enum Page { Top, Saves, Settings, Multi, Host, Join }
         Page _page;
         UIDocument _doc;
         VisualElement _root, _panel, _list;
@@ -126,13 +126,27 @@ namespace Backrooms.Menu
 
             if (SettingsMenu.IsOpen || SettingsMenu.ClosedFrame == Time.frameCount) return;     // the settings page has the keys
             var kb = Keyboard.current;
+            UpdateNetStatus();
             if (kb == null || _leaving || _items.Count == 0) return;
+            // Typing in a field: the keys are the field's (Enter or Escape ends it; Enter on the address joins).
+            var focused = _root != null && _root.focusController != null ? _root.focusController.focusedElement as VisualElement : null;
+            if (focused != null && (focused is TextField || focused.GetFirstAncestorOfType<TextField>() != null))
+            {
+                bool enter = kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame;
+                if (enter || kb.escapeKey.wasPressedThisFrame || kb.tabKey.wasPressedThisFrame) { focused.Blur(); if (enter && _page == Page.Join) JoinNow(); }
+                return;
+            }
             bool left = kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame, right = kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame;
             if ((left || right) && _steps.TryGetValue(_sel, out var step)) { step(right ? 1 : -1); Beep(0); return; }
             if (kb.upArrowKey.wasPressedThisFrame || kb.wKey.wasPressedThisFrame) Select((_sel + _items.Count - 1) % _items.Count, true);
             else if (kb.downArrowKey.wasPressedThisFrame || kb.sKey.wasPressedThisFrame) Select((_sel + 1) % _items.Count, true);
             else if (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame) Activate(_sel);
-            else if ((kb.escapeKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame) && _page != Page.Top) { Beep(2); Show(Page.Top); }
+            else if ((kb.escapeKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame) && _page != Page.Top)
+            {
+                Beep(2);
+                if (_page == Page.Join && Net.NetSession.Active) Net.NetSession.Stop(null, false);       // (stops joining)
+                Show(_page == Page.Host || _page == Page.Join ? Page.Multi : Page.Top);
+            }
             else if (kb.deleteKey.wasPressedThisFrame && _page == Page.Saves && _sel < SaveSlots.Count && SaveSlots.Exists(_sel)) Erase(_sel, null);
         }
 
@@ -232,7 +246,10 @@ namespace Backrooms.Menu
             {
                 case Page.Top:
                     _pageLabel.text = "";
+                    // Back from a co-op game that ended (the host left, the connection dropped): why, once.
+                    if (!string.IsNullOrEmpty(Net.NetSession.LastError)) { _list.Add(Text(Net.NetSession.LastError, "mm-note")); Net.NetSession.LastError = null; }
                     Item("PLAY", () => { Beep(1); Show(Page.Saves); });
+                    Item("MULTIPLAYER", () => { Beep(1); Show(Page.Multi); });
                     Item("SETTINGS", OpenSettings);
                     Item("QUIT", Quit);
                     break;
@@ -240,6 +257,37 @@ namespace Backrooms.Menu
                     _pageLabel.text = "WORLD SELECT";
                     for (int i = 0; i < SaveSlots.Count; i++) Slot(i);
                     Item("BACK", () => { Beep(2); Show(Page.Top); }, true);
+                    break;
+                case Page.Multi:
+                    _pageLabel.text = "MULTIPLAYER";
+                    Field("NAME", Net.NetSession.PlayerName, 16, v => Net.NetSession.PlayerName = v);
+                    Item("HOST A WORLD ►", () => { Beep(1); Show(Page.Host); });
+                    Item("JOIN A GAME ►", () => { Beep(1); Show(Page.Join); });
+                    _list.Add(Text("CO-OP FOR 2 TO 4 PLAYERS. ONE PLAYER HOSTS ONE OF THEIR WORLDS (IT IS SAVED IN THEIR SLOT, WITH WHAT EVERYONE DID); THE OTHERS JOIN WITH THE HOST'S ADDRESS. WORKS OVER HAMACHI, A LAN, OR ANY VPN (RADMIN, ZEROTIER, TAILSCALE).", "mm-desc"));
+                    Item("BACK", () => { Beep(2); Show(Page.Top); }, true);
+                    break;
+                case Page.Host:
+                {
+                    _pageLabel.text = "HOST A WORLD";
+                    var addrs = Net.NetTransport.LocalAddresses();
+                    var said = new List<string>();
+                    foreach (var (address, what) in addrs) if (said.Count < 3) said.Add(what + "  " + address);
+                    _list.Add(Text(addrs.Count == 0 ? "NO NETWORK ADDRESS FOUND: CONNECT TO HAMACHI OR YOUR NETWORK FIRST." : "GIVE YOUR FRIENDS YOUR ADDRESS AND THE PORT:    " + string.Join("    ", said), "mm-desc"));
+                    Field("PORT", Net.NetSession.Port.ToString(), 5, v => { if (int.TryParse(v, out int p)) Net.NetSession.Port = p; });
+                    for (int i = 0; i < SaveSlots.Count; i++) HostSlot(i);
+                    _netStatus = Text("", "mm-note"); _list.Add(_netStatus);
+                    _list.Add(Text("THE FIRST TIME, WINDOWS ASKS IF THE GAME MAY USE THE NETWORK: ALLOW IT (PRIVATE AND PUBLIC).", "mm-desc"));
+                    Item("BACK", () => { Beep(2); Show(Page.Multi); }, true);
+                    break;
+                }
+                case Page.Join:
+                    _pageLabel.text = "JOIN A GAME";
+                    _addrField = Field("ADDRESS", Net.NetSession.LastAddress, 64, v => Net.NetSession.LastAddress = v.Trim());
+                    Field("PORT", Net.NetSession.Port.ToString(), 5, v => { if (int.TryParse(v, out int p)) Net.NetSession.Port = p; });
+                    Item("JOIN ►", JoinNow);
+                    _netStatus = Text("", "mm-note"); _list.Add(_netStatus);
+                    _list.Add(Text("THE HOST'S HAMACHI ADDRESS (25.X.X.X), THEIR LAN ADDRESS (192.168.X.X) OR ANY VPN'S, AND THEIR PORT (7777 UNLESS THEY CHANGED IT). CTRL+V PASTES.", "mm-desc"));
+                    Item("BACK", () => { if (Net.NetSession.Active) Net.NetSession.Stop(null, false); Beep(2); Show(Page.Multi); }, true);
                     break;
                 case Page.Settings:
                     _pageLabel.text = "SETTINGS";
@@ -335,6 +383,72 @@ namespace Backrooms.Menu
                 row.Add(erase);
             }
             Add(row, () => PlaySlot(slot));
+        }
+
+        // ---------------- Multiplayer (co-op, 2026-11-04) ----------------
+
+        Label _netStatus;
+        TextField _addrField;
+
+        /// <summary>A row with a text field (the name, an address, a port): Enter or a click goes into it.</summary>
+        TextField Field(string label, string value, int max, Action<string> changed)
+        {
+            var row = new VisualElement(); row.AddToClassList("mm-item"); row.AddToClassList("mm-fieldrow");
+            row.Add(Text("►", "mm-cursor"));
+            row.Add(Text(label, "mm-fieldlabel"));
+            var tf = new TextField { value = value ?? "", maxLength = max };
+            tf.AddToClassList("mm-field");
+            tf.RegisterValueChangedCallback(e => changed(e.newValue));
+            row.Add(tf);
+            Add(row, () => tf.Focus());
+            return tf;
+        }
+
+        void HostSlot(int slot)
+        {
+            var d = SaveSlots.Load(slot);
+            var row = new VisualElement(); row.AddToClassList("mm-item"); row.AddToClassList("mm-slot");
+            row.Add(Text("►", "mm-cursor"));
+            var body = new VisualElement(); body.AddToClassList("mm-slotbody");
+            body.Add(Text($"HOST WORLD {slot + 1}", "mm-slotname"));
+            if (d == null) body.Add(Text("EMPTY  —  A NEW WORLD", "mm-empty"));
+            else
+            {
+                string zone = string.IsNullOrEmpty(d.zone) ? "" : d.zone.ToUpperInvariant() + "    ";
+                int guests = d.guests != null ? d.guests.Count : 0;
+                body.Add(Text($"{zone}{Tape(d.playSeconds)} ON TAPE" + (guests > 0 ? $"    {guests} OTHER PLAYER{(guests == 1 ? "" : "S")} BEFORE" : ""), "mm-detail"));
+            }
+            row.Add(body);
+            Add(row, () => HostNow(slot));
+        }
+
+        void HostNow(int slot)
+        {
+            if (!Net.NetSession.Host(slot, out var err)) { Beep(2); if (_netStatus != null) _netStatus.text = err; return; }
+            Beep(1);
+            _leaving = true;
+            _panel.style.display = DisplayStyle.None;
+        }
+
+        void JoinNow()
+        {
+            if (Net.NetSession.Active) return;
+            string addr = (_addrField != null ? _addrField.value : Net.NetSession.LastAddress ?? "").Trim();
+            int port = Net.NetSession.Port;
+            // "25.1.2.3:7777" in one go.
+            int colon = addr.LastIndexOf(':');
+            if (colon > 0 && int.TryParse(addr.Substring(colon + 1), out int p2)) { port = p2; addr = addr.Substring(0, colon).Trim(); }
+            if (addr.Length == 0) { Beep(2); if (_netStatus != null) _netStatus.text = "TYPE THE HOST'S ADDRESS FIRST"; return; }
+            Net.NetSession.LastAddress = addr; Net.NetSession.Port = port;
+            if (!Net.NetSession.Join(addr, port, out var err)) { Beep(2); if (_netStatus != null) _netStatus.text = err; return; }
+            Beep(1);
+        }
+
+        void UpdateNetStatus()
+        {
+            if (_netStatus == null || (_page != Page.Join && _page != Page.Host)) return;
+            if (Net.NetSession.Active) _netStatus.text = Net.NetSession.Status;
+            else if (!string.IsNullOrEmpty(Net.NetSession.LastError)) _netStatus.text = (_page == Page.Join ? "COULD NOT JOIN: " : "") + Net.NetSession.LastError;
         }
 
         static string Tape(double seconds)

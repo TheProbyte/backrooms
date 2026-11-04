@@ -30,7 +30,11 @@ namespace Backrooms.Interaction
 
         public static void Set(Vector3Int circuit, bool on)
         {
-            if (on ? s_on.Add(circuit) : s_on.Remove(circuit)) Version++;
+            if (on ? s_on.Add(circuit) : s_on.Remove(circuit))
+            {
+                Version++;
+                if (Net.NetHooks.On) Net.NetHooks.Breaker?.Invoke(circuit, on);
+            }
         }
 
         public static void Clear() { s_on.Clear(); Version++; }

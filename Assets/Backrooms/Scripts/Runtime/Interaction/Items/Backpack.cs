@@ -95,6 +95,8 @@ namespace Backrooms.Interaction
 
         /// <summary>Open (unzipped, the panel down): things go in and come out.</summary>
         public bool IsOpen => _open && _anim == null;
+        /// <summary>Open, or opening (co-op: what another player's bag is set to).</summary>
+        internal bool IsOpenOrOpening => _open;
         /// <summary>On someone's back (PropGrabber.WornBag).</summary>
         public bool Worn { get; private set; }
         public int Colour => _colour;
@@ -321,7 +323,7 @@ namespace Backrooms.Interaction
         }
 
         /// <summary>Open at once (a save being restored).</summary>
-        void OpenNow()
+        internal void OpenNow()
         {
             BuildParts();
             _open = true; _zipT = 1f; _lidT = 1f;
@@ -331,7 +333,7 @@ namespace Backrooms.Interaction
         }
 
         /// <summary>Shut at once (picked up while open).</summary>
-        void ShutNow()
+        internal void ShutNow()
         {
             if (_anim != null) { StopCoroutine(_anim); _anim = null; }
             if (_open) Fx(BackpackSounds.Zip, 0.4f, 1.25f);

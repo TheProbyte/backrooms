@@ -218,6 +218,23 @@ namespace Backrooms.Interaction
             Spraying = false; _use = 0f;
         }
 
+        /// <summary>
+        /// Co-op (2026-11-04): another player's can, in their hand as this game shows it: the jet, the haze and the hiss
+        /// while they spray, aimed where they look. Their paint comes as paint (SprayPaint's patches); nothing is painted or
+        /// used up here.
+        /// </summary>
+        public void RemoteSpray(bool on, Vector3 eye, Vector3 look, float dt)
+        {
+            if (!on && _hissLevel <= 0.001f && _use <= 0f) return;
+            Vector3 aim = eye + look * range;
+            if (Physics.Raycast(eye, look, out var h, range + 0.6f, ~0, QueryTriggerInteraction.Ignore)) aim = h.point;
+            _visualOnly = true;
+            try { Hold(on, aim, dt); }
+            finally { _visualOnly = false; }
+        }
+
+        bool _visualOnly;
+
         public override void Hold(bool use, Vector3 aimAt, float dt)
         {
             bool spray = use && paint > 0f;
@@ -226,7 +243,7 @@ namespace Backrooms.Interaction
             float flow = 0f;
             if (Spraying)
             {
-                paint = Mathf.Max(0f, paint - dt / Mathf.Max(1f, Lifespan));
+                if (!_visualOnly) paint = Mathf.Max(0f, paint - dt / Mathf.Max(1f, Lifespan));
                 // The last of it: spits and sputters.
                 if (paint < 0.1f)
                 {
@@ -306,6 +323,7 @@ namespace Backrooms.Interaction
                     _haze.Emit(ep, 1);
                 }
                 // Paint goes on the building (props move; their paint would be left floating).
+                if (_visualOnly) continue;                         // (another player's spray: their paint comes from them)
                 if (hit.collider.GetComponentInParent<MovableProp>() || hit.collider.GetComponentInParent<WorldItem>()) continue;
                 float d = hit.distance;
                 // Each ray's own spot: a few millimetres, wider from further (the droplets drift); less arrives from far.

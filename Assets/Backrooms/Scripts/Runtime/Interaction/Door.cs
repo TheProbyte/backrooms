@@ -56,6 +56,31 @@ namespace Backrooms.Interaction
         static Material s_spill;
         const float ShutBelow = 2.5f;           // degrees: still shut as far as light and sound are concerned
 
+        /// <summary>Every door in the world now (co-op: found by its key).</summary>
+        public static readonly List<Door> Live = new List<Door>();
+        void OnEnable() { Live.Add(this); }
+        void OnDisable() { Live.Remove(this); }
+        public static Door Find(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            for (int i = 0; i < Live.Count; i++) if (Live[i] && Live[i].Key == key) return Live[i];
+            return null;
+        }
+
+        float _netUntil = -1f, _netTarget, _netVel;
+        /// <summary>Co-op (2026-11-04): another player is swinging it; it follows their angle here.</summary>
+        public bool NetDriven => Time.time < _netUntil;
+
+        /// <summary>Another player's door: it swings to their angle (final: where they left it).</summary>
+        public void NetSet(float angle, bool final)
+        {
+            if (Held) return;                                  // our own hand is on it
+            _vel = 0f; _driftVel = 0f;
+            _netTarget = Mathf.Clamp(angle, 0f, MaxOpen);
+            _netUntil = Time.time + (final ? 0.25f : 0.4f);
+            _moved = false; _settled = Time.time;              // (where it is left is theirs to remember: not sent back)
+        }
+
         public void Init(Transform model, float angle, string key, DoorEdges.Edge edge, int roomFront, int roomBack)
         {
             Key = key;
@@ -491,7 +516,19 @@ namespace Backrooms.Interaction
             bool posed = false;
             if (!Held || _side < 0) { if (_turnFront > 0f) { _turnFront = Mathf.MoveTowards(_turnFront, 0f, dt * 6f); posed = true; } }
             if (!Held || _side > 0) { if (_turnBack > 0f) { _turnBack = Mathf.MoveTowards(_turnBack, 0f, dt * 6f); posed = true; } }
-            if (!Held && _vel != 0f)
+            bool netting = NetDriven && !Held;
+            _netVel = 0f;
+            if (netting)
+            {
+                float prev = Angle;
+                float next = Mathf.MoveTowards(Angle, _netTarget, dt * 420f);
+                _netVel = (next - prev) / Mathf.Max(dt, 1e-4f);
+                if (next <= 0f && prev > 0.5f) { Fx(SoundBank.DoorShut, Mathf.Clamp01(-_netVel / 160f) * 0.9f + 0.15f); Latched = true; }
+                Angle = next;
+                if (Angle > 0.5f) Latched = false;
+                Pose(); UpdateShut();
+            }
+            else if (!Held && _vel != 0f)
             {
                 _vel *= Mathf.Exp(-dt * 1.4f);                                         // hinges and air slow it
                 float next = Angle + _vel * dt;
@@ -517,7 +554,7 @@ namespace Backrooms.Interaction
             }
             else if (posed) Pose();
             // The hinges creak while it moves.
-            float creak = Mathf.Clamp01((Mathf.Max(Mathf.Abs(_vel), Mathf.Abs(_driftVel) * 1.6f) - 6f) / 90f);
+            float creak = Mathf.Clamp01((Mathf.Max(Mathf.Max(Mathf.Abs(_vel), Mathf.Abs(_netVel)), Mathf.Abs(_driftVel) * 1.6f) - 6f) / 90f);
             if (creak > 0.001f || (_creak && _creak.isPlaying))
             {
                 if (!_creak)
@@ -534,7 +571,8 @@ namespace Backrooms.Interaction
                 if (_creak.volume <= 0.001f && creak <= 0.001f) _creak.Stop();
             }
             // Remember where it was left.
-            if (!Held && _vel == 0f)
+            if (netting) { }
+            else if (!Held && _vel == 0f)
             {
                 if (_settled < 0f) { _settled = Time.time; if (_moved) DoorStates.Set(Key, Angle); }
             }
@@ -574,7 +612,7 @@ namespace Backrooms.Interaction
         /// </summary>
         void Drift(float dt)
         {
-            if (Held || Latched || _vel != 0f || Angle < 1.5f || Angle > MaxOpen - 1f) { _driftVel = 0f; return; }
+            if (NetDriven || Held || Latched || _vel != 0f || Angle < 1.5f || Angle > MaxOpen - 1f) { _driftVel = 0f; return; }
             float t = Time.time * 0.06f + _driftSeed;
             float push = (Mathf.PerlinNoise(t, _driftSeed) - 0.5f) * 5f;                      // deg/s^2
             float gust = Mathf.PerlinNoise(Time.time * 0.03f, _driftSeed * 3.1f);
@@ -633,9 +671,19 @@ namespace Backrooms.Interaction
         static readonly Dictionary<string, float> s_angles = new Dictionary<string, float>();
         static readonly HashSet<string> s_bolted = new HashSet<string>();
         public static bool TryGet(string key, out float angle) => s_angles.TryGetValue(key ?? "", out angle);
-        public static void Set(string key, float angle) { if (!string.IsNullOrEmpty(key)) s_angles[key] = angle; }
+        public static void Set(string key, float angle)
+        {
+            if (string.IsNullOrEmpty(key)) return;
+            s_angles[key] = angle;
+            if (Net.NetHooks.On) Net.NetHooks.DoorRest?.Invoke(key, angle);           // (co-op: left there for everyone)
+        }
         public static bool IsBolted(string key) => s_bolted.Contains(key ?? "");
-        public static void SetBolted(string key, bool bolted) { if (string.IsNullOrEmpty(key)) return; if (bolted) s_bolted.Add(key); else s_bolted.Remove(key); }
+        public static void SetBolted(string key, bool bolted)
+        {
+            if (string.IsNullOrEmpty(key)) return;
+            if (bolted) s_bolted.Add(key); else s_bolted.Remove(key);
+            if (Net.NetHooks.On) Net.NetHooks.DoorBolt?.Invoke(key, bolted);
+        }
         public static void Clear() { s_angles.Clear(); s_bolted.Clear(); }
 
         public static void Save(List<string> keys, List<float> angles, List<string> bolts)

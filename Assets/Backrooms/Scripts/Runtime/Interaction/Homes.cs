@@ -31,7 +31,12 @@ namespace Backrooms.Interaction
         public static bool InHome { get; internal set; }
 
         public static bool IsHome(Key k) => s_homes.Contains(k.Tuple);
-        public static bool Add(Key k) => s_homes.Add(k.Tuple);
+        public static bool Add(Key k)
+        {
+            if (!s_homes.Add(k.Tuple)) return false;
+            if (Net.NetHooks.On) Net.NetHooks.Home?.Invoke(k);
+            return true;
+        }
         public static void Clear() { s_homes.Clear(); InHome = false; }
 
         public static List<int> Save()

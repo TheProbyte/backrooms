@@ -73,7 +73,7 @@ namespace Backrooms.Interaction
             if (btn == null) return false;
             // No body (Body: None, the default): no arm to send. The click presses it at once (owner, 2026-10-31: "remove
             // the close step to lightswitches, just immediate click is better").
-            if (Bodiless) { btn.Press(); return true; }
+            if (Bodiless) { if (Net.NetHooks.On) Net.NetHooks.Poke?.Invoke(btn); btn.Press(); return true; }
             _pokeButton = btn;
             _pokeObject = btn as Object;
             _pokeNormal = btn.PokeNormal;
@@ -124,7 +124,7 @@ namespace Backrooms.Interaction
                     // Pushed in (a button) or flicked over (a switch): quick, and it gives half way.
                     float t = Mathf.Clamp01(_pokeT / 0.08f);
                     PokeTip = Vector3.Lerp(_pokePoint, _pokeTo, t * t);
-                    if (t >= 0.5f && !_pressed) { _pressed = true; _pokeButton.Press(); }
+                    if (t >= 0.5f && !_pressed) { _pressed = true; if (Net.NetHooks.On) Net.NetHooks.Poke?.Invoke(_pokeButton); _pokeButton.Press(); }
                     if (t >= 1f) { _poke = PokePhase.Hold; _pokeT = 0f; }
                     break;
                 }

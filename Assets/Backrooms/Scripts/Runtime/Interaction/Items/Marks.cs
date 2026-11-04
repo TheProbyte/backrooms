@@ -230,6 +230,7 @@ namespace Backrooms.Interaction
         /// <summary>A stroke of chalk (round-ended, so strokes join).</summary>
         public void AddChalk(Vector3 a, Vector3 b, Vector3 normal)
         {
+            if (Net.NetHooks.On) Net.NetHooks.Strip?.Invoke(0, a, b, normal);          // (co-op: drawn in everyone's world)
             Vector3 d = (b - a).normalized * (ChalkWidth * 0.5f);
             Strip(Current(), a - d, b + d, normal, ChalkWidth, KindChalk, ChalkColor);
             Count++;
@@ -237,6 +238,7 @@ namespace Backrooms.Interaction
 
         public void AddTape(Vector3 a, Vector3 b, Vector3 normal)
         {
+            if (Net.NetHooks.On) Net.NetHooks.Strip?.Invoke(1, a, b, normal);
             Strip(Current(), a, b, normal, TapeStripWidth, KindTape, TapeColor);
             Count++;
         }
@@ -244,6 +246,7 @@ namespace Backrooms.Interaction
         /// <summary>A strip of tape along a path (see <see cref="Path"/>).</summary>
         public void AddTape(IReadOnlyList<Vector3> points, IReadOnlyList<Vector3> normals)
         {
+            if (Net.NetHooks.On) Net.NetHooks.Tape?.Invoke(points, normals);
             var b = Current();
             if (b.Quads + points.Count > QuadsPerBatch) { _current = null; b = Current(); }
             Path(b, points, normals, TapeStripWidth, KindTape, TapeColor);
@@ -255,6 +258,7 @@ namespace Backrooms.Interaction
         public void AddScrape(IReadOnlyList<Vector3> points, float width, Color32 col)
         {
             if (points == null || points.Count < 2) return;
+            if (Net.NetHooks.On) Net.NetHooks.Scrape?.Invoke(points, width, col);
             var b = Current();
             if (b.Quads + points.Count > QuadsPerBatch) { _current = null; b = Current(); }
             var normals = new List<Vector3>(points.Count);

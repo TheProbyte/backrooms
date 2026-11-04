@@ -49,6 +49,20 @@ namespace Backrooms.Saves
         public List<WallData> walls = new List<WallData>();
         /// <summary>Nails driven in with the hammer (Interaction.NailWork).</summary>
         public List<NailData> nails = new List<NailData>();
+        /// <summary>Co-op (2026-11-04): the players who have joined this world, where they left and what they carried
+        /// (they get it back when they join again under the same name).</summary>
+        public List<GuestData> guests = new List<GuestData>();
+    }
+
+    /// <summary>A player who joined the host's world: where they were and what they carried (items as in the save's list:
+    /// held, in a pocket, a backpack on the back and what is in it).</summary>
+    [Serializable]
+    public class GuestData
+    {
+        public string name = "";
+        public Vector3 position;
+        public float yaw;
+        public List<ItemData> items = new List<ItemData>();
     }
 
     /// <summary>A nail: in the building (prop empty: world space) or in a prop (its id, hex: the prop's space).</summary>
@@ -238,10 +252,24 @@ namespace Backrooms.Saves
         public static WorldSaveData Data { get; private set; }
 
         /// <summary>Should the world scene show the main menu?</summary>
-        public static bool InMenu => Slot < 0 && !CustomRooms.BuildSession.Testing;
+        public static bool InMenu => Slot < 0 && !NetClient && !CustomRooms.BuildSession.Testing;
+
+        /// <summary>Co-op (2026-11-04): playing in another player's world (it is theirs: nothing is saved here).</summary>
+        public static bool NetClient { get; private set; }
+        /// <summary>The joined world's paint and chalk, as the host sent them.</summary>
+        public static byte[] NetPaint, NetMarks;
+        /// <summary>In a world that can be shared now (a save being played, or a joined world).</summary>
+        public static bool InWorldForNet => (Slot >= 0 || NetClient) && Data != null && Generation.WorldStreamer.Current && !Generation.WorldStreamer.Current.MenuMode;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetStatics() { Slot = -1; Data = null; }
+        static void ResetStatics() { Slot = -1; Data = null; NetClient = false; NetPaint = NetMarks = null; }
+
+        /// <summary>Joins the host's world: its save as sent (never written here), its paint and chalk.</summary>
+        public static void PlayNet(WorldSaveData d, byte[] paint, byte[] marks)
+        {
+            Slot = -1; Data = d; NetClient = true; NetPaint = paint; NetMarks = marks;
+            Menu.TapeTransition.Run("PLAY ►  JOINING", () => UnityEngine.SceneManagement.SceneManager.LoadScene(CustomRooms.SceneIds.World));
+        }
 
         /// <summary>Plays a slot: its saved world, or a new one if it is empty.</summary>
         public static void Play(int slot)
@@ -253,11 +281,12 @@ namespace Backrooms.Saves
             Menu.TapeTransition.Run(fresh ? "PLAY ►  NEW WORLD" : "PLAY ►", () => UnityEngine.SceneManagement.SceneManager.LoadScene(CustomRooms.SceneIds.World));
         }
 
-        /// <summary>Saves and leaves the world for the main menu.</summary>
+        /// <summary>Saves and leaves the world for the main menu (a joined world: just leaves it; hosting: the others are told).</summary>
         public static void ToMenu()
         {
             WorldSaver.SaveNow();
-            Slot = -1; Data = null;
+            if (Net.NetSession.Active) Net.NetSession.Stop(Net.NetSession.IsHost ? "THE HOST ENDED THE GAME" : null, false);
+            Slot = -1; Data = null; NetClient = false; NetPaint = NetMarks = null;
             Menu.TapeTransition.Run("STOP ■", () => UnityEngine.SceneManagement.SceneManager.LoadScene(CustomRooms.SceneIds.World));
         }
 
@@ -265,7 +294,8 @@ namespace Backrooms.Saves
         public static void Leave()
         {
             WorldSaver.SaveNow();
-            Slot = -1; Data = null;
+            if (Net.NetSession.Active) Net.NetSession.Stop(Net.NetSession.IsHost ? "THE HOST ENDED THE GAME" : null, false);
+            Slot = -1; Data = null; NetClient = false; NetPaint = NetMarks = null;
         }
     }
 }

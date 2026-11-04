@@ -94,7 +94,7 @@ namespace Backrooms.CustomRooms
             _prevTimeScale = Time.timeScale;
             _prevLock = Cursor.lockState; _prevCursorVisible = Cursor.visible;
             _prevBlocked = CamcorderPlayerController.InputBlocked;
-            if (!InBuilder) Time.timeScale = 0f;
+            if (!InBuilder && !Net.NetSession.Active) Time.timeScale = 0f;      // (co-op: the world goes on for the others)
             CamcorderPlayerController.InputBlocked = true;
             Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
             _status = "";
@@ -124,14 +124,27 @@ namespace Backrooms.CustomRooms
             ImUi.Fill(new Rect(0, 0, ImUi.Width, ImUi.Height), new Color(0, 0, 0, 0.62f));
             float w = 420, cx = ImUi.Width * 0.5f - w * 0.5f;
             bool testing = BuildSession.Testing && scene == SceneIds.World && !CustomRoomTest.Reference;
-            bool offerReference = !(CustomRoomTest.Reference && scene == SceneIds.World);
-            int rows = 5 + (testing ? 1 : 0) + (offerReference ? 1 : 0);
-            float h = 24 + 40 + 10 + rows * 56 + 24;
+            bool net = Net.NetSession.Active;
+            bool offerReference = !(CustomRoomTest.Reference && scene == SceneIds.World) && !net;
+            int rows = 5 + (testing ? 1 : 0) + (offerReference ? 1 : 0) - (net ? 1 : 0);
+            var addresses = net && Net.NetSession.IsHost ? Net.NetTransport.LocalAddresses() : null;
+            float extra = net ? 34 + (addresses != null ? 30 * Mathf.Min(3, Mathf.Max(1, addresses.Count)) : 0) : 0;
+            float h = 24 + 40 + 10 + rows * 56 + 24 + extra;
             var box = new Rect(cx, ImUi.Height * 0.5f - h * 0.5f, w, h);
             ImUi.PanelBox(box);
             var col = new ImUi.Column(box.x + 30, box.y + 24, w - 60, 48, 8);
             GUI.Label(col.Row(40), "MENU", ImUi.Title);
             col.Space(10);
+            if (net)
+            {
+                // Co-op: who is here, and (hosting) the addresses to give a friend.
+                GUI.Label(col.Row(26), Net.NetSession.IsHost ? $"HOSTING · {Net.NetSession.Peers.Count} OF {Net.NetSession.MaxPlayers} PLAYERS · PORT {Net.NetSession.Port}" : $"IN {Net.NetSession.NameOf(0)}'S WORLD · {Net.NetSession.Peers.Count} PLAYERS", ImUi.Small);
+                if (addresses != null)
+                {
+                    if (addresses.Count == 0) GUI.Label(col.Row(22), "NO NETWORK ADDRESS FOUND", ImUi.Small);
+                    for (int i = 0; i < addresses.Count && i < 3; i++) GUI.Label(col.Row(22), $"{addresses[i].what}:  {addresses[i].address}:{Net.NetSession.Port}", ImUi.Small);
+                }
+            }
 
             string resume = InBuilder ? "BACK TO BUILDING" : "RESUME";
             if (ImUi.Button(col.Row(), resume, true)) Close();
@@ -141,9 +154,13 @@ namespace Backrooms.CustomRooms
             {
                 if (ImUi.Button(col.Row(), "BACK TO THE BUILDER")) { Close(); Load(SceneIds.Build); }
             }
-            if (scene == SceneIds.World && Saves.GameSession.Slot >= 0)
+            if (scene == SceneIds.World && Saves.GameSession.NetClient)
             {
-                if (ImUi.Button(col.Row(), "SAVE AND QUIT TO MENU")) { Close(); Saves.GameSession.ToMenu(); }
+                if (ImUi.Button(col.Row(), "LEAVE THE GAME")) { Close(); Net.NetSession.Stop(null); }
+            }
+            else if (scene == SceneIds.World && Saves.GameSession.Slot >= 0)
+            {
+                if (ImUi.Button(col.Row(), net ? "SAVE AND END THE GAME" : "SAVE AND QUIT TO MENU")) { Close(); Saves.GameSession.ToMenu(); }
             }
             else if (ImUi.Button(col.Row(), "MAIN MENU"))
             {
@@ -152,7 +169,7 @@ namespace Backrooms.CustomRooms
             }
             // The reference room is a room of the procedural world (ReferenceBlueprint), lit exactly like the game.
             if (offerReference && ImUi.Button(col.Row(), "REFERENCE ROOM")) { Close(); CustomRoomTest.End(); CustomRoomTest.BeginReference(); Load(SceneIds.World); }
-            if (ImUi.Button(col.Row(), InBuilder ? "ROOM LIBRARY" : "BUILD A SECTION"))
+            if (!net && ImUi.Button(col.Row(), InBuilder ? "ROOM LIBRARY" : "BUILD A SECTION"))
             {
                 Close(); CustomRoomTest.End();
                 if (InBuilder) BuilderApp.Current?.ShowLibrary(); else Load(SceneIds.Build);

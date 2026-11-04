@@ -87,7 +87,10 @@ namespace Backrooms.Interaction
             foreach (var c in GetComponentsInChildren<Collider>(true)) c.enabled = on;
         }
 
-        protected override void OnPickedUp()
+        protected override void OnPickedUp() => LeaveDeck();
+
+        /// <summary>Out of its deck (taken by hand, here or in another player's game).</summary>
+        public void LeaveDeck()
         {
             if (!Deck) return;
             var box = Deck;

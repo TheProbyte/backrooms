@@ -822,7 +822,7 @@ namespace Backrooms.Interaction
         void UpdateFetch()
         {
             var item = _fetch;
-            if (!item || item.Held || !item.gameObject.activeInHierarchy) { EndFetch(); ClearPlan(); return; }
+            if (!item || item.Held || item.NetForeign || !item.gameObject.activeInHierarchy) { EndFetch(); ClearPlan(); return; }
             int r = ReachFor(GripOf(item), item, Time.deltaTime);
             if (r < 0) { EndFetch(); ClearPlan(); _itemReachUntil = -1f; return; }
             if (r > 0) { EndFetch(); Take(item, true, true); }

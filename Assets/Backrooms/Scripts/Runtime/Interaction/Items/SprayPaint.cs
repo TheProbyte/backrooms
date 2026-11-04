@@ -69,6 +69,7 @@ namespace Backrooms.Interaction
             public GameObject go;
             public bool dirty;
             public Bounds bounds;
+            public int netX0 = Res, netY0 = Res, netX1 = -1, netY1 = -1;      // painted here since last sent (co-op)
         }
 
         readonly Dictionary<Key, Canvas> _canvases = new Dictionary<Key, Canvas>();
@@ -217,6 +218,51 @@ namespace Backrooms.Interaction
                     int vnew = c.px[i] + add;
                     c.px[i] = (byte)(vnew > 255 ? 255 : vnew);
                 }
+            }
+            c.dirty = true;
+            if (Net.NetHooks.On)
+            {
+                if (x0 < c.netX0) c.netX0 = x0; if (y0 < c.netY0) c.netY0 = y0;
+                if (x1 > c.netX1) c.netX1 = x1; if (y1 > c.netY1) c.netY1 = y1;
+                _netDirty.Add(c);
+            }
+        }
+
+        // ---------------- Co-op (2026-11-04) ----------------
+        // What is painted here goes to the other players as the changed rectangle of each canvas (deflated, a few times a
+        // second); what comes from them is merged texel by texel taking the larger (paint only builds up), so two people
+        // spraying one wall at once both keep their paint, in any order. Drips run in the painter's game; their paint comes
+        // as paint.
+
+        public struct NetPatch { public int nx, ny, nz, d, u, v, x0, y0, w, h; public byte[] packed; }
+        readonly HashSet<Canvas> _netDirty = new HashSet<Canvas>();
+
+        public void TakeNetPatches(List<NetPatch> into)
+        {
+            foreach (var c in _netDirty)
+            {
+                if (c.netX1 < c.netX0 || c.netY1 < c.netY0) continue;
+                int w = c.netX1 - c.netX0 + 1, h = c.netY1 - c.netY0 + 1;
+                var block = new byte[w * h];
+                for (int y = 0; y < h; y++) System.Buffer.BlockCopy(c.px, (c.netY0 + y) * Res + c.netX0, block, y * w, w);
+                into.Add(new NetPatch { nx = c.key.nx, ny = c.key.ny, nz = c.key.nz, d = c.key.d, u = c.key.u, v = c.key.v, x0 = c.netX0, y0 = c.netY0, w = w, h = h, packed = Pack(block) });
+                c.netX0 = c.netY0 = Res; c.netX1 = c.netY1 = -1;
+            }
+            _netDirty.Clear();
+        }
+
+        public void MergeNetPatch(NetPatch p)
+        {
+            if (p.packed == null || p.w <= 0 || p.h <= 0 || p.x0 < 0 || p.y0 < 0 || p.x0 + p.w > Res || p.y0 + p.h > Res) return;
+            var n = new Vector3(p.nx, p.ny, p.nz).normalized;
+            if (n.sqrMagnitude < 0.5f) return;
+            var c = Get(p.nx, p.ny, p.nz, n, p.d, p.u, p.v, true);
+            var block = new byte[p.w * p.h];
+            Unpack(p.packed, block);
+            for (int y = 0; y < p.h; y++)
+            {
+                int row = (p.y0 + y) * Res + p.x0, k = y * p.w;
+                for (int x = 0; x < p.w; x++) if (block[k + x] > c.px[row + x]) c.px[row + x] = block[k + x];
             }
             c.dirty = true;
         }

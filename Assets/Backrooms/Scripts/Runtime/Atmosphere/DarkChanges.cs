@@ -66,6 +66,7 @@ namespace Backrooms.Atmosphere
             if (!_player) _player = FindAnyObjectByType<CamcorderPlayerController>();
             float strength = TensionDirector.Strength;
             if (!ws || ws.MenuMode || !_player || _player.noclip || strength <= 0.01f) { _pending = null; return; }
+            if (Net.NetSession.IsClient) { _pending = null; return; }        // (co-op: the host's world decides; it comes as furniture moved)
             if (_pending != null)
             {
                 if (Time.time < _pending.at) return;
@@ -138,6 +139,7 @@ namespace Backrooms.Atmosphere
             if (!otherStorey && distance < MinAway) return false;
             if (distance > 60f) return false;
             if (Seen(mp, c)) return false;
+            if (Net.NetWorld.AnyoneNear(c, MinAway) || Net.NetWorld.AnyoneSees(c, Mathf.Max(0.3f, Extent(mp)), mp.transform)) return false;   // (co-op: away from everyone)
             return Dark(c);
         }
 

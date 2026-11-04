@@ -135,7 +135,7 @@ namespace Backrooms.Generation
             // A new world: nothing taken from its special rooms, no noclip door to return to (a save puts its own back).
             Saves.LootRegistry.Clear();
             Interaction.NoclipTravel.HasOrigin = false;
-            bool playing = Saves.GameSession.Slot >= 0 && Saves.GameSession.Data != null;
+            bool playing = (Saves.GameSession.Slot >= 0 || Saves.GameSession.NetClient) && Saves.GameSession.Data != null;
             // Every light on, but those the save has switched off (before the first chunk lights up).
             LightZones.Load(playing ? Saves.GameSession.Data.lightsOff : null);
             Interaction.PowerGrid.Load(playing ? Saves.GameSession.Data.breakersOn : null);
@@ -146,8 +146,11 @@ namespace Backrooms.Generation
             if (MenuMode) Seed = Menu.MainMenu.MenuSeed;
             else if (playing) Seed = Saves.GameSession.Data.seed;
             else Seed = seed != 0 ? seed : new System.Random().Next(1, int.MaxValue);
-            Backrooms.CustomRooms.RoomLibrary.Reload();        // the player's custom rooms join the landmark pool
-            Settings = WorldGenSettings.Load();
+            // The player's custom rooms join the landmark pool; in another player's world (co-op), theirs do, and their
+            // generation settings are used, so both build the same building.
+            if (Saves.GameSession.NetClient && Net.NetSession.SharedRooms != null) Backrooms.CustomRooms.RoomLibrary.UseShared(Net.NetSession.SharedRooms);
+            else Backrooms.CustomRooms.RoomLibrary.Reload();
+            Settings = Saves.GameSession.NetClient && Net.NetSession.SharedSettings != null ? Net.NetSession.SharedSettings : WorldGenSettings.Load();
             _world = new WorldGenerator(Seed, Settings);
             if (!GetComponent<RuntimeIndoorReflections>()) gameObject.AddComponent<RuntimeIndoorReflections>();
             // The Poolrooms: materials before any chunk data is prepared (worker threads only read them), and the map,
@@ -193,6 +196,8 @@ namespace Backrooms.Generation
             if (playing) { _saver = gameObject.AddComponent<Saves.WorldSaver>(); _saver.RestoreProps(_world); gameObject.AddComponent<Interaction.HomeTracker>(); }
             else if (MenuMode) gameObject.AddComponent<Menu.MainMenu>().streamer = this;
             if (!MenuMode && !GetComponent<Interaction.NoclipTravel>()) gameObject.AddComponent<Interaction.NoclipTravel>().streamer = this;
+            // Co-op (2026-11-04): hosting or joined, the world is shared.
+            if (playing && Net.NetSession.Active && !GetComponent<Net.NetWorld>()) gameObject.AddComponent<Net.NetWorld>().streamer = this;
         }
 
         /// <summary>The ground-storey chunk's layout as currently built (null if not loaded).</summary>

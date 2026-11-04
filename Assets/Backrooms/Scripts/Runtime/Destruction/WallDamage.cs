@@ -197,6 +197,24 @@ namespace Backrooms.Destruction
 
         public static StrikeResult Strike(WallKey k, Vector3 origin, Vector3 dir, float maxDistance, Blow blow)
         {
+            // (Co-op, 2026-11-04: the blow goes to the other players with its seed, and breaks the same there.)
+            int seed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+            var r = StrikeSeeded(seed, k, origin, dir, maxDistance, blow);
+            if (r.kind != StrikeKind.None && r.kind != StrikeKind.Passed && Net.NetHooks.On) Net.NetHooks.Strike?.Invoke(k, origin, dir, maxDistance, blow, seed);
+            return r;
+        }
+
+        /// <summary>A blow whose random parts (how the bits fly, which spall) come from a seed.</summary>
+        public static StrikeResult StrikeSeeded(int seed, WallKey k, Vector3 origin, Vector3 dir, float maxDistance, Blow blow)
+        {
+            var state = UnityEngine.Random.state;
+            UnityEngine.Random.InitState(seed);
+            try { return StrikeCore(k, origin, dir, maxDistance, blow); }
+            finally { UnityEngine.Random.state = state; }
+        }
+
+        static StrikeResult StrikeCore(WallKey k, Vector3 origin, Vector3 dir, float maxDistance, Blow blow)
+        {
             float energy = blow.energy;
             var r = new StrikeResult { kind = StrikeKind.None, fallen = new List<Fallen>() };
             var p = Get(k, true);

@@ -41,6 +41,13 @@ namespace Backrooms.Interaction
         protected virtual void OnEnable() { Live.Add(this); }
         protected virtual void OnDisable() { Live.Remove(this); }
         public bool Held { get; private set; }
+        /// <summary>Co-op (2026-11-04): shown here for another player (in their hand, on their back): not this world's to
+        /// save or simulate.</summary>
+        [System.NonSerialized] public bool NetForeign;
+        /// <summary>Co-op: another player's game is moving it (thrown, knocked): kinematic here, following theirs.</summary>
+        [System.NonSerialized] public bool NetRemote;
+        /// <summary>Co-op: the loot id it had until it was just taken (the network gives it an id of its own).</summary>
+        [System.NonSerialized] public ulong lootTakenFrom;
         Collider[] _colliders;
         WorldStreamer _streamer;
 
@@ -141,6 +148,7 @@ namespace Backrooms.Interaction
         protected virtual void FixedUpdate()
         {
             if (!_playerIgnored) IgnorePlayer();
+            if (NetForeign || NetRemote) { if (!Held && !Body.isKinematic) Body.isKinematic = true; return; }   // (another game's to move)
             if (Held || settling) return;
             if (Pinned || InBag) { if (!Body.isKinematic) Body.isKinematic = true; return; }
             // Frozen while the ground under it is unloaded (it would fall forever), awake otherwise.
@@ -162,7 +170,7 @@ namespace Backrooms.Interaction
             foreach (var c in _colliders) if (c) c.enabled = !held;
 
             if (held && InBag) InBag.Removed(this);                       // taken out of a backpack
-            if (held && lootId != 0) { Saves.LootRegistry.Take(lootId); lootId = 0; transform.SetParent(null, true); }   // taken from its room: a free item from now on
+            if (held && lootId != 0) { Saves.LootRegistry.Take(lootId); lootTakenFrom = lootId; lootId = 0; transform.SetParent(null, true); }   // taken from its room: a free item from now on
             if (held) OnPickedUp(); else OnDropped();
         }
 

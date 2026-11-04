@@ -367,6 +367,21 @@ namespace Backrooms.Interaction
             if (HeldItem == item) { HeldItem = null; EndPlacing(); }
         }
 
+        /// <summary>
+        /// Co-op (2026-11-04): the thing is another player's now (they took it first): out of this hand, the reach for it,
+        /// the pockets and the back, without a sound or a toss.
+        /// </summary>
+        public void Forget(WorldItem item)
+        {
+            if (!item) return;
+            if (_fetch == item) { EndFetch(); ClearPlan(); }
+            if (AimedItem == item) AimedItem = null;
+            if (HeldItem == item) { HeldItem = null; EndPlacing(); item.SetHeld(false); }
+            for (int i = 0; i < PocketCount; i++) if (_pockets[i] == item) _pockets[i] = null;
+            if (_homeItem == item) _homeItem = null;
+            if (WornBag == item) { WornBag = null; (item as Backpack)?.TakeOff(); }
+        }
+
         /// <summary>Lets go of the held item: it keeps the hand's motion plus a little toss forward (or is set down upright).</summary>
         public void Drop()
         {

@@ -15,6 +15,48 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-04 12:30  Claude Code  Co-op for 2-4 players: host a world, friends join by address (Hamachi, LAN, any VPN); players, items, furniture, doors, lights, paint, chalk, walls and nails shared
+- Owner: "plan and work on the full system for multiplayer, double checking for bugs or errors, just for co-op 2-4 players".
+- New Scripts/Runtime/Net: NetTransport (sockets polled once a frame: TCP framed by length for what must arrive, UDP with a
+  token once both ends hear each other's datagrams, TCP fallback; 15 s timeout; a clean close that reads first and shuts
+  before closing, so the goodbye is not lost to a reset), NetSession (host a slot, join an address, the handshake: version,
+  a free slot of 1-3, a unique name; the world copy for a joiner; notices; Tab: players and ping), NetSnapshot (the host's
+  save made then without its items, paint, chalk, generation settings and custom rooms, every item with its id and holder,
+  the joiner's own things), NetWorld (players at 20 Hz; items: ids in each player's own range, held/pocket/bag/worn/deck
+  modes, drops and throws moved by the game that let go until they rest, the host settling races; furniture moved by
+  whoever touches it, kinematic elsewhere; doors streamed and left; lights, drains, breakers, homes, button presses,
+  chalk/tape/scrapes, paint patches merged by max, wall strikes with their seed, nails; lamps' plugs; guests' carried
+  things kept by the host), RemotePlayer (the MakeHuman body scaled to the eye, shirt in the player's colour, procedural
+  pose: IK feet stepping, crouch, crawl, sitting, camcorder to the eye, the right hand where theirs is; footsteps; a
+  kinematic capsule; snapshot interpolation 100 ms behind with brief extrapolation), NetHooks (where the game says a change
+  happened here; quiet while applying), NetWorld.Debug (a -netdebug copy obeys the host's test commands; -netjoin, -netname).
+- Game changes: WorldItem NetForeign/NetRemote/lootTakenFrom; MovableProp NetRemote and hooks in Wake/Freeze/NailDown/Unnail;
+  MovablePropManager.NetPlace; WorldSaver.Collect (the save made without writing), guests, joined worlds never saved,
+  paint/marks from the host; GameSession.PlayNet/NetClient/InWorldForNet; WorldStreamer uses the host's settings and rooms
+  (RoomLibrary.UseShared) and adds NetWorld; Door.Live/Find/NetSet/NetDriven and the DoorStates hooks; LightZones, PowerGrid,
+  Homes, Marks, NailWork, WallDamage (StrikeSeeded: the blow's randomness from a seed), WallBreaker.NetStrike, SprayPaint
+  (net patches), SprayCan.RemoteSpray, PropGrabber.Forget and no grabbing another's moving prop, LightSwitch.Show,
+  Cassette.LeaveDeck, Backpack open/shut internal, FirstPersonBody.SeatHip; TensionDirector keeps its doors and dark rooms
+  out of every player's sight; DarkChanges runs on the host only and away from everyone; PauseMenu does not stop time in a
+  session (host: addresses, SAVE AND END THE GAME; friend: LEAVE THE GAME); MainMenu MULTIPLAYER (name, HOST A WORLD with
+  the addresses and port, JOIN A GAME with address and port, errors shown).
+- Checked (World 3 hosted in the editor, one and two built copies joining on this PC, driven by test commands): join and the
+  world fingerprint; three players seeing each other (relay between friends); walking, sitting on a sofa; pick up, hold,
+  spray (paint and the jet seen by the others), throw (same resting place), pocket (gone from the others), leave and rejoin
+  (back where they left with the chalk in the pocket); a found backpack taken (the same object in every game); two players
+  grabbing one can (the host's got it, the other let go); a light switch from either side; a door by its handle; boxes
+  knocked and carried; the host quitting ("THE HOST QUIT" for everyone); a failed join; ~2-3 KB/s per player.
+  Bugs found and fixed on the way: late UDP moves re-flagging rested items, props and doors (rest timestamps); a new
+  item marked as moved by its maker; settling items claimed on joining (grace and a speed threshold); the item list
+  changed while walked (a backpack's contents getting ids); the goodbye lost to a reset; the test commands running with
+  the hooks quiet; two copies sharing a test name; the camcorder at the mouth; white eyes; the shirt colour on the jeans;
+  a kinematic velocity warning. EditMode tests 187/187 (new NetTests: messages, the world copy, a real connection).
+- Not done / not tested: over real Hamachi between two PCs (only loopback); a lamp cord's hang, the elevator car and a
+  tape's position can differ a little between games; no voice (Discord); internet play without a VPN needs a forwarded
+  port (Relay or Steam later). Docs/MultiplayerPlan.md is now the co-op guide.
+- Sources: Valheim's networking (Edgegap's deep dive; SpreadTheLoad's notes); coherence's physics authority transfer,
+  Unity Netcode's NetworkRigidbody notes; geckos.io snapshot interpolation, Gabriel Gambetta's entity interpolation.
+
 ## 2026-11-05 01:20  Claude Code  The spray can remodelled as a real aerosol can; spray paint that builds up like paint (canvases, a real spray pattern, speckled edges, runs from wet paint); the mist a jet and a haze; a multiplayer plan
 - Owner: "work on improving spray paint can 10x model and also I don't like how the spray paint itself looks coming out
   or on wall"; then "write out a plan for how you would make multiplayer work, maybe even just with Hamachi".

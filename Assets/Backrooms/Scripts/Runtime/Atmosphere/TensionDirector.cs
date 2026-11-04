@@ -236,6 +236,7 @@ namespace Backrooms.Atmosphere
                 if (!d || d.Held || d.Latched || d.Angle < 15f) continue;
                 float dist = Vector3.Distance(d.transform.position, ear);
                 if (dist < 4f || dist > 16f || Visible(d.transform.position + Vector3.up * 1f, 0.8f)) continue;
+                if (Net.NetWorld.AnyoneNear(d.transform.position, 4f) || Net.NetWorld.AnyoneSees(d.transform.position + Vector3.up, 0.8f, d.transform)) continue;   // (nor anyone else's)
                 if (dist < bestD) { bestD = dist; best = d; }
             }
             if (!best) return false;
@@ -261,6 +262,7 @@ namespace Backrooms.Atmosphere
                 var z = Zone(ws, p);
                 if (!z.HasValue || (here.HasValue && z.Value == here.Value)) continue;
                 if (LightZones.IsOff(z.Value.chunk, z.Value.room)) continue;
+                if (OthersThere(ws, z.Value, p)) continue;                              // (co-op: not where another player is)
                 LightZones.Set(z.Value.chunk, z.Value.room, true);
                 LastEvent = "the lights went out in a room " + Vector3.Distance(p, ear).ToString("0") + " m away";
                 Heard(peak ? 0.3f : 0.18f, Vector3.Distance(p, ear));
@@ -292,6 +294,17 @@ namespace Backrooms.Atmosphere
         }
 
         void Sag(float depth) => _sag = Mathf.Max(_sag, depth);
+
+        /// <summary>Co-op (2026-11-04): another player is in that room, or could see the spot.</summary>
+        static bool OthersThere(WorldStreamer ws, (Vector3Int chunk, int room) zone, Vector3 p)
+        {
+            foreach (var a in Net.NetWorld.Avatars)
+            {
+                var z = Zone(ws, a.transform.position);
+                if (z.HasValue && z.Value.chunk == zone.chunk && z.Value.room == zone.room) return true;
+            }
+            return Net.NetWorld.AnyoneSees(p + Vector3.up * 1.2f, 0.5f, null);
+        }
 
         // ---------------- Places ----------------
 

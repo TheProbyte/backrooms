@@ -34,6 +34,7 @@ namespace Backrooms.Interaction
         /// <summary>A nail driven in at a point (world), its head out along dir. In a prop if prop is given.</summary>
         public static void Add(Vector3 at, Vector3 dir, MovableProp prop)
         {
+            if (Net.NetHooks.On) Net.NetHooks.NailAdd?.Invoke(at, dir, prop ? prop.Spec.id : 0UL);   // (co-op)
             var n = new Nail { position = at, direction = dir.normalized };
             if (prop)
             {
@@ -76,6 +77,11 @@ namespace Backrooms.Interaction
         {
             if (i < 0 || i >= s_nails.Count) return;
             var n = s_nails[i];
+            if (Net.NetHooks.On && Net.NetHooks.NailRemove != null)
+            {
+                var host = n.prop != 0 ? MovableProp.Find(n.prop) : null;
+                Net.NetHooks.NailRemove(host ? host.transform.TransformPoint(n.position) : n.position);
+            }
             s_nails.RemoveAt(i);
             if (n.prop == 0)
             {

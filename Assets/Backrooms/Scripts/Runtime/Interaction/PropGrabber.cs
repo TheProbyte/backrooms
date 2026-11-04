@@ -329,6 +329,7 @@ namespace Backrooms.Interaction
             if (best == float.MaxValue) return false;
             prop = hit.collider.GetComponentInParent<MovableProp>();
             if (prop && _seating && _seating.Chair == prop) prop = null;        // not the seat you sit on
+            if (prop && prop.NetRemote) prop = null;                             // another player is moving it
             return prop;
         }
 

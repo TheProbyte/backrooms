@@ -24,6 +24,8 @@ namespace Backrooms.Interaction
 
         /// <summary>How far into sitting the body is (0 standing .. 1 sat).</summary>
         public float SitWeight => _sitW;
+        /// <summary>Where the hips are on the seat (world).</summary>
+        public Vector3 SeatHip => _seatHip;
 
         void SeatHips(ref Vector3 hipsBase, float dt)
         {

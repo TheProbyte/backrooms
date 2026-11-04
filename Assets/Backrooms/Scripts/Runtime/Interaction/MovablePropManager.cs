@@ -104,6 +104,27 @@ namespace Backrooms.Interaction
             Store(p);
         }
 
+        /// <summary>
+        /// Co-op (2026-11-04): another player moved this prop (it is not in this game's world now, or not yet moved here):
+        /// its record, and the prop itself if its chunk is loaded.
+        /// </summary>
+        public void NetPlace(MovableSpec spec, Vector3 position, Quaternion rotation)
+        {
+            if (spec == null) return;
+            var live = MovableProp.Find(spec.id);
+            if (live)
+            {
+                Detach(live);
+                live.transform.SetPositionAndRotation(position, rotation);
+                Store(live);
+                return;
+            }
+            if (!_moved.TryGetValue(spec.id, out var r)) _moved[spec.id] = r = new Record { spec = spec };
+            r.position = position; r.rotation = rotation; r.chunk = ChunkKey(position);
+            if (r.live) { r.live.transform.SetPositionAndRotation(position, rotation); return; }
+            if (streamer && streamer.LayoutAt(r.chunk) != null) r.live = MovableProp.Spawn(r.spec, transform, position, rotation);
+        }
+
         /// <summary>Saves where the prop is now.</summary>
         public void Store(MovableProp p)
         {

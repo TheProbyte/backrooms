@@ -54,6 +54,22 @@ namespace Backrooms.Interaction
             Pose();
         }
 
+        /// <summary>Co-op (2026-11-04): the room's switches show what another player set (and click, if near).</summary>
+        public static void Show(Vector3Int chunk, int room)
+        {
+            foreach (var s in s_all)
+            {
+                if (s._chunk != chunk || s._room != room) continue;
+                bool off = s.Off;
+                float want = off ? Throw : 0f;
+                if (Mathf.Approximately(s._want, want)) continue;
+                s._want = want;
+                if (!s._fx) s._fx = ItemModels.Source(s.gameObject, 6f);
+                s._fx.pitch = off ? 0.92f : 1.05f;
+                s._fx.PlayOneShot(SoundBank.SwitchClick, 0.9f * SoundCatalog.Volume(SoundIds.Switches));
+            }
+        }
+
         void OnEnable() => s_all.Add(this);
         void OnDisable() => s_all.Remove(this);
 

@@ -24,6 +24,8 @@ namespace Backrooms.Interaction
         [System.NonSerialized] public bool held;
         /// <summary>Stuck where it was put (build mode's physics off): never simulated, never taken; may be half in a wall.</summary>
         public bool Pinned { get; private set; }
+        /// <summary>Co-op (2026-11-04): another player's game is moving it (holding it, pushing it): kinematic here, following.</summary>
+        [System.NonSerialized] public bool NetRemote;
 
         float _still;
         BoxCollider _casters;             // an office chair's base: rolls only while it stands on it
@@ -206,6 +208,7 @@ namespace Backrooms.Interaction
             Spec.pinned = true; Pinned = true;
             _lastGoodPos = transform.position; _lastGoodRot = transform.rotation;
             MovablePropManager.Instance?.Store(this);
+            if (Net.NetHooks.On) Net.NetHooks.PropRested?.Invoke(this);
         }
 
         /// <summary>Its last nail pulled out: free again (it stays where it is until something moves it).</summary>
@@ -213,6 +216,7 @@ namespace Backrooms.Interaction
         {
             Spec.pinned = false; Pinned = false;
             MovablePropManager.Instance?.Store(this);
+            if (Net.NetHooks.On) Net.NetHooks.PropRested?.Invoke(this);
         }
 
         /// <summary>Builds the box visuals (board, tape, print) as one mesh with a part for each, casting its own shadow.</summary>
@@ -309,13 +313,14 @@ namespace Backrooms.Interaction
         /// <summary>Starts simulating (and marks the prop as moved, so its pose is saved from now on).</summary>
         public void Wake()
         {
-            if (Pinned) return;                                   // stuck where build mode put it: never moves
+            if (Pinned || NetRemote) return;                      // stuck where build mode put it, or another player has it
             _still = 0f;
             if (!Body.isKinematic) { Body.WakeUp(); return; }
             MovablePropManager.Instance?.Detach(this);
             Body.isKinematic = false;
             Body.interpolation = RigidbodyInterpolation.Interpolate;
             Body.WakeUp();
+            if (Net.NetHooks.On) Net.NetHooks.PropWoke?.Invoke(this);      // this game moves it now
             // Frozen props touching this one (chairs tucked under a table) join in, or they would act as walls.
             foreach (var (c, s) in Shape.boxes)
             {
@@ -361,13 +366,14 @@ namespace Backrooms.Interaction
             Body.interpolation = RigidbodyInterpolation.None;
             _lastGoodPos = transform.position; _lastGoodRot = transform.rotation;
             MovablePropManager.Instance?.Store(this);
+            if (Net.NetHooks.On) Net.NetHooks.PropRested?.Invoke(this);    // where it came to rest, for the others
         }
 
         void OnCollisionEnter(Collision c)
         {
             // Something moving hits a frozen prop hard enough: it joins in.
             var other = c.rigidbody ? c.rigidbody.GetComponent<MovableProp>() : null;
-            if (other && other.Body.isKinematic && !Body.isKinematic && c.relativeVelocity.sqrMagnitude > 0.16f)
+            if (other && other.Body.isKinematic && !other.NetRemote && !Body.isKinematic && c.relativeVelocity.sqrMagnitude > 0.16f)
             {
                 other.Wake();
                 other.Body.AddForceAtPosition(-c.impulse * 0.6f, c.GetContact(0).point, ForceMode.Impulse);

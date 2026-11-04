@@ -35,6 +35,7 @@ namespace Backrooms.Generation
             s_zones[(chunk, room)] = new Zone { off = off, at = instant ? -100f : Time.time };
             s_chunks.Add(chunk);
             Version++;
+            if (Net.NetHooks.On) Net.NetHooks.Light?.Invoke(chunk, room, off, instant);      // (co-op: the others' lights too)
         }
 
         /// <summary>
@@ -48,6 +49,7 @@ namespace Backrooms.Generation
             s_drained[(chunk, room)] = new Zone { off = on, at = Time.time };
             s_chunks.Add(chunk);
             Version++;
+            if (Net.NetHooks.On) Net.NetHooks.Drain?.Invoke(chunk, room, on);
         }
 
         /// <summary>Is the shadow in this room, and how long since it came (s)?</summary>

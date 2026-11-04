@@ -51,3 +51,15 @@
 .mm-root .mm-desc { font-size: 16px; color: rgb(170, 200, 255); margin: 0 4px 14px 4px; white-space: normal; letter-spacing: 0; }
 
 .mm-root .mm-hint { font-size: 13px; color: rgb(170, 200, 255); margin: 10px 2px 0 2px; letter-spacing: 1px; }
+
+/* Co-op (2026-11-05): a row with a text field (your name, the host's address, the port). */
+.mm-fieldrow { padding: 4px 10px 4px 4px; }
+.mm-root .mm-fieldlabel { font-size: 22px; letter-spacing: 4px; -unity-font-style: bold; width: 150px; }
+.mm-field { flex-grow: 1; margin: 0; }
+.mm-field .unity-base-text-field__input, .mm-field .unity-text-field__input {
+    background-color: rgba(0, 0, 30, 0.65); border-width: 1px; border-color: rgba(225, 232, 255, 0.7); border-radius: 0;
+    font-size: 22px; padding: 4px 8px; color: rgb(242, 246, 255); -unity-font-style: bold;
+}
+.mm-root .mm-field .unity-text-element { color: rgb(242, 246, 255); }
+.mm-item.mm-sel .mm-field .unity-base-text-field__input { border-color: rgb(10, 22, 70); }
+.mm-root .mm-panel.mm-wide .mm-note { white-space: normal; }

@@ -247,6 +247,18 @@ namespace Backrooms.Destruction
             return impact;
         }
 
+        /// <summary>
+        /// Co-op (2026-11-04): a blow struck in another player's game: the same pieces break here (the same seed), with
+        /// their sound, dust and falling bits.
+        /// </summary>
+        public void NetStrike(WallKey k, Vector3 origin, Vector3 dir, float reach, Blow blow, int seed)
+        {
+            var r = WallDamage.StrikeSeeded(seed, k, origin, dir, reach, blow);
+            if (r.kind == StrikeKind.None || r.kind == StrikeKind.Passed) return;
+            var impact = new Impact();
+            Struck(k, r, dir.normalized, Mathf.Clamp01(blow.energy), ref impact);
+        }
+
         Impact Struck(WallKey k, StrikeResult r, Vector3 dir, float energy, ref Impact impact)
         {
             LastBlow = $"{r.kind} ({k}), {r.removed} out{(r.studBroke ? ", stud broke" : "")}{(r.through ? ", through" : "")}";

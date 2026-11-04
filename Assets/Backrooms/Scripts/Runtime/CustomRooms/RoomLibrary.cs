@@ -72,6 +72,16 @@ namespace Backrooms.CustomRooms
             _loaded = true;
         }
 
+        /// <summary>Co-op (2026-11-04): another player's rooms in place of this player's own (their world is built from them).
+        /// The next <see cref="Reload"/> brings this player's own back.</summary>
+        public static void UseShared(List<RoomBlueprint> rooms)
+        {
+            var list = new List<RoomBlueprint>(rooms ?? new List<RoomBlueprint>());
+            list.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
+            Publish(list);
+            _loaded = true;
+        }
+
         static void Publish(List<RoomBlueprint> list)
         {
             var s = new Snapshot { all = list.ToArray() };
