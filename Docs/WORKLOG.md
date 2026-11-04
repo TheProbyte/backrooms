@@ -15,6 +15,40 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-04 14:30  Claude Code  The vending machine and lawn chair remade after the owner's photos; the school chair, exit sign and stop sign improved
+- Owner: "go thru and improve the models you just make. use this as inspo for the vending machine. and this for lawn
+  chair" (a photo of a 1990s can vendor, a photo of a white fan-back resin armchair).
+- Vending machine (Tools/Blender/build_vending.py, rewritten): the photo's 501E-class can vendor, 72 x 37 x 33 in (now
+  0.94 m wide; SpecialRooms.VendingSize): a tall backlit sign in a black bezel on the left (an invented brand, Polar: a
+  red field, a white swoosh, the name in script up the middle, Enjoy beside it, the photo's hairline crack), on the
+  right a black control panel with a lit can-on-ice picture, a service sticker, a stainless coin entry with its
+  acceptor window and the DEPOSIT NICKELS, DIMES OR QUARTERS label, a price window, a second lit picture, the T-handle
+  lock, five lit picture buttons in two columns (the orange one sold out), the coin return and its chrome cup; under
+  them the delivery port with its flap, a maker's badge, the red kick panel, the plinth. The artwork is rendered in
+  Blender (an Art kit: emissive shapes, real fonts, small Cycles scenes of cans in crushed ice).
+- bake_kit.bake(glow=...): bakes a second image over the same layout, what a lit face shines with
+  (<name>_Emission.png). VendingGlow_Emission: the sign brighter over its two fluorescent tubes and dimmer at their
+  ends (as backlit vendor signs are lit: tubes the panel's full height behind it). VendingMachine.cs uses it as the
+  lit sign's emission map; its buttons are now a 2 x 3 grid (Buttons[]), its light and buzz moved to the sign's side.
+- Lawn chair (build_chairs.py, rewritten): the photo's monobloc (the Grosfillex Miami's class, seat 0.43 m, arms
+  0.63 m): one sweep from each front foot up the leg, bent back into the arm, round the back as its top rail; a fan of
+  nine slats from a lumbar band; a dished seat with a rolled skirt and ribs under it; the back legs of U section.
+  Built as overlapping parts, fused into one moulding with Blender's voxel remesh, its joins smoothed into fillets,
+  reduced to 20k triangles.
+- School chair: one shell (seat curving up into the back, its sides wrapping round), the hand hole cut through it
+  (an exact boolean), the frame's uprights bolted behind the back (no longer standing free in front of it).
+- Exit sign: its face's glow is baked through the face's own layout (it had been laid out in the artwork's, so the
+  glow sat off the letters, a smear below them); LED hot spots on a 2 cm grid; the housing a little yellowed; a
+  listing label on its end. Stop sign: the red sun-faded toward the top, the sheeting's diamond seal pattern, dirt run
+  down from the top edge and the bolts, an installer's sticker on its back.
+- The plastic chairs cast their own shadow (MovableProp.OwnShadow): their box stand-ins had shaded the lawn chair's
+  seat dark grey from above and cast one block under the legs.
+- New Tools/Blender/showcase.py: renders the baked models put together as the game does, in a small Backrooms room.
+- Checked: EditMode tests; World 3, the new vending machine in a corridor (lit, its cord), a lawn chair and school
+  chairs (the seat white with the fix); showcase renders of all of them beside the owner's photos. The exit and stop
+  signs were seen in the renders only (they use the game's own meshes and textures), not again in the game.
+- Not real brands anywhere: the photo's layout, an invented "Polar" brand and flavours.
+
 ## 2026-11-04 11:30  Claude Code  A plastic lawn chair and a school chair; a POOLROOMS ROOM option in the room builder
 - Owner: "fully render and recheck making a plastic lawn chair and a school chair"; "add poolrooms option for creating
   a poolrooms room in the room builder. with full options for everything".

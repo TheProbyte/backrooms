@@ -290,7 +290,7 @@ namespace Backrooms.Generation
         }
 
         /// <summary>The vending machine's footprint (m): width, height, depth (Tools/Blender/build_vending.py).</summary>
-        public static readonly Vector3 VendingSize = new Vector3(0.99f, 1.83f, 0.84f);
+        public static readonly Vector3 VendingSize = new Vector3(0.94f, 1.83f, 0.84f);    // a 501E's 72 x 37 x 33 in
 
         /// <summary>
         /// A drinks vending machine backed against a free wall cell of the room (not by a door, nothing in front of it), its

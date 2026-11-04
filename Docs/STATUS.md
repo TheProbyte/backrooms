@@ -27,16 +27,20 @@ Last updated 2026-11-04 (world version 13).
   steps, a red rescue tube), exposed shower columns with push-button valves, stainless ladder treads, changing stalls of
   solid plastic on aluminium brackets with coat hooks and a headrail, aluminium seat planks on the bleachers. Drawn with
   PoolLit copies of their baked materials (PoolMaterials.ForBaked).
-- **A drinks vending machine** (Tools/Blender/build_vending.py, Interaction/VendingMachine.cs): a 72 in can machine with
-  a lit ad panel, buttons, coin slot and bill validator; it hums (fan, a compressor that cycles, ballast buzz), lights
-  the floor in front, and its cord runs to the nearest outlet (or it stands unplugged, dark). In most break rooms,
-  rarely in a hallway or office. Poke it for a can.
+- **A drinks vending machine** (Tools/Blender/build_vending.py, Interaction/VendingMachine.cs): remade after the
+  owner's photo of a 1990s can vendor (72 x 37 x 33 in): a tall backlit sign (an invented brand, Polar) brighter over
+  its two tubes, a control panel of lit pictures and five picture buttons, the coin entry and its label, the T-handle,
+  the delivery port, a red kick panel. It hums (fan, a compressor that cycles, ballast buzz), lights the floor in
+  front, and its cord runs to the nearest outlet (or it stands unplugged, dark). In most break rooms, rarely in a
+  hallway or office. Poke it for a can.
 - **Signs** (Tools/Blender/build_signs.py): the exit sign remodelled (thermoplastic housing, stencil letters that glow,
   some with emergency lamp heads); a 24 in stop sign on a post in a rubber base at some warehouse cross aisles.
 - **Doors and light**: a shut door no longer shows the lit room's light on its edges from the dark side, and light
   comes through gradually as it opens (the light grid's opening grows with the door's angle).
-- **Plastic chairs** (Tools/Blender/build_chairs.py): a white or green resin lawn chair and a blue or orange school chair,
-  both movable and carried like the office chair; rare in offices, lawn chairs on some Poolrooms decks.
+- **Plastic chairs** (Tools/Blender/build_chairs.py): a white or green resin lawn chair (remade after the owner's photo:
+  a one-piece fan-back monobloc, fused with a voxel remesh) and a blue or orange school chair (one shell with a hand
+  hole on a bolted steel frame), both movable and carried like the office chair; rare in offices, lawn chairs on some
+  Poolrooms decks. Tools/Blender/showcase.py renders any of the baked models put together.
 - **Room builder: POOLROOMS ROOM** (CustomRooms/PoolRoomStamp.cs): a room can be made in the Poolrooms' style with its
   tiles, water (a pool with a deck, flooded, or deck only), deck width, shallow and deep ends, slope, lanes, roof
   openings and fittings (ladders, lifeguard's chair, drain, showers, bleachers, lawn chairs). Spouts and slides are not

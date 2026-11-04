@@ -12,14 +12,18 @@ namespace Backrooms.Interaction
     /// and out with a relay's click (a refrigerated vendor's cycle), the sign's tubes buzzing faintly, now and then a tube
     /// flickering. Power: its own circuit (variant bit 0), else the district's breaker (PowerGrid); unplugged (bit 1),
     /// never. Press its buttons (IPokeTarget): a beep; most buttons whirr and drop a can into the bin with a thud, two are
-    /// sold out (two beeps). Frame: origin on the floor at the middle of its foot, +Z its front.
+    /// sold out (two beeps). Frame: origin on the floor at the middle of its foot, +Z its front. Remade after the owner's
+    /// photo (2026-11-04): the sign on its left (as seen from the front), the controls on its right, five picture buttons
+    /// in two columns; the sign shines brighter over its two tubes (VendingGlow_Emission).
     /// </summary>
     public class VendingMachine : MonoBehaviour, IPokeTarget
     {
         const float Front = 0.42f;
-        static readonly Vector3 Column = new Vector3(-0.335f, 1.2f, Front);
-        const float ButtonZ0 = 1.5f, ButtonDz = 0.068f;
-        static readonly bool[] SoldOut = { false, false, true, false, false, false, true, false };
+        static readonly Vector3 Column = new Vector3(-0.24f, 0.98f, Front);     // the buttons
+        /// <summary>The picture buttons' middles (x, y) on its front, and which is sold out (the orange).</summary>
+        static readonly Vector2[] Buttons = { new Vector2(-0.191f, 1.0645f), new Vector2(-0.288f, 1.0645f), new Vector2(-0.191f, 0.9805f),
+                                              new Vector2(-0.288f, 0.9805f), new Vector2(-0.191f, 0.8985f) };
+        static readonly bool[] SoldOut = { false, false, false, true, false };
 
         bool _own, _unplugged, _powered, _compOn;
         Vector3Int _circuit;
@@ -61,7 +65,7 @@ namespace Backrooms.Interaction
             // The light it throws: a wide spot out of its front, red-white like its sign, on its room only.
             var lg = new GameObject("Light");
             lg.transform.SetParent(transform, false);
-            lg.transform.localPosition = new Vector3(-0.1f, 1.15f, Front + 0.12f);
+            lg.transform.localPosition = new Vector3(0.1f, 1.15f, Front + 0.12f);
             lg.transform.localRotation = Quaternion.Euler(28f, 0f, 0f);
             _light = lg.AddComponent<Light>();
             _light.type = LightType.Spot;
@@ -76,14 +80,14 @@ namespace Backrooms.Interaction
             MakeClips();
             _fan = Loop("Fan", s_fan, new Vector3(0f, 0.3f, -0.2f), 0.18f, 10f);
             _comp = Loop("Compressor", s_comp, new Vector3(0.2f, 0.15f, -0.3f), 0f, 14f);
-            _buzz = Loop("Buzz", s_buzz, new Vector3(-0.1f, 1.1f, Front - 0.05f), 0.035f, 5f);
+            _buzz = Loop("Buzz", s_buzz, new Vector3(0.145f, 1.1f, Front - 0.05f), 0.035f, 5f);
             _fx = ItemModels.Source(gameObject, 12f);
 
             // What the fingers find: the button column.
             var bc = gameObject.AddComponent<BoxCollider>();
             bc.isTrigger = true;
-            bc.center = Column + new Vector3(0f, 0f, 0.03f);
-            bc.size = new Vector3(0.3f, 0.75f, 0.08f);
+            bc.center = new Vector3(-0.24f, 0.98f, Front + 0.03f);
+            bc.size = new Vector3(0.21f, 0.26f, 0.08f);
             Apply(true);
         }
 
@@ -106,7 +110,8 @@ namespace Backrooms.Interaction
                 if (src)
                 {
                     s_on = new Material(src) { name = "Vending sign (lit)", hideFlags = HideFlags.DontSave };
-                    s_on.SetTexture("_BaseMap", tex); s_on.SetTexture("_EmissionMap", tex);
+                    var glow = Resources.Load<Texture2D>("Fittings/VendingGlow_Emission");   // brighter over its tubes
+                    s_on.SetTexture("_BaseMap", tex); s_on.SetTexture("_EmissionMap", glow ? glow : tex);
                     s_on.SetTextureScale("_BaseMap", Vector2.one); s_on.SetTextureOffset("_BaseMap", Vector2.zero);
                     s_on.SetColor("_BaseColor", Color.white);
                     s_on.SetColor("_EmissionColor", new Color(1.6f, 1.6f, 1.6f));
@@ -174,8 +179,8 @@ namespace Backrooms.Interaction
         /// <summary>The finger comes to one of its buttons and presses it in.</summary>
         public void PokeStroke(out Vector3 from, out Vector3 to)
         {
-            if (!_busy) _button = _rng.Next(SoldOut.Length);
-            var b = new Vector3(Column.x, ButtonZ0 - _button * ButtonDz, Front - 0.008f);
+            if (!_busy) _button = _rng.Next(Buttons.Length);
+            var b = new Vector3(Buttons[_button].x, Buttons[_button].y, Front - 0.0025f);
             from = transform.TransformPoint(b + Vector3.forward * 0.035f);
             to = transform.TransformPoint(b - Vector3.forward * 0.004f);
         }

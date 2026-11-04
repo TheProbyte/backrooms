@@ -455,9 +455,11 @@ def paint_material(m, image, seed, scale=1.0, ao_dist=0.05, wear=1.0, dirt=1.0, 
     return keep, em
 
 
-def bake(ob, name, out_dir, res=None, scale=1.0, wear=1.0, dirt=1.0, px_per_m=420.0, samples=48, seed=1):
+def bake(ob, name, out_dir, res=None, scale=1.0, wear=1.0, dirt=1.0, px_per_m=420.0, samples=48, seed=1, glow=None):
     """Bakes the aged colour of a finished object into <out_dir>/<name>_Albedo.png and makes "Bake" its first UV map
-    (the only one exported). res: the image size (None: from the surface area at px_per_m, 256..2048)."""
+    (the only one exported). res: the image size (None: from the surface area at px_per_m, 256..2048).
+    glow: for a lit face, glow(material, node_tree, colour_socket) gives the colour it shines with (or None: dark),
+    baked over the same layout into <name>_Emission.png (a backlit sign brighter over its tubes, say)."""
     objs = _objs(ob)
     fixed = res is not None
     if res is None:
@@ -512,6 +514,27 @@ def bake(ob, name, out_dir, res=None, scale=1.0, wear=1.0, dirt=1.0, px_per_m=42
     img.filepath_raw = path
     img.file_format = "PNG"
     img.save()
+    if glow is not None:
+        gimg = bpy.data.images.new(name + "_Emission", res, res, alpha=False)
+        gimg.colorspace_settings.name = "sRGB"
+        for m, (keep, em) in restore:
+            nt = m.node_tree
+            tn = next(n for n in nt.nodes if n.type == "TEX_IMAGE" and n.image == img)
+            tn.image = gimg
+            nt.nodes.active = tn
+            src = em.inputs["Color"].links[0].from_socket if em.inputs["Color"].links else None
+            g = glow(m, nt, src)
+            for l in list(em.inputs["Color"].links):
+                nt.links.remove(l)
+            if g is None:
+                em.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
+            else:
+                nt.links.new(g, em.inputs["Color"])
+        bpy.ops.object.bake(type="EMIT", margin=8, use_clear=True)
+        gimg.filepath_raw = os.path.join(out_dir, name + "_Emission.png")
+        gimg.file_format = "PNG"
+        gimg.save()
+        print("bake_kit: %s emission baked" % name)
     # Back to the Principled output (what the FBX exports), and the bake UV first, alone.
     for m, (keep, em) in restore:
         out = next(n for n in m.node_tree.nodes if n.type == "OUTPUT_MATERIAL")

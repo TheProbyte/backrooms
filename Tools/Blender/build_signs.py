@@ -111,7 +111,7 @@ FW, FH = 0.29, 0.168
 
 
 def exit_body(combo):
-    WH = S("Plastic_ExitHousing", (0.93, 0.93, 0.9), "plastic", 0.4)
+    WH = S("Plastic_ExitHousing", (0.91, 0.9, 0.85), "plastic", 0.4)      # (a little yellowed with age)
     SC = S("Steel_ExitScrew", (0.6, 0.6, 0.58), "metal", 0.4, 1.0)
     RD = S("Plastic_ExitTest", (0.6, 0.08, 0.06), "plastic", 0.4)
     GN = S("Gloss_ExitLamp", (0.2, 0.55, 0.25), "glass", 0.2)
@@ -137,7 +137,48 @@ def exit_body(combo):
             for o in (head, lens):
                 place(o, rot('Y', sx * 50) @ rot('X', 55), base + Vector((0, 0, 0.028)))
             p += [head, lens]
-    return finish(p, "ExitCombo" if combo else "ExitSign", sharp_deg=45)
+    body = finish(p, "ExitCombo" if combo else "ExitSign", sharp_deg=45)
+    # Its listing label on the right end.
+    lab = Canvas(160, 96, (0.93, 0.93, 0.9))
+    lab.rect(0, 0, 160, 18, (0.1, 0.1, 0.1))
+    lab.text_c("UL LISTED", 80, 4, 2, (0.95, 0.95, 0.92))
+    lab.text_c("EMERGENCY", 80, 28, 2, (0.12, 0.12, 0.12))
+    lab.text_c("EXIT FIXTURE", 80, 46, 2, (0.12, 0.12, 0.12))
+    lab.text_c("120/277 VAC", 80, 66, 2, (0.12, 0.12, 0.12))
+    lab.lines(14, 84, 146, 1, 6, (0.4, 0.4, 0.4), seed=5)
+    card_ = card("Listing", 0.04, 0.024, (EXW / 2 + 0.0004, -EXD / 2, -0.03), print_mat("Paper_ExitLabel", lab), normal=(1, 0, 0))
+    return join([body, card_], "ExitCombo" if combo else "ExitSign")
+
+
+def _pixels(img):
+    import numpy as np
+    w, h = img.size
+    return np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)
+
+
+def _store(img, a, path=None):
+    img.pixels[:] = a.ravel()
+    img.update()
+    if path:
+        img.filepath_raw = path
+        img.file_format = "PNG"
+        img.save()
+
+
+_EXIT_GLOW = {}
+
+
+def exit_glow(m, nt, col):
+    """bake_kit glow: the face shines with its glow artwork (through the card's own UVs)."""
+    img = bpy.data.images.get(_EXIT_GLOW.get("name", ""))
+    if img is None:
+        return None
+    t = _n(nt, "ShaderNodeTexImage", -700, 700)
+    t.image = img
+    uv = _n(nt, "ShaderNodeUVMap", -900, 700)
+    uv.uv_map = "Tile"
+    nt.links.new(uv.outputs["UV"], t.inputs["Vector"])
+    return t.outputs["Color"]
 
 
 def exit_face():
@@ -157,9 +198,21 @@ def exit_face():
         return build
     face = render_art(os.path.join(tmp, "exit_face.png"), (FW / 2, FH / 2), (512, 296), art(False), bg=(0.93, 0.93, 0.9))
     glow = render_art(os.path.join(tmp, "exit_glow.png"), (FW / 2, FH / 2), (512, 296), art(True), bg=(0.0, 0.0, 0.0))
-    # The glow is saved beside the model as it is (no bake: it is light, not paint).
-    import shutil
-    shutil.copyfile(os.path.join(tmp, "exit_glow.png"), os.path.join(os.path.abspath(OUT), "ExitFace_Emission.png"))
+    # The glow, as an LED sign's is: brighter over each of its LEDs (a 2 cm grid behind the diffuser), dimmer between
+    # them; baked over the face's own texture layout beside its colour (ExitFace_Emission.png, bake_kit's glow).
+    import numpy as np
+    a = _pixels(glow)
+    h, w = a.shape[:2]
+    ys, xs = np.mgrid[0:h, 0:w]
+    mx, my = xs / w * FW, ys / h * FH
+    pitch = 0.02
+    row = np.floor(my / pitch)
+    dx = ((mx + (row % 2) * pitch / 2) % pitch) - pitch / 2
+    dy = (my % pitch) - pitch / 2
+    k = 0.72 + 0.28 * np.exp(-(dx * dx + dy * dy) / (2 * 0.0065 ** 2))
+    a[..., :3] *= k[..., None]
+    _store(glow, a)
+    _EXIT_GLOW["name"] = glow.name
     m = mat("Print_ExitFace", (1, 1, 1), 0.3)
     m["linear"] = 1
     m["print"] = face.name
@@ -193,6 +246,34 @@ def stop_sign():
         poly("Field", octa(r_out - 0.022, 0.002, 0.012), (0.68, 0.035, 0.04), 0.002)
         text("STOP", 0.27, 0.0, -0.008, (0.97, 0.97, 0.95), z=0.01, squeeze=0.8, spacing=1.04)
     art = render_art(os.path.join(tmp, "stop_face.png"), (r_out, r_out), (768, 768), build, bg=(0.68, 0.035, 0.04))
+    # Years outside: the red faded toward the top (the sun), the sheeting's faint diamond seal pattern, dirt run down
+    # from the top edge and the bolts, a fine grime.
+    import numpy as np
+    a = _pixels(art)
+    h, w = a.shape[:2]
+    ys, xs = np.mgrid[0:h, 0:w]
+    mx, my = (xs / w - 0.5) * 2 * r_out, (ys / h - 0.5) * 2 * r_out          # metres from the middle, y up
+    red = (a[..., 0] > 0.45) & (a[..., 1] < 0.3)
+    fade = np.clip((my + 0.1) / 0.45, 0.0, 1.0) * 0.1
+    for c in (1, 2):
+        a[..., c] = np.where(red, a[..., c] + (0.55 - a[..., c]) * fade * 0.5, a[..., c])
+    a[..., 0] = np.where(red, a[..., 0] * (1.0 - fade * 0.25), a[..., 0])
+    per, lw = 0.012, 0.0006
+    d1 = np.abs(((mx + my) % per) - per / 2)
+    d2 = np.abs(((mx - my) % per) - per / 2)
+    seal = ((d1 < lw) | (d2 < lw)).astype(np.float32)
+    a[..., :3] *= (1.0 + 0.035 * seal)[..., None]
+    rnd = np.random.default_rng(24)
+    streak = np.zeros((h, w), np.float32)
+    starts = [(x0, r_out * 0.92) for x0 in rnd.uniform(-0.2, 0.2, 9)] + [(0.0, 0.2), (0.0, -0.2)]
+    for (x0, y0) in starts:
+        wdt = rnd.uniform(0.002, 0.006)
+        ln = rnd.uniform(0.06, 0.25)
+        m = (np.abs(mx - x0 - 0.004 * np.sin(my * 40)) < wdt) & (my < y0) & (my > y0 - ln)
+        streak = np.maximum(streak, m * (1.0 - (y0 - my) / ln) * rnd.uniform(0.05, 0.12))
+    grime = rnd.normal(0.0, 0.012, (h, w)).astype(np.float32)
+    a[..., :3] *= np.clip(1.0 - streak + grime, 0.75, 1.05)[..., None]
+    _store(art, np.clip(a, 0.0, 1.0))
 
     FACE = mat("Paint_StopFace", (1, 1, 1), 0.35)
     FACE["linear"] = 1
@@ -238,6 +319,12 @@ def stop_sign():
     for k in range(32):
         hole.rect(5, 4 + k * 8, 11, 8 + k * 8, (0.05, 0.05, 0.05))
     holes = [card("Holes", 0.012, 1.4, (0, -0.0221, 0.82), print_mat("Galv_StopHoles", hole))]
+    # On the plate's bare back: the installer's sticker.
+    st = Canvas(128, 80, (0.9, 0.88, 0.8))
+    st.text_c("INSTALLED", 64, 6, 2, (0.15, 0.15, 0.15))
+    st.text_c("03 1997", 64, 26, 3, (0.15, 0.15, 0.15))
+    st.text_c("FAC 12  BAY 4", 64, 54, 2, (0.3, 0.3, 0.3))
+    holes.append(card("Sticker", 0.075, 0.047, (0.12, -0.0218, zc + 0.12), print_mat("Paper_StopSticker", st), normal=(0, 1, 0)))
     for poly in plate.data.polygons:
         poly.use_smooth = False
     return join([base, plate] + holes, "StopSign")
@@ -246,7 +333,7 @@ def stop_sign():
 run_baked([
     ("ExitSign", lambda: exit_body(False), (0.5, -1.0, -0.2), {"res": 512, "scale": 0.25}),
     ("ExitCombo", lambda: exit_body(True), (0.5, -1.0, 0.2), {"res": 512, "scale": 0.25}),
-    ("ExitFace", exit_face, (0.0, -1.0, 0.0), {"res": 512, "scale": 0.2, "dirt": 0.4, "wear": 0.3}),
+    ("ExitFace", exit_face, (0.0, -1.0, 0.0), {"res": 512, "scale": 0.2, "dirt": 0.4, "wear": 0.3, "glow": exit_glow}),
     ("StopSign", stop_sign, (0.5, -1.0, 0.1), {"scale": 0.8, "px_per_m": 700.0}),
 ])
 print("[signs] done ->", OUT)

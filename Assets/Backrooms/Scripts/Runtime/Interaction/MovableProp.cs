@@ -52,8 +52,10 @@ namespace Backrooms.Interaction
         /// <summary>Props whose models cast their own shadows (no box proxies): sofas and armchairs.</summary>
         static bool OwnShadow(MovableKind k) => k == MovableKind.Sofa || k == MovableKind.Armchair;
         /// <summary>Its own model casts its shadow (no box proxies): upholstery, and the meshes built at spawn (a carton, a
-        /// pallet: closed shapes, and fewer objects for the many on a warehouse's racks).</summary>
-        static bool OwnShadow(MovableSpec s) => OwnShadow(s.kind) || s.cardboard || s.kind == MovableKind.Pallet;
+        /// pallet: closed shapes, and fewer objects for the many on a warehouse's racks; the plastic chairs, 2026-11-04: a
+        /// box over the seat shaded the seat itself and the legs cast one block).</summary>
+        static bool OwnShadow(MovableSpec s) => OwnShadow(s.kind) || s.cardboard || s.kind == MovableKind.Pallet
+                                                || s.kind == MovableKind.LawnChair || s.kind == MovableKind.SchoolChair;
 
         public static MovableProp Spawn(MovableSpec spec, Transform parent, Vector3 position, Quaternion rotation)
         {
