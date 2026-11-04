@@ -99,6 +99,7 @@ namespace Backrooms.Interaction
             var a = ItemModels.Source(go, range);
             a.clip = clip; a.loop = true; a.volume = volume; a.minDistance = 0.8f;
             a.timeSamples = clip ? _rng.Next(clip.samples) : 0;
+            Audio.SoundRoute.Add(a);                                            // its hum round corners through doorways
             return a;
         }
 

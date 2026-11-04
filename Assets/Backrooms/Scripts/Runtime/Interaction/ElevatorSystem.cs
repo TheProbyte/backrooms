@@ -205,7 +205,85 @@ namespace Backrooms.Interaction
             l.type = LightType.Point; l.range = 4f; l.intensity = 3.2f; l.color = new Color(1f, 0.93f, 0.8f); l.shadows = LightShadows.None;
             lightGo.AddComponent<UniversalAdditionalLightData>().renderingLayers = 0xFFFFFFFFu;
 
+            // Its sounds (2026-11-04, ElevatorSounds): the machine and the rails from the cab's roof (it rides with the cab), a
+            // fan in the cab's ceiling, each floor's doors and the arrival chime above them.
+            ElevatorSounds.Make();
+            _motorSrc = Sound(_cab, "LiftMotor", new Vector3(0f, CabH + 0.1f, zc), 24f, ElevatorSounds.Motor, true);
+            _fanSrc = Sound(_cab, "LiftFan", new Vector3(0f, CabH - 0.1f, zc), 5f, ElevatorSounds.Fan, true);
+            _fanSrc.volume = 0.09f;                              // (it starts once its chunk is shown: UpdateSounds)
+            for (int fl = 0; fl < 2; fl++)
+            {
+                _doorSrc[fl] = Sound(transform, "LiftDoors" + fl, new Vector3(0f, fl * _pitch + 1.5f, 0.02f), 14f, ElevatorSounds.DoorRun, true);
+                _dingSrc[fl] = Sound(transform, "LiftChime" + fl, new Vector3(0f, fl * _pitch + DoorH + 0.35f, 0.06f), 26f, null, false);
+            }
+            _lastPhase = _phase;
+
             ApplyPose();
+        }
+
+        AudioSource _motorSrc, _fanSrc;
+        readonly AudioSource[] _doorSrc = new AudioSource[2], _dingSrc = new AudioSource[2];
+        Phase _lastPhase;
+        float _secondDing = -1f;
+        int _dingFloor;
+
+        AudioSource Sound(Transform parent, string name, Vector3 at, float range, AudioClip loop, bool looping)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = at;
+            var a = ItemModels.Source(go, range);
+            a.loop = looping; a.clip = loop; a.volume = 0f; a.minDistance = 1f;
+            Audio.SoundRoute.Add(a);
+            return a;
+        }
+
+        /// <summary>
+        /// The elevator's sounds each frame: the machine's hum and the rails' rumble swell and fall with the cab's speed; the
+        /// doors' motor runs while they move and they thunk shut; arriving, the chime over the doors sounds once if it will
+        /// go up from here, twice if down (as elevator codes ask: one for up, two for down).
+        /// </summary>
+        void UpdateSounds(float dt)
+        {
+            if (!_motorSrc) return;
+            if (_fanSrc && !_fanSrc.isPlaying) _fanSrc.Play();
+            float speed = 0f;
+            if (_phase == Phase.Moving) { float t = _moveT; speed = 30f * t * t * (1f - t) * (1f - t) / 1.875f; }
+            float mv = _phase == Phase.Moving ? 0.06f + 0.42f * speed : 0f;
+            _motorSrc.volume = Mathf.MoveTowards(_motorSrc.volume, mv, dt * 0.8f);
+            _motorSrc.pitch = 0.72f + 0.42f * speed;
+            if (_motorSrc.volume > 0.001f && !_motorSrc.isPlaying) _motorSrc.Play();
+            else if (_motorSrc.volume <= 0.001f && _motorSrc.isPlaying) _motorSrc.Stop();
+            bool doorsMoving = _phase == Phase.Opening || _phase == Phase.Closing;
+            for (int fl = 0; fl < 2; fl++)
+            {
+                var d = _doorSrc[fl];
+                if (!d) continue;
+                float want = doorsMoving && fl == _floor ? 0.32f : 0f;
+                d.volume = Mathf.MoveTowards(d.volume, want, dt * 2.5f);
+                if (d.volume > 0.001f && !d.isPlaying) d.Play();
+                else if (d.volume <= 0.001f && d.isPlaying) d.Stop();
+            }
+            if (_phase != _lastPhase)
+            {
+                if (_lastPhase == Phase.Moving && _phase == Phase.Opening) Chime(_floor);
+                if (_lastPhase == Phase.Closing && _phase == Phase.Closed && _doorSrc[_floor]) _doorSrc[_floor].PlayOneShot(ElevatorSounds.DoorShut, 0.55f);
+                _lastPhase = _phase;
+            }
+            if (_secondDing >= 0f && Time.time >= _secondDing)
+            {
+                _secondDing = -1f;
+                if (_dingSrc[_dingFloor]) _dingSrc[_dingFloor].PlayOneShot(ElevatorSounds.Ding, 0.6f);
+            }
+        }
+
+        void Chime(int fl)
+        {
+            var s = _dingSrc[fl];
+            if (!s) return;
+            s.volume = 1f;
+            s.PlayOneShot(ElevatorSounds.Ding, 0.6f);
+            if (fl > 0) { _secondDing = Time.time + 0.5f; _dingFloor = fl; }      // going down from here: twice
         }
 
         // ---------------- Control ----------------
@@ -291,6 +369,7 @@ namespace Backrooms.Interaction
                     break;
             }
             _insideLast = inside;
+            UpdateSounds(dt);
             ApplyPose();
         }
 

@@ -128,8 +128,10 @@ namespace Backrooms.Interaction
         readonly List<Wheel> _wheels = new List<Wheel>();
         AudioSource _roll, _rattle;
         AudioLowPassFilter _rollLp;
+        Audio.SoundRoute _route;
         float _nextFloor, _floorGain = 1f, _floorCut = 4000f;
         bool _soft = true;
+        float _rollCut = 4000f;
         float _speed;
 
         /// <summary>The speed it rolls at now (m/s, for tests).</summary>
@@ -184,6 +186,7 @@ namespace Backrooms.Interaction
             _rattle = ItemModels.Source(go2, 16f);
             _rattle.loop = true;
             CartSounds.Make();
+            _route = Audio.SoundRoute.Add(_roll); Audio.SoundRoute.Add(_rattle);        // round corners through doorways
             _roll.clip = CartSounds.Roll;
             _rattle.clip = _kind == MovableKind.PlatformTruck ? CartSounds.Steel : _kind == MovableKind.JanitorCart ? CartSounds.Bottles : CartSounds.Plastic;
         }
@@ -297,7 +300,9 @@ namespace Backrooms.Interaction
             float k = 1f - Mathf.Exp(-dt / 0.12f);
             _roll.volume = Mathf.Lerp(_roll.volume, vol, k);
             _roll.pitch = 0.75f + 0.45f * s;
-            if (_rollLp) _rollLp.cutoffFrequency = Mathf.Lerp(_rollLp.cutoffFrequency, _floorCut, k);
+            // (the floor's cut, through the route's filter when it has one: one filter a voice)
+            _rollCut = Mathf.Lerp(_rollCut, _floorCut, k);
+            if (_route) _route.baseCutoff = _rollCut; else if (_rollLp) _rollLp.cutoffFrequency = _rollCut;
             float rv = s > 0.01f ? Mathf.Lerp(0f, 0.32f, s * s + 0.15f * s) * Mathf.Lerp(0.45f, 1f, _floorGain) : 0f;
             _rattle.volume = Mathf.Lerp(_rattle.volume, rv, k);
             _rattle.pitch = 0.9f + 0.2f * s;

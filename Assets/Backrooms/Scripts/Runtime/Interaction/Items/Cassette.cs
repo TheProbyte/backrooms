@@ -72,9 +72,9 @@ namespace Backrooms.Interaction
         {
             Deck = box;
             if (lootId != 0) { Saves.LootRegistry.Take(lootId); lootId = 0; }
+            if (!Body.isKinematic) { Body.linearVelocity = Vector3.zero; Body.angularVelocity = Vector3.zero; }
             Body.isKinematic = true;
             Body.interpolation = RigidbodyInterpolation.None;      // (interpolated, it kept pulling itself toward where it had been)
-            Body.linearVelocity = Vector3.zero; Body.angularVelocity = Vector3.zero;
             transform.SetParent(door, false);
             transform.localPosition = localPos;
             transform.localRotation = localRot;

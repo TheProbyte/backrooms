@@ -158,6 +158,8 @@ namespace Backrooms.Interaction
             _fx = Source("Mechanism", new Vector3(0f, 0.06f, 0.12f), 10f);
             _motor = Source("Motor", new Vector3(0f, 0.05f, 0.08f), 6f);
             _motor.loop = true;
+            // Heard by the way round through doorways (Audio.SoundRoute), as the building's own sounds are.
+            SoundRoute.Add(_music); SoundRoute.Add(_fx); SoundRoute.Add(_motor);
             BoomboxSounds.Make();
             _faceOff = _face ? _face.sharedMaterials : null;
         }

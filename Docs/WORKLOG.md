@@ -15,6 +15,39 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-04 23:50  Claude Code  Things' sounds go round walls through doorways (a boombox, carts, drinks machines, the dark's scrapes, the elevator); the elevator's sounds
+- Owner: "do ... 7" (my top-ten list: sound that walls block and echo, the elevator's hum and ding). Found: the status
+  notes' "Steam Audio geometry per chunk" was already done (Audio/SteamAudioWorld.cs, 2026-10-26: walls, floors, ceilings
+  and shut doors block and muffle the things' one-shot sounds), and the building's own hum already took the walking path
+  round walls (BuildingAudio, AcousticField). What was missing: a lasting sound of a thing (the boombox playing, a cart
+  rolling, a drinks machine humming, the dark dragging a chair) only had Steam Audio's direct path, so in the next room with
+  the door open beside you it was muffled as if through the wall and came from behind it; and the elevator was silent.
+- New Audio/SoundRoute.cs: such a sound's voice (its own child object) takes the same walking path as the building's sound,
+  as rooms-and-portals audio does (Wwise spatial audio, Hitman's room graph): a clear line, heard where it is; round a
+  corner, heard from the doorway it comes through, as far away as the way round and duller the more it bends (to 2.6 kHz
+  at 120 degrees); through the walls when that is louder than the long way round (18 dB and a 700 Hz cut a wall, 9 dB and
+  1.6 kHz a shut door). Eased over a quarter second; Steam Audio given the occlusion and transmission (it keeps the HRTF);
+  another storey, outside the field or silent: Steam Audio's own, as before. On the boombox's speaker, motor and mechanism,
+  carts' rumble and rattle (the cart's carpet cut is the route's baseCutoff: one low-pass a voice), drinks machines' hums,
+  DarkChanges' scrape, the elevator's sounds.
+- New Audio/ElevatorSounds.cs, ElevatorSystem: the machine's hum and the rails' rumble from the cab's roof (riding with it),
+  swelling and falling with its speed (smootherstep's own curve) and rising in pitch; a fan in the cab's ceiling; each
+  floor's doors' operator running while they move and their thunk shut; arriving, the chime over the doors (a bell at
+  1047 Hz with its partials, under the codes' 1.5 kHz): once if it will go up from there, twice if down (ASME A17.1 / ADA).
+- Also: the cassette set its speed after pinning itself ("Setting linear velocity of a kinematic body" twice a load).
+- Checked: World 3: a playing boombox two walls away (6.1 m straight, 6.9 m round): heard from the doorway's way, 10.3 m
+  off, cut to 14.6 kHz, not muffled; in its room: heard where it is, full band; beside it through one wall (3.5 m straight,
+  6.3 m round): still the doorway (the round way louder than -18 dB). An elevator lobby (534 m off): the cab's motor 0.47
+  at 1.13 pitch mid-travel, the doors' operator 0.32 while they closed, straight from the doorway; a cart rolling at 2.4 m/s
+  on carpet: rumble and rattle on, its carpet cut kept under the route. EditMode tests.
+- Not done: none of it judged by ear (levels and routes only); reflections: the reverb is still the listener's room's
+  (Steam Audio's real-time reflections not used); one-shot sounds of items (doors, impacts) keep Steam Audio's direct path
+  (their sources are on the items themselves); no floor indicator in the elevator.
+- Sources: Wwise Spatial Audio rooms and portals (diffraction angle to obstruction); Hitman's sound propagation (GDC Europe
+  2015: rooms and portals as a graph searched from the listener, obstruction mild); Microsoft's VERA / Project Acoustics;
+  Steam Audio 4.8's static meshes and user-defined occlusion/transmission; ASME A17.1 / ADA arrival signals (once up,
+  twice down).
+
 ## 2026-11-04 22:40  Claude Code  Carts: a two-shelf utility cart, a janitor's cart and a platform trolley, pushed on casters that swivel and wheels that turn; and sitting down on chairs, armchairs and sofas
 - Owner: "do 1 [a cart and a backpack] and 6 [sitting]"; asked, they chose all three carts (utility, janitor's, platform
   trolley) and seats: chairs, sofas, armchairs (the office chair swivelling and rolling a little).

@@ -181,7 +181,8 @@ namespace Backrooms.Interaction
         {
             _body = GetComponent<FirstPersonBody>();
             _cam = Camera.main;
-            _seating = GetComponent<Seating>() ?? gameObject.AddComponent<Seating>();
+            _seating = GetComponent<Seating>();
+            if (!_seating) _seating = gameObject.AddComponent<Seating>();
             _shake = FindAnyObjectByType<HandheldCameraShake>();
         }
 

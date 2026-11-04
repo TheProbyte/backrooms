@@ -6,6 +6,11 @@ Last updated 2026-11-04 (world version 13).
 
 ## Newest (2026-11-04)
 
+- **Sound round corners** (Audio/SoundRoute.cs): a boombox playing, a cart rolling, a drinks machine, the dark's
+  scrapes and the elevator are heard through the doorway they come through, as far off as the way round (no longer
+  muffled as if through the wall with the door open beside you); through the wall only when that is louder. The
+  elevator has its sounds (Audio/ElevatorSounds.cs): the machine and rails with its speed, a cab fan, the doors and
+  their thunk, the arrival chime (once going up, twice down).
 - **Carts** (Tools/Blender/build_carts.py, Interaction/CartWheels.cs): a two-shelf utility cart (stock rooms, now and then
   an office or a break room), a janitor's cart (some janitor's closets) and a platform trolley (warehouses). Pushed by
   the handle with both hands; the far end's fixed wheels steer it, the swivel casters trail, the wheels turn; it rumbles
@@ -292,8 +297,9 @@ V toggles noclip. Teleports hold you in place until the floor has loaded (`Telep
    Tunables: LightGrid.bounceGain / floorAlbedo / bounceSpread / wrap, FixtureLightManager.handoverTime.
 2. The arched-niche/balcony room from references/update11/ref3_arches_balcony.png as a landmark kind
    (the reference image is not in this checkout).
-3. Steam Audio geometry per chunk via the ChunkLoaded/ChunkUnloaded events.
-4. Something worth finding on the atrium's upper storey. Elevator extras: sound (hum, ding, door), floor
+3. (Done: Steam Audio geometry per chunk, SteamAudioWorld 2026-10-26; things' sounds round corners, SoundRoute
+   2026-11-04.) Left: reflections per source (the reverb is the listener's room's), one-shot item sounds by the path.
+4. Something worth finding on the atrium's upper storey (a boombox now). Elevator extras: (sound done) floor
    indicator, a stuck or flickering state. Stairs: a landing light, the camera could smooth the step bob.
 5. More zones (the Poolrooms are the second; noclip doors can lead to any pinned zone: see NoclipDoors.TargetZone).
 6. Movement (zoom F, crouch C, crawl Ctrl, jump Space) awaits the owner's feel feedback.

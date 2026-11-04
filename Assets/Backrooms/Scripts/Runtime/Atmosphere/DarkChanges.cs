@@ -345,6 +345,7 @@ namespace Backrooms.Atmosphere
             var go = new GameObject("DarkScrape");
             go.transform.SetParent(mp.transform, false);
             var src = ItemModels.Source(go, 30f);
+            Audio.SoundRoute.Add(src);                                          // heard through the doorway it comes through
             int kind = HardFloor(p0) ? 1 : mp.Spec.kind == MovableKind.OfficeChair ? 2 : 0;
             src.clip = ProceduralSounds.ScrapeLoop(kind);
             src.loop = true; src.volume = 0f; src.minDistance = 1.2f;
