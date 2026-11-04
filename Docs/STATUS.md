@@ -23,6 +23,10 @@ Last updated 2026-11-04 (world version 13).
   stamp; new, weathered, or with a broken board), rack base plates with anchor bolts, riveted beam connectors with
   safety locks, bay location labels, yellow upright guards, a capacity plate. The concrete floor no longer has the
   carpet's parallax depth, sheen and fibre detail (a copy of the carpet material had kept them).
+- **The Poolrooms' fittings** (Tools/Blender/build_pool.py): a 6 ft lifeguard stand (stainless frame, fibreglass seat,
+  steps, a red rescue tube), exposed shower columns with push-button valves, stainless ladder treads, changing stalls of
+  solid plastic on aluminium brackets with coat hooks and a headrail, aluminium seat planks on the bleachers. Drawn with
+  PoolLit copies of their baked materials (PoolMaterials.ForBaked).
 
 ## Newest (2026-11-03)
 

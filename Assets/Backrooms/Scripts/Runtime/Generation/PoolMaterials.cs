@@ -39,6 +39,45 @@ namespace Backrooms.Generation
         public static Material PlasticYellow { get; private set; }
         /// <summary>Painted (galvanised) steel: the water park's towers and supports.</summary>
         public static Material Steel { get; private set; }
+        /// <summary>Bleacher planks: extruded aluminium, satin (2026-11-04).</summary>
+        public static Material Aluminium { get; private set; }
+        /// <summary>Changing stall partitions: solid HDPE plastic, a pale grey, its orange-peel finish not shiny (2026-11-04).</summary>
+        public static Material Partition { get; private set; }
+
+        static readonly System.Collections.Generic.Dictionary<Material, Material> s_baked = new System.Collections.Generic.Dictionary<Material, Material>();
+
+        /// <summary>
+        /// A modelled fitting's baked material (BakedMaterials, on Backrooms/Lit) as the Poolrooms draw it: a PoolLit copy
+        /// with the same colour texture, gloss and metalness (PoolLit has no normal maps; the tiles' light is what matters
+        /// there). Main thread or worker: made once a material, from the main thread's first use (FittingModels loads).
+        /// </summary>
+        public static Material ForBaked(Material m)
+        {
+            if (!m) return null;
+            if (s_baked.TryGetValue(m, out var p) && p) return p;
+            p = Make("Backrooms/PoolLit", m.name + " (pool)");
+            if (!p) return m;
+            if (m.HasProperty("_BaseMap")) { p.SetTexture("_BaseMap", m.GetTexture("_BaseMap")); p.SetTextureScale("_BaseMap", Vector2.one); }
+            p.SetColor("_BaseColor", m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : Color.white);
+            p.SetFloat("_Smoothness", m.HasProperty("_Smoothness") ? m.GetFloat("_Smoothness") : 0.4f);
+            p.SetFloat("_Metallic", m.HasProperty("_Metallic") ? m.GetFloat("_Metallic") : 0f);
+            s_baked[m] = p;
+            return p;
+        }
+
+        /// <summary>Makes the PoolLit copies of the Poolrooms' modelled fittings on the main thread (the chunk builder runs on workers).</summary>
+        public static void PrepareBaked()
+        {
+            foreach (var n in new[] { "LifeguardChair", "PoolShower", "LadderTread", "StallBracket", "CoatHook", "BleacherCap", "BleacherBracket" })
+            {
+                var parts = FittingModels.Get(n);
+                if (parts == null) continue;
+                foreach (var part in parts) ForBaked(part.material);
+            }
+        }
+
+        /// <summary>The PoolLit copy made by <see cref="PrepareBaked"/> (null if there is none yet: never made off the main thread).</summary>
+        public static Material BakedCopy(Material m) => m && s_baked.TryGetValue(m, out var p) ? p : null;
 
         public static void Ensure()
         {
@@ -74,6 +113,8 @@ namespace Backrooms.Generation
             PlasticYellow = Lit("Pool plastic (yellow)", new Color(0.86f, 0.64f, 0.12f), 0.86f, 0f);
             Sheet = Make("Backrooms/PoolSheet", "Pool falling water");
             Steel = Lit("Pool painted steel", new Color(0.58f, 0.62f, 0.64f), 0.5f, 0.55f);
+            Aluminium = Lit("Pool aluminium", new Color(0.74f, 0.75f, 0.76f), 0.55f, 0.9f);
+            Partition = Lit("Pool stall partition (HDPE)", new Color(0.78f, 0.79f, 0.78f), 0.28f, 0f);
         }
 
         static Material Zone(string name, Color wall, Color deck, Color? grout = null)

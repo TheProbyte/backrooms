@@ -166,6 +166,7 @@ namespace Backrooms.Generation
 #endif
             WallPlateModels.Ensure();                     // outlet and switch models, copied into the chunk meshes
             FittingModels.Ensure(assets);                 // the fittings and leftovers' models (2026-11-03), copied the same way
+            PoolMaterials.PrepareBaked();                 // their PoolLit copies for the Poolrooms (2026-11-04)
             DoorModels.Ensure(assets);                    // the wooden doors in some doorways
             MaterialMaps.Ensure(assets);                  // normal maps for the materials that had none
             CustomRooms.CustomModels.Ensure(assets);      // models the player brought in (build mode)

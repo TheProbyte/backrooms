@@ -606,7 +606,8 @@ namespace Backrooms.Generation
             for (float y = -0.22f; y > floor + 0.12f; y -= 0.26f)
             {
                 var c = at + n * (off - 0.035f) + Vector3.up * y;
-                tread.Box(c, new Vector3(2f * half - 0.02f, 0.03f, 0.1f), Quaternion.LookRotation(n), 0b111111, MeshWriter.MetreUV);
+                if (!PoolModel("LadderTread", c, Quaternion.LookRotation(n)))
+                    tread.Box(c, new Vector3(2f * half - 0.02f, 0.03f, 0.1f), Quaternion.LookRotation(n), 0b111111, MeshWriter.MetreUV);
             }
         }
 
@@ -616,6 +617,12 @@ namespace Backrooms.Generation
             var fwd = Dir(f.yaw + 90f);                 // facing the pool (from its side, the pool is at +90)
             var t = Vector3.Cross(Vector3.up, fwd);
             float seat = 1.7f;
+            // The modelled stand (Tools/Blender/build_pool.py, 2026-11-04): stainless frame, fibreglass seat, steps, a rescue tube.
+            if (PoolModel("LifeguardChair", at, Quaternion.LookRotation(fwd)))
+            {
+                _rotBoxes.Add((at + Vector3.up * (seat * 0.5f), new Vector3(0.8f, seat, 0.9f), Quaternion.LookRotation(fwd).eulerAngles.y));
+                return;
+            }
             foreach (var (sx, sz) in new[] { (-1f, -1f), (1f, -1f), (-1f, 1f), (1f, 1f) })
             {
                 var foot = at + t * (0.42f * sx) + fwd * (0.45f * sz);
@@ -636,6 +643,20 @@ namespace Backrooms.Generation
             _rotBoxes.Add((at + Vector3.up * (seat * 0.5f), new Vector3(0.8f, seat, 0.9f), q.eulerAngles.y));
         }
 
+        /// <summary>
+        /// Copies a modelled fitting (FittingModels, its PoolLit copies: PoolMaterials.PrepareBaked) into the Poolrooms chunk.
+        /// False if the model or its copies are not there (the old geometry then).
+        /// </summary>
+        bool PoolModel(string name, Vector3 pos, Quaternion rot)
+        {
+            var parts = FittingModels.Ready ? FittingModels.Get(name) : null;
+            if (parts == null) return false;
+            foreach (var p in parts) if (!PoolMaterials.BakedCopy(p.material)) return false;
+            foreach (var p in parts)
+                WMask(PoolMaterials.BakedCopy(p.material), 1u).AddMesh(p.vertices, p.normals, p.tangents, p.uv, p.triangles, pos, rot);
+            return true;
+        }
+
         void Bleachers(PoolFeature f)
         {
             var at = V3(f.centre);
@@ -651,6 +672,19 @@ namespace Backrooms.Generation
                 var size = new Vector3(len, h, 0.62f);
                 w.Box(c, size, q, 0b111111, MeshWriter.MetreUV);
                 _rotBoxes.Add((c, size, q.eulerAngles.y));
+                // (2026-11-04) An aluminium seat plank along the step's front, on brackets every 1.2 m, capped at its ends.
+                if (PoolMaterials.Aluminium && FittingModels.Ready && FittingModels.Get("BleacherCap") != null)
+                {
+                    var t = Vector3.Cross(Vector3.up, n);
+                    var pc = at - n * (back + 0.31f) + n * 0.6f + n * 0.17f + Vector3.up * (h + 0.05f + 0.0275f);
+                    WMask(PoolMaterials.Aluminium, 1u).Box(pc, new Vector3(len - 0.03f, 0.055f, 0.25f), q, 0b111111, MeshWriter.MetreUV);
+                    PoolModel("BleacherCap", pc + t * (len * 0.5f - 0.009f), q);
+                    PoolModel("BleacherCap", pc - t * (len * 0.5f - 0.009f), q);
+                    int nb = Mathf.Max(2, Mathf.RoundToInt(len / 1.2f) + 1);
+                    for (int b = 0; b < nb; b++)
+                        PoolModel("BleacherBracket", pc + t * (-len * 0.5f + 0.15f + (len - 0.3f) * b / (nb - 1)) - Vector3.up * 0.0275f, q * Quaternion.Euler(0f, 90f, 0f));
+                    _rotBoxes.Add((pc, new Vector3(len, 0.055f, 0.25f), q.eulerAngles.y));
+                }
             }
         }
 
@@ -778,14 +812,25 @@ namespace Backrooms.Generation
             float half = f.size.x, depth = Mathf.Min(1.1f, f.size.y * 0.45f);
             // Stall partitions, a stall every metre or so, raised off the floor.
             int stalls = Mathf.Max(1, Mathf.FloorToInt(half * 2f / 0.95f));
+            // (2026-11-04) Solid plastic partitions, 25 mm, on aluminium brackets at the wall, a coat hook each side, an
+            // aluminium headrail across their fronts; the old tiled slabs if the models are not there.
+            bool hdpe = PoolMaterials.Partition && FittingModels.Ready && FittingModels.Get("StallBracket") != null;
+            var pw = hdpe ? WMask(PoolMaterials.Partition, 1u) : w;
             for (int i = 0; i <= stalls; i++)
             {
                 float s = -half + i * (half * 2f / stalls);
                 var c = at + t * s + n * (depth * 0.5f) + Vector3.up * 1.1f;
-                var size = new Vector3(0.05f, 1.8f, depth);
-                w.Box(c, size, q, 0b111111, MeshWriter.MetreUV);
+                var size = new Vector3(hdpe ? 0.025f : 0.05f, 1.8f, depth);
+                pw.Box(c, size, q, 0b111111, MeshWriter.MetreUV);
                 _rotBoxes.Add((c, size, q.eulerAngles.y));
+                if (!hdpe) continue;
+                foreach (float y in new[] { 0.5f, 1.6f })
+                    PoolModel("StallBracket", at + t * s + Vector3.up * y, q);
+                if (i > 0) PoolModel("CoatHook", at + t * (s - 0.0125f) + n * (depth * 0.62f) + Vector3.up * 1.7f, Quaternion.LookRotation(-t));
+                if (i < stalls) PoolModel("CoatHook", at + t * (s + 0.0125f) + n * (depth * 0.62f) + Vector3.up * 1.7f, Quaternion.LookRotation(t));
             }
+            if (hdpe && PoolMaterials.Aluminium)
+                Tube(WMask(PoolMaterials.Aluminium, 1u), at - t * half + n * (depth - 0.02f) + Vector3.up * 2.02f, at + t * half + n * (depth - 0.02f) + Vector3.up * 2.02f, 0.02f, 10);
             // A tiled bench across the room from the stalls.
             if (f.size.y > depth + 1.6f)
             {
@@ -807,6 +852,8 @@ namespace Backrooms.Generation
             {
                 float s = -half + (i + 0.5f) * (half * 2f / heads);
                 var b = at + t * s;
+                // The modelled column (2026-11-04): the supply, a push-button valve, the arm and a vandal-resistant head.
+                if (PoolModel("PoolShower", b, Quaternion.LookRotation(n))) continue;
                 // A pipe up the wall, the arm out and the head; a valve lower down.
                 Rail(new List<Vector3> { b + n * 0.03f + Vector3.up * 1.15f, b + n * 0.03f + Vector3.up * 2.05f, b + n * 0.28f + Vector3.up * 2.0f }, 0.016f);
                 var w = WMask(ChromeMat, 1u);

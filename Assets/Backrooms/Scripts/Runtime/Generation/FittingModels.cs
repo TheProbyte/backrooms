@@ -39,6 +39,8 @@ namespace Backrooms.Generation
             // The warehouse's pallets and rack hardware (Tools/Blender/build_warehouse.py, 2026-11-04).
             "Pallet_0", "Pallet_1", "Pallet_2", "RackBasePlate", "RackConnector", "RackLabel_0", "RackLabel_1", "RackLabel_2",
             "RackLabel_3", "ColumnGuard", "LoadSign",
+            // The Poolrooms' fittings (Tools/Blender/build_pool.py, 2026-11-04; drawn there with PoolLit copies).
+            "LifeguardChair", "PoolShower", "LadderTread", "StallBracket", "CoatHook", "BleacherCap", "BleacherBracket",
         };
 
         static readonly Dictionary<string, Part[]> s_models = new Dictionary<string, Part[]>();

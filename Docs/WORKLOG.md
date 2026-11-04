@@ -15,6 +15,20 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-04 08:30  Claude Code  The Poolrooms' fittings modelled: lifeguard stand, showers, ladder treads, changing stalls, bleacher planks
+- Owner: the Poolrooms pieces in the realism pass.
+- New Tools/Blender/build_pool.py -> Resources/Fittings: LifeguardChair, PoolShower, LadderTread, StallBracket, CoatHook,
+  BleacherCap, BleacherBracket (baked).
+- The Poolrooms draw ordinary things with Backrooms/PoolLit (sun, sky and bounce traced; albedo, gloss, metal; no normal
+  maps): PoolMaterials.ForBaked makes a PoolLit copy of each baked material, PrepareBaked does it on the main thread
+  (WorldStreamer.Awake after FittingModels), the chunk builder uses them through PoolModel() (the old geometry if any
+  is missing). New PoolMaterials.Aluminium, Partition.
+- OfficeChunkBuilder.PoolFeatures: Lifeguard (the stand, its collider kept), Showers (a column each), Ladder (modelled
+  treads), Changing (25 mm plastic partitions on two brackets each, a coat hook each side, an aluminium headrail across
+  their fronts), Bleachers (an aluminium plank on each step's front, capped, on brackets every 1.2 m; a collider on it).
+- Checked: World 3, in the Poolrooms (F5 > THE POOLROOMS): a lifeguard stand by a pool, showers, a changing room,
+  bleachers.
+
 ## 2026-11-04 07:30  Claude Code  The warehouse: modelled pallets and rack hardware; the concrete floor's surface fixed
 - Owner: the warehouse pieces in the realism pass; "the concrete ground in warehouse ... same depth map texture as carpet".
 - The concrete floor (MaterialMaps.Floors) is a copy of the carpet material: SurfaceDetail had run while its normal map
