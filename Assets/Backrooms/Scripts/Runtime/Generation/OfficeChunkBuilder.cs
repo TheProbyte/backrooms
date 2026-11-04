@@ -29,6 +29,7 @@ namespace Backrooms.Generation
         public Color tint;           // its tubes' own colour, multiplied into the light (old pink tubes, a yellowed lens); alpha 0 = none
         public int room;             // the room it is in (index in its chunk's layout; LightZones), -1 for lamps
         public Vector3Int chunk;     // owning chunk (x, storey, z), set by the streamer
+        public bool starter;         // a tube that will not strike (2026-11-03): dark, a few blinks, sometimes catching (its own lens, faultyId)
     }
 
     /// <summary>
@@ -344,6 +345,7 @@ namespace Backrooms.Generation
             InstantiateDoors(root.transform);
             InstantiateCustomRoomExtras(root.transform);
             InstantiateRugs(root.transform);
+            InstantiateLeaks(root.transform);
             if (outlets.Count > 0) root.AddComponent<Interaction.ChunkOutlets>().Set(new Vector3Int(_L.coord.x, _L.storey, _L.coord.y), outlets);
             if (poolMap != null) { var pc = root.AddComponent<PoolChunk>(); pc.Set(_L.coord, _L.storey, poolMap, poolMap2, poolFittings.ToArray(), poolFittingDirs.ToArray()); pc.ropes = poolRopes.ToArray(); pc.ropeEnds = poolRopeEnds.ToArray(); }
 
@@ -1172,8 +1174,10 @@ namespace Backrooms.Generation
                 {
                     float u = Dice(GX(f.cell.x), GZ(f.cell.y), 710);
                     age = u < 0.05f ? 1 : u < 0.1f ? 2 : u < 0.17f ? 3 : u < 0.22f && MaterialMaps.TrofferYellow ? 4
-                        : u < 0.27f && MaterialMaps.TrofferGreen ? 5 : u < 0.31f && MaterialMaps.TrofferCool ? 6 : 0;
-                    dim = age == 1 ? 0.33f : age == 2 ? 0.2f : age == 3 ? 0.06f : age == 4 ? 0.14f : age == 5 ? 0.04f : 0f;
+                        : u < 0.27f && MaterialMaps.TrofferGreen ? 5 : u < 0.31f && MaterialMaps.TrofferCool ? 6
+                        : u < 0.32f && MaterialMaps.TrofferEnds ? 7 : 0;
+                    dim = age == 1 ? 0.33f : age == 2 ? 0.2f : age == 3 ? 0.06f : age == 4 ? 0.14f : age == 5 ? 0.04f : age == 7 ? 0.08f : 0f;
+                    if (age == 7) Saw(c + SquareFixtureShift, Vector3.down, "tube_ends");
                     tint = age == 2 ? new Color(1f, 0.9f, 0.93f, 1f) : age == 4 ? new Color(1f, 0.9f, 0.72f, 1f)
                          : age == 5 ? new Color(0.93f, 1f, 0.86f, 1f) : age == 6 ? new Color(0.9f, 0.96f, 1.06f, 1f) : default;
                     if (age == 5 || age == 6) Saw(c + SquareFixtureShift, Vector3.down, "tube_tint");
@@ -1189,13 +1193,17 @@ namespace Backrooms.Generation
                     tint = want == 2 ? new Color(1f, 0.82f, 0.88f, 1f) : want == 4 ? new Color(1f, 0.86f, 0.62f, 1f)
                          : want == 5 ? new Color(0.84f, 1f, 0.74f, 1f) : want == 6 ? new Color(0.84f, 0.94f, 1.12f, 1f) : default;
                 }
-                if (f.buzz && f.on) _sounds.Add(new RoomSound { position = c + Vector3.down * 0.1f, kind = 1, volume = f.faulty ? 0.55f : 0.35f, range = 6f });
-                if (f.faulty) { lens = new MeshWriter { worldOffset = _origin }; faultyLenses.Add((lens, f.dome, room)); }
+                // Now and then a square panel's tube will not strike (2026-11-03): it blinks, tries again, sometimes catches.
+                bool starter = !f.faulty && f.on && !f.strip && !f.dome && f.mood == 0 && age == 0 && !Pool
+                               && Dice(GX(f.cell.x), GZ(f.cell.y), 3050) < 0.006f * DetailRates.CeilingWear;
+                if (starter) Saw(c + SquareFixtureShift, Vector3.down, "tube_starter");
+                if ((f.buzz || starter) && f.on) _sounds.Add(new RoomSound { position = c + Vector3.down * 0.1f, kind = 1, volume = f.faulty || starter ? 0.55f : 0.35f, range = 6f });
+                if (f.faulty || starter) { lens = new MeshWriter { worldOffset = _origin }; faultyLenses.Add((lens, f.dome, room)); }
                 else if (f.on)
                 {
                     int kind = f.strip ? 2 : f.dome ? 1 : 0;
                     var on = f.strip ? _a.stripOn ?? _a.lensOn : f.dome ? DomeOn ?? _a.lensOn
-                           : age == 1 ? MaterialMaps.TrofferDead : age == 2 ? MaterialMaps.TrofferPink : age == 3 ? MaterialMaps.TrofferBugs : age == 4 ? MaterialMaps.TrofferYellow : age == 5 ? MaterialMaps.TrofferGreen : age == 6 ? MaterialMaps.TrofferCool : TrofferLens(true);
+                           : age == 1 ? MaterialMaps.TrofferDead : age == 2 ? MaterialMaps.TrofferPink : age == 3 ? MaterialMaps.TrofferBugs : age == 4 ? MaterialMaps.TrofferYellow : age == 5 ? MaterialMaps.TrofferGreen : age == 6 ? MaterialMaps.TrofferCool : age == 7 ? MaterialMaps.TrofferEnds : TrofferLens(true);
                     var off = f.strip ? _a.stripOff ?? _a.lensOff : f.dome ? DomeOff ?? _a.lensOff : TrofferLens(false);
                     int key = room * 32 + age * 4 + kind;
                     if (!_roomLenses.TryGetValue(key, out var rl))
@@ -1217,6 +1225,18 @@ namespace Backrooms.Generation
                     hw.Box(c + Vector3.up * 0.03f, new Vector3(1.24f, 0.06f, 0.16f), 63, MeshWriter.MetreUV);
                     lens.Box(c + new Vector3(0, -0.012f, 0.04f), new Vector3(1.18f, 0.028f, 0.028f), 1 | 2 | 4 | 16 | 32, MeshWriter.MetreUV);
                     lens.Box(c + new Vector3(0, -0.012f, -0.04f), new Vector3(1.18f, 0.028f, 0.028f), 1 | 2 | 4 | 16 | 32, MeshWriter.MetreUV);
+                    // Old bare tubes blackened near their ends (2026-11-03): dark bands over the glass a few centimetres in.
+                    if (f.on && FittingMaterials.TubeEnd && Dice(GX(f.cell.x), GZ(f.cell.y), 3052) < 0.06f * DetailRates.CeilingWear)
+                    {
+                        var dark = W(FittingMaterials.TubeEnd, f.roomColor);
+                        for (int t = -1; t <= 1; t += 2)
+                        for (int e = -1; e <= 1; e += 2)
+                        {
+                            float len = 0.025f + 0.03f * Dice(GX(f.cell.x), GZ(f.cell.y), 3053 + t + e * 3);
+                            dark.Box(c + new Vector3(e * (0.59f - 0.035f - len * 0.5f), -0.012f, t * 0.04f), new Vector3(len, 0.0292f, 0.0292f), 1 | 2 | 4 | 16 | 32, MeshWriter.MetreUV);
+                        }
+                        Saw(c + Vector3.down * 0.03f, Vector3.down, "tube_ends");
+                    }
                     float drop = ceil - (h + 0.06f);
                     if (drop > 0.02f)
                         for (int k = -1; k <= 1; k += 2)
@@ -1247,7 +1267,7 @@ namespace Backrooms.Generation
                     {
                         position = _origin + c + (f.dome ? Vector3.down * 0.07f : f.strip ? Vector3.down * 0.03f : SquareFixtureShift),
                         isLamp = false, dome = f.dome, strip = f.strip, flush = f.flush, ceiling = h, roomLayer = LayerBit(f.roomColor),
-                        faultyId = f.faulty ? faultyLenses.Count - 1 : -1, room = room, dim = dim, tint = tint,
+                        faultyId = f.faulty || starter ? faultyLenses.Count - 1 : -1, room = room, dim = dim, tint = tint, starter = starter,
                     });
             }
         }
@@ -1364,6 +1384,8 @@ namespace Backrooms.Generation
             var at = new Vector3(p.position.x, _L.FloorAt(pcx, pcz), p.position.y);
             if (p.kind == PropKind.Custom) { CustomModelProp(p, at); return; }        // a model the player brought in
             if (p.kind == PropKind.Rug) { Rug(p, at, rot); return; }                 // a rug on the floor (.Rugs.cs)
+            if (p.kind == PropKind.Partition) { Partition(p, at, rot); return; }     // a cubicle panel left standing (.Leftovers.cs)
+            if (p.kind == PropKind.WoodenChair) { WoodenChair(p, at); return; }      // a chair in the middle of a room
             if (p.kind >= PropKind.Counter) { SpecialProp(p, at, rot); return; }     // the good rooms' furniture
             if (modelled) { PlaceModelled(p, at, rot, lights); return; }
             switch (p.kind)

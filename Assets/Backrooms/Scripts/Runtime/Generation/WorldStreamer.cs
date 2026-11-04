@@ -155,6 +155,8 @@ namespace Backrooms.Generation
             PoolMaterials.Ensure();
             SpecialRoomMaterials.Ensure(assets);          // the rooms behind crawl spaces
             FurnitureMaterials.Ensure(assets);            // the good rooms' furniture
+            FittingMaterials.Ensure(assets);              // fire gear, floor boxes, cords, partitions, signs (2026-11-03)
+            DampFloor.Clear();                            // (a world's damp patches, for footsteps)
             DepthMaterials.Ensure(assets);                // a pit room's shafts, darker toward the bottom
             if (Application.isPlaying && !GetComponent<ChunkVisibility>()) gameObject.AddComponent<ChunkVisibility>();   // chunks behind walls are not drawn
             if (Application.isPlaying && !GetComponent<Audio.BuildingSettling>()) gameObject.AddComponent<Audio.BuildingSettling>().streamer = this;   // creaks, ticks, air at vents

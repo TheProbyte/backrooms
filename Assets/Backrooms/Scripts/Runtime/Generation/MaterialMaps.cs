@@ -722,7 +722,9 @@ namespace Backrooms.Generation
         public static Material TrofferYellow;
         /// <summary>Tubes of another white (replaced from another box): a little green, a little cooler (LightSource.tint too).</summary>
         public static Material TrofferGreen, TrofferCool;
-        static Texture2D s_glow, s_prism, s_glowDead, s_glowBugs;
+        /// <summary>Square panels whose old tubes have gone black at the ends (OfficeChunkBuilder.BuildFixtures, age 7).</summary>
+        public static Material TrofferEnds;
+        static Texture2D s_glow, s_prism, s_glowDead, s_glowBugs, s_glowEnds;
         static readonly int EmissionMap = Shader.PropertyToID("_EmissionMap"), EmissionColor = Shader.PropertyToID("_EmissionColor"),
                             BaseMap = Shader.PropertyToID("_BaseMap");
 
@@ -731,7 +733,7 @@ namespace Backrooms.Generation
 
         static void Troffers(OfficeBiomeAssets a)
         {
-            TrofferOn = TrofferOff = TrofferYellow = TrofferGreen = TrofferCool = null;
+            TrofferOn = TrofferOff = TrofferYellow = TrofferGreen = TrofferCool = TrofferEnds = null;
             if (!a.lensOn || !a.lensOff || !a.lensOn.HasProperty(EmissionMap)) return;
             if (!s_glow) s_glow = TrofferGlow(512, out s_glowMean);
             if (!s_prism) s_prism = Prism(512);
@@ -758,6 +760,10 @@ namespace Backrooms.Generation
             TrofferGreen.SetColor(EmissionColor, TrofferOn.GetColor(EmissionColor) * new Color(0.9f, 1f, 0.8f, 1f));
             TrofferCool = new Material(TrofferOn) { name = a.lensOn.name + " (cool tubes)", hideFlags = HideFlags.DontSave };
             TrofferCool.SetColor(EmissionColor, TrofferOn.GetColor(EmissionColor) * new Color(0.86f, 0.95f, 1.1f, 1f));
+            // Old tubes blackened at their ends (2026-11-03): the cathodes' wear darkens the glass a few centimetres in.
+            if (!s_glowEnds) s_glowEnds = TrofferGlow(512, out _, -1, 0, 0b101);
+            TrofferEnds = new Material(TrofferOn) { name = a.lensOn.name + " (blackened ends)", hideFlags = HideFlags.DontSave };
+            TrofferEnds.SetTexture(EmissionMap, s_glowEnds);
         }
 
         static float s_glowMean = 1f;
@@ -777,7 +783,7 @@ namespace Backrooms.Generation
         /// wide halo), the reflector's fill between them (about 60 % of the bands: from across a room it is all white), darker at the tubes' ends (lampholders) and toward the frame,
         /// all broken up by the lens's little pyramids, which sparkle most over the tubes. Mean returned for scaling.
         /// </summary>
-        static Texture2D TrofferGlow(int size, out float mean, int deadTube = -1, int bugs = 0)
+        static Texture2D TrofferGlow(int size, out float mean, int deadTube = -1, int bugs = 0, int blackEnds = 0)
         {
             var px = new Color[size * size];
             var lin = new float[size * size];
@@ -792,7 +798,7 @@ namespace Backrooms.Generation
                     float d = u - Tubes[k];
                     float b = Mathf.Exp(-d * d / (2f * 0.06f * 0.06f)) + 0.3f * Mathf.Exp(-d * d / (2f * 0.16f * 0.16f));
                     tube += b;
-                    if (k != deadTube) lit += b;
+                    if (k != deadTube) lit += b * Blackened(k, v, blackEnds);
                 }
                 float ends = Mathf.Lerp(0.55f, 1f, Smooth(0.02f, 0.12f, v) * Smooth(0.02f, 0.12f, 1f - v));
                 float edge = Mathf.Min(Mathf.Min(u, 1f - u), Mathf.Min(v, 1f - v));
@@ -818,6 +824,18 @@ namespace Backrooms.Generation
             tex.SetPixels(px);
             tex.Apply(true, true);
             return tex;
+        }
+
+        /// <summary>
+        /// How much of a tube's light is left along it (v across the lens, 0..1) when it is one of the blackened ones (a bit
+        /// in mask): dark bands a few centimetres in from each end, one end worse than the other (2026-11-03).
+        /// </summary>
+        static float Blackened(int tube, float v, int mask)
+        {
+            if (((mask >> tube) & 1) == 0) return 1f;
+            float heavy = (tube & 1) == 0 ? 0.85f : 0.6f, light = (tube & 1) == 0 ? 0.55f : 0.8f;
+            float a = (v - 0.085f) / 0.045f, b = (v - 0.915f) / 0.045f;
+            return Mathf.Clamp01(1f - heavy * Mathf.Exp(-a * a) - light * Mathf.Exp(-b * b));
         }
 
         /// <summary>

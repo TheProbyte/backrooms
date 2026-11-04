@@ -23,6 +23,8 @@ namespace Backrooms.Generation
 
         /// <summary>The rarer wear this chunk has, for F5 > PLACES > WEAR AND DETAIL (RealismSightings; published on the main thread).</summary>
         readonly List<RealismSightings.Sighting> _sightings = new List<RealismSightings.Sighting>();
+        /// <summary>The rarer things this chunk's data put down (for tests: what F5 > PLACES will be told).</summary>
+        public IReadOnlyList<RealismSightings.Sighting> Sightings => _sightings;
 
         /// <summary>Notes one: a chunk-local point, the way it faces into the room, its kind (the names CamcorderVisualMenu.Realism uses).</summary>
         void Saw(Vector3 local, Vector3 facing, string kind) =>

@@ -15,6 +15,30 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-03 20:30  Claude Code  Level 0's rarer things: water, old fittings, door hardware, leftovers, a wooden chair
+- Owner's list (items 1-4, 6-8, 10-16, 20 and a modelled wooden chair), rare and random, each with a teleport.
+- New: OfficeChunkBuilder.Damp.cs (damp carpet, water down walls, leaks, mould; DampFloor for footsteps), CeilingLeak.cs
+  and Resources/Shaders/Ripple.shader (the drip), OfficeChunkBuilder.Fittings.cs (extinguishers, pull stations, horn
+  strobes, thermostats, low vents, fountain alcoves, filled windows, corner guards), DoorHardware.cs (closer with a
+  solved two-part arm, kick plate, wedge), OfficeChunkBuilder.Leftovers.cs (floor boxes, cut cables, extension cord,
+  partition panels, wooden chair), DistrictGenerator.Leftovers.cs (PropKind.Partition, PropKind.WoodenChair, placed after
+  the rugs with their own dice), FittingMaterials.cs (finishes and printed signs, a 5 x 7 block font).
+- Changed: troffer glow map variant with blackened tube ends (MaterialMaps.TrofferEnds), batten tube sleeves, a
+  will-not-start tube (LightSource.starter, FixtureLightManager.StarterCurve); MovableKind.WoodenChair (shape, carried
+  like the office chair, sounds of wood); OfficeBiomeAssets.woodenChairPrefab (Models/WoodenChair.fbx from
+  Tools/Blender/build_props.py, Prefabs/Props/WoodenChair.prefab; InfiniteWorldBuilder makes it too); the squelch in
+  PlayerAudio; 23 new kinds in F5 > PLACES > WEAR AND DETAIL.
+- Item 6 (light under shut doors) was already in the game (Door, LightSpill.shader): added its teleport only.
+- Research: wet surfaces darken and saturate (Lagarde's wet-surface work via FXGuide, Polycount); ADA/NFPA mounting heights
+  (pull station handle <= 48", strobes 80" or 6" under the ceiling, thermostats 52-60"); regular-arm closers on the pull
+  side (Hager); cubicle panels 42-65", floor box covers about 8".
+- Checked: LeftoversTests (every kind turns up over 338 chunks of two seeds, none on more than about one chunk in three;
+  partitions and chairs only in Level 0's own rooms, clear of other props); all 179 EditMode tests passed before the last
+  tuning, LeftoversTests/RugTests/CameraMotionTests after. DebugTools.LeftoversTour in World 3: every kind found by its
+  teleport and photographed; fixes after the first look (damp patches clear of walls, mould and wall runs stronger,
+  partition fabric blue-grey not black, the leak's teleport at the floor). Build rebuilt.
+- Not done: no build-mode catalog entries for the new things; the drinking fountain gives no water.
+
 ## 2026-11-03 09:40  Claude Code  Standing, side-steps and turning from the owner's phone recordings; a walk jitter slider
 - Six new takes in Tools/CameraMotion/Recordings (idle_stand_1, walk_normal_3, look_slow_1, look_fast_1, strafe_left_1,
   strafe_right_1). build_camera_motion.py now builds every clip from the folder by name: Walk (52 strides, 64 s, was 34),

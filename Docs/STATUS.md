@@ -6,6 +6,12 @@ Last updated 2026-11-03 (world version 13).
 
 ## Newest (2026-11-03)
 
+- **Level 0's rarer things** (Docs/WorldGeneration.md, "Water, old fittings and what the office left behind"): damp
+  carpet (it squelches), water run down walls, leaks dripping into puddles and buckets, mould in corners; blackened and
+  failing tubes; fire extinguishers, pull stations, horn strobes, thermostats, low vents, drinking fountains in alcoves,
+  filled-in windows, corner guards; door closers, kick plates, wedges; floor boxes and cut cables, a taped-down extension
+  cord, cubicle partitions, and a modelled wooden chair alone in the middle of a room. All rare; every kind has its own
+  teleport in F5 > PLACES > WEAR AND DETAIL.
 - **More real handheld motion** (Docs/Camcorder.md, "Standing, side-steps, turning and the walk jitter"): standing still,
   side-stepping and the shake of turning now come from the owner's phone recordings too, and the walk has a third take.
   Camera menu > CAMERA SHAKE > Walk jitter turns the walk's step-to-step irregularity down (or up) without recording again.

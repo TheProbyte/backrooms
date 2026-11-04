@@ -704,7 +704,7 @@ namespace Backrooms.Generation
                 if (t > 2f) cp.start = -1f;
             }
             if (cp.stop >= 0f) level *= ShutdownCurve(now - cp.stop - seed * powerFlickerTime * 0.4f, seed);
-            if (src.faultyId >= 0) level *= FaultyCurve(now, seed);
+            if (src.faultyId >= 0) level *= src.starter ? StarterCurve(now, seed) : FaultyCurve(now, seed);
             if (src.room >= 0) level *= LightZones.Level(src.chunk, src.room, now, seed);     // the room's wall switch
             level *= 1f - src.dim;                                                           // an old fixture (a tube out)
             return level;
@@ -745,6 +745,31 @@ namespace Backrooms.Generation
             return s > 0.5f ? 1f : low;
         }
 
+        /// <summary>
+        /// A tube that will not strike (2026-11-03): each try is a few seconds dark (the filaments' faint glow), then two to
+        /// four quick blinks; about one try in three it catches and stays lit for a while, else it goes dark and tries again.
+        /// </summary>
+        static float StarterCurve(float now, float seed)
+        {
+            float period = 4.5f + 4f * seed;
+            float t = now + seed * 37f;
+            float cycle = Mathf.Floor(t / period), u = t - cycle * period;
+            float h = Frac(Mathf.Sin(cycle * 12.9898f + seed * 78.233f) * 43758.5453f);
+            float dark = 1.2f + 1.6f * Frac(seed * 7.13f + h);
+            if (u < dark) return 0.03f;
+            float b = u - dark;
+            int blinks = 2 + (int)(h * 3f);
+            for (int k = 0; k < blinks; k++)
+            {
+                float s = k * 0.23f;
+                if (b < s + 0.07f) return b >= s ? 0.8f : 0.03f;
+            }
+            if (h < 0.35f && b > blinks * 0.23f) return 1f;                   // caught
+            return 0.03f;
+        }
+
+        static float Frac(float x) => x - Mathf.Floor(x);
+
         static float Hash01(Vector3 p)
         {
             unchecked
@@ -777,7 +802,7 @@ namespace Backrooms.Generation
                     var r = cp.faulty[i];
                     if (!r) continue;
                     float f = level;
-                    foreach (var l in cp.lights) if (l.faultyId == i) { f *= FaultyCurve(now, Hash01(l.position)); break; }
+                    foreach (var l in cp.lights) if (l.faultyId == i) { f *= l.starter ? StarterCurve(now, Hash01(l.position)) : FaultyCurve(now, Hash01(l.position)); break; }
                     var rl = cp.faultyRooms != null && i < cp.faultyRooms.Length ? cp.faultyRooms[i] : null;
                     if (switched && rl)
                     {

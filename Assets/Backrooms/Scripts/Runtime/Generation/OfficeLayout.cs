@@ -278,6 +278,11 @@ namespace Backrooms.Generation
         /// position is its middle, yaw turns its long side (local X), size is length x thickness x width, variant its own dice
         /// (where the print starts, the binding's colour, a corner come up). Fixed in place.</summary>
         Rug,
+        /// <summary>A cubicle panel left standing in an empty office (DistrictGenerator.PlaceLeftovers, OfficeChunkBuilder.Partition):
+        /// position the middle of its footprint, yaw its face's normal, size width x height x thickness; variant 1: fallen flat.</summary>
+        Partition,
+        /// <summary>A wooden chair on its own in the middle of a room (DistrictGenerator.PlaceLeftovers): movable.</summary>
+        WoodenChair,
     }
 
     /// <summary>Level 0's kinds of room (DistrictGenerator.StyleOf): the backrooms (wallpaper), living rooms (painted,

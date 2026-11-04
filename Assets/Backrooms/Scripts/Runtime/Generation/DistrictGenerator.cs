@@ -191,6 +191,8 @@ namespace Backrooms.Generation
             DepthPlan.Chamfers(L, new System.Random(Hash(sseed, district.x, district.y, 0xC4A3)));
             // Rugs in some living rooms: their own dice and last of the props, so nothing else in the plan moves or renumbers.
             PlaceRugs(L, new System.Random(Hash(sseed, district.x, district.y, 0x2A6E)), L.rooms, false);
+            // What the offices left behind (partitions, a chair): their own dice, after the rugs, for the same reason.
+            PlaceLeftovers(L, new System.Random(Hash(sseed, district.x, district.y, 0x1EF7)), L.rooms);
             AssignColors(L);
             return L;
         }

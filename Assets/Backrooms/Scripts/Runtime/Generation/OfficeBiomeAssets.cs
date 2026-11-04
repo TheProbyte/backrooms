@@ -66,5 +66,7 @@ namespace Backrooms.Generation
         public GameObject floralSofaPrefab;
         public GameObject[] armchairPrefabs;
         public GameObject floorLampPrefab, officeChairPrefab, tableModulePrefab, tableLegPrefab, wallClockPrefab;
+        /// <summary>A plain wooden chair (Tools/Blender/build_props.py wooden_chair), left in the middle of a room now and then.</summary>
+        public GameObject woodenChairPrefab;
     }
 }

@@ -328,8 +328,67 @@ def wall_clock():
     finish("WallClock", parts)
 
 
+def wood_leg(name, foot, top, w_foot, w_top):
+    """A square wooden leg from foot (x, y, z) to top (x, y, z), tapering from w_top to w_foot."""
+    import mathutils
+    a, b = mathutils.Vector(foot), mathutils.Vector(top)
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    o = bpy.context.active_object
+    o.name = name
+    for v in o.data.vertices:
+        t = v.co.z + 0.5                                  # 0 at the foot, 1 at the top
+        w = w_foot + (w_top - w_foot) * t
+        p = a.lerp(b, t)
+        v.co.x, v.co.y, v.co.z = p.x + v.co.x * w, p.y + v.co.y * w, p.z
+    assign(o, "Wood")
+    m = o.modifiers.new("bevel", "BEVEL")
+    m.width = 0.004
+    m.segments = 2
+    m.limit_method = "ANGLE"
+    return o
+
+
+def wooden_chair():
+    """A plain wooden chair (school, kitchen, waiting room): four legs splayed a little, the back legs running on up
+    into the back posts, a top rail and two slats across them, stretchers low between the legs, a slightly dished seat.
+    Front toward -Y (Unity +Z); seat 45 cm up, back 86 cm. Joints overlap (rails into the legs, posts into the seat)."""
+    parts = []
+    sh, sw, sd = 0.45, 0.42, 0.40                       # seat height, width, depth
+    fx, fy, bx, by = 0.185, -0.175, 0.175, 0.17          # where the legs meet the seat
+    for s in (-1, 1):
+        # Front legs: splayed out and forward at the foot.
+        parts.append(wood_leg("front_leg", (s * (fx + 0.02), fy - 0.025, 0.0), (s * fx, fy, sh - 0.01), 0.028, 0.036))
+        # Back legs: splayed back at the foot, raked back above the seat into the posts.
+        parts.append(wood_leg("back_leg", (s * (bx + 0.018), by + 0.04, 0.0), (s * bx, by, sh - 0.01), 0.028, 0.036))
+        parts.append(wood_leg("back_post", (s * bx, by - 0.004, sh - 0.03), (s * (bx - 0.01), by + 0.06, 0.86), 0.034, 0.03))
+    # The seat: a thick board, its top dished a little (the front edge rounded).
+    seat = box("seat", (sw, sd, 0.028), (0, 0, sh + 0.004), "Wood", 0.008, 3)
+    bpy.context.view_layer.objects.active = seat
+    for v in seat.data.vertices:
+        if v.co.z > sh:
+            r = (v.co.x / (sw * 0.5)) ** 2 + ((v.co.y + 0.02) / (sd * 0.5)) ** 2
+            v.co.z -= 0.006 * max(0.0, 1.0 - r)
+    parts.append(seat)
+    # Apron rails under the seat, between the legs.
+    parts.append(box("apron_f", (sw - 0.07, 0.02, 0.06), (0, fy + 0.005, sh - 0.045), "Wood", 0.004))
+    parts.append(box("apron_b", (sw - 0.07, 0.02, 0.06), (0, by - 0.005, sh - 0.045), "Wood", 0.004))
+    for s in (-1, 1):
+        parts.append(box("apron_s", (0.02, sd - 0.07, 0.06), (s * 0.18, 0, sh - 0.045), "Wood", 0.004))
+        # Stretchers low between front and back legs.
+        parts.append(box("stretch_s", (0.018, sd - 0.03, 0.022), (s * 0.195, 0.0, 0.16), "Wood", 0.004))
+    parts.append(box("stretch_m", (sw - 0.03, 0.018, 0.022), (0, 0.0, 0.17), "Wood", 0.004))
+    # The back: a curved top rail and two slats, set between the posts.
+    for (z, h, name) in ((0.8, 0.075, "top_rail"), (0.68, 0.05, "slat_hi"), (0.575, 0.05, "slat_lo")):
+        y = by + (z - sh) * (0.06 / (0.86 - sh))
+        rail = box(name, (sw - 0.05, 0.022, h), (0, y + 0.004, z), "Wood", 0.006, 2)
+        for v in rail.data.vertices:                     # bowed back a little, for a back to lean on
+            v.co.y += 0.018 * (1.0 - (v.co.x / (sw * 0.5)) ** 2)
+        parts.append(rail)
+    finish("WoodenChair", parts)
+
+
 reset()
-for build in (chesterfield, modern_sofa, armchair, floor_lamp, office_chair, conference_table, wall_clock):
+for build in (chesterfield, modern_sofa, armchair, floor_lamp, office_chair, conference_table, wall_clock, wooden_chair):
     if ONLY and build.__name__ not in ONLY:
         continue
     reset()

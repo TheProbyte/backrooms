@@ -320,6 +320,7 @@ namespace Backrooms.EditorTools
             a.armchairPrefabs = chairs.ToArray();
             a.floorLampPrefab = Make("FloorLamp", "FloorLamp", a.lampShadeOff);
             a.officeChairPrefab = Make("OfficeChair", "OfficeChair", a.chairFabric);
+            a.woodenChairPrefab = Make("WoodenChair", "WoodenChair", a.chairFabric);   // (2026-11-03: alone in the middle of a room)
             a.tableModulePrefab = Make("ConferenceTable_Module", "ConferenceTable_Module", a.chairFabric, null, false);
             a.tableLegPrefab = Make("ConferenceTable_Leg", "ConferenceTable_Leg", a.chairFabric, null, false);
             a.wallClockPrefab = Make("WallClock", "WallClock", a.chairFabric, clockFace, false);

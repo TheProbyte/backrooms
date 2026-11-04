@@ -205,6 +205,51 @@ the same from either chunk), and costs almost nothing: a few hundred triangles a
   threshold strip across any opening where the floor changes (drawn once per edge; along an open boundary each cell's
   strip reaches the next one's, so the line runs unbroken to the wall: `StripRuns`).
 
+### Water, old fittings and what the office left behind (2026-11-03)
+
+All rare, seeded like the wear (world seed and cell), and each reachable from **F5 > PLACES > WEAR AND DETAIL** (its
+`RealismSightings` kind in brackets). Measured over 338 chunks of two seeds (`LeftoversTests`): every kind turns up, none
+on more than about one chunk in three; the rarest (a tube that will not start, a fountain, a lone chair, a cord) about
+one in fifteen to twenty. Scaled by F5 > WORLD GEN > HOW OFTEN (wall wear, ceiling wear, floor marks).
+
+- **Water** (`OfficeChunkBuilder.Damp.cs`), where the building leaks (the slow field that stains ceiling tiles):
+  - Damp carpet (`damp`): overlapping dark lobes with uneven tide lines at their rims, darker and more saturated than the
+    dry carpet (wet porous surfaces darken and gain colour; carpet fibres hardly shine), kept clear of walls (under one,
+    the overlay showed as a dark streak up the baseboard). Footsteps on one squelch (`DampFloor`, `Audio.PlayerAudio`).
+  - Water down a wall (`wall_water`): one to three yellow-brown runs from under the ceiling, widest at the top, darker
+    dried edges, a tide line where each stopped; wallpaper bubbled at the foot; a third reach the floor and soak it.
+  - Leaks (`leak`): under 3.5 % of stained tiles a drop gathers (swelling for 1.6-5 s), falls under gravity and lands
+    (`CeilingLeak`, asleep beyond 16 m): into a glossy puddle on a hard floor or a bucket put under it (a plink and a
+    ring, `Resources/Shaders/Ripple.shader`), or a dark patch of carpet (a dull tap).
+  - Mould (`mould`): black-green clumps of specks in an inside corner, thickest low down and in the corner (or by the
+    ceiling, damp air rising), over a grey-green haze; decided by the corner, so both its walls share one.
+- **Light**: a shut door with a lit room one side and none the other shows its line of light (already built, `Door`
+  and `LightSpill.shader`; now found with `door_light`). Old tubes blackened at their ends (`tube_ends`): a square
+  panel's glow map with dark bands a few centimetres in (`MaterialMaps.TrofferEnds`, 1 % of panels), or dark sleeves on a
+  warehouse batten's bare tubes (6 %). A tube that will not start (`tube_starter`, 0.6 % of square panels): dark a
+  second or three, two to four blinks, catching about one try in three (`FixtureLightManager.StarterCurve`; its own lens
+  like a faulty one, buzzing).
+- **On the walls** (`OfficeChunkBuilder.Fittings.cs`; one thing a face at most, none on a face with an outlet or switch or
+  with furniture in front; mostly hallways for the fire gear): an extinguisher in a white or red cabinet or on a bracket,
+  30 % gone, with its red FIRE EXTINGUISHER sign (`extinguisher`); a pull station by a doorway, handle at 1.2 m (ADA
+  48" max) (`pull_station`); a horn strobe at 2.03 m or 15 cm under a low ceiling (ADA 80"), dead (`strobe`); a
+  thermostat at 1.45 m, a beige box with a display or a round dial (`thermostat`); a low return grille above the baseboard
+  (`wall_vent`); a drinking fountain in a built-out alcove (wing walls and soffit in the wall's own finish; only where
+  the hallway is two cells wide or in rooms) (`fountain`); a window filled in, frame and sill left, painted board where
+  the glass was, joints and screws showing (`window_filled`); corner guards on some jambs, steel or vinyl, to 1.3 m
+  (`corner_guard`). Signs are painted at startup with a 5 x 7 block font (`FittingMaterials`).
+- **Doors** (`DoorHardware`, chosen in `BuildDoors`): a regular-arm closer on the pull side of 15 % (its arm and forearm
+  solved each frame the leaf moves, `DoorCloser`) (`door_closer`); a 25 cm stainless kick plate on the push side of 14 %
+  (`kick_plate`); a rubber wedge under 45 % of the wide-open ones (`door_wedge`).
+- **Left behind** (`OfficeChunkBuilder.Leftovers.cs`, `DistrictGenerator.Leftovers.cs`): brass floor boxes in the open
+  middle of 10 % of offices, round or square with carpet in the lid (`floor_box`), a third with the lid gone and cut
+  cables standing up (`cable_stubs`); an orange extension cord down 2 % of hallways, from an outlet where the hallway has
+  one, duct-taped every metre or two, ending in a loose socket (`cord`); cubicle partitions (`PropKind.Partition`: 1.2 or
+  0.9 m panels, 1.35 or 1.65 m high, a run, an L or a T) in 16 % of offices of 4 x 4 cells and more, one now and then
+  fallen flat (`partitions`); a wooden chair (`PropKind.WoodenChair`, `Tools/Blender/build_props.py wooden_chair`,
+  movable and carried like the office chair) near the middle of 5 % of rooms (`wooden_chair`). The two prop kinds are
+  placed after everything else with their own dice, so no other prop moves or renumbers.
+
 ### Realism pass (2026-10-29, Docs/RealismPlan.md)
 
 **Changed after the first look (same day):** the grime low on walls is patchy (pieces 40 cm long whose strength and

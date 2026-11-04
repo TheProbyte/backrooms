@@ -33,6 +33,7 @@ namespace Backrooms.Generation
         {
             _floorWear.Clear(); _wallWear.Clear(); _crumbs.Clear();
             _missingTiles.Clear(); _gaps.Clear(); _sightings.Clear();
+            ClearDamp();
             _fixtureKinds.Clear();
             foreach (var f in _L.fixtures) _fixtureKinds[f.cell] = f.strip ? 2 : f.dome ? 1 : 0;
         }
@@ -135,7 +136,7 @@ namespace Backrooms.Generation
                 switch (kinds[i])
                 {
                     case TileKind.Plain: CeilQuad(plain, tx0, zm0, tx1, zm1, h); break;
-                    case TileKind.Stained: CeilQuad(WMask(stained, m), tx0, zm0, tx1, zm1, h); break;
+                    case TileKind.Stained: CeilQuad(WMask(stained, m), tx0, zm0, tx1, zm1, h); _stainedTiles.Add((centre, x, z, i)); break;
                     case TileKind.Yellowed: CeilQuad(WMask(MaterialMaps.CeilingYellowed, m), tx0, zm0, tx1, zm1, h); break;
                     case TileKind.Sag:
                         SagTile(WMask(Dice(gx, gz, 130 + i) < 0.7f ? stained : ceil, m), tx0, zm0, h, 0.012f + 0.02f * Dice(gx, gz, 140 + i));
@@ -407,6 +408,8 @@ namespace Backrooms.Generation
                 uint m = CellMask(x, z);
                 if (carpet) CoffeeSpots(x, z);
                 FloorMarks(x, z, r, carpet, m);
+                DampCell(x, z, r, carpet);
+                FloorBox(x, z, r, carpet, m);
                 var centre = new Vector3((x + 0.5f) * C, 0f, (z + 0.5f) * C);
                 for (int side = 0; side < 4; side++)
                 {
@@ -423,6 +426,8 @@ namespace Backrooms.Generation
                         {
                             WallDetails(x, z, side, edge - outDir * (T * 0.5f), along, -outDir, r, m, _L.WallTop(r));
                             WallDirt(x, z, side, edge, outDir, along, r, m, _L.WallTop(r));
+                            DampWall(x, z, side, edge - outDir * (T * 0.5f), along, -outDir, r, m, _L.WallTop(r));
+                            Fittings(x, z, side, edge - outDir * (T * 0.5f), along, -outDir, r, m, _L.WallTop(r));
                         }
                         if (!carpet) continue;
                         WallGrime(x, z, side, edge, outDir, along, r);
@@ -460,6 +465,8 @@ namespace Backrooms.Generation
                 }
             }
             foreach (var kv in exits) Paths(kv.Value);
+            Leaks();
+            Cords();
         }
 
         /// <summary>Grime along the bottom of a wall, darkest at the baseboard, fading where the wall run ends.</summary>

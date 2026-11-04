@@ -69,6 +69,9 @@ namespace Backrooms.Audio
                         : Mathf.Lerp(0.5f, 0.85f, speed / Mathf.Max(0.1f, _player.walkSpeed));
             if (speed < 0.25f && !stopping) heavy *= 0.35f;                                  // turning or shuffling on the spot
             Play(floor, at, heavy);
+            // Wet carpet (a damp patch, Generation.DampFloor): the step squelches too.
+            if (floor == ProceduralSounds.Floor.Carpet && Generation.DampFloor.At(at))
+                _feet.PlayOneShot(SoundBank.WaterStep(Random.Range(0, SoundBank.WaterStepCount)), SoundBank.BaseLevel(id) * SoundCatalog.Volume(id) * heavy * 0.35f);
             if (stopping)
             {
                 _feet.PlayOneShot(SoundBank.Scuff(_scuffPick++), SoundBank.BaseLevel(id) * SoundCatalog.Volume(id) * (floor == ProceduralSounds.Floor.Carpet ? 0.5f : 0.8f));

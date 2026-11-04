@@ -22,6 +22,7 @@ namespace Backrooms.Generation
             public DoorEdges.Edge edge;   // the doorway in world cells (shut, it is a wall to light and sound)
             public int roomFront, roomBack; // rooms on the +z (swing) side and the other side (this chunk's indices)
             public int boltSide;          // a good room's door: the face its slide bolt is on (+1 the +z face, -1 the other), 0 none
+            public bool closer, kick, wedge;  // its hardware (DoorHardware, 2026-11-03): a closer, a kick plate, a wedge holding it open
         }
 
         readonly List<DoorSpec> _doors = new List<DoorSpec>();
@@ -46,6 +47,9 @@ namespace Backrooms.Generation
             _doors.Clear();
             if (Pool || !DoorModels.HasModel || Mathf.Abs(_L.headerHeight - OfficeBiome.DoorHeaderHeight) > 0.01f) return;
             int n = _L.N;
+            // Rooms with a ceiling light on (in this chunk), for the shut doors that show a line of light under them.
+            var lit = new HashSet<int>();
+            foreach (var f in _L.fixtures) if (f.on) lit.Add(_L.roomOf[f.cell.x, f.cell.y]);
             for (int pass = 0; pass < 2; pass++)
             {
                 bool vertical = pass == 0;
@@ -72,6 +76,24 @@ namespace Backrooms.Generation
                     // Model +z toward room B (+x or +z of the edge) or room A.
                     float yaw = vertical ? (toB ? 90f : -90f) : (toB ? 0f : 180f);
                     var ra = _L.RoomAt(ax, az); var rb = _L.RoomAt(bx, bz);
+                    // Its hardware (2026-11-03): a closer on some, a kick plate on some, a wedge under some wide-open ones.
+                    uint h2 = DoorHash(wx + 7, wz - 3, !vertical, _L.storey + 11);
+                    bool closer = (h2 & 0xFF) / 255f < 0.15f * DetailRates.WallWear && !good;
+                    bool kick = ((h2 >> 8) & 0xFF) / 255f < 0.14f * DetailRates.WallWear;
+                    bool wedge = angle > 60f && ((h2 >> 16) & 0xFF) / 255f < 0.45f * DetailRates.FloorMarks;
+                    {
+                        var face = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;   // the swing side
+                        if (closer) Saw(pos + Vector3.up * 2.0f + face * 0.08f, face, "door_closer");
+                        if (kick) Saw(pos + Vector3.up * 0.15f - face * 0.05f, -face, "kick_plate");
+                        if (wedge) Saw(pos + face * 0.8f, Vector3.up, "door_wedge");
+                        // Shut, a lit room one side and none the other: the light shows under it on the dark side.
+                        bool la = lit.Contains(_L.roomOf[ax, az]), lb = lit.Contains(_L.roomOf[bx, bz]);
+                        if (angle == 0f && la != lb)
+                        {
+                            var darkSide = (la ? 1f : -1f) * (vertical ? Vector3.right : Vector3.forward);
+                            Saw(pos + Vector3.up * 0.05f + darkSide * 0.05f, darkSide, "door_light");
+                        }
+                    }
                     int gLine = vertical ? _L.coord.x * n + line : _L.coord.y * n + line;
                     int gAlong = vertical ? _L.coord.y * n + along : _L.coord.x * n + along;
                     _doors.Add(new DoorSpec
@@ -88,6 +110,7 @@ namespace Backrooms.Generation
                         roomBack = toB ? _L.roomOf[ax, az] : _L.roomOf[bx, bz],
                         // The bolt on the good room's side (the inside).
                         boltSide = !good ? 0 : ((toB ? rb : ra).special != GoodRoom.None ? 1 : -1),
+                        closer = closer, kick = kick, wedge = wedge,
                     });
                 }
             }
@@ -103,9 +126,11 @@ namespace Backrooms.Generation
                 go.transform.localRotation = Quaternion.Euler(0f, d.yaw, 0f);
                 var model = DoorModels.Make(go.transform, d.mask);
                 if (!model) { Object.Destroy(go); continue; }
+                DoorHardware.Fit(go.transform, model, d.mask, d.closer, d.kick);      // (on the shut model, before it opens)
                 var door = go.AddComponent<Interaction.Door>();
                 door.Init(model, d.angle, d.key, d.edge, d.roomFront, d.roomBack);
                 if (d.boltSide != 0) door.AddBolt(d.boltSide);
+                if (d.wedge) DoorHardware.Wedge(root, model, d.mask);
                 DoorMarks(model, d, root.GetComponent<GeneratedChunkResources>());
             }
         }
@@ -118,6 +143,8 @@ namespace Backrooms.Generation
         static Material s_wood, s_frame, s_metal;
         /// <summary>The model is loaded (a plain flag: chunk data is built on worker threads).</summary>
         public static bool HasModel { get; private set; }
+        /// <summary>The handles' satin metal (the closers too, DoorHardware).</summary>
+        public static Material Metal => s_metal;
 
         public static void Ensure(OfficeBiomeAssets assets)
         {
