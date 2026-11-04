@@ -15,6 +15,16 @@ Keep entries short and factual. Do not rewrite old entries.
 
 ---
 
+## 2026-11-04 14:10  Claude Code  The loud buzz under failing tubes removed; build-mode sound spots and the drinks machine follow AMBIENCE
+- Owner: "theres a loud buzzing that goes on ... i dont think its fluorescent hum since i turn it down in settings and it stays".
+- Found by measuring every playing source at the listener in World 3 with AMBIENCE at 0: a ceiling tube that will not
+  strike (2026-11-03) also got a build-mode buzz spot (RoomSoundEmitter, 0.385, Linear to 6 m) on top of BuildingAudio's
+  faulty buzz voice (0.025): about 15x louder, deaf to the setting and buzzing on while the tube was dark.
+- OfficeChunkBuilder: no sound spot for a starter tube (it buzzes through BuildingAudio as a faulty one does). RoomEffects:
+  RoomSoundEmitter scaled by GameSettings.Ambience as it changes. VendingMachine: fan, compressor and sign buzz scaled by it.
+- Checked: under the same tube only the quiet buzz is left; AMBIENCE 0 silences it and the drinks machine.
+- Sources: Unity's Audio Mixer overview (sounds grouped into categories under one control), Unity Learn "Audio mixing".
+
 ## 2026-11-04 12:30  Claude Code  Co-op for 2-4 players: host a world, friends join by address (Hamachi, LAN, any VPN); players, items, furniture, doors, lights, paint, chalk, walls and nails shared
 - Owner: "plan and work on the full system for multiplayer, double checking for bugs or errors, just for co-op 2-4 players".
 - New Scripts/Runtime/Net: NetTransport (sockets polled once a frame: TCP framed by length for what must arrive, UDP with a

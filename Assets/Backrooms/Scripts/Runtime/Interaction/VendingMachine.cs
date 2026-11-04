@@ -156,6 +156,8 @@ namespace Backrooms.Interaction
             // (Made while its chunk was still hidden: a sound asked to play then did not start.)
             if (!_fan.isPlaying) _fan.Play();
             if (!_buzz.isPlaying) _buzz.Play();
+            float amb = GameSettings.Ambience;                                  // (the building's sound: Settings)
+            _fan.volume = 0.18f * amb; _buzz.volume = 0.035f * amb;
             float dt = Time.deltaTime;
             // The compressor's cycle: on 40-90 s, off 25-60 s, a relay's click each way, easing in and out.
             _compTimer -= dt;
@@ -168,7 +170,7 @@ namespace Backrooms.Interaction
                 if (_compOn && !_comp.isPlaying) _comp.Play();
             }
             _compLevel = Mathf.MoveTowards(_compLevel, _compOn ? 1f : 0f, dt * (_compOn ? 0.6f : 1.5f));
-            _comp.volume = 0.32f * _compLevel;
+            _comp.volume = 0.32f * _compLevel * amb;
             _comp.pitch = 0.94f + 0.06f * _compLevel;
             if (_compLevel <= 0f && _comp.isPlaying) _comp.Stop();
             // Now and then a tube behind the sign flickers.

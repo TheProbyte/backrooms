@@ -173,12 +173,17 @@ namespace Backrooms.CustomRooms
     public class RoomSoundEmitter : MonoBehaviour
     {
         AudioSource _a;
+        float _level;
 
         public void Init(SoundKind kind, float volume, float range)
         {
-            _a = RoomSoundClips.Source(gameObject, Mathf.Clamp01(volume) * 0.7f, range, true);
+            _level = Mathf.Clamp01(volume) * 0.7f;
+            _a = RoomSoundClips.Source(gameObject, _level * GameSettings.Ambience, range, true);
             _a.clip = RoomSoundClips.Loop(kind);
         }
+
+        // The building's sound: the AMBIENCE setting (Settings) as it changes.
+        void Update() { if (_a) _a.volume = _level * GameSettings.Ambience; }
 
         // (Its chunk is built hidden and shown when complete: it starts once it is there.)
         void OnEnable()

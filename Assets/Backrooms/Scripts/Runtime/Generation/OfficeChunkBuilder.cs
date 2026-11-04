@@ -1219,7 +1219,8 @@ namespace Backrooms.Generation
                 bool starter = !f.faulty && f.on && !f.strip && !f.dome && f.mood == 0 && age == 0 && !Pool
                                && Dice(GX(f.cell.x), GZ(f.cell.y), 3050) < 0.006f * DetailRates.CeilingWear;
                 if (starter) Saw(c + SquareFixtureShift, Vector3.down, "tube_starter");
-                if ((f.buzz || starter) && f.on) _sounds.Add(new RoomSound { position = c + Vector3.down * 0.1f, kind = 1, volume = f.faulty || starter ? 0.55f : 0.35f, range = 6f });
+                // (A tube that will not strike buzzes through BuildingAudio, as a faulty one does: no sound spot of its own.)
+                if (f.buzz && f.on && !starter) _sounds.Add(new RoomSound { position = c + Vector3.down * 0.1f, kind = 1, volume = f.faulty ? 0.55f : 0.35f, range = 6f });
                 if (f.faulty || starter) { lens = new MeshWriter { worldOffset = _origin }; faultyLenses.Add((lens, f.dome, room)); }
                 else if (f.on)
                 {
