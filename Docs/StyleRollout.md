@@ -292,10 +292,14 @@ The new look costs nothing measurable: the GPU a little faster (the smaller pain
 - **The orientation video's Level 0** (`Tools/OrientationVideo/anim.js`, `phase6_video_sets.jpg`): the wallpaper as the
   game's (mustard with lighter stripes and chevrons), the darker mustard carpet, a wooden door.
 - **A co-op test on one machine** (`DebugTools.NetAutoTest`): a build started with `-net-join 127.0.0.1 -voice-test`
-  joins the editor's game and sends a test voice; results below.
+  joined the editor's World 3 and both sent a test voice. The guest arrived wearing its look, named on its chest, its
+  mouth moving with the voice (`phase6_coop_guest.jpg`: its camcorder hides the face); each side heard the other from the
+  other's head, about 0.13 s behind, nothing dropped once in. The first playback (a streamed clip) starved and chopped
+  the voice; it plays now from a looping clip written just ahead of where it plays (as UniVoice does).
+- **Not checked:** a real microphone (the test voice stood in), two machines over Hamachi, voices heard round walls in
+  practice (it uses the boombox's routing), the menu keys by hand.
 
 ### Next
 
-Your yes on phases 1-5, then commit (the new files: `Resources/Overflow`, `Models/Overflow`, `Materials/Overflow`,
-`Textures/Overflow`, `Prefabs/Props/Overflow`, the scripts and docs). Then Phase 5's later part (voice moving the mouth,
-monsters in the style) and the "Not now" list.
+Committed (2026-11-07). Left: the hub and the training room, and world generation for Overflow (new layouts, contract
+spaces, the noclip walls), after the owner's go-ahead; a real two-machine co-op game with microphones.
