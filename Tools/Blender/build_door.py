@@ -31,6 +31,9 @@ from mathutils import Vector
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = ARGS[0] if ARGS and not ARGS[0].startswith("--") else os.getcwd()
 PREVIEW = ARGS[ARGS.index("--preview") + 1] if "--preview" in ARGS else None
+# --style overflow (2026-11-06, Docs/StyleSheet.md): every hard edge rounded off (1 cm on the slab, frame and casings,
+# less on small parts), smooth shading with weighted normals, the handle's lever and its posts a fifth fatter.
+OVERFLOW = "--style" in ARGS and ARGS[ARGS.index("--style") + 1] == "overflow"
 os.makedirs(OUT, exist_ok=True)
 bpy.ops.wm.read_factory_settings(use_empty=True)
 
@@ -136,6 +139,8 @@ class Mesh:
         """A cylinder along 'x', 'y' or 'z' from centre (one end) for length (either sign)."""
         a = "xyz".index(axis)
         u, v = [k for k in range(3) if k != a]
+        if OVERFLOW and r < 0.03:
+            r *= 1.2
         ring = []
         for k in range(seg):
             t = 2 * math.pi * k / seg
@@ -154,6 +159,13 @@ class Mesh:
 
     def finish(self, parent=None, at=(0, 0, 0)):
         bmesh.ops.remove_doubles(self.bm, verts=self.bm.verts, dist=0.00002)
+        if OVERFLOW:
+            # Round every hard edge (faces meeting at over 30 degrees), as far as the parts' sizes allow.
+            edges = [e for e in self.bm.edges if len(e.link_faces) == 2 and e.calc_face_angle(0.0) > math.radians(30)]
+            size = max((max(v.co[i] for v in self.bm.verts) - min(v.co[i] for v in self.bm.verts)) for i in range(3)) if self.bm.verts else 0
+            if edges:
+                bmesh.ops.bevel(self.bm, geom=edges, offset=0.008 if size > 0.3 else 0.0025, offset_type="OFFSET", segments=2,
+                                profile=0.5, affect="EDGES", clamp_overlap=True)
         bmesh.ops.triangulate(self.bm, faces=self.bm.faces)
         me = bpy.data.meshes.new(self.name)
         self.bm.to_mesh(me)
@@ -161,9 +173,17 @@ class Mesh:
         for m in self.mats:
             me.materials.append(m)
         for p in me.polygons:
-            p.use_smooth = False
+            p.use_smooth = OVERFLOW
         ob = bpy.data.objects.new(self.name, me)
         bpy.context.collection.objects.link(ob)
+        if OVERFLOW:
+            # Weighted normals: the big faces stay flat, the rounded edges carry the shading round.
+            bpy.ops.object.select_all(action="DESELECT")
+            ob.select_set(True)
+            bpy.context.view_layer.objects.active = ob
+            wm = ob.modifiers.new("Weighted", "WEIGHTED_NORMAL")
+            wm.keep_sharp = True
+            bpy.ops.object.modifier_apply(modifier=wm.name)
         ob.location = B(at)
         if parent:
             ob.parent = parent
@@ -255,8 +275,10 @@ def slab(leaf):
             m.frustum((px0 + 0.006, ya + 0.006), (px1 - 0.006, yb - 0.006), 0.042, zc + hz, zc + hz + 0.0055, 0, "y")
             m.frustum((px0 + 0.006, ya + 0.006), (px1 - 0.006, yb - 0.006), 0.042, zc - hz, zc - hz - 0.0055, 0, "y")
             # (2026-11-03) the sticking: a fine bead round the panel where the frame meets it, both faces.
+            # Not in the new look: the rounding (8 mm) is bigger than the bead, which then showed through the frame's
+            # edge as dashed lines (and small fussy parts go: Docs/StyleSheet.md, "Chunkification").
             bd, bp = 0.007, 0.004
-            for zt, zs in ((zf, -1), (zb, 1)):
+            for zt, zs in (() if OVERFLOW else ((zf, -1), (zb, 1))):
                 z0b, z1b = (zt - bp, zt) if zs < 0 else (zt, zt + bp)
                 z0b, z1b = (zc + hz, zc + hz + bp) if zs < 0 else (zc - hz - bp, zc - hz)
                 m.box((px0, ya, z0b), (px0 + bd, yb, z1b), 0, "y", skip=("-y", "+y"))

@@ -104,13 +104,14 @@ namespace Backrooms.Interaction
         /// </summary>
         public static GameObject Attach(Transform parent, string resource, Vector3 fallbackSize, string fallbackSlot)
         {
-            var prefab = Resources.Load<GameObject>("Items/" + resource);
+            string path = Generation.ArtStyle.Path("Items/" + resource);     // (its remake in the new look, if there is one)
+            var prefab = Resources.Load<GameObject>(path);
             GameObject m;
             if (prefab)
             {
                 // A baked model (Tools/Blender/bake_kit.py, 2026-11-04): its own colour texture, a material a slot on it.
-                var albedo = Resources.Load<Texture2D>("Items/" + resource + "_Albedo");
-                float density = albedo ? Generation.BakedMaterials.Density("Items/" + resource) : 0f;
+                var albedo = Resources.Load<Texture2D>(path + "_Albedo");
+                float density = albedo ? Generation.BakedMaterials.Density(path) : 0f;
                 m = Object.Instantiate(prefab, parent, false);
                 m.transform.localRotation = prefab.transform.localRotation;
                 foreach (var c in m.GetComponentsInChildren<Collider>()) Object.Destroy(c);

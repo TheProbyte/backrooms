@@ -125,3 +125,34 @@
     color: white; -unity-text-outline-width: 1px; -unity-text-outline-color: black;
 }
 .cc-root .cc-mini-label { font-size: 12px; margin-top: 4px; letter-spacing: 2px; }
+
+/* The Overflow art style (2026-11-07): the company's colours, as the main menu's .mm-ov (MainMenu.uss): chocolate
+   panels with the amber frame and selection bar, cream type, tan notes. CamcorderVisualMenu sets .cc-ov on the root. */
+.cc-root.cc-ov .unity-label, .cc-root.cc-ov .unity-text-element { color: rgb(243, 230, 200); text-shadow: 1px 1px 0 rgba(30, 18, 8, 0.9); }
+.cc-ov .cc-panel, .cc-ov .cc-tip { background-color: rgba(59, 42, 30, 0.95); border-color: rgb(240, 162, 30); border-radius: 6px; }
+.cc-ov .cc-rule { background-color: rgb(240, 162, 30); }
+.cc-root.cc-ov .cc-page, .cc-root.cc-ov .cc-hint, .cc-root.cc-ov .cc-desc, .cc-root.cc-ov .cc-cat { color: rgb(205, 180, 138); }
+.cc-root.cc-ov .cc-stby, .cc-root.cc-ov .cc-tip-title, .cc-root.cc-ov .cc-detail-title { color: rgb(232, 178, 58); }
+.cc-root.cc-ov .cc-btn { border-color: rgba(243, 230, 200, 0.45); border-radius: 3px; color: rgb(243, 230, 200); }
+.cc-root.cc-ov .cc-btn:hover { background-color: rgb(240, 162, 30); border-color: rgb(240, 162, 30); color: rgb(59, 42, 30); }
+.cc-root.cc-ov .cc-btn:active { background-color: rgb(243, 230, 200); color: rgb(59, 42, 30); }
+.cc-root.cc-ov .cc-tab.cc-selected, .cc-root.cc-ov .cc-btn.cc-selected, .cc-root.cc-ov .cc-presets .cc-btn.cc-selected { background-color: rgb(243, 230, 200); color: rgb(59, 42, 30); }
+.cc-root.cc-ov .cc-section { background-color: rgba(240, 162, 30, 0.18); border-left-color: rgb(240, 162, 30); }
+.cc-ov .cc-row { border-radius: 3px; }
+.cc-ov .cc-row:hover { background-color: rgb(240, 162, 30); }
+.cc-root.cc-ov .cc-row:hover .unity-label, .cc-root.cc-ov .cc-row:hover .unity-text-element { color: rgb(59, 42, 30); }
+.cc-ov .cc-slider .unity-base-slider__tracker { background-color: rgba(243, 230, 200, 0.25); }
+.cc-ov .cc-slider .unity-base-slider__fill, .cc-ov .cc-slider .unity-base-slider__dragger { background-color: rgb(243, 230, 200); }
+.cc-ov .cc-slider .unity-base-slider__dragger { border-color: rgb(59, 42, 30); }
+.cc-ov .cc-row:hover .cc-slider .unity-base-slider__tracker { background-color: rgba(59, 42, 30, 0.35); }
+.cc-ov .cc-row:hover .cc-slider .unity-base-slider__fill, .cc-ov .cc-row:hover .cc-slider .unity-base-slider__dragger { background-color: rgb(59, 42, 30); }
+.cc-ov .cc-toggle .unity-toggle__checkmark { border-color: rgb(243, 230, 200); border-radius: 3px; }
+.cc-ov .cc-toggle:checked .unity-toggle__checkmark { background-color: rgb(240, 162, 30); }
+.cc-ov .cc-row:hover .cc-toggle .unity-toggle__checkmark { border-color: rgb(59, 42, 30); }
+.cc-ov .cc-row:hover .cc-toggle:checked .unity-toggle__checkmark { background-color: rgb(59, 42, 30); }
+.cc-root.cc-ov .cc-field .unity-base-text-field__input { background-color: rgba(30, 20, 13, 0.7); border-color: rgba(243, 230, 200, 0.45); color: rgb(243, 230, 200); border-radius: 3px; }
+.cc-root.cc-ov .cc-foldout > .unity-foldout__toggle { background-color: rgba(240, 162, 30, 0.12); }
+.cc-root.cc-ov .cc-foldout > .unity-foldout__toggle:hover { background-color: rgb(240, 162, 30); }
+.cc-root.cc-ov .cc-foldout > .unity-foldout__toggle:hover .unity-foldout__text { color: rgb(59, 42, 30); }
+.cc-ov .cc-map, .cc-ov .cc-mini-map { border-color: rgb(240, 162, 30); }
+.cc-ov .cc-scroll .unity-scroller--vertical .unity-base-slider__dragger { background-color: rgba(240, 162, 30, 0.8); }

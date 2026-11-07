@@ -96,6 +96,10 @@ Shader "Backrooms/PoolTile"
                 // Tiles: the grid sits half a wall thickness off the cell lines, so whole tiles meet at every corner.
                 float size = deck ? POOL_TILE * 2.0 : POOL_TILE;
                 float grout = deck ? _Grout * 0.5 : _Grout;
+                // The Overflow look (2026-11-07, Docs/StyleSheet.md): chunkier tiles, wider joints and rounder edges, painted in
+                // big soft patches with the dirt baked into the joints; the glaze a little softer.
+                float ov = _BROverflow;
+                grout *= 1.0 + 0.5 * ov;
                 float2 g = (i.uv - 0.075) / size;
                 float2 id = floor(g);
                 float2 f = frac(g) - 0.5;
@@ -106,14 +110,23 @@ Shader "Backrooms/PoolTile"
                 float far = saturate(max(fw.x, fw.y) * 2.5 - 0.5);      // joints thinner than a pixel: their average
                 tileMask = lerp(tileMask, 1.0 - 2.0 * grout * 0.8, far);
                 float2 h = PoolHash22(id + (deck ? 91.0 : 17.0));
-                float3 tint = (deck ? _DeckColor.rgb : _TileColor.rgb) * (1.0 + (h.x - 0.5) * _Variation * 2.0);
-                tint.g *= 1.0 + (h.y - 0.5) * _Variation * 0.6;          // a touch of hue from tile to tile
+                float variation = _Variation * (1.0 - 0.6 * ov);
+                float3 tint = (deck ? _DeckColor.rgb : _TileColor.rgb) * (1.0 + (h.x - 0.5) * variation * 2.0);
+                tint.g *= 1.0 + (h.y - 0.5) * variation * 0.6;          // a touch of hue from tile to tile
+                if (ov > 0.5)
+                {
+                    // Painted patches: noise over the surface cut into four soft levels; the darker ones warmer and browner.
+                    float2 sp = abs(N0.y) > 0.5 ? P.xz : float2(dot(P.xz, float2(N0.z, -N0.x)), P.y);
+                    float pn = PoolValueNoise(sp * 0.45 + 11.0) * 0.6 + PoolValueNoise(sp * 1.3 + 2.0) * 0.4;
+                    float lv = saturate(PoolSoftSteps(saturate((pn - 0.2) / 0.6), 1.0 / 3.0));
+                    tint *= lerp(float3(0.87, 0.84, 0.76), float3(1.03, 1.03, 1.01), lv);
+                }
                 half3 albedo = lerp(_GroutColor.rgb, tint, tileMask);
 
                 // Shape: a slightly domed face, the edges rolled down into the joint, each tile set a little off true.
                 float2 e = saturate(1.0 - (d - grout) / 0.14);
                 float near = 1.0 - far;
-                float2 tilt = (sign(f) * e * e * _Bevel + f * _Dome * 2.0 + (h - 0.5) * _Tilt) * near;
+                float2 tilt = (sign(f) * e * e * _Bevel * (1.0 + 0.7 * ov) + f * _Dome * 2.0 * (1.0 + 0.8 * ov) + (h - 0.5) * _Tilt * (1.0 - 0.6 * ov)) * near;
                 float2 wave = float2(sin(f.x * 6.2832 + h.y * 6.0), sin(f.y * 6.2832 + h.x * 6.0)) * 0.01 * near;
                 tilt += wave;
                 // Wear (2026-10-31): now and then a tile cracked across, or missing (the mortar bed showing).
@@ -136,7 +149,8 @@ Shader "Backrooms/PoolTile"
                     if (dot(rc, rc) < 2.2 + 1.5 * PoolHash22(id + 5.5).x)
                         tint *= lerp(float3(1.06, 1.04, 1.0), float3(0.97, 1.05, 1.0), step(0.5, rh.y));
                 }
-                albedo = lerp(_GroutColor.rgb, tint, tileMask);
+                // (Overflow: the joints carry the baked dirt, darker and warmer.)
+                albedo = lerp(_GroutColor.rgb * lerp(float3(1, 1, 1), float3(0.93, 0.9, 0.82), ov), tint, tileMask);
                 if (_Chips > 0.0 && near > 0.3)
                 {
                     float2 ch = PoolHash22(id + 77.0);
@@ -311,6 +325,13 @@ Shader "Backrooms/PoolTile"
                 float sun = PoolSunVisibility(P + N0 * 0.02);
                 float NdotL = saturate(dot(N, POOL_SUN));
                 float3 caustic = under > 0.0 ? PoolCausticLight(P, waterY) : 1.0;
+                if (ov > 0.5 && under > 0.0)
+                {
+                    // Painted caustics: the light's net as bold soft shapes, two levels, its average kept.
+                    float cl = dot(caustic, 1.0 / 3.0);
+                    float band = smoothstep(1.05, 1.25, cl);
+                    caustic = (caustic / max(cl, 1e-3)) * lerp(0.82, 1.7, band);
+                }
                 float3 sunLight = _PoolSunColor.rgb * sun * NdotL * caustic;
                 float ao = 1.0;
                 #if defined(_SCREEN_SPACE_OCCLUSION)
@@ -325,7 +346,7 @@ Shader "Backrooms/PoolTile"
                 float3 waterLight = under < 0.5 ? PoolWaterLight(P, N0) * joint : 0.0;
 
                 // The glaze: what it mirrors (traced), strongest at grazing angles, and the sun's own highlight.
-                float smooth = lerp(0.3, _Smoothness, tileMask) * glaze;
+                float smooth = lerp(0.3, _Smoothness * (1.0 - 0.12 * ov), tileMask) * glaze;
                 smooth = lerp(smooth, 0.97, puddle);                          // standing water: a mirror
                 // Specular anti-aliasing (Tokuyoshi & Kaplanyan's geometric kind, as HDRP's): where the normal turns faster
                 // than a pixel shows (tile edges and tilts far off), widen the highlight instead of letting it sparkle.

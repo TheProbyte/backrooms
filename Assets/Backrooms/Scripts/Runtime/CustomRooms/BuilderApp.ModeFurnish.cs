@@ -74,8 +74,8 @@ namespace Backrooms.CustomRooms
                         ImUi.Fill(cell, on ? ImUi.Accent : ImUi.Raised);
                         var pic = new Rect(cell.x + 3, cell.y + 3, cell.width - 6, cell.height - 34);
                         if (it.picture) GUI.DrawTexture(pic, it.picture, ScaleMode.ScaleAndCrop);
-                        else { ImUi.Fill(pic, new Color(0.16f, 0.16f, 0.17f, 1f)); GUI.Label(pic, it.name.ToUpperInvariant(), new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleCenter, wordWrap = true }); }
-                        GUI.Label(new Rect(cell.x + 4, cell.yMax - 31, cell.width - 8, 30), it.name, new GUIStyle(ImUi.Small) { fontSize = 11, wordWrap = true, alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip, normal = { textColor = on ? Color.black : ImUi.Text } });
+                        else { ImUi.Fill(pic, ImUi.Raised); GUI.Label(pic, it.name.ToUpperInvariant(), new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleCenter, wordWrap = true }); }
+                        GUI.Label(new Rect(cell.x + 4, cell.yMax - 31, cell.width - 8, 30), it.name, new GUIStyle(ImUi.Small) { fontSize = 11, wordWrap = true, alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip, normal = { textColor = on ? ImUi.OnAccent : ImUi.Text } });
                     }
                 }
                 if (shown.Count == 0) ImUi.Dimmed(col.Row(60), cats[app._catalogCategory] == "MODELS" ? "No models yet. Put .glb or .obj files in the models folder, then RELOAD." : "Nothing matches.");

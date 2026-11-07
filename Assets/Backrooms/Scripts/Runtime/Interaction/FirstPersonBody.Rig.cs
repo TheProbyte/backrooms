@@ -19,6 +19,9 @@ namespace Backrooms.Interaction
     {
         [Tooltip("Use the MakeHuman body (Resources/Player/MPFB) when it is there.")]
         public bool useMakeHumanBody = true;
+        [Tooltip("The hazmat suit (Resources/Player/Hazmat/PlayerHazmatSuit), rigged on the MakeHuman body's skeleton, in its place.")]
+        public bool useHazmatSuit = true;
+        bool _isHazmat;
 
         bool _isMpfb;
 
@@ -437,6 +440,57 @@ namespace Backrooms.Interaction
             m.SetFloat("_Smoothness", skin ? 0.38f : asset.StartsWith("shoes") ? 0.25f : 0.12f);
             _mats[key] = m;
             return m;
+        }
+
+        /// <summary>
+        /// The hazmat suit's own materials (URP Lit, from the style lab) moved onto Backrooms/Lit, which has the same properties,
+        /// so the light grid lights the suit as it lights the world; their settings (transparent glass and paint, emission) kept.
+        /// </summary>
+        Material HazmatMaterial(Material src, Shader shader)
+        {
+            if (!src) return src;
+            string key = "Hazmat_" + src.name;
+            if (_mats.TryGetValue(key, out var m)) return m;
+            m = new Material(src) { name = "FP_" + src.name };
+            if (shader && src.shader && src.shader.name == "Universal Render Pipeline/Lit")
+            {
+                int queue = src.renderQueue;
+                m.shader = shader;
+                m.renderQueue = queue;
+            }
+            NoDust(m);
+            _mats[key] = m;
+            return m;
+        }
+
+        /// <summary>The suit's look (face, hair, mask, name): its materials made the same way, and first-person mode.</summary>
+        void SetupHazmat(Transform body)
+        {
+            var ap = body.GetComponent<StyleLab.HazmatAppearance>();
+            if (!ap) return;
+            var shader = Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit");
+            if (ap.skinTones != null) for (int i = 0; i < ap.skinTones.Length; i++) ap.skinTones[i] = HazmatMaterial(ap.skinTones[i], shader);
+            if (ap.hairTones != null) for (int i = 0; i < ap.hairTones.Length; i++) ap.hairTones[i] = HazmatMaterial(ap.hairTones[i], shader);
+            ap.labelMaterial = HazmatMaterial(ap.labelMaterial, shader);
+            ap.firstPerson = true;
+            _appearance = ap;
+            ApplyOwnLook();
+            StyleLab.PlayerLook.Changed -= ApplyOwnLook;
+            StyleLab.PlayerLook.Changed += ApplyOwnLook;
+        }
+
+        StyleLab.HazmatAppearance _appearance;
+
+        /// <summary>How loud you are speaking in co-op (0..1, NetWorld.Voice): your own suit's mouth moves with it.</summary>
+        public void SetTalk(float level) { if (_appearance) _appearance.talk = Mathf.Clamp01(level); }
+
+        /// <summary>Your look (YOUR LOOK) and your name on the chest tape; again whenever you change it.</summary>
+        void ApplyOwnLook()
+        {
+            if (!_appearance) { StyleLab.PlayerLook.Changed -= ApplyOwnLook; return; }
+            StyleLab.PlayerLook.Saved.ApplyTo(_appearance);
+            _appearance.playerName = Net.NetSession.PlayerName;
+            _appearance.Apply();
         }
 
         [Tooltip("First person shows little of the body: the trunk (chest, belly, shirt) only in the shadows, the working arm " +

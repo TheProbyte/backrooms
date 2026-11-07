@@ -326,7 +326,7 @@ namespace Backrooms.CustomRooms
             if (_hoverCellValid && (_tool == BuilderTool.Floor || _tool == BuilderTool.Light || _tool == BuilderTool.Outside))
             {
                 float x0 = _hoverCell.x * C, z0 = _hoverCell.y * C;
-                Quad(W3(x0, z0), W3(x0 + C, z0), W3(x0 + C, z0 + C), W3(x0, z0 + C), new Color(0.93f, 0.78f, 0.28f, 0.28f));
+                Quad(W3(x0, z0), W3(x0 + C, z0), W3(x0 + C, z0 + C), W3(x0, z0 + C), new Color(ImUi.Accent.r, ImUi.Accent.g, ImUi.Accent.b, 0.28f));
             }
             // Room areas as a faint tint.
             for (int z = 0; z < v.depth; z++)

@@ -218,7 +218,7 @@ namespace Backrooms.CustomRooms
             var a = new Vector2(_boxStart.x / s, (Screen.height - _boxStart.y) / s);
             var b = new Vector2(_boxNow.x / s, (Screen.height - _boxNow.y) / s);
             var r = Rect.MinMaxRect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y), Mathf.Max(a.x, b.x), Mathf.Max(a.y, b.y));
-            ImUi.Fill(r, new Color(0.93f, 0.78f, 0.28f, 0.08f));
+            { var ac = ImUi.Accent; ac.a = 0.08f; ImUi.Fill(r, ac); }
             ImUi.Fill(new Rect(r.x, r.y, r.width, 1), ImUi.Accent); ImUi.Fill(new Rect(r.x, r.yMax - 1, r.width, 1), ImUi.Accent);
             ImUi.Fill(new Rect(r.x, r.y, 1, r.height), ImUi.Accent); ImUi.Fill(new Rect(r.xMax - 1, r.y, 1, r.height), ImUi.Accent);
         }

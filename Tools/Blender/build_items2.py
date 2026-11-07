@@ -22,6 +22,11 @@ ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = ARGS[0] if ARGS and not ARGS[0].startswith("--") else os.getcwd()
 PREVIEW = ARGS[ARGS.index("--preview") + 1] if "--preview" in ARGS else None
 ONLY = set(ARGS[ARGS.index("--only") + 1].split(",")) if "--only" in ARGS else None
+# --style overflow (2026-11-06, Docs/StyleSheet.md): the same models in the new look, written to Resources/Overflow/...:
+# every box bevelled bigger (nothing seen is sharp), tubes a little thicker, the palette's colours, and bake_kit's painted
+# bake (flat patches, bold worn edges, dirt in the creases). The game loads them in its Overflow look (ArtStyle.Path).
+STYLE = ARGS[ARGS.index("--style") + 1] if "--style" in ARGS else None
+OVERFLOW = STYLE == "overflow"
 os.makedirs(OUT, exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -64,6 +69,12 @@ def lathe(name, profile, material, segments=48, cap_bottom=True, cap_top=True, f
     outside) gives outward normals; flip=True reverses them (an inside surface). xf: optional 4x4 Matrix applied."""
     bm = bmesh.new()
     rings = []
+    if OVERFLOW:
+        # Chunkier (Sprite Fright's "chunkification": small parts bigger): a thin turned part (a knob, pin, post, thin
+        # handle, stick: all of it under 1.5 cm radius) a fifth fatter about its axis. (Not bigger parts: a can's body and
+        # its shoulder and base ring are separate parts that must stay the same size.)
+        if max(r for r, z in profile) < 0.015:
+            profile = [(r * 1.2, z) for r, z in profile]
     for r, z in profile:
         if r < 1e-6:
             rings.append(bm.verts.new((0, 0, z)))
@@ -159,6 +170,9 @@ def tube(name, pts, radius, material, sides=8, cap0=True, cap1=True, up=None):
     pts = [Vector(p) for p in pts]
     n = len(pts)
     rad = list(radius) if isinstance(radius, (list, tuple)) else [radius] * n
+    if OVERFLOW:
+        # (chunkier: thicker handles, rails and cables; thin wires and cords most: up to 5 mm)
+        rad = [max(r * 1.15, min(0.005, r * 1.6)) for r in rad]
     T = tangents(pts)
     ref = Vector(up) if up else (Vector((0, 0, 1)) if abs(T[0].z) < 0.9 else Vector((1, 0, 0)))
     N = (ref - T[0] * ref.dot(T[0])).normalized()
@@ -177,10 +191,22 @@ def tube(name, pts, radius, material, sides=8, cap0=True, cap1=True, up=None):
 
 def rbox(name, size, center, material, bevel=0.0, segs=2, taper=None):
     """Box of size (x, y, z) about center, optional bevelled edges."""
+    if OVERFLOW:
+        # Thin parts thicker (plates, strips, frames, slats: Sprite Fright's "chunkification"): each side under 12 mm grows
+        # by up to its own size, at most 4 mm in all (2 mm a face, so what is mounted on it is not buried: card() stands
+        # prints 2.5 mm off in this look).
+        size = tuple(d + min(d, 0.004, max(0.0, 0.012 - d)) if d > 0.0008 else d for d in size)
     bm = bmesh.new()
     bmesh.ops.create_cube(bm, size=1.0)
     for v in bm.verts:
         v.co = Vector((v.co.x * size[0], v.co.y * size[1], v.co.z * size[2]))
+    if OVERFLOW:
+        # Bigger, rounder bevels, and one on every box (the style sheet: 0.5-1 cm on small things, 1.5-3 on big ones),
+        # never more than a little under half the box's thinnest side.
+        cap = 0.42 * min(size)
+        want = max(bevel * 1.8, min(0.012, 0.012 * max(size) / 0.5) if max(size) > 0.05 else 0.003)
+        bevel = min(want, cap)
+        segs = max(segs, 2)
     if bevel > 0:
         bmesh.ops.bevel(bm, geom=list(bm.verts) + list(bm.edges), offset=bevel, offset_type="OFFSET", segments=segs,
                         profile=0.5, affect="EDGES", clamp_overlap=True)

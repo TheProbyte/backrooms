@@ -13,6 +13,7 @@ namespace Backrooms.Net
     {
         // The session (NetSession)
         Hello = 1, Welcome = 2, Refuse = 3, PeerJoined = 4, PeerLeft = 5, World = 6, Ready = 7, PeerReady = 8, Notice = 9, Ping = 10, Pong = 11,
+        Look = 12,                       // a player's suit look changed (StyleLab.PlayerLook, packed)
         // The world (NetWorld); from 20 on, a client's go to the host, which applies them and passes them on.
         Player = 20,
         ItemHeld = 21, ItemMove = 22, ItemRest = 23, ItemGone = 24, LootTaken = 25, ItemAmount = 26, ItemOwner = 27,
@@ -20,6 +21,7 @@ namespace Backrooms.Net
         DoorMove = 40, DoorRest = 41, DoorBolt = 42, Light = 43, Drain = 44, Breaker = 45, Home = 46, Poke = 47,
         Paint = 50, Mark = 51, Strike = 52, Nail = 53, Unnail = 54,
         Inventory = 60, Boombox = 61, Plug = 62,
+        Voice = 63,                      // 60 ms of a player's voice (NetWorld.Voice, VoiceCodec)
         Debug = 90,
     }
 
@@ -28,6 +30,8 @@ namespace Backrooms.Net
     {
         public int id = -1;
         public string name = "";
+        /// <summary>Their suit's look (StyleLab.PlayerLook.Pack; 0: none sent).</summary>
+        public int look;
         public int link = -1;            // host: the connection; -1 for the host itself
         public bool welcomed, worldSent, inWorld;
         public float ping;
@@ -49,7 +53,7 @@ namespace Backrooms.Net
     [DefaultExecutionOrder(-200)]
     public class NetSession : MonoBehaviour
     {
-        public const int Protocol = 1;
+        public const int Protocol = 2;                     // 2 (2026-11-06): the players' looks
         public const int MaxPlayers = 4;
 
         public static NetSession Instance { get; private set; }
@@ -132,6 +136,8 @@ namespace Backrooms.Net
         public static Color ColourOf(int id) => s_colours[((id % 4) + 4) % 4];
 
         public static string NameOf(int id) => Peers.TryGetValue(id, out var p) ? p.name : "PLAYER " + (id + 1);
+        /// <summary>A player's suit look (StyleLab.PlayerLook.Pack), 0 if none was sent.</summary>
+        public static int LookOf(int id) => Peers.TryGetValue(id, out var p) ? p.look : 0;
 
         // ---------------- Lifetime ----------------
 
@@ -152,7 +158,23 @@ namespace Backrooms.Net
             Instance = go.AddComponent<NetSession>();
         }
 
-        void OnDestroy() { if (Instance == this) { Stop(null, false); Instance = null; } }
+        void OnDestroy() { if (Instance == this) { Stop(null, false); Instance = null; } StyleLab.PlayerLook.Changed -= SendLook; }
+
+        void Awake() { StyleLab.PlayerLook.Changed += SendLook; }
+
+        /// <summary>Your look changed (YOUR LOOK, in a game): the others see it at once (the host passes a client's on).</summary>
+        void SendLook()
+        {
+            if (_t == null) return;
+            int look = StyleLab.PlayerLook.Saved.Pack();
+            if (Peers.TryGetValue(LocalId, out var me)) me.look = look;
+            if (_t.IsHost)
+            {
+                Begin(Msg.Look).Int(LocalId); _w.Int(look);
+                foreach (var o in Peers.Values) if (o.link >= 0 && o.welcomed) SendLink(o.link, true);
+            }
+            else if (LocalId > 0) { Begin(Msg.Look).Int(look); SendLink(0, true); }
+        }
 
         /// <summary>Testing (NetDebug): -netjoin ADDRESS:PORT joins straight away (trying again while the host starts up).</summary>
         System.Collections.IEnumerator Start()
@@ -187,7 +209,7 @@ namespace Backrooms.Net
             s._t = t;
             LocalId = 0;
             Peers.Clear();
-            Peers[0] = new Peer { id = 0, name = PlayerName, welcomed = true, worldSent = true, inWorld = true, joinedAt = Now };
+            Peers[0] = new Peer { id = 0, name = PlayerName, look = StyleLab.PlayerLook.Saved.Pack(), welcomed = true, worldSent = true, inWorld = true, joinedAt = Now };
             Current = Phase.Hosting; Status = "HOSTING ON PORT " + Port; LastError = null;
             Debug.Log($"[Net] Hosting world {slot + 1} on port {Port} as {PlayerName}.");
             GameSession.Play(slot);
@@ -276,7 +298,7 @@ namespace Backrooms.Net
         }
 
         /// <summary>Messages that may be lost (a newer one follows soon): by UDP when it works.</summary>
-        public static bool Unreliable(Msg m) => m == Msg.Player || m == Msg.ItemMove || m == Msg.PropMove || m == Msg.DoorMove;
+        public static bool Unreliable(Msg m) => m == Msg.Player || m == Msg.ItemMove || m == Msg.PropMove || m == Msg.DoorMove || m == Msg.Voice;
 
         static double Now => Time.realtimeSinceStartupAsDouble;
 
@@ -338,7 +360,7 @@ namespace Backrooms.Net
             }
             Status = "CONNECTED. ASKING TO JOIN ...";
             Begin(Msg.Hello).Int(Protocol);
-            _w.Str(Application.version); _w.Str(PlayerName);
+            _w.Str(Application.version); _w.Str(PlayerName); _w.Int(StyleLab.PlayerLook.Saved.Pack());
             SendLink(0, true);
         }
 
@@ -397,6 +419,14 @@ namespace Backrooms.Net
                 case Msg.Ping: { double t = _r.Double(); Begin(Msg.Pong).Double(t); SendLink(link, true); return; }
                 case Msg.Pong: { p.ping = (float)(Now - _r.Double()); return; }
                 case Msg.Notice: return;
+                case Msg.Look:
+                {
+                    if (p.id < 0) return;
+                    p.look = _r.Int();
+                    Begin(Msg.Look).Int(p.id); _w.Int(p.look);
+                    foreach (var o in Peers.Values) if (o.link >= 0 && o.welcomed && o.id != p.id) SendLink(o.link, true);
+                    return;
+                }
             }
             if ((byte)kind < 20 || p.id < 0 || !p.worldSent) return;
             bool relay = WorldHandler == null || WorldHandler(p.id, kind, _r);
@@ -408,6 +438,7 @@ namespace Backrooms.Net
             int protocol = _r.Int();
             string version = _r.Str();
             string name = Clean(_r.Str());
+            int look = protocol == Protocol ? _r.Int() : 0;
             string refuse = null;
             if (protocol != Protocol || version != Application.version) refuse = $"THE HOST HAS A DIFFERENT VERSION OF THE GAME ({Application.version}; YOURS: {version})";
             else if (Peers.Count >= MaxPlayers) refuse = $"THE WORLD IS FULL ({MaxPlayers} PLAYERS)";
@@ -424,13 +455,13 @@ namespace Backrooms.Net
             while (Peers.ContainsKey(id)) id++;
             string unique = name; int k = 2;
             while (NameTaken(unique)) unique = name + " " + k++;
-            p.id = id; p.name = unique; p.welcomed = true;
+            p.id = id; p.name = unique; p.look = look; p.welcomed = true;
             Peers[id] = p;
             Begin(Msg.Welcome).Int(id);
             _w.Int(Peers.Count);
-            foreach (var o in Peers.Values) { _w.Int(o.id); _w.Str(o.name); _w.Bool(o.inWorld); }
+            foreach (var o in Peers.Values) { _w.Int(o.id); _w.Str(o.name); _w.Bool(o.inWorld); _w.Int(o.look); }
             SendLink(link, true);
-            Begin(Msg.PeerJoined).Int(id); _w.Str(unique);
+            Begin(Msg.PeerJoined).Int(id); _w.Str(unique); _w.Int(look);
             foreach (var o in Peers.Values) if (o.link >= 0 && o.id != id && o.welcomed) SendLink(o.link, true);
             Debug.Log($"[Net] {unique} is joining from {_t.Link(link)?.Remote} (player {id + 1}).");
             Note($"{unique} IS JOINING ...", p.Colour);
@@ -457,12 +488,13 @@ namespace Backrooms.Net
             switch (kind)
             {
                 case Msg.Refuse: { var why = _r.Str(); Stop(why); return; }
+                case Msg.Look: { int id = _r.Int(); int look = _r.Int(); if (Peers.TryGetValue(id, out var lp)) lp.look = look; return; }
                 case Msg.Welcome:
                 {
                     LocalId = _r.Int();
                     int n = _r.Int();
                     Peers.Clear();
-                    for (int i = 0; i < n; i++) { var p = new Peer { id = _r.Int(), name = _r.Str() }; p.inWorld = _r.Bool(); p.welcomed = true; Peers[p.id] = p; }
+                    for (int i = 0; i < n; i++) { var p = new Peer { id = _r.Int(), name = _r.Str() }; p.inWorld = _r.Bool(); p.look = _r.Int(); p.welcomed = true; Peers[p.id] = p; }
                     Current = Phase.Joining; Status = "JOINING " + NameOf(0) + "'S WORLD. RECEIVING IT ...";
                     return;
                 }
@@ -470,6 +502,7 @@ namespace Backrooms.Net
                 case Msg.PeerJoined:
                 {
                     var p = new Peer { id = _r.Int(), name = _r.Str(), welcomed = true };
+                    p.look = _r.Int();
                     Peers[p.id] = p;
                     Note($"{p.name} IS JOINING ...", p.Colour);
                     return;

@@ -29,6 +29,7 @@ namespace Backrooms.Interaction
         // Rest-pose axes (local to each segment): along the bone, and the "back" (watch / back of the hand) side.
         Vector3 _upperAxis, _upperBack, _foreAxis, _foreBack, _handFingers, _handBack;
         Vector3 _wristToGrip;                              // grip point in the hand's frame (fingers, back, side)
+        Vector3 _leftGrip = new Vector3(0f, -0.02f, 0.065f);   // the other hand's: wrist to the palm's middle (its frame), to its size
         readonly List<(Transform t, Quaternion rest, Vector3 axis, float weight, string finger)> _fingerJoints = new List<(Transform, Quaternion, Vector3, float, string)>();
         Vector3 _wristToTip;                               // index fingertip in the hand's frame (side, back, fingers)
         Quaternion _torsoRest;
@@ -66,8 +67,13 @@ namespace Backrooms.Interaction
             float side = _grab ? _grab.Side : 1f;
             var armPrefab = Resources.Load<GameObject>(side > 0f ? "Player/PlayerArmRight" : "Player/PlayerArm");
             if (!armPrefab) armPrefab = Resources.Load<GameObject>("Player/PlayerArm");
-            var mpfbPrefab = useMakeHumanBody ? Resources.Load<GameObject>("Player/MPFB/PlayerMPFB") : null;
-            var bodyPrefab = mpfbPrefab ? mpfbPrefab : Resources.Load<GameObject>("Player/PlayerBody");
+            // The hazmat suit (2026-11-06, Tools/Blender/style_lab_rig.py) is rigged on the MakeHuman body's skeleton, so it
+            // takes its place and everything below drives it the same way.
+            // (The suit is the Overflow look's body; the Classic look keeps the MakeHuman body: Generation.ArtStyle.)
+            bool suit = useHazmatSuit && Generation.ArtStyle.Current == Generation.ArtStyle.Look.Overflow;
+            var hazmatPrefab = suit ? Resources.Load<GameObject>("Player/Hazmat/PlayerHazmatSuit") : null;
+            var mpfbPrefab = !hazmatPrefab && useMakeHumanBody ? Resources.Load<GameObject>("Player/MPFB/PlayerMPFB") : null;
+            var bodyPrefab = hazmatPrefab ? hazmatPrefab : mpfbPrefab ? mpfbPrefab : Resources.Load<GameObject>("Player/PlayerBody");
             if (armPrefab)
             {
                 // The separate arm: the only arm on the old body; on the MakeHuman body, the hand while crawling.
@@ -86,10 +92,12 @@ namespace Backrooms.Interaction
             }
             if (bodyPrefab && showBody)
             {
-                _isMpfb = bodyPrefab == mpfbPrefab;
+                _isHazmat = hazmatPrefab && bodyPrefab == hazmatPrefab;
+                _isMpfb = _isHazmat || bodyPrefab == mpfbPrefab;
                 _body = Instantiate(bodyPrefab, transform, false).transform;
                 _body.name = "FirstPersonBody";
                 Setup(_body.gameObject, _isMpfb);
+                if (_isHazmat) SetupHazmat(_body);
                 _hips = Find(_body, Bone("Hips")); _torso = Find(_body, Bone("Torso"));
                 _thighL = Find(_body, Bone("ThighL")); _thighR = Find(_body, Bone("ThighR")); _shinL = Find(_body, Bone("ShinL")); _shinR = Find(_body, Bone("ShinR"));
                 MeasureBody();
@@ -100,6 +108,14 @@ namespace Backrooms.Interaction
                     var up = Find(_body, "upperarm_" + s); var fo = Find(_body, "lowerarm_" + s); var ha = Find(_body, "hand_" + s);
                     if (up && fo && ha) { _bodyArm = MeasureArmRig(_body, Find(_body, "clavicle_" + s), up, fo, ha, s, false); FindHandSkin(_bodyArm, _body, s); }
                 }
+                // The hand's size (the suit's glove is bigger than the hand): the camcorder hand's and the free hand's grips
+                // scale with it, wrist to the middle knuckle against the MakeHuman hand's 11.4 cm (the glove: 12.4, thicker).
+                var hl = Find(_body, "hand_l"); var kl = Find(_body, "middle_01_l");
+                if (hl && kl)
+                {
+                    float k = Mathf.Clamp((kl.position - hl.position).magnitude / (0.114f * Mathf.Max(1e-3f, _body.lossyScale.x)), 0.8f, 1.4f);
+                    _leftGrip = new Vector3(0f, -0.02f * k * (_isHazmat ? 1.25f : 1f), 0.065f * k);
+                }
                 Generation.PoolLitSwitch.Attach(_body.gameObject);
             }
             UseArm(_bodyArm ?? _looseArm);
@@ -108,6 +124,7 @@ namespace Backrooms.Interaction
 
         void OnDestroy()
         {
+            StyleLab.PlayerLook.Changed -= ApplyOwnLook;
             OnDestroyFull();
             if (_looseArm != null && _looseArm.root) Destroy(_looseArm.root.gameObject);
             foreach (var m in _mats.Values) Destroy(m);
@@ -134,7 +151,7 @@ namespace Backrooms.Interaction
                 var mats = r.sharedMaterials;
                 for (int i = 0; i < mats.Length; i++)
                 {
-                    if (mpfb) { mats[i] = MpfbMaterial(mats[i], shader); continue; }
+                    if (mpfb) { mats[i] = _isHazmat ? HazmatMaterial(mats[i], shader) : MpfbMaterial(mats[i], shader); continue; }
                     string key = mats[i] ? mats[i].name.Replace(" (Instance)", "") : "Skin";
                     if (!_mats.TryGetValue(key, out var m))
                     {

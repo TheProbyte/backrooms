@@ -27,6 +27,15 @@ def arg(name, default=None):
 TEX = os.path.abspath(arg("--tex", OUT))           # (absolute: a relative image path was saved nowhere)
 PATTERN = arg("--pattern")
 PREVIEW = arg("--preview")
+# --style overflow: the new look's chunkier shapes (Docs/StyleSheet.md, "Chunkification"): rounder cushions, piping as
+# thick as the other scripts' cords. The owner's floral pattern stays; run with --tex in a scratch folder so the
+# textures are not rewritten.
+OVERFLOW = arg("--style", "classic") == "overflow"
+
+
+def R(r):
+    """A cushion's corner radius: a quarter rounder in the new look."""
+    return r * 1.25 if OVERFLOW else r
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(TEX, exist_ok=True)
 rng = random.Random(7)
@@ -244,7 +253,7 @@ def tube(name, points, radius, mat_name, closed=True, verts=8):
     """Piping: a thin round cord along a polyline."""
     cu = bpy.data.curves.new(name, "CURVE")
     cu.dimensions = "3D"
-    cu.bevel_depth = radius
+    cu.bevel_depth = max(radius * 1.15, min(0.005, radius * 1.6)) if OVERFLOW else radius
     cu.bevel_resolution = max(1, verts // 4)
     sp = cu.splines.new("POLY")
     sp.points.add(len(points) - 1)
@@ -316,7 +325,7 @@ def arm(name, side):
     parts = []
     xo = side * (L / 2 - ARM_W / 2)
     top = 0.565
-    body, _ = cushion(name + "_panel", (ARM_W - 0.01, D - 0.01, top - 0.02 - BASE_Z0), (0, 0, 0), "Fabric", 0.035,
+    body, _ = cushion(name + "_panel", (ARM_W - 0.01, D - 0.01, top - 0.02 - BASE_Z0), (0, 0, 0), "Fabric", R(0.035),
                       tile=(WEAVE_TILE, WEAVE_TILE))
     body.location = (xo, 0.0, (top - 0.02 + BASE_Z0) / 2)
     parts.append(body)
@@ -371,11 +380,11 @@ def build():
     parts = []
     inner = L / 2 - ARM_W + 0.005           # inside face of the arms
     # The base (front rail, upholstered), the deck under the cushions, the back frame.
-    base, _ = cushion("base", (2 * inner + 0.02, D - 0.02, DECK_Z - BASE_Z0), (0, 0, 0), "Fabric", 0.03, tile=(WEAVE_TILE, WEAVE_TILE))
+    base, _ = cushion("base", (2 * inner + 0.02, D - 0.02, DECK_Z - BASE_Z0), (0, 0, 0), "Fabric", R(0.03), tile=(WEAVE_TILE, WEAVE_TILE))
     base.location = (0, 0.0, (DECK_Z + BASE_Z0) / 2)
     parts.append(base)
     back_y0 = D / 2 - 0.19
-    frame, _ = cushion("backframe", (L - 0.06, D / 2 - back_y0 + 0.0, 0.74 - 0.30), (0, 0, 0), "Fabric", 0.05, tile=(WEAVE_TILE, WEAVE_TILE))
+    frame, _ = cushion("backframe", (L - 0.06, D / 2 - back_y0 + 0.0, 0.74 - 0.30), (0, 0, 0), "Fabric", R(0.05), tile=(WEAVE_TILE, WEAVE_TILE))
     frame.location = (0, (back_y0 + D / 2) / 2 - 0.005, (0.74 + 0.30) / 2)
     parts.append(frame)
     # Piping along the front rail's top edge.
@@ -392,24 +401,24 @@ def build():
         w = cw - 0.012
         zc = DECK_Z + SEAT_T / 2 - 0.004
         yc = -D / 2 - 0.012 + seat_d / 2
-        c, (hx, hy, hz) = cushion("seat%d" % i, (w, seat_d, SEAT_T), (0, 0, 0), "Floral", 0.04, crown=0.016)
+        c, (hx, hy, hz) = cushion("seat%d" % i, (w, seat_d, SEAT_T), (0, 0, 0), "Floral", R(0.04), crown=0.016)
         c.location = (x + rng.uniform(-0.004, 0.004), yc + rng.uniform(-0.006, 0.006), zc)
         c.rotation_euler = (0, 0, math.radians(rng.uniform(-0.6, 0.6)))
         parts.append(c)
-        r = 0.04
+        r = R(0.04)
         for zz in (hz - r + r * 0.72, -(hz - r + r * 0.72)):
             p = tube("seatpipe%d" % i, rounded_rect(hx - r + r * 0.72 + 0.003, hy - r + r * 0.72 + 0.003, r * 0.72 + 0.006, zz), 0.0045, "Floral")
             p.location = c.location; p.rotation_euler = c.rotation_euler
             parts.append(p)
         # Back cushion: a pillow leaning back on the frame, its bottom on the seat cushion's back.
         bh, bt = 0.47, 0.22
-        b, (bhx, bhy, bhz) = cushion("back%d" % i, (w - 0.004, bt, bh), (0, 0, 0), "Floral", 0.07, pinch=0.45)
+        b, (bhx, bhy, bhz) = cushion("back%d" % i, (w - 0.004, bt, bh), (0, 0, 0), "Floral", R(0.07), pinch=0.45)
         tilt = -rng.uniform(11.0, 14.0)
         b.rotation_euler = (math.radians(tilt), 0, math.radians(rng.uniform(-0.8, 0.8)))
         bz = DECK_Z + SEAT_T + bh / 2 - 0.03
         b.location = (x + rng.uniform(-0.004, 0.004), back_y0 - bt / 2 + 0.035 + rng.uniform(-0.006, 0.006), bz)
         parts.append(b)
-        p = tube("backpipe%d" % i, rounded_rect(bhx - 0.004, bhz - 0.004, 0.07, 0.0, plane="xz"), 0.0045, "Floral")
+        p = tube("backpipe%d" % i, rounded_rect(bhx - 0.004, bhz - 0.004, R(0.07), 0.0, plane="xz"), 0.0045, "Floral")
         p.location = b.location; p.rotation_euler = b.rotation_euler
         parts.append(p)
     for sx in (-1, 1):

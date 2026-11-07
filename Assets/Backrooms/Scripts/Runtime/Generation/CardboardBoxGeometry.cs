@@ -32,7 +32,11 @@ namespace Backrooms.Generation
         {
             var rot = Quaternion.Euler(0f, yawDegrees, 0f);
             Vector3 centre = foot + Vector3.up * (size.y * 0.5f);
-            RoundedBox(body, centre, size * 0.5f, Bevel, rot, MeshWriter.MetreUV);
+            // The Overflow look (2026-11-06): rounder edges and wider tape that follows them (the style sheet's chunkier
+            // shapes); its print is the Overflow atlas (the style set's swap for the print material).
+            bool overflow = ArtStyle.Current == ArtStyle.Look.Overflow;
+            float bevel = overflow ? Mathf.Min(0.014f, Mathf.Min(size.x, Mathf.Min(size.y, size.z)) * 0.2f) : Bevel;
+            RoundedBox(body, centre, size * 0.5f, bevel, rot, MeshWriter.MetreUV);
 
             Vector3 P(float x, float y, float z) => foot + rot * new Vector3(x, y, z);
             Vector3 N(float x, float y, float z) => rot * new Vector3(x, y, z);
@@ -41,7 +45,25 @@ namespace Backrooms.Generation
             const float lift = 0.0007f;                               // decals and tape sit just off the surface
 
             // ---- Top seam: taped (most boxes) or a dark gap between the flaps ----
-            if (rng.NextDouble() < 0.88)
+            if (overflow && rng.NextDouble() < 0.88)
+            {
+                // Over the top, round the rounded edge and down each end: a top quad, a chamfer quad each end, a side quad.
+                float tw = 0.03f;                                     // (60 mm tape)
+                float wrapDown = Mathf.Min(0.12f, h * 0.45f), b = bevel;
+                for (int s = -1; s <= 1; s += 2)
+                {
+                    // In the seam's own frame: a along the seam, c across it.
+                    Vector3 Q(float a, float y, float c) => seamAlongX ? P(a, y, c) : P(c, y, a);
+                    Vector3 Nq(float a, float y) => seamAlongX ? N(a, y, 0) : N(0, y, a);
+                    float half = seamAlongX ? hx : hz;
+                    if (s < 0)
+                        tape.Quad(Q(-half + b, h + lift, -tw), Q(half - b, h + lift, -tw), Q(half - b, h + lift, tw), Q(-half + b, h + lift, tw), Nq(0, 1), MeshWriter.MetreUV);
+                    Vector3 nc = Nq(s, 1).normalized;
+                    tape.Quad(Q(s * (half - b), h + lift, -tw), Q(s * (half - b), h + lift, tw), Q(s * (half + lift), h - b, tw), Q(s * (half + lift), h - b, -tw), nc, MeshWriter.MetreUV);
+                    tape.Quad(Q(s * (half + lift), h - b, -tw), Q(s * (half + lift), h - b, tw), Q(s * (half + lift), h - wrapDown, tw), Q(s * (half + lift), h - wrapDown, -tw), Nq(s, 0), MeshWriter.MetreUV);
+                }
+            }
+            else if (!overflow && rng.NextDouble() < 0.88)
             {
                 float tw = 0.024f;                                    // tape half width (48 mm tape)
                 float len = seamAlongX ? hx : hz, wrapDown = Mathf.Min(0.11f, h * 0.45f);

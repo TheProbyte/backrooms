@@ -70,7 +70,7 @@ namespace Backrooms.CustomRooms
 
         void DrawLibrary()
         {
-            ImUi.Fill(new Rect(0, 0, ImUi.Width, ImUi.Height), new Color(0.045f, 0.047f, 0.05f, 1f));
+            ImUi.Fill(new Rect(0, 0, ImUi.Width, ImUi.Height), ImUi.Deep);
             GUI.Label(new Rect(40, 24, 700, 44), "ROOM LIBRARY", ImUi.Title);
             ImUi.Dimmed(new Rect(42, 66, 1200, 24), "Rooms you build here join the procedural world as set pieces. Pick one to edit, or start a new room.");
             if (ImUi.Button(new Rect(ImUi.Width - 190, 28, 150, 40), "MENU  (Esc)")) PauseMenu.Instance?.Open();
@@ -98,7 +98,7 @@ namespace Backrooms.CustomRooms
 
         void DrawNewCard(Rect r)
         {
-            ImUi.Fill(r, new Color(0.1f, 0.1f, 0.11f, 1f));
+            ImUi.Fill(r, ImUi.Panel);
             ImUi.Fill(new Rect(r.x, r.y, r.width, 3), ImUi.Accent);
             GUI.Label(new Rect(r.x, r.y + 70, r.width, 60), "+", new GUIStyle(ImUi.Title) { fontSize = 64, alignment = TextAnchor.MiddleCenter });
             if (ImUi.Button(new Rect(r.x + 40, r.y + r.height - 90, r.width - 80, 44), "NEW ROOM", true)) _modal = Modal.Templates;
@@ -109,7 +109,7 @@ namespace Backrooms.CustomRooms
         {
             ImUi.Fill(r, ImUi.Raised);
             var v = bp.variants[0];
-            ImUi.Fill(new Rect(r.x + 10, r.y + 10, r.width - 20, 150), new Color(0.07f, 0.07f, 0.08f, 1f));
+            ImUi.Fill(new Rect(r.x + 10, r.y + 10, r.width - 20, 150), ImUi.Back);
             GUI.DrawTexture(new Rect(r.x + 14, r.y + 14, r.width - 28, 142), Thumb(bp), ScaleMode.ScaleToFit);
             GUI.Label(new Rect(r.x + 6, r.y + 164, r.width - 12 - 86, 26), bp.name, ImUi.Label);
             GUI.Label(new Rect(r.xMax - 94, r.y + 164, 88, 26), bp.enabled ? "SPAWNS" : "OFF", new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleRight, normal = { textColor = bp.enabled ? ImUi.Good : ImUi.Dim } });
@@ -192,7 +192,7 @@ namespace Backrooms.CustomRooms
                 var m = Modes[i];
                 var b = col.Row(40);
                 if (ImUi.ToolButton(b, m.Name, m.Icon, m == cur, m.Tip + $"  [{i + 1}]")) SetMode(m);
-                GUI.Label(new Rect(b.xMax - 26, b.y, 22, b.height), (i + 1).ToString(), new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleRight, normal = { textColor = m == cur ? Color.black : ImUi.Dim } });
+                GUI.Label(new Rect(b.xMax - 26, b.y, 22, b.height), (i + 1).ToString(), new GUIStyle(ImUi.Small) { alignment = TextAnchor.MiddleRight, normal = { textColor = m == cur ? ImUi.OnAccent : ImUi.Dim } });
             }
             col.Space(12);
             if (cur.Tools.Length > 1)
@@ -446,7 +446,7 @@ namespace Backrooms.CustomRooms
         {
             float w = Mathf.Min(760f, ImUi.Width - 40f), h = 720f;
             var box = new Rect((ImUi.Width - w) * 0.5f, (ImUi.Height - h) * 0.5f, w, h);
-            ImUi.PanelBox(box);
+            ImUi.FramedBox(box);
             GUI.Label(new Rect(box.x + 24, box.y + 18, box.width - 48, 40), "PUT IN THE WORLD", ImUi.Title);
             ImUi.Dimmed(new Rect(box.x + 24, box.y + 60, box.width - 48, 40), "Rooms you put in the world turn up as rare set pieces in new worlds (about one spot per 3 × 3 districts is open to rooms like this).");
             var col = new ImUi.Column(box.x + 24, box.y + 108, box.width * 0.5f - 36, 30, 6);
@@ -639,7 +639,7 @@ namespace Backrooms.CustomRooms
             ImUi.Fill(new Rect(0, 0, ImUi.Width, ImUi.Height), new Color(0, 0, 0, 0.72f));
             float width = Mathf.Min(780f, ImUi.Width - 40f);
             var box = new Rect((ImUi.Width - width) * 0.5f, 140f, width, 760f);
-            ImUi.PanelBox(box);
+            ImUi.FramedBox(box);
             var col = new ImUi.Column(box.x + 24, box.y + 18, box.width - 48, 36, 10);
             GUI.Label(col.Row(42), "BUILD MODE HELP", ImUi.Title);
             string[] lines =
@@ -700,7 +700,7 @@ namespace Backrooms.CustomRooms
             if (_modal == Modal.Import) { DrawImportDialog(); return; }
             if (_modal == Modal.Templates) { DrawTemplateDialog(); return; }
             var box = new Rect(ImUi.Width * 0.5f - 250, ImUi.Height * 0.5f - 110, 500, 220);
-            ImUi.PanelBox(box);
+            ImUi.FramedBox(box);
             string title = "", body = "";
             switch (_modal)
             {

@@ -24,6 +24,8 @@ namespace Backrooms
             public float sensitivity = 1f;
             public bool invertY;
             public float shake = 1f, blur = 1f, brightness = 0f;
+            public float voices = 1f;
+            public bool micOn = true, pushToTalk;
             public int version = 1;
         }
 
@@ -37,6 +39,11 @@ namespace Backrooms
         public static float Master { get => D.master; set { D.master = Mathf.Clamp01(value); Changed(); } }
         public static float Ambience { get => D.ambience; set { D.ambience = Mathf.Clamp01(value); Changed(); } }
         public static float Music { get => D.music; set { D.music = Mathf.Clamp01(value); Changed(); } }
+        /// <summary>Co-op voice chat (2026-11-07, Net/NetWorld.Voice.cs): how loud the others are, whether your microphone is
+        /// sent at all, and whether it is open (sent when you speak) or held open with T.</summary>
+        public static float Voices { get => D.voices; set { D.voices = Mathf.Clamp01(value); Changed(); } }
+        public static bool MicOn { get => D.micOn; set { D.micOn = value; Changed(); } }
+        public static bool PushToTalk { get => D.pushToTalk; set { D.pushToTalk = value; Changed(); } }
         /// <summary>Mouse look, a multiple of the tuned sensitivity (0.2 .. 3).</summary>
         public static float Sensitivity { get => D.sensitivity; set { D.sensitivity = Mathf.Clamp(value, 0.2f, 3f); Changed(); } }
         public static bool InvertY { get => D.invertY; set { D.invertY = value; Changed(); } }
@@ -70,7 +77,7 @@ namespace Backrooms
         }
 
         /// <summary>Sound, controls and comfort back as they come.</summary>
-        public static void ResetSound() { D.master = 1f; D.ambience = 1f; D.music = 1f; Changed(); }
+        public static void ResetSound() { D.master = 1f; D.ambience = 1f; D.music = 1f; D.voices = 1f; D.micOn = true; D.pushToTalk = false; Changed(); }
         public static void ResetControls() { D.sensitivity = 1f; D.invertY = false; Changed(); }
         public static void ResetComfort() { D.shake = 1f; D.blur = 1f; D.brightness = 0f; Changed(); }
 

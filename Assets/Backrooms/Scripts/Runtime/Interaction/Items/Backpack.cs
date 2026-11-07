@@ -28,6 +28,7 @@ namespace Backrooms.Interaction
         class LayoutJson { public float[] hinge, zip, inside_min, inside_max, grab; }
 
         static bool s_read;
+        static Generation.ArtStyle.Look s_look;
         static Vector3 s_hinge = new Vector3(0f, 0f, 0.081f), s_grab = new Vector3(0f, 0.452f, -0.088f);
         static Vector3 s_inMin = new Vector3(-0.122f, 0.014f, -0.073f), s_inMax = new Vector3(0.122f, 0.36f, 0.066f);
         static Vector3[] s_zip;
@@ -39,9 +40,10 @@ namespace Backrooms.Interaction
 
         static void ReadLayout()
         {
-            if (s_read) return;
+            if (s_read && s_look == Generation.ArtStyle.Current) return;     // (read again for the other look's model)
             s_read = true;
-            var t = Resources.Load<TextAsset>("Items/Backpack_Layout");
+            s_look = Generation.ArtStyle.Current;
+            var t = Generation.ArtStyle.Load<TextAsset>("Items/Backpack_Layout");
             var j = t ? JsonUtility.FromJson<LayoutJson>(t.text) : null;
             if (j != null)
             {

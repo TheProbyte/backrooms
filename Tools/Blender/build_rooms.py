@@ -58,6 +58,8 @@ def card(name, w, h, center, material, normal=(0, -1, 0), roll=0.0):
         right, up = R @ right, R @ up
     # u runs along "right" as seen from the front: the front is -n... seen from where the normal points
     c = Vector(center)
+    if globals().get("OVERFLOW"):
+        c = c + n * 0.0025          # (stood off a little: the chunkier look's thin plates grow up to 2 mm a face)
     pts = [c + right * (-w / 2) * s1 + up * (h / 2) * s2 for s1, s2 in ((1, -1), (-1, -1), (-1, 1), (1, 1))]
     bm = bmesh.new()
     vs = [bm.verts.new(p) for p in pts]

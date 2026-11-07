@@ -104,6 +104,7 @@ namespace Backrooms.Menu
             _pageLabel = Text("", "mm-page"); header.Add(_pageLabel);
             _panel.Add(header);
             var rule = new VisualElement(); rule.AddToClassList("mm-rule"); _panel.Add(rule);
+            MainMenu.AddStripe(_panel);
             _list = new VisualElement(); _list.AddToClassList("mm-list"); _panel.Add(_list);
             _panel.Add(Text("▲▼ SELECT    ◄ ► CHANGE    ENTER OK    ESC BACK", "mm-hint"));
         }
@@ -138,6 +139,7 @@ namespace Backrooms.Menu
         void ShowPage(Page page)
         {
             _page = page;
+            MainMenu.ApplyLook(_root);
             _list.Clear(); _items.Clear(); _steps.Clear();
             switch (page)
             {
@@ -158,7 +160,10 @@ namespace Backrooms.Menu
                     Option("MASTER", () => Pct(GameSettings.Master), d => GameSettings.Master = Step(GameSettings.Master, d, 0.1f, 0f, 1f));
                     Option("AMBIENCE", () => Pct(GameSettings.Ambience), d => GameSettings.Ambience = Step(GameSettings.Ambience, d, 0.1f, 0f, 1f));
                     Option("MUSIC (TAPES)", () => Pct(GameSettings.Music), d => GameSettings.Music = Step(GameSettings.Music, d, 0.1f, 0f, 1f));
-                    Desc("AMBIENCE IS THE BUILDING: THE LIGHTS' HUM, THE VENTILATION, THE ROOMS' TONE.");
+                    Option("VOICES (CO-OP)", () => Pct(GameSettings.Voices), d => GameSettings.Voices = Step(GameSettings.Voices, d, 0.1f, 0f, 1f));
+                    Option("YOUR MICROPHONE", () => GameSettings.MicOn ? "ON" : "OFF", d => GameSettings.MicOn = !GameSettings.MicOn);
+                    Option("TALK", () => GameSettings.PushToTalk ? "HOLD T" : "WHEN YOU SPEAK", d => GameSettings.PushToTalk = !GameSettings.PushToTalk);
+                    Desc("AMBIENCE IS THE BUILDING: THE LIGHTS' HUM, THE VENTILATION, THE ROOMS' TONE. IN CO-OP THE OTHERS HEAR YOU NEAR THEM, ROUND WALLS THROUGH THE DOORWAYS.");
                     Item("DEFAULTS", () => { GameSettings.ResetSound(); Beep(1); ShowPage(Page.Sound); }, true);
                     Item("BACK", Back, true);
                     break;
@@ -203,7 +208,14 @@ namespace Backrooms.Menu
                         o.frameCap = Caps[(i + d + Caps.Length) % Caps.Length]; o.Save();
                     });
                     Option("VSYNC", () => o.vSync ? "ON" : "OFF", d => { o.vSync = !o.vSync; o.Save(); });
+                    Option("ART STYLE", () => Backrooms.Generation.ArtStyle.Current == Backrooms.Generation.ArtStyle.Look.Overflow ? "OVERFLOW" : "CLASSIC", d =>
+                    {
+                        var s = Backrooms.Generation.ArtStyle.Current;
+                        Backrooms.Generation.ArtStyle.Current = s == Backrooms.Generation.ArtStyle.Look.Overflow ? Backrooms.Generation.ArtStyle.Look.Classic : Backrooms.Generation.ArtStyle.Look.Overflow;
+                        MainMenu.ApplyLook(_root);                    // the menus follow at once
+                    });
                     Desc("QUALITY SETS HOW MANY LIGHTS CAST SHADOWS, HOW FAR, AND THE LIGHT BOUNCED ROUND THE ROOMS.");
+                    Desc("ART STYLE: THE NEW PAINTED LOOK OR THE OLD REALISTIC ONE. TAKES EFFECT WHEN A WORLD LOADS.");
                     Item("BACK", Back, true);
                     break;
                 }
@@ -240,7 +252,7 @@ namespace Backrooms.Menu
             ("W A S D", "WALK"), ("SHIFT", "RUN"), ("C", "CROUCH"), ("CTRL", "CRAWL"), ("SPACE", "JUMP, CLIMB UP"),
             ("MOUSE", "LOOK"), ("LEFT CLICK", "TAKE, USE  (HOLD: PUSH OR CARRY)"), ("RIGHT CLICK", "SHOVE, AN ITEM'S OTHER USE"),
             ("Q", "DROP  (HOLD: THROW)"), ("E", "SET DOWN  ·  SIT, STAND UP"), ("R", "TURN WHAT YOU HOLD"),
-            ("1 2 3 4", "POCKETS"), ("B", "BACKPACK ON / OFF"), ("Z  X", "LEAN LEFT / RIGHT"), ("F", "ZOOM"), ("ESC", "MENU"),
+            ("1 2 3 4", "POCKETS"), ("B", "BACKPACK ON / OFF"), ("Z  X", "LEAN LEFT / RIGHT"), ("F", "ZOOM"), ("T", "HOLD TO TALK (CO-OP, IF SET)"), ("ESC", "MENU"),
         };
 
         /// <summary>Which quality preset the graphics are on (-1: changed by hand since, CUSTOM).</summary>

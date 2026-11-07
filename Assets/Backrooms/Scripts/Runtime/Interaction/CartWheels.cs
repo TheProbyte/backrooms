@@ -43,11 +43,15 @@ namespace Backrooms.Interaction
         static Vector3 U(float[] a, int i) => new Vector3(-a[i], a[i + 2], -a[i + 1]);
         static Vector3 Sz(float[] a, int i) => new Vector3(a[i], a[i + 2], a[i + 1]);
 
+        static ArtStyle.Look s_look;
+
         static void Read()
         {
-            if (s_carts != null) return;
+            if (s_carts != null && s_look == ArtStyle.Current) return;
+            s_look = ArtStyle.Current;
+            s_axles.Clear();
             s_carts = new Dictionary<MovableKind, Cart>();
-            var t = Resources.Load<TextAsset>("Fittings/Cart_Layout");
+            var t = ArtStyle.Load<TextAsset>("Fittings/Cart_Layout");
             var j = t ? JsonUtility.FromJson<FileJson>(t.text) : null;
             if (j == null) return;
             void One(MovableKind k, CartJson c)

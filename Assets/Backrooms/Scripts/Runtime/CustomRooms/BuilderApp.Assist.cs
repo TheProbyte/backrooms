@@ -316,7 +316,7 @@ namespace Backrooms.CustomRooms
             if (!_showMap || _showHelp || _modal != Modal.None) return;
             var v = V;
             var box = MapRect;
-            ImUi.Fill(box, new Color(0.04f, 0.04f, 0.05f, 0.88f));
+            { var bk = ImUi.Back; bk.a = 0.88f; ImUi.Fill(box, bk); }
             GUI.Label(new Rect(box.x + 6, box.y + 1, box.width - 12, 18), "MAP  ·  click to look there", new GUIStyle(ImUi.Small) { fontSize = 11 });
             float k = (box.width - 16f) / v.width;
             var area = new Rect(box.x + 8f, box.y + 24f, v.width * k, v.depth * k);
@@ -325,7 +325,7 @@ namespace Backrooms.CustomRooms
             for (int z = 0; z < v.depth; z++)
             for (int x = 0; x < v.width; x++)
             {
-                if (v.Outside(x, z)) { ImUi.Fill(CellRect(x, z), new Color(0.12f, 0.12f, 0.13f, 1f)); continue; }
+                if (v.Outside(x, z)) { ImUi.Fill(CellRect(x, z), ImUi.Panel); continue; }
                 var c = RoomColor(v.RoomOf(x, z)); c = Color.Lerp(new Color(0.18f, 0.18f, 0.2f), c, 0.35f); c.a = 1f;
                 ImUi.Fill(CellRect(x, z), c);
             }

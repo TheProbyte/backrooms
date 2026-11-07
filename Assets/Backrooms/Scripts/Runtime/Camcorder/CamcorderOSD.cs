@@ -243,6 +243,27 @@ namespace Backrooms.Camcorder
             return t;
         }
 
+        // The display's ink: white, or in the Overflow art style the company's warm cream with a chocolate shadow
+        // (2026-11-07, the colours of the menus; the REC dot stays red).
+        Color _ink = Color.white;
+        int _inkShown = -1;
+
+        void ApplyInk()
+        {
+            int ov = Backrooms.Generation.ArtStyle.Current == Backrooms.Generation.ArtStyle.Look.Overflow ? 1 : 0;
+            if (ov == _inkShown) return;
+            _inkShown = ov;
+            _ink = ov == 1 ? new Color(243 / 255f, 230 / 255f, 200 / 255f, 1f) : Color.white;
+            var shadow = ov == 1 ? new Color(30 / 255f, 18 / 255f, 8 / 255f, 0.8f) : new Color(0, 0, 0, 0.75f);
+            foreach (var root in new Transform[] { _content, _notice.transform, _debug.transform })
+            {
+                foreach (var g in root.GetComponentsInChildren<Graphic>(true))
+                    if (g != _recDot) g.color = new Color(_ink.r, _ink.g, _ink.b, g.color.a);
+                foreach (var sh in root.GetComponentsInChildren<Shadow>(true))
+                    sh.effectColor = new Color(shadow.r, shadow.g, shadow.b, sh.effectColor.a > 0.65f ? shadow.a : sh.effectColor.a);
+            }
+        }
+
         static RectTransform NewRect(string name, Transform parent)
         {
             var go = new GameObject(name, typeof(RectTransform));
@@ -262,6 +283,7 @@ namespace Backrooms.Camcorder
             _barL.sizeDelta = new Vector2(bar, 0); _barR.sizeDelta = new Vector2(bar, 0);
             _frame.GetComponent<AspectRatioFitter>().aspectRatio = pillarbox ? 4f / 3f : w / Mathf.Max(1f, h);
             _content.gameObject.SetActive(visible);
+            ApplyInk();
             _debug.enabled = showDebug;
             float na = Time.unscaledTime - s_noticeAt;
             _notice.enabled = na < NoticeFor && !string.IsNullOrEmpty(s_notice);
@@ -270,7 +292,7 @@ namespace Backrooms.Camcorder
                 _notice.text = s_notice;
                 // Steady, then a few blinks out, like a camcorder's title.
                 bool show = na < NoticeFor - 1f || ((na * 4f) % 1f) < 0.6f;
-                _notice.color = new Color(1f, 1f, 1f, show ? 0.95f : 0f);
+                _notice.color = new Color(_ink.r, _ink.g, _ink.b, show ? 0.95f : 0f);
             }
             if (showDebug && Camera.main)
             {

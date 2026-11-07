@@ -50,6 +50,8 @@ namespace Backrooms.Net
 
         const double Delay = 0.1;
         const float BodyScale = 0.952f;
+        /// <summary>The hazmat suit's eyes are at 1.513 m: made this much bigger, its eyes (and the camcorder) are at 1.58 m.</summary>
+        const float HazmatScale = 1.044f;
         readonly List<State> _buf = new List<State>();
         double _offset; bool _hasOffset;
 
@@ -60,6 +62,8 @@ namespace Backrooms.Net
         Quaternion _footLRest, _footRRest, _handLRest;
         float _pelvisRestY = 0.948f;
         Transform _camcorder;
+        bool _camcorderAtEye;          // the model's origin is its eyecup (the Overflow look's model), not the old box's back
+        float _palm;                   // wrist to the middle of the palm (the glove's grip)
         CapsuleCollider _cap;
         AudioSource _feet;
         readonly List<Material> _mats = new List<Material>();
@@ -80,7 +84,10 @@ namespace Backrooms.Net
 
         void Build()
         {
-            var prefab = Resources.Load<GameObject>("Player/MPFB/PlayerMPFB");
+            // The hazmat suit (rigged on the MakeHuman skeleton, so posed the same way), or the MakeHuman body.
+            // (The suit in the Overflow look, the MakeHuman body in Classic: Generation.ArtStyle.)
+            var hazmat = Generation.ArtStyle.Current == Generation.ArtStyle.Look.Overflow ? Resources.Load<GameObject>("Player/Hazmat/PlayerHazmatSuit") : null;
+            var prefab = hazmat ? hazmat : Resources.Load<GameObject>("Player/MPFB/PlayerMPFB");
             var shader = Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit");
             if (prefab)
             {
@@ -88,18 +95,19 @@ namespace Backrooms.Net
                 _body.name = "Body";
                 // The model's eyes are at 1.66 m; the camera (and the camcorder) at the player's eye, 1.58 m: the body is made
                 // that much smaller, or the camcorder is held in front of the mouth.
-                _body.localScale = Vector3.one * BodyScale;
+                _body.localScale = Vector3.one * (hazmat ? HazmatScale : BodyScale);
                 var tint = NetSession.ColourOf(Peer);
                 foreach (var r in _body.GetComponentsInChildren<Renderer>(true))
                 {
                     var mats = r.sharedMaterials;
                     bool top = r.name.EndsWith(".Torso") || r.name.EndsWith(".ArmL") || r.name.EndsWith(".ArmR");
-                    for (int i = 0; i < mats.Length; i++) mats[i] = Material(mats[i], shader, top ? tint : Color.white);
+                    for (int i = 0; i < mats.Length; i++) mats[i] = hazmat ? HazmatMaterial(mats[i], shader) : Material(mats[i], shader, top ? tint : Color.white);
                     r.sharedMaterials = mats;
                     r.shadowCastingMode = ShadowCastingMode.On;
                     r.lightProbeUsage = LightProbeUsage.Off; r.reflectionProbeUsage = ReflectionProbeUsage.Off;
                     if (r is SkinnedMeshRenderer sk) { sk.updateWhenOffscreen = true; sk.quality = SkinQuality.Bone4; }
                 }
+                if (hazmat) SetupHazmat();
                 _pelvis = Find("pelvis"); _spine1 = Find("spine_01"); _spine2 = Find("spine_02"); _spine3 = Find("spine_03");
                 _neck = Find("neck_01"); _head = Find("head");
                 _thighL = Find("thigh_l"); _thighR = Find("thigh_r"); _calfL = Find("calf_l"); _calfR = Find("calf_r"); _footL = Find("foot_l"); _footR = Find("foot_r");
@@ -109,6 +117,10 @@ namespace Backrooms.Net
                 if (_footL) _footLRest = Quaternion.Inverse(transform.rotation) * _footL.rotation;
                 if (_footR) _footRRest = Quaternion.Inverse(transform.rotation) * _footR.rotation;
                 if (_handL) _handLRest = Quaternion.Inverse(transform.rotation) * _handL.rotation;
+                // The glove's grip (2026-11-06): from the wrist to the middle of the palm, six tenths of the way to the
+                // knuckles (the suit's glove is big: about 7.5 cm), so what they hold sits in the palm, not at the wrist.
+                var knuckle = Find("middle_01_r");
+                if (_handR && knuckle) _palm = (knuckle.position - _handR.position).magnitude * 0.6f;
                 Generation.PoolLitSwitch.Attach(_body.gameObject);
             }
             else
@@ -162,8 +174,70 @@ namespace Backrooms.Net
             return m;
         }
 
+        readonly System.Collections.Generic.Dictionary<Material, Material> _hazmatMats = new System.Collections.Generic.Dictionary<Material, Material>();
+
+        /// <summary>The suit's own material moved onto Backrooms/Lit (same properties), so the light grid lights it.</summary>
+        Material HazmatMaterial(Material src, Shader shader)
+        {
+            if (!src) return src;
+            if (_hazmatMats.TryGetValue(src, out var m)) return m;
+            m = new Material(src) { name = "Remote_" + src.name };
+            if (shader && src.shader && src.shader.name == "Universal Render Pipeline/Lit")
+            {
+                int queue = src.renderQueue;
+                m.shader = shader;
+                m.renderQueue = queue;
+            }
+            if (m.HasProperty("_DetailAlbedoMapScale")) m.SetFloat("_DetailAlbedoMapScale", -1f);
+            _mats.Add(m);
+            _hazmatMats[src] = m;
+            return m;
+        }
+
+        /// <summary>
+        /// Their suit's look: their name on the chest tape and their number on the back, and a face of their own (picked from
+        /// their peer number until the look is chosen and sent).
+        /// </summary>
+        void SetupHazmat()
+        {
+            var ap = _body.GetComponent<StyleLab.HazmatAppearance>();
+            if (!ap) return;
+            var shader = Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit");
+            if (ap.skinTones != null) for (int i = 0; i < ap.skinTones.Length; i++) ap.skinTones[i] = HazmatMaterial(ap.skinTones[i], shader);
+            if (ap.hairTones != null) for (int i = 0; i < ap.hairTones.Length; i++) ap.hairTones[i] = HazmatMaterial(ap.hairTones[i], shader);
+            ap.labelMaterial = HazmatMaterial(ap.labelMaterial, shader);
+            _appearance = ap;
+            ap.firstPerson = false;
+            ApplyLook();
+        }
+
+        StyleLab.HazmatAppearance _appearance;
+
+        /// <summary>Where their voice comes from (NetWorld.Voice): their head, or their middle until the body is up.</summary>
+        public Transform VoiceAnchor => _head ? _head : transform;
+
+        /// <summary>How loud they are speaking (0..1): the suit's mouth opens and closes with it (Overflow's suit only).</summary>
+        public void SetTalk(float level) { if (_appearance) _appearance.talk = Mathf.Clamp01(level); }
+        int _lookShown = -1;
+
+        /// <summary>The look they chose (YOUR LOOK, sent with their name and when it changes), or one from their player
+        /// number if they sent none.</summary>
+        void ApplyLook()
+        {
+            if (!_appearance) return;
+            int sent = NetSession.LookOf(Peer);
+            var look = StyleLab.PlayerLook.Valid(sent) ? StyleLab.PlayerLook.Unpack(sent) : StyleLab.PlayerLook.FromPeer(Peer);
+            look.ApplyTo(_appearance);
+            _appearance.playerName = NetSession.NameOf(Peer);
+            _appearance.Apply();
+            _lookShown = sent;
+        }
+
         Transform MakeCamcorder(Shader shader)
         {
+            // The Overflow look: the lab's camcorder model, its eyecup at the eye (Camcorder.CamcorderModel).
+            var model = Backrooms.Camcorder.CamcorderModel.Make(transform, "Camcorder", _mats, false);
+            if (model) { _camcorderAtEye = true; return model; }
             var root = new GameObject("Camcorder").transform;
             root.SetParent(transform, false);
             var dark = new Material(shader) { name = "Remote_Camcorder" };
@@ -258,6 +332,7 @@ namespace Backrooms.Net
 
         void LateUpdate()
         {
+            if (_appearance && NetSession.LookOf(Peer) != _lookShown) ApplyLook();      // they changed their look
             if (_buf.Count == 0) return;
             float dt = Time.deltaTime;
             var s = Sample();
@@ -355,7 +430,7 @@ namespace Backrooms.Net
             var look = Quaternion.Euler(s.pitch, s.yaw, 0f);
             if (_upperL && _lowerL && _handL)
             {
-                Vector3 grip = eye + look * new Vector3(-0.045f, -0.07f, 0.16f);
+                Vector3 grip = eye + look * (_camcorderAtEye ? new Vector3(-0.035f, -0.165f, 0.17f) : new Vector3(-0.045f, -0.07f, 0.16f));   // (under the Overflow camcorder's body)
                 TwoBone(_upperL, _lowerL, _handL, grip, -right * 0.6f - up + fwd * 0.2f);
                 _handL.rotation = look * _handLRest;
             }
@@ -365,7 +440,11 @@ namespace Backrooms.Net
                 float th = _phase * Mathf.PI * 2f;
                 Vector3 hang = root.TransformPoint(new Vector3(0.24f, Mathf.Lerp(0.86f, 0.62f, _crouch) + (_seat * 0.1f), 0.05f + Mathf.Sin(th) * 0.16f * moving));
                 if (_crawl > 0.5f) hang = root.TransformPoint(new Vector3(0.2f, 0.05f, 0.45f + Mathf.Sin(th) * 0.12f * moving));
-                Vector3 target = Vector3.Lerp(hang, root.TransformPoint(s.hand), Mathf.Clamp01(_handW));
+                Vector3 grip = root.TransformPoint(s.hand);
+                // The palm (not the wrist) to the grip: the wrist short of it along the arm's reach.
+                Vector3 reach = grip - _upperR.position;
+                if (reach.sqrMagnitude > 1e-4f) grip -= reach.normalized * _palm;
+                Vector3 target = Vector3.Lerp(hang, grip, Mathf.Clamp01(_handW));
                 TwoBone(_upperR, _lowerR, _handR, target, right * 0.6f - up + -fwd * 0.2f);
             }
         }
@@ -396,7 +475,7 @@ namespace Backrooms.Net
             if (!_camcorder) return;
             var look = Quaternion.Euler(s.pitch, s.yaw, 0f);
             Vector3 eye = transform.position + Vector3.up * _eye;
-            _camcorder.SetPositionAndRotation(eye + look * new Vector3(-0.02f, -0.02f, 0.11f), look);
+            _camcorder.SetPositionAndRotation(eye + look * (_camcorderAtEye ? new Vector3(0f, 0f, 0.035f) : new Vector3(-0.02f, -0.02f, 0.11f)), look);
         }
 
         void PlaceHeld(State s)

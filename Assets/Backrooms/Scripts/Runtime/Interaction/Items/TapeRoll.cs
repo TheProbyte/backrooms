@@ -130,7 +130,7 @@ namespace Backrooms.Interaction
         protected override void Awake()
         {
             // The used-up roll, ready under the full one (made before the item's setup so it gets the same treatment).
-            if (!transform.Find("ModelEmpty") && Resources.Load<GameObject>("Items/TapeRollEmpty"))
+            if (!transform.Find("ModelEmpty") && Resources.Load<GameObject>(Generation.ArtStyle.Path("Items/TapeRollEmpty")))
             {
                 _empty = ItemModels.Attach(transform, "TapeRollEmpty", Vector3.one * 0.05f, "TapeCore");
                 _empty.name = "ModelEmpty";

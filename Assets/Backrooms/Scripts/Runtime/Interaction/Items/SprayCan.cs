@@ -61,7 +61,8 @@ namespace Backrooms.Interaction
         {
             var go = new GameObject("SprayCan");
             go.transform.SetPositionAndRotation(position, rotation);
-            var model = Resources.Load<GameObject>("Items/SprayCan");
+            string path = Generation.ArtStyle.Path("Items/SprayCan");          // (its remake in the new look, if there is one)
+            var model = Resources.Load<GameObject>(path);
             if (model)
             {
                 var m = Instantiate(model, go.transform, false);
@@ -69,8 +70,8 @@ namespace Backrooms.Interaction
                 m.transform.localRotation = model.transform.localRotation;     // keep the import's axis fix
                 foreach (var c in m.GetComponentsInChildren<Collider>()) Destroy(c);
                 // Its baked colour (Tools/Blender/build_items.py with bake_kit.py, 2026-11-04): label, wear, grime.
-                var albedo = Resources.Load<Texture2D>("Items/SprayCan_Albedo");
-                float density = albedo ? Generation.BakedMaterials.Density("Items/SprayCan") : 0f;
+                var albedo = Resources.Load<Texture2D>(path + "_Albedo");
+                float density = albedo ? Generation.BakedMaterials.Density(path) : 0f;
                 foreach (var r in m.GetComponentsInChildren<Renderer>())
                 {
                     var mats = r.sharedMaterials;

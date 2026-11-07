@@ -101,7 +101,7 @@ namespace Backrooms.CustomRooms
             foreach (var (bp, path) in new List<(RoomBlueprint, string)>(_recoverable))
             {
                 var r = new Rect(40, y, Mathf.Min(1100f, ImUi.Width - 80f), 40);
-                ImUi.Fill(r, new Color(0.3f, 0.22f, 0.05f, 1f));
+                ImUi.Fill(r, Color.Lerp(ImUi.Panel, ImUi.Accent, 0.28f));
                 GUI.Label(new Rect(r.x + 12, r.y, r.width - 330, r.height), $"Unsaved work found: '{bp.name}' (autosaved {File.GetLastWriteTime(path):ddd HH:mm}).", ImUi.Label);
                 if (ImUi.Button(new Rect(r.xMax - 314, r.y + 5, 150, 30), "RESTORE", true))
                 {
@@ -187,7 +187,7 @@ namespace Backrooms.CustomRooms
         {
             float w = Mathf.Min(720f, ImUi.Width - 40f), h = 520f;
             var box = new Rect((ImUi.Width - w) * 0.5f, (ImUi.Height - h) * 0.5f, w, h);
-            ImUi.PanelBox(box);
+            ImUi.FramedBox(box);
             GUI.Label(new Rect(box.x + 24, box.y + 18, box.width - 48, 40), "IMPORT A ROOM", ImUi.Title);
             var col = new ImUi.Column(box.x + 24, box.y + 70, box.width - 48, 34, 8);
             ImUi.Dimmed(col.Row(40), "Copy a share code (it starts SRROOM1:) and paste it here, or put .room.json files in the shared folder and pick one.");
@@ -220,7 +220,7 @@ namespace Backrooms.CustomRooms
             var list = RoomTemplates.All;
             float w = Mathf.Min(900f, ImUi.Width - 40f), h = 120f + 66f * list.Count;
             var box = new Rect((ImUi.Width - w) * 0.5f, Mathf.Max(20f, (ImUi.Height - h) * 0.5f), w, h);
-            ImUi.PanelBox(box);
+            ImUi.FramedBox(box);
             GUI.Label(new Rect(box.x + 24, box.y + 18, box.width - 48, 40), "START FROM…", ImUi.Title);
             for (int i = 0; i < list.Count; i++)
             {

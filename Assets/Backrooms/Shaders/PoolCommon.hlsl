@@ -19,6 +19,14 @@ float4 _PoolSkyZenith, _PoolSkyHorizon;
 float _PoolScreenTextures;           // 1: this camera has the opaque and depth textures (the main view)
 float _PoolLitBlend;                 // 1: this camera looks at the Poolrooms (Backrooms/Lit adds their light)
 float _PoolSpecAA;                   // 1: specular anti-aliasing on the glossy tiles (Graphics menu)
+float _BROverflow;                   // 1: the Overflow art style (2026-11-07): the Poolrooms painted (ArtStyle, PoolMaterials)
+
+// Soft steps (the painted look): x held flat at multiples of s, rising to the next over the last quarter of each step.
+float PoolSoftSteps(float x, float s)
+{
+    float q = x / s, f = frac(q);
+    return (floor(q) + smoothstep(0.72, 1.0, f)) * s;
+}
 #ifndef BACKROOMS_HAS_PORTAL_CLIP_PLANE
 float4 _PortalClipPlane;             // zero outside a portal-camera render
 // Screen-space light (ScreenLighting.cs, the player's view only): the near bounce found on screen. Where it is on, the

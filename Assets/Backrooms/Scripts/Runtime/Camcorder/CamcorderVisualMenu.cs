@@ -64,6 +64,7 @@ namespace Backrooms.Camcorder
             if (!open) CancelLocationSearch();
             IsOpen = open;
             if (_panel != null) Show(_panel, open);
+            ApplyStyleColours();
             CamcorderPlayerController.InputBlocked = open;
             if (open)
             {
@@ -85,6 +86,12 @@ namespace Backrooms.Camcorder
                 _root?.focusController?.focusedElement?.Blur();
                 if (_prevLock == CursorLockMode.Locked) { Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
             }
+        }
+
+        /// <summary>The company's colours in the Overflow art style (CamcorderMenu.uss, .cc-ov); the navy menu in Classic.</summary>
+        void ApplyStyleColours()
+        {
+            _root?.EnableInClassList("cc-ov", Backrooms.Generation.ArtStyle.Current == Backrooms.Generation.ArtStyle.Look.Overflow);
         }
 
         // ---------------- Layout ----------------

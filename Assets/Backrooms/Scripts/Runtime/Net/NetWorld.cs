@@ -64,6 +64,7 @@ namespace Backrooms.Net
         void OnDestroy()
         {
             if (Instance != this) return;
+            StopVoice();
             Instance = null;
             NetSession.WorldHandler = null; NetSession.WorldReady = null; NetSession.PeerGone = null;
             NetSession.MakeSnapshot = null; NetSession.Digest = null; NetSession.BeforeLeave = null;
@@ -107,7 +108,8 @@ namespace Backrooms.Net
 
         void Update()
         {
-            if (!_ready || !NetSession.Active) return;
+            if (!_ready || !NetSession.Active) { if (_mic || _voices.Count > 0) StopVoice(); return; }
+            UpdateVoice();
             UpdateRemoteItems();
             UpdateRemoteProps();
             UpdateRemoteDoors();
@@ -137,6 +139,7 @@ namespace Backrooms.Net
             switch (kind)
             {
                 case Msg.Player: OnPlayer(r); return true;
+                case Msg.Voice: OnVoice(r); return true;
                 case Msg.ItemHeld: return OnItemHeld(from, r);
                 case Msg.ItemMove: OnItemMove(r); return true;
                 case Msg.ItemRest: OnItemRest(from, r); return true;
@@ -235,6 +238,7 @@ namespace Backrooms.Net
 
         void OnPeerGone(Peer p)
         {
+            DropVoice(p.id);
             if (_avatars.TryGetValue(p.id, out var a))
             {
                 // What they held or wore goes with them (the host keeps it in their record).

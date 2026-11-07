@@ -74,6 +74,7 @@ namespace Backrooms.CustomRooms
             var kb = Keyboard.current;
             if (kb == null) return;
             if (Menu.SettingsMenu.IsOpen || Menu.SettingsMenu.ClosedFrame == Time.frameCount) return;   // the settings page has Escape
+            if (Menu.LookMenu.IsOpen || Menu.LookMenu.ClosedFrame == Time.frameCount) return;           // so has YOUR LOOK
             if (kb.escapeKey.wasPressedThisFrame && ToggledFrame != Time.frameCount)
             {
                 if (_open) Close();
@@ -118,7 +119,7 @@ namespace Backrooms.CustomRooms
 
         void OnGUI()
         {
-            if (!_open || Menu.SettingsMenu.IsOpen) return;
+            if (!_open || Menu.SettingsMenu.IsOpen || Menu.LookMenu.IsOpen) return;
             ImUi.Begin();
             string scene = SceneManager.GetActiveScene().name;
             ImUi.Fill(new Rect(0, 0, ImUi.Width, ImUi.Height), new Color(0, 0, 0, 0.62f));
@@ -126,14 +127,15 @@ namespace Backrooms.CustomRooms
             bool testing = BuildSession.Testing && scene == SceneIds.World && !CustomRoomTest.Reference;
             bool net = Net.NetSession.Active;
             bool offerReference = !(CustomRoomTest.Reference && scene == SceneIds.World) && !net;
-            int rows = 5 + (testing ? 1 : 0) + (offerReference ? 1 : 0) - (net ? 1 : 0);
+            int rows = 6 + (testing ? 1 : 0) + (offerReference ? 1 : 0) - (net ? 1 : 0);
             var addresses = net && Net.NetSession.IsHost ? Net.NetTransport.LocalAddresses() : null;
             float extra = net ? 34 + (addresses != null ? 30 * Mathf.Min(3, Mathf.Max(1, addresses.Count)) : 0) : 0;
             float h = 24 + 40 + 10 + rows * 56 + 24 + extra;
             var box = new Rect(cx, ImUi.Height * 0.5f - h * 0.5f, w, h);
-            ImUi.PanelBox(box);
+            ImUi.FramedBox(box);
             var col = new ImUi.Column(box.x + 30, box.y + 24, w - 60, 48, 8);
             GUI.Label(col.Row(40), "MENU", ImUi.Title);
+            ImUi.Stripe(new Rect(col.x, col.y - 4, col.w, 6));
             col.Space(10);
             if (net)
             {
@@ -150,6 +152,8 @@ namespace Backrooms.CustomRooms
             if (ImUi.Button(col.Row(), resume, true)) Close();
             // (2026-11-04) The player's settings page, over the paused game.
             if (ImUi.Button(col.Row(), "SETTINGS")) Menu.SettingsMenu.Open(() => { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; CamcorderPlayerController.InputBlocked = true; });
+            // (2026-11-06) Your face in the suit; others in co-op see a change at once.
+            if (ImUi.Button(col.Row(), "YOUR LOOK")) Menu.LookMenu.Open(() => { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; CamcorderPlayerController.InputBlocked = true; });
             if (testing)
             {
                 if (ImUi.Button(col.Row(), "BACK TO THE BUILDER")) { Close(); Load(SceneIds.Build); }

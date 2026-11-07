@@ -36,8 +36,11 @@ namespace Backrooms.Generation
         public static Part[] Outlet { get; private set; }
         public static Part[] Switch { get; private set; }
 
+        static ArtStyle.Look s_look;
+
         public static void Ensure()
         {
+            if (s_look != ArtStyle.Current) { s_look = ArtStyle.Current; Outlet = null; Switch = null; ToggleMesh = null; HasToggle = false; }   // (the other look's plates)
             if (Outlet == null) Outlet = Load("WallOutlet");
             if (Switch == null) Switch = Load("LightSwitch");
             if (!ToggleMesh && Switch != null)
@@ -70,7 +73,7 @@ namespace Backrooms.Generation
 
         static Part[] Load(string name)
         {
-            var prefab = Resources.Load<GameObject>("Items/" + name);
+            var prefab = Resources.Load<GameObject>(ArtStyle.Path("Items/" + name));
             if (!prefab) return null;
             var root = prefab.transform;
             // Into the root's parent space, keeping the import's axis fix (the same frame ItemModels.Attach gives).

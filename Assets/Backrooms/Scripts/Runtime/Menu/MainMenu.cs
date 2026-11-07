@@ -125,6 +125,7 @@ namespace Backrooms.Menu
             }
 
             if (SettingsMenu.IsOpen || SettingsMenu.ClosedFrame == Time.frameCount) return;     // the settings page has the keys
+            if (LookMenu.IsOpen || LookMenu.ClosedFrame == Time.frameCount) return;             // so has YOUR LOOK
             var kb = Keyboard.current;
             UpdateNetStatus();
             if (kb == null || _leaving || _items.Count == 0) return;
@@ -232,6 +233,7 @@ namespace Backrooms.Menu
             _pageLabel = Text("", "mm-page"); header.Add(_pageLabel);
             _panel.Add(header);
             var rule = new VisualElement(); rule.AddToClassList("mm-rule"); _panel.Add(rule);
+            AddStripe(_panel);
             _list = new VisualElement(); _list.AddToClassList("mm-list"); _panel.Add(_list);
             _panel.Add(Text("▲▼ SELECT    ENTER OK    ESC BACK", "mm-hint"));
         }
@@ -240,6 +242,7 @@ namespace Backrooms.Menu
         {
             _page = page;
             Disarm();
+            ApplyLook(_root);
             _list.Clear(); _items.Clear(); _steps.Clear();
             _panel.EnableInClassList("mm-wide", page != Page.Top);
             switch (page)
@@ -250,6 +253,7 @@ namespace Backrooms.Menu
                     if (!string.IsNullOrEmpty(Net.NetSession.LastError)) { _list.Add(Text(Net.NetSession.LastError, "mm-note")); Net.NetSession.LastError = null; }
                     Item("PLAY", () => { Beep(1); Show(Page.Saves); });
                     Item("MULTIPLAYER", () => { Beep(1); Show(Page.Multi); });
+                    Item("YOUR LOOK", OpenLook);
                     Item("SETTINGS", OpenSettings);
                     Item("QUIT", Quit);
                     break;
@@ -331,6 +335,32 @@ namespace Backrooms.Menu
             Refresh();
             _steps[_items.Count] = d => { step(d); Refresh(); };
             Add(row, () => { step(1); Refresh(); Beep(0); });
+        }
+
+        /// <summary>YOUR LOOK (Menu/LookMenu.cs) in place of the menu.</summary>
+        void OpenLook()
+        {
+            Beep(1);
+            _panel.style.display = DisplayStyle.None;
+            LookMenu.Open(() => { if (!_vmShown) _panel.style.display = DisplayStyle.Flex; Select(_sel, false); });
+        }
+
+        /// <summary>
+        /// The company's look on a menu (2026-11-06, Phase 5): in the Overflow art style the menus are Overflow's own
+        /// paperwork, chocolate with the amber bar and the company stripe (MainMenu.uss, .mm-ov); in Classic the
+        /// camcorder's navy menu as before.
+        /// </summary>
+        internal static void ApplyLook(VisualElement root)
+        {
+            if (root != null) root.EnableInClassList("mm-ov", Backrooms.Generation.ArtStyle.Current == Backrooms.Generation.ArtStyle.Look.Overflow);
+        }
+
+        /// <summary>The company stripe under a menu's title (orange, gold, avocado; shown in the Overflow look only).</summary>
+        internal static void AddStripe(VisualElement panel)
+        {
+            var stripe = new VisualElement(); stripe.AddToClassList("mm-stripe"); stripe.pickingMode = PickingMode.Ignore;
+            foreach (var c in new[] { "mm-s1", "mm-s2", "mm-s3" }) { var b = new VisualElement(); b.AddToClassList(c); b.pickingMode = PickingMode.Ignore; stripe.Add(b); }
+            panel.Add(stripe);
         }
 
         /// <summary>The settings page (Menu/SettingsMenu.cs) in place of the menu; the F5 tabs from it as ADVANCED.</summary>

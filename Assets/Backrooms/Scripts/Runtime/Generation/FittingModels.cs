@@ -58,9 +58,14 @@ namespace Backrooms.Generation
         /// <summary>The models are loaded (a plain flag: chunk data is built on worker threads).</summary>
         public static bool Ready { get; private set; }
 
+        static ArtStyle.Look s_look;
+
         public static void Ensure(OfficeBiomeAssets a)
         {
-            if (Ready) return;
+            // Loaded again when the look changed (a world loaded in the other look: its remade models).
+            if (Ready && s_look == ArtStyle.Current) return;
+            if (Ready) { Ready = false; s_models.Clear(); s_meshes.Clear(); }      // (the old meshes are left: a door may still hold one)
+            s_look = ArtStyle.Current;
             FittingMaterials.Ensure(a);
             if (!FittingMaterials.Ready) return;
             foreach (var n in Names)
@@ -76,13 +81,14 @@ namespace Backrooms.Generation
 
         static Part[] Load(string name)
         {
-            var prefab = Resources.Load<GameObject>("Fittings/" + name);
+            string path = ArtStyle.Path("Fittings/" + name);          // (its remake in the new look, if there is one)
+            var prefab = Resources.Load<GameObject>(path);
             if (!prefab) return null;
             var root = prefab.transform;
             var toModel = Matrix4x4.TRS(Vector3.zero, root.localRotation, root.localScale) * root.worldToLocalMatrix;
             var parts = new List<Part>();
             // A baked model (Tools/Blender/bake_kit.py): its own colour texture through uv0, a material a slot on it.
-            var albedo = Resources.Load<Texture2D>("Fittings/" + name + "_Albedo");
+            var albedo = Resources.Load<Texture2D>(path + "_Albedo");
             float density = 0f;
             if (albedo)
             {

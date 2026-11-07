@@ -59,7 +59,14 @@ namespace Backrooms.Generation
             Vector3 d = b - a;
             float len = d.magnitude;
             if (len < 0.01f) return;
-            w.Box((a + b) * 0.5f, new Vector3(thickness, thickness * 1.4f, len), Quaternion.LookRotation(d / len), 63, MeshWriter.MetreUV);
+            Steel(w, (a + b) * 0.5f, new Vector3(thickness, thickness * 1.4f, len), Quaternion.LookRotation(d / len));
+        }
+
+        /// <summary>A rack's steel or deck piece: a plain box, or in the Overflow look one with its edges rounded (StyleSheet).</summary>
+        static void Steel(MeshWriter w, Vector3 centre, Vector3 size, Quaternion rot)
+        {
+            if (ArtStyle.Current == ArtStyle.Look.Overflow) w.RoundBox(centre, size, rot, 0.008f, 63, MeshWriter.MetreUV);
+            else w.Box(centre, size, rot, 63, MeshWriter.MetreUV);
         }
 
         /// <summary>Steel pallet rack: four slotted uprights, orange box beams, deck boards, end bracing, loaded shelves.</summary>
@@ -150,8 +157,8 @@ namespace Backrooms.Generation
                 for (int s = -1; s <= 1; s += 2)
                 {
                     float z = s * (uz - UprightSize * 0.5f - 0.0125f);
-                    beams.Box(at + new Vector3(0, yb - BeamHeight * 0.5f, z), new Vector3(L - UprightSize * 2f, BeamHeight, 0.05f), 63, MeshWriter.MetreUV);
-                    beams.Box(at + new Vector3(0, yb + 0.005f, z - s * 0.012f), new Vector3(L - UprightSize * 2f, 0.01f, 0.026f), 63, MeshWriter.MetreUV);
+                    Steel(beams, at + new Vector3(0, yb - BeamHeight * 0.5f, z), new Vector3(L - UprightSize * 2f, BeamHeight, 0.05f), Quaternion.identity);
+                    Steel(beams, at + new Vector3(0, yb + 0.005f, z - s * 0.012f), new Vector3(L - UprightSize * 2f, 0.01f, 0.026f), Quaternion.identity);
                     if (hardware)
                     {
                         // The beam's end plates on the uprights, riveted, their safety locks; the bay's location label.
@@ -165,7 +172,7 @@ namespace Backrooms.Generation
                 // Deck: two boards laid across the beams.
                 float bz = Da * 0.5f - 0.02f;
                 for (int s = -1; s <= 1; s += 2)
-                    deck.Box(at + new Vector3(0, yb + DeckThickness * 0.5f + 0.01f, s * (bz * 0.5f + 0.01f)), new Vector3(La, DeckThickness, bz), 63, MeshWriter.MetreUV);
+                    Steel(deck, at + new Vector3(0, yb + DeckThickness * 0.5f + 0.01f, s * (bz * 0.5f + 0.01f)), new Vector3(La, DeckThickness, bz), Quaternion.identity);
                 // Load the shelf: what the boxes stand on is the deck's top.
                 float top = yb + DeckThickness + 0.01f;
                 float bottom = yb - BeamHeight;

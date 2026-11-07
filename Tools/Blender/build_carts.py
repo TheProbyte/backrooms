@@ -385,6 +385,55 @@ def platform_truck():
     return ob
 
 
+def platform_cart_overflow():
+    """The Overflow look's trolley (--style overflow): the style lab's platform cart at the truck's size and on its
+    casters: a thick moulded teal deck with rounded edges, a ribbed rubber mat inset in it, a chunky U handle in two
+    moulded sockets, a brace across it and a rubber grip on its bar."""
+    T = S("Paint_TruckBlue", (0.184, 0.435, 0.416), "plastic", 0.5)
+    MAT = S("Rubber_TruckMat", (0.12, 0.105, 0.095), "rubber", 0.8)
+    GRIP = S("Rubber_TruckGrip", (0.12, 0.105, 0.095), "rubber", 0.8)
+    L, W = 0.91, 0.61
+    z0, z_deck = 0.165, 0.235
+    p = []
+    rings = [rrect(W - 0.02, L - 0.02, 0.05, z0, 6), rrect(W, L, 0.06, z0 + 0.012, 6), rrect(W, L, 0.06, z_deck - 0.012, 6),
+             rrect(W - 0.016, L - 0.016, 0.052, z_deck, 6)]
+    p.append(loft("Deck", rings, T, True, True, recalc=True))
+    p.append(rbox("Mat", (W - 0.07, L - 0.09, 0.008), (0, -0.015, z_deck + 0.003), MAT, 0.003, 2))
+    for i in range(9):
+        y = -L / 2 + 0.07 + i * (L - 0.18) / 8 - 0.015
+        p.append(rbox("Rib", (W - 0.1, 0.014, 0.006), (0, y, z_deck + 0.009), MAT, 0.002, 1))
+    hy = L / 2 - 0.035
+    u = [(-0.26, hy, z_deck + 0.03), (-0.26, hy + 0.015, 0.76), (-0.235, hy + 0.03, 0.9), (0.0, hy + 0.035, 0.92),
+         (0.235, hy + 0.03, 0.9), (0.26, hy + 0.015, 0.76), (0.26, hy, z_deck + 0.03)]
+    p.append(tube("Handle", [Vector(q) for q in catmull(u, 6)], 0.0155, T, 12))
+    p.append(tube("Brace", [(-0.26, hy + 0.007, 0.52), (0.26, hy + 0.007, 0.52)], 0.012, T, 10))
+    p.append(lathe("Grip", [(0.0, -0.17), (0.022, -0.17), (0.024, -0.16), (0.024, 0.16), (0.022, 0.17), (0.0, 0.17)], GRIP, 16,
+                   xf=M4(rot('Y', 90), (0, hy + 0.035, 0.92))))
+    for sx in (-1, 1):
+        p.append(rbox("Socket", (0.07, 0.06, 0.07), (sx * 0.26, hy, z_deck + 0.03), T, 0.007, 2))
+    PX, PY = 0.2, L / 2 - 0.08
+    ob = finish(p, "PlatformTruck", sharp_deg=55)
+    casters = [{"at": [sx * PX, sy * PY, z0], "swivel": sy > 0, "size": "5"} for sx in (-1, 1) for sy in (-1, 1)]
+    LAYOUT["PlatformTruck"] = {
+        "casters": casters,
+        "handle": [[-0.24, hy + 0.035, 0.92], [0.24, hy + 0.035, 0.92]],
+        "decks": [[-W / 2 + 0.035, -L / 2 + 0.03, z_deck + 0.006, W / 2 - 0.035, L / 2 - 0.07, z_deck + 0.012]],
+        "boxes": [
+            [0, 0, (z0 + z_deck) / 2 + 0.003, W, L, z_deck - z0 + 0.006],     # the deck
+            [-0.26, hy + 0.015, (z_deck + 0.92) / 2, 0.035, 0.045, 0.92 - z_deck],
+            [0.26, hy + 0.015, (z_deck + 0.92) / 2, 0.035, 0.045, 0.92 - z_deck],
+            [0, hy + 0.035, 0.92, 0.56, 0.05, 0.05],               # the handle's bar
+            [0, 0, 0.0825, W - 0.1, L - 0.08, 0.165],               # (what rolls)
+        ],
+        "mass": 19.0,
+    }
+    return ob
+
+
+if OVERFLOW:
+    platform_truck = platform_cart_overflow
+
+
 # ------------------------------------------------------------------------------------------------- run
 
 FORKS = {}

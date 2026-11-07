@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -76,6 +77,15 @@ namespace Backrooms.Interaction
         /// <summary>The camcorder in the left hand, at the eye (simple shapes: it is only seen as a shadow).</summary>
         Transform MakeCamcorder()
         {
+            // The Overflow look: the lab's camcorder model (its eyecup at the camera), casting its shadow.
+            var made = new List<Material>();
+            var model = Backrooms.Camcorder.CamcorderModel.Make(null, "CamcorderShadow", made, true);
+            if (model)
+            {
+                _camModel = true;
+                foreach (var m in made) _mats["Cam_" + m.name] = m;
+                return model;
+            }
             var root = new GameObject("CamcorderShadow").transform;
             var mat = new Material(Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit")) { name = "FP_Camcorder" };
             mat.SetColor("_BaseColor", new Color(0.05f, 0.05f, 0.055f));
@@ -100,6 +110,7 @@ namespace Backrooms.Interaction
         }
 
         Transform _camT;
+        bool _camModel;          // the camcorder is the Overflow look's model (CamcorderModel), not the old simple shapes
 
         /// <summary>
         /// After the body: the head and neck to the view, the camcorder where the camera is (held a little out in front of
@@ -251,7 +262,7 @@ namespace Backrooms.Interaction
             _freeGrip = Vector3.Lerp(hang, _holdGrip, sw);
             _freeRot = Quaternion.Slerp(hangRot, _holdRot, sw);
             float curl = Mathf.Lerp(0.3f, _holdCurl, sw);
-            Vector3 wrist = _freeGrip - _freeRot * new Vector3(0f, -0.02f, 0.065f);
+            Vector3 wrist = _freeGrip - _freeRot * _leftGrip;
             Vector3 d = wrist - shoulder;
             float a = r.upperLen, b = r.foreLen, len = Mathf.Clamp(Gait.SoftReach(d.magnitude, a + b, (a + b) * 0.03f), Mathf.Abs(a - b) + 0.02f, (a + b) * 0.999f);
             Vector3 dir = d.normalized;
@@ -294,7 +305,8 @@ namespace Backrooms.Interaction
             // The body's arm: its own shoulder, the collarbone bringing it up and forward toward the camcorder a little.
             if (!r.root && !_leftArm) shoulder = CarryShoulder(r.clavicle, r.clavicleRest, r.upper, shoulder, 20f);
             Quaternion handRot = Quaternion.LookRotation(cam.forward * 0.85f - cam.right * side * 0.35f, -cam.up * 0.9f + cam.right * side * 0.3f);
-            Vector3 grip = cam.position + cam.rotation * new Vector3(0.0f, -0.075f, 0.08f);
+            // (The Overflow look's camcorder is bigger, its body below and ahead of the eyecup: the hand under its body.)
+            Vector3 grip = cam.position + cam.rotation * (_camModel ? new Vector3(-0.035f, -0.165f, 0.13f) : new Vector3(0.0f, -0.075f, 0.08f));
             // Sent off the camcorder for a moment by the held item (LeftReach): there and back as a blend of the two.
             if (Time.time - _leftReachSet > 0.05f) leftReachW = Mathf.MoveTowards(leftReachW, 0f, Time.deltaTime / 0.2f);
             float reachW = Mathf.SmoothStep(0f, 1f, leftReachW);
@@ -303,7 +315,7 @@ namespace Backrooms.Interaction
                 grip = Vector3.Lerp(grip, leftReachAt, reachW);
                 handRot = Quaternion.Slerp(handRot, leftReachRot, reachW);
             }
-            Vector3 wrist = grip - handRot * new Vector3(0f, -0.02f, 0.065f);
+            Vector3 wrist = grip - handRot * _leftGrip;
             Vector3 d = wrist - shoulder;
             // (Soft IK: going up stairs the body's height trails the eye's and the arm comes near straight; eased, it
             // does not snap.)

@@ -79,10 +79,40 @@ def lin(c):
     return tuple(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c)
 
 
+# The Overflow look's colours (Docs/StyleSheet.md) for slots that change outright; the rest are warmed and made a little
+# more saturated (overflow_colour). Keys: words in the slot's name, lower case.
+OVERFLOW_COLOURS = [
+    ("truckblue", (0.184, 0.435, 0.416)),      # the platform cart: the lab's teal #2F6F6A
+    ("cartgrey", (0.29, 0.245, 0.21)),         # the utility cart: warm dark brown-grey
+    ("janitoryellow", (0.88, 0.64, 0.14)),     # the janitor cart: mustard yellow
+    ("janitorgrey", (0.26, 0.22, 0.19)),
+    ("casterhub", (0.25, 0.21, 0.18)),
+    ("tread", (0.12, 0.105, 0.095)), ("rubber", (0.12, 0.105, 0.095)),     # black rubber, a little warm
+    ("galv", (0.64, 0.62, 0.57)), ("zinc", (0.64, 0.62, 0.57)),
+    ("rackbeam", (0.86, 0.40, 0.08)),          # safety orange #DB6614
+    ("rackupright", (0.36, 0.42, 0.47)),       # blue-grey
+]
+
+
+def overflow_colour(name, srgb):
+    n = name.lower()
+    for k, c in OVERFLOW_COLOURS:
+        if k in n:
+            return c
+    r, g, b = srgb
+    y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    sat = 1.15
+    r, g, b = (y + (r - y) * sat) * 1.02, y + (g - y) * sat, (y + (b - y) * sat) * 0.95
+    return tuple(min(1.0, max(0.0, c)) for c in (r, g, b))
+
+
 def smat(name, srgb, rough=0.5, metal=0.0, finish=None):
     """A slot material from an sRGB colour (the bake saves sRGB, so the game shows this colour)."""
+    if globals().get("OVERFLOW"):
+        srgb = overflow_colour(name, srgb)
     m = mat(name, lin(srgb), rough, metal)
     m["linear"] = 1
+    m["ov"] = 1
     if finish:
         m["finish"] = finish
     return m
@@ -241,10 +271,28 @@ def paint_material(m, image, seed, scale=1.0, ao_dist=0.05, wear=1.0, dirt=1.0, 
     d_amt, e_amt, e_col, mottle, grime, streak, dust = f
     d_amt *= dirt
     e_amt *= wear
+    OV = bool(globals().get("OVERFLOW"))
+    if OV:
+        # The painted look: bolder dirt in the creases and wear on the edges, little of the photo-like grime.
+        d_amt *= 1.25
+        e_amt *= 1.3
+        grime *= 0.4
+        streak *= 0.3
+        dust *= 0.4
     nt = m.node_tree
     bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
     out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
     base_col = tuple(bsdf.inputs["Base Color"].default_value)[:3]
+    if OV and not m.get("ov") and not m.get("print"):
+        # (a slot made without smat: its colour into the palette here, once)
+        def srgb(c):
+            return tuple(12.92 * x if x <= 0.0031308 else 1.055 * x ** (1 / 2.4) - 0.055 for x in c)
+        if m.get("linear"):
+            base_col = lin(overflow_colour(m.name, srgb(base_col)))
+        else:
+            base_col = overflow_colour(m.name, base_col)
+        bsdf.inputs["Base Color"].default_value = (*base_col, 1.0)
+        m["ov"] = 1
     if not m.get("linear") and not m.get("print"):
         # (an older model's colour: the game read it from the FBX as an sRGB colour)
         base_col = lin(base_col)
@@ -336,6 +384,35 @@ def paint_material(m, image, seed, scale=1.0, ao_dist=0.05, wear=1.0, dirt=1.0, 
             spot = _math(nt, "LESS_THAN", vor.outputs["Distance"], thr, -900, 900 + k * 200)
             base = _mix(nt, spot, base, lin(fc), -700, 900 + k * 200)
 
+    # Overflow: big flat patches instead of the soft mottle (noise cut into four levels, the darker ones warmer and
+    # browner, as the style sheet's painted surfaces), averaging the slot's own colour.
+    if OV and mottle > 0:
+        nz = _n(nt, "ShaderNodeTexNoise", -1200, 0, Scale=2.2 / scale, Detail=2.0, Roughness=0.45)
+        nt.links.new(pos, nz.inputs["Vector"])
+        ramp = nt.nodes.new("ShaderNodeValToRGB")
+        ramp.location = (-1000, 0)
+        ramp.color_ramp.interpolation = "CONSTANT"
+        els = ramp.color_ramp.elements
+        els[0].position, els[0].color = 0.0, (0.0, 0.0, 0.0, 1.0)
+        els[1].position, els[1].color = 0.40, (0.55, 0.55, 0.55, 1.0)
+        for pos_, v in ((0.56, 0.8), (0.68, 1.0)):
+            e = els.new(pos_)
+            e.color = (v, v, v, 1.0)
+        nt.links.new(nz.outputs["Fac"], ramp.inputs["Fac"])
+        k = min(1.0, mottle * 3.0)
+        dark = nt.nodes.new("ShaderNodeVectorMath")
+        dark.operation = "MULTIPLY"
+        dark.location = (-800, 150)
+        nt.links.new(base, dark.inputs[0])
+        dark.inputs[1].default_value = (1 - 0.10 * k, 1 - 0.14 * k, 1 - 0.22 * k)
+        light = nt.nodes.new("ShaderNodeVectorMath")
+        light.operation = "MULTIPLY"
+        light.location = (-800, 300)
+        nt.links.new(base, light.inputs[0])
+        light.inputs[1].default_value = (1 + 0.07 * k, 1 + 0.06 * k, 1 + 0.04 * k)
+        base = _mix(nt, ramp.outputs["Color"], dark.outputs[0], light.outputs[0], -600, 200)
+        mottle = 0.0
+
     # Mottle: a soft, slightly coloured variation in the finish.
     if mottle > 0:
         nz = _n(nt, "ShaderNodeTexNoise", -1200, 0, Scale=6.0 / scale, Detail=4.0, Roughness=0.55)
@@ -355,7 +432,7 @@ def paint_material(m, image, seed, scale=1.0, ao_dist=0.05, wear=1.0, dirt=1.0, 
     if e_amt > 0:
         bev = _n(nt, "ShaderNodeBevel", -1400, -300)
         bev.samples = 8
-        bev.inputs["Radius"].default_value = edge_r * max(scale, 0.3)
+        bev.inputs["Radius"].default_value = edge_r * max(scale, 0.3) * (2.5 if OV else 1.0)
         dot = nt.nodes.new("ShaderNodeVectorMath")
         dot.operation = "DOT_PRODUCT"
         dot.location = (-1200, -300)
@@ -371,7 +448,7 @@ def paint_material(m, image, seed, scale=1.0, ao_dist=0.05, wear=1.0, dirt=1.0, 
         edge = _math(nt, "MULTIPLY", edge, ao_e.outputs["AO"], -700, -300)
         nz2 = _n(nt, "ShaderNodeTexNoise", -1000, -550, Scale=38.0 / scale, Detail=6.0, Roughness=0.7)
         nt.links.new(pos, nz2.inputs["Vector"])
-        brk = _math(nt, "SUBTRACT", nz2.outputs["Fac"], 0.42, -850, -550)
+        brk = _math(nt, "SUBTRACT", nz2.outputs["Fac"], 0.32 if OV else 0.42, -850, -550)       # (Overflow: fewer gaps)
         brk = _math(nt, "MULTIPLY", brk, 6.0, -700, -550, clamp=True)
         edge = _math(nt, "MULTIPLY", edge, brk, -550, -400)
         edge = _math(nt, "MULTIPLY", edge, e_amt, -400, -400, clamp=True)
@@ -397,7 +474,7 @@ def paint_material(m, image, seed, scale=1.0, ao_dist=0.05, wear=1.0, dirt=1.0, 
         occ = _math(nt, "POWER", occ, 0.8, -650, -800, clamp=True)
         nz3 = _n(nt, "ShaderNodeTexNoise", -800, -950, Scale=14.0 / scale, Detail=3.0, Roughness=0.6)
         nt.links.new(pos, nz3.inputs["Vector"])
-        var = _math(nt, "MULTIPLY_ADD", nz3.outputs["Fac"], 0.9, -650, -950, c=0.55)
+        var = _math(nt, "MULTIPLY_ADD", nz3.outputs["Fac"], 0.4 if OV else 0.9, -650, -950, c=0.8 if OV else 0.55)
         occ = _math(nt, "MULTIPLY", occ, var, -500, -850)
         occ = _math(nt, "MULTIPLY", occ, d_amt * 1.4, -350, -850, clamp=True)
         col = _mix(nt, occ, col, DIRT, -100, 0)
@@ -667,6 +744,8 @@ def card(name, w, h, center, material, normal=(0, -1, 0), roll=0.0):
         R = Matrix.Rotation(math.radians(roll), 3, n)
         right, up = R @ right, R @ up
     c = Vector(center)
+    if globals().get("OVERFLOW"):
+        c = c + n * 0.0025          # (stood off a little: the chunkier look's thin plates grow up to 2 mm a face)
     pts = [c + right * (-w / 2) * s1 + up * (h / 2) * s2 for s1, s2 in ((1, -1), (-1, -1), (-1, 1), (1, 1))]
     bm = bmesh.new()
     vs = [bm.verts.new(p) for p in pts]

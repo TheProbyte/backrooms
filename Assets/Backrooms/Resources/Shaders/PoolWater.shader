@@ -272,6 +272,15 @@ Shader "Backrooms/PoolWater"
                     thick = (POOL_WATER + POOL_BASIN) / max(V.y, 0.08);
                     below = float3(0.78, 0.8, 0.75) * ambient;
                 }
+                // The Overflow look (2026-11-07): the water's colour in a few soft bands by depth (as stylised water takes
+                // its colour from the depth through a stepped gradient), the floor seen through it a little flatter.
+                float ovW = _BROverflow;
+                if (ovW > 0.5)
+                {
+                    thick = PoolSoftSteps(thick, 0.5) + 0.12;
+                    float3 avg = dot(below, float3(0.3, 0.5, 0.2));
+                    below = lerp(below, avg * float3(0.86, 0.9, 0.84), 0.35);
+                }
                 float3 absorb = exp(-thick * _Absorb.rgb);
                 float3 water = below * absorb + _Scatter.rgb * ambient * (1.0 - absorb.g);
                 float sun = PoolSunVisibility(P + float3(0, 0.01, 0));
@@ -349,7 +358,9 @@ Shader "Backrooms/PoolWater"
                     float brk = PoolFoamPattern(P.xz * 1.7 + t * 0.03, pixC);
                     float a = contact * saturate(0.35 + brk * 0.9);
                     float3 lineCol = float3(0.88, 0.92, 0.9) * (ambient * 1.1 + _PoolSunColor.rgb * sun * POOL_SUN.y);
-                    color = lerp(color, lineCol, a * 0.35);
+                    // (Overflow: a painted foam line, solid and creamy, where the water meets things.)
+                    if (_BROverflow > 0.5) a = smoothstep(0.18, 0.32, contact) * (0.75 + 0.25 * saturate(brk));
+                    color = lerp(color, lineCol, a * lerp(0.35, 0.8, _BROverflow));
                 }
                 if (any(isnan(color)) || any(isinf(color))) color = ambient * 0.5;
                 return half4(PoolFarFade(MixFog(color, i.fogFactor), P), 1);

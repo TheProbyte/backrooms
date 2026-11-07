@@ -28,15 +28,17 @@ namespace Backrooms.Interaction
                        s_handle = new Vector3(0f, 0.217f, -0.105f), s_grip = new Vector3(0f, 0f, 0.185f);
         static readonly Vector3[] s_keys = new Vector3[6];
         static float s_tilt = 6f;
+        static Generation.ArtStyle.Look s_layoutLook;
 
         static Vector3 U(float[] b, Vector3 fallback) => b != null && b.Length == 3 ? new Vector3(-b[0], b[2], -b[1]) : fallback;
 
         static void ReadLayout()
         {
-            if (s_layoutRead) return;
+            if (s_layoutRead && s_layoutLook == Generation.ArtStyle.Current) return;     // (read again for the other look's model)
             s_layoutRead = true;
+            s_layoutLook = Generation.ArtStyle.Current;
             for (int i = 0; i < 6; i++) s_keys[i] = new Vector3(0.0562f - i * 0.02245f, 0.1401f, 0.1425f);
-            var t = Resources.Load<TextAsset>("Items/Boombox_Layout");
+            var t = Generation.ArtStyle.Load<TextAsset>("Items/Boombox_Layout");
             if (!t) return;
             var j = JsonUtility.FromJson<LayoutJson>(t.text);
             if (j == null) return;
@@ -206,7 +208,7 @@ namespace Backrooms.Interaction
             var src = Generation.MaterialMaps.TrofferOn;
             var baked = _face.sharedMaterial;
             var tex = baked && baked.HasProperty("_BaseMap") ? baked.GetTexture("_BaseMap") : null;
-            var glow = Resources.Load<Texture2D>("Items/BoomboxFace_Emission");
+            var glow = Resources.Load<Texture2D>(Generation.ArtStyle.Path("Items/BoomboxFace") + "_Emission");
             if (!src || !tex || !glow) return;
             _faceOn = new Material(src) { name = "Boombox face (lit)", hideFlags = HideFlags.DontSave };
             _faceOn.SetTexture("_BaseMap", tex);

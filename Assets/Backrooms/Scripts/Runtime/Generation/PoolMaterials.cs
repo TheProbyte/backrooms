@@ -81,6 +81,7 @@ namespace Backrooms.Generation
 
         public static void Ensure()
         {
+            ArtStyle.SetShaderGlobals();
             if (Tile && Water && Sky && Accent) return;
             Tile = Make("Backrooms/PoolTile", "Pool tiles");
             Water = Make("Backrooms/PoolWater", "Pool water");

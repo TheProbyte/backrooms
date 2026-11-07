@@ -63,3 +63,47 @@
 .mm-root .mm-field .unity-text-element { color: rgb(242, 246, 255); }
 .mm-item.mm-sel .mm-field .unity-base-text-field__input { border-color: rgb(10, 22, 70); }
 .mm-root .mm-panel.mm-wide .mm-note { white-space: normal; }
+
+/* The company stripe under the title (2026-11-06): hidden in the Classic look. */
+.mm-stripe { display: none; flex-direction: row; height: 6px; margin: -6px 0 10px 0; }
+.mm-s1, .mm-s2, .mm-s3 { flex-grow: 1; }
+
+/* YOUR LOOK (Menu/LookMenu.cs): the choices beside an ID card with the live picture of your suited head. */
+.mm-panel.lk-panel { width: 940px; top: 12%; }
+.lk-body { flex-direction: row; align-items: flex-start; }
+.lk-list { flex-grow: 1; margin-right: 18px; }
+.lk-option { padding: 3px 10px 3px 4px; margin: 1px 0; }
+.mm-root .lk-label { font-size: 20px; letter-spacing: 3px; -unity-font-style: bold; width: 210px; }
+.mm-root .lk-value { font-size: 20px; letter-spacing: 2px; -unity-font-style: bold; flex-grow: 1; }
+.lk-option .mm-field .unity-base-text-field__input, .lk-option .mm-field .unity-text-field__input { font-size: 18px; padding: 2px 8px; }
+.lk-card {
+    width: 300px; padding: 10px; flex-shrink: 0;
+    background-color: rgba(242, 246, 255, 0.10); border-width: 2px; border-color: rgba(225, 232, 255, 0.75);
+}
+.lk-preview { width: 280px; height: 350px; border-width: 1px; border-color: rgba(225, 232, 255, 0.5); }
+.mm-root .lk-cardtext { font-size: 18px; letter-spacing: 2px; margin-top: 8px; -unity-font-style: bold; white-space: normal; }
+
+/* ---- The Overflow look (2026-11-06, Docs/StyleSheet.md): the company's own paperwork. Chocolate, warm cream type, the
+   item under the cursor on the company amber, the orange, gold and avocado stripe under the title. ---- */
+.mm-ov .unity-label, .mm-ov .unity-text-element { color: rgb(243, 230, 200); text-shadow: 2px 2px 0 rgba(30, 18, 8, 0.9); }
+.mm-ov .mm-panel { background-color: rgba(59, 42, 30, 0.95); border-color: rgb(240, 162, 30); border-radius: 6px; }
+.mm-ov .mm-rule { background-color: rgb(240, 162, 30); }
+.mm-ov .mm-stripe { display: flex; }
+.mm-ov .mm-s1 { background-color: rgb(217, 102, 31); }
+.mm-ov .mm-s2 { background-color: rgb(232, 178, 58); }
+.mm-ov .mm-s3 { background-color: rgb(124, 138, 46); }
+.mm-root.mm-ov .mm-page, .mm-root.mm-ov .mm-desc, .mm-root.mm-ov .mm-hint, .mm-root.mm-ov .mm-detail { color: rgb(205, 180, 138); }
+.mm-ov .mm-item { border-radius: 4px; }
+.mm-ov .mm-item.mm-sel { background-color: rgb(240, 162, 30); }
+.mm-root.mm-ov .mm-item.mm-sel .unity-label { color: rgb(59, 42, 30); }
+.mm-ov .mm-slot { border-color: rgba(243, 230, 200, 0.35); border-radius: 4px; }
+.mm-ov .mm-slot.mm-sel { border-color: rgb(240, 162, 30); }
+.mm-root.mm-ov .mm-empty { color: rgb(232, 178, 58); }
+.mm-ov .mm-field .unity-base-text-field__input, .mm-ov .mm-field .unity-text-field__input {
+    background-color: rgba(30, 18, 8, 0.6); border-color: rgba(243, 230, 200, 0.6); color: rgb(243, 230, 200); border-radius: 3px;
+}
+.mm-root.mm-ov .mm-field .unity-text-element { color: rgb(243, 230, 200); }
+.mm-ov .mm-item.mm-sel .mm-field .unity-base-text-field__input { border-color: rgb(59, 42, 30); }
+.mm-ov .lk-card { background-color: rgb(243, 230, 200); border-color: rgb(240, 162, 30); border-radius: 8px; }
+.mm-ov .lk-preview { border-color: rgba(59, 42, 30, 0.6); }
+.mm-root.mm-ov .lk-cardtext { color: rgb(59, 42, 30); text-shadow: 0 0 0 rgba(0, 0, 0, 0); }

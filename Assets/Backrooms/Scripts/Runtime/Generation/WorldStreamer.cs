@@ -132,6 +132,8 @@ namespace Backrooms.Generation
         {
             // The main menu's world, a save's world, or (testing a room from build mode) a random one.
             Current = this;
+            // The world's look (Classic or Overflow, ArtStyle): its materials before anything is made from them.
+            assets = ArtStyle.Biome(assets);
             // A new world: nothing taken from its special rooms, no noclip door to return to (a save puts its own back).
             Saves.LootRegistry.Clear();
             Interaction.NoclipTravel.HasOrigin = false;

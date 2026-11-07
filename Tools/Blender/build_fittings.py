@@ -109,6 +109,8 @@ def finish_mixed(base, printed, name, sharp_deg=None):
 def screw(name, center, normal, r, material, head=0.0015):
     """A pan screw head with its slot, facing normal."""
     R = rot_to(normal)
+    if OVERFLOW:
+        r, head = r * 1.4, head * 1.5          # (chunkier: bold screw heads)
     s = lathe(name, [(0.0, 0.0), (r, 0.0), (r, head * 0.4), (r * 0.8, head), (0.0, head)], material, 14, xf=M4(R, center))
     slot = rbox(name + "_slot", (r * 1.4, r * 0.25, head * 0.6), (0, 0, head * 0.9), material)
     place(slot, R, center)

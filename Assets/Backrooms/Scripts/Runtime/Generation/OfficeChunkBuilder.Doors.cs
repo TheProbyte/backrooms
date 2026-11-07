@@ -150,10 +150,13 @@ namespace Backrooms.Generation
         /// <summary>The handles' satin metal (the closers too, DoorHardware).</summary>
         public static Material Metal => s_metal;
 
+        static ArtStyle.Look s_look;
+
         public static void Ensure(OfficeBiomeAssets assets)
         {
-            if (s_prefab) return;
-            s_prefab = Resources.Load<GameObject>("Items/Door");
+            if (s_prefab && s_look == ArtStyle.Current) return;     // (again for the other look's door)
+            s_look = ArtStyle.Current;
+            s_prefab = Resources.Load<GameObject>(ArtStyle.Path("Items/Door"));
             HasModel = s_prefab;
             if (!HasModel) return;
             // Honey-stained oak: the furniture's wood texture, lighter and warmer.

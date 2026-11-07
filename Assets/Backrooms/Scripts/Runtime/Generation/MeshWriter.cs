@@ -157,6 +157,62 @@ namespace Backrooms.Generation
 
         public void Box(Vector3 center, Vector3 size, int faceMask, UVProjector uv) => Box(center, size, Quaternion.identity, faceMask, uv);
 
+        /// <summary>
+        /// A box with its edges rounded off (the Overflow look, 2026-11-06): each face inset by r, a chamfer strip along
+        /// every edge and a triangle at every corner, their normals those of the faces they join so the light rolls round
+        /// the edge as a bevelled model's does. faceMask leaves faces out as Box's does (the edges are always made).
+        /// 26 quads against Box's 6.
+        /// </summary>
+        public void RoundBox(Vector3 center, Vector3 size, Quaternion rot, float r, int faceMask, UVProjector uv)
+        {
+            r = Mathf.Min(r, Mathf.Min(size.x, Mathf.Min(size.y, size.z)) * 0.45f);
+            if (r <= 1e-4f) { Box(center, size, rot, faceMask, uv); return; }
+            Vector3 h = size * 0.5f - Vector3.one * r;
+            var ax = new[] { rot * Vector3.right, rot * Vector3.up, rot * Vector3.forward };
+            float[] hk = { h.x, h.y, h.z };
+            Vector3 P(float sx, float sy, float sz) => center + ax[0] * (sx * h.x) + ax[1] * (sy * h.y) + ax[2] * (sz * h.z);
+            Vector3 Pk(int i, float si, int j, float sj, int k, float sk)
+            {
+                var s = new float[3]; s[i] = si; s[j] = sj; s[k] = sk;
+                return P(s[0], s[1], s[2]);
+            }
+            Vector2 U(Vector3 p, Vector3 n) => uv(p + worldOffset, n);
+            // Faces.
+            int[] bits = { 1, 2, 4, 8, 16, 32 };
+            for (int i = 0; i < 3; i++)
+                for (int si = -1; si <= 1; si += 2)
+                {
+                    if ((faceMask & bits[i * 2 + (si > 0 ? 1 : 0)]) == 0) continue;
+                    int j = (i + 1) % 3, k = (i + 2) % 3;
+                    Vector3 n = ax[i] * si, o = n * r;
+                    Vector3 a = Pk(i, si, j, -1, k, -1) + o, b = Pk(i, si, j, 1, k, -1) + o, c = Pk(i, si, j, 1, k, 1) + o, d = Pk(i, si, j, -1, k, 1) + o;
+                    Quad(a, b, c, d, n, U(a, n), U(b, n), U(c, n), U(d, n));
+                }
+            // Edges: along axis k, between the faces of axes i and j.
+            for (int k = 0; k < 3; k++)
+            {
+                int i = (k + 1) % 3, j = (k + 2) % 3;
+                for (int si = -1; si <= 1; si += 2)
+                    for (int sj = -1; sj <= 1; sj += 2)
+                    {
+                        Vector3 ni = ax[i] * si, nj = ax[j] * sj;
+                        Vector3 p0 = Pk(i, si, j, sj, k, -1), p1 = Pk(i, si, j, sj, k, 1);
+                        Vector3 a = p0 + ni * r, b = p1 + ni * r, c = p1 + nj * r, d = p0 + nj * r;
+                        SmoothQuad(a, b, c, d, ni, ni, nj, nj, U(a, ni), U(b, ni), U(c, nj), U(d, nj));
+                    }
+            }
+            // Corners: a triangle each (a quad with two corners together).
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sy = -1; sy <= 1; sy += 2)
+                    for (int sz = -1; sz <= 1; sz += 2)
+                    {
+                        Vector3 p = P(sx, sy, sz);
+                        Vector3 nx = ax[0] * sx, ny = ax[1] * sy, nz = ax[2] * sz;
+                        Vector3 a = p + nx * r, b = p + ny * r, c = p + nz * r;
+                        SmoothQuad(a, b, c, c, nx, ny, nz, nz, U(a, nx), U(b, ny), U(c, nz), U(c, nz));
+                    }
+        }
+
         /// <summary>Open-ended frustum (lamp shade): ring of quads between two radii.</summary>
         public void Frustum(Vector3 baseCenter, float rBottom, float rTop, float height, int sides, bool outward, UVProjector uv)
         {

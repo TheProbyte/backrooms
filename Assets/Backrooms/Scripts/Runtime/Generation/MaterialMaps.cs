@@ -255,7 +255,7 @@ namespace Backrooms.Generation
         public static Material CeilingStainedA, CeilingStainedB, CeilingYellowed, Plenum;
         /// <summary>Tiles from other batches (a replaced run that never matched): a shade whiter, a shade greyer.</summary>
         public static Material CeilingBatchA, CeilingBatchB;
-        static Texture2D s_stainedA, s_stainedB;
+        static Texture2D s_stainedA, s_stainedB, s_stainSrc;
         static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
         public static Material PlenumWood, PlenumDeck, PlenumBatt, PlenumMetal, PlenumDuct, TileBack;
@@ -309,6 +309,28 @@ namespace Backrooms.Generation
             if (a.paintedWall && a.paintedWall.HasProperty(BaseColor))
                 PaintFresh = Tinted(a.paintedWall, " (fresh paint)", a.paintedWall.GetColor(BaseColor) * new Color(1.07f, 1.06f, 1.03f, 1f));
             var src = a.carpet;
+            var style = ArtStyle.Set;
+            if (style && style.concreteAlbedo && src && src.HasProperty(BaseMap))
+            {
+                // The Overflow look's painted slab: its own maps, no parallax, sheen or detail grain.
+                Concrete = Copy(src, " (concrete, painted)", style.concreteAlbedo);
+                Concrete.SetColor(BaseColor, style.concreteTint);
+                Concrete.SetTextureScale(BaseMap, Vector2.one);
+                Concrete.SetTextureOffset(BaseMap, Vector2.zero);
+                Concrete.SetFloat("_Smoothness", style.concreteSmoothness);
+                if (Concrete.HasProperty(BumpMap))
+                {
+                    Concrete.SetTexture(BumpMap, style.concreteNormal);
+                    Concrete.SetFloat(BumpScale, style.concreteBump);
+                    if (style.concreteNormal) Concrete.EnableKeyword("_NORMALMAP"); else Concrete.DisableKeyword("_NORMALMAP");
+                }
+                if (Concrete.HasProperty(ParallaxMap)) { Concrete.SetTexture(ParallaxMap, null); Concrete.SetFloat(Parallax, 0.005f); }
+                Concrete.SetFloat(SheenMask, 0f);
+                if (Concrete.HasProperty("_DetailNormalMap")) { Concrete.SetTexture("_DetailNormalMap", null); Concrete.SetFloat("_DetailNormalMapScale", 0f); }
+                if (Concrete.HasProperty("_DetailAlbedoMap")) Concrete.SetTexture("_DetailAlbedoMap", null);
+                Concrete.DisableKeyword("_DETAIL_MULX2");
+                return;
+            }
             var tex = Destruction.DemolitionMaterials.Photo("Concrete");
             if (!src || !tex || !src.HasProperty(BaseMap)) return;
             Concrete = Copy(src, " (concrete)", tex);
@@ -350,6 +372,7 @@ namespace Backrooms.Generation
             var tex = src.GetTexture(BaseMap) as Texture2D;
             if (tex)
             {
+                if (tex != s_stainSrc) { s_stainSrc = tex; s_stainedA = s_stainedB = s_cracked = null; }   // another look's tiles
                 if (!s_stainedA) s_stainedA = Stained(tex, 7);
                 if (!s_stainedB) s_stainedB = Stained(tex, 31);
                 CeilingStainedA = Copy(src, " (stained)", s_stainedA);
@@ -558,7 +581,8 @@ namespace Backrooms.Generation
             int w = t.width;
             var rng = new System.Random(seed);
             int tile = w / 4;
-            bool photos = LoadStamps();
+            // (The Overflow look's painted tiles get only the drawn stains: photographed ones read as photos on them.)
+            bool photos = ArtStyle.Current == ArtStyle.Look.Classic && LoadStamps();
             for (int ty = 0; ty < 4; ty++)
             for (int tx = 0; tx < 4; tx++)
             {

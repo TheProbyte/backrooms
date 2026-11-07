@@ -333,10 +333,21 @@ namespace Backrooms.Generation
         }
 
         /// <summary>A rail's end: going down into a floor, an escutcheon (a round plate with a rounded rim); else capped.</summary>
+        /// <summary>
+        /// The Overflow look's chunkier tubes (2026-11-07, Docs/StyleSheet.md "Chunkification"): rails, rungs, pipes and
+        /// posts 15 % thicker, thin ones (under 1.5 cm) a fifth; big tubes (noodles, the mushroom's stem) as they are. The tube,
+        /// its sweeps, ends and caps all go through it, so they stay matched.
+        /// </summary>
+        static float ChunkyR(float r)
+        {
+            if (r >= 0.06f || ArtStyle.Current != ArtStyle.Look.Overflow) return r;
+            return r < 0.015f ? r * 1.2f : r * 1.15f;
+        }
+
         static void End(MeshWriter w, Vector3 at, Vector3 outward, float r)
         {
-            if (outward.sqrMagnitude > 1e-8f && outward.normalized.y < -0.9f) Escutcheon(w, at, r);
-            else Cap(w, at, outward, r);
+            if (outward.sqrMagnitude > 1e-8f && outward.normalized.y < -0.9f) Escutcheon(w, at, ChunkyR(r));
+            else Cap(w, at, outward, r);           // (Cap makes it chunky itself)
         }
 
         /// <summary>The round cover plate where a rail goes into the deck: a low dome ring round the tube.</summary>
@@ -366,6 +377,7 @@ namespace Backrooms.Generation
         /// <summary>A tube through points (corners already rounded), smooth shaded, its rings carried without twisting.</summary>
         static void Sweep(MeshWriter w, List<Vector3> pts, float r, int sides = 10)
         {
+            r = ChunkyR(r);
             int n = pts.Count;
             Vector3 Seg(int i) => (pts[Mathf.Min(i + 1, n - 1)] - pts[i]).normalized;
             Vector3 prevT = Seg(0);
@@ -404,12 +416,14 @@ namespace Backrooms.Generation
         /// <summary>A tube's open end closed (a flat disc facing out).</summary>
         static void Cap(MeshWriter w, Vector3 at, Vector3 outward, float r)
         {
+            r = ChunkyR(r);
             if (outward.sqrMagnitude < 1e-8f) return;
             w.Disc(at, r, 10, outward.normalized, MeshWriter.MetreUV);
         }
 
         static void Tube(MeshWriter w, Vector3 a, Vector3 b, float r, int sides = 8)
         {
+            r = ChunkyR(r);
             var d = b - a;
             float len = d.magnitude;
             if (len < 1e-4f) return;

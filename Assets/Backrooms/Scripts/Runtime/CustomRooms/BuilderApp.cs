@@ -85,6 +85,7 @@ namespace Backrooms.CustomRooms
         void Start()
         {
             BuilderCatalog.Reset();
+            assets = ArtStyle.Biome(assets);                 // the world's look (Classic or Overflow)
             if (assets) { MaterialMaps.Ensure(assets); CustomModels.Ensure(assets); }   // the world's own look (and the player's models)
             SetupCamera();
             RoomLibrary.Reload();
