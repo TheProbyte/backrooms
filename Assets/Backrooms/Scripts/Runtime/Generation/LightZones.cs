@@ -25,6 +25,19 @@ namespace Backrooms.Generation
 
         public static bool IsOff(Vector3Int chunk, int room) => s_zones.TryGetValue((chunk, room), out var z) && z.off;
 
+        /// <summary>Closing time on the contract floors (Interaction.Contracts): when it came (Time.time), or -1.</summary>
+        public static float ClosingAt = -1f;
+
+        /// <summary>After closing every light on a contract floor dies, each at its own moment over a few seconds.</summary>
+        public static float ClosingLevel(Vector3Int chunk, float now, float seed)
+        {
+            if (ClosingAt < 0f || !LeasePlan.InRegion(WorldGenSettings.DistrictOf(new Vector2Int(chunk.x, chunk.z)))) return 1f;
+            float t = now - ClosingAt - seed * 6f;
+            if (t < 0f) return 1f;
+            if (t > 0.6f) return 0f;
+            return t < 0.15f || (t > 0.3f && t < 0.38f) ? 0.15f : 0.7f;      // a stutter, then out
+        }
+
         /// <summary>Has any room of this chunk been switched (a quick test before the per-room one).</summary>
         public static bool Touched(Vector3Int chunk) => s_chunks.Contains(chunk);
 

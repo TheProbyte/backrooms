@@ -350,7 +350,7 @@ namespace Backrooms.Saves
             {
                 id = s.id.ToString("X16"), kind = (int)s.kind, renderMask = s.renderMask, proxy = AssetKeys.Key(s.proxyMaterial),
                 size = s.size, variant = s.variant, cardboard = s.cardboard, origin = s.position, originYaw = s.yaw,
-                position = position, rotation = rotation, pinned = s.pinned, scale = s.scale,
+                position = position, rotation = rotation, pinned = s.pinned, scale = s.scale, fitting = s.fitting ?? "",
             };
             if (s.materials != null) { d.materials = new string[s.materials.Length]; for (int i = 0; i < s.materials.Length; i++) d.materials[i] = AssetKeys.Key(s.materials[i]); }
             foreach (var p in s.parts)
@@ -365,7 +365,7 @@ namespace Backrooms.Saves
             {
                 id = id, kind = (MovableKind)d.kind, renderMask = (uint)d.renderMask, proxyMaterial = AssetKeys.Find<Material>(d.proxy),
                 size = d.size, variant = d.variant, cardboard = d.cardboard, position = d.origin, yaw = d.originYaw,
-                pinned = d.pinned, scale = d.scale > 0.01f ? d.scale : 1f,
+                pinned = d.pinned, scale = d.scale > 0.01f ? d.scale : 1f, fitting = d.fitting ?? "",
             };
             if (d.materials != null) { s.materials = new Material[d.materials.Length]; for (int i = 0; i < d.materials.Length; i++) s.materials[i] = AssetKeys.Find<Material>(d.materials[i]); }
             foreach (var p in d.parts)

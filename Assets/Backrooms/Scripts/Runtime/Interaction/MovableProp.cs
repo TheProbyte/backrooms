@@ -107,6 +107,7 @@ namespace Backrooms.Interaction
                 Generation.PoolLitSwitch.Attach(root);
             }
             if (CartLayouts.IsCart(spec.kind)) BuildModel(root, spec, builtMeshes, CartLayouts.Model(spec.kind));   // a cart (its wheels: CartWheels)
+            if (!string.IsNullOrEmpty(spec.fitting)) BuildModel(root, spec, builtMeshes, spec.fitting);            // a named model (the hub's sofa)
 
             var shape = MovableShapes.Build(spec, root);
             // (Casters: only the base rolls, and only while it stands on them: MovableProp.FixedUpdate.)

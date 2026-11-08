@@ -230,6 +230,8 @@ namespace Backrooms.Destruction
                 if (panel) { key = panel.Key; wall = true; }
                 else if (h.collider.GetComponent<GeneratedChunkResources>() && Mathf.Abs(h.normal.y) < 0.3f)
                     wall = WallKey.At(h.point, h.normal, Mathf.FloorToInt((h.point.y + 0.05f) / WallDamage.Pitch), out key);
+                // The hub's walls are the company's (Docs/HubPlan.md): they knock, they never break.
+                if (wall && Generation.HubPlan.InHub(h.point)) return Hard(h, energy, ref impact);
                 if (wall)
                 {
                     if (!tried.Add(key)) continue;

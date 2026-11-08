@@ -13,6 +13,8 @@ namespace Backrooms.Generation
     {
         /// <summary>Vending machines to make the working parts of: chunk-local foot, rotation, variant, room colour.</summary>
         readonly List<(Vector3 at, Quaternion rot, int variant, int color)> _vendings = new List<(Vector3, Quaternion, int, int)>();
+        /// <summary>Seams on a contract floor (LeaseSeams): chunk-local foot, rotation, kind, room colour, prop id.</summary>
+        readonly List<(Vector3 at, Quaternion rot, int kind, int color, ulong id)> _seams = new List<(Vector3, Quaternion, int, int, ulong)>();
 
         void Vending(Prop p, Vector3 at, Quaternion rot)
         {
@@ -24,6 +26,47 @@ namespace Backrooms.Generation
             _vendings.Add((at, rot, p.variant, p.roomColor));
             var front = rot * Vector3.forward;
             Saw(at + Vector3.up * 1.2f + front * (p.size.z * 0.5f), front, "vending");
+        }
+
+        /// <summary>A named fitting (PropKind.Fitting: the hub's lockers, cots, board ...), solid to its size if it has one.</summary>
+        void FittingProp(Prop p, Vector3 at, Quaternion rot, List<LightSource> lights)
+        {
+            if (string.IsNullOrEmpty(p.model)) return;
+            uint m = LayerBit(p.roomColor);
+            // An exit sign (the world's own, its face lit): on the wall face over a doorway, toward the room.
+            if (p.model == "ExitSign") { var fwd = rot * Vector3.forward; ExitSign(at - fwd * (T * 0.5f), -fwd, m); return; }
+            var foot = at + Vector3.up * p.elevation;
+            // A contract floor's seam (LeaseSeams): its working parts are Interaction.Seam's, made with the chunk.
+            // (Its look is the noclip door's duct tape and the label, not a model: "SeamCrack" only marks where it is.)
+            if (p.model == "SeamCrack") { if (p.variant < LeaseSeams.BackFace) _seams.Add((at, rot, p.variant, p.roomColor, p.id)); return; }
+            if (!Model(p.model, m, foot, rot)) return;
+            RealLight(p, foot, rot, lights);
+            if (p.size.x > 0.01f && p.size.y > 0.01f && p.size.z > 0.01f)
+                Solid(at, rot, p.yaw, new Vector3(0f, p.elevation + p.size.y * 0.5f, 0f), p.size);
+        }
+
+        /// <summary>
+        /// The real world's lights (Tools/Blender/build_real.py, SeamRooms): a high-bay's or a batten's cool white LED, the
+        /// daylight through a window. Each is one of the world's light sources, as a fitting's tubes are, tinted cool.
+        /// </summary>
+        void RealLight(Prop p, Vector3 foot, Quaternion rot, List<LightSource> lights)
+        {
+            if (lights == null) return;
+            int cx = Mathf.Clamp(Mathf.FloorToInt(p.position.x / C), 0, _L.N - 1), cz = Mathf.Clamp(Mathf.FloorToInt(p.position.y / C), 0, _L.N - 1);
+            int room = _L.roomOf[cx, cz];
+            var src = new LightSource { roomLayer = LayerBit(p.roomColor), faultyId = -1, room = room, ceiling = p.elevation };
+            switch (p.model)
+            {
+                case "RealHighBay": src.position = _origin + foot + Vector3.down * 0.97f; src.dome = true; src.tint = new Color(0.86f, 0.94f, 1.12f, 1f); break;
+                case "RealBatten": src.position = _origin + foot + Vector3.down * 0.07f; src.strip = true; src.tint = new Color(0.92f, 0.97f, 1.06f, 1f); break;
+                case "RealWindow":
+                    // Daylight: a broad light over the floor in front of the window.
+                    src.position = _origin + foot + Vector3.up * 0.6f + rot * Vector3.forward * 0.7f; src.dome = true;
+                    src.ceiling = p.elevation + 1.2f; src.tint = new Color(0.8f, 0.9f, 1.18f, 1f);
+                    break;
+                default: return;
+            }
+            lights.Add(src);
         }
 
         /// <summary>A stop sign at an aisle crossing (PropKind.StopSign): the modelled sign on its post in a rubber base, solid.</summary>

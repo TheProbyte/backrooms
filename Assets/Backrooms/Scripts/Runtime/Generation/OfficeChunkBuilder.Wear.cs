@@ -96,7 +96,7 @@ namespace Backrooms.Generation
             {
                 if (lit && i == 0) continue;                              // the square panel sits in tile 0
                 float u = Dice(gx, gz, 100 + i);
-                float t = 0f, cw = DetailRates.CeilingWear;
+                float t = 0f, cw = DetailRates.CeilingWear * (_L.zoneName == HubPlan.ZoneName ? 3.5f : 1f);   // (the hub: run down)
                 TileKind k = TileKind.Plain;
                 if (u < (t += 0.005f * cw)) k = TileKind.Missing;
                 else if (u < (t += 0.012f * cw)) k = TileKind.Tilted;

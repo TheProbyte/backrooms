@@ -304,6 +304,9 @@ namespace Backrooms.Camcorder
 
             float elapsed = standby ? 0f : Time.time - _t0 + TapeSeconds;
             var now = _start.AddSeconds(standby ? Time.time - _t0 : elapsed);
+            // A contract's office hours (Interaction.Contracts): the clock shows the shift's time of day.
+            var shift = Backrooms.Interaction.Contracts.Instance ? Backrooms.Interaction.Contracts.Instance.Clock : null;
+            if (shift.HasValue) now = shift.Value;
             bool blink = ((Time.time - _t0) % 1.2f) < 0.8f;
             _recDot.enabled = blink && !standby;
             _rec.text = standby ? "STBY" : "REC";

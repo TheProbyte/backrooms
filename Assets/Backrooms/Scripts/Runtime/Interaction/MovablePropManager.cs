@@ -61,6 +61,24 @@ namespace Backrooms.Interaction
         }
         public bool IsMoved(ulong id) => _moved.ContainsKey(id);
 
+        /// <summary>Where a moved prop is now (live or as last stored), and whether someone is carrying it.</summary>
+        public bool Where(ulong id, out Vector3 position, out bool held)
+        {
+            position = default; held = false;
+            if (!_moved.TryGetValue(id, out var r)) return false;
+            if (r.live) { position = r.live.transform.position; held = r.live.held; }
+            else position = r.position;
+            return true;
+        }
+
+        /// <summary>Gone for good (a contract's box sent through a seam, or its floor given up): out of the world and the save.</summary>
+        public void Forget(ulong id)
+        {
+            if (!_moved.TryGetValue(id, out var r)) return;
+            if (r.live) Destroy(r.live.gameObject);
+            _moved.Remove(id);
+        }
+
         void Awake() { Instance = this; }
         void OnDestroy() { if (Instance == this) Instance = null; }
 

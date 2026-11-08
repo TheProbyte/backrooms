@@ -6,8 +6,8 @@ namespace Backrooms.Generation
     public enum RoomKind { Office, BigOffice, Hallway, Crawl, Lounge, Conference }
     public enum LightMode { AllOn, Mixed, Dark }
     public enum EdgeKind : byte { Open, Wall, Door, DoorHeader }
-    public enum WallFinish { Default, Wallpaper, PaintedPlaster, ReferenceCream, ReferenceOlive, OrangePeel, SkyWallpaper }
-    public enum FloorFinish { Default, ReferenceCarpet, DarkWood, Laminate, HomeCarpet }
+    public enum WallFinish { Default, Wallpaper, PaintedPlaster, ReferenceCream, ReferenceOlive, OrangePeel, SkyWallpaper, HubPanel, Blockwork, Drywall }
+    public enum FloorFinish { Default, ReferenceCarpet, DarkWood, Laminate, HomeCarpet, Concrete, Polished, Vinyl }
 
     /// <summary>
     /// What a room does with its floor (world version 14, Docs/WorldDepthPlan.md; DepthPlan): sunk below the storey's floor
@@ -67,6 +67,8 @@ namespace Backrooms.Generation
         public GoodRoom special;
         /// <summary>Its wall outlets have power without a breaker being switched on (SpecialRooms.Live; most rooms' do not).</summary>
         public bool live;
+        /// <summary>A contract floor's storage room (LeaseSeams): empty shelving where contracts' boxes are put away.</summary>
+        public bool leaseStorage;
         /// <summary>
         /// A ramp (DepthPlan): the floor runs from <see cref="floor"/> at one end of the room (fullRect) up to the storey's
         /// floor at the other: 0 none, the way it rises: 1 toward +X, 2 -X, 3 +Z, 4 -Z.
@@ -114,7 +116,7 @@ namespace Backrooms.Generation
             id = newId, globalId = globalId, rect = newRect, fullRect = fullRect, kind = kind, lights = lights, color = color,
             ceiling = ceiling, painted = painted, wallFinish = wallFinish, floorFinish = floorFinish, landmark = landmark, openAbove = openAbove, noFloor = noFloor, noDoors = noDoors, role = role, custom = custom, spiral = spiral,
             floor = floor, feature = feature, chamfers = chamfers, ramp = ramp, rampCells = rampCells, rampStart = rampStart, ceilDrop = ceilDrop, ceilLow = ceilLow, ceilCells = ceilCells,
-            special = special, live = live, home = home,
+            special = special, live = live, home = home, leaseStorage = leaseStorage,
         };
     }
 
@@ -308,6 +310,10 @@ namespace Backrooms.Generation
         /// <summary>Carts (DistrictGenerator.TryCart, 2026-11-04): movable (Interaction.CartWheels); position the middle of
         /// its foot, yaw its front (the end away from the handle). A two-shelf utility cart, a janitor's cart, a platform truck.</summary>
         UtilityCart, JanitorCart, PlatformTruck,
+        /// <summary>A fixed fitting drawn from a named model (FittingModels; <see cref="Prop.model"/> its name), the hub's
+        /// lockers, cots, board and the rest (2026-11-07, Tools/Blender/build_hub.py): position the middle of its foot, yaw its
+        /// front, elevation off the floor (wall things), size the solid box round it (zero: none, a print on a wall).</summary>
+        Fitting,
     }
 
     /// <summary>Level 0's kinds of room (DistrictGenerator.StyleOf): the backrooms (wallpaper), living rooms (painted,
@@ -352,6 +358,8 @@ namespace Backrooms.Generation
         public Vector2Int partnerDistrict;
         public bool resolved;          // Level 0 doors: the partner was found (chunk layouts only)
         public Vector3 partnerPosition, partnerNormal;
+        /// <summary>A seam (LeaseSeams, SeamPlan): the tear in the wall, its opening the tear's size, no tape.</summary>
+        public bool seam;
     }
     public struct Prop
     {

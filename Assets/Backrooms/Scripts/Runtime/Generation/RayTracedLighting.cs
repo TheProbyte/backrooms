@@ -54,7 +54,10 @@ namespace Backrooms.Generation
         [Tooltip("Metres from the camera over which the ray-traced shadows fade out (the fog is thick there).")]
         public float fadeStart = 30f, fadeEnd = 34f;
         [Tooltip("Most frames the shadows are blended over (more: smoother penumbras, slower to follow a moving shadow).")]
-        [Range(2, 32)] public int historyFrames = 12;
+        [Range(2, 32)] public int historyFrames = 8;
+        [Tooltip("How soft the shadows are: the glowing panels taken this much of their size (1: true size, wide soft penumbras; " +
+                 "smaller: crisper, more drawn shadows, the Overflow look's, 2026-11-07).")]
+        [Range(0.05f, 1f)] public float penumbra = 0.4f;
         [Tooltip("What is gathered into the scene the rays see: within this many metres of the camera.")]
         public float sceneRadius = 36f;
 
@@ -208,20 +211,80 @@ namespace Backrooms.Generation
         // from a few metres to sceneRadius over about a second: every mesh new to the scene has its own acceleration structure
         // built on the graphics card the frame it joins, and a dense area joining all at once kept the card busy long enough
         // for Windows to reset it (DXGI_ERROR_DEVICE_HUNG, 2026-11-02). Streamed chunks join a few at a time anyway.
+        // (2026-11-07) Each new mesh's structure is also a fresh block of graphics memory, and making one holds up the driver's
+        // present: the hub's lift arriving (hundreds of meshes in ~20 frames) gave frames of 60-160 ms. So the growth is slower
+        // (0.6 m a frame: ~1 s to full), and a known jump (the lift) is warmed up beforehand (Prewarm).
         float _radiusNow;
         Vector3 _lastCentre;
-        const float RadiusStart = 6f, RadiusGrowth = 1.5f;      // metres, metres a frame
+        // Growth in floor area a frame (m^2), not radius: the same number of new meshes a frame however far out it has got.
+        const float RadiusStart = 6f, RadiusGrowth = 70f;       // ~1 s from 6 m to 36 m
+
+        float Grow(float r, float area)
+        {
+            if (r <= 0f) return RadiusStart;
+            return Mathf.Min(Mathf.Sqrt(r * r + area / Mathf.PI), sceneRadius);
+        }
+
+        // ---- Warming up a place the camera is about to jump to (the hub's lift during its ride) ----
+        static Vector3 s_prewarmAt;
+        static bool s_prewarmOn;
+        static int s_prewarmVersion;
+        int _prewarmSeen = -1, _gatherFrame = -100;
+        float _prewarmRadius;
+        const float PrewarmGrowth = 25f;                        // m^2 a frame: a few meshes at a time (~2.6 s to full)
+
+        /// <summary>
+        /// Gathers the renderers round <paramref name="at"/> into the rays' scene as well, growing slowly, so their structures
+        /// are built before the camera gets there (the lift's swap): when it jumps into that sphere it starts at its size.
+        /// </summary>
+        public static void Prewarm(Vector3 at)
+        {
+            if (s_prewarmOn && (s_prewarmAt - at).sqrMagnitude < 1f) return;
+            s_prewarmAt = at; s_prewarmOn = true; s_prewarmVersion++;
+        }
+
+        public static void ClearPrewarm() => s_prewarmOn = false;
+
+        /// <summary>Is the warm-up done (or are the rays off, so there is nothing to warm)?</summary>
+        public static bool PrewarmReady
+        {
+            get
+            {
+                var o = Instance;
+                if (!s_prewarmOn || !o || !o.isActiveAndEnabled || Time.frameCount - o._gatherFrame > 3) return true;
+                return o._prewarmSeen == s_prewarmVersion && o._prewarmRadius >= o.sceneRadius - 0.01f;
+            }
+        }
 
         void GatherScene(Vector3 centre)
         {
             _watch.Restart();
-            if ((centre - _lastCentre).sqrMagnitude > 8f * 8f) _radiusNow = 0f;
+            _gatherFrame = Time.frameCount;
+            if (s_prewarmOn && _prewarmSeen != s_prewarmVersion) { _prewarmSeen = s_prewarmVersion; _prewarmRadius = 0f; }
+            if (!s_prewarmOn) _prewarmRadius = 0f;
+            if ((centre - _lastCentre).sqrMagnitude > 8f * 8f)
+            {
+                // A jump into the warmed sphere starts at its size (those meshes are built already); anywhere else from small.
+                bool warm = s_prewarmOn && _prewarmRadius > RadiusStart && (centre - s_prewarmAt).sqrMagnitude < 8f * 8f;
+                _radiusNow = warm ? _prewarmRadius : 0f;
+            }
             _lastCentre = centre;
-            _radiusNow = _radiusNow <= 0f ? RadiusStart : Mathf.Min(_radiusNow + RadiusGrowth, sceneRadius);
+            _radiusNow = Grow(_radiusNow, RadiusGrowth);
             _cull.sphereCenter = centre;
             _cull.sphereRadius = _radiusNow;
             _scene.ClearInstances();
             _scene.CullInstances(ref _cull);
+            if (s_prewarmOn)
+            {
+                _prewarmRadius = Grow(_prewarmRadius, PrewarmGrowth);
+                // Only while it is somewhere else (once the camera is there, the sphere above holds the same meshes).
+                if ((s_prewarmAt - centre).sqrMagnitude > (2f * sceneRadius) * (2f * sceneRadius))
+                {
+                    _cull.sphereCenter = s_prewarmAt;
+                    _cull.sphereRadius = _prewarmRadius;
+                    _scene.CullInstances(ref _cull);
+                }
+            }
             SceneInstances = (int)_scene.GetInstanceCount();
             _watch.Stop();
             CullMs = Mathf.Lerp(CullMs, (float)_watch.Elapsed.TotalMilliseconds, 0.1f);
@@ -246,7 +309,10 @@ namespace Backrooms.Generation
             }
             bool bound = _grid && _grid.BindPortalLighting(_cs, _kTrace) && _grid.BindPortalLighting(_cs, _kReflect);
             if (!bound) _cs.SetVector(GridParamsId, Vector4.zero);
+            _cs.SetFloat(PenumbraId, Mathf.Clamp(penumbra, 0.05f, 1f));
         }
+
+        static readonly int PenumbraId = Shader.PropertyToID("_RTPenumbra");
 
         void Release()
         {

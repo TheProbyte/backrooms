@@ -30,20 +30,25 @@ PREVIEW = arg("--preview")
 # --style overflow: the new look's chunkier shapes (Docs/StyleSheet.md, "Chunkification"): rounder cushions, piping as
 # thick as the other scripts' cords. The owner's floral pattern stays; run with --tex in a scratch folder so the
 # textures are not rewritten.
-OVERFLOW = arg("--style", "classic") == "overflow"
+# --style hub (2026-11-08, the owner: "remake all in the hub style"): the hub's sofa's language (build_hub.py HubSofa,
+# build_furniture_hub.py): a walnut plinth instead of the turned legs, fat square arms instead of the rolled ones,
+# everything rounder. Same size and slots; the pattern stays.
+STYLE = arg("--style", "classic")
+HUB = STYLE == "hub"
+OVERFLOW = STYLE in ("overflow", "hub")
 
 
 def R(r):
-    """A cushion's corner radius: a quarter rounder in the new look."""
-    return r * 1.25 if OVERFLOW else r
+    """A cushion's corner radius: a quarter rounder in the new look, a lot rounder in the hub's."""
+    return r * 1.6 if HUB else r * 1.25 if OVERFLOW else r
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(TEX, exist_ok=True)
 rng = random.Random(7)
 
 L, D = 2.20, 0.92                 # length, depth
-ARM_W = 0.17                      # arm width at the panel (the roll overhangs a little)
+ARM_W = 0.22 if HUB else 0.17     # arm width at the panel (the roll overhangs a little)
 LEG_H = 0.14
-BASE_Z0, DECK_Z = 0.13, 0.36      # the frame's underside, the top of the deck the seat cushions sit on
+BASE_Z0, DECK_Z = (0.1 if HUB else 0.13), 0.36      # the frame's underside, the top of the deck the seat cushions sit on
 SEAT_T = 0.135                    # seat cushion thickness
 FLORAL_TILE = (0.62, 0.62 * 928 / 1232)
 WEAVE_TILE = 0.16
@@ -368,6 +373,18 @@ def arm(name, side):
     return parts
 
 
+def hub_arm(name, side):
+    """A fat square arm (the hub's sofa): one upholstered block, rounded soft, piped round its front."""
+    xo = side * (L / 2 - ARM_W / 2)
+    top = 0.64
+    body, _ = cushion(name + "_block", (ARM_W, D, top - BASE_Z0), (0, 0, 0), "Fabric", 0.08, tile=(WEAVE_TILE, WEAVE_TILE))
+    zc = (top + BASE_Z0) / 2
+    body.location = (xo, 0.0, zc)
+    pts = rounded_rect(ARM_W / 2 - 0.012, (top - BASE_Z0) / 2 - 0.012, 0.07, -D / 2 + 0.004, plane="xz")
+    pipe = tube(name + "_piping", [(xo + x, y, zc + z) for x, y, z in pts], 0.006, "Fabric")
+    return [body, pipe]
+
+
 def build():
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete()
@@ -390,7 +407,7 @@ def build():
     # Piping along the front rail's top edge.
     parts.append(tube("rail_piping", [(-inner, -D / 2 + 0.011, DECK_Z - 0.008), (inner, -D / 2 + 0.011, DECK_Z - 0.008)], 0.0055, "Fabric", closed=False))
     for s in (-1, 1):
-        parts += arm("arm%d" % s, s)
+        parts += hub_arm("arm%d" % s, s) if HUB else arm("arm%d" % s, s)
 
     # Three seat cushions and three back cushions, piped.
     n = 3
@@ -401,7 +418,7 @@ def build():
         w = cw - 0.012
         zc = DECK_Z + SEAT_T / 2 - 0.004
         yc = -D / 2 - 0.012 + seat_d / 2
-        c, (hx, hy, hz) = cushion("seat%d" % i, (w, seat_d, SEAT_T), (0, 0, 0), "Floral", R(0.04), crown=0.016)
+        c, (hx, hy, hz) = cushion("seat%d" % i, (w, seat_d, SEAT_T), (0, 0, 0), "Floral", R(0.04), crown=0.024 if HUB else 0.016)
         c.location = (x + rng.uniform(-0.004, 0.004), yc + rng.uniform(-0.006, 0.006), zc)
         c.rotation_euler = (0, 0, math.radians(rng.uniform(-0.6, 0.6)))
         parts.append(c)
@@ -421,6 +438,11 @@ def build():
         p = tube("backpipe%d" % i, rounded_rect(bhx - 0.004, bhz - 0.004, R(0.07), 0.0, plane="xz"), 0.0045, "Floral")
         p.location = b.location; p.rotation_euler = b.rotation_euler
         parts.append(p)
+    if HUB:
+        plinth, _ = cushion("plinth", (L - 0.12, D - 0.12, BASE_Z0), (0, 0, 0), "Wood", 0.02, tile=(WEAVE_TILE, WEAVE_TILE))
+        plinth.location = (0, 0, BASE_Z0 / 2)
+        parts.append(plinth)
+        return parts
     for sx in (-1, 1):
         for sy in (-1, 1):
             parts.append(leg("leg", sx * (L / 2 - 0.075), sy * (D / 2 - 0.075)))

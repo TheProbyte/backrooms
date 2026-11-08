@@ -120,6 +120,7 @@ namespace Backrooms.Generation
         /// <summary>Is the shared edge of two neighbouring districts a solid wall because one side is a sealed zone?</summary>
         public bool SealedBetween(int seed, Vector2Int a, Vector2Int b)
         {
+            if (LeasePlan.SealedBetween(a, b)) return true;           // a contract floor's edge (LeasePlan)
             int za = ZoneAt(seed, a).zone, zb = ZoneAt(seed, b).zone;
             if (za == zb) return false;
             return zones[Mathf.Clamp(za, 0, zones.Count - 1)].sealedEdges || zones[Mathf.Clamp(zb, 0, zones.Count - 1)].sealedEdges;

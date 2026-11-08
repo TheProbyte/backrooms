@@ -65,7 +65,7 @@ namespace Backrooms.Atmosphere
             var ws = WorldStreamer.Current;
             if (!_player) _player = FindAnyObjectByType<CamcorderPlayerController>();
             float strength = TensionDirector.Strength;
-            if (!ws || ws.MenuMode || !_player || _player.noclip || strength <= 0.01f) { _pending = null; return; }
+            if (!ws || ws.MenuMode || !_player || _player.noclip || strength <= 0.01f || HubPlan.InHub(_player.transform.position)) { _pending = null; return; }
             if (Net.NetSession.IsClient) { _pending = null; return; }        // (co-op: the host's world decides; it comes as furniture moved)
             if (_pending != null)
             {

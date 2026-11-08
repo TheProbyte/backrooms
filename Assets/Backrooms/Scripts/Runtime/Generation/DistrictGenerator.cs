@@ -71,7 +71,9 @@ namespace Backrooms.Generation
             var reserved = new List<(RectInt rect, int landmark)>();
             for (int i = 0; i < placements.Count; i++)
                 if (storey < placements[i].storeys) { reserved.Add((placements[i].rect, i)); L.landmarks.Add(placements[i]); }
-            if (district == Vector2Int.zero && storey == 0) reserved.Add((new RectInt(0, 0, ChunkN, ChunkN), -1));
+            // (Its north side, from 2026-11-07: the service lift's shaft and the rooms either side of it.)
+            // (first, so the cuts go round it before the lift's shaft north of it: SplitAround needs reserved areas that do not straddle)
+            if ((district == Vector2Int.zero || LeasePlan.IsCentre(district)) && storey == 0) reserved.Insert(0, (new RectInt(0, 0, ChunkN, CustomRooms.OverflowRooms.WorldLiftRect.yMin), -1));
             // Poolrooms: a spiral stair tower, the same square on every storey.
             RectInt? spiral = pool ? PoolPlan.SpiralSite(seed, district) : null;
             if (spiral.HasValue) reserved.Add((spiral.Value, -1));
@@ -193,6 +195,10 @@ namespace Backrooms.Generation
             PlaceRugs(L, new System.Random(Hash(sseed, district.x, district.y, 0x2A6E)), L.rooms, false);
             // What the offices left behind (partitions, a chair): their own dice, after the rugs, for the same reason.
             PlaceLeftovers(L, new System.Random(Hash(sseed, district.x, district.y, 0x1EF7)), L.rooms);
+            // A contract floor's seams and storage rooms (LeaseSeams), then its edge (LeasePlan): fire doors chained shut,
+            // sheeting, bricked doorways, signs. Own dice, last.
+            LeaseSeams.Place(L, district, new System.Random(Hash(sseed, district.x, district.y, 0x5EA4)));
+            LeaseEdges.Dress(L, district, new System.Random(Hash(sseed, district.x, district.y, 0x1EA5E)));
             AssignColors(L);
             return L;
         }

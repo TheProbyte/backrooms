@@ -17,7 +17,7 @@ namespace Backrooms.DebugTools
         {
             var args = System.Environment.GetCommandLineArgs();
             if (System.Array.IndexOf(args, "-voice-test") >= 0) Net.NetWorld.VoiceTestTone = true;
-            if (System.Array.IndexOf(args, "-net-join") < 0) return;
+            if (System.Array.IndexOf(args, "-net-join") < 0 && System.Array.IndexOf(args, "-net-host") < 0) return;
             var go = new GameObject("NetAutoTest");
             DontDestroyOnLoad(go);
             go.AddComponent<NetAutoTest>();
@@ -32,6 +32,20 @@ namespace Backrooms.DebugTools
 
         IEnumerator Start()
         {
+            string name0 = Arg("-net-name", null);
+            if (!string.IsNullOrEmpty(name0)) Net.NetSession.PlayerName = name0;
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-net-host") >= 0)
+            {
+                // -net-host: hosts a new world of its own (a save folder in the temp cache, never the player's saves).
+                Saves.SaveSlots.FolderOverride = System.IO.Path.Combine(Application.temporaryCachePath, "NetTestSaves");
+                Saves.SaveSlots.Erase(0);
+                float wait = Time.realtimeSinceStartup + 60f;
+                while (!Net.NetSession.Instance && Time.realtimeSinceStartup < wait) yield return null;
+                yield return new WaitForSecondsRealtime(2f);
+                if (Net.NetSession.Host(0, out var herr)) Debug.Log("[NetAutoTest] Hosting a test world.");
+                else Debug.Log("[NetAutoTest] Could not host: " + herr);
+                while (true) { yield return new WaitForSecondsRealtime(4f); Report(); }
+            }
             string addr = Arg("-net-join", "127.0.0.1");
             int port = int.TryParse(Arg("-net-port", "7777"), out var p) ? p : 7777;
             string name = Arg("-net-name", null);
@@ -50,7 +64,20 @@ namespace Backrooms.DebugTools
             {
                 yield return new WaitForSecondsRealtime(4f);
                 Debug.Log("[NetAutoTest] " + Net.NetWorld.VoiceReport());
+                Report();
             }
+        }
+
+        /// <summary>Where this player and the others are (in the hub or not), and whether this one is still on the cot.</summary>
+        static void Report()
+        {
+            var sb = new System.Text.StringBuilder("[NetAutoTest] me ");
+            var me = FindAnyObjectByType<CamcorderPlayerController>();
+            if (me) sb.Append(me.transform.position.ToString("F2")).Append(Generation.HubPlan.InHub(me.transform.position) ? " (hub)" : " (world)")
+                .Append(me.seated ? " lying/seated" : " standing");
+            foreach (var rp in FindObjectsByType<Net.RemotePlayer>(FindObjectsInactive.Exclude))
+                sb.Append(" | friend ").Append(rp.transform.position.ToString("F2"));
+            Debug.Log(sb.ToString());
         }
     }
 }

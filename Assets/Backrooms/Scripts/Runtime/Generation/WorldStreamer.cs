@@ -104,6 +104,17 @@ namespace Backrooms.Generation
         /// <summary>Should this chunk column be loaded (near the player or in a site)?</summary>
         bool Wanted(Vector2Int column, int radius) => InRadius(column, _center, radius) || InSite(column);
 
+        /// <summary>Should this chunk be loaded: a hub chunk while the hub is wanted (HubPlan); never the void round the hub;
+        /// else by its column.</summary>
+        bool WantedKey(Vector3Int k, int radius) =>
+            HubPlan.IsHubChunk(k) ? HubWanted : !HubPlan.ChunkInZone(Column(k)) && !OffFloor(Column(k)) && !SeamVoid(Column(k)) && Wanted(Column(k), radius);
+
+        /// <summary>The seams' zone (SeamPlan) but not one of its rooms: void, never loaded.</summary>
+        static bool SeamVoid(Vector2Int column) => SeamPlan.ChunkInZone(column) && !SeamPlan.IsRoomChunk(column);
+
+        /// <summary>In the contract floors' region but not the current floor (LeasePlan): sealed off, never loaded.</summary>
+        static bool OffFloor(Vector2Int column) => LeasePlan.InRegion(WorldGenSettings.DistrictOf(column)) && !LeasePlan.ChunkInCurrent(column);
+
         /// <summary>Is every chunk of the site around this point loaded?</summary>
         public bool SiteReady(Vector3 point, float radius)
         {
@@ -133,7 +144,12 @@ namespace Backrooms.Generation
             // The main menu's world, a save's world, or (testing a room from build mode) a random one.
             Current = this;
             // The world's look (Classic or Overflow, ArtStyle): its materials before anything is made from them.
+            var source = assets;
             assets = ArtStyle.Biome(assets);
+            // The hub's: the Overflow look whatever the setting (Docs/HubPlan.md).
+            _hubAssets = ArtStyle.OverflowBiome(source, assets);
+            HubMaterials.Ensure(_hubAssets);
+            RealMaterials.Ensure(_hubAssets);
             // A new world: nothing taken from its special rooms, no noclip door to return to (a save puts its own back).
             Saves.LootRegistry.Clear();
             Interaction.NoclipTravel.HasOrigin = false;
@@ -198,12 +214,17 @@ namespace Backrooms.Generation
             if (playing) { _saver = gameObject.AddComponent<Saves.WorldSaver>(); _saver.RestoreProps(_world); gameObject.AddComponent<Interaction.HomeTracker>(); }
             else if (MenuMode) gameObject.AddComponent<Menu.MainMenu>().streamer = this;
             if (!MenuMode && !GetComponent<Interaction.NoclipTravel>()) gameObject.AddComponent<Interaction.NoclipTravel>().streamer = this;
+            // The service lift between the world and the hub (2026-11-07, Docs/HubPlan.md).
+            if (playing && Application.isPlaying && !GetComponent<Interaction.HubLift>()) gameObject.AddComponent<Interaction.HubLift>().streamer = this;
             // Co-op (2026-11-04): hosting or joined, the world is shared.
             if (playing && Net.NetSession.Active && !GetComponent<Net.NetWorld>()) gameObject.AddComponent<Net.NetWorld>().streamer = this;
         }
 
         /// <summary>The ground-storey chunk's layout as currently built (null if not loaded).</summary>
         public OfficeLayout LayoutAt(Vector2Int chunk) => LayoutAt(new Vector3Int(chunk.x, 0, chunk.y));
+
+        /// <summary>The ground storey's layout under a point (null if not loaded).</summary>
+        public OfficeLayout LayoutUnder(Vector3 p) => LayoutAt(ChunkOf(p));
 
         /// <summary>The chunk's layout as currently built (null if not loaded). Coordinates are (x, storey, z).</summary>
         public OfficeLayout LayoutAt(Vector3Int chunk) => _chunks.TryGetValue(chunk, out var c) ? c.layout : null;
@@ -245,12 +266,16 @@ namespace Backrooms.Generation
         /// <summary>Every chunk that should be loaded, nearest ring first (ground storey before upper storeys).</summary>
         IEnumerable<(Vector3Int key, int ring)> Wanted()
         {
+            // The hub (HubPlan): its chunks first while the player is in it, or a lift is on its way down to it.
+            if (HubWanted) foreach (var k in HubPlan.Chunks()) yield return (k, 0);
             for (int r = 0; r <= loadRadius; r++)
             for (int dx = -r; dx <= r; dx++)
             for (int dz = -r; dz <= r; dz++)
             {
                 if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dz)) != r) continue;
                 var c = new Vector2Int(_center.x + dx, _center.y + dz);
+                if (HubPlan.ChunkInZone(c)) continue;                  // (the hub's zone: only the hub, above)
+                if (OffFloor(c) || SeamVoid(c)) continue;              // (another contract's floor, the space between them, the seams' void)
                 int top = _world.TopStoreyAt(c);
                 for (int s = 0; s <= top; s++) yield return (Key(c, s), r);
             }
@@ -264,11 +289,36 @@ namespace Backrooms.Generation
                 for (int z = z0; z <= z1; z++)
                 {
                     var c = new Vector2Int(x, z);
-                    if (InRadius(c, _center, loadRadius) || !InSite(c)) continue;
+                    if (InRadius(c, _center, loadRadius) || !InSite(c) || OffFloor(c) || HubPlan.ChunkInZone(c) || SeamVoid(c)) continue;
                     int top = _world.TopStoreyAt(c);
                     for (int s = 0; s <= top; s++) yield return (Key(c, s), loadRadius + 1);
                 }
             }
+        }
+
+        // ---------------- The hub (2026-11-07, Docs/HubPlan.md) ----------------
+
+        bool _preloadHub, _hubMode;
+        /// <summary>Is the player in the hub's storey?</summary>
+        public bool PlayerInHub => player && HubPlan.InHub(player.position);
+        bool HubWanted => _preloadHub || PlayerInHub;
+
+        /// <summary>Loads the hub's chunks while the player is still in the world (a lift going down), or stops doing so.</summary>
+        public void PreloadHub(bool on) { if (_preloadHub == on) return; _preloadHub = on; _sitesChanged = true; }
+
+        /// <summary>Are all of the hub's chunks built?</summary>
+        public bool HubReady
+        {
+            get { foreach (var k in HubPlan.Chunks()) if (!_chunks.ContainsKey(k)) return false; return true; }
+        }
+
+        /// <summary>Puts player number i on their spot in the hub's first-aid room (a world loaded, or someone blacked out).</summary>
+        public void PlaceInHub(int i)
+        {
+            if (!player) return;
+            HubPlan.WakePose(i, out var pos, out float yaw);
+            var ctrl = player.GetComponent<CamcorderPlayerController>();
+            if (ctrl) ctrl.Teleport(pos, yaw); else player.position = pos;
         }
 
         void Requeue()
@@ -279,6 +329,14 @@ namespace Backrooms.Generation
                 if (_chunks.TryGetValue(k, out var ch) && ch.generation == _generation) continue;
                 _queue.Add(k);
             }
+        }
+
+        /// <summary>A district is planned again (WorldGenerator.Forget): its loaded chunks go and stream back in from the new plan.</summary>
+        public void ForgetDistrict(Vector2Int district)
+        {
+            World?.Forget(district);
+            foreach (var k in new List<Vector3Int>(_chunks.Keys))
+                if (WorldGenSettings.DistrictOf(new Vector2Int(k.x, k.z)) == district) DestroyNow(k);
         }
 
         void DestroyNow(Vector3Int coord)
@@ -298,10 +356,30 @@ namespace Backrooms.Generation
 
         void Start()
         {
-            // Build everything the player could see before the first frame (where the save left them, or the spawn).
-            if (!(_saver && _saver.RestorePlayer(player))) PlaceSpawn();
+            // Build everything the player could see before the first frame. A world being played always starts in the hub
+            // (Docs/HubPlan.md: you wake in its first-aid room on every load); the menu's world and build mode's test as before.
+            // The contract floor the lift goes to (Docs/ContractFloorsPlan.md); a friend's comes in the host's save copy.
+            var data = Saves.GameSession.Data;
+            // One floor a world (LeasePlan): its block from the seed, what of it is leased from the save.
+            bool working = _saver && data != null && !CustomRooms.CustomRoomTest.Active;
+            LeasePlan.Current = working ? LeasePlan.ForSeed(Seed) : -1;
+            LeasePlan.Wings = working ? data.wings : 0;
+            LeasePlan.Poolrooms = working && data.poolrooms;
+            if (_saver && !CustomRooms.CustomRoomTest.Active) PlaceInHub(Net.NetSession.Active ? Net.NetSession.LocalId : 0);
+            else if (!(_saver && _saver.RestorePlayer(player))) PlaceSpawn();
             Refresh(true);
             if (_saver) _saver.RestoreWorld();
+            if (_saver && !CustomRooms.CustomRoomTest.Active && Application.isPlaying)
+            {
+                // The hub's moving parts (Docs/HubPlan.md): the return chutes (you are brought out onto your cot), the TV.
+                var wake = new GameObject("HubWake").AddComponent<Interaction.HubWake>();
+                wake.Begin(Net.NetSession.Active ? Net.NetSession.LocalId : 0);
+                new GameObject("HubTv").AddComponent<Interaction.HubTvScreen>();
+                // The contracts board, the pay window and office hours (Docs/ContractFloorsPlan.md).
+                new GameObject("Contracts").AddComponent<Interaction.Contracts>().streamer = this;
+                // The improvements board beside it: wings, the Poolrooms, chutes, overtime ... (one a night).
+                new GameObject("Improvements").AddComponent<Interaction.Improvements>().streamer = this;
+            }
         }
 
         // ---------------- Walls rebuilt (a wall in the chunk was broken) ----------------
@@ -346,10 +424,12 @@ namespace Backrooms.Generation
 
         void Update()
         {
+            DestroyQueued();
             if (!player) return;
             FinishWallRebuilds();
             var c = ChunkOf(player.position);
-            if (c != _center || _sitesChanged) { _sitesChanged = false; Refresh(false); }
+            bool hubMode = PlayerInHub;
+            if (c != _center || _sitesChanged || hubMode != _hubMode) { _sitesChanged = false; _hubMode = hubMode; Refresh(false); }
 
             // Layout and vertex data are prepared on worker threads (a few at a time, nearest first).
             while (_pending.Count < 4 && _queue.Count > 0)
@@ -357,7 +437,7 @@ namespace Backrooms.Generation
                 var coord = _queue[0];
                 _queue.RemoveAt(0);
                 bool current = _chunks.TryGetValue(coord, out var existing) && existing.generation == _generation;
-                if (current || _pending.ContainsKey(coord) || !Wanted(Column(coord), loadRadius)) continue;
+                if (current || _pending.ContainsKey(coord) || !WantedKey(coord, loadRadius)) continue;
                 var a = assets; var w = _world;
                 _pendingGen[coord] = _generation;
                 _pending[coord] = Task.Run(() => Prepare(w, coord, a));
@@ -376,7 +456,7 @@ namespace Backrooms.Generation
                 if (kv.Value.IsFaulted) { Debug.LogException(kv.Value.Exception); continue; }
                 int gen = _pendingGen.TryGetValue(kv.Key, out int g) ? g : -1;
                 if (gen != _generation) { _queue.Insert(0, kv.Key); continue; }       // settings changed meanwhile
-                if (!Wanted(Column(kv.Key), unloadRadius)) continue;
+                if (!WantedKey(kv.Key, unloadRadius)) continue;
                 if (_chunks.TryGetValue(kv.Key, out var old) && old.generation == _generation) continue;
                 _uploadKey = kv.Key; _uploadBuilder = kv.Value.Result; _uploadGeneration = _generation; _uploadMs = 0f;
                 _upload = _uploadBuilder.InstantiateSteps(transform);
@@ -388,11 +468,12 @@ namespace Backrooms.Generation
 
         void AdvanceUpload(float frameStart)
         {
-            if (_uploadGeneration != _generation || !Wanted(Column(_uploadKey), unloadRadius))
-            { var key = _uploadKey; CancelUpload(); if (Wanted(Column(key), loadRadius)) _queue.Add(key); return; }
+            if (_uploadGeneration != _generation || !WantedKey(_uploadKey, unloadRadius))
+            { var key = _uploadKey; CancelUpload(); if (WantedKey(key, loadRadius)) _queue.Add(key); return; }
             float start = Time.realtimeSinceStartup;
             try
             {
+                using (LookFor(_uploadKey))
                 while (_upload.MoveNext())
                 {
                     _uploadRoot = _upload.Current;
@@ -424,12 +505,19 @@ namespace Backrooms.Generation
         }
         void OnDestroy() { CancelUpload(); if (Current == this) Current = null; }
 
+        OfficeBiomeAssets _hubAssets;
+
+        /// <summary>The look a chunk is built in: Overflow for the hub's, whatever the setting (else the world's own).</summary>
+        static ArtStyle.ForcedLook LookFor(Vector3Int coord) =>
+            HubPlan.IsHubChunk(coord) ? ArtStyle.Forcing(ArtStyle.Look.Overflow) : default;
+
         OfficeChunkBuilder Prepare(WorldGenerator world, Vector3Int coord, OfficeBiomeAssets assets)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var b = new OfficeChunkBuilder(assets);
+            bool hub = HubPlan.IsHubChunk(coord);
+            var b = new OfficeChunkBuilder(hub && _hubAssets ? _hubAssets : assets);
             // Neighbouring layouts (deterministic, cached by the world) so borders and light agree.
-            b.BuildData(world.Chunk(coord), world.Neighbours(coord));
+            using (LookFor(coord)) b.BuildData(world.Chunk(coord), world.Neighbours(coord));
             float ms = (float)sw.Elapsed.TotalMilliseconds;
             LastBuildMs = ms; AverageBuildMs = Mathf.Lerp(AverageBuildMs <= 0f ? ms : AverageBuildMs, ms, 0.1f);
             return b;
@@ -453,7 +541,7 @@ namespace Backrooms.Generation
             // Unload far chunks, and upper storeys no longer near a volume.
             var drop = new List<Vector3Int>();
             foreach (var kv in _chunks)
-                if (!Wanted(Column(kv.Key), unloadRadius) || (kv.Key.y > 0 && kv.Key.y > _world.TopStoreyAt(Column(kv.Key)))) drop.Add(kv.Key);
+                if (!WantedKey(kv.Key, unloadRadius) || (kv.Key.y > 0 && kv.Key.y > _world.TopStoreyAt(Column(kv.Key)))) drop.Add(kv.Key);
             foreach (var k in drop) UnloadChunk(k);
 
             // Queue missing chunks nearest first; only initial coverage is built synchronously.
@@ -496,7 +584,8 @@ namespace Backrooms.Generation
                 return;
             }
             var uploadTimer = ready ? null : System.Diagnostics.Stopwatch.StartNew();
-            var go = ready ? ready : built.Instantiate(transform);
+            GameObject go;
+            using (LookFor(coord)) go = ready ? ready : built.Instantiate(transform);
             var ch = new Chunk { go = go, lights = new List<LightSource>(built.lights),
                 lenses = new List<Renderer>(built.litLensRenderers), faulty = new List<Renderer>(built.faultyRenderers),
                 generation = _generation, layout = built.Layout, doors = new List<Doorway>(built.doorways) };
@@ -528,9 +617,24 @@ namespace Backrooms.Generation
         {
             yield return new WaitForSeconds(delay);
             if (!_dying.TryGetValue(coord, out var still) || still != ch) yield break;   // resurrected
-            _dying.Remove(coord);
-            if (lightManager) { lightManager.Unregister(coord); lightManager.UnregisterDoorways(coord); }
-            DestroyChunkObject(coord, ch);
+            _toDestroy.Enqueue((coord, ch));
+        }
+
+        // Chunks to destroy, a few a frame: the world's ~40 chunks going at once as the lift reached the hub took 150 ms in one
+        // frame (2026-11-07). Still in _dying until then, so one wanted again meanwhile is simply kept.
+        readonly Queue<(Vector3Int coord, Chunk ch)> _toDestroy = new Queue<(Vector3Int, Chunk)>();
+        const int DestroysPerFrame = 2;
+
+        void DestroyQueued()
+        {
+            for (int n = 0; n < DestroysPerFrame && _toDestroy.Count > 0; n++)
+            {
+                var (coord, ch) = _toDestroy.Dequeue();
+                if (!_dying.TryGetValue(coord, out var still) || still != ch) { n--; continue; }   // resurrected
+                _dying.Remove(coord);
+                if (lightManager) { lightManager.Unregister(coord); lightManager.UnregisterDoorways(coord); }
+                DestroyChunkObject(coord, ch);
+            }
         }
 
         /// <summary>Puts the player in a lit, walkable cell of chunk (0, 0), facing the most open direction.</summary>

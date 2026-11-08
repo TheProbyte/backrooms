@@ -133,7 +133,7 @@ namespace Backrooms.Generation
         {
             _neighbours = neighbours;
             _L = layout; _writers.Clear(); _boxes.Clear(); _rotBoxes.Clear(); lights.Clear(); faultyLenses.Clear(); _roomLenses.Clear(); _switches.Clear(); _instances.Clear(); _movables.Clear(); _lampItems.Clear(); _breakers.Clear(); _deskLamps.Clear(); doorways.Clear(); outlets.Clear(); _specials.Clear();
-            _capsules.Clear(); _rugs.Clear(); _cordEnds.Clear(); poolMap = null; poolMap2 = null; _sounds.Clear(); _vendings.Clear(); _finds.Clear();
+            _capsules.Clear(); _rugs.Clear(); _cordEnds.Clear(); poolMap = null; poolMap2 = null; _sounds.Clear(); _vendings.Clear(); _seams.Clear(); _finds.Clear();
             _origin = new Vector3(layout.coord.x * OfficeBiome.ChunkSize, layout.BaseY, layout.coord.y * OfficeBiome.ChunkSize);
             _fixtureCells.Clear();
             // Square panels sit inside a ceiling tile and need no gap in the grid; only round domes sit on a cross tee.
@@ -359,10 +359,20 @@ namespace Backrooms.Generation
                 go.transform.localRotation = rot;
                 go.AddComponent<Interaction.VendingMachine>().Init(variant, LayerBit(color), Interaction.PowerGrid.CircuitOf(chunkKey));
             }
+            // Seams (a contract floor's, LeaseSeams): the glow, light and sound of the other side, the intake chute.
+            foreach (var (at, rot, kind, color, id) in _seams)
+            {
+                var go = new GameObject("Seam");
+                go.transform.SetParent(root.transform, false);
+                go.transform.localPosition = at;
+                go.transform.localRotation = rot;
+                go.AddComponent<Interaction.Seam>().Init(kind, id, LayerBit(color));
+            }
 
             InstantiatePortals(root.transform);
             InstantiateCrawlSpaces(root.transform);
             InstantiateNoclipDoors(root.transform);
+            InstantiateLeaseGates(root.transform);
             InstantiateDoors(root.transform);
             InstantiateCustomRoomExtras(root.transform);
             InstantiateRugs(root.transform);
@@ -478,7 +488,7 @@ namespace Backrooms.Generation
                     if (z < _L.N - 1 && _L.Has(x, z + 1, CellFlags.NoFloor)) fm.Quad(new Vector3(x0, 0, z1), new Vector3(x0, 0, z1 + e), new Vector3(x1, 0, z1 + e), new Vector3(x1, 0, z1), Vector3.up, MeshWriter.FloorUV);
                 }
                 if (_L.Has(x, z, CellFlags.OpenAbove)) continue;     // the storey above closes it
-                var ceil = r.PlasterCeiling && _a.ceilingPlaster ? _a.ceilingPlaster : _a.ceilingTile;
+                var ceil = _a.CeilingMaterial(r);
                 if (r.ceilDrop != 0 && _L.CeilingLowAt(x, z) < h - 0.001f)
                 {
                     // A ceiling coming down (DepthPlan): the cell's tiles slope, each corner at its own height.
@@ -1432,6 +1442,7 @@ namespace Backrooms.Generation
             int pcx = Mathf.Clamp(Mathf.FloorToInt(p.position.x / C), 0, _L.N - 1), pcz = Mathf.Clamp(Mathf.FloorToInt(p.position.y / C), 0, _L.N - 1);
             var at = new Vector3(p.position.x, _L.FloorAt(pcx, pcz), p.position.y);
             if (p.kind == PropKind.Custom) { CustomModelProp(p, at); return; }        // a model the player brought in
+            if (p.kind == PropKind.Fitting) { FittingProp(p, at, rot, lights); return; }      // a named fitting (the hub's, .Vending.cs)
             if (p.kind == PropKind.Rug) { Rug(p, at, rot); return; }                 // a rug on the floor (.Rugs.cs)
             if (p.kind == PropKind.Partition) { Partition(p, at, rot); return; }     // a cubicle panel left standing (.Leftovers.cs)
             if (p.kind == PropKind.WoodenChair) { WoodenChair(p, at); return; }      // a chair in the middle of a room
@@ -1512,6 +1523,8 @@ namespace Backrooms.Generation
                     break;
                 case PropKind.Sofa:
                 {
+                    // A named model (the hub's 70s sofa, Tools/Blender/build_hub.py): sat on and moved like any sofa.
+                    if (!string.IsNullOrEmpty(p.model)) { Movable(p.id, MovableKind.Sofa, at, p.yaw, col).fitting = p.model; break; }
                     // Build mode's catalog chose the model (and fabric).
                     if (p.style == Prop.FloralSofaStyle && _a.floralSofaPrefab) { Movable(p.id, MovableKind.Sofa, at, p.yaw, col).AddPrefab(_a.floralSofaPrefab, Vector3.zero); break; }
                     if (p.style > 0 && p.style <= _a.sofaPrefabs.Length) { Movable(p.id, MovableKind.Sofa, at, p.yaw, col).AddPrefab(_a.sofaPrefabs[p.style - 1], Vector3.zero); break; }

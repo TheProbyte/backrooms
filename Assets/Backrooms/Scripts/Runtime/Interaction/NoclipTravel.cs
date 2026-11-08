@@ -82,6 +82,7 @@ namespace Backrooms.Interaction
             NoclipPassage near = null; float best = preloadDistance;
             foreach (var d in NoclipPassage.All)
             {
+                if (d.seam && NoclipPassage.SeamsShut) continue;      // (closing time: the tears are shut)
                 float dist = Vector3.Distance(new Vector3(eye.x, d.centre.y, eye.z), d.centre);
                 if (dist < best && Mathf.Abs(eye.y - d.centre.y) < 4f) { best = dist; near = d; }
             }
@@ -145,7 +146,22 @@ namespace Backrooms.Interaction
             Vector3 arrive = to + toNormal * 0.5f + r2 * lateral + Vector3.up * Mathf.Max(0.02f, p.y - door.centre.y);
             float yawDelta = Vector3.SignedAngle(travel, toNormal, Vector3.up);
             if (!door.arrival) { HasOrigin = true; OriginPosition = door.centre; OriginNormal = door.normal * fromSide; }
+            // What the player carries comes along, where it was in their hands (a box out of a seam's place, 2026-11-07):
+            // left to follow the hand on its own, it would be dragged from the other side of the jump.
+            var grabber = _player.GetComponentInChildren<PropGrabber>();
+            var held = grabber ? grabber.Held : null;
+            Vector3 heldRel = default; Quaternion heldRot = default;
+            if (held) { heldRel = held.transform.position - p; heldRot = held.transform.rotation; }
             _player.Warp(arrive, yawDelta);
+            if (held && held.Body)
+            {
+                var turn = Quaternion.Euler(0f, yawDelta, 0f);
+                var np = _player.transform.position + turn * heldRel; var nr = turn * heldRot;
+                held.Body.position = np; held.Body.rotation = nr;
+                held.transform.SetPositionAndRotation(np, nr);
+                if (!held.Body.isKinematic) { held.Body.linearVelocity = turn * held.Body.linearVelocity; held.Body.angularVelocity = turn * held.Body.angularVelocity; }
+                MovablePropManager.Instance?.Store(held);
+            }
             _watch = null;
 
             // Hold the last frame until the floor there is loaded (it normally already is), then a moment more.
@@ -186,7 +202,7 @@ namespace Backrooms.Interaction
             float T = OfficeBiome.WallThickness;
             foreach (var d in NoclipPassage.All)
             {
-                if (!d || (c - d.centre).sqrMagnitude > 16f) continue;
+                if (!d || (c - d.centre).sqrMagnitude > 16f || (d.seam && NoclipPassage.SeamsShut)) continue;
                 float s = d.Distance(c, out bool inOpening, -0.04f);
                 if (!inOpening) continue;
                 float vn = Vector3.Dot(v, d.normal);

@@ -148,6 +148,16 @@ namespace Backrooms.Generation
         /// Copies a modelled fitting (FittingModels) into this chunk's meshes at a chunk-local position and rotation (its
         /// +Z toward the room for wall things). remap: a slot's material instead of its own (null keeps it).
         /// </summary>
+        /// <summary>A model scaled to a size (each axis its own scale).</summary>
+        bool ModelScaled(string name, uint m, Vector3 pos, Quaternion rot, Vector3 scale)
+        {
+            var parts = FittingModels.Get(name);
+            if (parts == null) return false;
+            foreach (var p in parts)
+                if (p.material) WMask(p.material, m).AddMesh(p.vertices, p.normals, p.tangents, p.uv, p.triangles, pos, rot, scale);
+            return true;
+        }
+
         bool Model(string name, uint m, Vector3 pos, Quaternion rot, System.Func<string, Material> remap = null)
         {
             var parts = FittingModels.Get(name);

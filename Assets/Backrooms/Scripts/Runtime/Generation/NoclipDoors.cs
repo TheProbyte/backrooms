@@ -19,6 +19,8 @@ namespace Backrooms.Generation
     {
         /// <summary>The walkable opening (the wall around it keeps its colliders).</summary>
         public const float Width = 0.95f, Height = 2.15f;
+        /// <summary>A seam's doorway (LeaseSeams): a noclip door's, as it looks like one now (2026-11-07).</summary>
+        public const float SeamWidth = Width, SeamHeight = Height;
         const float C = OfficeBiome.CellSize;
 
         static int Hash(int seed, int x, int y, int salt)
@@ -46,6 +48,13 @@ namespace Backrooms.Generation
             partner = default;
             int target = TargetZone(set);
             if (target < 0 || set.noclipDoorSpacing <= 0) return false;
+            // The contract floor (LeasePlan): no door but the one into the Poolrooms, once that is leased, past a wing.
+            if (LeasePlan.InRegion(district))
+            {
+                if (!LeasePlan.PoolDoorAt(district)) return false;
+                partner = set.zones[target].pinCentre;
+                return true;
+            }
             int S = Mathf.Max(2, set.noclipDoorSpacing);
             var sq = new Vector2Int(FloorDiv(district.x, S), FloorDiv(district.y, S));
             int h = Hash(seed, sq.x, sq.y, 0x0C11D);

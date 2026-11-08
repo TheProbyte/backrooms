@@ -32,6 +32,9 @@ namespace Backrooms.Generation
                 case WallFinish.ReferenceOlive: if (referenceOlive) return referenceOlive; break;
                 case WallFinish.OrangePeel: if (MaterialMaps.OrangePeel) return MaterialMaps.OrangePeel; return paintedWall ? paintedWall : wallpaper;
                 case WallFinish.SkyWallpaper: if (MaterialMaps.SkyWallpaper) return MaterialMaps.SkyWallpaper; return wallpaper;
+                case WallFinish.HubPanel: if (HubMaterials.Wall) return HubMaterials.Wall; return paintedWall ? paintedWall : wallpaper;   // (the hub's, HubMaterials)
+                case WallFinish.Blockwork: if (RealMaterials.Block) return RealMaterials.Block; return paintedWall ? paintedWall : wallpaper;   // (the real world's, RealMaterials)
+                case WallFinish.Drywall: if (RealMaterials.Drywall) return RealMaterials.Drywall; return paintedWall ? paintedWall : wallpaper;
             }
             return room.painted && paintedWall ? paintedWall : wallpaper;
         }
@@ -41,10 +44,16 @@ namespace Backrooms.Generation
         /// own: a concrete slab, not carpet (MaterialMaps.Concrete, from a photo). Footsteps there sound on concrete.
         /// </summary>
         public static bool ConcreteFloor(Room room) =>
-            room.floorFinish == FloorFinish.Default && room.ceiling >= 5.95f && !room.custom && string.IsNullOrEmpty(room.landmark) && room.kind != RoomKind.Crawl;
+            room.floorFinish == FloorFinish.Concrete || RealMaterials.IsRealFloor(room.floorFinish) ||
+            (room.floorFinish == FloorFinish.Default && room.ceiling >= 5.95f && !room.custom && string.IsNullOrEmpty(room.landmark) && room.kind != RoomKind.Crawl);
 
         public Material FloorMaterial(Room room)
         {
+            // The hub's slab: the Overflow look's painted concrete whatever the setting (HubMaterials).
+            if (room.floorFinish == FloorFinish.Concrete && room.landmark == HubPlan.ZoneName && HubMaterials.Concrete) return HubMaterials.Concrete;
+            // The real world's (RealMaterials).
+            if (room.floorFinish == FloorFinish.Polished && RealMaterials.Polished) return RealMaterials.Polished;
+            if (room.floorFinish == FloorFinish.Vinyl && RealMaterials.Vinyl) return RealMaterials.Vinyl;
             if (ConcreteFloor(room) && MaterialMaps.Concrete) return MaterialMaps.Concrete;
             switch (room.floorFinish)
             {
@@ -57,6 +66,14 @@ namespace Backrooms.Generation
                     break;
             }
             return carpet;
+        }
+
+        /// <summary>A room's ceiling: tiles, or plaster on a tall or a home's; the real world's deck or plaster (RealMaterials).</summary>
+        public Material CeilingMaterial(Room room)
+        {
+            if (room.wallFinish == WallFinish.Blockwork && RealMaterials.Deck) return RealMaterials.Deck;
+            if (room.wallFinish == WallFinish.Drywall && RealMaterials.Plaster) return RealMaterials.Plaster;
+            return room.PlasterCeiling && ceilingPlaster ? ceilingPlaster : ceilingTile;
         }
 
         [Header("Blender-built props (Tools/Blender/build_props.py)")]

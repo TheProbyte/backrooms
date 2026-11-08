@@ -20,14 +20,17 @@ namespace Backrooms.Interaction
         public bool hasPartner;
         public Vector3 partnerCentre, partnerNormal;
         public bool inPoolrooms;
+        /// <summary>A seam's tear (Docs/ContractFloorsPlan.md): narrower than a door; shut from closing time (<see cref="SeamsShut"/>).</summary>
+        public bool seam;
+        public static bool SeamsShut;
 
-        public float Width => NoclipDoors.Width;
-        public float Height => NoclipDoors.Height;
+        public float Width => seam ? NoclipDoors.SeamWidth : NoclipDoors.Width;
+        public float Height => seam ? NoclipDoors.SeamHeight : NoclipDoors.Height;
         public Vector3 Right => Vector3.Cross(Vector3.up, normal);
 
         public void Set(NoclipDoor d, bool pool)
         {
-            centre = d.position; normal = d.normal; id = d.id; arrival = d.arrival; inPoolrooms = pool;
+            centre = d.position; normal = d.normal; id = d.id; arrival = d.arrival; inPoolrooms = pool; seam = d.seam;
             hasPartner = d.resolved; partnerCentre = d.partnerPosition; partnerNormal = d.partnerNormal;
         }
 
@@ -55,7 +58,48 @@ namespace Backrooms.Interaction
         /// <summary>The marking in use (set to null for unmarked doors).</summary>
         public static IMarker Current = new TapeOutline();
 
-        public static void Mark(NoclipPassage door) => Current?.Mark(door);
+        /// <summary>A seam's marking (Interaction.Seam): silver duct tape, not the blue painter's tape.</summary>
+        public static IMarker Seams = new DuctTape();
+
+        public static void Mark(NoclipPassage door) { if (door.seam) Seams?.Mark(door); else Current?.Mark(door); }
+
+        /// <summary>
+        /// A seam's doorway (2026-11-07, the owner: "just duct taped doorway zones"): Overflow's crew taped it out in silver
+        /// duct tape, two strips up each side laid over each other a little apart, two across the top, and one across the
+        /// middle at chest height for the company's label (Interaction.Seam puts it on), on both faces of the wall.
+        /// </summary>
+        public class DuctTape : IMarker
+        {
+            public static readonly Color32 Silver = new Color32(204, 188, 150, 255);      // (warm: the camcorder's grade turns a true grey blue)
+            const float Wd = 0.05f + 2f * Marks.TapeMargin;
+
+            public void Mark(NoclipPassage door)
+            {
+                var batch = Marks.NewBatch("DuctTape", door.transform);
+                var rng = new System.Random(unchecked((int)(door.id ^ (door.id >> 32)) * 31 + 7));
+                float J() => ((float)rng.NextDouble() - 0.5f) * 2f;
+                float half = door.Width * 0.5f + 0.025f, top = door.Height + 0.025f;
+                float T = OfficeBiome.WallThickness;
+                for (int face = -1; face <= 1; face += 2)
+                {
+                    Vector3 n = door.normal * face, r = Vector3.Cross(Vector3.up, n), up = Vector3.up;
+                    Vector3 o = door.centre + n * (T * 0.5f);
+                    Vector3 P(float x, float y) => o + r * x + up * y;
+                    var c2 = new Color32((byte)(Silver.r - 12), (byte)(Silver.g - 12), (byte)(Silver.b - 10), 255);
+                    for (int s = -1; s <= 1; s += 2)
+                    {
+                        float x = s * half;
+                        Marks.Strip(batch, P(x + J() * 0.008f, 0.01f), P(x + J() * 0.014f, top + 0.04f + J() * 0.015f), n, Wd, Marks.KindTape, Silver);
+                        Marks.Strip(batch, P(x + s * 0.035f + J() * 0.01f, 0.012f), P(x + s * 0.03f + J() * 0.016f, top * 0.62f + J() * 0.2f), n, Wd, Marks.KindTape, c2);
+                    }
+                    Marks.Strip(batch, P(-half - 0.07f - J() * 0.02f, top + J() * 0.01f), P(half + 0.07f + J() * 0.02f, top + J() * 0.012f), n, Wd, Marks.KindTape, Silver);
+                    Marks.Strip(batch, P(-half - 0.03f - J() * 0.02f, top + 0.045f + J() * 0.01f), P(half * 0.4f + J() * 0.08f, top + 0.05f + J() * 0.012f), n, Wd, Marks.KindTape, c2);
+                    // Across at chest height, under the label.
+                    Marks.Strip(batch, P(-half - 0.02f, 1.42f + J() * 0.01f), P(half + 0.02f, 1.42f + J() * 0.012f), n, Wd, Marks.KindTape, Silver);
+                }
+                Marks.Upload(batch);
+            }
+        }
 
         /// <summary>
         /// Two strips up the sides and one across the top, just outside the opening, overlapping a little at the corners,

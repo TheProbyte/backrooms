@@ -38,7 +38,7 @@ namespace Backrooms.Generation
         bool DoorRoom(int x, int z)
         {
             var r = _L.RoomAt(x, z);
-            return !r.noFloor && !r.custom && r.role == AnnexRole.None && r.kind != RoomKind.Crawl && !r.spiral && !r.openAbove
+            return !r.noFloor && (!r.custom || r.landmark == HubPlan.ZoneName) && r.role == AnnexRole.None && r.kind != RoomKind.Crawl && !r.spiral && !r.openAbove
                    && r.ceiling >= OfficeBiome.DoorHeaderHeight + 0.2f && !_L.Has(x, z, CellFlags.NoFloor)
                    && _L.Plain(x, z);                // (no door at steps down into a sunken room, nor onto a pit room's landing)
         }
@@ -51,21 +51,28 @@ namespace Backrooms.Generation
             // Rooms with a ceiling light on (in this chunk), for the shut doors that show a line of light under them.
             var lit = new HashSet<int>();
             foreach (var f in _L.fixtures) if (f.on) lit.Add(_L.roomOf[f.cell.x, f.cell.y]);
+            // (The hub's doorways on a chunk's edge too: the chunk past the edge's line 0 makes those; elsewhere the lines
+            // inside the chunk only, as the world always had it.)
+            bool hubDoors = _L.zoneName == HubPlan.ZoneName;
             for (int pass = 0; pass < 2; pass++)
             {
                 bool vertical = pass == 0;
-                for (int line = 1; line < n; line++)
+                for (int line = hubDoors ? 0 : 1; line < n; line++)
                 for (int along = 0; along < n; along++)
                 {
                     var e = vertical ? _L.vEdges[line, along] : _L.hEdges[along, line];
                     if (e != EdgeKind.DoorHeader || IsArched(vertical, line, along)) continue;
-                    int ax = vertical ? line - 1 : along, az = vertical ? along : line - 1;
+                    bool border = line == 0;
                     int bx = vertical ? line : along, bz = vertical ? along : line;
-                    if (!DoorRoom(ax, az) || !DoorRoom(bx, bz) || _L.roomOf[ax, az] == _L.roomOf[bx, bz]) continue;
+                    // On the edge, room A is the next chunk's: this side's room stands in for it.
+                    int ax = border ? bx : vertical ? line - 1 : along, az = border ? bz : vertical ? along : line - 1;
+                    if (border ? !DoorRoom(bx, bz) : (!DoorRoom(ax, az) || !DoorRoom(bx, bz) || _L.roomOf[ax, az] == _L.roomOf[bx, bz])) continue;
                     float chance = Mathf.Min(_L.RulesAt(ax, az).doorChance, _L.RulesAt(bx, bz).doorChance) * DetailRates.Doors;
                     // A good room's one way in always has a door, shut when you find it (SpecialRooms).
                     bool good = _L.RoomAt(ax, az).special != GoodRoom.None || _L.RoomAt(bx, bz).special != GoodRoom.None;
                     if (good) chance = 1f;
+                    bool hub = _L.zoneName == HubPlan.ZoneName;                  // the hub: a door in each of its doorways
+                    if (hub) chance = 1f;
                     int wx = _L.coord.x * n + (vertical ? line : along), wz = _L.coord.y * n + (vertical ? along : line);
                     uint h = DoorHash(wx, wz, vertical, _L.storey);
                     if ((h & 0xFFFF) / 65535f >= chance) continue;

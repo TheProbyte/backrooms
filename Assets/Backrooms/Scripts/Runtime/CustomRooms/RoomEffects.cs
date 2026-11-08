@@ -18,7 +18,7 @@ namespace Backrooms.CustomRooms
         public static AudioClip Loop(SoundKind kind)
         {
             if (s_loops.TryGetValue(kind, out var c) && c) return c;
-            float seconds = kind == SoundKind.Drip ? 6f : kind == SoundKind.Knocking ? 9f : 4f;
+            float seconds = kind == SoundKind.Drip ? 6f : kind == SoundKind.Knocking ? 9f : kind == SoundKind.Radio ? 16f : kind == SoundKind.Traffic ? 12f : 4f;
             int n = Mathf.RoundToInt(seconds * Rate);
             var d = new float[n];
             var rng = new System.Random(1000 + (int)kind);
@@ -77,6 +77,47 @@ namespace Backrooms.CustomRooms
                         }
                     }
                     break;
+                case SoundKind.Radio:
+                {
+                    // A little radio on a shelf (the real world's, SeamRooms): a cheerful tune, tinny, a hiss under it.
+                    // Four bars of I-V-vi-IV, four seconds each, a bass on the beat and a tune over the chords.
+                    float[][] chords = { new[] { 261.6f, 329.6f, 392f }, new[] { 196f, 246.9f, 293.7f }, new[] { 220f, 261.6f, 329.6f }, new[] { 174.6f, 220f, 261.6f } };
+                    float[] tune = { 659.3f, 587.3f, 523.3f, 587.3f, 659.3f, 659.3f, 587.3f, 493.9f, 523.3f, 587.3f, 659.3f, 783.99f, 698.5f, 659.3f, 587.3f, 523.3f };
+                    for (int i = 0; i < n; i++)
+                    {
+                        float t = i / (float)Rate;
+                        int bar = Mathf.Min(3, (int)(t / 4f));
+                        float inBeat = (t * 2f) % 1f;
+                        float s = 0f;
+                        foreach (var f in chords[bar]) s += 0.12f * Mathf.Sin(Tau * f * t) * (0.6f + 0.4f * Mathf.Exp(-inBeat * 3f));
+                        s += 0.25f * Mathf.Sin(Tau * chords[bar][0] * 0.5f * t) * Mathf.Exp(-inBeat * 5f);
+                        int note = Mathf.Min(tune.Length - 1, (int)(t * 1f));
+                        float inNote = t % 1f;
+                        s += 0.18f * Mathf.Sign(Mathf.Sin(Tau * tune[note] * t)) * Mathf.Exp(-inNote * 2.5f) * 0.6f;
+                        // A small speaker: no bass, no top; and the hiss.
+                        lp += (s - lp) * 0.35f; lp2 += (lp - lp2) * 0.9f;
+                        d[i] = (lp - lp2 * 0.6f) * 0.9f + Noise() * 0.02f;
+                    }
+                    Fade(d, Rate / 8);
+                    break;
+                }
+                case SoundKind.Traffic:
+                {
+                    // A road outside, through the wall: a low rumble that swells as cars go by, a lorry, a far horn.
+                    float[] passes = { 1.0f, 3.6f, 5.2f, 8.4f, 10.5f };
+                    for (int i = 0; i < n; i++)
+                    {
+                        float t = i / (float)Rate;
+                        float swell = 0.25f;
+                        foreach (var p in passes) { float u = (t - p) / 0.9f; swell += Mathf.Exp(-u * u) * (p == 5.2f ? 1.6f : 0.9f); }
+                        lp += (Noise() - lp) * 0.02f; lp2 += (lp - lp2) * 0.05f;
+                        float s = lp2 * 4f * swell;
+                        if (t > 7.0f && t < 7.6f) s += 0.05f * Mathf.Sin(Tau * 410f * t) * Mathf.Sin(Mathf.PI * (t - 7.0f) / 0.6f);
+                        d[i] = s;
+                    }
+                    Fade(d, Rate / 2);
+                    break;
+                }
                 case SoundKind.Knocking:
                     foreach (var at in new[] { 0.5f, 0.85f, 1.2f, 6.1f, 6.38f })
                     {

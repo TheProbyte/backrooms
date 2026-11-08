@@ -94,7 +94,8 @@ namespace Backrooms.Atmosphere
             float dt = Time.deltaTime;
             var ws = WorldStreamer.Current;
             if (!_player) _player = FindAnyObjectByType<CamcorderPlayerController>();
-            bool active = Strength > 0.01f && ws && !ws.MenuMode && _player && !_player.noclip && !InPool(ws, _player.transform.position);
+            bool active = Strength > 0.01f && ws && !ws.MenuMode && _player && !_player.noclip && !InPool(ws, _player.transform.position)
+                          && !HubPlan.InHub(_player.transform.position);          // (the hub is safe: Docs/HubPlan.md)
             Active = active;
             // The quiet and the power dip ease back whatever happens.
             float duckWant = active && Current == Phase.Fade ? 0.3f : 1f;

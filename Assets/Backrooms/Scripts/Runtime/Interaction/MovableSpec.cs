@@ -39,6 +39,8 @@ namespace Backrooms.Interaction
         public float pitch, roll;
         public float scale = 1f;
         public bool pinned;
+        /// <summary>Built from this named fitting model (Generation.FittingModels: the hub's sofa) instead of prefabs; "" none.</summary>
+        public string fitting = "";
 
         public void AddPrefab(GameObject prefab, Vector3 local, float yaw = 0f, Vector3? scale = null)
             => parts.Add(new Part { prefab = prefab, position = local, yaw = yaw, scale = scale ?? Vector3.one });

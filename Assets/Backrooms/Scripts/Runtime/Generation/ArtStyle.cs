@@ -22,9 +22,24 @@ namespace Backrooms.Generation
         static StyleSet s_set;
         static readonly Dictionary<OfficeBiomeAssets, OfficeBiomeAssets> s_clones = new Dictionary<OfficeBiomeAssets, OfficeBiomeAssets>();
 
+        /// <summary>
+        /// The look forced on this thread for a while (0: none): the hub is always built in the Overflow look whatever the
+        /// setting (Docs/HubPlan.md), so the streamer forces it while a hub chunk is prepared or made (<see cref="Forcing"/>).
+        /// </summary>
+        [ThreadStatic] static int t_forced;
+
+        /// <summary>Forces a look on this thread until the returned scope is disposed.</summary>
+        public static ForcedLook Forcing(Look look) { int was = t_forced; t_forced = (int)look + 1; return new ForcedLook(was); }
+        public readonly struct ForcedLook : IDisposable
+        {
+            readonly int _was;
+            public ForcedLook(int was) { _was = was; }
+            public void Dispose() => t_forced = _was;
+        }
+
         public static Look Current
         {
-            get { if (!s_read) Read(); return s_look; }
+            get { if (t_forced != 0) return (Look)(t_forced - 1); if (!s_read) Read(); return s_look; }
             set { s_read = true; s_look = value; PlayerPrefs.SetInt(Key, (int)value); PlayerPrefs.Save(); SetShaderGlobals(); }
         }
 
@@ -35,8 +50,10 @@ namespace Backrooms.Generation
 
         static void Read()
         {
-            s_read = true;
-            s_look = (Look)Mathf.Clamp(PlayerPrefs.GetInt(Key, (int)Look.Overflow), 0, 1);
+            // (PlayerPrefs only answers on the main thread: a chunk built on a worker before anything read the look, as in
+            // the edit-mode tests, gets the default and asks again next time.)
+            try { s_look = (Look)Mathf.Clamp(PlayerPrefs.GetInt(Key, (int)Look.Overflow), 0, 1); s_read = true; }
+            catch (UnityException) { s_look = Look.Overflow; return; }
             var args = Environment.GetCommandLineArgs();
             int i = Array.IndexOf(args, "-art-style");
             if (i >= 0 && i + 1 < args.Length)
@@ -79,6 +96,24 @@ namespace Backrooms.Generation
             }
         }
 
+        static OfficeBiomeAssets s_hubSource, s_hubBiome;
+
+        /// <summary>The biome's materials and prefabs in the Overflow look whatever the setting (the hub's), made once per
+        /// source asset (the world's own copy when the world is in Overflow already).</summary>
+        public static OfficeBiomeAssets OverflowBiome(OfficeBiomeAssets source, OfficeBiomeAssets worldCopy)
+        {
+            if (!source || !Application.isPlaying) return source;
+            if (Current == Look.Overflow) return worldCopy;
+            if (s_hubSource == source && s_hubBiome) return s_hubBiome;
+            if (s_hubBiome) UnityEngine.Object.Destroy(s_hubBiome);
+            using (Forcing(Look.Overflow))
+            {
+                s_hubSource = source;
+                s_hubBiome = MakeClone(source, Resources.Load<StyleSet>("Style/Overflow"));
+            }
+            return s_hubBiome;
+        }
+
         /// <summary>
         /// The biome's materials in the current look: the asset itself (Classic, edit mode), or a copy with the style set's
         /// materials in its slots. Made afresh each time a world loads (the last one's copy is dropped), so it always holds
@@ -94,6 +129,14 @@ namespace Backrooms.Generation
                 if (old) UnityEngine.Object.Destroy(old);
             }
             var set = Set;
+            if (!set) return a;
+            var c = MakeClone(a, set);
+            s_clones[a] = c;
+            return c;
+        }
+
+        static OfficeBiomeAssets MakeClone(OfficeBiomeAssets a, StyleSet set)
+        {
             if (!set) return a;
             var c = UnityEngine.Object.Instantiate(a);
             c.name = a.name + " (Overflow)";
@@ -115,7 +158,6 @@ namespace Backrooms.Generation
                     f.SetValue(c, copy);
                 }
             }
-            s_clones[a] = c;
             return c;
         }
     }

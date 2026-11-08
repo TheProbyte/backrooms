@@ -706,6 +706,7 @@ namespace Backrooms.Generation
             if (cp.stop >= 0f) level *= ShutdownCurve(now - cp.stop - seed * powerFlickerTime * 0.4f, seed);
             if (src.faultyId >= 0) level *= src.starter ? StarterCurve(now, seed) : FaultyCurve(now, seed);
             if (src.room >= 0) level *= LightZones.Level(src.chunk, src.room, now, seed);     // the room's wall switch
+            level *= LightZones.ClosingLevel(src.chunk, now, seed);                           // closing time on a contract floor
             level *= 1f - src.dim;                                                           // an old fixture (a tube out)
             return level;
         }
@@ -786,9 +787,11 @@ namespace Backrooms.Generation
             foreach (var kv in _chunks)
             {
                 var cp = kv.Value;
-                bool animating = cp.start >= 0f || cp.stop >= 0f;
-                float level = 1f;
-                if (cp.start >= 0f) level = StartupCurve(now - cp.start - 0.25f, cp.seed % 1f);
+                // (Closing time on a contract floor: the lenses go dark with the tubes, LightZones.ClosingLevel.)
+                float closing = LightZones.ClosingLevel(kv.Key, now, cp.seed % 1f);
+                bool animating = cp.start >= 0f || cp.stop >= 0f || closing < 1f;
+                float level = closing;
+                if (cp.start >= 0f) level *= StartupCurve(now - cp.start - 0.25f, cp.seed % 1f);
                 if (cp.stop >= 0f) level *= ShutdownCurve(now - cp.stop, cp.seed % 1f);
                 foreach (var r in cp.lenses)
                 {

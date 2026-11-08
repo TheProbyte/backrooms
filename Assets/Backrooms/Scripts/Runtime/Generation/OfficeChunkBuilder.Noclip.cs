@@ -10,7 +10,8 @@ namespace Backrooms.Generation
     /// </summary>
     public partial class OfficeChunkBuilder
     {
-        readonly HashSet<(bool, int, int)> _noclipEdges = new HashSet<(bool, int, int)>();
+        /// <summary>Each door's edge, and its opening's width and height (a seam's tear is narrower than a door).</summary>
+        readonly Dictionary<(bool, int, int), (float w, float h)> _noclipEdges = new Dictionary<(bool, int, int), (float, float)>();
 
         void IndexNoclip()
         {
@@ -18,24 +19,27 @@ namespace Backrooms.Generation
             foreach (var d in _L.noclipDoors)
             {
                 int x = d.cell.x, z = d.cell.y;
+                var size = d.seam ? (NoclipDoors.SeamWidth, NoclipDoors.SeamHeight) : (NoclipDoors.Width, NoclipDoors.Height);
                 switch (d.side)
                 {
-                    case 0: _noclipEdges.Add((true, x, z)); break;
-                    case 1: _noclipEdges.Add((true, x + 1, z)); break;
-                    case 2: _noclipEdges.Add((false, z, x)); break;
-                    default: _noclipEdges.Add((false, z + 1, x)); break;
+                    case 0: _noclipEdges[(true, x, z)] = size; break;
+                    case 1: _noclipEdges[(true, x + 1, z)] = size; break;
+                    case 2: _noclipEdges[(false, z, x)] = size; break;
+                    default: _noclipEdges[(false, z + 1, x)] = size; break;
                 }
             }
         }
 
-        bool NoclipAt(bool vertical, int line, int along) => _noclipEdges.Count > 0 && _noclipEdges.Contains((vertical, line, along));
+        bool NoclipAt(bool vertical, int line, int along) => _noclipEdges.Count > 0 && _noclipEdges.ContainsKey((vertical, line, along));
 
         /// <summary>Colliders of the wall around each door's opening (the opening itself has none).</summary>
         void BuildNoclipDoors()
         {
-            const float HC = OfficeBiome.MaxCeilingHeight, W = NoclipDoors.Width, DH = NoclipDoors.Height;
-            foreach (var (vertical, line, along) in _noclipEdges)
+            const float HC = OfficeBiome.MaxCeilingHeight;
+            foreach (var kv in _noclipEdges)
             {
+                var (vertical, line, along) = kv.Key;
+                float W = kv.Value.w, DH = kv.Value.h;
                 float l = line * C, mid = (along + 0.5f) * C, d0 = mid - W * 0.5f, d1 = mid + W * 0.5f;
                 float e0 = along * C - T * 0.5f, e1 = (along + 1) * C + T * 0.5f;
                 void Box(float a0, float a1, float y0, float y1)

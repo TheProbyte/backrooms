@@ -56,7 +56,9 @@ namespace Backrooms.Generation
                     Solid(at, rot, p.yaw, new Vector3(0f, h * 0.5f, 0f), new Vector3(w, h, d));
                     return true;
                 case PropKind.Desk:
-                    if (!Model("Desk", m, at, rot)) return false;
+                    // The Overflow look: the hub's desk (HubDesk) stretched to the plan's; else the realistic one.
+                    if (!(ArtStyle.Current == ArtStyle.Look.Overflow && ModelScaled("HubDesk", m, at, rot, new Vector3(w / 1.6f, h / 0.765f, d / 0.76f)))
+                        && !Model("Desk", m, at, rot)) return false;
                     Solid(at, rot, p.yaw, new Vector3(0f, h * 0.5f, 0f), new Vector3(w, h, d));
                     if ((p.variant & 1) != 0)
                     {
@@ -85,6 +87,19 @@ namespace Backrooms.Generation
                     return true;
                 case PropKind.Shelving:
                     if (!Model(w > 1.05f ? "Shelving_110" : "Shelving_100", m, at, rot)) return false;
+                    if ((p.variant & LeaseSeams.StorageShelf) != 0)
+                    {
+                        // A contract floor's storage (LeaseSeams): empty, each deck solid so boxes stand on it, the posts solid.
+                        int levels = Mathf.Clamp(Mathf.RoundToInt(h / 0.45f), 4, 5);
+                        float pitch = (h - 0.12f) / (levels - 1);
+                        for (int l = 0; l < levels; l++)
+                            Solid(at, rot, p.yaw, new Vector3(0f, 0.1f + l * pitch - 0.02f, 0f), new Vector3(w, 0.04f, d));
+                        for (int sx = -1; sx <= 1; sx += 2)
+                        for (int sz = -1; sz <= 1; sz += 2)
+                            Solid(at, rot, p.yaw, new Vector3(sx * (w * 0.5f - 0.02f), h * 0.5f, sz * (d * 0.5f - 0.02f)), new Vector3(0.04f, h, 0.04f));
+                        Solid(at, rot, p.yaw, new Vector3(0f, h * 0.5f, -d * 0.5f + 0.01f), new Vector3(w, h, 0.02f));     // (the back, at the wall)
+                        return true;
+                    }
                     ShelfLoad(p, at, rot, col, rng);
                     Solid(at, rot, p.yaw, new Vector3(0f, h * 0.5f, 0f), new Vector3(w, h, d));
                     return true;
@@ -405,6 +420,9 @@ namespace Backrooms.Generation
         void Desk(Prop p, Vector3 at, Quaternion rot, int col)
         {
             float w = p.size.x, h = p.size.y, d = p.size.z;
+            // The Overflow look: the hub's desk (Tools/Blender/build_hub.py HubDesk), stretched to the plan's.
+            if (ArtStyle.Current == ArtStyle.Look.Overflow && ModelScaled("HubDesk", LayerBit(col), at, rot, new Vector3(w / 1.6f, h / 0.76f, d / 0.75f)))
+            { Solid(at, rot, p.yaw, new Vector3(0f, h * 0.5f, 0f), new Vector3(w, h, d)); DeskTop(p, at, rot, col, w, h, d); return; }
             PB(_a.laminate, col, at, rot, new Vector3(0f, h - 0.015f, 0f), new Vector3(w, 0.03f, d));
             PB(_a.wood, col, at, rot, new Vector3(-w * 0.5f + 0.02f, (h - 0.03f) * 0.5f, 0f), new Vector3(0.03f, h - 0.03f, d - 0.04f));
             PB(_a.wood, col, at, rot, new Vector3(w * 0.5f - 0.02f, (h - 0.03f) * 0.5f, 0f), new Vector3(0.03f, h - 0.03f, d - 0.04f));
@@ -414,6 +432,12 @@ namespace Backrooms.Generation
             for (int i = 0; i < 3; i++)
                 PB(FurnitureMaterials.Stainless, col, at, rot, new Vector3(w * 0.5f - 0.24f, h - 0.12f - i * 0.22f, d * 0.5f - 0.025f), new Vector3(0.1f, 0.012f, 0.016f));
             Solid(at, rot, p.yaw, new Vector3(0f, h * 0.5f, 0f), new Vector3(w, h, d));
+            DeskTop(p, at, rot, col, w, h, d);
+        }
+
+        /// <summary>What stands on a desk: (every other one) old monitors along the back and a keyboard.</summary>
+        void DeskTop(Prop p, Vector3 at, Quaternion rot, int col, float w, float h, float d)
+        {
             if ((p.variant & 1) == 0) return;
             // Old monitors along the back (security screens), dark; a keyboard in front of the middle one.
             int n = Mathf.Clamp((p.variant >> 1) & 3, 1, 3);

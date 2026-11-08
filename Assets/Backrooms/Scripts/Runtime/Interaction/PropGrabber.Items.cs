@@ -382,6 +382,9 @@ namespace Backrooms.Interaction
             if (WornBag == item) { WornBag = null; (item as Backpack)?.TakeOff(); }
         }
 
+        /// <summary>Lets go of whatever is in hand, furniture and item (blacking out: Contracts).</summary>
+        public void DropAll() { Release("blacked out"); Drop(); }
+
         /// <summary>Lets go of the held item: it keeps the hand's motion plus a little toss forward (or is set down upright).</summary>
         public void Drop()
         {

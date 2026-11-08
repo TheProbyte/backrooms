@@ -53,6 +53,12 @@ namespace Backrooms.Camcorder
         /// <summary>The tape breaking up near the shadow (Atmosphere.ShadowStalker), 0..1: joins the noclip glitch (the larger
         /// of the two is shown; NoclipTravel applies it), and half of it breaks up the sound.</summary>
         public static float Interference;
+        /// <summary>Widens (above 1) or narrows the lens for a moment: the hub's lift's dolly zoom (Interaction.HubLift).</summary>
+        public static float FovScale = 1f;
+        /// <summary>The hub's lift's warp (Interaction.HubLift): the camera pushed along its view for the drawn frame only (m,
+        /// a dolly against the widening lens), extra barrel or pincushion, and the picture squeezed tall (above 0) or wide.</summary>
+        public static float Dolly, LensWarp, LensStretch;
+        Vector3 _dollyOffset;
         /// <summary>How far the picture has rolled (0..1 of the frame) while the glitch lasts.</summary>
         public static float GlitchRoll;
 
@@ -113,6 +119,7 @@ namespace Backrooms.Camcorder
                 _urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
                 if (_urp) _gradingWas = _urp.colorGradingMode;
                 RenderPipelineManager.beginCameraRendering += OnBeginCamera;
+                RenderPipelineManager.endCameraRendering += OnEndCamera;
                 _hooked = true;
             }
             if (exposure) exposure.pipeline = _pipeline;
@@ -120,7 +127,7 @@ namespace Backrooms.Camcorder
 
         void OnDisable()
         {
-            if (_hooked) RenderPipelineManager.beginCameraRendering -= OnBeginCamera;
+            if (_hooked) { RenderPipelineManager.beginCameraRendering -= OnBeginCamera; RenderPipelineManager.endCameraRendering -= OnEndCamera; }
             _hooked = false;
             if (_oldVideo) _oldVideo.SetActive(_oldVideoWasActive);
             _oldVideo = null;
@@ -150,9 +157,19 @@ namespace Backrooms.Camcorder
         {
             if (cam != _cam) return;
             cam.rect = cam.targetTexture ? new Rect(0, 0, 1, 1) : _viewRect;
+            // The lift's dolly: moved for this frame's drawing, put back after it (nothing else ever sees it).
+            _dollyOffset = Mathf.Abs(Dolly) > 1e-4f ? cam.transform.forward * Dolly : Vector3.zero;
+            if (_dollyOffset != Vector3.zero) cam.transform.position += _dollyOffset;
             if (_pipeline == null || CamcorderPipeline.Suspended || cam.cameraType != CameraType.Game) return;
             var data = cam.GetUniversalAdditionalCameraData();
             data.scriptableRenderer?.EnqueuePass(_pipeline);
+        }
+
+        void OnEndCamera(ScriptableRenderContext ctx, Camera cam)
+        {
+            if (cam != _cam || _dollyOffset == Vector3.zero) return;
+            cam.transform.position -= _dollyOffset;
+            _dollyOffset = Vector3.zero;
         }
 
         void LateUpdate()
@@ -174,7 +191,7 @@ namespace Backrooms.Camcorder
             // infinity to half a metre), so a refocus on the hand, or the autofocus hunting in the dark, makes the frame
             // creep in and out.
             float breathe = 1f - 0.035f * Mathf.Max(0f, s.focusBreathing) * Mathf.Clamp01(_dFocus / 2f) * (s.autofocus || focusOverride > 0f ? 1f : 0f);
-            _cam.fieldOfView = s.fieldOfView * zoomMul * breathe;
+            _cam.fieldOfView = Mathf.Clamp(s.fieldOfView * zoomMul * breathe * FovScale, 5f, 120f);
             float zoomT = Mathf.InverseLerp(1f, 0.25f, zoomMul);   // 0 wide .. 1 full optical zoom
 
             // The 4:3 picture is the camera's own viewport (the bars are painted by the OSD's overlay canvas).
@@ -226,8 +243,11 @@ namespace Backrooms.Camcorder
                 // Zooming in: the barrel turns to slight pincushion, the colour fringes shrink.
                 _ca.intensity.Override(Mathf.Lerp(s.chromaticAberration, s.chromaticAberration * 0.6f, zoomT));
                 float dist = Mathf.Lerp(s.lensDistortion, -0.04f, zoomT);
+                dist = Mathf.Clamp(dist + LensWarp, -0.9f, 0.9f);
                 _lens.intensity.Override(dist);
                 _lens.scale.Override(1f + Mathf.Abs(dist) * 0.2f);
+                _lens.xMultiplier.Override(Mathf.Clamp01(1f - LensStretch));
+                _lens.yMultiplier.Override(Mathf.Clamp01(1f + LensStretch));
                 _mb.intensity.Override(0f);   // the shutter's blur is in the camcorder picture
                 UpdateFocus(s, zoomT, irisEV);
             }

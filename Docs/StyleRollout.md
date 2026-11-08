@@ -299,6 +299,19 @@ The new look costs nothing measurable: the GPU a little faster (the smaller pain
 - **Not checked:** a real microphone (the test voice stood in), two machines over Hamachi, voices heard round walls in
   practice (it uses the boombox's routing), the menu keys by hand.
 
+### Phase 7, everything in the hub's style: built (2026-11-07 to 08)
+
+The owner liked the hub's look and asked for all of Level 0 in it. The hub's language (`build_hub.py`): seventies,
+chunky boxes and fat tubes with big soft rounded edges, walnut plinths, few parts, the company's colours where the piece
+is the company's.
+- `build_furniture_hub.py` (`Models/Overflow`): both sofas, the armchair, the office chair, the floor lamp, the
+  conference table, the wall clock and the wooden chair. Same names, sizes and slot orders.
+- `build_leftovers_hub.py` (`Resources/Overflow/Fittings`): the shelving (avocado posts, amber beams, decks at the same
+  heights so stock and stored boxes still sit on them), the lawn chair (a fat monobloc), the school chair (the hub's
+  stacking chair) and the four cubicle partitions (fat channelled fabric, chunky frame and base).
+- `build_floral_sofa.py --style hub`: the floral sofa on a walnut plinth with fat square arms, the pattern kept.
+- `build_hub.py desk()` (HubDesk) for the desks; the real-world rooms' clock has a round face now.
+
 ### Next
 
 Committed (2026-11-07). Left: the hub and the training room, and world generation for Overflow (new layouts, contract

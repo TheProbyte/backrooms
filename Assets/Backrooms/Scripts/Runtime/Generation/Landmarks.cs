@@ -72,7 +72,7 @@ namespace Backrooms.Generation
             if (chosen.kind == LandmarkKind.Custom) { w = bw = Mathf.Min(cw, D - 2 * Margin); d = bh = Mathf.Min(cd, D - 2 * Margin); }
             int lo = Margin;
             // The spawn hall fills the first chunk of district (0, 0): stay clear of it.
-            if (district == Vector2Int.zero) lo = OfficeBiome.ChunkCells + Margin;
+            if (district == Vector2Int.zero || LeasePlan.IsCentre(district)) lo = OfficeBiome.ChunkCells + Margin;
             int x = rng.Next(lo, Mathf.Max(lo + 1, D - Margin - bw + 1));
             int z = rng.Next(lo, Mathf.Max(lo + 1, D - Margin - bh + 1));
             var rect = new RectInt(x, z, bw, bh);
@@ -105,9 +105,13 @@ namespace Backrooms.Generation
         {
             // Build mode's "test in world": the room under test replaces whatever would stand beside the spawn hall.
             if (district == Vector2Int.zero && CustomRoomTest.Active) { into.Add(CustomRoomTest.Placement()); return; }
+            // The service lift up to the hub (2026-11-07, HubPlan): its shaft at the north of the spawn hall, in every world.
+            // (And in the middle of every contract floor, LeasePlan: the same spawn hall and shaft at its centre district.)
+            if (district == Vector2Int.zero || LeasePlan.IsCentre(district)) into.Add(CustomRooms.OverflowRooms.WorldLiftPlacement(district));
             int sp = Mathf.Max(1, set.landmarkSpacing);
             var cell = new Vector2Int(FloorDiv(district.x, sp), FloorDiv(district.y, sp));
-            if (TryPlace(set, seed, cell, out var p) && p.district == district) into.Add(p);
+            // Contract floors are one storey (LeasePlan): nothing that rises through the storeys.
+            if (TryPlace(set, seed, cell, out var p) && p.district == district && !(p.storeys > 1 && LeasePlan.InRegion(district))) into.Add(p);
         }
 
         static int FloorDiv(int a, int b) => a >= 0 ? a / b : -((-a + b - 1) / b);

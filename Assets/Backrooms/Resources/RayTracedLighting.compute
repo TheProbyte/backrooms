@@ -149,12 +149,15 @@ float LightWeight(LGridLight f, float3 P, float3 Ng, out float distanceToLight)
 }
 
 // A point on the fixture's glowing area: the panel's rectangle (world x and z), or a small ball for a lamp's bulb.
+// (_RTPenumbra: the shadows' softness, the glowing area taken that much smaller; 1 the true size: RayTracedLighting.penumbra.)
+float _RTPenumbra;
 float3 EmitterPoint(LGridLight f, float2 u)
 {
+    float k = _RTPenumbra > 0.0 ? _RTPenumbra : 1.0;
     if (dot(f.halfSize, f.halfSize) > 1e-6)
-        return f.pos + float3((u.x * 2.0 - 1.0) * f.halfSize.x, 0.0, (u.y * 2.0 - 1.0) * f.halfSize.y);
+        return f.pos + float3((u.x * 2.0 - 1.0) * f.halfSize.x * k, 0.0, (u.y * 2.0 - 1.0) * f.halfSize.y * k);
     float z = u.x * 2.0 - 1.0, r = sqrt(saturate(1.0 - z * z)), ph = 2.0 * PI * u.y;
-    return f.pos + 0.1 * float3(r * cos(ph), z, r * sin(ph));
+    return f.pos + 0.1 * k * float3(r * cos(ph), z, r * sin(ph));
 }
 
 

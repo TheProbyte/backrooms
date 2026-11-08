@@ -50,10 +50,29 @@ namespace Backrooms.Generation
             // Carts (Tools/Blender/build_carts.py, 2026-11-04): movable; their casters' forks and wheels move (CartWheels).
             "UtilityCart", "JanitorCart", "PlatformTruck", "Caster4Swivel", "Caster4Rigid", "Caster5Swivel", "Caster5Rigid",
             "Wheel4", "Wheel5", "Wheel8",
+            // The hub's own (Tools/Blender/build_hub.py, 2026-11-07; only in the Overflow look's folder): PropKind.Fitting.
+            "HubLockers", "HubBench", "HubCot", "HubFirstAid", "HubTvCart", "HubBoard", "HubReception", "HubCoffeeTable",
+            "HubPunchClock", "HubCardRack", "HubCoffee", "HubPlant", "HubPosterA", "HubPosterB", "HubPosterC",
+            "HubLogo", "HubSignTraining", "HubSignLockers", "HubSignLift", "HubSignFirstAid", "HubPayWindow", "HubBlinds",
+            "HubDoorLocked", "HubCalendar", "HubSheetDesk", "HubSheetChair", "HubSpeaker", "HubClockStopped", "HubOutOfOrder",
+            "HubCardPile", "HubChairStack", "HubMat", "HubRunner", "HubSofa", "HubDesk", "HubChute", "HubChuteShutter", "HubLiftDial", "HubMap",
+            // A contract floor's edge (Tools/Blender/build_lease.py, 2026-11-07; Overflow folder only): LeaseEdges.
+            "LeaseFireDoor", "LeaseBricked", "LeaseSheeting", "LeaseSign", "LeaseStorageSign", "SeamCrack", "SeamChute",
+            "LeaseHoarding", "LeaseHoardingPlain",
+            "SeamPickupSign", "SeamBay", "SeamShop0", "SeamShop1", "SeamShop2", "SeamShop3", "PrintPress", "PaperStack",
+            // The real world through the seams (Tools/Blender/build_real.py, 2026-11-07; Overflow folder only): SeamRooms.
+            "RealHighBay", "RealBatten", "RealWindow", "RollerDoor", "ShopCounter", "RealGondolaA", "RealGondolaB",
+            "ShowroomSofa", "ShowroomSofaB", "ShowroomChair", "ShowroomTable", "ShowroomLamp", "ShowroomRug", "SaleBanner",
+            "PalletJack", "RealSignForklift", "RealSignHiVis", "RealSignFire", "HiVisHooks", "RealWallPhone", "RealClock", "Guillotine",
         };
 
         static readonly Dictionary<string, Part[]> s_models = new Dictionary<string, Part[]>();
         static readonly Dictionary<string, (Mesh mesh, Material[] mats)> s_meshes = new Dictionary<string, (Mesh, Material[])>();
+        // The Overflow remakes as well when the world is Classic: the hub is always Overflow (ArtStyle.Forcing, HubPlan).
+        static readonly Dictionary<string, Part[]> s_ovModels = new Dictionary<string, Part[]>();
+        static readonly Dictionary<string, (Mesh mesh, Material[] mats)> s_ovMeshes = new Dictionary<string, (Mesh, Material[])>();
+        /// <summary>The set for the look in force on this thread.</summary>
+        static bool UseOverflowSet => s_look != ArtStyle.Look.Overflow && ArtStyle.Current == ArtStyle.Look.Overflow && s_ovModels.Count > 0;
 
         /// <summary>The models are loaded (a plain flag: chunk data is built on worker threads).</summary>
         public static bool Ready { get; private set; }
@@ -64,7 +83,7 @@ namespace Backrooms.Generation
         {
             // Loaded again when the look changed (a world loaded in the other look: its remade models).
             if (Ready && s_look == ArtStyle.Current) return;
-            if (Ready) { Ready = false; s_models.Clear(); s_meshes.Clear(); }      // (the old meshes are left: a door may still hold one)
+            if (Ready) { Ready = false; s_models.Clear(); s_meshes.Clear(); s_ovModels.Clear(); s_ovMeshes.Clear(); }      // (the old meshes are left: a door may still hold one)
             s_look = ArtStyle.Current;
             FittingMaterials.Ensure(a);
             if (!FittingMaterials.Ready) return;
@@ -73,11 +92,24 @@ namespace Backrooms.Generation
                 var parts = Load(n);
                 if (parts != null) s_models[n] = parts;
             }
+            if (s_look != ArtStyle.Look.Overflow)
+                using (ArtStyle.Forcing(ArtStyle.Look.Overflow))
+                    foreach (var n in Names)
+                    {
+                        var parts = Load(n);
+                        if (parts != null) s_ovModels[n] = parts;
+                    }
             Ready = s_models.Count > 0;
         }
 
         /// <summary>A model's parts, or null if it is not there.</summary>
-        public static Part[] Get(string name) => s_models.TryGetValue(name, out var p) ? p : null;
+        public static Part[] Get(string name)
+        {
+            bool ov = UseOverflowSet;
+            if ((ov ? s_ovModels : s_models).TryGetValue(name, out var p)) return p;
+            // A model only one look has (the hub's are only in Overflow's folder): that one, whatever the look.
+            return (ov ? s_models : s_ovModels).TryGetValue(name, out p) ? p : null;
+        }
 
         static Part[] Load(string name)
         {
@@ -142,7 +174,8 @@ namespace Backrooms.Generation
         public static bool MakeMesh(string name, out Mesh mesh, out Material[] materials)
         {
             mesh = null; materials = null;
-            if (s_meshes.TryGetValue(name, out var c)) { mesh = c.mesh; materials = c.mats; return mesh; }
+            var cache = UseOverflowSet ? s_ovMeshes : s_meshes;
+            if (cache.TryGetValue(name, out var c)) { mesh = c.mesh; materials = c.mats; return mesh; }
             var parts = Get(name);
             if (parts == null) return false;
             var v = new List<Vector3>(); var n = new List<Vector3>(); var t = new List<Vector4>(); var uv = new List<Vector2>();
@@ -169,7 +202,7 @@ namespace Backrooms.Generation
             for (int i = 0; i < subs.Count; i++) mesh.SetTriangles(subs[i], i, false);
             mesh.RecalculateBounds();
             materials = mats.ToArray();
-            s_meshes[name] = (mesh, materials);
+            cache[name] = (mesh, materials);
             return true;
         }
 

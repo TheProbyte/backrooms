@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Backrooms.CustomRooms
 {
     public enum DecalKind { WaterStain, Damp, Mould, Peeling, Notice, Handprints, Scorch, Outlet, Switch }
-    public enum SoundKind { Hum, Buzz, Drip, Static, Knocking, Air }
+    public enum SoundKind { Hum, Buzz, Drip, Static, Knocking, Air, Radio, Traffic }
     public enum TriggerAction { LightsOut, Flicker, DoorSlam, Sound, LightsOn }
 
     /// <summary>A mark on one face of a wall line (build mode, PAINT > WALLS). side +1: the face toward +X / +Z.</summary>

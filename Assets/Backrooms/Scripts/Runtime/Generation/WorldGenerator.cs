@@ -41,7 +41,9 @@ namespace Backrooms.Generation
 
         /// <summary>Plan of district (x, storey, z) (thread-safe; built once per instance).</summary>
         public OfficeLayout District(Vector3Int d) =>
-            _districts.GetOrAdd(d, k => new Lazy<OfficeLayout>(() => DistrictGenerator.Generate(Settings, Seed, new Vector2Int(k.x, k.z), k.y))).Value;
+            _districts.GetOrAdd(d, k => new Lazy<OfficeLayout>(() => HubPlan.InZone(new Vector2Int(k.x, k.z)) ? HubPlan.Generate(Settings, Seed, new Vector2Int(k.x, k.z), k.y)
+                                                                    : SeamPlan.InZone(new Vector2Int(k.x, k.z)) ? SeamPlan.Generate(Settings, Seed, new Vector2Int(k.x, k.z), k.y)
+                                                                    : DistrictGenerator.Generate(Settings, Seed, new Vector2Int(k.x, k.z), k.y))).Value;
 
         // ---------------- Chunks ----------------
 
@@ -56,8 +58,33 @@ namespace Backrooms.Generation
                 var S = Slice(District(d), k);
                 ResolveFarLinks(S, new Vector2Int(d.x, d.z), o => District(new Vector3Int(o.x, d.y, o.y)));
                 ResolveNoclipDoors(S, o => District(new Vector3Int(o.x, d.y, o.y)));
+                KeepInFloor(S, new Vector2Int(d.x, d.z));
                 return S;
             })).Value;
+
+        /// <summary>Drops a district's plans (every storey) and its chunks' slices, so they are made again (the contract
+        /// floor's Poolrooms door, once leased: LeasePlan.PoolDoorAt).</summary>
+        public void Forget(Vector2Int district)
+        {
+            foreach (var k in new List<Vector3Int>(_districts.Keys)) if (k.x == district.x && k.z == district.y) _districts.TryRemove(k, out _);
+            foreach (var k in new List<Vector3Int>(_chunks.Keys))
+            {
+                var d = DistrictKey(k);
+                if (d.x == district.x && d.z == district.y) _chunks.TryRemove(k, out _);
+            }
+        }
+
+        /// <summary>A contract floor (LeasePlan) has no way out: crawl holes to other districts' floors and noclip doors go.</summary>
+        static void KeepInFloor(OfficeLayout chunk, Vector2Int district)
+        {
+            if (!LeasePlan.InRegion(district)) return;
+            int slot = LeasePlan.FloorOf(district);
+            for (int i = chunk.portals.Count - 1; i >= 0; i--)
+                if (chunk.portals[i].far && LeasePlan.FloorOf(chunk.portals[i].partnerDistrict) != slot) chunk.portals.RemoveAt(i);
+            // (A seam stays: it is the way into its place; so does the Poolrooms door, once leased.)
+            bool pool = LeasePlan.PoolDoorAt(district);
+            chunk.noclipDoors.RemoveAll(d => !d.seam && !(pool && !d.arrival));
+        }
 
         /// <summary>Builds a ground-storey chunk without touching any cache (tests compare this with cached results).</summary>
         public OfficeLayout Build(Vector2Int chunk)
@@ -101,7 +128,7 @@ namespace Backrooms.Generation
             for (int i = chunk.noclipDoors.Count - 1; i >= 0; i--)
             {
                 var door = chunk.noclipDoors[i];
-                if (door.arrival) continue;
+                if (door.arrival || door.seam) continue;                 // (a seam's door knows its room already: LeaseSeams)
                 var other = plan(door.partnerDistrict);
                 bool found = false;
                 if (other != null)
@@ -332,6 +359,9 @@ namespace Backrooms.Generation
         /// </summary>
         public int TopStoreyAt(Vector2Int chunk)
         {
+            if (HubPlan.ChunkInZone(chunk)) return 0;                // (the hub's zone: one storey, HubPlan)
+            if (LeasePlan.InRegion(DistrictOf(chunk))) return 0;     // (contract floors: one storey, LeasePlan)
+            if (SeamPlan.ChunkInZone(chunk)) return 0;               // (the seams' rooms: one storey, SeamPlan)
             // Zones whose upper storeys run everywhere (the Poolrooms' second floor) stream them in every column.
             var zone = Settings.zones[Mathf.Clamp(Settings.ZoneAt(Seed, DistrictOf(chunk)).zone, 0, Settings.zones.Count - 1)];
             int top = Mathf.Max(0, zone.fullStoreys);

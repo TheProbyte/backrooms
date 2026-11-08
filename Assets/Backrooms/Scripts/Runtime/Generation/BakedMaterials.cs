@@ -55,6 +55,7 @@ namespace Backrooms.Generation
                 case "stone": return (0.32f, 0f, "Chalk", 0.3f);
                 case "board": return (0.1f, 0f, "Cardboard", 0.5f);
                 case "beige": return (0.36f, 0f, "Plastic", 0.45f);
+                case "glow": return (0.5f, 0f, null, 0f);              // a lit face: a lens, a window's daylight (Glow)
                 default: return (0.4f, 0f, "Plastic", 0.4f);
             }
         }
@@ -104,9 +105,21 @@ namespace Backrooms.Generation
                 m.EnableKeyword("_NORMALMAP");
                 m.EnableKeyword("_DETAIL_MULX2");
             }
+            if (IsGlow(slot))
+            {
+                // Its colour is its light (Tools/Blender/build_real.py): the lens, the window, the daylight under a door.
+                m.EnableKeyword("_EMISSION");
+                m.SetTexture("_EmissionMap", albedo);
+                m.SetColor("_EmissionColor", new Color(GlowStrength, GlowStrength, GlowStrength));
+                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+            }
             s_cache[(slot, albedo)] = m;
             return m;
         }
+
+        /// <summary>How bright a Glow slot shines over its baked colour.</summary>
+        public const float GlowStrength = 1.35f;
+        public static bool IsGlow(string slot) => slot != null && slot.StartsWith("Glow", System.StringComparison.OrdinalIgnoreCase);
 
         static readonly Dictionary<(Material, Texture2D), Material> s_fromTemplate = new Dictionary<(Material, Texture2D), Material>();
 

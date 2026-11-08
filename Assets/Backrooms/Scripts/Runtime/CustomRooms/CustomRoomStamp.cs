@@ -64,7 +64,8 @@ namespace Backrooms.CustomRooms
 
         public static bool TryResolve(in LandmarkPlacement p, out RoomBlueprint bp, out RoomVariant v, out Xf xf)
         {
-            bp = Override != null && (Override.id == p.blueprint || p.blueprint == "unsaved") ? Override : RoomLibrary.Get(p.blueprint); v = null; xf = default;
+            // Overflow's own rooms (the hub, the lift's shaft) first: made in code, never in the library.
+            bp = OverflowRooms.Get(p.blueprint) ?? SeamRooms.Get(p.blueprint) ?? (Override != null && (Override.id == p.blueprint || p.blueprint == "unsaved") ? Override : RoomLibrary.Get(p.blueprint)); v = null; xf = default;
             if (bp == null || bp.variants.Count == 0) return false;
             v = bp.variants[Mathf.Clamp(p.variant, 0, bp.variants.Count - 1)];
             xf = new Xf(p.rot, v.width, v.depth);

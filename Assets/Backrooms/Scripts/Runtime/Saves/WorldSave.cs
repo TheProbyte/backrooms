@@ -18,6 +18,8 @@ namespace Backrooms.Saves
         public int seed;
         public string created, saved;          // ISO 8601, local time
         public double playSeconds;             // time spent in the world (the camcorder's tape counter)
+        /// <summary>The contract floor the lift goes down to (Generation.LeasePlan slot), or -1 (2026-11-07).</summary>
+        public int lease = -1;
         public string zone = "";               // where the player was, for the slot card
 
         public bool hasPlayer;
@@ -52,6 +54,61 @@ namespace Backrooms.Saves
         /// <summary>Co-op (2026-11-04): the players who have joined this world, where they left and what they carried
         /// (they get it back when they join again under the same name).</summary>
         public List<GuestData> guests = new List<GuestData>();
+
+        // ---- Contracts (2026-11-07, Docs/ContractFloorsPlan.md; Interaction.Contracts) ----
+        /// <summary>The day's board: three jobs on the world's one floor (LeasePlan), taken or not.</summary>
+        public List<ContractData> board = new List<ContractData>();
+        /// <summary>(Old saves: the one taken contract's index. Unused since several can be taken a day.)</summary>
+        public int active = -1;
+        /// <summary>Money in hand (dollars: pay and rent in, improvements out), and jobs finished.</summary>
+        public int pay, jobsDone;
+        /// <summary>(Old saves: the next board's first floor. Unused: one floor a world.)</summary>
+        public int nextSlot;
+        /// <summary>Office hours: seconds into the shift (-1: no shift on). 9 to 5 on the camcorder's clock.</summary>
+        public float shift = -1f;
+        /// <summary>The working day (from 1): a board a day, rent at the end of each.</summary>
+        public int day = 1;
+        /// <summary>Everything ever earned (pay and rent), whatever was spent.</summary>
+        public int earned;
+        /// <summary>The next box's number (box ids: Interaction.Contracts.BoxId).</summary>
+        public int nextBox;
+        /// <summary>Boxes kept in the floor's storage for their owners (Store jobs paid): they earn rent every day until a
+        /// Retrieve job takes them back.</summary>
+        public List<ulong> stored = new List<ulong>();
+
+        // ---- Improvements (Interaction.Improvements): bought at the hub with pay, at most one a night ----
+        /// <summary>The floor's wings leased (bits: N, E, S, W; LeasePlan.Wings) and the way into the Poolrooms.</summary>
+        public int wings;
+        public bool poolrooms;
+        /// <summary>Seams with an intake chute fitted (their layout ids); chute kits bought and not fitted yet.</summary>
+        public List<ulong> chutes = new List<ulong>();
+        public int chuteKits;
+        /// <summary>Overtime hours bought (closing at 6, 7, 8 PM), backup lights, rent reviews, platform trucks.</summary>
+        public int overtime, backupLights, rentReviews, trucks;
+        /// <summary>The day something was last bought (one a night), or 0.</summary>
+        public int boughtDay;
+    }
+
+    /// <summary>A contract on the board (Interaction.Contracts).</summary>
+    [Serializable]
+    public class ContractData
+    {
+        /// <summary>0 Store: bring a client's boxes in through their seam and shelve them in the floor's storage. 1 Ship: carry
+        /// them from one seam to another place's DELIVERIES bay. 2 Retrieve: take a client's stored boxes back to their
+        /// place's DELIVERIES bay.</summary>
+        public int kind;
+        /// <summary>The contract floor (Generation.LeasePlan).</summary>
+        public int slot;
+        public int count, pay;
+        /// <summary>The seams (layout prop ids) and their kinds (Generation.LeaseSeams.Kinds); to only for Ship.</summary>
+        public ulong from, to;
+        public int fromKind, toKind;
+        /// <summary>Boxes out of the from chute so far; boxes stored (last count) or shipped.</summary>
+        public int sent, done;
+        /// <summary>The boxes (movable prop ids).</summary>
+        public List<ulong> boxes = new List<ulong>();
+        /// <summary>0 posted, 1 taken, 2 finished (pay waiting at the window), 3 failed (closing time came first), 4 paid.</summary>
+        public int state;
     }
 
     /// <summary>A player who joined the host's world: where they were and what they carried (items as in the save's list:
@@ -110,6 +167,8 @@ namespace Backrooms.Saves
         /// <summary>Stuck where it is (nailed in, or build mode's physics off); its size (0: as made).</summary>
         public bool pinned;
         public float scale;
+        /// <summary>Built from a named fitting model (MovableSpec.fitting), or empty.</summary>
+        public string fitting;
     }
 
     [Serializable]

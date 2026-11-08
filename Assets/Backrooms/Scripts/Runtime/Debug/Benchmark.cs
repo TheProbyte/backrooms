@@ -85,6 +85,39 @@ namespace Backrooms.DebugTools
             world.SetSeed(1234);
             yield return null;
 
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-benchmark-lift") >= 0)
+            {
+                // Just the lift, down and up, twice (quick runs while working on the ride).
+                var wake1 = FindAnyObjectByType<Interaction.HubWake>();
+                if (wake1) wake1.GetUp();
+                for (int f = 0; f < 5; f++) yield return null;
+                for (int round = 0; round < 2; round++)
+                {
+                    yield return Ride("lift down", world, player, true);
+                    yield return Ride("lift up", world, player, false);
+                }
+                File.WriteAllText(_output, _report.ToString());
+                Application.Quit();
+                yield break;
+            }
+
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-benchmark-spikes-lift") >= 0)
+            {
+                // (A development build.) Both lift rides with the profiler recording every frame to <results>_spikes.raw.
+                var wake0 = FindAnyObjectByType<Interaction.HubWake>();
+                if (wake0) wake0.GetUp();
+                for (int f = 0; f < 5; f++) yield return null;
+                UnityEngine.Profiling.Profiler.logFile = Path.Combine(Path.GetDirectoryName(_output) ?? ".", Path.GetFileNameWithoutExtension(_output) + "_spikes");
+                UnityEngine.Profiling.Profiler.maxUsedMemory = 512 * 1024 * 1024;
+                UnityEngine.Profiling.Profiler.SetAreaEnabled(UnityEngine.Profiling.ProfilerArea.GPU, true);   // what the card does too
+                _spikeLog = true;
+                yield return Ride("lift down", world, player, true);
+                yield return Ride("lift up", world, player, false);
+                File.WriteAllText(_output, _report.ToString());
+                Application.Quit();
+                yield break;
+            }
+
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-benchmark-spikes") >= 0)
             {
                 // (A development build.) The streaming walk with the profiler recording every frame to <results>_spikes.raw:
@@ -112,6 +145,20 @@ namespace Backrooms.DebugTools
                 File.WriteAllText(_output, _report.ToString());
                 Application.Quit();
                 yield break;
+            }
+
+            // The hub (Docs/HubPlan.md): a world starts there, on a cot; up off it, then its lift hall, a walk, and the
+            // lift down to the world and back up (the ride swaps the player between two far-apart places mid-ride).
+            var wake = FindAnyObjectByType<Interaction.HubWake>();
+            if (wake) wake.GetUp();
+            for (int f = 0; f < 5; f++) yield return null;
+            var hall = HubPlan.HubCab.position + Vector3.forward * 1.6f;
+            yield return Spot("hub lift hall", world, player, hall, 0f, 4f, 600, Vector2.zero);
+            yield return Spot("hub walk", world, player, hall, 0f, 0f, 600, new Vector2(0f, 1f));
+            if (Interaction.HubLift.Instance)
+            {
+                yield return Ride("lift down", world, player, true);
+                yield return Ride("lift up", world, player, false);
             }
 
             yield return Spot("corridor", world, player, new Vector3(-17.76f, 0f, 36.41f), 82f, 14f, 600, Vector2.zero);
@@ -391,6 +438,68 @@ namespace Backrooms.DebugTools
             for (int i = 0; i < Mathf.Min(6, ms.Count); i++) _report.AppendLine($"    {ms[i].ms,5:0.0} ms  {ms[i].phase}");
         }
 
+        /// <summary>
+        /// A lift ride (fromHub: down from the hub, else up from the world's lift): stood in the cab, the button pressed, every
+        /// frame from the press until the far doors are open, and the slowest frames' times in order.
+        /// </summary>
+        IEnumerator Ride(string name, WorldStreamer world, CamcorderPlayerController player, bool fromHub)
+        {
+            // The lift goes down only with a contract taken (Interaction.Contracts): the medium floor's, once the board is up.
+            var cs = Interaction.Contracts.Instance;
+            if (fromHub && cs && !cs.HasFloor)
+            {
+                float wait = Time.realtimeSinceStartup + 30f;
+                while (Saves.GameSession.Data != null && Saves.GameSession.Data.board.Count == 0 && Time.realtimeSinceStartup < wait) yield return null;
+                cs.Take(Mathf.Min(1, Saves.GameSession.Data.board.Count - 1));
+                yield return null;
+            }
+            var lift = Interaction.HubLift.Instance;
+            var frame = fromHub ? HubPlan.HubCab : HubPlan.WorldCab;
+            player.botInput = Vector2.zero;
+            player.TeleportSafe(frame.position + frame.rotation * new Vector3(0f, 0.05f, -1.1f), frame.rotation.eulerAngles.y, 0f);
+            var grid = FindAnyObjectByType<LightGrid>();
+            float t0 = Time.realtimeSinceStartup;
+            while ((world.QueuedChunks > 0 || (grid && grid.PendingTexels > 0)) && Time.realtimeSinceStartup - t0 < 60f) yield return null;
+            float warm = Time.realtimeSinceStartup + 3f;
+            while (Time.realtimeSinceStartup < warm) yield return null;
+            if (_spikeLog) { UnityEngine.Profiling.Profiler.enableBinaryLog = true; UnityEngine.Profiling.Profiler.enabled = true; }
+            lift.PressCab(fromHub);
+            var ms = new List<float>(2000);
+            var split = new Split();
+            float until = Time.realtimeSinceStartup + 45f, pressed = Time.realtimeSinceStartup;
+            var when = new StringBuilder("    slow at (s after the press, ms, where):");
+            bool wasInHub = HubPlan.InHub(player.transform.position);
+            float swappedAt = -1f;
+            void Frame()
+            {
+                float v = Time.unscaledDeltaTime * 1000f;
+                ms.Add(v); split.Sample();
+                bool inHub = HubPlan.InHub(player.transform.position);
+                if (inHub != wasInHub && swappedAt < 0f) swappedAt = Time.realtimeSinceStartup - pressed;
+                if (v > 50f) when.Append($" {Time.realtimeSinceStartup - pressed:0.00}/{v:0}{(swappedAt >= 0f ? "*" : "")}");
+            }
+            // Until it has left and come to rest again (the far doors opening).
+            while (!lift.Moving && Time.realtimeSinceStartup < until) { yield return null; Frame(); }
+            while (lift.Moving && Time.realtimeSinceStartup < until) { yield return null; Frame(); }
+            float end = Time.realtimeSinceStartup + 2f;
+            while (Time.realtimeSinceStartup < end) { yield return null; Frame(); }
+            when.Append($"   (* after the swap at {swappedAt:0.00} s)");
+            player.botInput = null;
+            // (The binary log stays on across both rides: one capture, cut by the frame times written below.)
+            if (_spikeLog && !fromHub) { UnityEngine.Profiling.Profiler.enabled = false; UnityEngine.Profiling.Profiler.enableBinaryLog = false; }
+            bool arrived = (fromHub ? !HubPlan.InHub(player.transform.position) : HubPlan.InHub(player.transform.position));
+            var sorted = new List<float>(ms); sorted.Sort();
+            float P(float q) => sorted[Mathf.Clamp(Mathf.RoundToInt(q * (sorted.Count - 1)), 0, sorted.Count - 1)];
+            int over33 = 0, over50 = 0; foreach (var v in ms) { if (v > 33.4f) over33++; if (v > 50f) over50++; }
+            _report.AppendLine($"{name,-18} median {P(0.5f):0.0} ms ({1000f / P(0.5f):0} fps)   p95 {P(0.95f):0.0} ms   worst {sorted[sorted.Count - 1]:0.0} ms   n={ms.Count}   >33ms {over33}   >50ms {over50}   arrived={arrived}");
+            var worst = new StringBuilder("    slowest:");
+            for (int i = sorted.Count - 1; i >= Mathf.Max(0, sorted.Count - 8); i--) worst.Append($" {sorted[i]:0}");
+            _report.AppendLine(worst.ToString());
+            _report.AppendLine(when.ToString());
+            _report.AppendLine("    " + split.Report());
+            split.Dispose();
+        }
+
         IEnumerator Spot(string name, WorldStreamer world, CamcorderPlayerController player, Vector3 at, float yaw, float pitch, int frames, Vector2 walk)
         {
             player.botInput = Vector2.zero;
@@ -418,7 +527,8 @@ namespace Backrooms.DebugTools
             if (_spikeLog) { UnityEngine.Profiling.Profiler.enabled = false; UnityEngine.Profiling.Profiler.enableBinaryLog = false; UnityEngine.Profiling.Profiler.logFile = ""; _spikeLog = false; }
             ms.Sort();
             float P(float q) => ms[Mathf.Clamp(Mathf.RoundToInt(q * (ms.Count - 1)), 0, ms.Count - 1)];
-            _report.AppendLine($"{name,-18} median {P(0.5f):0.0} ms ({1000f / P(0.5f):0} fps)   p95 {P(0.95f):0.0} ms ({1000f / P(0.95f):0} fps)   worst {ms[ms.Count - 1]:0.0} ms   n={ms.Count}");
+            int hitches = 0; foreach (var v in ms) if (v > 50f) hitches++;
+            _report.AppendLine($"{name,-18} median {P(0.5f):0.0} ms ({1000f / P(0.5f):0} fps)   p95 {P(0.95f):0.0} ms ({1000f / P(0.95f):0} fps)   worst {ms[ms.Count - 1]:0.0} ms   >50ms {hitches}   n={ms.Count}");
             _report.AppendLine("    " + split.Report());
             split.Dispose();
         }
