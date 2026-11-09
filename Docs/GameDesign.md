@@ -468,11 +468,15 @@ lift together. [Not checked with the working day and contracts yet.]
 - **Checked in play by script (2026-11-08, fourth pass):** the first seam beside the lift's district and the blue tape to
   it (about 20 m of tape), FIRST STORAGE's boxes waiting there; the hub's sounds turned down to about the floor's level
   (they were 10-18 times as loud), the training room TV's hiss and the lift's fan now following AMBIENCE.
-- **Not checked yet:** tall shelving and pallet racking in the game (their models), carrying a crate by hand with the
+- **Not checked yet:** tall shelving and pallet racking put up in the game (their models now load), carrying a crate by hand with the
   mouse and putting it up with a real right click, a full day played by hand.
-- **Made in a simple form for now:** the generator, conveyor and floodlight are built of plain blocks in the house
-  colours until their models are made; the work lamp looks like the floor lamp; random side jobs come back after the
-  gate.
+- **Modelled 2026-11-08 (Tools/Blender/build_machines.py, checked in play by script):** the generator (a tubular roll
+  cage on two wheels, the amber engine, a cream tank, its dial with the game's needle and the yellow socket), the
+  conveyor section (avocado side frames, the dark belt over end drums, four braced legs, the motor under the discharge
+  end), the floodlight (a tripod, a telescoping pole, one amber head in a yoke behind a wire guard, the game's lens lit
+  when it is on) and the work lamp (a heavy foot, a pole held like the floor lamp's, a small amber work-light head
+  throwing a wide beam ahead). Tall shelving and pallet racking had been showing as plain shelves (their models were
+  imported unreadable): fixed. Random side jobs come back after the gate.
 - **Not made yet:** spare tubes and the repair kit (the counter does not sell them yet), heavy and mixed loads, the
   "find a lost box" order, co-op for the new storage work (placing, the night and machines are not shared yet), the
   orientation tape in the training room and its update for all of this, the PA voice and the muzak, furnish jobs,

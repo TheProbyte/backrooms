@@ -34,6 +34,8 @@ namespace Backrooms.Generation
             // The good rooms' furniture (Tools/Blender/build_rooms.py, 2026-11-04: baked).
             "Fridge", "Microwave", "DiningTable", "Desk", "CrtMonitor", "Keyboard", "MopSink", "ServiceFaucet", "Mop",
             "BreakerPanel", "Shelving_100", "Shelving_110", "ShelvingTall", "PalletRack", "CounterCabinet", "CounterSink", "PaintCan", "CleanerJug",
+            // The contract floor's machines (Tools/Blender/build_machines.py, 2026-11-08: baked).
+            "Generator", "ConveyorSection", "Floodlight", "WorkLamp",
             // The ceiling lights' parts (Tools/Blender/build_lights.py, 2026-11-04).
             "TrofferFrame", "TrofferHousing", "StripChannel", "StripTube", "ChainLinks", "CableGripper", "CableAnchor",
             // The warehouse's pallets and rack hardware (Tools/Blender/build_warehouse.py, 2026-11-04).

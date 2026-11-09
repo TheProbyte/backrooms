@@ -367,6 +367,8 @@ namespace Backrooms.Saves
                 size = d.size, variant = d.variant, cardboard = d.cardboard, position = d.origin, yaw = d.originYaw,
                 pinned = d.pinned, scale = d.scale > 0.01f ? d.scale : 1f, fitting = d.fitting ?? "",
             };
+            // A machine saved while it had no model (2026-11-08): its model now (MachineUnit falls back to blocks without it).
+            if (string.IsNullOrEmpty(s.fitting) && Interaction.Machines.Is(id)) s.fitting = Interaction.Machines.Model(Interaction.Machines.KindOf(id));
             if (d.materials != null) { s.materials = new Material[d.materials.Length]; for (int i = 0; i < d.materials.Length; i++) s.materials[i] = AssetKeys.Find<Material>(d.materials[i]); }
             foreach (var p in d.parts)
             {

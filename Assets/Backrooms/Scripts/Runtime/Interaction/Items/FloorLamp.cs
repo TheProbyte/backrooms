@@ -38,6 +38,13 @@ namespace Backrooms.Interaction
             if (_light) { _light.range = range; _light.color = colour; }
         }
 
+        /// <summary>Set just before AddComponent: the lamp being made is the work lamp (WorkLamp: its own model, a
+        /// spotlight out of its head's front, its lens lit rather than a shade).</summary>
+        internal static bool s_buildWork;
+        bool _work;
+        /// <summary>The work lamp's head: its middle, and its lens just in front (Tools/Blender/build_machines.py).</summary>
+        static readonly Vector3 WorkHead = new Vector3(0f, 1.42f, 0f);
+
         Plug _plug;
         Cord _cord;
         Light _light;
@@ -70,9 +77,10 @@ namespace Backrooms.Interaction
         {
             get
             {
-                if (_bundled || !_plug || !_plug.Plugged) return "floor lamp: click an outlet to plug in (right mouse: wind the cord)";
-                if (!PluggedLive) return "floor lamp: no power";
-                return switchOn ? "floor lamp: on (click: switch)" : "floor lamp: off (click: switch)";
+                string me = string.IsNullOrEmpty(displayName) ? "floor lamp" : displayName.ToLowerInvariant();
+                if (_bundled || !_plug || !_plug.Plugged) return me + ": click an outlet to plug in (right mouse: wind the cord)";
+                if (!PluggedLive) return me + ": no power";
+                return switchOn ? me + ": on (click: switch)" : me + ": off (click: switch)";
             }
         }
 
@@ -104,7 +112,9 @@ namespace Backrooms.Interaction
         protected override void Awake()
         {
             base.Awake();
+            _work = s_buildWork; s_buildWork = false;
             _fx = ItemModels.Source(gameObject, 8f);
+            if (_work) { WorkAwake(); return; }
             var ws = Generation.WorldStreamer.Current;
             var shadeOff = ws && ws.assets ? ws.assets.lampShadeOff : null;
             foreach (var r in GetComponentsInChildren<Renderer>())
@@ -277,10 +287,61 @@ namespace Backrooms.Interaction
             if (_light.shadows != want) _light.shadows = want;
             if (_shadeRenderer && _shadeIndex >= 0)
             {
-                var m = _level > 0.5f ? ShadeLit() : _shadeOff;
+                var m = _level > 0.5f ? (_work ? WorkLens(true) : ShadeLit()) : _shadeOff;
                 var mats = _shadeRenderer.sharedMaterials;
                 if (m && mats[_shadeIndex] != m) { mats[_shadeIndex] = m; _shadeRenderer.sharedMaterials = mats; }
             }
+        }
+
+        /// <summary>The work lamp: its model casts its own shadow; a wide spotlight out of the head's front; the lens (the
+        /// game's, in the model's bezel) lit while it is on.</summary>
+        void WorkAwake()
+        {
+            foreach (var r in GetComponentsInChildren<Renderer>()) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            var lens = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            lens.name = "Lens";
+            Destroy(lens.GetComponent<Collider>());
+            lens.transform.SetParent(transform, false);
+            lens.transform.localPosition = WorkHead + new Vector3(0f, 0f, 0.072f);
+            lens.transform.localScale = new Vector3(0.22f, 0.13f, 0.006f);
+            var lr = lens.GetComponent<MeshRenderer>();
+            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            lr.renderingLayerMask = uint.MaxValue;
+            lr.sharedMaterial = WorkLens(false);
+            _shadeRenderer = lr; _shadeIndex = 0; _shadeOff = lr.sharedMaterial;
+            var lg = new GameObject("Light");
+            lg.transform.SetParent(transform, false);
+            lg.transform.localPosition = WorkHead + new Vector3(0f, 0f, 0.09f);
+            lg.transform.localRotation = Quaternion.Euler(14f, 0f, 0f);
+            _light = lg.AddComponent<Light>();
+            _light.type = LightType.Spot; _light.spotAngle = 130f; _light.innerSpotAngle = 70f;
+            _light.range = 5.5f; _light.intensity = 0f;
+            _light.color = new Color(1f, 0.92f, 0.8f);
+            _light.shadows = LightShadows.Soft; _light.shadowNearPlane = 0.05f;
+            _light.renderingLayerMask = -1;
+            _light.enabled = false;
+            _bundle = new GameObject("CordBundle");
+            _bundle.transform.SetParent(transform, false);
+            _bundle.transform.localPosition = BundleAt;
+            ItemModels.Attach(_bundle.transform, "CordBundle", new Vector3(0.08f, 0.028f, 0.08f), "CordBlack");
+            var bbc = _bundle.AddComponent<BoxCollider>();
+            bbc.size = new Vector3(0.09f, 0.035f, 0.09f); bbc.center = new Vector3(0f, 0.0175f, 0f);
+            _bundle.AddComponent<CordBundleHandle>().lamp = this;
+        }
+
+        static Material s_workLensOff, s_workLensOn;
+        static Material WorkLens(bool on)
+        {
+            if (!s_workLensOff)
+            {
+                var sh = Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit");
+                s_workLensOff = new Material(sh) { name = "WorkLens_Off", hideFlags = HideFlags.DontSave };
+                s_workLensOff.SetColor("_BaseColor", new Color(0.62f, 0.6f, 0.55f)); s_workLensOff.SetFloat("_Smoothness", 0.85f);
+                s_workLensOn = new Material(sh) { name = "WorkLens_On", hideFlags = HideFlags.DontSave };
+                s_workLensOn.SetColor("_BaseColor", new Color(1f, 0.97f, 0.9f)); s_workLensOn.SetFloat("_Smoothness", 0.85f);
+                s_workLensOn.EnableKeyword("_EMISSION"); s_workLensOn.SetColor("_EmissionColor", new Color(6f, 5.5f, 4.8f));
+            }
+            return on ? s_workLensOn : s_workLensOff;
         }
 
         static Mesh s_shadeShadow;

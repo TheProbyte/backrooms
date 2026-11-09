@@ -67,7 +67,7 @@ namespace Backrooms.Interaction
             {
                 id = id, kind = PropKind(kind), renderMask = uint.MaxValue, proxyMaterial = a ? a.baseboard : null, position = at,
                 yaw = rot.eulerAngles.y, size = Size(kind), pinned = true,
-                fitting = FittingModels.Ready && FittingModels.Get(model) != null ? model : "",
+                fitting = model,                              // (blocks stand in if it is not loaded: MachineUnit)
             };
             mgr.NetPlace(spec, at, rot);
             CamcorderOSD.Notice(kind == Kits.Kind.Generator ? "GENERATOR SET UP - ON THE POWER BILL" : Kits.Name(kind) + " SET UP - CLICK IT TO PLUG IN");
@@ -173,8 +173,9 @@ namespace Backrooms.Interaction
         }
     }
 
-    /// <summary>One machine in the world: its look (blocks until it has a model), its cable to the generator, the
-    /// generator's sound and dial, the conveyor's belt, the floodlight's light.</summary>
+    /// <summary>One machine in the world: its look (its model, Tools/Blender/build_machines.py, or blocks if that is not
+    /// loaded), its cable to the generator, the generator's sound and dial, the conveyor's belt, the floodlight's light.
+    /// The moving and glowing parts are the game's on either: the generator's needle on its dial, the floodlight's lens.</summary>
     public class MachineUnit : MonoBehaviour
     {
         static readonly Dictionary<ulong, MachineUnit> s_live = new Dictionary<ulong, MachineUnit>();
@@ -197,7 +198,8 @@ namespace Backrooms.Interaction
             _kind = Machines.KindOf(p.Spec.id);
             s_live[p.Spec.id] = this;
             Materials();
-            if (string.IsNullOrEmpty(p.Spec.fitting)) Blocks();
+            bool modelled = !string.IsNullOrEmpty(p.Spec.fitting) && FittingModels.Ready && FittingModels.Get(p.Spec.fitting) != null;
+            if (modelled) Moving(); else Blocks();
             if (_kind == Kits.Kind.Generator)
             {
                 _hum = ItemModels.Source(gameObject, 22f);
@@ -264,7 +266,8 @@ namespace Backrooms.Interaction
             ulong g = Machines.PluggedInto(_prop.Spec.id);
             var mgr = MovablePropManager.Instance;
             if (g == 0 || !mgr || !mgr.Pose(g, out var gp, out var gr)) { _cable.positionCount = 0; return; }
-            var a = transform.TransformPoint(new Vector3(0f, 0.25f, -_prop.Spec.size.z * 0.5f));
+            // (Where it plugs in on the model: the floodlight's switch box on its back leg, the conveyor's at its back end.)
+            var a = transform.TransformPoint(_kind == Kits.Kind.Floodlight ? new Vector3(0f, 0.26f, -0.23f) : new Vector3(0f, 0.25f, -_prop.Spec.size.z * 0.5f + 0.05f));
             var b = gp + gr * new Vector3(0.3f, 0.45f, 0.31f);
             const int n = 14;
             _cable.positionCount = n;
@@ -338,6 +341,21 @@ namespace Backrooms.Interaction
             return go.transform;
         }
 
+        /// <summary>On the model: the generator's needle on its dial, the floodlight's lens in its bezel (lit when it is on).</summary>
+        void Moving()
+        {
+            var s = _prop.Spec.size;
+            if (_kind == Kits.Kind.Generator)
+            {
+                _needle = new GameObject("Needle").transform;
+                _needle.SetParent(transform, false);
+                _needle.localPosition = new Vector3(0.08f, 0.41f, s.z * 0.5f - 0.004f);
+                Block("NeedleBar", new Vector3(0f, 0.05f, 0f), new Vector3(0.01f, 0.1f, 0.005f), s_dark, _needle);
+            }
+            else if (_kind == Kits.Kind.Floodlight)
+                _lens = Block("Lens", new Vector3(0f, s.y - 0.16f, 0.135f), new Vector3(0.42f, 0.24f, 0.01f), s_lensOff).GetComponent<Renderer>();
+        }
+
         void Blocks()
         {
             var s = _prop.Spec.size;
@@ -400,11 +418,36 @@ namespace Backrooms.Interaction
     }
 
     /// <summary>The work lamp (2026-11-08): a stand lamp about three times as bright as a living room's, whiter, reaching
-    /// further, that lights two shelves (until its own model is made it is the floor lamp's).</summary>
+    /// further, that lights two shelves. Its own model (Tools/Blender/build_machines.py: a heavy foot, a pole held like the
+    /// floor lamp's, an amber work-light head) and a wide spotlight out of the head's front; the floor lamp's ways
+    /// otherwise (its cord, its plug, its switch). The floor lamp's model if its own is not loaded.</summary>
     public static class WorkLamp
     {
         public static FloorLamp Create(Vector3 at, Quaternion rot, bool plugged)
         {
+            if (FittingModels.Ready && FittingModels.MakeMesh("WorkLamp", out var mesh, out var mats))
+            {
+                var go = new GameObject("WorkLamp");
+                go.transform.SetPositionAndRotation(at, rot);
+                var model = new GameObject("Model");
+                model.transform.SetParent(go.transform, false);
+                model.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var mr = model.AddComponent<MeshRenderer>();
+                mr.sharedMaterials = mats; mr.renderingLayerMask = uint.MaxValue;
+                var bc = go.AddComponent<BoxCollider>();
+                bc.size = new Vector3(0.38f, 1.56f, 0.38f); bc.center = new Vector3(0f, 0.78f, 0f);
+                var rb = go.AddComponent<Rigidbody>();
+                rb.mass = 6f; rb.linearDamping = 0.1f; rb.angularDamping = 3f;
+                rb.interpolation = RigidbodyInterpolation.Interpolate;
+                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+                rb.centerOfMass = new Vector3(0f, 0.05f, 0f);         // the heavy foot keeps it standing
+                FloorLamp.s_buildWork = true;
+                var w = go.AddComponent<FloorLamp>();
+                w.itemId = "worklamp"; w.displayName = "Work lamp";
+                w.SetPower(3.2f, 9f, new Color(1f, 0.92f, 0.8f));
+                w.startPlugged = plugged;
+                return w;
+            }
             var l = FloorLamp.Create(at, rot);
             l.itemId = "worklamp"; l.displayName = "Work lamp";
             l.SetPower(3.2f, 9f, new Color(1f, 0.92f, 0.8f));

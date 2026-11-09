@@ -57,7 +57,9 @@ namespace Backrooms.Interaction
         /// pallet: closed shapes, and fewer objects for the many on a warehouse's racks; the plastic chairs, 2026-11-04: a
         /// box over the seat shaded the seat itself and the legs cast one block).</summary>
         static bool OwnShadow(MovableSpec s) => OwnShadow(s.kind) || s.cardboard || s.kind == MovableKind.Pallet
-                                                || s.kind == MovableKind.LawnChair || s.kind == MovableKind.SchoolChair || CartLayouts.IsCart(s.kind);
+                                                || s.kind == MovableKind.LawnChair || s.kind == MovableKind.SchoolChair || CartLayouts.IsCart(s.kind)
+                                                // (The machines' models, 2026-11-08: the floodlight's collider box cast a dark square under its tripod.)
+                                                || s.kind == MovableKind.Generator || s.kind == MovableKind.Conveyor || s.kind == MovableKind.Floodlight;
 
         public static MovableProp Spawn(MovableSpec spec, Transform parent, Vector3 position, Quaternion rotation)
         {
