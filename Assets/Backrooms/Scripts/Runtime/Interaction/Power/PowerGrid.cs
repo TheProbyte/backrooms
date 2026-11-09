@@ -17,7 +17,7 @@ namespace Backrooms.Interaction
         public static int Version { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void Reset() { s_on.Clear(); Version++; }
+        static void Reset() { s_on.Clear(); AllLive = false; Version++; }
 
         /// <summary>The circuit of a chunk (x, storey, z).</summary>
         public static Vector3Int CircuitOf(Vector3Int chunk)
@@ -26,7 +26,11 @@ namespace Backrooms.Interaction
             return new Vector3Int(Mathf.FloorToInt(chunk.x / (float)d), chunk.y, Mathf.FloorToInt(chunk.z / (float)d));
         }
 
-        public static bool On(Vector3Int circuit) => s_on.Count > 0 && s_on.Contains(circuit);
+        /// <summary>The contract floor (2026-11-08, Docs/GameDesign.md section 8): no breaker panels to hunt for; every wall
+        /// outlet is always on (low power: lamps and the like; big machines need a generator). Set by Interaction.Contracts.</summary>
+        public static bool AllLive;
+
+        public static bool On(Vector3Int circuit) => AllLive || (s_on.Count > 0 && s_on.Contains(circuit));
 
         public static void Set(Vector3Int circuit, bool on)
         {

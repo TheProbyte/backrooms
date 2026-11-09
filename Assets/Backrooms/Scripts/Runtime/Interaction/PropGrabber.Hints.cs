@@ -45,7 +45,8 @@ namespace Backrooms.Interaction
                 case MovableKind.UtilityCart: return "CART";
                 case MovableKind.JanitorCart: return "JANITOR'S CART";
                 case MovableKind.PlatformTruck: return "TROLLEY";
-                default: return "BOX";
+                case MovableKind.Shelf: return "SHELF";
+                default: return Improvements.IsKit(p.Spec.id) ? "KIT" : "BOX";
             }
         }
 
@@ -80,7 +81,9 @@ namespace Backrooms.Interaction
             _hint = null; _hintMark = null;
             if (Current == State.Holding && Held)
             {
-                _hint = Carrying ? (Held.Spec.kind == MovableKind.Box ? "MOUSE UP LIFTS IT · DOWN LOWERS IT · LET GO TO PUT IT DOWN" : "LET GO TO PUT IT DOWN")
+                var kit = KitPlacer.CarryHint(Held);
+                if (kit != null) { _hint = kit; return; }
+                _hint = Carrying ? (Held.Spec.kind == MovableKind.Box ? "CLICK PUT DOWN · HOLD ON A BOX TAKE IT TOO · Q DROP · HOLD Q TOSS · R TURN" : "CLICK TO PUT IT DOWN")
                       : Tipping ? "MOUSE UP TIPS IT UP · DOWN LOWERS IT · LET GO TO DROP"
                       : "W PUSH · S PULL · MOUSE TURNS IT · MOUSE UP LIFTS";
                 return;
@@ -110,9 +113,12 @@ namespace Backrooms.Interaction
             if (AimedDoorGrip.HasValue) { _hint = "CLICK TO OPEN OR SHUT · HOLD TO MOVE IT SLOWLY"; return; }
             if (AimedProp(out var prop, out var grip, out var v))
             {
-                _hint = $"HOLD TO {v} {NameOf(prop)}" + (Seating.CanSitOn(prop) && (!_seating || !_seating.Seated) ? " · E SIT" : "");
+                _hint = IsLight(prop) ? (prop.Spec.kind == MovableKind.Box ? "CLICK TO PICK UP · HOLD TO TAKE A FEW" : $"CLICK TO CARRY {NameOf(prop)}")
+                                        + (Seating.CanSitOn(prop) && (!_seating || !_seating.Seated) ? " · E SIT" : "")
+                      : $"HOLD TO {v} {NameOf(prop)}" + (Seating.CanSitOn(prop) && (!_seating || !_seating.Seated) ? " · E SIT" : "");
                 _hintMark = grip;
             }
+            if (_hint == null && KitPlacer.IdleHint != null) _hint = KitPlacer.IdleHint;      // a shelf: pack it, stand it up
             SmoothMark();
         }
 

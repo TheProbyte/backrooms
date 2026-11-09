@@ -1,5 +1,8 @@
 # Project brief
 
+> The game's current design is `Docs/GameDesign.md` (2026-11-08). This brief's feel still holds; its story (falling in
+> and trying to escape) has been replaced by the job at Overflow.
+
 This is the owner's brief, copied word for word (2026-10-20). Headings were added for navigation only; the text is
 unchanged. Part 1 is the overall vision and future requirements. Part 2 is the audio milestone that was the
 immediate task when the brief was written.

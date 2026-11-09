@@ -57,15 +57,16 @@ namespace Backrooms.Interaction
         {
             _items.Clear();
             void Add(Kind k, string name, string note, int cost, int wing = -1) => _items.Add(new Item { kind = k, name = name, note = note, cost = cost, wing = wing });
-            Add(Kind.ChuteKit, "INTAKE CHUTE KIT", "SET IT DOWN AT A SEAM", 150);
-            if (D.trucks < 2) Add(Kind.Truck, "PLATFORM TRUCK", "BOXES RIDE ON IT", 120);
-            if (D.overtime < 3) Add(Kind.Overtime, $"OVERTIME TO {6 + D.overtime} PM", "AN HOUR MORE A SHIFT", 200 + 100 * D.overtime);
-            if (D.backupLights < 2) Add(Kind.BackupLights, "BACKUP LIGHTS", "A MINUTE MORE AT CLOSING", 150 + 100 * D.backupLights);
-            if (D.rentReviews < 2) Add(Kind.RentReview, "RENT REVIEW", "+$1 A STORED BOX A DAY", 250 + 150 * D.rentReviews);
+            // (2026-11-08: kits and trucks are sold at the supply counter now; what is here lasts for good, each level
+            // unlocked by finishing work orders: Interaction.WorkOrders.)
+            if (D.overtime < 3 && Unlocks.Has("overtime" + (D.overtime + 1))) Add(Kind.Overtime, $"OVERTIME TO {6 + D.overtime} PM", "AN HOUR MORE A SHIFT", 200 + 100 * D.overtime);
+            if (D.backupLights < 2 && Unlocks.Has("backup" + (D.backupLights + 1))) Add(Kind.BackupLights, "BACKUP LIGHTS", "A MINUTE MORE AT CLOSING", 150 + 100 * D.backupLights);
+            if (D.rentReviews < 2 && Unlocks.Has("rentreview" + (D.rentReviews + 1))) Add(Kind.RentReview, "RENT REVIEW", "+$1 A SAFE BOX A DAY", 250 + 150 * D.rentReviews);
             int owned = LeasePlan.WingCount;
-            for (int w = 0; w < 4; w++)
-                if ((D.wings & (1 << w)) == 0) Add(Kind.Wing, $"LEASE {LeasePlan.WingNames[w]} WING", "MORE SEAMS AND STORAGE", 400 + 200 * owned, w);
-            if (!D.poolrooms) Add(Kind.Poolrooms, "POOLROOMS ACCESS", owned > 0 ? "A DOOR PAST YOUR FIRST WING" : "NEEDS A WING FIRST", 900);
+            if (Unlocks.Has("wings"))
+                for (int w = 0; w < 4; w++)
+                    if ((D.wings & (1 << w)) == 0) Add(Kind.Wing, $"LEASE {LeasePlan.WingNames[w]} WING", "MORE SEAMS AND FLOOR", 400 + 200 * owned, w);
+            if (!D.poolrooms && Unlocks.Has("poolrooms")) Add(Kind.Poolrooms, "POOLROOMS ACCESS", owned > 0 ? "A DOOR PAST YOUR FIRST WING" : "NEEDS A WING FIRST", 900);
             _pick = Mathf.Clamp(_pick, 0, Mathf.Max(0, _items.Count - 1));
         }
 
@@ -89,7 +90,6 @@ namespace Backrooms.Interaction
             var it = _items[_pick];
             var cs = Contracts.Instance;
             string no = cs && cs.ShiftOn ? "NOT DURING THE SHIFT"
-                      : D.boughtDay == D.day ? "ONE A NIGHT - ORDER AGAIN TOMORROW"
                       : it.kind == Kind.Poolrooms && LeasePlan.WingCount == 0 ? "LEASE A WING FIRST"
                       : D.pay < it.cost ? $"NOT ENOUGH - ${D.pay} IN HAND" : null;
             if (no != null) { CamcorderOSD.Notice(no); cs?.Beep(false); return; }
@@ -140,8 +140,21 @@ namespace Backrooms.Interaction
         public static bool IsKit(ulong id) => (id >> 48) == 0xC4E7ul;
         public static bool HasChute(ulong seam) { var d = GameSession.Data; return d != null && d.chutes.Contains(seam); }
 
+        /// <summary>The supply counter's intake chute kit, waiting at a spot by the lift.</summary>
+        public void SendChuteKit(Vector3 at, Quaternion rot)
+        {
+            var mgr = MovablePropManager.Instance;
+            if (!mgr || D == null) return;
+            ulong id = KitId(D.chuteKits++);
+            var spec = Contracts.BoxSpec(id, at, rot.eulerAngles.y);
+            if (spec != null) mgr.NetPlace(spec, at, rot);
+        }
+
+        /// <summary>The supply counter's platform truck, by the lift.</summary>
+        public void SendTruck() { if (D != null) PlaceTruck(D.trucks++, true); }
+
         /// <summary>Beside the lift on the floor: in front of its gate, off to one side.</summary>
-        static Vector3 ByTheLift(float across, float outward, out Quaternion rot)
+        internal static Vector3 ByTheLift(float across, float outward, out Quaternion rot)
         {
             var cab = HubPlan.WorldCab;
             rot = cab.rotation;
@@ -228,7 +241,7 @@ namespace Backrooms.Interaction
             for (int i = 0; i < _px.Length; i++) _px[i] = G;
             PixelFont.Fill(_px, BW, BH, 0, 0, BW, 34, new Color32(124, 138, 46, 255));
             PixelFont.DrawCentred(_px, BW, BH, "IMPROVEMENTS", BW / 2, 6, 3, Contracts.Choc);
-            bool bought = D.boughtDay == D.day;
+            bool bought = false;
             int top = 40;
             int rows = Mathf.Min(_items.Count, 7);
             int first = Mathf.Clamp(_pick - rows + 1, 0, Mathf.Max(0, _items.Count - rows));
@@ -247,14 +260,15 @@ namespace Backrooms.Interaction
             }
             // The picked one's note, and the buttons' labels.
             if (_items.Count > 0) PixelFont.DrawCentred(_px, BW, BH, _items[_pick].note, BW / 2, 214 - 22, 1, Dm);
+            else PixelFont.DrawCentred(_px, BW, BH, "NOTHING YET", BW / 2, 100, 3, Dm);
             int bx(float dx) => Mathf.RoundToInt((0.5f - dx / 2.3f) * BW);
             PixelFont.DrawCentred(_px, BW, BH, "NEXT", bx(0.35f), 212, 2, A);
             PixelFont.DrawCentred(_px, BW, BH, "ORDER", bx(-0.35f), 212, 2, bought ? Dm : A);
             PixelFont.Fill(_px, BW, BH, 0, 246, BW, 248, new Color32(217, 102, 31, 255));
             PixelFont.Fill(_px, BW, BH, 0, 248, BW, 250, new Color32(232, 178, 58, 255));
             PixelFont.Fill(_px, BW, BH, 0, 250, BW, 252, new Color32(124, 138, 46, 255));
-            string left = bought ? "ORDERED TONIGHT" : "ONE A NIGHT";
-            PixelFont.Draw(_px, BW, BH, left, 12, 230, 2, bought ? Contracts.Green : A);
+            string left = _items.Count == 0 ? "UNLOCKED BY WORK ORDERS" : "LASTS FOR GOOD";
+            PixelFont.Draw(_px, BW, BH, left, 12, 230, 2, A);
             string right = "IN HAND $" + D.pay;
             PixelFont.Draw(_px, BW, BH, right, BW - 12 - PixelFont.Width(right, 2), 230, 2, A);
             if (_order) _order.SetLit(!bought && _items.Count > 0 && D.pay >= _items[_pick].cost);

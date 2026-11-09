@@ -1,6 +1,6 @@
 # Status (where to resume)
 
-The game is called **Still Recording** (working title).
+The game is called **Overflow** (working title; it was Still Recording). The design: `Docs/GameDesign.md`.
 
 Last updated 2026-11-04 (world version 13).
 

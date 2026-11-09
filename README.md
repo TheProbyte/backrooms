@@ -1,11 +1,12 @@
-# Still Recording (working title)
+# Overflow (working title; was Still Recording)
 
 Realistic camcorder-style Backrooms exploration game. Unity 6 (6000.4.5f1), URP.
 
 ![Infinite offices](Docs/screenshots/infinite_spawn.png)
 
-**Design direction:** see [Docs/ProjectBrief.md](Docs/ProjectBrief.md), the owner's full brief (vision, future
-systems, and the audio milestone). Read it before starting new systems.
+**Design direction:** see [Docs/GameDesign.md](Docs/GameDesign.md), the whole game as it is meant to be (the job at
+Overflow, the hub, the floor, the seams, the working day, work orders, improvements). Read it before starting new
+systems, and update it when the design changes. The owner's first brief is [Docs/ProjectBrief.md](Docs/ProjectBrief.md).
 
 ## Play
 

@@ -8,7 +8,9 @@ namespace Backrooms.Interaction
     /// <summary>
     /// The training room's TV (HubTvCart, 2026-11-07): left on with no tape in, so it shows snow: static redrawn about
     /// fifteen times a second with a slow rolling band, a cold blue glow on whoever sits in front of it, and a faint hiss.
-    /// (The orientation tape plays on it later: Docs/HubPlan.md, phase C.)
+    /// <para>The orientation tape (2026-11-08, a stand-in until the real cut is in): sit down in the training room and a
+    /// short tape of title cards plays (about 20 s: the job in a few lines), then goes back to snow. Watching it to the end
+    /// is half of the first work order (WorkOrders: watch the tape, clock in). Getting up stops it.</para>
     /// </summary>
     public class HubTvScreen : MonoBehaviour
     {
@@ -20,6 +22,28 @@ namespace Backrooms.Interaction
         AudioSource _hiss;
         System.Random _rng = new System.Random(7);
         float _next, _roll;
+        // The tape.
+        const int TW = 160, TH = 120;
+        const float CardTime = 2.3f;
+        Texture2D _tapeTex;
+        Color32[] _tapePx;
+        bool _playing, _wasSeated;
+        float _tapeT;
+        Seating _seating;
+
+        /// <summary>The stand-in orientation tape: a card a line or a few (no more than 26 letters a line).</summary>
+        static readonly string[][] s_cards =
+        {
+            new[] { "OVERFLOW", "ORIENTATION", "TAPE 1 OF 1" },
+            new[] { "THE WORLD IS FULL.", "BEHIND IT THERE IS MORE.", "WE RENT IT OUT." },
+            new[] { "1. TAKE A WORK ORDER", "AT THE BOARD." },
+            new[] { "2. RIDE THE LIFT DOWN.", "OFFICE HOURS: 9 TO 5." },
+            new[] { "3. BOXES GO ON SHELVES.", "OFF A SHELF, NO PAY." },
+            new[] { "4. KEEP YOUR SHELVES LIT.", "THE DARK TAKES THE REST." },
+            new[] { "WE CHARGE THE CLIENT", "EVERY DAY.", "THE POWER BILL", "IS YOURS." },
+            new[] { "BE BACK BY CLOSING.", "THERE'S ALWAYS MORE ROOM." },
+            new[] { "END OF TAPE" },
+        };
 
         /// <summary>The cart's foot in the hub (OverflowRooms puts it there, its front to the south).</summary>
         static Vector3 Foot => HubPlan.World(5.6f, 21.6f - OfficeBiome.WallThickness * 0.5f - 0.4f);
@@ -59,7 +83,72 @@ namespace Backrooms.Interaction
             _hiss.clip = MakeHiss(); _hiss.loop = true; _hiss.volume = 0.12f; _hiss.minDistance = 0.8f;
             Audio.SoundRoute.Add(_hiss);
             _hiss.Play();
+            _tapeTex = new Texture2D(TW, TH, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "TvTape" };
+            _tapePx = new Color32[TW * TH];
             Draw();
+        }
+
+        /// <summary>Is the player sitting in the training room (on one of its chairs, in front of the TV)?</summary>
+        bool SeatedHere()
+        {
+            if (!_seating) _seating = FindAnyObjectByType<Seating>();
+            if (!_seating || !_seating.Seated || !_seating.Chair) return false;
+            var c = _seating.Chair.transform.position;
+            return new Vector2(c.x - Foot.x, c.z - Foot.z).magnitude < 7f && Mathf.Abs(c.y - Foot.y) < 2f;
+        }
+
+        void StartTape()
+        {
+            _playing = true; _tapeT = 0f;
+            _mat.SetTexture("_BaseMap", _tapeTex);
+            _mat.SetColor("_BaseColor", new Color(1.1f, 1.05f, 1f));
+        }
+
+        void StopTape(bool finished)
+        {
+            _playing = false;
+            _mat.SetTexture("_BaseMap", _tex);
+            _mat.SetColor("_BaseColor", new Color(0.85f, 0.92f, 1f));
+            var d = Saves.GameSession.Data;
+            if (!finished || d == null) return;
+            bool first = !d.tapeWatched;
+            d.tapeWatched = true;
+            if (first) Camcorder.CamcorderOSD.Notice("ORIENTATION DONE - NOW RIDE THE LIFT DOWN TO CLOCK IN");
+            Contracts.Instance?.Changed();
+        }
+
+        /// <summary>A card of the tape, on a VHS picture: a band of colour, its lines, grain and a tracking line rolling up.</summary>
+        void DrawTape()
+        {
+            int card = Mathf.Min(s_cards.Length - 1, Mathf.FloorToInt(_tapeT / CardTime));
+            var lines = s_cards[card];
+            bool title = card == 0;
+            Color32 bg = title ? new Color32(232, 150, 32, 255) : card == s_cards.Length - 1 ? new Color32(14, 12, 18, 255) : new Color32(52, 36, 26, 255);
+            Color32 ink = title ? new Color32(59, 42, 30, 255) : new Color32(245, 214, 150, 255);
+            for (int i = 0; i < _tapePx.Length; i++) _tapePx[i] = bg;
+            // The company's stripes along the foot (orange, gold, avocado), as on its signs.
+            PixelFont.Fill(_tapePx, TW, TH, 0, TH - 12, TW, TH - 8, new Color32(217, 102, 31, 255));
+            PixelFont.Fill(_tapePx, TW, TH, 0, TH - 8, TW, TH - 4, new Color32(232, 178, 58, 255));
+            PixelFont.Fill(_tapePx, TW, TH, 0, TH - 4, TW, TH, new Color32(124, 138, 46, 255));
+            int lineH = 13, y0 = (TH - 12) / 2 - lines.Length * lineH / 2;
+            for (int k = 0; k < lines.Length; k++)
+            {
+                int dot = title && k == 0 ? 3 : 1;
+                int y = title && k == 0 ? 22 : title ? 58 + (k - 1) * lineH : y0 + k * lineH;
+                PixelFont.DrawCentred(_tapePx, TW, TH, lines[k], TW / 2, y, dot, ink);
+            }
+            // VHS: grain, and a tracking line rolling up the picture.
+            int track = TH - 1 - Mathf.FloorToInt(Mathf.Repeat(_tapeT * 0.35f, 1f) * TH);
+            for (int y = 0; y < TH; y++)
+            for (int x = 0; x < TW; x++)
+            {
+                int i = y * TW + x;
+                var c = _tapePx[i];
+                int n = _rng.Next(-14, 15) + (Mathf.Abs(y - track) < 2 ? 70 : 0);
+                _tapePx[i] = new Color32((byte)Mathf.Clamp(c.r + n, 0, 255), (byte)Mathf.Clamp(c.g + n, 0, 255), (byte)Mathf.Clamp(c.b + n, 0, 255), 255);
+            }
+            _tapeTex.SetPixels32(_tapePx);
+            _tapeTex.Apply(false);
         }
 
         static AudioClip MakeHiss()
@@ -101,8 +190,21 @@ namespace Backrooms.Interaction
         void Update()
         {
             _roll = Mathf.Repeat(_roll + Time.deltaTime * 0.12f, 1f);
+            // The hiss is the building's sound: it follows the AMBIENCE setting (quieter under the tape).
+            if (_hiss) _hiss.volume = (_playing ? 0.03f : 0.08f) * GameSettings.Ambience;
+            // Sitting down in front of it plays the tape; getting up stops it.
+            bool seated = SeatedHere();
+            if (seated && !_wasSeated && !_playing) StartTape();
+            if (!seated && _playing) StopTape(false);
+            _wasSeated = seated;
+            if (_playing)
+            {
+                _tapeT += Time.deltaTime;
+                if (_tapeT >= CardTime * s_cards.Length) { StopTape(true); return; }
+            }
             if (Time.time < _next) return;
             _next = Time.time + 1f / 15f;
+            if (_playing) { DrawTape(); if (_light) _light.intensity = 0.9f; return; }
             Draw();
             if (_light) _light.intensity = 0.55f + (float)_rng.NextDouble() * 0.3f;     // the glow flickers with the snow
         }
@@ -110,6 +212,7 @@ namespace Backrooms.Interaction
         void OnDestroy()
         {
             if (_tex) Destroy(_tex);
+            if (_tapeTex) Destroy(_tapeTex);
             if (_mat) Destroy(_mat);
         }
     }

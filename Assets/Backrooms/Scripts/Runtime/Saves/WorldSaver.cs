@@ -375,9 +375,15 @@ namespace Backrooms.Saves
                 if (!prefab && !mat) { Debug.LogWarning($"[Backrooms] A saved {s.kind} lost a part ('{p.prefab}{p.material}')."); continue; }
                 s.parts.Add(new MovableSpec.Part { prefab = prefab, material = mat, position = p.position, scale = p.scale, yaw = p.yaw });
             }
-            if (s.parts.Count == 0 && !s.cardboard && s.kind != MovableKind.Pallet) return null;
+            // (Props built from a model rather than parts come back too: a named fitting, the shelves and machines, the
+            // chairs and carts built by their kind. Only those left with nothing to build them from are dropped.)
+            if (s.parts.Count == 0 && !s.cardboard && s.kind != MovableKind.Pallet && string.IsNullOrEmpty(s.fitting) && !BuiltByKind(s.kind)) return null;
             return s;
         }
+
+        static bool BuiltByKind(MovableKind k) =>
+            k == MovableKind.Shelf || k == MovableKind.Generator || k == MovableKind.Conveyor || k == MovableKind.Floodlight
+            || k == MovableKind.LawnChair || k == MovableKind.SchoolChair || CartLayouts.IsCart(k);
     }
 
     /// <summary>Names for the biome's prefabs and materials in a save: "field" or "field/index" of OfficeBiomeAssets.</summary>

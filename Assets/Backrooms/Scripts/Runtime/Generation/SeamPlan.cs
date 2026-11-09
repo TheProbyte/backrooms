@@ -58,14 +58,35 @@ namespace Backrooms.Generation
             normal = Vector3.forward;
         }
 
-        /// <summary>Where the job's box i stands: on the pickup pallet, two across and two deep, three high; past twelve, a
-        /// second stack on the floor beside it.</summary>
-        public static Vector3 Stack(int kind, int i)
+        /// <summary>Where the job's box i stands (the old 0.5 x 0.36 x 0.4 m box): on the pickup pallet, two across and two
+        /// deep, three high; past twelve, a second stack on the floor beside it.</summary>
+        public static Vector3 Stack(int kind, int i) => Stack(kind, i, new Vector3(0.5f, 0.36f, 0.4f));
+
+        /// <summary>
+        /// As above for a box this size (2026-11-08: each client's boxes have their own shape, Contracts.BoxShapes): as
+        /// many across and deep as fit the pallet (1.2 x 1.0 m), as many layers as stay under about 1.2 m; past a pile's
+        /// worth, the next pile beside it on the floor.
+        /// </summary>
+        public static Vector3 Stack(int kind, int i, Vector3 size)
         {
-            int pile = i / 12, j = i % 12, k = j % 4, layer = j / 4;
+            Grid(size, out int across, out int deep, out int layers);
+            int perLayer = across * deep, cap = perLayer * layers;
+            int pile = i / cap, j = i % cap, k = j % perLayer, layer = j / perLayer;
             var p = SeamRooms.Pickup;
             float baseY = pile == 0 ? SeamRooms.PalletTop : 0.005f;
-            return World(kind, p.x + pile * 1.3f + (k % 2 - 0.5f) * 0.56f, p.y + (k / 2 - 0.5f) * 0.46f, baseY + layer * 0.37f);
+            float x = (k % across - (across - 1) * 0.5f) * (size.x + 0.06f);
+            float z = (k / across - (deep - 1) * 0.5f) * (size.z + 0.06f);
+            return World(kind, p.x + pile * 1.3f + x, p.y + z, baseY + layer * (size.y + 0.01f));
+        }
+
+        /// <summary>How many boxes this size make one pile (Stack).</summary>
+        public static int PileOf(Vector3 size) { Grid(size, out int a, out int d, out int l); return a * d * l; }
+
+        static void Grid(Vector3 size, out int across, out int deep, out int layers)
+        {
+            across = Mathf.Max(1, Mathf.FloorToInt(1.18f / (size.x + 0.06f)));
+            deep = Mathf.Max(1, Mathf.FloorToInt(0.98f / (size.z + 0.06f)));
+            layers = Mathf.Clamp(Mathf.FloorToInt(1.2f / (size.y + 0.01f)), 1, 8);
         }
 
         /// <summary>The DELIVERIES bay in a kind's room (world x, z).</summary>

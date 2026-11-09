@@ -161,6 +161,8 @@ namespace Backrooms.Interaction
             CartWheels.Attach(mp);                                // a cart's casters and how it rolls
             RuntimeIndoorReflections.Instance?.Prepare(root);
             PoolLitSwitch.Attach(root);                           // lit by the Poolrooms' light while it is in them
+            FragileBox.Attach(mp);                                // a fragile load's box: breaks if dropped hard
+            Machines.Attach(mp);                                  // a generator, conveyor or floodlight: what it does
             return mp;
         }
 

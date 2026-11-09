@@ -46,15 +46,16 @@ FRAME_DARK = hx('#2B2420')
 
 # ------------------------------------------------------------------------------------------------- shelving
 
-def shelving(W_, H_, D_, name):
+def shelving(W_, H_, D_, name, levels=None, a=0.05):
     PST = S("Paint_ShelfPost", AVOCADO, "paint", 0.5)
     SLOT = S("Paint_ShelfSlot", CHOC, "paint", 0.6)
     BM = S("Paint_ShelfBeam", AMBER, "paint", 0.45)
     DECK = S("Board_ShelfDeck", (0.62, 0.5, 0.35), "board", 0.85)
     FT = S("Plastic_ShelfFoot", (0.06, 0.06, 0.06), "plastic", 0.5)
-    levels = max(4, min(5, round(H_ / 0.45)))
+    # (Deck heights as Interaction.ShelfTypes: 0.1 m up, then evenly to the top.)
+    if levels is None:
+        levels = max(4, min(5, round(H_ / 0.45)))
     lp = (H_ - 0.12) / (levels - 1)
-    a = 0.05
     p = []
     for sx in (-1, 1):
         for sy in (-1, 1):
@@ -178,6 +179,9 @@ V = (0.75, -1.0, 0.5)
 run_baked([
     ("Shelving_100", lambda: shelving(1.0, 1.85, 0.42, "Shelving_100"), V, {"scale": 1.0}),
     ("Shelving_110", lambda: shelving(1.1, 2.0, 0.46, "Shelving_110"), V, {"scale": 1.0}),
+    # The storage ladder (2026-11-08, Docs/GameDesign.md section 10): taller shelving, then pallet racking.
+    ("ShelvingTall", lambda: shelving(1.1, 2.6, 0.46, "ShelvingTall", levels=5), V, {"scale": 1.0}),
+    ("PalletRack", lambda: shelving(2.7, 2.6, 1.0, "PalletRack", levels=3, a=0.08), V, {"scale": 1.0}),
     ("LawnChair_White", lambda: lawn_chair((0.9, 0.9, 0.87), "LawnChair_White"), (0.8, -1.0, 0.5), {"scale": 0.6, "px_per_m": 480.0, "dirt": 1.1}),
     ("LawnChair_Green", lambda: lawn_chair((0.17, 0.36, 0.22), "LawnChair_Green"), (0.8, -1.0, 0.5), {"scale": 0.6, "px_per_m": 480.0, "dirt": 1.1}),
     ("SchoolChair_Blue", lambda: school_chair((0.13, 0.28, 0.58), "SchoolChair_Blue"), (0.8, -1.0, 0.4), {"scale": 0.6, "px_per_m": 500.0}),

@@ -170,7 +170,8 @@ namespace Backrooms.CustomRooms
             foreach (var (x, z) in new[] { (5.35f, 13.85f), (18.7f, 9.0f), (5.35f, 7.75f) })
                 Fit("HubPlant", x, z, x * 37f, new Vector3(0.5f, 1.0f, 0.5f));
             Fit("HubPosterA", 4.8f + face, 9.2f, 90f, Vector3.zero, 1.15f);
-            Fit("HubPosterB", 6.6f, 7.2f + face, 0f, Vector3.zero, 1.15f);
+            // The supply counter's board (Interaction.Supplies, 2026-11-08) on the south wall, west of the way to the lift.
+            Fit("HubBoard", 6.9f, 7.2f + face, 0f, Vector3.zero, 0.7f);
             // The improvements board (Interaction.Improvements) on the south wall, east of the way to the lift, facing the
             // contracts board across the lobby.
             Fit("HubBoard", 17.3f, 7.2f + face, 0f, Vector3.zero, 0.7f);
@@ -214,10 +215,12 @@ namespace Backrooms.CustomRooms
             Mark(false, 12, -1, 14.1f, 2.3f, 0.45f, DecalKind.WaterStain, 18);                   // above the bucket
             Mark(true, 16, -1, 13.7f, 0.3f, 0.1f, DecalKind.Outlet, 19);                          // the desk lamp's outlet
 
-            // The building's sounds: the lights' hum, air in the vents.
-            v.sounds.Add(new SoundDef { x = 10.8f, z = 10.8f, y = 2.5f, kind = SoundKind.Hum, volume = 0.35f, range = 12f });
-            v.sounds.Add(new SoundDef { x = 11.4f, z = 5.4f, y = 2.5f, kind = SoundKind.Air, volume = 0.3f, range = 8f });
-            v.sounds.Add(new SoundDef { x = 5.4f, z = 19.8f, y = 3.6f, kind = SoundKind.Air, volume = 0.25f, range = 9f });
+            // The building's sounds: the lights' hum, air in the vents. (2026-11-08, the owner: "some sounds way too loud" in
+            // the hub: at 0.35, 0.3 and 0.25 the hub was 10-18 times as loud as the floor, the lobby's hum heard through the
+            // walls in the training room. Now about the floor's level, a little busier.)
+            v.sounds.Add(new SoundDef { x = 10.8f, z = 10.8f, y = 2.5f, kind = SoundKind.Hum, volume = 0.04f, range = 8f });
+            v.sounds.Add(new SoundDef { x = 11.4f, z = 5.4f, y = 2.5f, kind = SoundKind.Air, volume = 0.05f, range = 7f });
+            v.sounds.Add(new SoundDef { x = 5.4f, z = 19.8f, y = 3.6f, kind = SoundKind.Air, volume = 0.05f, range = 7f });
 
             var bp = new RoomBlueprint { id = HubId, name = "Overflow", enabled = false, allowRotate = false, variants = new List<RoomVariant> { v } };
             bp.Validate();

@@ -32,6 +32,18 @@ namespace Backrooms.Camcorder
 
         /// <summary>A word stamped in the middle of the picture for a few seconds (HOME), shown with or without the viewfinder display.</summary>
         public static void Notice(string text) { s_notice = text; s_noticeAt = Time.unscaledTime; }
+
+        /// <summary>The LOW LIGHT warning (0..1, faded in and out by Interaction.ShelfWatch while you look at a shelf that is
+        /// not lit enough to be safe overnight), as real camcorders warned when the picture was too dark.</summary>
+        public static float LowLight;
+        Text _lowLight;
+
+        /// <summary>The work orders pinned in the top right (Interaction.OrderTracker: rich text, "" for none), how much of
+        /// it shows (0..1: J hides it, and hidden it pops up a moment when an order moves on), and its key's hint.</summary>
+        public static string Tracker = "";
+        public static float TrackerAlpha;
+        public static string TrackerHint = "";
+        Text _tracker;
         Image _recDot;
         DateTime _start;
         float _t0;
@@ -169,6 +181,15 @@ namespace Backrooms.Camcorder
             _time = Label("", new Vector2(0, 0), new Vector2(0, 44), TextAnchor.LowerLeft, 34);
             _date = Label("", new Vector2(0, 0), Vector2.zero, TextAnchor.LowerLeft, 34);
             _debug = Label("", new Vector2(1, 0), Vector2.zero, TextAnchor.LowerRight, 20);
+            _lowLight = Label("LOW LIGHT", new Vector2(0, 0.5f), Vector2.zero, TextAnchor.MiddleLeft, 40);
+            _tracker = Label("", new Vector2(1, 1), new Vector2(0, -96), TextAnchor.UpperRight, 22);
+            _tracker.supportRichText = true;
+            _tracker.horizontalOverflow = HorizontalWrapMode.Wrap;
+            _tracker.lineSpacing = 1.05f;
+            _tracker.rectTransform.sizeDelta = new Vector2(700, 640);
+            // Smaller text over bright walls: a dark rim all round as well as the drop shadow.
+            var rim = _tracker.gameObject.AddComponent<Outline>();
+            rim.effectColor = new Color(0, 0, 0, 0.8f); rim.effectDistance = new Vector2(1.5f, -1.5f);
             _notice = Label("", new Vector2(0.5f, 0.5f), new Vector2(0, -60), TextAnchor.MiddleCenter, 72);
             _notice.transform.SetParent(_barCanvas.transform, false);
             var nr = _notice.rectTransform; nr.anchorMin = nr.anchorMax = nr.pivot = new Vector2(0.5f, 0.32f); nr.anchoredPosition = Vector2.zero;
@@ -293,6 +314,25 @@ namespace Backrooms.Camcorder
                 // Steady, then a few blinks out, like a camcorder's title.
                 bool show = na < NoticeFor - 1f || ((na * 4f) % 1f) < 0.6f;
                 _notice.color = new Color(_ink.r, _ink.g, _ink.b, show ? 0.95f : 0f);
+            }
+            // LOW LIGHT: faded in, then a slow blink while it stays.
+            if (_lowLight)
+            {
+                bool on = LowLight > 0.01f;
+                _lowLight.enabled = on;
+                if (on) _lowLight.color = new Color(_ink.r, _ink.g, _ink.b, 0.95f * LowLight * (LowLight < 0.99f || ((Time.unscaledTime * 1.25f) % 1f) < 0.7f ? 1f : 0.35f));
+            }
+            // The work orders, top right.
+            if (_tracker)
+            {
+                bool any = !string.IsNullOrEmpty(Tracker);
+                bool full = any && TrackerAlpha > 0.01f;
+                _tracker.enabled = any;
+                if (any)
+                {
+                    _tracker.text = full ? Tracker + "\n<size=19>" + TrackerHint + "</size>" : "<size=19>" + TrackerHint + "</size>";
+                    _tracker.color = new Color(_ink.r, _ink.g, _ink.b, full ? 0.92f * TrackerAlpha : 0.5f);
+                }
             }
             if (showDebug && Camera.main)
             {

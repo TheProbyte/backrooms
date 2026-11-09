@@ -377,8 +377,13 @@ namespace Backrooms.Generation
                 new GameObject("HubTv").AddComponent<Interaction.HubTvScreen>();
                 // The contracts board, the pay window and office hours (Docs/ContractFloorsPlan.md).
                 new GameObject("Contracts").AddComponent<Interaction.Contracts>().streamer = this;
-                // The improvements board beside it: wings, the Poolrooms, chutes, overtime ... (one a night).
+                // The improvements board beside it: overtime, rent reviews, wings, the Poolrooms (what lasts for good).
                 new GameObject("Improvements").AddComponent<Interaction.Improvements>().streamer = this;
+                // The supply counter (kits and supplies), putting kits up with their outline, the machines on the floor
+                // (2026-11-08, Docs/GameDesign.md sections 8 and 10).
+                new GameObject("Supplies").AddComponent<Interaction.Supplies>().streamer = this;
+                new GameObject("KitPlacer").AddComponent<Interaction.KitPlacer>();
+                new GameObject("Machines").AddComponent<Interaction.Machines>();
             }
         }
 

@@ -87,6 +87,52 @@ namespace Backrooms.Saves
         public int overtime, backupLights, rentReviews, trucks;
         /// <summary>The day something was last bought (one a night), or 0.</summary>
         public int boughtDay;
+
+        // ---- Storage (2026-11-08, Docs/GameDesign.md section 8; Interaction.Shelves) ----
+        /// <summary>Overflow's shelves on the floor (moved-prop ids: the starter shelf, kit shelves, found ones), and the
+        /// next shelf's number.</summary>
+        public List<ulong> shelves = new List<ulong>();
+        public int nextShelf;
+        /// <summary>Each shelf's light from your own lamps when last measured (0..1; 1 is safe): ids and levels.</summary>
+        public List<ulong> shelfLightIds = new List<ulong>();
+        public List<float> shelfLight = new List<float>();
+        /// <summary>The starter shelf and lamp have been put out; the districts whose knocked-over shelves are out (x, z pairs).</summary>
+        public bool starterSet;
+        public List<int> foundIn = new List<int>();
+        /// <summary>Stored boxes left in the dark night after night: ids and how many nights running.</summary>
+        public List<ulong> darkIds = new List<ulong>();
+        public List<int> darkNights = new List<int>();
+        /// <summary>Last night: boxes that were safe, moved by the dark, gone for good (the board's report).</summary>
+        public int lastSafe, lastMoved, lastGone;
+        public bool hasReport;
+
+        // ---- The supply counter and kits (Interaction.Supplies, Interaction.Kits, Interaction.KitPlacer) ----
+        /// <summary>Things delivered by the lift so far (where the next one waits), the next kit crate's number, shelves put
+        /// up from kits.</summary>
+        public int delivered, nextKit, kitShelves;
+        /// <summary>What finished work orders have unlocked (Interaction.Unlocks keys).</summary>
+        public List<string> unlocked = new List<string>();
+
+        // ---- Work orders (2026-11-08, Docs/GameDesign.md section 7; Interaction.WorkOrders) ----
+        /// <summary>The stage of the sequence (0 onboarding, tiers, the gate, then after the main floor), each order's
+        /// progress (by its index in WorkOrders.All) and whether it is done, and the day the next onboarding order shows.</summary>
+        public int woStage;
+        public List<int> woProgress = new List<int>();
+        public List<int> woDone = new List<int>();
+        public int woNextDay;
+        /// <summary>The orientation tape has been watched in the training room (the first order: Interaction.HubTvScreen).</summary>
+        public bool tapeWatched;
+        /// <summary>Fragile boxes (break if dropped or thrown).</summary>
+        public List<ulong> fragile = new List<ulong>();
+        /// <summary>Generators set up on the floor (the power bill) and their moved-prop ids.</summary>
+        public List<ulong> generators = new List<ulong>();
+        public List<ulong> conveyors = new List<ulong>();
+        public List<ulong> floodlights = new List<ulong>();
+        /// <summary>Machines plugged into a generator (by its yellow industrial plug): the machine and the generator.</summary>
+        public List<ulong> plugMachine = new List<ulong>();
+        public List<ulong> plugGenerator = new List<ulong>();
+        /// <summary>Dead ceiling tubes put back with spare tubes (fixture keys: chunk x, storey, z, fixture index).</summary>
+        public List<int> tubesFixed = new List<int>();
     }
 
     /// <summary>A contract on the board (Interaction.Contracts).</summary>
@@ -109,6 +155,11 @@ namespace Backrooms.Saves
         public List<ulong> boxes = new List<ulong>();
         /// <summary>0 posted, 1 taken, 2 finished (pay waiting at the window), 3 failed (closing time came first), 4 paid.</summary>
         public int state;
+        /// <summary>The work order this is today's batch of (Interaction.WorkOrders index + 1; 0: a side job).</summary>
+        public int orderPlusOne;
+        /// <summary>An audit: done by this hour on the camcorder's clock or lost (0: by closing).</summary>
+        public int byHour;
+        public bool fragile;
     }
 
     /// <summary>A player who joined the host's world: where they were and what they carried (items as in the save's list:

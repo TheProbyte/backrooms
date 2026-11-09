@@ -281,6 +281,14 @@ namespace Backrooms.Interaction
             _driven = true;
             Vector3 head = _jobPoint + _jobNormal * 0.0015f;
             var prop = _jobCollider ? _jobCollider.GetComponentInParent<MovableProp>() : null;
+            // A knocked-over shelf (2026-11-08): each nail one more toward standing it up (Shelves.Mend), no nail left in it.
+            if (prop && Shelves.Mend(prop))
+            {
+                if (_heldNail) _heldNail.SetActive(false);
+                WorldSound.PlayAt(NailWork.Drive(Random.Range(0, 3)), _jobPoint, 0.9f * SoundCatalog.Volume(SoundIds.Sledgehammer), 24f, Random.Range(0.95f, 1.06f));
+                if (_shake) _shake.Jolt(new Vector3(2.5f, (Random.value - 0.5f) * 2f, -1.2f));
+                return;
+            }
             if (prop)
             {
                 if (Behind(_jobPoint, _jobNormal, prop, out _, out var other))

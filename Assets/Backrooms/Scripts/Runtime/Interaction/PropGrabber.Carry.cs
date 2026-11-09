@@ -4,13 +4,14 @@ using UnityEngine;
 namespace Backrooms.Interaction
 {
     /// <summary>
-    /// Light things (a box light enough, an empty pallet, an office chair) are taken up like an item, not wrestled: hold the
-    /// left mouse button on one and both hands take it, the camcorder on its strap, and it swings up into a set place for
-    /// its kind and is held there steady (moved to where the hands hold it; a wall or a door frame stops it, and held back
-    /// half a second it is dropped). Nothing else is in the hands meanwhile. Let go and it drops.
+    /// Light things (a box light enough, an empty pallet, an office chair) are taken up like an item, not wrestled: click
+    /// one and both hands take it, the camcorder on its strap, and it swings up into a set place for its kind and is held
+    /// there steady (moved to where the hands hold it; a wall or a door frame stops it). Nothing else is in the hands
+    /// meanwhile. Click again to put it down (2026-11-08: no more holding the button the whole way).
     /// <list type="bullet">
-    /// <item>A box: upright in front of you, low (its bottom at the hips), a hand on each side. Mouse up lifts it (up to
-    /// above your head, to stack it), down lowers it (to the floor); the view follows a little.</item>
+    /// <item>A box: upright in front of you, low (its bottom at the hips), a hand on each side, bobbing as you walk and
+    /// lagging a turn; a wall stops it but never knocks it out of your hands. Taken, put down, stacked in the arms and
+    /// tossed: PropGrabber.Boxes.</item>
     /// <item>An empty pallet: on its long edge under your arm, the top edge at hip height, a little ahead of you, so you see
     /// past it and it goes through doors; one hand, the camcorder stays up at the eye. A loaded one (anything resting on it)
     /// is heavy: pushed (PropGrabber.Furniture).</item>
@@ -97,6 +98,10 @@ namespace Backrooms.Interaction
             if (!IsLight(Held)) return false;
             Handling = Hold.Carry;
             _carryT = 0f; _carryCaughtT = 0f; _carryLift = 0f;
+            _carrySwing = CarrySwingTime;
+            _carrySway = Vector3.zero; _carrySwayVel = Vector3.zero; _turnLag = 0f; _turnLagVel = 0f; _fastTurnT = 0f;
+            _stackLower = 0f; _stackLowerVel = 0f;
+            _lastPlanar = _player.PlanarVelocity;
             var inv = Quaternion.Inverse(transform.rotation);
             _carryFromPos = inv * (Held.Body.position - transform.position);
             _carryFromRot = inv * Held.Body.rotation;
@@ -130,15 +135,24 @@ namespace Backrooms.Interaction
                 default:
                 {
                     // A box: upright, turned to the nearest quarter of how it was turned to you; low in front, a hand each side.
-                    float yaw = Mathf.Round(_carryFromRot.eulerAngles.y / 90f) * 90f;
-                    _carryRot = Quaternion.Euler(0f, yaw, 0f);
+                    // (A long one, a flat-pack, with its length the way you go: it goes through doors, out ahead of you.)
                     Vector3 s = Held.Spec.size;
+                    float yaw = Mathf.Round(_carryFromRot.eulerAngles.y / 90f) * 90f;
+                    if (Mathf.Max(s.x, s.z) > 0.8f)
+                    {
+                        float along = s.x >= s.z ? 90f : 0f;
+                        yaw = Mathf.Abs(Mathf.DeltaAngle(_carryFromRot.eulerAngles.y, along)) <= 90f ? along : along + 180f;
+                    }
+                    _carryRot = Quaternion.Euler(0f, yaw, 0f);
                     Vector3 rightLocal = Quaternion.Inverse(_carryRot) * (Vector3.right * Side);
                     Vector3 fwdLocal = Quaternion.Inverse(_carryRot) * Vector3.forward;
                     float depth = Mathf.Abs(fwdLocal.x) * s.x + Mathf.Abs(fwdLocal.z) * s.z;
                     float halfAcross = (Mathf.Abs(rightLocal.x) * s.x + Mathf.Abs(rightLocal.z) * s.z) * 0.5f;
-                    _carryCentre = new Vector3(0f, 0.72f + s.y * 0.5f, 0.3f + depth * 0.5f);
-                    _carryArc = 0.1f;
+                    // (2026-11-08, owner: it "covers camera maybe a bit too much": 6 cm lower and 3 cm nearer.)
+                    _carryCentre = new Vector3(0f, 0.66f + s.y * 0.5f, 0.27f + depth * 0.5f);
+                    // Quick (about a third of a second), longer for a heavy one; off a high shelf straight out, not up.
+                    _carrySwing = 0.24f + 0.009f * Held.Mass;
+                    _carryArc = Held.WorldBounds.min.y - transform.position.y > 0.9f ? 0f : 0.08f;
                     Vector3 r = new Vector3(Mathf.Round(rightLocal.x), 0f, Mathf.Round(rightLocal.z));
                     Vector3 f = new Vector3(Mathf.Round(fwdLocal.x), 0f, Mathf.Round(fwdLocal.z));
                     // Toward the back of its sides, near you: at the middle of them the forearms came in through its back
@@ -166,17 +180,20 @@ namespace Backrooms.Interaction
             }
         }
 
-        /// <summary>Let go (Release): it drops; the body passes through it until it has stepped away.</summary>
+        /// <summary>Let go (Release): it drops; the body passes through it until it has stepped away. Boxes still on top of
+        /// it fall.</summary>
         void EndCarry()
         {
             if (Handling != Hold.Carry) return;
+            DropArmBoxes();
             if (Held) Held.Body.useGravity = true;
-            if (_carryColliders != null) { _passingProp = _carryColliders; _passingPropOwner = Held; }
+            if (_carryColliders != null) _letGo.Add((_carryColliders, Held));
             _carryColliders = null;
+            _outShown = false; _qBoxDown = -1f; BoxTossCharge = 0f; _lmbDownAt = -1f;
         }
 
-        Collider[] _passingProp;
-        MovableProp _passingPropOwner;
+        /// <summary>Things let go of near the body, passed through until it is clear of them.</summary>
+        readonly System.Collections.Generic.List<(Collider[] cols, MovableProp owner)> _letGo = new System.Collections.Generic.List<(Collider[], MovableProp)>();
         float _savedStep = -1f;
 
         /// <summary>
@@ -196,23 +213,35 @@ namespace Backrooms.Interaction
         void UpdateCarryPassing()
         {
             UpdatePalletStep();
-            if (_passingProp == null) return;
-            if (!_passingPropOwner || Carrying) { if (!_passingPropOwner) _passingProp = null; return; }
-            var b = _passingPropOwner.WorldBounds;
-            if (b.SqrDistance(transform.position + Vector3.up * 0.9f) < 0.45f * 0.45f) return;
-            if (_cc) foreach (var c in _passingProp) if (c) Physics.IgnoreCollision(_cc, c, false);
-            _passingProp = null; _passingPropOwner = null;
+            for (int i = _letGo.Count - 1; i >= 0; i--)
+            {
+                var (cols, owner) = _letGo[i];
+                if (!owner) { _letGo.RemoveAt(i); continue; }
+                if (InArms(owner)) { _letGo.RemoveAt(i); continue; }           // (taken up again)
+                var b = owner.WorldBounds;
+                if (b.SqrDistance(transform.position + Vector3.up * 0.9f) < 0.45f * 0.45f) continue;
+                if (_cc) foreach (var c in cols) if (c) Physics.IgnoreCollision(_cc, c, false);
+                _letGo.RemoveAt(i);
+            }
         }
 
         /// <summary>Where its origin goes now (world) and its rotation: swinging up from where it was taken.</summary>
-        void CarryTarget(out Vector3 pos, out Quaternion rot)
+        void CarryTarget(out Vector3 pos, out Quaternion rot) => CarryTarget(out pos, out rot, out _, out _);
+
+        /// <summary>As above, and where its middle is carried and how it is turned once up (body frame: the boxes on top
+        /// of it go from there).</summary>
+        void CarryTarget(out Vector3 pos, out Quaternion rot, out Vector3 centreLocal, out Quaternion rotLocal)
         {
             Vector3 boundsMid = Held.Shape.bounds.center;
-            Vector3 p = _carryCentre + CarryLiftOffset - _carryRot * boundsMid;
+            bool box = Held.Spec.kind == MovableKind.Box;
+            // A box sways: the bob of the walk, the lag of a turn (PropGrabber.Boxes).
+            centreLocal = _carryCentre + CarryLiftOffset + (box ? _carrySway + Vector3.down * _stackLower : Vector3.zero);
+            rotLocal = box ? Quaternion.Euler(0f, _turnLag, -_carrySway.x * 40f) * _carryRot : _carryRot;
+            Vector3 p = centreLocal - rotLocal * boundsMid;
             float s = Mathf.SmoothStep(0f, 1f, _carryT);
             // (Up first, then over: lifted in an arc so it clears the floor as it turns.)
             Vector3 lp = Vector3.Lerp(_carryFromPos, p, s) + Vector3.up * (_carryArc * 4f * s * (1f - s));
-            Quaternion lr = Quaternion.Slerp(_carryFromRot, _carryRot, s);
+            Quaternion lr = Quaternion.Slerp(_carryFromRot, rotLocal, s);
             pos = transform.position + transform.rotation * lp;
             rot = transform.rotation * lr;
         }
@@ -235,33 +264,43 @@ namespace Backrooms.Interaction
         /// lowers it); held back too long, it drops.</summary>
         void UpdateCarry(Vector2 md)
         {
-            _carryT = Mathf.Min(1f, _carryT + Time.deltaTime / CarrySwingTime);
+            _carryT = Mathf.Min(1f, _carryT + Time.deltaTime / _carrySwing);
             bool box = Held.Spec.kind == MovableKind.Box;
-            if (box && _carryT >= 1f)
+            // (2026-11-08: a box is no longer lifted with the mouse, round 14's way to stack: the outline puts it there.)
+            if (box) UpdateBoxCarry();
+            else
             {
-                CarryLiftRange(out float lo, out float hi);
-                _carryLift = Mathf.Clamp(_carryLift + md.y * mouseToMetres * 1.2f * _player.FovMultiplier, lo, hi);
+                _player.pitchScale = 1f;
+                _player.lookScale = 0.75f;
+                _player.moveScale = Mathf.Lerp(0.95f, 0.75f, Mathf.Clamp01(Held.Mass / 20f));
+                _player.noRun = true;
             }
-            // (Round 14, owner: to stack boxes, mouse up raises it. The view follows a third as far.)
-            _player.pitchScale = box ? 0.35f : 1f;
-            _player.lookScale = 0.75f;
-            _player.moveScale = Mathf.Lerp(0.95f, 0.75f, Mathf.Clamp01(Held.Mass / 20f));
-            _player.noRun = true;
             // The hold's own offset follows the right hand's spot (the body bends no lower than it needs to).
             CarryTarget(out var pos, out var rot);
             Vector3 grip = pos + rot * _gripLocal;
             _offset = Quaternion.Inverse(transform.rotation) * (grip - StandShoulder);
             float off = Vector3.Distance(pos, Held.Body.position);
             _carryCaughtT = off > 0.4f ? _carryCaughtT + Time.deltaTime : 0f;
-            Strain = Mathf.Clamp01(0.15f + Held.Mass / 60f + off / 0.4f * 0.6f);
-            if (_carryCaughtT > 0.5f) { Release("it caught on something"); Note("IT CAUGHT ON SOMETHING"); }
+            Strain = Mathf.Clamp01(0.15f + (box ? ArmWeight : Held.Mass) / 60f + off / 0.4f * 0.6f);
+            if (box)
+            {
+                // (2026-11-08, owner: a wall stops a box, never knocks it out of your hands. Held back a while and its place
+                // in the hands clear, it is back in them.)
+                if (_carryCaughtT > 0.7f && PoseClear(Held, pos - rot * Vector3.zero, rot))
+                {
+                    Held.Body.position = pos; Held.Body.rotation = rot; Held.transform.SetPositionAndRotation(pos, rot);
+                    _carryCaughtT = 0f;
+                }
+            }
+            else if (_carryCaughtT > 0.5f) { Release("it caught on something"); Note("IT CAUGHT ON SOMETHING"); }
         }
 
         /// <summary>FixedUpdate while carrying: it is moved to where the hands hold it (steady, not a hand's limited pull); a
         /// wall or a door frame stops it as it would any moving thing.</summary>
         void CarryForces(Rigidbody rb)
         {
-            CarryTarget(out var pos, out var rot);
+            CarryTarget(out var pos, out var rot, out var centreLocal, out var rotLocal);
+            if (_arm.Count > 0) ArmForces(centreLocal, rotLocal);
             // The body's own motion (walking and turning) carried straight across, the gap closed on top: steered by the gap
             // alone it trailed a turn by ~10 degrees, and its back corner swung into the forearms (round 15). (From the body's
             // walk and turn rate, not the target's step-to-step change: physics steps fall unevenly between frames.)

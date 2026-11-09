@@ -71,6 +71,19 @@ namespace Backrooms.Interaction
             return true;
         }
 
+        /// <summary>Where a moved prop is now and how it is turned (live or as last stored).</summary>
+        public bool Pose(ulong id, out Vector3 position, out Quaternion rotation)
+        {
+            position = default; rotation = Quaternion.identity;
+            if (!_moved.TryGetValue(id, out var r)) return false;
+            if (r.live) { position = r.live.transform.position; rotation = r.live.transform.rotation; }
+            else { position = r.position; rotation = r.rotation; }
+            return true;
+        }
+
+        /// <summary>A moved prop's spec (what it is), or null.</summary>
+        public MovableSpec SpecOf(ulong id) => _moved.TryGetValue(id, out var r) ? r.spec : null;
+
         /// <summary>Gone for good (a contract's box sent through a seam, or its floor given up): out of the world and the save.</summary>
         public void Forget(ulong id)
         {

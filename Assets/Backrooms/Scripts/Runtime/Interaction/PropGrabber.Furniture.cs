@@ -105,6 +105,8 @@ namespace Backrooms.Interaction
                 _shake.avoid = on && Held ? _heldColliders : on && _target ? _target.GetComponentsInChildren<Collider>() : null;
                 // A box lifted above the hips: the strap camera tips up to keep it in the picture (to stack it).
                 _shake.strapLook = on && Carrying && Held.Spec.kind == MovableKind.Box && _carryLift > 0.12f ? Held.WorldBounds.center : (Vector3?)null;
+                // Carrying a box: the view goes where you look (to aim where it goes down), from nearer the eye.
+                _shake.strapFollow = on && (CarryingBox || (Current == State.Reaching && _target && _target.Spec.kind == MovableKind.Box)) ? 0.9f : 0f;
             }
         }
 

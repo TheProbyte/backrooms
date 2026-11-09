@@ -88,7 +88,7 @@ namespace Backrooms.Camcorder
         public float walkJitter = 1f;           // how much of the recorded walk's stride-to-stride irregularity is kept, x (HandheldCameraShake.walkJitter)
         public int handsInView = 1;             // 0 full, 1 low (held things at the bottom edge), 2 off (no hand drawn): PropGrabber
         public float hangingShake = 1f;         // the camera on its strap (hands busy): its swing and shake, x (HandheldCameraShake.hangingShake)
-        public int body = 2;                    // 0 full body, 1 hands only (arms while they do something), 2 none (the default since 2026-10-31): PropGrabber.bodyMode
+        public int body = 0;                    // 0 full body (the default since 2026-11-08: the Overflow style always shows you), 1 hands only, 2 none: PropGrabber.bodyMode
 
         // Format and playback
         public int format = 0;                  // CamcorderFormat.Names
@@ -129,6 +129,7 @@ namespace Backrooms.Camcorder
         const string PrefsKey = "Backrooms.CamcorderSettings.v1";
         const string BackupKey = "Backrooms.CamcorderSettings.v1.BeforeLook2";
         const string HighlightKey = "Backrooms.CamcorderSettings.RefMatchHighlight";
+        const string FullBodyKey = "Backrooms.CamcorderSettings.FullBody";
 
         public static CamcorderSettings Load()
         {
@@ -138,6 +139,9 @@ namespace Backrooms.Camcorder
                 if (!string.IsNullOrEmpty(json))
                 {
                     var s = JsonUtility.FromJson<CamcorderSettings>(json);
+                    // Once (2026-11-08, owner: "make full body default", the Classic style is going): saved settings show
+                    // the body.
+                    if (!PlayerPrefs.HasKey(FullBodyKey)) { PlayerPrefs.SetInt(FullBodyKey, 1); if (s.body != 0) { s.body = 0; s.Save(); } }
                     if (s.lookVersion < CurrentLookVersion)
                     {
                         // The picture settings changed units: keep a copy of the old ones, convert, save.

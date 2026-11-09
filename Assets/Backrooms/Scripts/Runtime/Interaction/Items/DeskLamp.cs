@@ -331,9 +331,14 @@ namespace Backrooms.Interaction
         void TryStartPlugged()
         {
             if (!startPlugged || !_plug) return;
+            var exit = transform.TransformPoint(CordExit);
+            // (Only while the outlets round it are loaded: a lamp put out while its floor was away, the starter shelf's,
+            // gave up before its outlet existed.)
+            bool any = false;
+            foreach (var s in Sockets.Around(exit)) if (s.IsWall && !s.dead) { any = true; break; }
+            if (!any) return;
             _plugTries += Time.deltaTime;
             if (_plugTries > 5f) { startPlugged = false; return; }
-            var exit = transform.TransformPoint(CordExit);
             Socket best = null; float bd = CordLength * 0.85f;
             foreach (var s in Sockets.Around(exit))
             {

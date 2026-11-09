@@ -37,7 +37,7 @@ namespace Backrooms.Interaction
         [Tooltip("Most the hand can pull or push sideways (N).")] public float maxPush = 650f;
         [Tooltip("Most the hand can lift (N).")] public float maxLift = 480f;
         [Tooltip("Hold stiffness (rad/s of the hand's spring).")] public float stiffness = 11f;
-        [Tooltip("Props up to this mass (kg) are carried rather than dragged (boxes).")] public float carryMass = 12f;
+        [Tooltip("Props up to this mass (kg) are carried rather than dragged (boxes).")] public float carryMass = 14f;
 
         [Header("Controls")]
         [Tooltip("Metres the held end moves per mouse count.")] public float mouseToMetres = 0.0011f;
@@ -229,15 +229,26 @@ namespace Backrooms.Interaction
                     if (OnDoor) { UpdateDoor(hold); break; }
                     // (Round 11: a click on a door opens it, or shuts it if it is well open; held on, it is the careful way.)
                     if (_water != WaterPhase.None) break;
-                    if (pressed) { if (!TryHandUse() && !TryStartPoke() && !TryPickUp() && !TryQuickDoor(true) && !TryTouchWater()) TryStart(); }
+                    if (pressed) { if (!(_cam && Machines.TryClick(_cam.transform.position, _cam.transform.forward)) && !TryHandUse() && !TryStartPoke() && !TryPickUp() && !TryQuickDoor(true) && !TryTouchWater() && !TryQuickCarry()) TryStart(); }
                     else if (shovePressed) { if (!TryQuickDoor()) Push(); }
                     break;
                 case State.Reaching:
-                    if (!hold || !_target) { Cancel(); break; }
+                    if (!_target || (!hold && !IsLight(_target))) { Cancel(); break; }
                     UpdateReach();
                     break;
                 case State.Holding:
-                    if (!hold || !Held) { Release(!hold ? "let go" : "prop gone"); break; }
+                    if (!Held) { Release("prop gone"); break; }
+                    // A kit crate with its outline green: right mouse puts what is in it up there (KitPlacer).
+                    if (shovePressed && KitPlacer.CanPlace(Held) && _arm.Count == 0) { var kit = Held; Release("put up"); KitPlacer.Place(kit); break; }
+                    if (Carrying)
+                    {
+                        // (2026-11-08: click to take, click to put down; right click does nothing, it flung boxes spinning.)
+                        if (CarryingBox) { UpdateBoxInput(focus, pressed, hold); if (!CarryingBox) break; }
+                        else if (pressed) { Release("put down"); break; }
+                        UpdateCarry(md);
+                        break;
+                    }
+                    if (!hold) { Release("let go"); break; }
                     if (shovePressed) { ShoveAndRelease(); break; }
                     // Light things are carried, heavy ones pushed by the top or tipped from underneath (PropGrabber.Carry,
                     // PropGrabber.Furniture).
@@ -274,7 +285,7 @@ namespace Backrooms.Interaction
         void UpdateStoop()
         {
             float want = 0f;
-            if (Current != State.Idle && _target)
+            if (Current != State.Idle && _target && !CarryingBox)
             {
                 float handY = Current == State.Holding ? (StandShoulder + transform.rotation * _offset).y : _target.transform.TransformPoint(_gripLocal).y;
                 want = Mathf.Clamp(StandShoulder.y - (handY + 0.35f), 0f, 0.8f);
@@ -283,6 +294,24 @@ namespace Backrooms.Interaction
             // hand goes out and closes on it, and straightened as it comes up.
             bool picking = _planned && (_fetch || (HeldItem && _itemT < 1f) || (_target && Current != State.Idle));
             if (picking) want = Mathf.Max(want, _pickStoop * (HeldItem && _itemT > 0f ? 1f - Ease(0.15f, 0.9f, _itemT) : 1f));
+            // A box taken: a quick bend down to it and up with it (PropGrabber.Boxes), and a dip as a heavy one comes up.
+            if (_quickStoopT >= 0f)
+            {
+                _quickStoopT += Time.deltaTime;
+                float u = _quickStoopT / Mathf.Max(0.1f, _quickStoopDur);
+                float env = u < 0.35f ? u / 0.35f : Mathf.Clamp01(1f - (u - 0.35f) / 0.65f);
+                want = Mathf.Max(want, _quickStoop * env);
+                picking = true;
+                if (u >= 1f) _quickStoopT = -1f;
+            }
+            if (_liftDipT >= 0f)
+            {
+                _liftDipT += Time.deltaTime;
+                float u = _liftDipT / 0.32f;
+                want = Mathf.Max(want, _liftDipAmt * Mathf.Sin(Mathf.Clamp01(u) * Mathf.PI));
+                picking = true;
+                if (u >= 1f) _liftDipT = -1f;
+            }
             // Putting an item down by hand (E): the squat its spot asks for (PropGrabber.Place).
             if (PlaceBends) { want = Mathf.Max(want, _placeStoop); picking = true; }
             // A held item taking the hand somewhere (a plug to a socket, an item off the floor): bend down for it and step
@@ -462,6 +491,7 @@ namespace Backrooms.Interaction
             if (Current == State.Holding) MicThump();
             if (Current == State.Holding) LastRelease = reason;
             if (_target && Current != State.Idle) { ClearPlan(); StopPickStep(); }
+            if (_arm.Count > 0) DropArmBoxes();
             if (Held)
             {
                 Held.held = false;

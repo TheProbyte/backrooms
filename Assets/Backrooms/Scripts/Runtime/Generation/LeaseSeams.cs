@@ -9,8 +9,8 @@ namespace Backrooms.Generation
     /// <item>Seams: places where the wall has torn and the real world shows through (the orientation video: "out there, the
     /// walls get thin"), each with an intake chute beside it that goods come out of, or are sent back through. A seam is a
     /// pinned wall fitting "SeamCrack" whose variant is its kind (<see cref="Kinds"/>); Interaction.Seam makes it work.</item>
-    /// <item>Storage rooms: a room cleared out and lined with empty shelving (solid shelves: boxes go on them), flagged
-    /// <see cref="Room.leaseStorage"/>: where Store contracts' boxes must end up.</item>
+    /// <item>Old storerooms: a room cleared out, flagged <see cref="Room.leaseStorage"/>, a knocked-over shelf or two lying
+    /// in it (since 2026-11-08 storage is wherever you put shelves: Interaction.Shelves).</item>
     /// </list>
     /// More of both on a small floor, fewer a district on a big one (about 3, 5 and 8 seams). Never in the lift's district.
     /// </summary>
@@ -34,12 +34,53 @@ namespace Backrooms.Generation
             {
                 // The lift's arrival hall: always lit (it is where every shift starts).
                 if (L.roomOf[6, 4] >= 0) Light(L, L.RoomAt(6, 4));
+                Starter(L);                                         // the starter shelf's wall and its outlet
                 return;
             }
             // (About six of each in the core's 16 districts, three more in each wing.)
             const double pStore = 0.38, pSeam = 0.38;
             if (rng.NextDouble() < pStore) Storage(L, rng);
-            if (rng.NextDouble() < pSeam) Seam(L, rng);
+            bool seam = rng.NextDouble() < pSeam;
+            // The first order's seam: always there, beside the lift's district, as near the lift as a wall allows.
+            if (district == FirstSeamDistrict(slot)) Seam(L, rng, FirstKind, LiftIn(district, slot));
+            else if (seam) Seam(L, rng);
+        }
+
+        // ---------------- The first seam (2026-11-08) ----------------
+
+        /// <summary>The kind of the first seam: the WAREHOUSE, TALLMORE's (WorkOrders' FIRST STORAGE; clients and kinds
+        /// share their numbers).</summary>
+        public const int FirstKind = 0;
+
+        /// <summary>
+        /// The district with the first seam (the owner, 2026-11-08: "how you supposed to find what the first contract asks
+        /// for?"): the one west or south of the lift's (the lift hall is in its south-west corner, so both are close),
+        /// picked by the floor. Its seam is a WAREHOUSE on the wall nearest the lift, and the company's tape on the floor
+        /// leads there from the lift (Interaction.GuideTape). Every other seam is still found by exploring.
+        /// </summary>
+        public static Vector2Int FirstSeamDistrict(int slot) => LeasePlan.Centre(slot) + ((slot * 7 + 3) % 2 == 0 ? Vector2Int.left : Vector2Int.down);
+
+        /// <summary>Is this the first seam (the taped one)?</summary>
+        public static bool IsFirst(SeamInfo s, int slot)
+        {
+            float size = WorldGenSettings.DistrictCells * C;
+            var d = new Vector2Int(Mathf.FloorToInt(s.position.x / size), Mathf.FloorToInt(s.position.z / size));
+            return s.kind == FirstKind && slot >= 0 && d == FirstSeamDistrict(slot);
+        }
+
+        /// <summary>Where you step out of the lift (world m).</summary>
+        public static Vector3 LiftDoor(int slot)
+        {
+            var r = CustomRooms.OverflowRooms.WorldLiftRect;
+            float x = r.x * C + (CustomRooms.OverflowRooms.WorldDoorFrom + CustomRooms.OverflowRooms.WorldDoorTo) * 0.5f, z = r.y * C - 1.8f;
+            return LeasePlan.DistrictOrigin(LeasePlan.Centre(slot)) + new Vector3(x, 0f, z);
+        }
+
+        /// <summary>The lift's door in a district's own metres (x, z).</summary>
+        static Vector2 LiftIn(Vector2Int district, int slot)
+        {
+            var p = LiftDoor(slot) - LeasePlan.DistrictOrigin(district);
+            return new Vector2(p.x, p.z);
         }
 
         // ---------------- Storage ----------------
@@ -58,41 +99,98 @@ namespace Backrooms.Generation
             }
             if (best == null) return;
             var rc = best.rect;
+            // (2026-11-08, Docs/GameDesign.md section 8: storage is wherever you put shelves, so there are no storage rooms
+            // now.) An old storeroom: cleared out, its lights left as they were, a knocked-over shelf or two lying in it
+            // (Interaction.Shelves puts them out: FoundSpots) for whoever finds it to stand up again.
             best.leaseStorage = true;
-            Light(L, best);
-            // Cleared out: what the offices left goes (pinned fittings and plates stay).
             L.props.RemoveAll(p => !p.pinned && rc.Contains(new Vector2Int(Mathf.FloorToInt(p.position.x / C), Mathf.FloorToInt(p.position.y / C))));
-            // Empty shelving along the walls (a gap by each door), solid shelves to put the boxes on.
-            var size = new Vector3(1.1f, 2.0f, 0.46f);
+        }
+
+        // ---------------- The starter shelf (2026-11-08) ----------------
+
+        /// <summary>
+        /// The lift's district: a wall cell of the arrival hall for the starter shelf and the wall cell beside it, where its
+        /// outlet is (the desk lamp plugs in there). Deterministic from the layout, so the generator (which puts the outlet
+        /// in) and Interaction.Contracts (which puts the shelf and lamp out) agree. Kept clear of the lift's gate.
+        /// </summary>
+        static bool StarterCells(OfficeLayout L, out int x, out int z, out int side, out int ox, out int oz)
+        {
+            x = z = side = ox = oz = 0;
+            if (L.roomOf[6, 4] < 0) return false;
+            var room = L.RoomAt(6, 4);
+            var rc = room.rect;
+            var gate = new Vector2((CustomRooms.OverflowRooms.WorldLiftRect.xMin + 1.5f) * C, CustomRooms.OverflowRooms.WorldLiftRect.yMin * C);
             for (int s = 0; s < 4; s++)
             {
                 bool alongZ = s < 2;
                 int n = alongZ ? rc.height : rc.width;
                 int fixedC = s == 0 ? rc.xMin : s == 1 ? rc.xMax - 1 : s == 2 ? rc.yMin : rc.yMax - 1;
                 int a0 = alongZ ? rc.yMin : rc.xMin;
-                for (int i = 0; i < n; i++)
+                for (int i = 0; i + 1 < n; i++)
                 {
-                    int x = alongZ ? fixedC : a0 + i, z = alongZ ? a0 + i : fixedC;
-                    if (L.EdgeOf(x, z, s) != EdgeKind.Wall || DistrictGenerator.CellHasDoor(L, x, z)) continue;
-                    var pos = OnWall(x, z, s, size.z + 0.02f, 0.5f);
-                    L.props.Add(new Prop { kind = PropKind.Shelving, position = pos, yaw = Yaw(s), size = size, variant = rng.Next(1 << 16) | StorageShelf, roomColor = best.color, pinned = true });
+                    int cx = alongZ ? fixedC : a0 + i, cz = alongZ ? a0 + i : fixedC;
+                    int nx = alongZ ? fixedC : a0 + i + 1, nz = alongZ ? a0 + i + 1 : fixedC;
+                    if (L.roomOf[cx, cz] != L.roomOf[6, 4] || L.roomOf[nx, nz] != L.roomOf[6, 4]) continue;
+                    if (L.EdgeOf(cx, cz, s) != EdgeKind.Wall || DistrictGenerator.CellHasDoor(L, cx, cz)) continue;
+                    if (L.EdgeOf(nx, nz, s) != EdgeKind.Wall || DistrictGenerator.CellHasDoor(L, nx, nz)) continue;
+                    if (Vector2.Distance(OnWall(cx, cz, s, 0f, 0.5f), gate) < 4.5f) continue;
+                    x = cx; z = cz; side = s; ox = nx; oz = nz;
+                    return true;
                 }
             }
-            // A STORAGE sign on the first free wall cell.
-            for (int s = 0; s < 4; s++)
+            return false;
+        }
+
+        static void Starter(OfficeLayout L)
+        {
+            if (!StarterCells(L, out int x, out int z, out int s, out int ox, out int oz)) return;
+            var shelfCell = new Vector2Int(x, z);
+            var outCell = new Vector2Int(ox, oz);
+            // Nothing else on the shelf's wall; the outlet low on the next cell's wall, live.
+            L.plates.RemoveAll(p => (p.cell == shelfCell || p.cell == outCell) && p.side == s);
+            L.plates.Add(new WallPlate { cell = outCell, side = s, t = 0.5f, height = 0.3f, isSwitch = false, live = true, roomColor = L.RoomAt(x, z).color });
+            var mid = OnWall(x, z, s, 0f, 0.5f) + Fwd(s) * 0.8f;
+            L.props.RemoveAll(p => !p.pinned && (p.position - mid).sqrMagnitude < 1.6f * 1.6f);
+        }
+
+        /// <summary>The starter shelf (its middle at the foot, district metres, against the wall), which way it faces, and its
+        /// outlet's place on the wall.</summary>
+        public static bool StarterSpot(OfficeLayout L, out Vector2 shelf, out float yaw, out Vector2 outlet)
+        {
+            shelf = outlet = default; yaw = 0f;
+            if (!StarterCells(L, out int x, out int z, out int s, out int ox, out int oz)) return false;
+            shelf = OnWall(x, z, s, 0.46f + 0.02f, 0.5f);
+            outlet = OnWall(ox, oz, s, 0f, 0.5f);
+            yaw = Yaw(s);
+            return true;
+        }
+
+        /// <summary>Where the knocked-over shelves of a district lie (district metres): one or two in each old storeroom,
+        /// lying across its middle, and which way each was facing when it stood. Deterministic from the district.</summary>
+        public static void FoundSpots(OfficeLayout L, Vector2Int district, List<(Vector2 at, float yaw)> into)
+        {
+            var rng = new System.Random(district.x * 7349 + district.y * 2069 + 0x5E1F);
+            foreach (var r in L.rooms)
             {
-                int x = s == 1 ? rc.xMax - 1 : rc.xMin + rc.width / 2, z = s == 3 ? rc.yMax - 1 : s == 2 ? rc.yMin : rc.yMin + rc.height / 2;
-                if (s == 0) x = rc.xMin;
-                if (L.EdgeOf(x, z, s) != EdgeKind.Wall || DistrictGenerator.CellHasDoor(L, x, z)) continue;
-                var pos = OnWall(x, z, s, 0f, 0.5f);               // on the wall over the shelving's top
-                L.props.Add(new Prop { kind = PropKind.Fitting, model = "LeaseStorageSign", position = pos, yaw = Yaw(s), elevation = 2.08f, pinned = true, roomColor = best.color });
-                break;
+                if (!r.leaseStorage) continue;
+                var c = r.rect.center * C + new Vector2((float)(rng.NextDouble() - 0.5), (float)(rng.NextDouble() - 0.5)) * 0.6f;
+                float yaw = rng.Next(4) * 90f + (float)(rng.NextDouble() - 0.5) * 30f;
+                into.Add((c, yaw));
+                // Now and then a second one, fallen beside the first (lying 1.1 m wide, side by side with a gap).
+                if (rng.NextDouble() < 0.4 && Mathf.Min(r.rect.width, r.rect.height) >= 4)
+                {
+                    float a = yaw * Mathf.Deg2Rad;
+                    var right = new Vector2(Mathf.Cos(a), -Mathf.Sin(a));
+                    into.Add((c + right * 1.35f, yaw + (float)(rng.NextDouble() - 0.5) * 12f));
+                }
             }
         }
 
         // ---------------- Seams ----------------
 
-        static void Seam(OfficeLayout L, System.Random rng)
+        /// <param name="kind">Its kind, or -1 for any.</param>
+        /// <param name="near">If set, the spot nearest this point (district m) rather than one at random.</param>
+        static void Seam(OfficeLayout L, System.Random rng, int kind = -1, Vector2? near = null)
         {
             var spots = new List<(int x, int z, int s, Room r)>();
             foreach (var r in L.rooms)
@@ -128,13 +226,23 @@ namespace Backrooms.Generation
             }
             if (spots.Count == 0) return;
             var (cx, cz, side, room) = spots[rng.Next(spots.Count)];
+            if (near.HasValue)
+            {
+                float best = float.MaxValue;
+                foreach (var sp in spots)
+                {
+                    float d = (OnWall(sp.x, sp.z, sp.s, 0f, 0.5f) - near.Value).sqrMagnitude;
+                    if (d < best) { best = d; (cx, cz, side, room) = sp; }
+                }
+            }
             // The tear in the middle of its cell's wall; room cleared in front of it (where a chute would go, and boxes).
             var at = OnWall(cx, cz, side, 0f, 0.5f);
             var along = Right(side);
             var fwd = Fwd(side);
             var mid = at + fwd * C;
             L.props.RemoveAll(p => !p.pinned && Mathf.Abs(Vector2.Dot(p.position - mid, along)) < 1.9f && Mathf.Abs(Vector2.Dot(p.position - mid, fwd)) < 1.3f);
-            int kind = rng.Next(Kinds.Length);
+            int rolled = rng.Next(Kinds.Length);
+            if (kind < 0) kind = rolled;
             L.props.Add(new Prop { kind = PropKind.Fitting, model = "SeamCrack", position = at, yaw = Yaw(side), variant = kind, pinned = true, roomColor = room.color });
             // The way through: a noclip door the tear's size, into the room of its kind (SeamPlan).
             var cell = new Vector2Int(cx, cz);

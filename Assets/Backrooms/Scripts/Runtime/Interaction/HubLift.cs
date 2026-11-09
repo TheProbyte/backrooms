@@ -270,9 +270,12 @@ namespace Backrooms.Interaction
         void CabPressed(int side)
         {
             var c = _cabs[side];
-            // Down from the hub only with a contract taken (Docs/ContractFloorsPlan.md): nowhere to go without one.
+            // Down from the hub only with a contract taken (Docs/ContractFloorsPlan.md): nowhere to go without one. With
+            // work orders on the board (2026-11-08) the floor is always yours to go down to (to clock in, put up shelves,
+            // light them), until closing.
             var cs = Contracts.Instance;
-            if (side == Hub && cs && !cs.HasFloor && !c.leaving)
+            bool orders = WorkOrders.Active && cs && !cs.Closed;
+            if (side == Hub && cs && !cs.HasFloor && !orders && !c.leaving)
             {
                 Camcorder.CamcorderOSD.Notice("NO JOB TAKEN - SEE THE BOARD");
                 return;
@@ -477,7 +480,7 @@ namespace Backrooms.Interaction
                 float m = c.localRider ? _moment : 0f;
                 Fade(c.motor, moving ? (0.08f + 0.4f * speed) * (1f - 0.7f * m) : arriving ? 0.05f : 0f, dt * 0.8f);
                 if (c.motor) c.motor.pitch = (0.7f + 0.4f * speed) * (c.localRider ? warble : 1f);
-                Fade(c.fan, 0.08f, dt);
+                Fade(c.fan, 0.08f * GameSettings.Ambience, dt);          // (the building's sound: AMBIENCE)
                 Fade(c.doors, doorsMoving ? 0.3f : 0f, dt * 2.5f);
                 Fade(c.tone, moving ? 0.5f * m : 0f, dt * 2f);
                 if (c.tone) c.tone.pitch = 1f / Mathf.Max(0.5f, warble);

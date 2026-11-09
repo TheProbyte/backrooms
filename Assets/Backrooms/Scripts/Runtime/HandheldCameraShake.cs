@@ -86,6 +86,13 @@ namespace Backrooms
         /// <summary>While it hangs: a point it tips up or down to keep in the picture (a box lifted to stack it), or null.</summary>
         [System.NonSerialized] public Vector3? strapLook;
         float _strapLookW, _strapLookTip;
+        /// <summary>
+        /// While it hangs: 0 it looks ahead and down from the chest (the look moves it a quarter as far), 1 it is held up
+        /// nearer the eye and looks where you look (carrying a box: 2026-11-08, the owner found the chest view covered by
+        /// the box and the outline needs aiming).
+        /// </summary>
+        [System.NonSerialized] public float strapFollow;
+        float _strapFollowS;
         Vector3 _clear;
         float _strapT;
         Vector3 _swing, _swingVel, _lastVel, _velF;
@@ -295,9 +302,11 @@ namespace Backrooms
                     _swing += _swingVel * h;
                 }
                 _swing = Vector3.ClampMagnitude(_swing, 30f);
-                float tip = 10f + 0.25f * player.Pitch;
-                float hs = Mathf.Max(0f, hangingShake);
-                Vector3 wp = pivot.position + body.rotation * (new Vector3(0f, -0.34f, 0.1f) + pos * shakeIntensity * 1.3f * hs);
+                _strapFollowS = Mathf.MoveTowards(_strapFollowS, Mathf.Clamp01(strapFollow), dt / 0.35f);
+                float follow = Mathf.SmoothStep(0f, 1f, _strapFollowS);
+                float tip = Mathf.Lerp(10f + 0.25f * player.Pitch, player.Pitch, follow);
+                float hs = Mathf.Max(0f, hangingShake) * (1f - 0.6f * follow);
+                Vector3 wp = pivot.position + body.rotation * (new Vector3(0f, Mathf.Lerp(-0.34f, -0.1f, follow), Mathf.Lerp(0.1f, 0.05f, follow)) + pos * shakeIntensity * 1.3f * hs);
                 // Kept on what the hands lift (round 14: a box raised to stack it went out of the top of the picture).
                 if (strapLook.HasValue)
                 {

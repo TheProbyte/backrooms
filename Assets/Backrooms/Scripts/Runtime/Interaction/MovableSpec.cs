@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Backrooms.Interaction
 {
-    public enum MovableKind { Sofa, Armchair, OfficeChair, Table, Box, Pallet, WoodenChair, LawnChair, SchoolChair, UtilityCart, JanitorCart, PlatformTruck }
+    public enum MovableKind { Sofa, Armchair, OfficeChair, Table, Box, Pallet, WoodenChair, LawnChair, SchoolChair, UtilityCart, JanitorCart, PlatformTruck, Shelf, Generator, Conveyor, Floodlight }
 
     /// <summary>
     /// Everything needed to (re)create one movable prop: what it looks like and what kind of thing it is.
@@ -31,6 +31,8 @@ namespace Backrooms.Interaction
         public int variant;
         public readonly List<Part> parts = new List<Part>();
         public bool cardboard;            // a cardboard box: the mesh is built at spawn (needs the main thread)
+        /// <summary>Its weight (kg) if set (a client's box: Contracts.BoxShapes); 0: from its kind and size.</summary>
+        public float mass;
         public Material[] materials;      // board, tape, print
 
         public Vector3 position;          // world, where the generator put it
@@ -185,6 +187,51 @@ namespace Backrooms.Interaction
                     s.rolls = true;
                     break;
                 }
+                case MovableKind.Shelf:
+                {
+                    // Overflow's shelving (Interaction.Shelves): each deck solid so boxes stand on it, the four posts, a thin
+                    // back at -Z (the wall). Knocked over, it is the same boxes lying down (its rotation does that).
+                    var t = ShelfTypes.Get(spec.variant);
+                    float w = t.size.x, sh = t.size.y, d = t.size.z;
+                    for (int l = 0; l < t.levels; l++)
+                    {
+                        float top2 = ShelfTypes.DeckTop(t, l);
+                        Box(s, -w * 0.5f, w * 0.5f, top2 - 0.04f, top2, -d * 0.5f, d * 0.5f);
+                    }
+                    for (int sx = -1; sx <= 1; sx += 2)
+                    for (int sz = -1; sz <= 1; sz += 2)
+                        Box(s, sx * w * 0.5f - (sx > 0 ? 0.05f : 0f), sx * w * 0.5f + (sx < 0 ? 0.05f : 0f), 0f, sh,
+                            sz * d * 0.5f - (sz > 0 ? 0.05f : 0f), sz * d * 0.5f + (sz < 0 ? 0.05f : 0f));
+                    Box(s, -w * 0.5f, w * 0.5f, 0f, sh, -d * 0.5f, -d * 0.5f + 0.015f);
+                    s.mass = 60f + 20f * w;
+                    s.friction = 0.6f;
+                    s.centreOfMass = new Vector3(0f, sh * 0.4f, 0f);
+                    break;
+                }
+                case MovableKind.Generator:
+                case MovableKind.Conveyor:
+                case MovableKind.Floodlight:
+                {
+                    // The machines (Interaction.Machines): a generator is a block; a conveyor's belt is a slab at its top
+                    // (boxes ride on it) over its legs; a floodlight a base, its pole and its head.
+                    var z = spec.size;
+                    if (spec.kind == MovableKind.Conveyor)
+                    {
+                        Box(s, -z.x * 0.5f, z.x * 0.5f, Machines.BeltTop - 0.14f, Machines.BeltTop, -z.z * 0.5f, z.z * 0.5f);
+                        Box(s, -0.08f, 0.08f, 0f, Machines.BeltTop - 0.14f, -z.z * 0.4f, z.z * 0.4f);
+                    }
+                    else if (spec.kind == MovableKind.Floodlight)
+                    {
+                        Box(s, -z.x * 0.5f, z.x * 0.5f, 0f, 0.08f, -z.z * 0.5f, z.z * 0.5f);
+                        Box(s, -0.05f, 0.05f, 0.08f, z.y - 0.3f, -0.05f, 0.05f);
+                        Box(s, -0.25f, 0.25f, z.y - 0.32f, z.y, -0.14f, 0.14f);
+                    }
+                    else Box(s, -z.x * 0.5f, z.x * 0.5f, 0f, z.y, -z.z * 0.5f, z.z * 0.5f);
+                    s.mass = 80f;
+                    s.friction = 0.6f;
+                    s.centreOfMass = new Vector3(0f, z.y * 0.4f, 0f);
+                    break;
+                }
                 case MovableKind.Pallet:
                 {
                     // One box round it (the slats are too thin to matter).
@@ -200,7 +247,7 @@ namespace Backrooms.Interaction
                     var z = spec.size;
                     Box(s, -z.x * 0.5f, z.x * 0.5f, 0f, z.y, -z.z * 0.5f, z.z * 0.5f);
                     bool full = (spec.variant & 7) == 0;          // one box in eight is full of paper
-                    s.mass = (full ? 14f : 1.5f) + z.x * z.y * z.z * (full ? 60f : 25f);
+                    s.mass = spec.mass > 0f ? spec.mass : (full ? 14f : 1.5f) + z.x * z.y * z.z * (full ? 60f : 25f);
                     s.centreOfMass = new Vector3(0f, z.y * 0.45f, 0f);
                     s.friction = 0.45f;
                     break;

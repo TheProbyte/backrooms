@@ -28,6 +28,15 @@ namespace Backrooms.Interaction
         [Tooltip("Furthest outlet you can plug into from your eye (m).")] public float reach = 2.2f;
         /// <summary>Placed by the world lit: its plug goes into the nearest outlet in reach once the outlets are loaded.</summary>
         [System.NonSerialized] public bool startPlugged;
+        /// <summary>How bright (1 a living room's lamp; the work lamp, WorkLamp, about three times as bright and further).</summary>
+        [System.NonSerialized] public float power = 1f;
+
+        /// <summary>A brighter, whiter lamp (the work lamp).</summary>
+        public void SetPower(float p, float range, Color colour)
+        {
+            power = p;
+            if (_light) { _light.range = range; _light.color = colour; }
+        }
 
         Plug _plug;
         Cord _cord;
@@ -261,7 +270,7 @@ namespace Backrooms.Interaction
             _level = Mathf.MoveTowards(_level, Lit ? 1f : 0f, Time.deltaTime * (Lit ? 12f : 6f));
             bool on = _level > 0.01f;
             if (_light.enabled != on) _light.enabled = on;
-            _light.intensity = 1.8f * _level;
+            _light.intensity = 1.8f * _level * power;
             // A lamp far off keeps no shadow map (each is six faces).
             var cam = Camera.main;
             var want = cam && (cam.transform.position - transform.position).sqrMagnitude < 14f * 14f ? LightShadows.Soft : LightShadows.None;
