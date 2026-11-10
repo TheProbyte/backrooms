@@ -78,6 +78,7 @@ namespace Backrooms.Menu
             _open = true;
             _openedFrame = Time.frameCount;
             _panel.style.display = DisplayStyle.Flex;
+            Backrooms.UI.UiKit.Enter(_panel);
             Fill();
             ShowLook();
         }
@@ -332,7 +333,8 @@ namespace Backrooms.Menu
 
         void Beep(int kind)
         {
-            if (_beep) _beep.PlayOneShot(SoundBank.MenuBeep(kind), SoundCatalog.Volume(SoundIds.MenuBeep));
+            // The kit's sounds (UI.UiSounds, 2026-11-10): 0 a move, 1 a choice, 2 back.
+            Backrooms.UI.UiSounds.Play(kind == 1 ? Backrooms.UI.UiSound.Select : kind == 2 ? Backrooms.UI.UiSound.Back : Backrooms.UI.UiSound.Move);
         }
 
         static Label Text(string text, string cls)

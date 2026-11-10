@@ -166,6 +166,12 @@ namespace Backrooms.DebugTools
             if (pause)
             {
                 pause.Open();
+                // Mid-slide (UI pass 5): three frames in, before its 120 ms are up.
+                for (int f = 0; f < 3; f++) yield return null;
+                yield return new WaitForEndOfFrame();
+                var mid = ScreenCapture.CaptureScreenshotAsTexture();
+                File.WriteAllBytes(Path.Combine(_dir, "13-pause-sliding.png"), mid.EncodeToPNG());
+                Destroy(mid);
                 yield return AllShapes("13-pause");
                 pause.Close();
                 yield return Frames(5);
@@ -243,6 +249,7 @@ namespace Backrooms.DebugTools
                 while ((Screen.width != s.w || Screen.height != s.h) && Time.realtimeSinceStartup < until) yield return null;
             }
             yield return Frames(6);   // the panels lay out again at the new size
+            yield return new WaitForSecondsRealtime(0.15f);   // (and a menu that has just come in has finished sliding)
         }
 
         void WriteIndex(float seconds)

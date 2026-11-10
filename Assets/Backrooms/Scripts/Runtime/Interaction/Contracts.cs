@@ -458,7 +458,8 @@ namespace Backrooms.Interaction
         internal void Beep(bool ok)
         {
             if (!_beep) return;
-            _beep.PlayOneShot(ok ? Tone(880f, 660f, 0.22f) : Tone(220f, 180f, 0.3f), 0.5f);
+            // (2026-11-10) The kit's confirm and refuse, from the board's own speaker in the world.
+            _beep.PlayOneShot(Backrooms.UI.UiSounds.Clip(ok ? Backrooms.UI.UiSound.Confirm : Backrooms.UI.UiSound.Refuse), 0.7f);
         }
 
         static readonly Dictionary<(float, float, float), AudioClip> s_tones = new Dictionary<(float, float, float), AudioClip>();

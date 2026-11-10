@@ -59,11 +59,14 @@ namespace Backrooms.Camcorder
                 _prevLock = Cursor.lockState;
                 Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
                 Fill();
+                Backrooms.UI.UiKit.Enter(_panel);
+                Backrooms.UI.UiSounds.Play(Backrooms.UI.UiSound.Select);
             }
             else
             {
                 var rig = _bench ? _bench.rig : null;
                 if (rig) rig.Settings.Save();
+                Backrooms.UI.UiSounds.Play(Backrooms.UI.UiSound.Back);
                 if (_prevLock == CursorLockMode.Locked) { Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
             }
         }
@@ -147,7 +150,7 @@ namespace Backrooms.Camcorder
             void Refresh() => val.text = value();
             Refresh();
             int index = _rows.Count;
-            _rows.Add((row, d => { step(d); RefreshAll(); }, desc, Refresh));
+            _rows.Add((row, d => { step(d); RefreshAll(); Backrooms.UI.UiSounds.Play(Backrooms.UI.UiSound.Select); }, desc, Refresh));
             row.RegisterCallback<PointerEnterEvent>(_ => Select(index));
             row.RegisterCallback<ClickEvent>(_ => { Select(index); _rows[index].step(1); });
             _list.Add(row);
@@ -158,6 +161,7 @@ namespace Backrooms.Camcorder
         void Select(int i)
         {
             if (_rows.Count == 0) return;
+            if (i != _sel && _open) Backrooms.UI.UiSounds.Play(Backrooms.UI.UiSound.Move);
             _sel = Mathf.Clamp(i, 0, _rows.Count - 1);
             for (int k = 0; k < _rows.Count; k++) _rows[k].el.EnableInClassList("pm-sel", k == _sel);
             _desc.text = _rows[_sel].desc;

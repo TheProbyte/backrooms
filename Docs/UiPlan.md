@@ -3,11 +3,11 @@
 A review of everything the player reads or clicks, with what to improve and in what order. Where an item changes the
 design, `GameDesign.md` changes with the work.
 
-**Where it stands (2026-11-10): passes 0 to 4 are built** (U1 the kit, U3 the picture run, U12 the developer switch;
-U4 the side panels, U5 prompts, U6 notices, U7 co-op; U8 the title screen, U9 one menu language, U10 settings, U11
-worlds and friends; U13 the player's F5, U14 the pixel-screen kit, U15 the boards; U17 small screens, U18 words in one
-place; details under each). U16 (a controller) is not wanted yet; pass 5 is not built. Pictures:
-`Docs/screenshots/ui/pass0/` to `pass4/`.
+**Where it stands (2026-11-10): every pass is built (0 to 5)**: U1 the kit, U3 the picture run, U12 the developer
+switch; U4 the side panels, U5 prompts, U6 notices, U7 co-op; U8 the title screen, U9 one menu language, U10 settings,
+U11 worlds and friends; U13 the player's F5, U14 the pixel-screen kit, U15 the boards; U17 small screens, U18 words in
+one place; U19 sounds and motion. Details, and what each left undone, under each item. U16 (a controller) is not wanted
+yet. Pictures: `Docs/screenshots/ui/pass0/` to `pass5/`. Not yet played by hand.
 
 **How to read it**
 - Every item says what was found, what to do, how big it is (**S** under a session, **M** a session or two, **L**
@@ -370,6 +370,14 @@ Numbers that matter (seen in the code):
   menus I opened today appeared and vanished without a transition.
 - **Do:** five sounds in the camcorder's voice (move, select, back, refuse, confirm) used everywhere; panels slide or
   wipe in 120 ms like a camcorder's menu; REDUCE MOTION turns that off.
+- **Built (2026-11-10):** `UI/UiSounds.cs`, five sounds made in code in the camcorder's beep (a small square wave, its
+  top rolled off): a move the lightest tick, a select rising, back falling, a refusal a low buzz twice, a confirm a
+  brighter rising chirp. The main menu, settings, YOUR LOOK, the pause menu and the player's F5 use them, and the hub's
+  boards play confirm and refuse from their own speaker in the world. `UiKit.Enter` and Kit.uss's `.kit-enter`: the
+  main menu (and the name), settings, YOUR LOOK, the pause menu and F5 come in over 120 ms from 14 px to the left,
+  see-through to solid (USS transitions). COMFORT has MENU MOTION (SLIDE or STILL); REDUCE MOTION sets STILL. Seen: a
+  picture three frames into the pause menu's slide. `UiPass5Tests`. **Not done:** the side panels, notices and pay slip
+  keep their own motion (they fade, blink and slide already); the developer's screens keep their sounds.
 
 ---
 
@@ -384,7 +392,7 @@ Each pass ends with the pictures from U3 taken again and the owner looking at th
 | **2. Menus** (built 2026-11-10) | Title, one menu language, settings, worlds and friends | U8, U9, U10, U11 | Main and pause menus look like one game; text size is a setting |
 | **3. Camcorder and world** (built 2026-11-10) | The player's F5, the pixel-screen kit, the boards | U13, U14, U15 | Nothing cut off in F5; every world screen readable at its distance |
 | **4. Reach** (built 2026-11-10) | Small screens, words in one place | U17, U18 (U16 not yet) | 12 px floor at 1280 x 800; wording in one file |
-| **5. Feel** | Sounds and motion | U19 | One set of sounds everywhere |
+| **5. Feel** (built 2026-11-10) | Sounds and motion | U19 | One set of sounds everywhere |
 
 IMGUI leaves the player's game as its screens are rebuilt (U2): the pause menu in pass 2, hints and pockets in pass 1,
 the co-op list in pass 1.

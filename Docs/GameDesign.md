@@ -131,6 +131,9 @@ camcorder. Alone or with up to three friends.
 - **The wording lives in one file,** `Resources/Text/Words.csv` (every notice, hint and note the player reads), in the
   layout Unity's Localization package imports, so the words can be changed without the code and a language added
   later; no text the player reads is under 12.6 px on a 1280 x 800 screen. [built 2026-11-10]
+- **The interface sounds and moves as one thing:** five sounds in the camcorder's beep (move, select, back, refuse,
+  confirm) in every menu and on the hub's boards; menus slide in over 120 ms, still with MENU MOTION off or REDUCE
+  MOTION. [built 2026-11-10]
 
 ## 5. The places
 
@@ -668,10 +671,11 @@ packing job → powered racks.
 ## Other docs
 
 - `Docs/UiPlan.md`: every screen, panel and prompt reviewed (2026-11-09), and a plan in passes to give them one look,
-  split the developer tools from the player's game, and reach small screens. Passes 0 to 4 built 2026-11-10 (the
+  split the developer tools from the player's game, and reach small screens. Every pass (0 to 5) built 2026-11-10 (the
   two typefaces and the colour names, the developer switch, `-ui-shots`; the side panels, prompts, notices, co-op
   marks; the title screen, pause menu, settings and world cards; the player's F5, readable screens in the world, the
-  boards; small screens, the words in one file); pass 5 not built. Decided 2026-11-10: the
+  boards; small screens, the words in one file; one set of sounds, menus that slide in); not yet played by hand.
+  Decided 2026-11-10: the
   developer tools and build mode are for the owner only (off in the player's game); no controller yet; other languages
   later; a title screen with the game's name, the name itself still open (Overflow is taken by a Japanese studio).
   The game's two typefaces: Pixelify Sans for the camcorder's marks, Courier Prime for the company's paper (menus,

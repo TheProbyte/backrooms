@@ -104,6 +104,8 @@ namespace Backrooms.CustomRooms
             _status = "";
             Fill();
             if (_root != null) _root.style.display = DisplayStyle.Flex;
+            Backrooms.UI.UiKit.Enter(_panel);
+            Backrooms.UI.UiSounds.Play(Backrooms.UI.UiSound.Select);
         }
 
         public void Close()
@@ -115,6 +117,7 @@ namespace Backrooms.CustomRooms
             if (_prevLock == CursorLockMode.Locked) { Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
             if (_root != null) _root.style.display = DisplayStyle.None;
             Disarm();
+            Backrooms.UI.UiSounds.Play(Backrooms.UI.UiSound.Back);
         }
 
         static void Load(string scene)
@@ -280,6 +283,7 @@ namespace Backrooms.CustomRooms
         void Select(int i)
         {
             if (_items.Count == 0) return;
+            if (i != _sel && _root != null && _root.style.display == DisplayStyle.Flex) Backrooms.UI.UiSounds.Play(Backrooms.UI.UiSound.Move);
             _sel = Mathf.Clamp(i, 0, _items.Count - 1);
             for (int k = 0; k < _items.Count; k++) _items[k].el.EnableInClassList("mm-sel", k == _sel);
         }
@@ -288,6 +292,7 @@ namespace Backrooms.CustomRooms
         {
             if (i < 0 || i >= _items.Count) return;
             Select(i);
+            Backrooms.UI.UiSounds.Play(Backrooms.UI.UiSound.Select);
             _items[i].act?.Invoke();
         }
 

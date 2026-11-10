@@ -80,6 +80,7 @@ namespace Backrooms.Menu
             _open = true;
             _openedFrame = Time.frameCount;
             _panel.style.display = DisplayStyle.Flex;
+            Backrooms.UI.UiKit.Enter(_panel);
             ShowPage(Page.Sound);
         }
 
@@ -196,7 +197,9 @@ namespace Backrooms.Menu
                     Option("BRIGHTNESS", () => { int b = Mathf.RoundToInt(GameSettings.Brightness * 4f); return (b > 0 ? "+" : "") + b; },
                            d => GameSettings.Brightness = Step(GameSettings.Brightness, d, 0.25f, -1.5f, 1.5f),
                            "THE CAMCORDER'S EXPOSURE: BRIGHTER OR DARKER THAN IT CHOOSES.", () => Mathf.InverseLerp(-1.5f, 1.5f, GameSettings.Brightness));
-                    Item("REDUCE MOTION", () => { GameSettings.ReduceMotion(); Beep(1); ShowPage(Page.Comfort); }, "IN ONE GO: A QUARTER OF THE SHAKE, NO BLUR.");
+                    Option("MENU MOTION", () => GameSettings.StillMenus ? "STILL" : "SLIDE", d => GameSettings.StillMenus = !GameSettings.StillMenus,
+                           "SLIDE: MENUS SLIDE IN, QUICKLY. STILL: THEY ARE THERE AT ONCE.");
+                    Item("REDUCE MOTION", () => { GameSettings.ReduceMotion(); Beep(1); ShowPage(Page.Comfort); }, "IN ONE GO: A QUARTER OF THE SHAKE, NO BLUR, STILL MENUS.");
                     Item("DEFAULTS", () => { GameSettings.ResetComfort(); Beep(1); ShowPage(Page.Comfort); }, "COMFORT AS IT COMES.", true);
                     break;
 
@@ -382,7 +385,8 @@ namespace Backrooms.Menu
 
         void Beep(int kind)
         {
-            if (_beep) _beep.PlayOneShot(SoundBank.MenuBeep(kind), SoundCatalog.Volume(SoundIds.MenuBeep));
+            // The kit's sounds (UI.UiSounds, 2026-11-10): 0 a move, 1 a choice, 2 back.
+            Backrooms.UI.UiSounds.Play(kind == 1 ? Backrooms.UI.UiSound.Select : kind == 2 ? Backrooms.UI.UiSound.Back : Backrooms.UI.UiSound.Move);
         }
 
         static Label Text(string text, string cls)

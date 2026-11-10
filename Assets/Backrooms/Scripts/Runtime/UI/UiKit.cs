@@ -91,6 +91,21 @@ namespace Backrooms.UI
             _panel.referenceResolution = new Vector2Int(Mathf.RoundToInt(1920f / k), Mathf.RoundToInt(1080f / k));
         }
 
+        /// <summary>
+        /// A panel comes in (Docs/UiPlan.md U19, 2026-11-10): from a little to the left and see-through to in place over
+        /// 120 ms, as a camcorder's menu wipes in (Kit.uss .kit-enter). MENU MOTION off (or REDUCE MOTION): there at once.
+        /// </summary>
+        public static void Enter(VisualElement el)
+        {
+            if (el == null) return;
+            el.AddToClassList("kit-enter");
+            el.RemoveFromClassList("kit-in");
+            if (GameSettings.StillMenus) { el.AddToClassList("kit-still"); el.AddToClassList("kit-in"); return; }
+            el.RemoveFromClassList("kit-still");
+            // The end state a frame later, so the change from the start is what the transition runs.
+            el.schedule.Execute(() => el.AddToClassList("kit-in")).StartingIn(16);
+        }
+
         /// <summary>The share of the screen's width each black bar beside the 4:3 picture takes (0 without bars): menus sit
         /// inside the picture, not across the join.</summary>
         public static float BarShare => Screen.width > 0 ? Mathf.Clamp01(Camcorder.CamcorderOSD.SideWidth * Screen.height / (1080f * Screen.width)) : 0f;

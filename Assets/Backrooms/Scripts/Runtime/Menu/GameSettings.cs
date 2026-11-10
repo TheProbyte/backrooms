@@ -29,6 +29,7 @@ namespace Backrooms
             // (2026-11-10, Docs/UiPlan.md U10) Reading and holding.
             public int textSize;
             public bool holdCrouch, holdCrawl, steady, subtitles = true;
+            public bool stillMenus;
             public int version = 1;
         }
 
@@ -67,6 +68,8 @@ namespace Backrooms
         /// <summary>SUBTITLES for spoken lines (the PA voice and the orientation tape when they speak: CamcorderOSD.Subtitle).</summary>
         public static bool Subtitles { get => D.subtitles; set { D.subtitles = value; Changed(); } }
         public static event System.Action TextSizeChanged;
+        /// <summary>MENU MOTION off (2026-11-10, Docs/UiPlan.md U19): menus appear at once instead of sliding in.</summary>
+        public static bool StillMenus { get => D.stillMenus; set { D.stillMenus = value; Changed(); } }
 
         static void Load()
         {
@@ -95,11 +98,11 @@ namespace Backrooms
         /// <summary>Sound, controls and comfort back as they come.</summary>
         public static void ResetSound() { D.master = 1f; D.ambience = 1f; D.music = 1f; D.voices = 1f; D.micOn = true; D.pushToTalk = false; Changed(); }
         public static void ResetControls() { D.sensitivity = 1f; D.invertY = false; Changed(); }
-        public static void ResetComfort() { D.shake = 1f; D.blur = 1f; D.brightness = 0f; Changed(); }
+        public static void ResetComfort() { D.shake = 1f; D.blur = 1f; D.brightness = 0f; D.stillMenus = false; Changed(); }
         public static void ResetAccess() { D.textSize = 0; D.holdCrouch = D.holdCrawl = false; D.steady = false; D.subtitles = true; Changed(); }
 
         /// <summary>The motion-sickness preset (as Resident Evil 4's and others' one switch): little shake, no blur.</summary>
-        public static void ReduceMotion() { D.shake = 0.25f; D.blur = 0f; Changed(); }
+        public static void ReduceMotion() { D.shake = 0.25f; D.blur = 0f; D.stillMenus = true; Changed(); }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void Boot() { Load(); }
