@@ -147,7 +147,7 @@ namespace Backrooms.Interaction
                 if (Time.time - at < settle) continue;
                 _since.Remove(t);
                 Homes.Add(key);
-                Camcorder.CamcorderOSD.Title(Homes.Count == 1 ? "HOME" : "HOME  " + Homes.Count);
+                Camcorder.CamcorderOSD.Title(Homes.Count == 1 ? Backrooms.UI.Words.Get("title.home") : Backrooms.UI.Words.Get("title.home_n", Homes.Count));
                 Saves.WorldSaver.SaveNow();
             }
             // Forget rooms whose lamp went out or left.

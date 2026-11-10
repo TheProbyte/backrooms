@@ -78,7 +78,7 @@ namespace Backrooms.Interaction
         public void PayWindow()
         {
             if (D == null) return;
-            if (string.IsNullOrEmpty(D.lastSlip)) { CamcorderOSD.Notice("NO PAY SLIPS YET - ONE PRINTS EACH TIME YOU COME BACK UP"); Beep(false); return; }
+            if (string.IsNullOrEmpty(D.lastSlip)) { CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.no_slips")); Beep(false); return; }
             CamcorderOSD.ShowSlip(D.lastSlip);
             Beep(true);
         }

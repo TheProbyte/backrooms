@@ -72,7 +72,7 @@ namespace Backrooms.Interaction
                 fitting = model,                              // (blocks stand in if it is not loaded: MachineUnit)
             };
             mgr.Place(spec, at, rot);
-            CamcorderOSD.Notice(kind == Kits.Kind.Generator ? "GENERATOR SET UP - ON THE POWER BILL" : Kits.Name(kind) + " SET UP - CLICK IT TO PLUG IN");
+            CamcorderOSD.Notice(kind == Kits.Kind.Generator ? Backrooms.UI.Words.Get("line.generator_set_up") : Backrooms.UI.Words.Get("line.machine_set_up", Kits.Name(kind)));
             return id;
         }
 
@@ -148,14 +148,14 @@ namespace Backrooms.Interaction
             var kind = KindOf(id);
             if (kind == Kits.Kind.Generator)
             {
-                CamcorderOSD.Notice($"GENERATOR - LOAD {Load(id)} OF {Capacity}" + (Stalled(id) ? " - STALLED" : ""));
+                CamcorderOSD.Notice(Backrooms.UI.Words.Get(Stalled(id) ? "line.generator_load_stalled" : "line.generator_load", Load(id), Capacity));
                 return true;
             }
             if (PluggedInto(id) != 0)
             {
                 ulong was = PluggedInto(id);
                 Unplug(id);
-                CamcorderOSD.Notice("UNPLUGGED");
+                CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.unplugged"));
                 Audio.WorldSound.PlayAt(Audio.SoundBank.Tick(0), mp.transform.position, 0.5f, 8f, 0.8f);
                 if (was != 0 && !Stalled(was)) MachineUnit.Find(was)?.Restart();
                 return true;
@@ -168,15 +168,15 @@ namespace Backrooms.Interaction
                     float d = Vector3.Distance(gp, mp.transform.position);
                     if (d < bd) { bd = d; best = g; }
                 }
-            if (best == 0) { CamcorderOSD.Notice("NO GENERATOR IN REACH - ITS CABLE IS 12 M"); return true; }
+            if (best == 0) { CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.no_generator")); return true; }
             bool wasStalled = Stalled(best);
             D.plugMachine.Add(id); D.plugGenerator.Add(best);
             if (Stalled(best) && !wasStalled)
             {
-                CamcorderOSD.Notice("GENERATOR STALLED - TOO MUCH PLUGGED IN");
+                CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.generator_stalled"));
                 MachineUnit.Find(best)?.Clunk();
             }
-            else CamcorderOSD.Notice($"PLUGGED IN - LOAD {Load(best)} OF {Capacity}");
+            else CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.plugged_in", Load(best), Capacity));
             return true;
         }
 

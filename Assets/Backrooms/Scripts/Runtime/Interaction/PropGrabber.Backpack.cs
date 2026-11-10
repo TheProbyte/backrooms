@@ -158,8 +158,8 @@ namespace Backrooms.Interaction
                 best = _hits[i].distance; zip = z; other = z == null;
             }
             if (other || !zip || !zip.bag || zip.bag.Held || zip.bag.Worn) return null;
-            if (!zip.bag.IsOpen && !zip.OnPanel) return "CLICK TO UNZIP IT";
-            if (zip.bag.IsOpen && zip.OnPanel) return "CLICK TO ZIP IT SHUT";
+            if (!zip.bag.IsOpen && !zip.OnPanel) return Backrooms.UI.Words.Get("hint.unzip");
+            if (zip.bag.IsOpen && zip.OnPanel) return Backrooms.UI.Words.Get("hint.zip");
             return null;
         }
     }

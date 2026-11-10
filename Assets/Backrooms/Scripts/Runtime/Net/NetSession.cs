@@ -381,7 +381,7 @@ namespace Backrooms.Net
             if (p.id < 0) return;
             Peers.Remove(p.id);
             Debug.Log($"[Net] {p.name} left: {reason}");
-            Note($"{p.name} LEFT" + (reason == "LEFT" || string.IsNullOrEmpty(reason) ? "" : " (" + reason + ")"), p.Colour);
+            Note(reason == "LEFT" || string.IsNullOrEmpty(reason) ? Backrooms.UI.Words.Get("coop.left", p.name) : Backrooms.UI.Words.Get("coop.left_why", p.name, reason), p.Colour);
             PeerGone?.Invoke(p);
             Begin(Msg.PeerLeft).Int(p.id); _w.Str(reason ?? "");
             foreach (var o in Peers.Values) if (o.link >= 0 && o.welcomed) SendLink(o.link, true);
@@ -409,10 +409,10 @@ namespace Backrooms.Net
                     ulong ours = Digest != null ? Digest() : 0;
                     p.inWorld = true;
                     Debug.Log($"[Net] {p.name} is in the world (world fingerprint {(theirs == ours ? "matches" : $"DIFFERS: {theirs:X} vs {ours:X}")}).");
-                    Note($"{p.name} JOINED", p.Colour);
+                    Note(Backrooms.UI.Words.Get("coop.joined", p.name), p.Colour);
                     if (theirs != ours && ours != 0)
                     {
-                        Note($"{p.name}'S WORLD IS NOT THE SAME AS YOURS: ARE YOU BOTH ON THE SAME VERSION?", ImUi.Bad);
+                        Note(Backrooms.UI.Words.Get("coop.different_world", p.name), ImUi.Bad);
                         Begin(Msg.Notice).Str("YOUR WORLD IS NOT THE SAME AS THE HOST'S: ARE YOU BOTH ON THE SAME VERSION OF THE GAME?"); SendLink(link, true);
                     }
                     Begin(Msg.PeerReady).Int(p.id);
@@ -467,7 +467,7 @@ namespace Backrooms.Net
             Begin(Msg.PeerJoined).Int(id); _w.Str(unique); _w.Int(look);
             foreach (var o in Peers.Values) if (o.link >= 0 && o.id != id && o.welcomed) SendLink(o.link, true);
             Debug.Log($"[Net] {unique} is joining from {_t.Link(link)?.Remote} (player {id + 1}).");
-            Note($"{unique} IS JOINING ...", p.Colour);
+            Note(Backrooms.UI.Words.Get("coop.joining", unique), p.Colour);
         }
 
         static bool NameTaken(string n) { foreach (var o in Peers.Values) if (o.name == n) return true; return false; }
@@ -507,17 +507,17 @@ namespace Backrooms.Net
                     var p = new Peer { id = _r.Int(), name = _r.Str(), welcomed = true };
                     p.look = _r.Int();
                     Peers[p.id] = p;
-                    Note($"{p.name} IS JOINING ...", p.Colour);
+                    Note(Backrooms.UI.Words.Get("coop.joining", p.name), p.Colour);
                     return;
                 }
-                case Msg.PeerReady: { int id = _r.Int(); if (Peers.TryGetValue(id, out var p)) { p.inWorld = true; Note($"{p.name} JOINED", p.Colour); } return; }
+                case Msg.PeerReady: { int id = _r.Int(); if (Peers.TryGetValue(id, out var p)) { p.inWorld = true; Note(Backrooms.UI.Words.Get("coop.joined", p.name), p.Colour); } return; }
                 case Msg.PeerLeft:
                 {
                     int id = _r.Int(); string why = _r.Str();
                     if (Peers.TryGetValue(id, out var p))
                     {
                         Peers.Remove(id);
-                        Note($"{p.name} LEFT", p.Colour);
+                        Note(Backrooms.UI.Words.Get("coop.left", p.name), p.Colour);
                         PeerGone?.Invoke(p);
                     }
                     return;

@@ -33,7 +33,7 @@ namespace Backrooms.Interaction
             if (d.magnitude > Radius) return;
             _next = Time.time + 0.8f;
             Audio.WorldSound.PlayAt(Rattle(), door + Vector3.left * 0.1f, 0.35f, 10f, Random.Range(0.94f, 1.06f));
-            CamcorderOSD.Notice($"LOCKED - {Contracts.Clients[kind]}'S STAFF USE THIS DOOR");
+            CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.staff_door", Contracts.Clients[kind]));
         }
 
         /// <summary>A lever pressed against a locked latch: a clack, the latch rattling in its keeper twice, the lever back.</summary>

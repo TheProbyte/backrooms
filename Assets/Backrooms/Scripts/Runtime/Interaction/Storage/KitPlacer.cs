@@ -45,7 +45,7 @@ namespace Backrooms.Interaction
         {
             var k = Instance;
             if (!k || !held || !k._showing || held.Spec.id != k._kit) return null;
-            return k._valid ? $"RIGHT CLICK: PUT UP THE {Kits.Name(k._kind)} HERE · R TURNS IT" : (k._why ?? "NO ROOM HERE") + " · R TURNS IT";
+            return k._valid ? Backrooms.UI.Words.Get("hint.kit_place", Kits.Name(k._kind)) : (k._why ?? Backrooms.UI.Words.Get("hint.no_room")) + " · " + Backrooms.UI.Words.Get("hint.r_turns");
         }
 
         /// <summary>The hint line with empty hands, looking at a shelf (pack it, stand it up), or null.</summary>
@@ -68,7 +68,7 @@ namespace Backrooms.Interaction
             {
                 Shelves.Add(v, k._pos, k._rot);
                 d.kitShelves++;
-                CamcorderOSD.Notice(Kits.Name(kind) + " PUT UP");
+                CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.kit_put_up", Kits.Name(kind)));
             }
             else Machines.Add(kind, k._pos, k._rot);
             Audio.WorldSound.PlayAt(Audio.SoundBank.Tick(0), k._pos, 0.6f, 10f, 0.6f);
@@ -277,25 +277,25 @@ namespace Backrooms.Interaction
             if (!shelf) { _packT = 0f; _packing = 0; return; }
             if (shelf.Spec.kind == MovableKind.Shelf && ShelfTypes.IsBroken(shelf.Spec.variant))
             {
-                IdleHint = $"KNOCKED OVER · NAIL IT {Shelves.MendLeft(shelf.Spec.id)} TIMES WITH THE HAMMER TO STAND IT UP";
+                IdleHint = Backrooms.UI.Words.Get("hint.knocked_over", Shelves.MendLeft(shelf.Spec.id));
                 return;
             }
             bool g = Keyboard.current != null && Keyboard.current.gKey.isPressed;
             string click = !Machines.Is(shelf.Spec.id) ? "" : Machines.KindOf(shelf.Spec.id) == Kits.Kind.Generator ? "CLICK: ITS LOAD · "
                          : Machines.PluggedInto(shelf.Spec.id) != 0 ? "CLICK: UNPLUG · " : "CLICK: PLUG INTO A GENERATOR · ";
-            IdleHint = g ? "PACKING IT UP..." : click + "HOLD G TO PACK IT BACK INTO ITS CRATE";
+            IdleHint = g ? Backrooms.UI.Words.Get("hint.packing") : click + Backrooms.UI.Words.Get("hint.pack_up");
             if (!g || _packing != shelf.Spec.id) { _packT = 0f; _packing = g ? shelf.Spec.id : 0; return; }
             _packT += Time.deltaTime;
             if (_packT < 1.1f) return;
             _packT = 0f; _packing = 0;
-            if (shelf.Spec.kind == MovableKind.Shelf && HasBoxes(shelf)) { CamcorderOSD.Notice("TAKE THE BOXES OFF IT FIRST"); return; }
+            if (shelf.Spec.kind == MovableKind.Shelf && HasBoxes(shelf)) { CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.boxes_off_first")); return; }
             var at = shelf.transform.position + shelf.transform.rotation * new Vector3(0f, 0.01f, 0.9f);
             var rot = shelf.transform.rotation;
             Kits.Kind kind;
             if (shelf.Spec.kind == MovableKind.Shelf) { kind = Kits.ForShelf(shelf.Spec.variant); Shelves.Remove(shelf.Spec.id); }
             else { kind = Machines.KindOf(shelf.Spec.id); Machines.Remove(shelf.Spec.id); }
             Kits.Spawn(kind, at, rot);
-            CamcorderOSD.Notice("PACKED UP - " + Kits.Name(kind));
+            CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.packed_up", Kits.Name(kind)));
         }
 
         static bool HasBoxes(MovableProp shelf)

@@ -107,7 +107,7 @@ namespace Backrooms.Interaction
             if (_items.Count == 0) return;
             var it = _items[_pick];
             var cs = Contracts.Instance;
-            if (it.locked) { CamcorderOSD.Notice($"{it.name} - LOCKED - {WorkOrders.FinishText(it.unlock)} (J)"); cs?.Beep(false); return; }
+            if (it.locked) { CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.locked_item", it.name, WorkOrders.FinishText(it.unlock))); cs?.Beep(false); return; }
             string no = it.kind == Kind.Poolrooms && LeasePlan.WingCount == 0 ? "LEASE A WING FIRST"
                       : D.pay < it.cost ? $"NOT ENOUGH - ${D.pay} IN HAND" : null;
             if (no != null) { CamcorderOSD.Notice(no); cs?.Beep(false); return; }
@@ -133,7 +133,7 @@ namespace Backrooms.Interaction
                     RemakePoolDoor();
                     break;
             }
-            CamcorderOSD.Notice(it.kind == Kind.ChuteKit || it.kind == Kind.Truck ? $"ORDERED - {it.name} - WAITING BY THE LIFT" : $"ORDERED - {it.name}");
+            CamcorderOSD.Notice(Backrooms.UI.Words.Get(it.kind == Kind.ChuteKit || it.kind == Kind.Truck ? "line.ordered_lift" : "line.ordered", it.name));
             cs?.Beep(true);
             cs?.Changed();
             _dirty = true;
@@ -226,7 +226,7 @@ namespace Backrooms.Interaction
                         mgr.Forget(id);
                         var live = MovableProp.Find(id);
                         if (live) Destroy(live.gameObject);
-                        CamcorderOSD.Notice("INTAKE CHUTE FITTED - " + LeaseSeams.Kinds[s.kind]);
+                        CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.chute_fitted", LeaseSeams.Kinds[s.kind]));
                         break;
                     }
                 }

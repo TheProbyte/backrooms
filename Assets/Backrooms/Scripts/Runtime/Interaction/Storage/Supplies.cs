@@ -188,14 +188,14 @@ namespace Backrooms.Interaction
             var cs = Contracts.Instance;
             if (_items.Count == 0) { cs?.Beep(false); return; }
             var it = _items[_pick];
-            if (it.locked) { CamcorderOSD.Notice($"{it.name} - LOCKED - {WorkOrders.FinishText(it.unlock)} (J)"); cs?.Beep(false); return; }
-            if (D.pay < it.cost) { CamcorderOSD.Notice($"NOT ENOUGH - ${D.pay} IN HAND"); cs?.Beep(false); return; }
+            if (it.locked) { CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.locked_item", it.name, WorkOrders.FinishText(it.unlock))); cs?.Beep(false); return; }
+            if (D.pay < it.cost) { CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.not_enough", D.pay)); cs?.Beep(false); return; }
             // Co-op: the crew's one wallet is the host's; a joined game asks it to pay and deliver.
             if (Net.WorkNet.Client) { Net.WorkNet.Ask("order " + it.name); cs?.Beep(true); return; }
             D.pay -= it.cost;
             Net.WorkNet.Changed();
             Deliver(it);
-            CamcorderOSD.Notice($"ORDERED - {it.name} - WAITING BY THE LIFT");
+            CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.ordered_lift", it.name));
             cs?.Beep(true);
             cs?.Changed();
             Improvements.Instance?.Changed();

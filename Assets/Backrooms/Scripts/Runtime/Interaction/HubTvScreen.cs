@@ -119,7 +119,7 @@ namespace Backrooms.Interaction
             d.tapeWatched = true;
             Net.WorkNet.Ask("tape");
             Net.WorkNet.Changed();
-            if (first) Camcorder.CamcorderOSD.Title("ORIENTATION DONE - TAKE THE LIFT DOWN AND FOLLOW THE BLUE TAPE");
+            if (first) Camcorder.CamcorderOSD.Title(Backrooms.UI.Words.Get("title.orientation_done"));
             Contracts.Instance?.Changed();
         }
 

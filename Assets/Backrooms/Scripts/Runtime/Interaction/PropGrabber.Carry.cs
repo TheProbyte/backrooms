@@ -303,7 +303,7 @@ namespace Backrooms.Interaction
                     _carryCaughtT = 0f;
                 }
             }
-            else if (_carryCaughtT > 0.5f) { Release("it caught on something"); Note("IT CAUGHT ON SOMETHING"); }
+            else if (_carryCaughtT > 0.5f) { Release("it caught on something"); Note(Backrooms.UI.Words.Get("note.caught")); }
         }
 
         /// <summary>FixedUpdate while carrying: it is moved to where the hands hold it (steady, not a hand's limited pull); a

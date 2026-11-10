@@ -24,13 +24,13 @@ namespace Backrooms.Interaction
         /// checklist with a count where there is one, and what finishing them unlocks; your batches one short line each (the
         /// board's words). The long explanations stay on the boards and in the notices.
         /// </summary>
-        public string TrackerText()
+        public string TrackerText(bool batches = true)
         {
             if (D == null) return "";
             _tb.Clear();
             Step(1f);
             Orders(1f, false);
-            Batches(1f, false);
+            if (batches) Batches(1f, false);
             return _tb.ToString().TrimEnd('\n');
         }
 
@@ -246,7 +246,10 @@ namespace Backrooms.Interaction
             if (Time.unscaledTime >= _next)
             {
                 _next = Time.unscaledTime + 0.25f;
-                _full = _c ? _c.TrackerText() : "";
+                // (2026-11-10, Docs/UiPlan.md U17) With a compact left panel (a 16:10 screen) the batches are there: the
+                // list in the picture keeps to the step and the orders.
+                bool leftPanel = CamcorderOSD.SideWidth >= Backrooms.UI.SidePanels.MinCompact;
+                _full = _c ? _c.TrackerText(!leftPanel) : "";
                 _step = _c ? _c.StepText() : "";
                 // Hidden, it still shows for a while when something on it changes (an order moved on, new boxes).
                 if (_full != _last && _last.Length > 0 && _full.Length > 0) _popUntil = Time.unscaledTime + PopFor;

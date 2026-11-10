@@ -199,7 +199,7 @@ namespace Backrooms.CustomRooms
                         var row = new VisualElement(); row.AddToClassList("ps-addr");
                         row.Add(Lb($"{addresses[i].what}:  {addr}", "ps-addrtext"));
                         var copy = Lb("COPY", "ps-copy"); copy.pickingMode = PickingMode.Position;
-                        copy.RegisterCallback<ClickEvent>(_ => { GUIUtility.systemCopyBuffer = addr; copy.text = "COPIED"; Camcorder.CamcorderOSD.Notice("COPIED " + addr); });
+                        copy.RegisterCallback<ClickEvent>(_ => { GUIUtility.systemCopyBuffer = addr; copy.text = "COPIED"; Camcorder.CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.copied", addr)); });
                         row.Add(copy);
                         _list.Add(row);
                     }

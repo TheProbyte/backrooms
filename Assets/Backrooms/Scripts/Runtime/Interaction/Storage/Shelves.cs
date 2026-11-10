@@ -183,7 +183,7 @@ namespace Backrooms.Interaction
             if (!p || p.Spec.kind != MovableKind.Shelf || !ShelfTypes.IsBroken(p.Spec.variant) || D == null) return false;
             ulong id = p.Spec.id;
             s_mend[id] = (s_mend.TryGetValue(id, out var n) ? n : 0) + nails;
-            if (s_mend[id] < MendNails) { CamcorderOSD.Notice($"{MendLeft(id)} MORE"); return true; }
+            if (s_mend[id] < MendNails) { CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.nails_more", MendLeft(id))); return true; }
             s_mend.Remove(id);
             var t = ShelfTypes.Get(p.Spec.variant);
             var tr = p.transform;
@@ -193,7 +193,7 @@ namespace Backrooms.Interaction
             int v = p.Spec.variant & ~ShelfTypes.Broken;
             Remove(id);
             Add(v, new Vector3(middle.x, floor, middle.z), Quaternion.Euler(0f, yaw, 0f));
-            CamcorderOSD.Notice("SHELF STOOD UP - IT'S YOURS");
+            CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.shelf_stood_up"));
             return true;
         }
 

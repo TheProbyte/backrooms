@@ -200,7 +200,7 @@ namespace Backrooms.Interaction
             if (!item || item.UsesAim || !item.Pocketable || _itemT < 1f || item.Busy || Placing || ThrowCharge > 0f) return false;
             if (!Look(lookRange, out _, out var prop) || !prop) return false;
             int slot = HeldHome >= 0 ? HeldHome : FirstFreePocket();
-            if (slot < 0) { Note("POCKETS FULL"); return true; }
+            if (slot < 0) { Note(Backrooms.UI.Words.Get("note.pockets_full")); return true; }
             HeldItem = null;
             AimedSocket = null;
             EndPlacing();

@@ -283,6 +283,6 @@ namespace Backrooms.Interaction
         }
 
         /// <summary>The hint while seated.</summary>
-        public string Hint => !Seated ? null : _standT >= 0f ? null : Office ? "E STAND UP · W/A/S/D ROLL" : "E STAND UP";
+        public string Hint => !Seated ? null : _standT >= 0f ? null : Backrooms.UI.Words.Get(Office ? "hint.seated_office" : "hint.seated");
     }
 }

@@ -43,7 +43,7 @@ namespace Backrooms.Interaction
                 _bashed = door; _bashedAt = Time.time;
                 _player.SetPlanarVelocity(Vector3.zero);
                 Jolt(new Vector3(7f, (Random.value - 0.5f) * 6f, (Random.value - 0.5f) * 8f));
-                Note("IT'S BOLTED");
+                Note(Backrooms.UI.Words.Get("note.bolted"));
                 return true;
             }
             _bashed = door; _bashedAt = Time.time;

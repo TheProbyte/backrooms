@@ -35,24 +35,24 @@ namespace Backrooms.Interaction
         {
             switch (p.Spec.kind)
             {
-                case MovableKind.Sofa: return "COUCH";
-                case MovableKind.Armchair: return "ARMCHAIR";
-                case MovableKind.OfficeChair: return "OFFICE CHAIR";
-                case MovableKind.Table: return "TABLE";
-                case MovableKind.Pallet: return "PALLET";
-                case MovableKind.WoodenChair: return "WOODEN CHAIR";
-                case MovableKind.LawnChair: return "LAWN CHAIR";
-                case MovableKind.SchoolChair: return "CHAIR";
-                case MovableKind.UtilityCart: return "CART";
-                case MovableKind.JanitorCart: return "JANITOR'S CART";
-                case MovableKind.PlatformTruck: return "TROLLEY";
-                case MovableKind.Shelf: return "SHELF";
-                default: return Improvements.IsKit(p.Spec.id) ? "KIT" : "BOX";
+                case MovableKind.Sofa: return Backrooms.UI.Words.Get("thing.sofa");
+                case MovableKind.Armchair: return Backrooms.UI.Words.Get("thing.armchair");
+                case MovableKind.OfficeChair: return Backrooms.UI.Words.Get("thing.officechair");
+                case MovableKind.Table: return Backrooms.UI.Words.Get("thing.table");
+                case MovableKind.Pallet: return Backrooms.UI.Words.Get("thing.pallet");
+                case MovableKind.WoodenChair: return Backrooms.UI.Words.Get("thing.woodenchair");
+                case MovableKind.LawnChair: return Backrooms.UI.Words.Get("thing.lawnchair");
+                case MovableKind.SchoolChair: return Backrooms.UI.Words.Get("thing.schoolchair");
+                case MovableKind.UtilityCart: return Backrooms.UI.Words.Get("thing.utilitycart");
+                case MovableKind.JanitorCart: return Backrooms.UI.Words.Get("thing.janitorcart");
+                case MovableKind.PlatformTruck: return Backrooms.UI.Words.Get("thing.platformtruck");
+                case MovableKind.Shelf: return Backrooms.UI.Words.Get("thing.shelf");
+                default: return Backrooms.UI.Words.Get(Improvements.IsKit(p.Spec.id) ? "thing.kit" : "thing.box");
             }
         }
 
         /// <summary>What taking this prop at this spot does ("PUSH", "TIP UP", "CARRY").</summary>
-        string PropVerb(MovableProp p, Vector3 grip, Vector3 normal) => IsLight(p) ? "CARRY" : UnderGrip(p, grip, normal) ? "TIP UP" : "PUSH";
+        string PropVerb(MovableProp p, Vector3 grip, Vector3 normal) => Backrooms.UI.Words.Get(IsLight(p) ? "verb.carry" : UnderGrip(p, grip, normal) ? "verb.tip_up" : "verb.push");
 
         /// <summary>The prop the view is on within reach, the spot the hands would take and what that does.</summary>
         bool AimedProp(out MovableProp prop, out Vector3 grip, out string verb)
@@ -84,9 +84,9 @@ namespace Backrooms.Interaction
             {
                 var kit = KitPlacer.CarryHint(Held);
                 if (kit != null) { _hint = kit; return; }
-                _hint = Carrying ? (Held.Spec.kind == MovableKind.Box ? "CLICK PUT DOWN · HOLD THROW · HOLD ON A BOX TAKE IT TOO · R TURN" : "CLICK TO PUT IT DOWN")
-                      : Tipping ? "MOUSE UP TIPS IT UP · DOWN LOWERS IT · LET GO TO DROP"
-                      : "W PUSH · S PULL · MOUSE TURNS IT · MOUSE UP LIFTS";
+                _hint = Carrying ? Backrooms.UI.Words.Get(Held.Spec.kind == MovableKind.Box ? "hint.carrying_box" : "hint.carrying")
+                      : Tipping ? Backrooms.UI.Words.Get("hint.tipping")
+                      : Backrooms.UI.Words.Get("hint.pushing");
                 return;
             }
             if (Current != State.Idle || _fetch || OnDoor || QuickDooring || _poke != PokePhase.None || !_player.HasFocus) return;
@@ -103,20 +103,20 @@ namespace Backrooms.Interaction
             if (HeldItem)
             {
                 if (Stowing || _itemT < 1f) return;
-                if (AimedSocket != null) { _hint = "CLICK TO PLUG IN"; return; }
+                if (AimedSocket != null) { _hint = Backrooms.UI.Words.Get("hint.plug_in"); return; }
                 if (!HeldItem.UsesAim && HeldItem.Pocketable && AimedProp(out var p, out var g, out var verb))
-                { _hint = $"HOLD TO {verb} {NameOf(p)}"; _hintMark = g; SmoothMark(); return; }
-                _hint = HeldItem.Pocketable ? "Q DROP · E SET DOWN · 1-4 POCKET" : "Q DROP · E SET DOWN";
+                { _hint = Backrooms.UI.Words.Get("hint.hold_to", verb, NameOf(p)); _hintMark = g; SmoothMark(); return; }
+                _hint = Backrooms.UI.Words.Get(HeldItem.Pocketable ? "hint.item_pocketable" : "hint.item");
                 return;
             }
-            if (AimedItem) { _hint = AimedCordPoint.HasValue ? "CLICK TO TAKE THE PLUG" : "CLICK TO PICK UP " + AimedItem.displayName.ToUpperInvariant(); return; }
-            if (AimedPoke != null) { _hint = "CLICK TO PRESS"; return; }
-            if (AimedDoorGrip.HasValue) { _hint = "CLICK TO OPEN OR SHUT · HOLD TO MOVE IT SLOWLY"; return; }
+            if (AimedItem) { _hint = AimedCordPoint.HasValue ? Backrooms.UI.Words.Get("hint.take_plug") : Backrooms.UI.Words.Get("hint.pick_up_item", AimedItem.displayName.ToUpperInvariant()); return; }
+            if (AimedPoke != null) { _hint = Backrooms.UI.Words.Get("hint.press"); return; }
+            if (AimedDoorGrip.HasValue) { _hint = Backrooms.UI.Words.Get("hint.door"); return; }
             if (AimedProp(out var prop, out var grip, out var v))
             {
-                _hint = IsLight(prop) ? (prop.Spec.kind == MovableKind.Box ? (OnTopOf(prop) ? "CLICK TO PICK UP THE STACK" : "CLICK TO PICK UP") : $"CLICK TO CARRY {NameOf(prop)}")
-                                        + (Seating.CanSitOn(prop) && (!_seating || !_seating.Seated) ? " · E SIT" : "")
-                      : $"HOLD TO {v} {NameOf(prop)}" + (Seating.CanSitOn(prop) && (!_seating || !_seating.Seated) ? " · E SIT" : "");
+                string sit = Seating.CanSitOn(prop) && (!_seating || !_seating.Seated) ? " · " + Backrooms.UI.Words.Get("hint.sit") : "";
+                _hint = IsLight(prop) ? (prop.Spec.kind == MovableKind.Box ? Backrooms.UI.Words.Get(OnTopOf(prop) ? "hint.pick_up_stack" : "hint.pick_up") : Backrooms.UI.Words.Get("hint.carry", NameOf(prop))) + sit
+                      : Backrooms.UI.Words.Get("hint.hold_to", v, NameOf(prop)) + sit;
                 _hintMark = grip;
             }
             if (_hint == null && KitPlacer.IdleHint != null) _hint = KitPlacer.IdleHint;      // a shelf: pack it, stand it up

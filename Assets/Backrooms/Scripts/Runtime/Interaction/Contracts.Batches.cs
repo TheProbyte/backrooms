@@ -248,12 +248,12 @@ namespace Backrooms.Interaction
                 {
                     kind = s.kind;
                     // (Another seam, even one more of TALLMORE's: on a floor with few kinds this is what finding one means.)
-                    if (!D.otherSeamFound && !IsFirstSeam(s.id)) { D.otherSeamFound = true; _dirty = true; if (D.seamsFound.Contains(kind)) Tell($"ANOTHER {LeaseSeams.Kinds[kind]} SEAM - MORE OF {Clients[kind]}'S WORK"); }
+                    if (!D.otherSeamFound && !IsFirstSeam(s.id)) { D.otherSeamFound = true; _dirty = true; if (D.seamsFound.Contains(kind)) Tell(Backrooms.UI.Words.Get("title.another_seam", LeaseSeams.Kinds[kind], Clients[kind])); }
                     break;
                 }
             if (kind < 0 || kind > 3 || D.seamsFound.Contains(kind)) return;
             D.seamsFound.Add(kind);
-            if (kind != LeaseSeams.FirstKind) Tell($"NEW CLIENT FOUND - {Clients[kind]} ({LeaseSeams.Kinds[kind]}) - THEIR CARD IS BY THE SEAM");
+            if (kind != LeaseSeams.FirstKind) Tell(Backrooms.UI.Words.Get("title.new_client", Clients[kind], LeaseSeams.Kinds[kind]));
             _dirty = true;
         }
 
@@ -336,7 +336,7 @@ namespace Backrooms.Interaction
                     b.state = 1;
                     D.lotAt[b.client] = D.business + NextLotAfter;
                     if (!D.seamsFound.Contains(b.client)) D.seamsFound.Add(b.client);
-                    Tell($"{Clients[b.client]} BATCH TAKEN - {b.count} BOXES - SHELVE THEM ALL ON LIT SHELVES");
+                    Tell(Backrooms.UI.Words.Get("title.batch_taken", Clients[b.client], b.count));
                     _dirty = true;
                     return;
                 }
@@ -372,7 +372,7 @@ namespace Backrooms.Interaction
             PayMoment(D.pay - b.intake, b.intake);
             Net.WorkNet.Stored(b.id, b.intake);
             Trip($"{Clients[b.client]} STORED ({b.boxes.Count})", "$" + b.intake);
-            Tell($"{Clients[b.client]} STORED - +${b.intake} - DUE BACK IN {MinSec(b.left)}");
+            Tell(Backrooms.UI.Words.Get("title.stored", Clients[b.client], b.intake, MinSec(b.left)));
             Beep(true);
             _dirty = true;
         }
@@ -398,7 +398,7 @@ namespace Backrooms.Interaction
                     D.scuffed.Add(id);
                     var mp = MovableProp.Find(id);
                     if (mp) ScuffMarks.Attach(mp);
-                    Tell($"A {Clients[b.client]} BOX GOT SCUFFED - {Mathf.RoundToInt(ScuffCost * 100f)}% OFF ITS PAY");
+                    Tell(Backrooms.UI.Words.Get("title.scuffed", Clients[b.client], Mathf.RoundToInt(ScuffCost * 100f)));
                     Beep(false);
                     _dirty = true;
                 }
@@ -406,13 +406,13 @@ namespace Backrooms.Interaction
             if (risk > 0 && !b.riskSaid && dt > 0f)
             {
                 b.riskSaid = true;
-                Tell($"{risk} {Clients[b.client]} BOX{(risk > 1 ? "ES" : "")} LEFT OFF A LIT SHELF - THEY'LL GET SCUFFED");
+                Tell(Backrooms.UI.Words.Get(risk > 1 ? "title.at_risk_many" : "title.at_risk_one", risk, Clients[b.client]));
             }
             else if (risk == 0) b.riskSaid = false;
             if (b.left > 0f) return;
             b.state = 3;
             b.since = 0f;
-            Tell($"{Clients[b.client]}'S BOXES ARE DUE BACK - TAKE THEM THROUGH THEIR SEAM ({MinSec(b.window)})");
+            Tell(Backrooms.UI.Words.Get("title.due_back", Clients[b.client], MinSec(b.window)));
             Beep(true);
             _dirty = true;
         }
@@ -423,7 +423,7 @@ namespace Backrooms.Interaction
             if (b.since > b.window && !b.lateSaid)
             {
                 b.lateSaid = true;
-                Tell($"{Clients[b.client]}'S BOXES ARE LATE - THE PAY IS DROPPING, AND THEY'RE ON HOLD");
+                Tell(Backrooms.UI.Words.Get("title.late", Clients[b.client]));
                 Beep(false);
                 _dirty = true;
             }

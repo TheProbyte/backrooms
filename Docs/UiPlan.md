@@ -3,10 +3,11 @@
 A review of everything the player reads or clicks, with what to improve and in what order. Where an item changes the
 design, `GameDesign.md` changes with the work.
 
-**Where it stands (2026-11-10): passes 0 to 3 are built** (U1 the kit, U3 the picture run, U12 the developer switch;
+**Where it stands (2026-11-10): passes 0 to 4 are built** (U1 the kit, U3 the picture run, U12 the developer switch;
 U4 the side panels, U5 prompts, U6 notices, U7 co-op; U8 the title screen, U9 one menu language, U10 settings, U11
-worlds and friends; U13 the player's F5, U14 the pixel-screen kit, U15 the boards; details under each). Passes 4 and 5
-are not. Pictures: `Docs/screenshots/ui/pass0/` to `pass3/`.
+worlds and friends; U13 the player's F5, U14 the pixel-screen kit, U15 the boards; U17 small screens, U18 words in one
+place; details under each). U16 (a controller) is not wanted yet; pass 5 is not built. Pictures:
+`Docs/screenshots/ui/pass0/` to `pass4/`.
 
 **How to read it**
 - Every item says what was found, what to do, how big it is (**S** under a session, **M** a session or two, **L**
@@ -340,6 +341,12 @@ Numbers that matter (seen in the code):
 ### U17. Small screens (S, after U1 and U4)
 - **Do:** a floor on text of 12 px at 1280 x 800 (Valve asks for 9 at least and recommends 12), checked in the
   pictures from U3; the side-panel layout for 16:10.
+- **Built (2026-11-10):** the floor is the kit's Small, 17 px of a 1080-line screen (12.6 at 1280 x 800); everything
+  the player reads in the menus, the player's F5, the side panels and the prompts is at or over it, checked by
+  `UiPass4Tests` (the stylesheets' sizes and the panels' and prompts' own). On 16:10 the left bar holds compact batch
+  cards (pass 1) and the work list in the picture now keeps to the next step and the orders (it used to pop up the
+  batches too, a block of small text over the picture). Seen in the picture run at 1280 x 800 on every screen.
+  **Not covered:** the developer's screens (the F5 bench's 11 to 14 px, the L and K menus, build mode).
 
 ### U18. Words in one place (M)
 - **Found:** every string is written where it is used.
@@ -347,6 +354,12 @@ Numbers that matter (seen in the code):
   possible later. No translation now.
 - **Decided (the owner, 2026-11-10): languages later.** This stays "one file for wording" (still worth it for the 29
   notices); no translation work until asked.
+- **Built (2026-11-10):** `Resources/Text/Words.csv`, 95 keys: every title and line (notices), every note (the hands
+  could not), every hint and the names of things the hints use, and the co-op join and leave notes; read through
+  `UI/Words.Get(key, values)` ({0}, {1} for the values). The file is in the layout Unity's Localization package imports
+  as a string table (Key, Id, English(en)), so a language would be a column. A missing key shows as [key], never blank.
+  `UiPass4Tests` checks that every key the code uses is in the file. **Not moved yet:** the menus' and settings' own
+  words, the boards' and cards' words, the tape's cards, the work orders' titles.
 
 ---
 
@@ -370,7 +383,7 @@ Each pass ends with the pictures from U3 taken again and the owner looking at th
 | **1. In play** (built 2026-11-10) | Side panels, prompts, notices, co-op marks | U4, U5, U6, U7 | "What is due next" reads at a glance on 16:9; every hint is a prompt |
 | **2. Menus** (built 2026-11-10) | Title, one menu language, settings, worlds and friends | U8, U9, U10, U11 | Main and pause menus look like one game; text size is a setting |
 | **3. Camcorder and world** (built 2026-11-10) | The player's F5, the pixel-screen kit, the boards | U13, U14, U15 | Nothing cut off in F5; every world screen readable at its distance |
-| **4. Reach** | Small screens, words in one place | U17, U18 (U16 not yet) | 12 px floor at 1280 x 800; wording in one file |
+| **4. Reach** (built 2026-11-10) | Small screens, words in one place | U17, U18 (U16 not yet) | 12 px floor at 1280 x 800; wording in one file |
 | **5. Feel** | Sounds and motion | U19 | One set of sounds everywhere |
 
 IMGUI leaves the player's game as its screens are rebuilt (U2): the pause menu in pass 2, hints and pockets in pass 1,

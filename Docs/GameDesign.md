@@ -128,6 +128,9 @@ camcorder. Alone or with up to three friends.
   boards from 3 m (their rows now the side panel's batch cards, with the client's mark and a draining bar), seam cards
   from 2 m, shelf tickets from 1.3 m, receipts from 0.8 m, the calendar from 2 m; the orientation tape also as
   subtitles. [built 2026-11-10]
+- **The wording lives in one file,** `Resources/Text/Words.csv` (every notice, hint and note the player reads), in the
+  layout Unity's Localization package imports, so the words can be changed without the code and a language added
+  later; no text the player reads is under 12.6 px on a 1280 x 800 screen. [built 2026-11-10]
 
 ## 5. The places
 
@@ -665,10 +668,10 @@ packing job → powered racks.
 ## Other docs
 
 - `Docs/UiPlan.md`: every screen, panel and prompt reviewed (2026-11-09), and a plan in passes to give them one look,
-  split the developer tools from the player's game, and reach small screens. Passes 0 to 3 built 2026-11-10 (the
+  split the developer tools from the player's game, and reach small screens. Passes 0 to 4 built 2026-11-10 (the
   two typefaces and the colour names, the developer switch, `-ui-shots`; the side panels, prompts, notices, co-op
   marks; the title screen, pause menu, settings and world cards; the player's F5, readable screens in the world, the
-  boards); passes 4 and 5 not built. Decided 2026-11-10: the
+  boards; small screens, the words in one file); pass 5 not built. Decided 2026-11-10: the
   developer tools and build mode are for the owner only (off in the player's game); no controller yet; other languages
   later; a title screen with the game's name, the name itself still open (Overflow is taken by a Japanese studio).
   The game's two typefaces: Pixelify Sans for the camcorder's marks, Courier Prime for the company's paper (menus,

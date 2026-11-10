@@ -175,7 +175,7 @@ namespace Backrooms.Interaction
         void OnDestroy() { if (_player) _player.ClimbTooHigh -= OnTooHigh; }
 
         /// <summary>Space at a ledge too tall to climb: said in the hint line.</summary>
-        void OnTooHigh(float height) => Note("TOO HIGH TO CLIMB");
+        void OnTooHigh(float height) => Note(Backrooms.UI.Words.Get("note.too_high"));
 
         void Start()
         {
@@ -365,7 +365,7 @@ namespace Backrooms.Interaction
         void TryStart()
         {
             if (!Look(lookRange, out var hit, out var prop)) return;
-            if (prop.Pinned) { Note("IT WON'T BUDGE"); return; }
+            if (prop.Pinned) { Note(Backrooms.UI.Words.Get("note.wont_budge")); return; }
             // (The edge the marks show, so the hand goes where they said.)
             prop.FindGrip(hit.point, hit.normal, Shoulder, _rng, prop == _markProp ? _markEdge : -1, out var grip, out var normal, out var edge, out _);
             // On the model, not the collider box: the hand placed on its real surface, fingers the best way round.
@@ -467,7 +467,7 @@ namespace Backrooms.Interaction
             _player.botInput = null;
             if (Vector3.Distance(grip, ReachShoulder) <= ArmReach + 0.35f) { Attach(); return; }
             Cancel();
-            Note("CAN'T REACH");
+            Note(Backrooms.UI.Words.Get("note.cant_reach"));
         }
 
         void Cancel()

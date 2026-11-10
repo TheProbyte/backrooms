@@ -182,14 +182,14 @@ namespace Backrooms.Interaction
         {
             var g = Grabber();
             if (!g || Equipped) return;
-            if (g.Held) { CamcorderOSD.Notice("PUT DOWN WHAT YOU'RE CARRYING FIRST"); return; }
+            if (g.Held) { CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.hands_full")); return; }
             Equipped = this;
             _solid.enabled = false;
             transform.SetParent(g.transform, false);
             transform.localPosition = new Vector3(0f, 0f, At);
             transform.localRotation = Quaternion.identity;
             _last = transform.position;
-            CamcorderOSD.Notice("HAND TRUCK - CLICK BOXES ONTO IT - Q TO PARK IT");
+            CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.hand_truck"));
         }
 
         /// <summary>Set down standing where it is, solid again.</summary>
@@ -203,7 +203,7 @@ namespace Backrooms.Interaction
             _solid.enabled = true;
             Equipped = null;
             Save(at, yaw);
-            CamcorderOSD.Notice("HAND TRUCK PARKED");
+            CamcorderOSD.Notice(Backrooms.UI.Words.Get("line.hand_truck_parked"));
         }
 
         void Update()

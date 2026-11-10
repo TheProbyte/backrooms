@@ -452,7 +452,7 @@ namespace Backrooms.Interaction
             var w = Vector3.up * _yawRate;
             p.Body.linearVelocity = _player.PlanarVelocity + Vector3.Cross(w, r) * 1.1f + r.normalized * (_yawRate * _yawRate * r.magnitude * 0.12f);
             p.Body.angularVelocity = w * 0.6f;
-            Note("WHOA - ONE FELL OFF");
+            Note(Backrooms.UI.Words.Get("note.one_fell"));
         }
 
         // ---------------- Where the boxes go in the arms ----------------
