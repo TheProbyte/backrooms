@@ -230,7 +230,7 @@ namespace Backrooms.Menu
                         o.frameCap = Caps[(i + d + Caps.Length) % Caps.Length]; o.Save();
                     }, "THE MOST FRAMES A SECOND THE GAME DRAWS.");
                     Option("VSYNC", () => OnOff(o.vSync), d => { o.vSync = !o.vSync; o.Save(); }, "WAITS FOR THE SCREEN: NO TEARING, A LITTLE MORE DELAY.");
-                    if (_onAdvanced != null) Item("CAMCORDER MENU (ADVANCED) ►", () => { var a = _onAdvanced; Close(); a(); }, "THE CAMCORDER'S OWN MENU: PICTURE, TAPE, SOUND AND LIGHT, IN DETAIL.");
+                    if (_onAdvanced != null && DevTools.On) Item("CAMCORDER MENU (ADVANCED) ►", () => { var a = _onAdvanced; Close(); a(); }, "THE CAMCORDER'S OWN MENU: PICTURE, TAPE, SOUND AND LIGHT, IN DETAIL.");
                     break;
                 }
 

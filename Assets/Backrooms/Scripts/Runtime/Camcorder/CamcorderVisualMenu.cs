@@ -50,7 +50,14 @@ namespace Backrooms.Camcorder
         {
             var kb = Keyboard.current;
             if (kb == null) return;
-            if (kb.f5Key.wasPressedThisFrame) SetOpen(!IsOpen);
+            // F5 (2026-11-10, Docs/UiPlan.md U13): the player's short menu (CamcorderPlayerMenu); this bench is the
+            // developer's, opened from it. F5 closes whichever is open.
+            if (kb.f5Key.wasPressedThisFrame)
+            {
+                if (IsOpen) SetOpen(false);
+                else if (CamcorderPlayerMenu.IsOpen) CamcorderPlayerMenu.Close();
+                else if (enabled && !FromMainMenu && !CustomRooms.PauseMenu.IsOpen) CamcorderPlayerMenu.Toggle(this);
+            }
             else if (IsOpen && kb.escapeKey.wasPressedThisFrame) SetOpen(false);
             UpdateWorldGen();
             UpdateAudioTab();

@@ -273,7 +273,9 @@ namespace Backrooms.Interaction
             for (int i = 0; i < _px.Length; i++) _px[i] = G;
             PixelFont.Fill(_px, BW, BH, 0, 0, BW, 34, new Color32(217, 102, 31, 255));
             PixelFont.DrawCentred(_px, BW, BH, "SUPPLY COUNTER", BW / 2, 6, 3, Contracts.Choc);
-            int rows = Mathf.Min(_items.Count, 7);
+            // (2026-11-10, U14/U15: six rows, so the picked one's note fits on two lines at 2 dots; at 1 dot it could not be
+            // read from 3 m.)
+            int rows = Mathf.Min(_items.Count, 6);
             int first = Mathf.Clamp(_pick - rows + 1, 0, Mathf.Max(0, _items.Count - rows));
             for (int r = 0; r < rows; r++)
             {
@@ -283,15 +285,17 @@ namespace Backrooms.Interaction
                 bool sel = i == _pick;
                 if (sel) PixelFont.Fill(_px, BW, BH, 6, y - 2, BW - 6, y + 18, Contracts.Flap);
                 var ink = it.locked ? (sel ? Contracts.LockedSel : Contracts.Locked) : sel ? A : D.pay >= it.cost ? new Color32(205, 160, 72, 255) : Dm;
-                PixelFont.Draw(_px, BW, BH, (sel ? "> " : "  ") + it.name, 10, y + 1, 2, ink);
                 string cost = it.locked ? WorkOrders.LockedText(it.unlock) : "$" + it.cost;
-                int dot = it.locked ? 1 : 2;
-                PixelFont.Draw(_px, BW, BH, cost, BW - 12 - PixelFont.Width(cost, dot), y + 1 + (dot == 1 ? 4 : 0), dot, ink);
+                int costW = PixelFont.Width(cost, 2);
+                PixelFont.Draw(_px, BW, BH, Generation.PixelScreen.Fit((sel ? "> " : "  ") + it.name, 2, BW - 34 - costW), 10, y + 1, 2, ink);
+                PixelFont.Draw(_px, BW, BH, cost, BW - 12 - costW, y + 1, 2, ink);
             }
             if (_items.Count > 0)
             {
                 var pk = _items[_pick];
-                PixelFont.DrawCentred(_px, BW, BH, pk.locked ? WorkOrders.FinishText(pk.unlock) + " (J)" : pk.note, BW / 2, 192, 1, pk.locked ? Contracts.Red : Dm);
+                var (n1, n2) = Generation.PixelScreen.TwoLines(pk.locked ? WorkOrders.FinishText(pk.unlock) + " (J)" : pk.note, 2, BW - 20);
+                PixelFont.DrawCentred(_px, BW, BH, n1, BW / 2, 168, 2, pk.locked ? Contracts.Red : Dm);
+                PixelFont.DrawCentred(_px, BW, BH, n2, BW / 2, 185, 2, pk.locked ? Contracts.Red : Dm);
             }
             int bx(float dx) => Mathf.RoundToInt((0.5f - dx / 2.3f) * BW);
             PixelFont.DrawCentred(_px, BW, BH, "NEXT", bx(0.35f), 212, 2, A);

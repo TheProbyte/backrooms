@@ -16,6 +16,10 @@ namespace Backrooms.Interaction
     public class SeamCard : MonoBehaviour
     {
         const int W = 132, H = 112;
+        /// <summary>Its size on the wall and where it is read from (Generation.PixelScreen, 2026-11-10: at 0.44 m wide its
+        /// 1-dot lines covered 5 of the camcorder's lines from 2 m; at 0.62 m, 7.7).</summary>
+        public const float Width = 0.62f, ReadAt = 2f;
+        public const int Texels = W, SmallestDot = 1;
         int _client;
         Texture2D _tex;
         Color32[] _px;
@@ -34,9 +38,9 @@ namespace Backrooms.Interaction
             Destroy(q.GetComponent<Collider>());
             q.transform.SetParent(seam.transform, false);
             // On the wall beside the doorway, the side away from where a chute goes (LeaseSeams.ChuteOffset is +x).
-            q.transform.localPosition = new Vector3(-(NoclipDoors.Width * 0.5f + 0.36f), 1.3f, 0.004f);
+            q.transform.localPosition = new Vector3(-(NoclipDoors.Width * 0.5f + 0.06f + Width * 0.5f), 1.3f, 0.004f);
             q.transform.localRotation = Quaternion.Euler(0f, 180f, -1.5f);
-            q.transform.localScale = new Vector3(0.44f, 0.44f * H / W, 1f);
+            q.transform.localScale = new Vector3(Width, Width * H / W, 1f);
             var card = q.AddComponent<SeamCard>();
             card._client = seam.kind;
             card._tex = new Texture2D(W, H, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "SeamCard" };

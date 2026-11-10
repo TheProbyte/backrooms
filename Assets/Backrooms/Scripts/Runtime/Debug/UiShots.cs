@@ -135,6 +135,25 @@ namespace Backrooms.DebugTools
             Camcorder.CamcorderOSD.ShowSlip("", 0.01f);
             yield return new WaitForSecondsRealtime(0.5f);
 
+            // The hub's three boards from where they are read, 3 m (U14, U15).
+            foreach (var (screen, name) in new[] { ("ContractsBoardScreen", "16a-work-board"), ("SuppliesBoardScreen", "16b-supply-counter"), ("ImprovementsBoardScreen", "16c-improvements") })
+            {
+                var go = GameObject.Find(screen);
+                var me = FindAnyObjectByType<CamcorderPlayerController>();
+                if (!go || !me) continue;
+                var t = go.transform;
+                // A quad shows its face to -forward: stand 3 m out on that side, eyes level with its middle.
+                Vector3 at = t.position - t.forward * 3f;
+                float eye = 1.6f;
+                at.y = t.position.y - eye + 0.05f;
+                if (Physics.Raycast(new Vector3(at.x, t.position.y, at.z), Vector3.down, out var floor, 4f)) at.y = floor.point.y;
+                var look = t.position - (at + Vector3.up * eye);
+                float pitch = -Mathf.Atan2(look.y, new Vector2(look.x, look.z).magnitude) * Mathf.Rad2Deg;
+                me.TeleportSafe(at, Quaternion.LookRotation(new Vector3(look.x, 0f, look.z)).eulerAngles.y, pitch);
+                yield return new WaitForSecondsRealtime(1f);
+                yield return AllShapes(name);
+            }
+
             Interaction.PropGrabber.ForceHint = "CLICK PUT DOWN · HOLD THROW · HOLD ON A BOX TAKE IT TOO · R TURN";
             yield return Frames(3);
             yield return AllShapes("12b-prompts");
@@ -155,6 +174,13 @@ namespace Backrooms.DebugTools
             var f5 = FindAnyObjectByType<Camcorder.CamcorderVisualMenu>();
             if (f5)
             {
+                // The player's F5 (2026-11-10, U13), then the developer's bench.
+                Camcorder.CamcorderPlayerMenu.SetOpenForShots(f5, true);
+                yield return Frames(10);
+                yield return AllShapes("14a-f5-player");
+                Camcorder.CamcorderPlayerMenu.SetOpenForShots(f5, false);
+                // (Closing it saves the camcorder settings: the player's own values first.)
+                yield return Frames(5);
                 f5.SetOpen(true);
                 yield return Frames(10);
                 yield return AllShapes("14-f5");

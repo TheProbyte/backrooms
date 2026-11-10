@@ -3,10 +3,10 @@
 A review of everything the player reads or clicks, with what to improve and in what order. Where an item changes the
 design, `GameDesign.md` changes with the work.
 
-**Where it stands (2026-11-10): passes 0, 1 and 2 are built** (U1 the kit, U3 the picture run, U12 the developer
-switch; U4 the side panels, U5 prompts, U6 notices, U7 co-op; U8 the title screen, U9 one menu language, U10 settings,
-U11 worlds and friends; details under each). Passes 3 to 5 are not. Pictures: `Docs/screenshots/ui/pass0/`, `pass1/`,
-`pass2/`.
+**Where it stands (2026-11-10): passes 0 to 3 are built** (U1 the kit, U3 the picture run, U12 the developer switch;
+U4 the side panels, U5 prompts, U6 notices, U7 co-op; U8 the title screen, U9 one menu language, U10 settings, U11
+worlds and friends; U13 the player's F5, U14 the pixel-screen kit, U15 the boards; details under each). Passes 4 and 5
+are not. Pictures: `Docs/screenshots/ui/pass0/` to `pass3/`.
 
 **How to read it**
 - Every item says what was found, what to do, how big it is (**S** under a session, **M** a session or two, **L**
@@ -285,6 +285,12 @@ Numbers that matter (seen in the code):
   counter on or off, the side panels, the minimap, and quick travel. **For the developer** (behind U12): everything
   else, as it is now.
 - **Worked when:** the player's F5 fits on one page with nothing cut off, and nothing in it can break the picture.
+- **Built (2026-11-10):** `Camcorder/CamcorderPlayerMenu.cs`, a Handycam's own short menu (MENU · CAMERA SET, as a
+  90s camcorder's PROGRAM AE, DISPLAY and 16:9 WIDE): PROGRAM AE (STANDARD, VHS, HI8, MINIDV: the picture presets,
+  keeping the player's marks, shape and sound), DISPLAY on or off, PICTURE 4:3 or 16:9 WIDE, WORK PANELS, MAP; in the
+  camcorder face, inside the picture. F5 opens it; the tuning bench (`CamcorderVisualMenu`) is the developer's, a
+  DEVELOPER BENCH line at its foot while the developer tools are on (and Settings' CAMCORDER MENU (ADVANCED) likewise).
+  **Not done:** quick travel (moving yourself round the floor is a developer's tool here).
 
 ---
 
@@ -297,11 +303,27 @@ Numbers that matter (seen in the code):
   pictogram wherever a client's colour is used, and one check: **each screen readable through the camcorder at the
   distance it is used** (a ticket at 1.5 m, a board at 3 m, a seam card at 2 m), measured in the picture's pixels.
 - **Worked when:** a picture of each from its using distance can be read without stepping closer.
+- **Built (2026-11-10):** `Generation/PixelScreen.cs`: the rule (a letter must cover 7.5 of the camcorder's 480
+  recorded lines over its 54.5° view, at the distance the thing is used; Xbox asks 26 px of body height for flat UI and
+  nothing agreed exists for text in the world, so it is measured in the picture) and the shared parts (stripe, header,
+  bar, text cut to fit or to two lines, a client's pictogram). Measured before: the hub boards' 1-dot text 5.2 lines from
+  3 m, the seam card 5.4 from 2 m, the shelf ticket 6.9 from 1.3 m, the receipt 6.7 from 0.8 m, the calendar's month 4
+  from 2 m. Fixed: the boards draw nothing under 2 dots; the seam card 0.44 to 0.62 m wide, the ticket 0.24 to 0.27 m
+  (wider would hang over the boxes below), the receipt 10.5 to 13 cm, the calendar 0.2 to 0.3 m. The training TV
+  (33 cm) cannot be read from a seat: the tape's words now also come as subtitles. `UiPass3Tests` checks each screen
+  against the rule and that the boards draw no 1-dot text. **Seen** in the picture run: the three hub boards from 3 m.
+  **Not seen:** the seam card, ticket, receipt and calendar at their new sizes (they are on the floor; the run stays in
+  the hub).
 
 ### U15. The work board and the two shop boards (M)
 - **Do, with U14:** the supply counter and improvements board show price, what you have, and what is locked and why
   as rows (now: one item at a time, stepped through with a button); the work board gains the same batch cards as the
   left panel, so the hub and the camcorder say the same thing the same way.
+- **Built (2026-11-10):** the work board's rows are the side panel's cards in pixels (the client's colour and mark,
+  whose and how many, what to do and how long, a bar that drains or fills); its header's second line, the four numbers'
+  labels (SAFE, AT RISK, DUE, IN HAND) and the next step at 2 dots, the step cut at a word. The shop boards (they were
+  already rows) show six, with what is locked as AFTER ... at 2 dots and the picked one's note on two lines at 2 dots.
+  **Not done:** "what you have" (how many of a thing you own) on the supply counter.
 
 ---
 
@@ -347,7 +369,7 @@ Each pass ends with the pictures from U3 taken again and the owner looking at th
 | **0. Ground** (built 2026-11-10) | The picture run, the kit, the developer switch | U3, U1, U12 | Before-pictures exist; two shipped fonts; a player cannot reach a developer tool |
 | **1. In play** (built 2026-11-10) | Side panels, prompts, notices, co-op marks | U4, U5, U6, U7 | "What is due next" reads at a glance on 16:9; every hint is a prompt |
 | **2. Menus** (built 2026-11-10) | Title, one menu language, settings, worlds and friends | U8, U9, U10, U11 | Main and pause menus look like one game; text size is a setting |
-| **3. Camcorder and world** | The player's F5, the pixel-screen kit, the boards | U13, U14, U15 | Nothing cut off in F5; every world screen readable at its distance |
+| **3. Camcorder and world** (built 2026-11-10) | The player's F5, the pixel-screen kit, the boards | U13, U14, U15 | Nothing cut off in F5; every world screen readable at its distance |
 | **4. Reach** | Small screens, words in one place | U17, U18 (U16 not yet) | 12 px floor at 1280 x 800; wording in one file |
 | **5. Feel** | Sounds and motion | U19 | One set of sounds everywhere |
 
@@ -370,7 +392,8 @@ Still open:
 ## Small things seen today (to fix on the way, whatever the order)
 
 - ~~The F5 menu and the left side panel draw over each other~~ (the panel hides under F5, pass 1).
-- F5 preset buttons cut their labels (DEFAUL T, FOUND FOOTAG E, REFERE NCE MATCH, LOW LIGHT GAIN clipped).
+- F5 preset buttons cut their labels (DEFAUL T, FOUND FOOTAG E, REFERE NCE MATCH, LOW LIGHT GAIN clipped): still so on
+  the developer's bench; the player's F5 (pass 3) has none.
 - The L menu cuts "Cassette (lunch break mix)".
 - ~~The title screen's date is OCT 19 1998; the game's is MAR 1996~~ (pass 2).
 - ~~Settings opened by script showed the main menu through it~~ (not so: the picture run shows settings alone).

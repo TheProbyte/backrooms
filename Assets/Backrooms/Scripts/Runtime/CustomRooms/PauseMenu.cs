@@ -80,7 +80,7 @@ namespace Backrooms.CustomRooms
             if (kb.escapeKey.wasPressedThisFrame && ToggledFrame != Time.frameCount)
             {
                 if (_open) Close();
-                else if (!InBuilder && !_f5WasOpen && !Interaction.ItemsMenu.WasOpen && !Atmosphere.EnemiesMenu.WasOpen && !Interaction.ItemTuningMenu.WasOpen && !Menu.MainMenu.IsShowing) Open();     // those close themselves on Escape       // the builder opens the menu itself when nothing else wants Escape
+                else if (!InBuilder && !_f5WasOpen && !Interaction.ItemsMenu.WasOpen && !Atmosphere.EnemiesMenu.WasOpen && !Interaction.ItemTuningMenu.WasOpen && !Camcorder.CamcorderPlayerMenu.WasOpen && !Menu.MainMenu.IsShowing) Open();     // those close themselves on Escape       // the builder opens the menu itself when nothing else wants Escape
             }
         }
 

@@ -127,3 +127,22 @@
     color: white; -unity-text-outline-width: 1px; -unity-text-outline-color: black;
 }
 .cc-root .cc-mini-label { font-size: 12px; margin-top: 4px; letter-spacing: 2px; }
+
+/* ---- F5 for the player (2026-11-10, Docs/UiPlan.md U13): a camcorder's own short menu. ---- */
+.pm-panel {
+    position: absolute; top: 16%; width: 560px;
+    background-color: var(--panel); border-width: 2px; border-color: var(--amber); border-radius: 6px;
+    padding: 12px 16px 12px 16px;
+}
+.pm-head { flex-direction: row; align-items: flex-end; margin-bottom: 4px; }
+.cc-root .pm-title { font-size: 34px; -unity-font-style: bold; letter-spacing: 3px; }
+.cc-root .pm-page { font-size: 20px; color: var(--tan); margin-left: 16px; margin-bottom: 4px; }
+.pm-row { flex-direction: row; align-items: center; padding: 6px 8px; margin: 2px 0; border-radius: 4px; }
+.pm-row.pm-sel { background-color: var(--amber); }
+.cc-root .pm-cursor { width: 28px; font-size: 22px; opacity: 0; }
+.cc-root .pm-row.pm-sel .pm-cursor { opacity: 1; }
+.cc-root .pm-label { font-size: 26px; width: 280px; letter-spacing: 2px; }
+.cc-root .pm-val { font-size: 26px; flex-grow: 1; -unity-text-align: middle-right; letter-spacing: 2px; }
+.cc-root .pm-row.pm-sel .unity-label { color: var(--choc); text-shadow: 0 0 0 var(--none); }
+.cc-root .pm-desc { font-size: 18px; color: var(--tan); white-space: normal; min-height: 48px; margin-top: 10px; padding-top: 8px; border-top-width: 1px; border-color: var(--line); }
+.cc-root .pm-hint { font-size: 17px; color: var(--tan); margin-top: 6px; }

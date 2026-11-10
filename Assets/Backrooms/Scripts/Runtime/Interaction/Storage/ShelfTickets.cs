@@ -134,6 +134,11 @@ namespace Backrooms.Interaction
     public class ShelfTicket : MonoBehaviour
     {
         const int W = 80, H = 54;
+        /// <summary>Its size and where it is read from (Generation.PixelScreen, 2026-11-10): standing at a shelf, about 1.3 m.
+        /// At 0.24 m wide its 1-dot lines covered 6.9 of the camcorder's lines from there; at 0.27 m, 8.5. (Wider still, it
+        /// would hang over the boxes on the deck below.)</summary>
+        public const float Width = 0.27f, ReadAt = 1.3f;
+        public const int Texels = W, SmallestDot = 1;
         static readonly Color32 Paper = new Color32(236, 226, 200, 255), Ink = new Color32(52, 38, 28, 255), Band = new Color32(240, 162, 30, 255),
             Holder = new Color32(58, 56, 54, 255), Red = new Color32(176, 52, 32, 255), Green = new Color32(42, 112, 44, 255), Cream = new Color32(250, 246, 236, 255);
         static readonly Color LampGreen = new Color(0.25f, 1.6f, 0.35f), LampReady = new Color(0.06f, 0.3f, 0.09f), LampAmber = new Color(1.9f, 1.0f, 0.1f),
@@ -156,7 +161,7 @@ namespace Backrooms.Interaction
             int level = 0; float best = float.MaxValue;
             for (int l = 0; l < t.levels; l++) { float e = Mathf.Abs(ShelfTypes.DeckTop(t, l) - 1.4f); if (e < best) { best = e; level = l; } }
             float top = ShelfTypes.DeckTop(t, level) - 0.035f;
-            const float w = 0.24f, h = w * H / W;
+            const float w = Width, h = w * H / W;
             var root = new GameObject("ShelfTicket");
             root.transform.SetParent(shelf.transform, false);
             root.transform.localPosition = new Vector3(-(t.size.x * 0.5f - 0.05f - w * 0.5f), top - h * 0.5f, t.size.z * 0.5f + 0.016f);

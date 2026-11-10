@@ -91,7 +91,11 @@ namespace Backrooms.Interaction
     public class ReceiptPrinters : MonoBehaviour
     {
         const int PW = 64, PH = 96;
-        const float PaperW = 0.105f, PaperH = PaperW * PH / PW;
+        const float PaperW = ReceiptWidth, PaperH = PaperW * PH / PW;
+        /// <summary>The receipt's width and where it is read from (Generation.PixelScreen, 2026-11-10: 10.5 cm gave its 1-dot
+        /// lines 6.7 of the camcorder's lines at 0.8 m; 13 cm, 8.3). The calendar likewise, 0.2 m to 0.3 m, read from 2 m.</summary>
+        public const float ReceiptWidth = 0.13f, ReceiptReadAt = 0.8f, CalendarWidth = 0.3f, CalendarReadAt = 2f;
+        public const int ReceiptTexels = PW, CalendarTexels = CW, SmallestDot = 1;
         static readonly Color32 Paper = new Color32(244, 240, 228, 255), Ink = new Color32(40, 34, 30, 255), Red = new Color32(176, 52, 32, 255);
 
         class Printer
@@ -233,7 +237,7 @@ namespace Backrooms.Interaction
             Destroy(cal.GetComponent<Collider>());
             cal.transform.SetParent(root.transform, false);
             cal.transform.localPosition = new Vector3(0.46f, 0.24f, 0.058f);
-            cal.transform.localScale = new Vector3(0.2f, 0.2f * CH / CW, 1f);
+            cal.transform.localScale = new Vector3(CalendarWidth, CalendarWidth * CH / CW, 1f);
             var ctex = new Texture2D(CW, CH, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "Calendar" };
             var cmat = new Material(sh) { name = "Calendar" };
             cmat.SetTexture("_BaseMap", ctex); cmat.SetColor("_BaseColor", new Color(0.82f, 0.8f, 0.76f));

@@ -490,14 +490,20 @@ namespace Backrooms.Interaction
         // ---- The board (2026-11-09): your batches, a line each, with how long is left; along the foot what is safe, what
         // is at risk, what is due back and what is in hand; and what to do next. The work orders: the camcorder's tracker.
 
-        struct BoardRow { public string text, right; public Color32 chip, rightInk; public bool dim; }
+        struct BoardRow { public string text, right; public Color32 chip, rightInk; public bool dim; public int client; public float fill; }
+
+        // ---- What the hub's boards are checked against (Generation.PixelScreen, 2026-11-10): 480 texels over 2.3 m,
+        // read from 3 m, so nothing smaller than 2 dots. ----
+        public const int BoardTexels = 480;
+        public const float BoardWidth = 2.3f, BoardReadAt = 3f;
+        public const int BoardSmallestDot = 2;
         readonly List<BoardRow> _rows = new List<BoardRow>();
 
         /// <summary>A batch as a line (2026-11-09, the owner: "BEHIND THE SEAM ... WAITING" was not clear): whose and how many
         /// on the left; on the right, in plain words, what to do with it now and how long is left.</summary>
         BoardRow BatchRow(BatchData b)
         {
-            var r = new BoardRow { chip = Client(b.client), rightInk = Amber, text = $"{Name(b.client)} X{b.count}" + (b.rush ? " RUSH" : "") };
+            var r = new BoardRow { chip = Client(b.client), rightInk = Amber, text = $"{Name(b.client)} X{b.count}" + (b.rush ? " RUSH" : ""), client = Mathf.Clamp(b.client, 0, 3), fill = -1f };
             switch (b.state)
             {
                 case 0: r.right = "READY TO PICK UP"; r.dim = true; break;
@@ -506,13 +512,15 @@ namespace Backrooms.Interaction
                     var mgr = MovablePropManager.Instance;
                     int left = b.boxes.Count - (mgr ? SafeCount(b, mgr) : 0);
                     r.right = left > 0 ? $"SHELVE {left} MORE" : "ALL SHELVED";
+                    r.fill = b.boxes.Count > 0 ? 1f - left / (float)b.boxes.Count : 0f;
                     break;
                 }
-                case 2: r.right = "STORED " + MinSec(b.left); r.rightInk = Green; break;
+                case 2: r.right = "STORED " + MinSec(b.left); r.rightInk = Green; r.fill = b.storeFor > 0f ? Mathf.Clamp01(b.left / b.storeFor) : 0f; break;
                 default:
                     bool late = b.since > b.window;
                     r.right = late ? "LATE - TAKE BACK" : "TAKE BACK " + MinSec(b.window - b.since);
                     r.rightInk = late ? Red : Amber;
+                    r.fill = late ? 0f : b.window > 0f ? Mathf.Clamp01(1f - b.since / b.window) : 0f;
                     break;
             }
             return r;
@@ -584,23 +592,21 @@ namespace Backrooms.Interaction
             PixelFont.Fill(_px, BW, BH, 0, 0, BW, 34, new Color32(240, 162, 30, 255));
             PixelFont.Draw(_px, BW, BH, "WORK BOARD", 10, 7, 3, Choc);
             string date = DateText;
-            PixelFont.Draw(_px, BW, BH, date, BW - 10 - PixelFont.Width(date, 2), 4, 2, Choc);
-            string sub = Running ? "BUSINESS TIME RUNNING" : "TIME STOPPED - YOU'RE OFF THE FLOOR";
-            PixelFont.Draw(_px, BW, BH, sub, BW - 10 - PixelFont.Width(sub, 1), 23, 1, Choc);
+            PixelFont.Draw(_px, BW, BH, date, BW - 10 - PixelFont.Width(date, 2), 2, 2, Choc);
+            string sub = Running ? "TIME RUNNING" : "TIME STOPPED";
+            PixelFont.Draw(_px, BW, BH, sub, BW - 10 - PixelFont.Width(sub, 2), 19, 2, Choc);
             PixelFont.Fill(_px, BW, BH, 0, 184, BW, BH, Ground);
             int safe = SafeNow, risk = AtRisk, due = 0, target = 0;
             foreach (var b in D.batches) if (b.state == 3) due++;
             if (WorkOrders.Active) foreach (int i in WorkOrders.Open()) if (WorkOrders.All[i].goal == WorkOrders.Goal.StoredAtOnce) target = Mathf.Max(target, WorkOrders.All[i].target);
-            Cell(0, "STORED SAFE", target > 0 ? safe + "/" + target : safe.ToString(), Amber);
+            // (Labels at 2 dots, so short: the full words are in the camcorder's side panels.)
+            Cell(0, "SAFE", target > 0 ? safe + "/" + target : safe.ToString(), Amber);
             Cell(1, "AT RISK", risk.ToString(), risk > 0 ? Red : Amber);
-            Cell(2, "DUE BACK", due.ToString(), due > 0 ? Green : Amber);
+            Cell(2, "DUE", due.ToString(), due > 0 ? Green : Amber);
             Cell(3, "IN HAND", "$" + D.pay, Amber);
-            string next = NextStep;
-            while (next.Length > 4 && PixelFont.Width(next, 1) > BW - 16) next = next.Substring(0, next.Length - 1);
-            if (next.Length > 0) PixelFont.DrawCentred(_px, BW, BH, next, BW / 2, 232, 1, Green);
-            PixelFont.Fill(_px, BW, BH, 0, 246, BW, 248, new Color32(217, 102, 31, 255));
-            PixelFont.Fill(_px, BW, BH, 0, 248, BW, 250, new Color32(232, 178, 58, 255));
-            PixelFont.Fill(_px, BW, BH, 0, 250, BW, 252, new Color32(124, 138, 46, 255));
+            string next = Generation.PixelScreen.TwoLines(NextStep, 2, BW - 16).Item1;     // (cut at a word: the side panel has it whole)
+            if (next.Length > 0) PixelFont.DrawCentred(_px, BW, BH, next, BW / 2, 230, 2, Green);
+            Generation.PixelScreen.Stripe(_px, BW, BH, 246);
             _boardTex.SetPixels32(_px);
             _boardTex.Apply(false);
 
@@ -608,8 +614,8 @@ namespace Backrooms.Interaction
             {
                 int x0 = 8 + k * 117, x1 = x0 + 112;
                 PixelFont.Fill(_px, BW, BH, x0, 188, x1, 226, Flap);
-                PixelFont.DrawCentred(_px, BW, BH, label, (x0 + x1) / 2, 192, 1, Dim);
-                PixelFont.DrawCentred(_px, BW, BH, value, (x0 + x1) / 2, 205, 2, ink);
+                PixelFont.DrawCentred(_px, BW, BH, label, (x0 + x1) / 2, 191, 2, Dim);
+                PixelFont.DrawCentred(_px, BW, BH, value, (x0 + x1) / 2, 208, 2, ink);
             }
         }
 
@@ -618,19 +624,22 @@ namespace Backrooms.Interaction
         {
             PixelFont.Fill(_px, BW, BH, 0, 34, BW, 184, Ground);
             Rows();
-            PixelFont.Draw(_px, BW, BH, "YOUR BATCHES", 12, 41, 1, Dim);
             if (_rows.Count == 0) PixelFont.DrawCentred(_px, BW, BH, "NOTHING ON THE GO", BW / 2, 96, 2, Dim);
+            // (2026-11-10, Docs/UiPlan.md U15) A row reads as the camcorder's batch card: the client's colour and mark,
+            // whose and how many, what to do and how long, and a bar that drains with the time (or fills as boxes go up).
             for (int i = 0; i < _rows.Count && i < 4; i++)
             {
                 var r = _rows[i];
-                int y = 54 + i * 32;
-                PixelFont.Fill(_px, BW, BH, 8, y - 4, BW - 8, y + 22, Flap);
-                PixelFont.Fill(_px, BW, BH, 8, y - 4, 16, y + 22, r.chip);
+                int y = 42 + i * 35;
+                PixelFont.Fill(_px, BW, BH, 8, y - 4, BW - 8, y + 27, Flap);
+                PixelFont.Fill(_px, BW, BH, 8, y - 4, 13, y + 27, r.chip);
+                Generation.PixelScreen.Mark(_px, BW, BH, r.client, 18, y - 1, 18, r.chip);
                 string text = r.text;
-                int room = BW - 26 - 26 - PixelFont.Width(r.right ?? "", 2);
-                while (text.Length > 4 && PixelFont.Width(text, 2) > room) text = text.Substring(0, text.Length - 1);
-                PixelFont.Draw(_px, BW, BH, text, 26, y + 2, 2, r.dim ? Dim : Amber);
-                if (!string.IsNullOrEmpty(r.right)) PixelFont.Draw(_px, BW, BH, r.right, BW - 18 - PixelFont.Width(r.right, 2), y + 2, 2, r.rightInk);
+                int room = BW - 44 - 26 - PixelFont.Width(r.right ?? "", 2);
+                text = Generation.PixelScreen.Fit(text, 2, room);
+                PixelFont.Draw(_px, BW, BH, text, 44, y + 1, 2, r.dim ? Dim : Amber);
+                if (!string.IsNullOrEmpty(r.right)) PixelFont.Draw(_px, BW, BH, r.right, BW - 18 - PixelFont.Width(r.right, 2), y + 1, 2, r.rightInk);
+                if (r.fill >= 0f) Generation.PixelScreen.Bar(_px, BW, BH, 44, y + 19, BW - 62, 3, r.fill, r.rightInk, new Color32(60, 54, 46, 255));
             }
         }
 

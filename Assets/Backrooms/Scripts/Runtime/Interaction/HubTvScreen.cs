@@ -99,9 +99,11 @@ namespace Backrooms.Interaction
             return new Vector2(c.x - Foot.x, c.z - Foot.z).magnitude < 7f && Mathf.Abs(c.y - Foot.y) < 2f;
         }
 
+        int _subCard = -1;
+
         void StartTape()
         {
-            _playing = true; _tapeT = 0f;
+            _playing = true; _tapeT = 0f; _subCard = -1;
             _mat.SetTexture("_BaseMap", _tapeTex);
             _mat.SetColor("_BaseColor", new Color(1.1f, 1.05f, 1f));
         }
@@ -126,6 +128,9 @@ namespace Backrooms.Interaction
         {
             int card = Mathf.Min(s_cards.Length - 1, Mathf.FloorToInt(_tapeT / CardTime));
             var lines = s_cards[card];
+            // (2026-11-10) Each card's words as a subtitle too: the TV is 33 cm across and its 1-dot lines cannot be read
+            // from a seat (Generation.PixelScreen), and the tape is what SUBTITLES is for.
+            if (card != _subCard) { _subCard = card; Camcorder.CamcorderOSD.Subtitle("TAPE", string.Join(" ", lines), CardTime + 0.3f); }
             bool title = card == 0;
             Color32 bg = title ? new Color32(232, 150, 32, 255) : card == s_cards.Length - 1 ? new Color32(14, 12, 18, 255) : new Color32(52, 36, 26, 255);
             Color32 ink = title ? new Color32(59, 42, 30, 255) : new Color32(245, 214, 150, 255);
