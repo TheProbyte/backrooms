@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overflow orientation video</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,700;0,900;1,500;1,900&family=VT323&display=swap">
+<style>
+html, body { margin: 0; background: #000; overflow: hidden; }
+#v { width: 960px; height: 720px; position: relative; overflow: hidden; }
+#s { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<div id="v"><svg id="s" width="960" height="720" viewBox="0 0 720 540" xmlns="http://www.w3.org/2000/svg"></svg><canvas id="grain" width="720" height="540" style="position:absolute;inset:0;width:960px;height:720px;mix-blend-mode:multiply;opacity:0.09;pointer-events:none"></canvas></div>
+<script src="anim.js"></script>
+</body>
+</html>

@@ -72,6 +72,10 @@ namespace Backrooms.Camcorder
             Slider("Auto-gain strength", "How much the camcorder adjusts its own recording level. 0 is a fixed level. Higher values bring up faint building sound (and hiss) when you stand still in a quiet room.",
                 0f, 1f, "0.00", "", () => S().autoGain, v => S().autoGain = v);
 
+            Section("ATMOSPHERE", "The tension director: unexplained things out of sight, paced in quiet stretches and build-ups.");
+            Slider("Tension director", "How often and how strongly it builds tension: knocks in walls, something in the ducts, footsteps in the next room, doors swinging shut, lights going out nearby. 0 is off, 1 normal, 2 intense.",
+                0f, 2f, "0.0", "", () => Atmosphere.TensionDirector.Strength, v => Atmosphere.TensionDirector.Strength = v);
+
             Section("DEVELOPER", "Advanced tuning, saved separately from presets.");
             AudioDevSettings D() => BA ? BA.Dev : _devFallback;
             Toggle("HD 3D audio (HRTF)", "Binaural 3D sound through Steam Audio: you hear whether a sound is above, below, behind or around a corner the way your ears would. Best on headphones. Off falls back to plain stereo panning.",
@@ -156,8 +160,13 @@ namespace Backrooms.Camcorder
             _sndSearch.textEdition.placeholder = "Search sounds or categories...";
             _sndSearch.RegisterValueChangedCallback(_ => FilterSounds());
 
+            // Grouped by category (in the order each first appears), so a category has one heading.
+            var cats = new System.Collections.Generic.List<string>();
+            foreach (var d in SoundCatalog.All) if (!cats.Contains(d.category)) cats.Add(d.category);
+            var sorted = new System.Collections.Generic.List<SoundDef>();
+            foreach (var c in cats) foreach (var d in SoundCatalog.All) if (d.category == c) sorted.Add(d);
             string lastCat = null;
-            foreach (var d in SoundCatalog.All)
+            foreach (var d in sorted)
             {
                 if (d.category != lastCat)
                 {

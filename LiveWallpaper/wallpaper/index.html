@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pines at Dusk</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0c0b08; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="assets.js"></script>
+<script>
+/*
+  Live wallpaper: one photo, animated in a shader, finished as 1970s 16mm film.
+  URL options (all optional):
+    ?loop=60      seconds before motion repeats (grain and dust never repeat when live)
+    ?scale=1      render resolution multiplier (lower = lighter on the GPU)
+    ?render=1&w=1080&h=2400&loop=15   deterministic frame export (see tools/render.mjs)
+*/
+const FPS = 24;
+const q = new URLSearchParams(location.search);
+const RENDER = q.has('render');
+const LOOP = parseFloat(q.get('loop')) || (RENDER ? 15 : 60);
+const SCALE = parseFloat(q.get('scale')) || 1;
+
+const FRAG = `#version 300 es
+precision highp float;
+uniform sampler2D uBase, uMasks, uSky, uBloom;
+uniform vec2 uRes, uImg, uSun;
+uniform vec4 uView;
+uniform float uTime, uLoop, uFrame, uVisW;
+out vec4 outColor;
+
+const float TAU = 6.2831853;
+
+// ---------- hashes & noise ----------
+float hash11(float p){ p = fract(p * .1031); p *= p + 33.33; p *= p + p; return fract(p); }
+float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+vec2 hash22(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz) * p3.zy); }
+vec4 hash41(float p){ vec4 p4 = fract(vec4(p) * vec4(.1031, .1030, .0973, .1099)); p4 += dot(p4, p4.wzxy + 33.33); return fract((p4.xxyz + p4.yzzw) * p4.zywx); }
+
+vec3 mod289(vec3 x){ return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 mod289(vec4 x){ return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 permute(vec4 x){ return mod289(((x * 34.0) + 10.0) * x); }
+vec4 taylorInvSqrt(vec4 r){ return 1.79284291400159 - 0.85373472095314 * r; }
+float snoise(vec3 v){
+  const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+  vec3 i = floor(v + dot(v, C.yyy));
+  vec3 x0 = v - i + dot(i, C.xxx);
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min(g.xyz, l.zxy);
+  vec3 i2 = max(g.xyz, l.zxy);
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy;
+  vec3 x3 = x0 - D.yyy;
+  i = mod289(i);
+  vec4 p = permute(permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+  float n_ = 0.142857142857;
+  vec3 ns = n_ * D.wyz - D.xzx;
+  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_);
+  vec4 x = x_ * ns.x + ns.yyyy;
+  vec4 y = y_ * ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+  vec4 b0 = vec4(x.xy, y.xy);
+  vec4 b1 = vec4(x.zw, y.zw);
+  vec4 s0 = floor(b0) * 2.0 + 1.0;
+  vec4 s1 = floor(b1) * 2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+  vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+  vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+  vec3 p0 = vec3(a0.xy, h.x);
+  vec3 p1 = vec3(a0.zw, h.y);
+  vec3 p2 = vec3(a1.xy, h.z);
+  vec3 p3 = vec3(a1.zw, h.w);
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+  vec4 m = max(0.5 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 105.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+}
+
+// ---------- loop-safe time functions ----------
+// Everything that moves repeats exactly every uLoop seconds, so the video loop has no seam.
+float PH;                                         // 0..1 through the loop
+float cyc(float hz){ return max(1.0, floor(uLoop * hz + 0.5)); }   // whole cycles per loop
+float osc(float hz, float off){ return sin(TAU * (cyc(hz) * PH + off)); }
+
+// Noise that evolves at 'speed' and drifts by 'vel', blended so t=0 and t=loop match.
+float loopNoise(vec2 p, vec2 vel, float speed){
+  float t0 = uTime, t1 = uTime - uLoop;
+  float a = snoise(vec3(p + vel * t0, t0 * speed));
+  float b = snoise(vec3(p + vel * t1, t1 * speed));
+  float w = PH;
+  return (a * (1.0 - w) + b * w) / sqrt(w * w + (1.0 - w) * (1.0 - w));
+}
+float loopNoise(vec2 p, float speed){ return loopNoise(p, vec2(0.0), speed); }
+
+float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+float sdSeg(vec2 p, vec2 a, vec2 b){ vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0); return length(pa - ba * h); }
+
+// ---------- particles ----------
+// Gnats: a small swarm hanging in the sun gap, backlit.
+float gnats(vec2 iuv){
+  vec2 C = vec2(0.503, 0.405);
+  if (abs(iuv.x - C.x) > 0.075 || abs(iuv.y - C.y) > 0.11) return 0.0;
+  vec2 P = iuv * uImg;
+  float acc = 0.0;
+  float shutter = (1.0 / 48.0) / uLoop;           // 180-degree shutter, in loop-phase units
+  for (int i = 0; i < 18; i++){
+    vec4 h = hash41(float(i) * 7.13 + 1.7);
+    vec4 k = hash41(float(i) * 3.71 + 9.2);
+    vec2 base = C + (h.xy - 0.5) * vec2(0.055, 0.12);
+    vec2 pa, pb;
+    for (int s = 0; s < 2; s++){
+      float ph = PH + (float(s) - 0.5) * shutter;
+      vec2 o = vec2(
+        0.007 * sin(TAU * (cyc(0.35 + k.x * 0.5) * ph + h.z)) + 0.014 * sin(TAU * (cyc(0.08 + k.y * 0.08) * ph + h.w)),
+        0.008 * sin(TAU * (cyc(0.45 + k.z * 0.6) * ph + h.x)) + 0.009 * sin(TAU * (cyc(0.12 + k.w * 0.08) * ph + h.y)));
+      o += 0.0018 * vec2(sin(TAU * (cyc(2.1 + k.x * 1.5) * ph + k.y)), sin(TAU * (cyc(1.9 + k.w * 1.5) * ph + k.z)));
+      if (s == 0) pa = (base + o) * uImg; else pb = (base + o) * uImg;
+    }
+    float d = sdSeg(P, pa, pb);
+    float r = 0.45 + k.z * 0.35;
+    acc += smoothstep(r + 0.8, r * 0.2, d) * (0.5 + 0.5 * k.w);
+  }
+  return acc;
+}
+
+// Drifting pollen / seed fluff. The field wraps every 'per' cells, and drifts exactly
+// that many cells per loop, so it loops cleanly.
+vec2 fluff(vec2 iuv, float cell, float density, float radiusPx, float driftHz, float seed){
+  float aspect = uImg.x / uImg.y;
+  float per = max(ceil(uVisW / cell) + 2.0, cyc(driftHz));
+  vec2 q = vec2(iuv.x * aspect, iuv.y) / cell;
+  q.x -= per * PH;
+  q.y += 0.15 * sin(TAU * PH);
+  vec2 id = floor(q);
+  vec2 f = fract(q);
+  vec2 hid = vec2(mod(id.x, per), id.y) + seed;
+  vec4 h = hash41(hid.x * 17.0 + hid.y * 131.0 + seed);
+  if (h.x > density) return vec2(0.0);
+  vec4 k = hash41(hid.x * 5.3 + hid.y * 71.0 + seed * 3.0);
+  vec2 pos = 0.22 + 0.56 * h.yz;
+  pos += 0.13 * vec2(sin(TAU * (cyc(0.07 + k.x * 0.08) * PH + k.y)), sin(TAU * (cyc(0.05 + k.z * 0.06) * PH + k.w)));
+  float r = radiusPx * (0.6 + 0.8 * h.w) / (cell * uImg.y);
+  float d = length(f - pos);
+  float a = smoothstep(r, r * 0.25, d);
+  float tw = 0.5 + 0.5 * sin(TAU * (cyc(0.2 + k.w * 0.3) * PH + k.x));
+  return vec2(a, 0.35 + 0.65 * tw * tw);
+}
+
+// ---------- the 1970s print ----------
+vec3 grade(vec3 c){
+  c *= 1.0;
+  c = pow(max(c, 0.0), vec3(0.93));                       // open the mids
+  float l = luma(c);
+  float gdom = max(0.0, c.g - max(c.r, c.b));             // pine green -> olive
+  c += gdom * vec3(0.42, -0.22, 0.04);
+  vec3 rich = c;
+  c = mix(vec3(l), c, 0.66);                              // faded dyes
+  float warm = clamp((rich.r - rich.b) * 2.0, 0.0, 1.0) * smoothstep(0.3, 0.8, l);
+  c = mix(c, rich, warm * 0.6);                           // ...except the sunset, which keeps its fire
+  c *= mix(vec3(1.05, 1.0, 0.84), vec3(1.0, 0.99, 1.0), smoothstep(0.15, 0.85, l));  // warm low end
+  c = c * 1.22 / (1.0 + 0.22 * c);                        // soft shoulder: print highlights never clip
+  c = c * 0.88 + vec3(0.078, 0.075, 0.058);               // lifted print blacks
+  return c;
+}
+
+float grainLayer(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash12(i), b = hash12(i + vec2(1, 0)), c = hash12(i + vec2(0, 1)), d = hash12(i + vec2(1, 1));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y) - 0.5;
+}
+
+void main(){
+  PH = uTime / uLoop;
+  vec2 fc = gl_FragCoord.xy;
+  vec2 suv = vec2(fc.x / uRes.x, 1.0 - fc.y / uRes.y);    // screen uv, y down
+  float frame = uFrame;
+  float pxRef = uRes.y / 1080.0;                          // screen px per 1080p px
+
+  // Gate weave: slow periodic drift + per-frame registration jitter.
+  vec2 weave = vec2(0.45 * osc(0.37, 0.0) + 0.25 * osc(1.3, 0.3), 0.30 * osc(0.29, 0.6) + 0.18 * osc(1.7, 0.1));
+  weave += (hash22(vec2(frame, 3.1)) - 0.5) * 0.35;
+  vec2 iuv = uView.xy + suv * uView.zw;
+  iuv += weave * pxRef / uRes * uView.zw;
+
+  vec3 m = texture(uMasks, iuv).rgb;                      // bush, grass, man
+  float y = iuv.y;
+
+  // Wind: one gust envelope drives the trees, plants and the light flicker together.
+  float gust = clamp(0.62 + 0.22 * osc(0.045, 0.1) + 0.13 * osc(0.11, 0.7) + 0.08 * osc(0.27, 0.4), 0.15, 1.2);
+
+  vec2 disp = vec2(0.0);                                  // in image px
+  float treeA = pow(1.0 - smoothstep(0.0, 0.68, y), 1.6) * (1.0 - m.b);
+  disp.x += treeA * 2.8 * gust * loopNoise(vec2(iuv.x * 4.0, 0.3), 0.16);
+
+  vec2 bp = iuv * vec2(15.0, 10.0);
+  disp += m.r * gust * vec2(2.1 * loopNoise(bp, 0.33), 0.8 * loopNoise(bp + 31.7, 0.33));
+
+  float wave = 0.5 + 0.5 * sin(TAU * (iuv.x * 1.3 + iuv.y * 0.35 - cyc(0.085) * PH));
+  wave *= wave;
+  vec2 gp = iuv * vec2(36.0, 15.0);
+  disp += m.g * gust * (0.35 + 0.65 * wave) * vec2(2.6 * loopNoise(gp, 0.55) + 1.4 * wave, 0.7 * loopNoise(gp + 12.3, 0.55));
+
+  // Breathing: a slow, barely-there rise of the shoulders.
+  vec2 pivot = vec2(925.0, 880.0) / uImg;
+  vec2 breath = (iuv - pivot) * vec2(0.25, 1.0) * 0.0026 * osc(0.21, 0.0) * m.b;
+
+  vec2 s = iuv - disp / uImg - breath;
+  vec3 c = texture(uBase, s).rgb;
+
+  // ---------- light ----------
+  float aspect = uImg.x / uImg.y;
+  vec2 rel = (iuv - uSun) * vec2(aspect, 1.0);
+  float r = length(rel);
+  float flick = 1.0 + gust * 0.16 * loopNoise(vec2(3.1, 7.7), 1.5) + 0.05 * loopNoise(vec2(9.2, 1.1), 3.5);
+
+  float sky = texture(uSky, s).r;
+  c += c * sky * exp(-r * 7.0) * (flick - 1.0) * 1.6;     // sun gap breathes with the branches
+
+  vec3 bloom = texture(uBloom, s).rgb;
+  c += bloom * vec3(1.0, 0.58, 0.28) * 0.24 * flick;     // sun glow
+  c += bloom * vec3(0.55, 0.12, 0.04) * 0.14;            // red halation fringe
+
+  // Light shafts: march toward the sun through the sky mask.
+  vec2 stepv = (uSun - iuv) * (0.9 / 26.0);
+  vec2 sp = iuv + stepv * hash12(fc + frame);
+  float shaft = 0.0, decay = 1.0;
+  for (int i = 0; i < 26; i++){ sp += stepv; shaft += texture(uSky, sp).r * decay; decay *= 0.955; }
+  shaft /= 26.0;
+  vec2 dir = rel / max(r, 1e-4);
+  float rays = 0.45 + 0.55 * smoothstep(-0.4, 0.7, loopNoise(dir * 3.0, vec2(0.0), 0.12));
+
+  // Haze hanging in the clearing.
+  vec2 hp = iuv * vec2(2.4, 7.5);
+  float hz = 0.5 + 0.5 * (0.65 * loopNoise(hp, vec2(-0.025, 0.0), 0.05) + 0.35 * loopNoise(hp * 2.3, vec2(-0.04, 0.0), 0.08));
+  float band = exp(-pow((y - 0.44) / 0.10, 2.0)) * (0.30 + 0.70 * exp(-abs(rel.x) * 3.2));
+  float haze = band * hz;
+
+  vec3 sunCol = vec3(1.0, 0.66, 0.36);
+  vec3 add = sunCol * shaft * rays * (0.3 + 0.9 * haze) * 0.36 * flick;
+  add += vec3(0.80, 0.62, 0.45) * haze * 0.03 * flick;
+  c = 1.0 - (1.0 - c) * (1.0 - add);                      // screen
+
+  // ---------- particles ----------
+  float glow = luma(bloom);
+  float sunNear = exp(-r * 2.6);
+  float g = gnats(iuv);
+  c += vec3(1.0, 0.84, 0.60) * g * (0.03 + 1.3 * glow);
+
+  vec2 f1 = fluff(iuv, 0.055, 0.30, 1.3, 0.010, 1.0);
+  c += vec3(1.0, 0.86, 0.66) * f1.x * f1.y * (0.10 + 0.9 * sunNear + 0.9 * glow + 0.6 * shaft);
+  vec2 f2 = fluff(iuv, 0.20, 0.22, 11.0, 0.016, 7.0);
+  c += vec3(1.0, 0.80, 0.55) * f2.x * (0.025 + 0.11 * sunNear + 0.20 * glow);
+
+  // ---------- print ----------
+  c = grade(c);
+  c *= 1.0 + (hash11(frame * 1.37 + 0.5) - 0.5) * 0.025 + 0.012 * osc(0.9, 0.2);   // exposure flicker
+
+  vec2 vq = (suv - 0.5) * vec2(1.0, 0.9);
+  c *= 1.0 - 0.42 * pow(clamp(length(vq) * 1.42, 0.0, 1.2), 2.6);
+
+  // Grain: three dye layers, partly shared, strongest in the mids.
+  vec2 gpos = fc / (1.35 * pxRef) + hash22(vec2(frame, 9.0)) * 517.0;
+  float gc = grainLayer(gpos);
+  vec3 gr = 0.62 * vec3(gc) + 0.38 * vec3(grainLayer(gpos + 41.3), grainLayer(gpos + 87.9), grainLayer(gpos + 133.1));
+  float l = luma(c);
+  c += gr * (0.065 + 0.07 * (1.0 - abs(2.0 * l - 1.0)));
+
+  // Dust and the odd hair.
+  vec2 pr = (suv * uRes) / pxRef;
+  for (int k = 0; k < 3; k++){
+    vec4 h = hash41(frame * 3.0 + float(k) + 0.5);
+    if (h.x < 0.10){
+      vec2 p = (vec2(0.05) + 0.9 * h.yz) * uRes / pxRef;
+      vec2 dv = pr - p;
+      float rad = 1.0 + 3.2 * h.w * h.w;
+      float lumpy = 1.0 + 0.3 * sin(atan(dv.y, dv.x) * 3.0 + h.y * 40.0);
+      float a = smoothstep(rad, rad * 0.4, length(dv) * lumpy);
+      bool white = fract(h.w * 13.7) < 0.7;
+      c = mix(c, white ? vec3(0.90, 0.88, 0.80) : vec3(0.04, 0.035, 0.03), a * 0.7);
+    }
+  }
+  vec4 hh = hash41(frame * 0.731 + 77.0);
+  if (hh.x < 0.012){
+    vec2 p = (vec2(0.1) + 0.8 * hh.yz) * uRes / pxRef;
+    float ang = hh.w * TAU;
+    vec2 dv = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * (pr - p);
+    float len = 40.0 + 60.0 * fract(hh.w * 7.1);
+    float bend = (6.0 + 10.0 * fract(hh.y * 5.3)) * sin(dv.x * 0.045 + hh.z * 6.0);
+    float a = smoothstep(1.1, 0.3, abs(dv.y - bend)) * smoothstep(len, len * 0.8, abs(dv.x));
+    c = mix(c, vec3(0.05, 0.045, 0.04), a * 0.75);
+  }
+
+  outColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+}`;
+
+const VERT = `#version 300 es
+in vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }`;
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: RENDER, powerPreference: 'low-power' });
+if (!gl) document.body.innerHTML = '<p style="color:#ccc;font:16px sans-serif;padding:2em">WebGL2 is not available.</p>';
+
+function shader(type, src){
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, shader(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+const U = {};
+for (const n of ['uBase', 'uMasks', 'uSky', 'uBloom', 'uRes', 'uImg', 'uSun', 'uView', 'uTime', 'uLoop', 'uFrame', 'uVisW'])
+  U[n] = gl.getUniformLocation(prog, n);
+
+function loadTex(unit, src, mips){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const t = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
+      if (mips) gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mips ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      resolve(t);
+    };
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// Fit the photo to the screen, cropping around the man and the sun.
+function view(w, h){
+  const imgA = SCENE.width / SCENE.height, scrA = w / h, over = 1.025;
+  let vw, vh, cx = 0.5, cy = 0.5;
+  if (scrA >= imgA){ vw = 1 / over; vh = imgA / scrA / over; cy = 0.52; }
+  else { vh = 1 / over; vw = scrA / imgA / over; cx = SCENE.sun[0]; }
+  cx = Math.min(Math.max(cx, vw / 2), 1 - vw / 2);
+  cy = Math.min(Math.max(cy, vh / 2), 1 - vh / 2);
+  return [cx - vw / 2, cy - vh / 2, vw, vh];
+}
+
+let W = 0, H = 0;
+function resize(){
+  if (RENDER){ W = +q.get('w') || 1080; H = +q.get('h') || 2400; }
+  else {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) * SCALE;
+    W = Math.round(innerWidth * dpr); H = Math.round(innerHeight * dpr);
+    const cap = 3840 * 2160;                      // don't go past 4K worth of pixels
+    if (W * H > cap){ const k = Math.sqrt(cap / (W * H)); W = Math.round(W * k); H = Math.round(H * k); }
+  }
+  canvas.width = W; canvas.height = H;
+  gl.viewport(0, 0, W, H);
+  const v = view(W, H);
+  gl.uniform4f(U.uView, v[0], v[1], v[2], v[3]);
+  gl.uniform1f(U.uVisW, v[2] * SCENE.width / SCENE.height);
+  gl.uniform2f(U.uRes, W, H);
+}
+
+function draw(frame){
+  gl.uniform1f(U.uTime, (frame / FPS) % LOOP);
+  gl.uniform1f(U.uFrame, frame % 100000);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+Promise.all([
+  loadTex(0, ASSETS.base, true), loadTex(1, ASSETS.masks, false),
+  loadTex(2, ASSETS.sky, false), loadTex(3, ASSETS.bloom, false),
+]).then(() => {
+  gl.uniform1i(U.uBase, 0); gl.uniform1i(U.uMasks, 1); gl.uniform1i(U.uSky, 2); gl.uniform1i(U.uBloom, 3);
+  gl.uniform2f(U.uImg, SCENE.width, SCENE.height);
+  gl.uniform2f(U.uSun, SCENE.sun[0], SCENE.sun[1]);
+  gl.uniform1f(U.uLoop, LOOP);
+  resize();
+
+  if (RENDER){
+    window.renderFrame = (i) => { draw(i); gl.finish(); return canvas.toDataURL('image/png'); };
+    window.wallpaperReady = true;
+    return;
+  }
+  addEventListener('resize', resize);
+  const start = performance.now();
+  let last = -1;
+  (function tick(now){
+    const f = Math.floor((now - start) / 1000 * FPS);
+    if (f !== last){ last = f; draw(f); }          // film cadence: 24 distinct frames a second
+    requestAnimationFrame(tick);
+  })(start);
+});
+</script>
+</body>
+</html>

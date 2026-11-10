@@ -1,0 +1,235 @@
+using Backrooms.Generation;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+namespace Backrooms.Interaction
+{
+    /// <summary>
+    /// Something small the free hand can pick up and use (see PropGrabber.Items.cs). Lying in the world it is a light
+    /// physics object; it freezes while the floor under it is not loaded, so it never falls out of the world. Held,
+    /// it follows the hand and the player's left mouse button is its "use".
+    /// </summary>
+    /// <summary>What the hand holding an item sees and does this frame (see <see cref="WorldItem.HoldUpdate"/>).</summary>
+    public struct HoldInput
+    {
+        public bool use, pressed, released;      // left mouse: held, went down, came up this frame
+        public bool secondary;                   // right mouse tapped (released within a moment)
+        public bool reel;                        // right mouse held down (past the tap)
+        public bool aim, aimPressed;             // right mouse held down (at once), and went down this frame
+        public Socket socket;                    // the socket the hand aims at (focus brackets), for items that plug in
+        public bool hit;                         // the view hits something within 6 m (not the player or the item)
+        public RaycastHit hitInfo;
+        public Vector3 eye, aimDir, aimAt;       // aimAt: the hit point, or 2 m ahead
+        public float dt;
+        public PropGrabber hand;
+    }
+
+    /// <summary>Something the empty hand can click (a plug in a socket): asked before picking anything up.</summary>
+    public interface IHandUse
+    {
+        bool HandUse(PropGrabber hand);
+    }
+
+    [RequireComponent(typeof(Rigidbody))]
+    public abstract class WorldItem : MonoBehaviour
+    {
+        public string itemId;
+        public string displayName;
+        public Rigidbody Body { get; private set; }
+        /// <summary>Every item in the world now (the Poolrooms' water goes through them: PoolBodies).</summary>
+        public static readonly System.Collections.Generic.List<WorldItem> Live = new System.Collections.Generic.List<WorldItem>();
+        protected virtual void OnEnable() { Live.Add(this); }
+        protected virtual void OnDisable() { Live.Remove(this); }
+        public bool Held { get; private set; }
+        /// <summary>Co-op (2026-11-04): shown here for another player (in their hand, on their back): not this world's to
+        /// save or simulate.</summary>
+        [System.NonSerialized] public bool NetForeign;
+        /// <summary>Co-op: another player's game is moving it (thrown, knocked): kinematic here, following theirs.</summary>
+        [System.NonSerialized] public bool NetRemote;
+        /// <summary>Co-op: the loot id it had until it was just taken (the network gives it an id of its own).</summary>
+        [System.NonSerialized] public ulong lootTakenFrom;
+        Collider[] _colliders;
+        WorldStreamer _streamer;
+
+        /// <summary>Where the item sits relative to the eye (camera frame) while held: resting, and while in use.</summary>
+        public virtual Vector3 HoldOffset => new Vector3(0.17f, -0.2f, 0.38f);
+        public virtual Vector3 UseOffset => HoldOffset;
+        /// <summary>Palm contact point and hand frame in the item's own frame (for the arm IK).</summary>
+        public virtual Vector3 GripLocal => Vector3.zero;
+        /// <summary>How the item is turned in the hand (camera frame, after the usual upright-in-view hold).</summary>
+        public virtual Quaternion HoldTurn => Quaternion.identity;
+        /// <summary>
+        /// Distance from a point (in the item's own frame) to its surface, negative inside: what the fingers wrap round.
+        /// By default its collider box or capsule (they are switched off in the hand, so this is worked out here).
+        /// </summary>
+        public virtual float ContactDistance(Vector3 local)
+        {
+            float best = float.MaxValue;
+            foreach (var c in GetComponents<Collider>())
+            {
+                if (c is BoxCollider b) best = Mathf.Min(best, BoxDistance(local, b.center, b.size * 0.5f));
+                else if (c is CapsuleCollider cc)
+                {
+                    Vector3 axis = cc.direction == 0 ? Vector3.right : cc.direction == 1 ? Vector3.up : Vector3.forward;
+                    float h = Mathf.Max(0f, cc.height * 0.5f - cc.radius);
+                    best = Mathf.Min(best, SegmentDistance(local, cc.center - axis * h, cc.center + axis * h) - cc.radius);
+                }
+                else if (c is SphereCollider s) best = Mathf.Min(best, Vector3.Distance(local, s.center) - s.radius);
+            }
+            return best;
+        }
+
+        public float ContactDistanceWorld(Vector3 world) => ContactDistance(transform.InverseTransformPoint(world));
+
+        public static float BoxDistance(Vector3 p, Vector3 centre, Vector3 half)
+        {
+            Vector3 q = p - centre;
+            q = new Vector3(Mathf.Abs(q.x) - half.x, Mathf.Abs(q.y) - half.y, Mathf.Abs(q.z) - half.z);
+            Vector3 o = Vector3.Max(q, Vector3.zero);
+            return o.magnitude + Mathf.Min(Mathf.Max(q.x, Mathf.Max(q.y, q.z)), 0f);
+        }
+
+        public static float SegmentDistance(Vector3 p, Vector3 a, Vector3 b)
+        {
+            Vector3 ab = b - a;
+            float t = ab.sqrMagnitude > 1e-10f ? Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude) : 0f;
+            return Vector3.Distance(p, a + ab * t);
+        }
+
+        /// <summary>A ring (a roll of tape, a coil of cord): radii ri..ro round an axis through centre, halfWidth along it.</summary>
+        public static float RingDistance(Vector3 p, Vector3 centre, Vector3 axis, float ri, float ro, float halfWidth)
+        {
+            Vector3 d = p - centre;
+            float along = Vector3.Dot(d, axis);
+            float r = (d - axis * along).magnitude;
+            float qx = Mathf.Abs(r - (ri + ro) * 0.5f) - (ro - ri) * 0.5f, qy = Mathf.Abs(along) - halfWidth;
+            return new Vector2(Mathf.Max(qx, 0f), Mathf.Max(qy, 0f)).magnitude + Mathf.Min(Mathf.Max(qx, qy), 0f);
+        }
+
+        /// <summary>A point to put focus marks on while held (where a strip of tape will start), if any.</summary>
+        public virtual bool AimMark(out Vector3 at) { at = default; return false; }
+        public virtual Quaternion GripRotationLocal => Quaternion.identity;
+        public virtual float GripCurl => 0.85f;
+
+        protected virtual void Awake()
+        {
+            Body = GetComponent<Rigidbody>();
+            Body.sleepThreshold = 0.02f;                     // settle and stop (no resting jitter)
+            _colliders = GetComponentsInChildren<Collider>();
+            // Small things get a steady contact shadow instead of a flickering shadow-map one.
+            foreach (var r in GetComponentsInChildren<Renderer>()) if (!(r is ParticleSystemRenderer)) r.shadowCastingMode = ShadowCastingMode.Off;
+            if (!GetComponent<ContactShadow>()) gameObject.AddComponent<ContactShadow>();
+            if (!GetComponent<Audio.ImpactSounder>()) gameObject.AddComponent<Audio.ImpactSounder>();   // dropped, knocked, thrown
+            ItemTuning.Apply(this);                        // its settings as tuned in the F2 menu
+        }
+
+        /// <summary>Held in place by something other than the hand (a plug in a socket): stays kinematic.</summary>
+        protected virtual bool Pinned => false;
+
+        /// <summary>In a backpack (2026-11-04): carried in it, kinematic, until a hand takes it out (Backpack).</summary>
+        public Backpack InBag { get; internal set; }
+
+        bool _playerIgnored;
+
+        /// <summary>Small things (a plug, chalk, tape) do not trip the player up: walking over them would bump the view.</summary>
+        void IgnorePlayer()
+        {
+            _playerIgnored = true;
+            if (Body.mass > 0.5f) return;
+            var player = FindAnyObjectByType<CamcorderPlayerController>();
+            var cc = player ? player.GetComponent<CharacterController>() : null;
+            if (!cc) { _playerIgnored = false; return; }
+            foreach (var c in GetComponentsInChildren<Collider>(true)) Physics.IgnoreCollision(cc, c, true);
+        }
+
+        /// <summary>Set down by hand and still gliding the last of the way onto its spot (PropGrabber.Place): kinematic.</summary>
+        [System.NonSerialized] public bool settling;
+
+        protected virtual void FixedUpdate()
+        {
+            if (!_playerIgnored) IgnorePlayer();
+            if (NetForeign || NetRemote) { if (!Held && !Body.isKinematic) Body.isKinematic = true; return; }   // (another game's to move)
+            if (Held || settling) return;
+            if (Pinned || InBag) { if (!Body.isKinematic) Body.isKinematic = true; return; }
+            // Frozen while the ground under it is unloaded (it would fall forever), awake otherwise.
+            if (!_streamer) _streamer = FindAnyObjectByType<WorldStreamer>();
+            bool ground = !_streamer || _streamer.LayoutAt(WorldStreamer.ChunkOf(transform.position)) != null;
+            if (Body.isKinematic == ground) Body.isKinematic = !ground;
+            if (transform.position.y < -50f) { Body.linearVelocity = Vector3.zero; transform.position += Vector3.up * 52f; }
+            if (!Body.isKinematic) NoclipTravel.ItemStep(this);           // thrown through a noclip door
+        }
+
+        public void SetHeld(bool held)
+        {
+            Held = held;
+            Body.isKinematic = held;
+            Body.interpolation = held ? RigidbodyInterpolation.None : RigidbodyInterpolation.Interpolate;
+            // All of them, as they are now: parts added after Awake (the lamp's cord bundle) would stay solid in the hand
+            // and shove the player along as they walked.
+            _colliders = GetComponentsInChildren<Collider>(true);
+            foreach (var c in _colliders) if (c) c.enabled = !held;
+
+            if (held && InBag) InBag.Removed(this);                       // taken out of a backpack
+            if (held && lootId != 0) { Saves.LootRegistry.Take(lootId); lootTakenFrom = lootId; lootId = 0; transform.SetParent(null, true); }   // taken from its room: a free item from now on
+            if (held) OnPickedUp(); else OnDropped();
+        }
+
+        protected virtual void OnPickedUp() { }
+        protected virtual void OnDropped() { }
+
+        /// <summary>Every frame while held. use: the button is down. aimFrom/aimAt: the eye and what it looks at.</summary>
+        public virtual void Hold(bool use, Vector3 aimAt, float dt) { }
+
+        /// <summary>Every frame while held, with everything the hand knows (by default calls <see cref="Hold"/>).</summary>
+        public virtual void HoldUpdate(in HoldInput input) => Hold(input.use, input.aimAt, input.dt);
+
+        /// <summary>A pose of its own for the item while in use (chalk on the wall), with a weight 0..1; 0: the usual hold pose.</summary>
+        public virtual float UsePose(out Vector3 position, out Quaternion rotation) { position = default; rotation = default; return 0f; }
+
+        /// <summary>
+        /// The ways it can rest when set down by hand (E: PropGrabber.Place), the first as it naturally rests; R goes
+        /// through them (turns in its own frame, before its yaw). By default: upright, on one side, on the other, upside down.
+        /// </summary>
+        public virtual Quaternion[] RestTurns => DefaultRests;
+        protected static readonly Quaternion[] DefaultRests =
+        {
+            Quaternion.identity, Quaternion.Euler(0f, 0f, 90f), Quaternion.Euler(90f, 0f, 0f), Quaternion.Euler(180f, 0f, 0f),
+        };
+
+        /// <summary>Busy with something of its own the hand must not interrupt to put it down (a plug on its way into a
+        /// socket, a hammer mid-swing).</summary>
+        public virtual bool Busy => false;
+
+        /// <summary>Small enough to go in a pocket (keys 1-4: PropGrabber.Pockets).</summary>
+        public virtual bool Pocketable => false;
+        /// <summary>Its use is aimed at what you look at (paint, chalk, tape, a swing): a click on furniture uses it. False
+        /// (the hammer, the nails, the chicken): a click on furniture puts it in a pocket and takes the furniture.</summary>
+        public virtual bool UsesAim => true;
+
+        /// <summary>Q sets it down upright where you look (a lamp) instead of tossing it.</summary>
+        public virtual bool PlaceOnDrop => false;
+        /// <summary>Q lets it fall straight from the hand (no toss).</summary>
+        public virtual bool DropsStraight => false;
+        /// <summary>Could clicking this socket with the item in hand plug something in (it gets focus brackets)?</summary>
+        public virtual bool TakesSocket(Socket s) => false;
+
+        /// <summary>Called after the hand let go of it by setting it down (PlaceOnDrop).</summary>
+        public virtual void OnPlaced() { }
+
+        /// <summary>Extra state for the world save (paint left, length of chalk, a lamp's switch...).</summary>
+        public virtual float Amount { get => 1f; set { } }
+
+        /// <summary>Spawned in a special room and not yet taken: it belongs to its chunk and is not saved on its own.</summary>
+        [System.NonSerialized] public ulong lootId;
+        public bool IsLoot => lootId != 0;
+
+        /// <summary>Use pose blend 0..1 (the hand raises the item while using it).</summary>
+        public virtual float UseBlend => 0f;
+
+        /// <summary>How hard the body is working with it (0..1: the camera strains, as when hauling furniture).</summary>
+        public virtual float Effort => 0f;
+
+        /// <summary>A short line for the HUD ("paint 63 %").</summary>
+        public virtual string Status => "";
+    }
+}

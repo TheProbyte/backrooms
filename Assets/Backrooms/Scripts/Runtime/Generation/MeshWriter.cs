@@ -22,6 +22,65 @@ namespace Backrooms.Generation
         public Vector3 worldOffset;   // added to local positions before UV projection
         public int VertexCount => _v.Count;
 
+        /// <summary>Rotate only newly appended geometry, preserving UVs and rotating normals and tangents with it.</summary>
+        public void RotateFrom(int start, Vector3 pivot, Quaternion rotation)
+        {
+            for (int i = start; i < _v.Count; i++)
+            {
+                _v[i] = pivot + rotation * (_v[i] - pivot);
+                _n[i] = rotation * _n[i];
+                var t = _t[i];
+                var xyz = rotation * new Vector3(t.x, t.y, t.z);
+                _t[i] = new Vector4(xyz.x, xyz.y, xyz.z, t.w);
+            }
+        }
+
+        /// <summary>Appends a model's triangles (one submesh's worth), placed at a position and rotation.</summary>
+        public void AddMesh(Vector3[] v, Vector3[] n, Vector4[] t, Vector2[] uv, int[] tris, Vector3 position, Quaternion rotation)
+        {
+            // Only the vertices the triangles use, renumbered.
+            var map = new Dictionary<int, int>(tris.Length);
+            foreach (int i in tris)
+            {
+                if (map.TryGetValue(i, out int j)) { _i.Add(j); continue; }
+                j = _v.Count;
+                map[i] = j;
+                _v.Add(position + rotation * v[i]);
+                _n.Add(rotation * n[i]);
+                var td = rotation * new Vector3(t[i].x, t[i].y, t[i].z);
+                _t.Add(new Vector4(td.x, td.y, td.z, t[i].w));
+                _uv.Add(uv[i]);
+                _i.Add(j);
+            }
+        }
+
+        /// <summary>
+        /// A model's triangles with a scale in its own frame first (a cabinet module stretched to its share of a counter's
+        /// length; a negative x mirrors it, the winding turned back so its faces still look out).
+        /// </summary>
+        public void AddMesh(Vector3[] v, Vector3[] n, Vector4[] t, Vector2[] uv, int[] tris, Vector3 position, Quaternion rotation, Vector3 scale)
+        {
+            if (scale == Vector3.one) { AddMesh(v, n, t, uv, tris, position, rotation); return; }
+            var inv = new Vector3(1f / scale.x, 1f / scale.y, 1f / scale.z);
+            bool flip = scale.x * scale.y * scale.z < 0f;
+            var map = new Dictionary<int, int>(tris.Length);
+            int start = _i.Count;
+            foreach (int i in tris)
+            {
+                if (map.TryGetValue(i, out int j)) { _i.Add(j); continue; }
+                j = _v.Count;
+                map[i] = j;
+                _v.Add(position + rotation * Vector3.Scale(v[i], scale));
+                _n.Add((rotation * Vector3.Scale(n[i], inv)).normalized);
+                var td = (rotation * Vector3.Scale(new Vector3(t[i].x, t[i].y, t[i].z), scale)).normalized;
+                _t.Add(new Vector4(td.x, td.y, td.z, flip ? -t[i].w : t[i].w));
+                _uv.Add(uv[i]);
+                _i.Add(j);
+            }
+            if (flip)
+                for (int k = start; k + 2 < _i.Count; k += 3) { int x = _i[k + 1]; _i[k + 1] = _i[k + 2]; _i[k + 2] = x; }
+        }
+
         public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal, UVProjector uv)
         {
             Quad(a, b, c, d, normal, uv(a + worldOffset, normal), uv(b + worldOffset, normal), uv(c + worldOffset, normal), uv(d + worldOffset, normal));
@@ -51,6 +110,32 @@ namespace Backrooms.Generation
             else { _i.Add(s); _i.Add(s + 2); _i.Add(s + 1); _i.Add(s); _i.Add(s + 3); _i.Add(s + 2); }
         }
 
+        /// <summary>A quad with its own normal at each corner (smooth surfaces such as the curved underside of an arch) and explicit UVs.</summary>
+        public void SmoothQuad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 na, Vector3 nb, Vector3 nc, Vector3 nd, Vector2 ua, Vector2 ub, Vector2 uc, Vector2 ud)
+        {
+            int s = _v.Count;
+            _v.Add(a); _v.Add(b); _v.Add(c); _v.Add(d);
+            _uv.Add(ua); _uv.Add(ub); _uv.Add(uc); _uv.Add(ud);
+            _n.Add(na); _n.Add(nb); _n.Add(nc); _n.Add(nd);
+            Vector3 avg = (na + nb + nc + nd).normalized;
+            Vector3 e1 = b - a, e2 = d - a;
+            Vector2 d1 = ub - ua, d2 = ud - ua;
+            float det = d1.x * d2.y - d2.x * d1.y;
+            Vector3 tan = Mathf.Abs(det) > 1e-9f ? (e1 * d2.y - e2 * d1.y) / det : e1;
+            Vector3 bit = Mathf.Abs(det) > 1e-9f ? (e2 * d1.x - e1 * d2.x) / det : e2;
+            for (int k = 0; k < 4; k++)
+            {
+                Vector3 nk = k == 0 ? na : k == 1 ? nb : k == 2 ? nc : nd;
+                Vector3 tk = (tan - nk * Vector3.Dot(nk, tan)).normalized;
+                if (tk.sqrMagnitude < 1e-8f) tk = Vector3.Cross(nk, Vector3.up).normalized;
+                float w = Vector3.Dot(Vector3.Cross(nk, tk), bit) < 0f ? -1f : 1f;
+                _t.Add(new Vector4(tk.x, tk.y, tk.z, w));
+            }
+            bool front = Vector3.Dot(Vector3.Cross(b - a, c - a), avg) > 0f;
+            if (front) { _i.Add(s); _i.Add(s + 1); _i.Add(s + 2); _i.Add(s); _i.Add(s + 2); _i.Add(s + 3); }
+            else { _i.Add(s); _i.Add(s + 2); _i.Add(s + 1); _i.Add(s); _i.Add(s + 3); _i.Add(s + 2); }
+        }
+
         /// <summary>Faces of an oriented box. faceMask bits: 1 -X, 2 +X, 4 -Y, 8 +Y, 16 -Z, 32 +Z.</summary>
         public void Box(Vector3 center, Vector3 size, Quaternion rot, int faceMask, UVProjector uv)
         {
@@ -71,6 +156,62 @@ namespace Backrooms.Generation
         }
 
         public void Box(Vector3 center, Vector3 size, int faceMask, UVProjector uv) => Box(center, size, Quaternion.identity, faceMask, uv);
+
+        /// <summary>
+        /// A box with its edges rounded off (the Overflow look, 2026-11-06): each face inset by r, a chamfer strip along
+        /// every edge and a triangle at every corner, their normals those of the faces they join so the light rolls round
+        /// the edge as a bevelled model's does. faceMask leaves faces out as Box's does (the edges are always made).
+        /// 26 quads against Box's 6.
+        /// </summary>
+        public void RoundBox(Vector3 center, Vector3 size, Quaternion rot, float r, int faceMask, UVProjector uv)
+        {
+            r = Mathf.Min(r, Mathf.Min(size.x, Mathf.Min(size.y, size.z)) * 0.45f);
+            if (r <= 1e-4f) { Box(center, size, rot, faceMask, uv); return; }
+            Vector3 h = size * 0.5f - Vector3.one * r;
+            var ax = new[] { rot * Vector3.right, rot * Vector3.up, rot * Vector3.forward };
+            float[] hk = { h.x, h.y, h.z };
+            Vector3 P(float sx, float sy, float sz) => center + ax[0] * (sx * h.x) + ax[1] * (sy * h.y) + ax[2] * (sz * h.z);
+            Vector3 Pk(int i, float si, int j, float sj, int k, float sk)
+            {
+                var s = new float[3]; s[i] = si; s[j] = sj; s[k] = sk;
+                return P(s[0], s[1], s[2]);
+            }
+            Vector2 U(Vector3 p, Vector3 n) => uv(p + worldOffset, n);
+            // Faces.
+            int[] bits = { 1, 2, 4, 8, 16, 32 };
+            for (int i = 0; i < 3; i++)
+                for (int si = -1; si <= 1; si += 2)
+                {
+                    if ((faceMask & bits[i * 2 + (si > 0 ? 1 : 0)]) == 0) continue;
+                    int j = (i + 1) % 3, k = (i + 2) % 3;
+                    Vector3 n = ax[i] * si, o = n * r;
+                    Vector3 a = Pk(i, si, j, -1, k, -1) + o, b = Pk(i, si, j, 1, k, -1) + o, c = Pk(i, si, j, 1, k, 1) + o, d = Pk(i, si, j, -1, k, 1) + o;
+                    Quad(a, b, c, d, n, U(a, n), U(b, n), U(c, n), U(d, n));
+                }
+            // Edges: along axis k, between the faces of axes i and j.
+            for (int k = 0; k < 3; k++)
+            {
+                int i = (k + 1) % 3, j = (k + 2) % 3;
+                for (int si = -1; si <= 1; si += 2)
+                    for (int sj = -1; sj <= 1; sj += 2)
+                    {
+                        Vector3 ni = ax[i] * si, nj = ax[j] * sj;
+                        Vector3 p0 = Pk(i, si, j, sj, k, -1), p1 = Pk(i, si, j, sj, k, 1);
+                        Vector3 a = p0 + ni * r, b = p1 + ni * r, c = p1 + nj * r, d = p0 + nj * r;
+                        SmoothQuad(a, b, c, d, ni, ni, nj, nj, U(a, ni), U(b, ni), U(c, nj), U(d, nj));
+                    }
+            }
+            // Corners: a triangle each (a quad with two corners together).
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sy = -1; sy <= 1; sy += 2)
+                    for (int sz = -1; sz <= 1; sz += 2)
+                    {
+                        Vector3 p = P(sx, sy, sz);
+                        Vector3 nx = ax[0] * sx, ny = ax[1] * sy, nz = ax[2] * sz;
+                        Vector3 a = p + nx * r, b = p + ny * r, c = p + nz * r;
+                        SmoothQuad(a, b, c, c, nx, ny, nz, nz, U(a, nx), U(b, ny), U(c, nz), U(c, nz));
+                    }
+        }
 
         /// <summary>Open-ended frustum (lamp shade): ring of quads between two radii.</summary>
         public void Frustum(Vector3 baseCenter, float rBottom, float rTop, float height, int sides, bool outward, UVProjector uv)
@@ -102,13 +243,22 @@ namespace Backrooms.Generation
             }
         }
 
-        public Mesh ToMesh(string name)
+        /// <summary>A flat convex polygon (a fan of triangles), wound to face the normal.</summary>
+        public void Polygon(List<Vector3> pts, Vector3 normal, UVProjector uv)
+        {
+            for (int i = 1; i + 1 < pts.Count; i++) Quad(pts[0], pts[i], pts[i + 1], pts[i + 1], normal, uv);
+        }
+
+        public Mesh ToMesh(string name) => ToMesh(name, false);
+
+        /// <summary>readable: keep the CPU copy (to combine it with others first).</summary>
+        public Mesh ToMesh(string name, bool readable)
         {
             var m = new Mesh { name = name };
             if (_v.Count > 65000) m.indexFormat = IndexFormat.UInt32;
             m.SetVertices(_v); m.SetNormals(_n); m.SetTangents(_t); m.SetUVs(0, _uv);
             m.SetTriangles(_i, 0, true);
-            m.UploadMeshData(true); // free the CPU copy; chunks are static
+            m.UploadMeshData(!readable); // free the CPU copy; chunks are static
             return m;
         }
 
@@ -122,7 +272,7 @@ namespace Backrooms.Generation
             return new Vector2(along / OfficeBiome.CellSize, w.y / OfficeBiome.CeilingHeight);
         }
 
-        public static Vector2 FloorUV(Vector3 w, Vector3 n) => new Vector2(w.x / 4f, w.z / 4f);
+        public static Vector2 FloorUV(Vector3 w, Vector3 n) => new Vector2(w.x / 3f, w.z / 3f);   // one carpet texture repeat = 3 m
         public static Vector2 CeilingUV(Vector3 w, Vector3 n) => new Vector2(w.x / 2.4f, (w.z - OfficeBiome.TileGridOffset) / 2.4f);
 
         /// <summary>Box mapping in metres (1 UV unit = 1 m) for trim, fabric and wood.</summary>

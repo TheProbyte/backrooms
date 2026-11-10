@@ -8,10 +8,14 @@ namespace Backrooms.Generation
     /// Keeps a square of chunks generated around the player. New chunks are only ever created at the
     /// outer ring, at least two full chunks (~29 m) away and beyond the fog, so the player never sees
     /// geometry appear. Work is spread over frames with a time budget; distant chunks are unloaded.
+    ///
+    /// Chunks are (x, storey, z). The ground storey loads everywhere in range; upper storeys only load
+    /// in columns near a multi-storey volume (see <see cref="WorldGenerator.TopStoreyAt"/>), the only
+    /// places they can be seen from. Chunks are slices of district plans (see <see cref="WorldGenerator"/>).
     /// </summary>
     public class WorldStreamer : MonoBehaviour
     {
-        [Tooltip("World seed. 0 = random each session.")]
+        [Tooltip("World seed when no save is being played (build mode's room test). 0 = random each session.")]
         public int seed = 0;
         [Tooltip("Chunks kept loaded in each direction around the player's chunk.")]
         [Range(2, 5)] public int loadRadius = 3;
@@ -28,101 +32,416 @@ namespace Backrooms.Generation
 
         public int Seed { get; private set; }
         public int LoadedChunks => _chunks.Count;
+        /// <summary>The streamer of the world scene (null elsewhere).</summary>
+        public static WorldStreamer Current { get; private set; }
+
+        /// <summary>Raised after a chunk's GameObject is built (e.g. to register its geometry with an audio engine).</summary>
+        public event System.Action<Vector3Int, GameObject> ChunkLoaded;
+        /// <summary>Raised just before a chunk's GameObject is destroyed.</summary>
+        public event System.Action<Vector3Int, GameObject> ChunkUnloaded;
+        /// <summary>Raised after a loaded chunk's walls and their colliders were rebuilt (a wall in it was broken).</summary>
+        public event System.Action<Vector3Int, GameObject> ChunkWallsRebuilt;
 
         /// <summary>Live world-gen rules (edited by F5 > World Gen). Call <see cref="Regenerate"/> after changes.</summary>
         public WorldGenSettings Settings { get; private set; }
-        WorldGenSettings _snapshot;          // immutable copy handed to worker threads
+        WorldGenerator _world;               // immutable world (seed + frozen settings) handed to worker threads
+        /// <summary>The world currently being streamed (layouts for any chunk, loaded or not).</summary>
+        public WorldGenerator World => _world;
         int _generation;                     // bumps on every regenerate; stale chunks get rebuilt
         Vector2Int? _frozen;                 // chunk the player stood in when settings changed (kept as is)
         public Vector2Int? FrozenChunk => _frozen;
 
         // Stats for the World Gen tab.
-        public int QueuedChunks => _queue.Count + _pending.Count;
+        public int QueuedChunks => _queue.Count + _pending.Count + (_upload != null ? 1 : 0);
         public float LastBuildMs { get; private set; }
         public float AverageBuildMs { get; private set; }
         public int ChunksBuilt { get; private set; }
+        public float LastUploadMs { get; private set; }
+        public float AverageUploadMs { get; private set; }
+        readonly List<Vector3Int> _done = new List<Vector3Int>(4);
+        IEnumerator<GameObject> _upload;
+        OfficeChunkBuilder _uploadBuilder;
+        GameObject _uploadRoot;
+        Vector3Int _uploadKey;
+        int _uploadGeneration;
+        float _uploadMs;
 
         class Chunk { public List<Doorway> doors; public GameObject go; public List<LightSource> lights; public List<Renderer> lenses, faulty; public int generation; public OfficeLayout layout; }
 
-        readonly Dictionary<Vector2Int, Chunk> _chunks = new Dictionary<Vector2Int, Chunk>();
-        readonly List<Vector2Int> _queue = new List<Vector2Int>();
-        readonly Dictionary<Vector2Int, Task<OfficeChunkBuilder>> _pending = new Dictionary<Vector2Int, Task<OfficeChunkBuilder>>();
-        readonly Dictionary<Vector2Int, int> _pendingGen = new Dictionary<Vector2Int, int>();
+        readonly Dictionary<Vector3Int, Chunk> _chunks = new Dictionary<Vector3Int, Chunk>();
+
+        // ---------------- Sites: small areas kept loaded away from the player ----------------
+        // A crawl hole can lead far beyond the load radius (another zone of the world). Only a small patch around its
+        // partner is loaded: the chunks within a few metres of it, built like any other chunk but after the player's own
+        // rings. Nothing between here and there is loaded.
+        readonly Dictionary<object, (Vector3 point, float radius)> _sites = new Dictionary<object, (Vector3, float)>();
+        bool _sitesChanged;
+
+        /// <summary>Keeps the chunks within radius of a point loaded (ground storey and the storeys above) until cleared.</summary>
+        public void SetSite(object owner, Vector3 point, float radius)
+        {
+            if (_sites.TryGetValue(owner, out var old) && (old.point - point).sqrMagnitude < 0.01f && Mathf.Abs(old.radius - radius) < 0.01f) return;
+            _sites[owner] = (point, radius);
+            _sitesChanged = true;
+        }
+
+        /// <summary>Keeps the chunks within so many rings of a point's chunk loaded, the same square as round the player
+        /// (a second streaming source: the backrooms round a seam while you are in its room, NoclipTravel). Stored as a
+        /// site with a negative radius (rings).</summary>
+        public void SetArea(object owner, Vector3 point, int rings) => SetSite(owner, point, -Mathf.Max(1, rings));
+
+        public void ClearSite(object owner) { if (_sites.Remove(owner)) _sitesChanged = true; }
+        public int SiteCount => _sites.Count;
+
+        bool InSite(Vector2Int column)
+        {
+            if (_sites.Count == 0) return false;
+            float S = OfficeBiome.ChunkSize;
+            foreach (var site in _sites.Values)
+            {
+                if (site.radius < 0f) { if (InRadius(column, ChunkOf(site.point), Mathf.RoundToInt(-site.radius))) return true; continue; }
+                float dx = Mathf.Max(column.x * S - site.point.x, 0f, site.point.x - (column.x + 1) * S);
+                float dz = Mathf.Max(column.y * S - site.point.z, 0f, site.point.z - (column.y + 1) * S);
+                if (dx * dx + dz * dz <= site.radius * site.radius) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Should this chunk column be loaded (near the player or in a site)?</summary>
+        bool Wanted(Vector2Int column, int radius) => InRadius(column, _center, radius) || InSite(column);
+
+        /// <summary>Should this chunk be loaded: a hub chunk while the hub is wanted (HubPlan); never the void round the hub;
+        /// else by its column.</summary>
+        bool WantedKey(Vector3Int k, int radius) =>
+            HubPlan.IsHubChunk(k) ? HubWanted : !HubPlan.ChunkInZone(Column(k)) && !OffFloor(Column(k)) && !SeamVoid(Column(k)) && Wanted(Column(k), radius);
+
+        /// <summary>The seams' zone (SeamPlan) but not one of its rooms: void, never loaded.</summary>
+        static bool SeamVoid(Vector2Int column) => SeamPlan.ChunkInZone(column) && !SeamPlan.IsRoomChunk(column);
+
+        /// <summary>In the contract floors' region but not the current floor (LeasePlan): sealed off, never loaded.</summary>
+        static bool OffFloor(Vector2Int column) => LeasePlan.InRegion(WorldGenSettings.DistrictOf(column)) && !LeasePlan.ChunkInCurrent(column);
+
+        /// <summary>Is every chunk of the site around this point loaded?</summary>
+        public bool SiteReady(Vector3 point, float radius)
+        {
+            float S = OfficeBiome.ChunkSize;
+            int x0 = Mathf.FloorToInt((point.x - radius) / S), x1 = Mathf.FloorToInt((point.x + radius) / S);
+            int z0 = Mathf.FloorToInt((point.z - radius) / S), z1 = Mathf.FloorToInt((point.z + radius) / S);
+            for (int x = x0; x <= x1; x++)
+            for (int z = z0; z <= z1; z++)
+            {
+                float dx = Mathf.Max(x * S - point.x, 0f, point.x - (x + 1) * S), dz = Mathf.Max(z * S - point.z, 0f, point.z - (z + 1) * S);
+                if (dx * dx + dz * dz > radius * radius) continue;
+                if (!_chunks.ContainsKey(Key(new Vector2Int(x, z), 0))) return false;
+            }
+            return true;
+        }
+        readonly List<Vector3Int> _queue = new List<Vector3Int>();
+        readonly Dictionary<Vector3Int, Task<OfficeChunkBuilder>> _pending = new Dictionary<Vector3Int, Task<OfficeChunkBuilder>>();
+        readonly Dictionary<Vector3Int, int> _pendingGen = new Dictionary<Vector3Int, int>();
         Vector2Int _center = new Vector2Int(int.MinValue, int.MinValue);
+
+        Saves.WorldSaver _saver;
+        /// <summary>Showing the main menu (a fixed world behind it, no player).</summary>
+        public bool MenuMode { get; private set; }
 
         void Awake()
         {
-            Seed = seed != 0 ? seed : new System.Random().Next(1, int.MaxValue);
-            Settings = WorldGenSettings.Load();
-            _snapshot = Settings.Clone();
+            // The main menu's world, a save's world, or (testing a room from build mode) a random one.
+            Current = this;
+            // The world's look (Classic or Overflow, ArtStyle): its materials before anything is made from them.
+            var source = assets;
+            assets = ArtStyle.Biome(assets);
+            // The hub's: the Overflow look whatever the setting (Docs/HubPlan.md).
+            _hubAssets = ArtStyle.OverflowBiome(source, assets);
+            HubMaterials.Ensure(_hubAssets);
+            RealMaterials.Ensure(_hubAssets);
+            // A new world: nothing taken from its special rooms, no noclip door to return to (a save puts its own back).
+            Saves.LootRegistry.Clear();
+            Interaction.NoclipTravel.HasOrigin = false;
+            bool playing = (Saves.GameSession.Slot >= 0 || Saves.GameSession.NetClient) && Saves.GameSession.Data != null;
+            // Every light on, but those the save has switched off (before the first chunk lights up).
+            LightZones.Load(playing ? Saves.GameSession.Data.lightsOff : null);
+            Interaction.PowerGrid.Load(playing ? Saves.GameSession.Data.breakersOn : null);
+            Interaction.Homes.Load(playing ? Saves.GameSession.Data.homes : null);
+            DoorEdges.Clear();
+            if (playing) Interaction.DoorStates.Load(Saves.GameSession.Data.doorKeys, Saves.GameSession.Data.doorAngles, Saves.GameSession.Data.doorBolts); else Interaction.DoorStates.Clear();
+            MenuMode = !playing && Saves.GameSession.InMenu;
+            if (MenuMode) Seed = Menu.MainMenu.MenuSeed;
+            else if (playing) Seed = Saves.GameSession.Data.seed;
+            else Seed = seed != 0 ? seed : new System.Random().Next(1, int.MaxValue);
+            // The player's custom rooms join the landmark pool; in another player's world (co-op), theirs do, and their
+            // generation settings are used, so both build the same building.
+            if (Saves.GameSession.NetClient && Net.NetSession.SharedRooms != null) Backrooms.CustomRooms.RoomLibrary.UseShared(Net.NetSession.SharedRooms);
+            else Backrooms.CustomRooms.RoomLibrary.Reload();
+            Settings = Saves.GameSession.NetClient && Net.NetSession.SharedSettings != null ? Net.NetSession.SharedSettings : WorldGenSettings.Load();
+            _world = new WorldGenerator(Seed, Settings);
+            if (!GetComponent<RuntimeIndoorReflections>()) gameObject.AddComponent<RuntimeIndoorReflections>();
+            // The Poolrooms: materials before any chunk data is prepared (worker threads only read them), and the map,
+            // fog and ripples.
+            PoolMaterials.Ensure();
+            SpecialRoomMaterials.Ensure(assets);          // the rooms behind crawl spaces
+            FurnitureMaterials.Ensure(assets);            // the good rooms' furniture
+            FittingMaterials.Ensure(assets);              // fire gear, floor boxes, cords, partitions, signs (2026-11-03)
+            DampFloor.Clear();                            // (a world's damp patches, for footsteps)
+            DepthMaterials.Ensure(assets);                // a pit room's shafts, darker toward the bottom
+            if (Application.isPlaying && !GetComponent<ChunkVisibility>()) gameObject.AddComponent<ChunkVisibility>();   // chunks behind walls are not drawn
+            if (Application.isPlaying && !GetComponent<Audio.BuildingSettling>()) gameObject.AddComponent<Audio.BuildingSettling>().streamer = this;   // creaks, ticks, air at vents
+            if (Application.isPlaying && player && !player.GetComponent<PitRescue>()) player.gameObject.AddComponent<PitRescue>().streamer = this;   // back up out of a pit room's shafts
+#if STEAMAUDIO_ENABLED
+            if (Application.isPlaying && !GetComponent<Audio.SteamAudioWorld>()) gameObject.AddComponent<Audio.SteamAudioWorld>().streamer = this;   // walls for Steam Audio
+#endif
+            WallPlateModels.Ensure();                     // outlet and switch models, copied into the chunk meshes
+            FittingModels.Ensure(assets);                 // the fittings and leftovers' models (2026-11-03), copied the same way
+            PoolMaterials.PrepareBaked();                 // their PoolLit copies for the Poolrooms (2026-11-04)
+            DoorModels.Ensure(assets);                    // the wooden doors in some doorways
+            MaterialMaps.Ensure(assets);                  // normal maps for the materials that had none
+            CustomRooms.CustomModels.Ensure(assets);      // models the player brought in (build mode)
+            CustomRooms.RoomTriggerZone.ResetAll();
+            if (!GetComponent<PoolWorld>()) gameObject.AddComponent<PoolWorld>().streamer = this;
+            // Developer menu: items and furniture (L).
+            if (!GetComponent<Interaction.ItemsMenu>()) gameObject.AddComponent<Interaction.ItemsMenu>().streamer = this;
+            // Movable props: the list of moved ones, and the player's free hand.
+            if (!GetComponentInChildren<Interaction.MovablePropManager>())
+            {
+                var m = new GameObject("MovedProps").AddComponent<Interaction.MovablePropManager>();
+                m.transform.SetParent(transform, false);
+                m.streamer = this;
+            }
+            if (player && player.GetComponent<CamcorderPlayerController>() && !player.GetComponent<Interaction.PropGrabber>())
+                player.gameObject.AddComponent<Interaction.PropGrabber>();
+            if (player && player.GetComponent<CamcorderPlayerController>() && !player.GetComponent<Interaction.FirstPersonBody>())
+                player.gameObject.AddComponent<Interaction.FirstPersonBody>();
+            // Broken walls: the world they belong to (the save puts its own back before any chunk is built).
+            Destruction.WallDamage.Clear();
+            Destruction.WallDamage.Bind(_world, Settings.storeyPitch, assets);
+            if (Application.isPlaying && !GetComponent<Destruction.WallBreaker>()) gameObject.AddComponent<Destruction.WallBreaker>().streamer = this;
+            // The save being played: moved props are back on the list before any chunk is built. Or the main menu.
+            if (playing) { _saver = gameObject.AddComponent<Saves.WorldSaver>(); _saver.RestoreProps(_world); gameObject.AddComponent<Interaction.HomeTracker>(); }
+            else if (MenuMode) gameObject.AddComponent<Menu.MainMenu>().streamer = this;
+            if (!MenuMode && !GetComponent<Interaction.NoclipTravel>()) gameObject.AddComponent<Interaction.NoclipTravel>().streamer = this;
+            // The service lift between the world and the hub (2026-11-07, Docs/HubPlan.md).
+            if (playing && Application.isPlaying && !GetComponent<Interaction.HubLift>()) gameObject.AddComponent<Interaction.HubLift>().streamer = this;
+            // Co-op (2026-11-04): hosting or joined, the world is shared.
+            if (playing && Net.NetSession.Active && !GetComponent<Net.NetWorld>()) gameObject.AddComponent<Net.NetWorld>().streamer = this;
         }
 
-        /// <summary>The chunk's layout as currently built (null if not loaded).</summary>
-        public OfficeLayout LayoutAt(Vector2Int chunk) => _chunks.TryGetValue(chunk, out var c) ? c.layout : null;
+        /// <summary>The ground-storey chunk's layout as currently built (null if not loaded).</summary>
+        public OfficeLayout LayoutAt(Vector2Int chunk) => LayoutAt(new Vector3Int(chunk.x, 0, chunk.y));
+
+        /// <summary>The ground storey's layout under a point (null if not loaded).</summary>
+        public OfficeLayout LayoutUnder(Vector3 p) => LayoutAt(ChunkOf(p));
+
+        /// <summary>The chunk's layout as currently built (null if not loaded). Coordinates are (x, storey, z).</summary>
+        public OfficeLayout LayoutAt(Vector3Int chunk) => _chunks.TryGetValue(chunk, out var c) ? c.layout : null;
 
         /// <summary>
         /// Rebuilds every loaded chunk from the current <see cref="Settings"/>, except the chunk the player
         /// is standing in (so they are never dropped inside a wall). Chunks are swapped one by one as their
-        /// replacements finish; borders always line up because openings don't depend on settings.
+        /// replacements finish; district edges always line up because openings don't depend on settings.
         /// </summary>
         public void Regenerate()
         {
-            _snapshot = Settings.Clone();
+            _world = new WorldGenerator(Seed, Settings);
+            Destruction.WallDamage.Bind(_world, Settings.storeyPitch, assets);
             _generation++;
             _frozen = player ? ChunkOf(player.position) : (Vector2Int?)null;
-            if (_frozen.HasValue && _chunks.TryGetValue(_frozen.Value, out var keep)) keep.generation = _generation;
+            if (_frozen.HasValue && _chunks.TryGetValue(Key(_frozen.Value, 0), out var keep)) keep.generation = _generation;
             Requeue();
         }
 
         /// <summary>New seed: a different world. Everything is rebuilt and the player is moved to the new spawn.</summary>
         public void SetSeed(int newSeed)
         {
+            CancelUpload();
             Seed = newSeed;
-            _snapshot = Settings.Clone();
+            _world = new WorldGenerator(Seed, Settings);
+            Destruction.WallDamage.Clear();                // another world: none of its walls are broken
+            Destruction.WallDamage.Bind(_world, Settings.storeyPitch, assets);
             _generation++;
             _frozen = null;
-            foreach (var k in new List<Vector2Int>(_chunks.Keys)) DestroyNow(k);
+            foreach (var k in new List<Vector3Int>(_chunks.Keys)) DestroyNow(k);
             _pending.Clear(); _pendingGen.Clear(); _queue.Clear();
             PlaceSpawn();
             Refresh(true);
         }
 
-        void Requeue()
+        static Vector3Int Key(Vector2Int c, int storey) => new Vector3Int(c.x, storey, c.y);
+        static Vector2Int Column(Vector3Int k) => new Vector2Int(k.x, k.z);
+
+        /// <summary>Every chunk that should be loaded, nearest ring first (ground storey before upper storeys).</summary>
+        IEnumerable<(Vector3Int key, int ring)> Wanted()
         {
-            _queue.Clear();
+            // The hub (HubPlan): its chunks first while the player is in it, or a lift is on its way down to it.
+            if (HubWanted) foreach (var k in HubPlan.Chunks()) yield return (k, 0);
             for (int r = 0; r <= loadRadius; r++)
             for (int dx = -r; dx <= r; dx++)
             for (int dz = -r; dz <= r; dz++)
             {
                 if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dz)) != r) continue;
                 var c = new Vector2Int(_center.x + dx, _center.y + dz);
-                if (_chunks.TryGetValue(c, out var ch) && ch.generation == _generation) continue;
-                _queue.Add(c);
+                if (HubPlan.ChunkInZone(c)) continue;                  // (the hub's zone: only the hub, above)
+                if (OffFloor(c) || SeamVoid(c)) continue;              // (another contract's floor, the space between them, the seams' void)
+                int top = _world.TopStoreyAt(c);
+                for (int s = 0; s <= top; s++) yield return (Key(c, s), r);
+            }
+            // Sites, after everything around the player.
+            float S = OfficeBiome.ChunkSize;
+            foreach (var site in _sites.Values)
+            {
+                float reach = site.radius < 0f ? (-site.radius + 1f) * S : site.radius;          // (an area: its square, and a chunk spare)
+                int x0 = Mathf.FloorToInt((site.point.x - reach) / S), x1 = Mathf.FloorToInt((site.point.x + reach) / S);
+                int z0 = Mathf.FloorToInt((site.point.z - reach) / S), z1 = Mathf.FloorToInt((site.point.z + reach) / S);
+                for (int x = x0; x <= x1; x++)
+                for (int z = z0; z <= z1; z++)
+                {
+                    var c = new Vector2Int(x, z);
+                    if (InRadius(c, _center, loadRadius) || !InSite(c) || OffFloor(c) || HubPlan.ChunkInZone(c) || SeamVoid(c)) continue;
+                    int top = _world.TopStoreyAt(c);
+                    for (int s = 0; s <= top; s++) yield return (Key(c, s), loadRadius + 1);
+                }
             }
         }
 
-        void DestroyNow(Vector2Int coord)
+        // ---------------- The hub (2026-11-07, Docs/HubPlan.md) ----------------
+
+        bool _preloadHub, _hubMode;
+        /// <summary>Is the player in the hub's storey?</summary>
+        public bool PlayerInHub => player && HubPlan.InHub(player.position);
+        bool HubWanted => _preloadHub || PlayerInHub;
+
+        /// <summary>Loads the hub's chunks while the player is still in the world (a lift going down), or stops doing so.</summary>
+        public void PreloadHub(bool on) { if (_preloadHub == on) return; _preloadHub = on; _sitesChanged = true; }
+
+        /// <summary>Are all of the hub's chunks built?</summary>
+        public bool HubReady
+        {
+            get { foreach (var k in HubPlan.Chunks()) if (!_chunks.ContainsKey(k)) return false; return true; }
+        }
+
+        /// <summary>Puts player number i on their spot in the hub's first-aid room (a world loaded, or someone blacked out).</summary>
+        public void PlaceInHub(int i)
+        {
+            if (!player) return;
+            HubPlan.WakePose(i, out var pos, out float yaw);
+            var ctrl = player.GetComponent<CamcorderPlayerController>();
+            if (ctrl) ctrl.Teleport(pos, yaw); else player.position = pos;
+        }
+
+        void Requeue()
+        {
+            _queue.Clear();
+            foreach (var (k, _) in Wanted())
+            {
+                if (_chunks.TryGetValue(k, out var ch) && ch.generation == _generation) continue;
+                _queue.Add(k);
+            }
+        }
+
+        /// <summary>A district is planned again (WorldGenerator.Forget): its loaded chunks go and stream back in from the new plan.</summary>
+        public void ForgetDistrict(Vector2Int district)
+        {
+            World?.Forget(district);
+            foreach (var k in new List<Vector3Int>(_chunks.Keys))
+                if (WorldGenSettings.DistrictOf(new Vector2Int(k.x, k.z)) == district) DestroyNow(k);
+        }
+
+        void DestroyNow(Vector3Int coord)
         {
             if (!_chunks.TryGetValue(coord, out var ch)) return;
             _chunks.Remove(coord);
             if (lightManager) { lightManager.Unregister(coord); lightManager.UnregisterDoorways(coord); }
-            foreach (var mf in ch.go.GetComponentsInChildren<MeshFilter>())
-                if (mf.sharedMesh && mf.sharedMesh.GetInstanceID() < 0) Destroy(mf.sharedMesh);
+            DestroyChunkObject(coord, ch);
+        }
+
+        void DestroyChunkObject(Vector3Int coord, Chunk ch)
+        {
+            ChunkUnloaded?.Invoke(coord, ch.go);
+            // GeneratedChunkResources releases owned meshes; movable props own their own runtime meshes.
             Destroy(ch.go);
         }
 
         void Start()
         {
-            // Build everything the player could see before the first frame.
-            PlaceSpawn();
+            // Build everything the player could see before the first frame. A world being played always starts in the hub
+            // (Docs/HubPlan.md: you wake in its first-aid room on every load); the menu's world and build mode's test as before.
+            // The contract floor the lift goes to (Docs/ContractFloorsPlan.md); a friend's comes in the host's save copy.
+            var data = Saves.GameSession.Data;
+            // One floor a world (LeasePlan): its block from the seed, what of it is leased from the save.
+            bool working = _saver && data != null && !CustomRooms.CustomRoomTest.Active;
+            LeasePlan.Current = working ? LeasePlan.ForSeed(Seed) : -1;
+            LeasePlan.Wings = working ? data.wings : 0;
+            LeasePlan.Poolrooms = working && data.poolrooms;
+            if (_saver && !CustomRooms.CustomRoomTest.Active) PlaceInHub(Net.NetSession.Active ? Net.NetSession.LocalId : 0);
+            else if (!(_saver && _saver.RestorePlayer(player))) PlaceSpawn();
             Refresh(true);
+            if (_saver) _saver.RestoreWorld();
+            if (_saver && !CustomRooms.CustomRoomTest.Active && Application.isPlaying)
+            {
+                // The hub's moving parts (Docs/HubPlan.md): the return chutes (you are brought out onto your cot), the TV.
+                var wake = new GameObject("HubWake").AddComponent<Interaction.HubWake>();
+                wake.Begin(Net.NetSession.Active ? Net.NetSession.LocalId : 0);
+                new GameObject("HubTv").AddComponent<Interaction.HubTvScreen>();
+                // The contracts board, the pay window and office hours (Docs/ContractFloorsPlan.md).
+                new GameObject("Contracts").AddComponent<Interaction.Contracts>().streamer = this;
+                // The improvements board beside it: overtime, rent reviews, wings, the Poolrooms (what lasts for good).
+                new GameObject("Improvements").AddComponent<Interaction.Improvements>().streamer = this;
+                // The supply counter (kits and supplies), putting kits up with their outline, the machines on the floor
+                // (2026-11-08, Docs/GameDesign.md sections 8 and 10).
+                new GameObject("Supplies").AddComponent<Interaction.Supplies>().streamer = this;
+                new GameObject("KitPlacer").AddComponent<Interaction.KitPlacer>();
+                new GameObject("Machines").AddComponent<Interaction.Machines>();
+            }
+        }
+
+        // ---------------- Walls rebuilt (a wall in the chunk was broken) ----------------
+
+        readonly Dictionary<Vector3Int, Task<OfficeChunkBuilder>> _wallRebuilds = new Dictionary<Vector3Int, Task<OfficeChunkBuilder>>();
+        readonly HashSet<Vector3Int> _wallsAgain = new HashSet<Vector3Int>();
+        readonly List<Vector3Int> _wallsDone = new List<Vector3Int>();
+
+        /// <summary>
+        /// Builds a chunk's walls again (off the main thread) and swaps them into the loaded chunk: a broken panel in it
+        /// draws itself from now on. A chunk not loaded yet is built without the panel anyway; one being prepared right now
+        /// is rebuilt once it is in.
+        /// </summary>
+        public void RebuildWalls(Vector3Int coord)
+        {
+            if (!_chunks.ContainsKey(coord))
+            {
+                if (_pending.ContainsKey(coord) || (_upload != null && _uploadKey == coord)) _wallsAgain.Add(coord);
+                return;
+            }
+            if (_wallRebuilds.ContainsKey(coord)) { _wallsAgain.Add(coord); return; }
+            var a = assets; var w = _world;
+            _wallRebuilds[coord] = Task.Run(() => Prepare(w, coord, a));
+        }
+
+        void FinishWallRebuilds()
+        {
+            if (_wallRebuilds.Count == 0) return;
+            _wallsDone.Clear();
+            foreach (var kv in _wallRebuilds) if (kv.Value.IsCompleted) _wallsDone.Add(kv.Key);
+            foreach (var coord in _wallsDone)
+            {
+                var task = _wallRebuilds[coord];
+                _wallRebuilds.Remove(coord);
+                if (task.IsFaulted) { Debug.LogException(task.Exception); continue; }
+                if (!_chunks.TryGetValue(coord, out var ch) || !ch.go) continue;
+                task.Result.ReplaceWalls(ch.go);
+                ChunkWallsRebuilt?.Invoke(coord, ch.go);
+                if (_wallsAgain.Remove(coord)) RebuildWalls(coord);
+            }
         }
 
         void Update()
         {
+            DestroyQueued();
             if (!player) return;
+            FinishWallRebuilds();
             var c = ChunkOf(player.position);
-            if (c != _center) Refresh(false);
+            bool hubMode = PlayerInHub;
+            if (c != _center || _sitesChanged || hubMode != _hubMode) { _sitesChanged = false; _hubMode = hubMode; Refresh(false); }
 
             // Layout and vertex data are prepared on worker threads (a few at a time, nearest first).
             while (_pending.Count < 4 && _queue.Count > 0)
@@ -130,16 +449,18 @@ namespace Backrooms.Generation
                 var coord = _queue[0];
                 _queue.RemoveAt(0);
                 bool current = _chunks.TryGetValue(coord, out var existing) && existing.generation == _generation;
-                if (current || _pending.ContainsKey(coord) || !InRadius(coord, _center, loadRadius)) continue;
-                int s = Seed; var a = assets; var set = _snapshot;
+                if (current || _pending.ContainsKey(coord) || !WantedKey(coord, loadRadius)) continue;
+                var a = assets; var w = _world;
                 _pendingGen[coord] = _generation;
-                _pending[coord] = Task.Run(() => Prepare(s, coord, a, set));
+                _pending[coord] = Task.Run(() => Prepare(w, coord, a));
             }
 
-            // Finished data becomes meshes on the main thread, within the frame budget.
-            if (_pending.Count == 0) return;
             float start = Time.realtimeSinceStartup;
-            var done = new List<Vector2Int>();
+            if (_upload != null) AdvanceUpload(start);
+            if (_upload != null || (Time.realtimeSinceStartup - start) * 1000f >= frameBudgetMs) return;
+            // Finished data becomes meshes on the main thread, yielding between individual uploads.
+            if (_pending.Count == 0) return;
+            var done = _done; done.Clear();
             foreach (var kv in _pending)
             {
                 if (!kv.Value.IsCompleted) continue;
@@ -147,59 +468,77 @@ namespace Backrooms.Generation
                 if (kv.Value.IsFaulted) { Debug.LogException(kv.Value.Exception); continue; }
                 int gen = _pendingGen.TryGetValue(kv.Key, out int g) ? g : -1;
                 if (gen != _generation) { _queue.Insert(0, kv.Key); continue; }       // settings changed meanwhile
-                if (!InRadius(kv.Key, _center, unloadRadius)) continue;
-                if (_chunks.TryGetValue(kv.Key, out var old))
-                {
-                    if (old.generation == _generation) continue;
-                    DestroyNow(kv.Key);                                                  // live settings swap
-                    Instantiate(kv.Key, kv.Value.Result, false);
-                }
-                else Instantiate(kv.Key, kv.Value.Result, _started);
-                if ((Time.realtimeSinceStartup - start) * 1000f > frameBudgetMs) break;
+                if (!WantedKey(kv.Key, unloadRadius)) continue;
+                if (_chunks.TryGetValue(kv.Key, out var old) && old.generation == _generation) continue;
+                _uploadKey = kv.Key; _uploadBuilder = kv.Value.Result; _uploadGeneration = _generation; _uploadMs = 0f;
+                _upload = _uploadBuilder.InstantiateSteps(transform);
+                AdvanceUpload(start);
+                break;
             }
             foreach (var k in done) { _pending.Remove(k); _pendingGen.Remove(k); }
         }
 
-        OfficeChunkBuilder Prepare(int seed, Vector2Int coord, OfficeBiomeAssets assets, WorldGenSettings set)
+        void AdvanceUpload(float frameStart)
+        {
+            if (_uploadGeneration != _generation || !WantedKey(_uploadKey, unloadRadius))
+            { var key = _uploadKey; CancelUpload(); if (WantedKey(key, loadRadius)) _queue.Add(key); return; }
+            float start = Time.realtimeSinceStartup;
+            try
+            {
+                using (LookFor(_uploadKey))
+                while (_upload.MoveNext())
+                {
+                    _uploadRoot = _upload.Current;
+                    if ((Time.realtimeSinceStartup - frameStart) * 1000f >= frameBudgetMs) return;
+                }
+                if (_chunks.ContainsKey(_uploadKey)) DestroyNow(_uploadKey);
+                Instantiate(_uploadKey, _uploadBuilder, _started, _uploadRoot);
+                _uploadRoot = null; _upload.Dispose(); _upload = null;
+            }
+            catch (System.Exception e) { Debug.LogException(e); CancelUpload(); }
+            finally
+            {
+                _uploadMs += (Time.realtimeSinceStartup - start) * 1000f;
+                RecordUpload(_uploadMs, _upload == null);
+            }
+        }
+
+        void RecordUpload(float ms, bool complete = true)
+        {
+            LastUploadMs = ms;
+            if (complete) AverageUploadMs = Mathf.Lerp(AverageUploadMs <= 0f ? ms : AverageUploadMs, ms, 0.1f);
+        }
+
+        void CancelUpload()
+        {
+            _upload?.Dispose(); _upload = null;
+            if (_uploadRoot) Destroy(_uploadRoot);
+            _uploadRoot = null;
+        }
+        void OnDestroy() { CancelUpload(); if (Current == this) Current = null; }
+
+        OfficeBiomeAssets _hubAssets;
+
+        /// <summary>The look a chunk is built in: Overflow for the hub's, whatever the setting (else the world's own).</summary>
+        static ArtStyle.ForcedLook LookFor(Vector3Int coord) =>
+            HubPlan.IsHubChunk(coord) ? ArtStyle.Forcing(ArtStyle.Look.Overflow) : default;
+
+        OfficeChunkBuilder Prepare(WorldGenerator world, Vector3Int coord, OfficeBiomeAssets assets)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var b = new OfficeChunkBuilder(assets);
-            // Neighbouring layouts (deterministic) so baked light flows across chunk borders. Layouts are
-            // cached per generation, since each one is needed by up to nine chunks.
-            var nb = new OfficeLayout[8];
-            int k = 0;
-            for (int dz = -1; dz <= 1; dz++)
-            for (int dx = -1; dx <= 1; dx++)
-            {
-                if (dx == 0 && dz == 0) continue;
-                nb[k++] = CachedLayout(seed, new Vector2Int(coord.x + dx, coord.y + dz), set);
-            }
-            b.BuildData(CachedLayout(seed, coord, set), nb);
+            bool hub = HubPlan.IsHubChunk(coord);
+            var b = new OfficeChunkBuilder(hub && _hubAssets ? _hubAssets : assets);
+            // Neighbouring layouts (deterministic, cached by the world) so borders and light agree.
+            using (LookFor(coord)) b.BuildData(world.Chunk(coord), world.Neighbours(coord));
             float ms = (float)sw.Elapsed.TotalMilliseconds;
             LastBuildMs = ms; AverageBuildMs = Mathf.Lerp(AverageBuildMs <= 0f ? ms : AverageBuildMs, ms, 0.1f);
             return b;
         }
 
-        readonly System.Collections.Concurrent.ConcurrentDictionary<(int, int, Vector2Int), OfficeLayout> _layoutCache =
-            new System.Collections.Concurrent.ConcurrentDictionary<(int, int, Vector2Int), OfficeLayout>();
-
-        OfficeLayout CachedLayout(int seed, Vector2Int c, WorldGenSettings set)
-        {
-            int gen = _generation;
-            return _layoutCache.GetOrAdd((seed, gen, c), _ =>
-            {
-                var sm = set.Evaluate(seed, c);
-                return OfficeLayoutGenerator.Generate(seed, c, OfficeBiome.ChunkCells, sm.rules, sm.Dominant);
-            });
-        }
-
-        /// <summary>Drops cached layouts far from the player or from an old generation.</summary>
+        /// <summary>Drops cached layouts far from the player.</summary>
         void TrimLayoutCache()
         {
-            if (_layoutCache.Count < 200) return;
-            foreach (var key in _layoutCache.Keys)
-                if (key.Item1 != Seed || key.Item2 != _generation || !InRadius(key.Item3, _center, unloadRadius + 2))
-                    _layoutCache.TryRemove(key, out _);
+            if (_world.CachedChunks >= 300 || _world.CachedLandmarks > 512) _world.Trim(_center, unloadRadius + 2);
         }
 
         public static Vector2Int ChunkOf(Vector3 world) =>
@@ -211,70 +550,73 @@ namespace Backrooms.Generation
         {
             _center = ChunkOf(player.position);
 
-            // Unload far chunks.
-            var drop = new List<Vector2Int>();
-            foreach (var kv in _chunks) if (!InRadius(kv.Key, _center, unloadRadius)) drop.Add(kv.Key);
+            // Unload far chunks, and upper storeys no longer near a volume.
+            var drop = new List<Vector3Int>();
+            foreach (var kv in _chunks)
+                if (!WantedKey(kv.Key, unloadRadius) || (kv.Key.y > 0 && kv.Key.y > _world.TopStoreyAt(Column(kv.Key)))) drop.Add(kv.Key);
             foreach (var k in drop) UnloadChunk(k);
 
-            // Queue missing chunks nearest first; the inner rings are always built synchronously.
+            // Queue missing chunks nearest first; only initial coverage is built synchronously.
             _queue.Clear();
-            for (int r = 0; r <= loadRadius; r++)
-            for (int dx = -r; dx <= r; dx++)
-            for (int dz = -r; dz <= r; dz++)
+            foreach (var (c, r) in Wanted())
             {
-                if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dz)) != r) continue;
-                var c = new Vector2Int(_center.x + dx, _center.y + dz);
                 if (_chunks.TryGetValue(c, out var have))
                 {
                     if (have.generation != _generation && !_pending.ContainsKey(c)) _queue.Add(c);   // stale after a settings change
                     continue;
                 }
-                if (immediate || r <= 1) { _pending.Remove(c); _pendingGen.Remove(c); _syncBuild.Add(c); }
+                if (_upload != null && c == _uploadKey) continue;
+                if (immediate) { _pending.Remove(c); _pendingGen.Remove(c); _syncBuild.Add(c); }
                 else if (!_pending.ContainsKey(c)) _queue.Add(c);
             }
             // Chunks needed right now are prepared in parallel on all cores, then instantiated in order.
             if (_syncBuild.Count > 0)
             {
                 var built = new OfficeChunkBuilder[_syncBuild.Count];
-                int s = Seed; var a = assets; var set = _snapshot;
-                System.Threading.Tasks.Parallel.For(0, _syncBuild.Count, i => built[i] = Prepare(s, _syncBuild[i], a, set));
+                var a = assets; var w = _world;
+                Parallel.For(0, _syncBuild.Count, i => built[i] = Prepare(w, _syncBuild[i], a));
                 for (int i = 0; i < built.Length; i++) Instantiate(_syncBuild[i], built[i], _started);
                 _syncBuild.Clear();
             }
             TrimLayoutCache();
         }
 
-        readonly List<Vector2Int> _syncBuild = new List<Vector2Int>();
+        readonly List<Vector3Int> _syncBuild = new List<Vector3Int>();
 
-        void Instantiate(Vector2Int coord, OfficeChunkBuilder built, bool animate)
+        void Instantiate(Vector3Int coord, OfficeChunkBuilder built, bool animate, GameObject ready = null)
         {
             ChunksBuilt++;
             // A chunk still stuttering off from an earlier unload is simply kept.
             if (_dying.TryGetValue(coord, out var old))
             {
+                if (ready) Destroy(ready);
                 _dying.Remove(coord);
                 _chunks[coord] = old;
                 if (lightManager) { lightManager.Register(coord, old.lights, old.lenses, old.faulty, false); lightManager.RegisterDoorways(coord, old.doors); }
                 return;
             }
-            var go = built.Instantiate(transform);
+            var uploadTimer = ready ? null : System.Diagnostics.Stopwatch.StartNew();
+            GameObject go;
+            using (LookFor(coord)) go = ready ? ready : built.Instantiate(transform);
             var ch = new Chunk { go = go, lights = new List<LightSource>(built.lights),
                 lenses = new List<Renderer>(built.litLensRenderers), faulty = new List<Renderer>(built.faultyRenderers),
                 generation = _generation, layout = built.Layout, doors = new List<Doorway>(built.doorways) };
             _chunks[coord] = ch;
-            // Areas streamed in after the first frame flicker on (only ever seen from far away, if at all).
             // The building is already lit: streamed-in areas are simply on (a strike-on flicker read as
             // distant lights popping in). "animate" is kept for a future power-restoring event.
             if (lightManager) lightManager.Register(coord, ch.lights, ch.lenses, ch.faulty, animate && strikeOnStream);
             if (lightManager) lightManager.RegisterDoorways(coord, ch.doors);
+            ChunkLoaded?.Invoke(coord, go);
+            if (_wallsAgain.Remove(coord)) RebuildWalls(coord);        // a wall in it broke while it was being prepared
+            if (uploadTimer != null) RecordUpload((float)uploadTimer.Elapsed.TotalMilliseconds);
         }
 
-        readonly Dictionary<Vector2Int, Chunk> _dying = new Dictionary<Vector2Int, Chunk>();
+        readonly Dictionary<Vector3Int, Chunk> _dying = new Dictionary<Vector3Int, Chunk>();
         bool _started;
 
         void LateUpdate() => _started = true;
 
-        void UnloadChunk(Vector2Int coord)
+        void UnloadChunk(Vector3Int coord)
         {
             if (!_chunks.TryGetValue(coord, out var ch)) return;
             _chunks.Remove(coord);
@@ -283,24 +625,43 @@ namespace Backrooms.Generation
             StartCoroutine(DestroyLater(coord, ch, delay));
         }
 
-        System.Collections.IEnumerator DestroyLater(Vector2Int coord, Chunk ch, float delay)
+        System.Collections.IEnumerator DestroyLater(Vector3Int coord, Chunk ch, float delay)
         {
             yield return new WaitForSeconds(delay);
             if (!_dying.TryGetValue(coord, out var still) || still != ch) yield break;   // resurrected
-            _dying.Remove(coord);
-            if (lightManager) { lightManager.Unregister(coord); lightManager.UnregisterDoorways(coord); }
-            // Only meshes generated at runtime (negative instance ids); prop meshes are shared assets.
-            foreach (var mf in ch.go.GetComponentsInChildren<MeshFilter>())
-                if (mf.sharedMesh && mf.sharedMesh.GetInstanceID() < 0) Destroy(mf.sharedMesh);
-            Destroy(ch.go);
+            _toDestroy.Enqueue((coord, ch));
+        }
+
+        // Chunks to destroy, a few a frame: the world's ~40 chunks going at once as the lift reached the hub took 150 ms in one
+        // frame (2026-11-07). Still in _dying until then, so one wanted again meanwhile is simply kept.
+        readonly Queue<(Vector3Int coord, Chunk ch)> _toDestroy = new Queue<(Vector3Int, Chunk)>();
+        const int DestroysPerFrame = 2;
+
+        void DestroyQueued()
+        {
+            for (int n = 0; n < DestroysPerFrame && _toDestroy.Count > 0; n++)
+            {
+                var (coord, ch) = _toDestroy.Dequeue();
+                if (!_dying.TryGetValue(coord, out var still) || still != ch) { n--; continue; }   // resurrected
+                _dying.Remove(coord);
+                if (lightManager) { lightManager.Unregister(coord); lightManager.UnregisterDoorways(coord); }
+                DestroyChunkObject(coord, ch);
+            }
         }
 
         /// <summary>Puts the player in a lit, walkable cell of chunk (0, 0), facing the most open direction.</summary>
         void PlaceSpawn()
         {
             if (!player) return;
-            var spawnSample = _snapshot.Evaluate(Seed, Vector2Int.zero);
-            var layout = OfficeLayoutGenerator.Generate(Seed, Vector2Int.zero, OfficeBiome.ChunkCells, spawnSample.rules, spawnSample.Dominant);
+            SpawnPose(out var pos, out float yaw);
+            var ctrl = player.GetComponent<CamcorderPlayerController>();
+            if (ctrl) ctrl.Teleport(pos, yaw); else player.position = pos;
+        }
+
+        /// <summary>The world's spawn: a lit, walkable cell of chunk (0, 0), facing the most open direction.</summary>
+        public void SpawnPose(out Vector3 pos, out float yaw)
+        {
+            var layout = _world.Chunk(Vector2Int.zero);
             float C = OfficeBiome.CellSize;
             Vector2Int best = new Vector2Int(layout.N / 2, layout.N / 2);
             float bestScore = float.MinValue;
@@ -310,17 +671,15 @@ namespace Backrooms.Generation
             for (int z = 1; z < layout.N - 1; z++)
             {
                 var room = layout.RoomAt(x, z);
-                if (!room.Walkable || room.kind == RoomKind.Conference || room.kind == RoomKind.Lounge) continue;
+                if (!room.Walkable || room.noFloor || room.kind == RoomKind.Conference || room.kind == RoomKind.Lounge) continue;
                 if (BlockedCell(layout, x, z)) continue;
                 float score = room.rect.width * room.rect.height + (lit.Contains(new Vector2Int(x, z)) ? 40f : 0f)
                             - Vector2.Distance(new Vector2(x, z), room.rect.center) * 2f;
                 if (score > bestScore) { bestScore = score; best = new Vector2Int(x, z); }
             }
             var room0 = layout.RoomAt(best.x, best.y);
-            float yaw = room0.rect.width >= room0.rect.height ? 90f : 0f;
-            var pos = new Vector3((best.x + 0.5f) * C, 0.05f, (best.y + 0.5f) * C);
-            var ctrl = player.GetComponent<CamcorderPlayerController>();
-            if (ctrl) ctrl.Teleport(pos, yaw); else player.position = pos;
+            yaw = room0.rect.width >= room0.rect.height ? 90f : 0f;
+            pos = new Vector3((best.x + 0.5f) * C, 0.05f, (best.y + 0.5f) * C);
         }
 
         static bool BlockedCell(OfficeLayout L, int x, int z)

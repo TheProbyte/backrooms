@@ -74,6 +74,9 @@ whenever you enter a new cell (and every 0.5 s), in about 0.5 ms:
   ring (up to ~2 s). Reverb parameters glide over ~0.6 s, so doorways blend the two.
 - Ventilation is louder and brighter in big or tall spaces and drops in dark areas; room tone is constant.
 
+**Shut doors** (`DoorEdges`): a shut door's edge is closed to the walking paths, and the straight line through it is
+counted apart from walls: about -9 dB and a 1.6 kHz low-pass each (a wall: -18 dB, 700 Hz).
+
 **Limits (approximation):** one path per source (the shortest), not a sum over several doorways; only within
 the window and loaded chunks; furniture, pillars and half walls are ignored; the reverb is a single listener-
 side room, not per-source. Wall colliders are not used for acoustics at all.
@@ -81,6 +84,46 @@ side room, not per-source. Wall colliders are not used for acoustics at all.
 **Portals later:** a portal will be one more edge in the path graph whose far side is elsewhere. The search
 crosses it, the visible point becomes the portal mouth, and the remote fixture's sound appears at the entrance
 with no change to the emitters.
+
+## Steam Audio and the world's walls (2026-10-26)
+
+`Audio/SteamAudioWorld.cs` (added by the streamer in play mode) gives Steam Audio the world: each loaded chunk's wall,
+post, floor and ceiling collider boxes become one static mesh with acoustic materials (painted drywall walls, carpet
+floors, mineral-fibre ceilings), and every shut door (`DoorEdges`) a wooden slab in its doorway. Typical load: about
+140 meshes, 34k triangles. Sounds of things in the world (everything made with `ItemModels.Source`: items, doors, light
+switches, cords, the settling sounds below) use Steam Audio's direct path (`SteamAudioWorld.Attach`): HRTF, volumetric
+occlusion by those meshes and frequency-dependent transmission through them, so a door shutting in the next room is
+muffled by the wall. The building's own hum, buzz, ventilation and room tone keep the walking-path model below (which
+now also knows shut doors), so nothing is muffled twice. No baked data and no Steam Audio reflections: the reverb is
+still the listener-side room reverb.
+
+## Broken walls (2026-10-27)
+A wall broken with the sledgehammer (BreakingWalls.md) lets sound through its holes: the building's sound paths
+(`AcousticField`) go through a wall open by 12 % or more, a smaller hole muffles like a shut door, and Steam Audio gets
+what is left of its boards as a mesh of its own (the chunk's mesh is rebuilt without it). Its sounds are procedural
+(`ProceduralSounds.Demolition.cs`): the swing, drywall thump and crunch, crumbling, a steel stud's bang and tearing, a
+wood stud's thock and crack, a dead thud into a post, clanks, a batt's whump, bits landing (at most three a tenth of a
+second). They play through a small pool of plain 3D voices (`WallBreaker.Play`), not Steam Audio ones: eight
+spatialised voices still playing as the editor left Play Mode crashed Steam Audio's mixer thread once.
+
+## Footsteps, the body and the building at rest (2026-10-26)
+
+- **Footsteps** come from the feet: with the legs shown, each step plays when and where a foot comes down
+  (`FirstPersonBody.FootLanded`), on what is under it (`Audio/Surfaces.cs`: carpet, wood or laminate from the room's
+  floor finish, the Poolrooms' tile, water, sheet metal in a crawl duct, plywood above the ceilings). Hard floors have
+  their own synthesized steps (`ProceduralSounds.Body.cs`). Stopping from a walk scuffs the shoe. Crawling steps by
+  distance (hands and knees on metal in the ducts).
+- **Body** (`Interaction/BodyPresence.cs`): breaths close to the mic once you are out of breath, clothes rustling with
+  turns, crouching and walking, a sleeve rubbing along a wall. Breaths (2026-10-27, `ProceduralSounds.Breath`): air
+  through a half-open mouth, soft pink noise shaped by the mouth's resonances (out about 1 kHz, a warm "haaa" with a
+  low puff on the microphone; in about 1.9 kHz, quieter), a little flutter, in swelling and out trailing away; heard
+  from exertion 0.3, at most 0.16 (was white noise through 1.5 and 2.8 kHz filters, a hiss, up to 0.5).
+- **Mic**: grabbing, picking up, throwing and letting go knock the camcorder (handling thumps); running or whipping the
+  camera round puts wind on the mic (low buffeting in gusts, in `CamcorderAudioChain`).
+- **The building at rest** (`Audio/BuildingSettling.cs`): every 10-35 s a ceiling tile shifts somewhere near you (over a
+  real drop ceiling, 2.5-11 m away) or a sofa, chair or table nearby settles with a knock. The building's supply sags a
+  few percent now and then for a second or two (`FixtureLightManager.Mains`): the nearby lights dim together and the hum
+  drops and slurs.
 
 ## Camcorder chain (F5 > AUDIO)
 
@@ -144,3 +187,83 @@ Not established by these tests, needs listening: whether the hum, buzz and venti
 convincing, the reverb character of small offices versus tall halls, the amount of hiss and handling noise,
 and whether the AGC breathing is pleasant. A more convincing fluorescent or HVAC sound may eventually need
 recorded (licensed) material; everything here is synthesised.
+
+## Impacts and scraping (2026-10-28)
+
+`Audio/ImpactAudio.cs`, `Audio/ProceduralSounds.Impacts.cs`. Every loose item (WorldItem) and movable piece of furniture
+(MovableProp) gets an `ImpactSounder`; the sledgehammer, the rubber chicken and wall debris keep their own sounds.
+
+- A contact's loudness is its energy: the lighter body's mass and the speed along the contact normal (0.01 J faint, a can
+  dropped from the hand clear, furniture slammed the loudest), mapped logarithmically.
+- Two layers, as physically based game audio does: the struck thing's own ring (modal synthesis: damped partials per
+  material, pitched by size: can, plastic, chalk, tape, lamp metal, wood, cardboard, upholstery, office chair) and the
+  answer of what it hit (carpet, hard floor, concrete, tile, drywall, metal; or the other thing's own ring). Carpet damps
+  the ring. Surfaces come from `Surfaces.At` (floors) and the collider (doors wood, racks and ducts metal, walls drywall).
+- Sliding along the floor scrapes: dragged over carpet, scraped over a hard floor (stick-slip), rolling on casters; level
+  and pitch follow the slip speed; the three nearest slipping things get a voice.
+- Through Steam Audio (ItemModels.Source); 12 one-shot voices, at most 4 impacts a frame, nothing beyond 28 m, nothing in
+  the first 1.5 s after a thing appears (settling as the world loads). Sound settings: Physics > Impacts, Scraping.
+
+## The tension director (2026-10-28)
+
+`Atmosphere/TensionDirector.cs`, after Left 4 Dead's AI Director and Alien: Isolation's. It estimates how tense the player
+is (rises with what they hear, nearer counts more, in the dark and while running; falls in calm) and cycles Relax (nothing
+of its own; 70-160 s) -> Build-up (50-110 s: rarer and fainter at first, then nearer) -> Peak (one set piece) -> Fade (the
+ambience drops away, `BuildingAudio.Duck`) -> Relax. Already on edge: it backs off or ends the build-up early.
+
+Events, never in plain sight: an open door out of sight swinging shut, the lights of a nearby room going out
+(`LightZones`: saved, it stays dark until you find the switch), your room's lights blinking or stuttering, the power
+sagging (`FixtureLightManager.DirectorSag`). (2026-10-31: the knocks in walls, things in ducts and footsteps are gone, the
+owner did not like them; the director makes no sound of its own now.) Off in the Poolrooms, the menus and noclip.
+Strength: audio menu > ATMOSPHERE > Tension director (0 off, 1 normal, 2 intense; saved).
+`TensionDirector.Instance.Force("shadow" | "bold" | "leave" | "dark" | "flicker" | "door" | "sag" | "peak")` for testing;
+`Status` for a one-line state (with the shadow's).
+
+## The shadow (2026-10-31, remade 2026-11-02)
+
+`Atmosphere/ShadowStalker.cs`, `Resources/Shaders/ShadowWatcher.shader`. The owner (2026-11-02, after the first one, a long
+shadow gliding along the walls, looked like a stick figure): "maybe he shouldn't move at all but disappears the second
+he's out of frame. If you look at him for too long then it's too late for you. If you glance but look away immediately he
+retreats slightly. He only shows up in shadows (or his own shadows of the lights he turns off). A scarier shadow, still
+tall and thin, maybe shimmering, like heat waves; a slenderman style shadow." The rules follow SCP-173 and the Weeping
+Angels (it only moves unseen) and Slender (the longer you look the worse it gets; the static is both the warning and what
+hides it). The director is still its macro brain: it sends it 12 s into a build-up, makes it **bold** at the peak, calls it
+off in the fade.
+- **What you see**: a tall, thin, faceless figure (2.25-2.85 m, up to just under the ceiling) standing perfectly still: a
+  suited, Slender-like silhouette, shoulders drawn up round a sunk neck, a small head bowed and tilted, arms hanging below
+  the knees with long fingers. Near black, its edge boiling upward like the air over a hot road and the room just round it
+  rippling (heat haze: the picture behind looked up through rising noise, from URP's opaque texture); a little of the
+  warped room seeps through it in rising streaks. One camera-facing quad, a distance field; no keywords, no shadow cast.
+- **Where it stands**: a place about the distance it wants (4-18 m), on your storey, out of frame but in your line of sight
+  (turning round finds it), clear to stand in, behind you or to the side by preference, a dark room by preference. The
+  room's tubes stutter out first (`LightZones.Drain`), and it is only there once they are dark (it does not stand in a lit
+  room); calm, never in your own room (bold, it may put your own room out). When it goes they strike again 2.5-4 s later.
+- **Unseen** it comes on: every 6-10 s (4-6 s bold) a new place 2.5 m nearer, down to 4 m (2.5 m bold).
+- **Seen** it stands. A **glance** (under 0.6 s) and away: gone, and next time 4 m further off. Longer: the tape breaks up
+  more and more (`CamcorderRig.Interference`, 0.12 + 0.75 x stare^2) and its shimmer boils harder; look away and it is gone
+  (next time where it was). The look is counted (it ebbs 0.08/s): about 2.6 s of looking at 12 m is too late, 1.9 s at
+  4 m, less bold (1.7 s base).
+- **Too late**: it is right in front of you (1.1 m) for a third of a second, the tape breaks up and cuts (the last frame
+  held, crackle), and the recording picks up 20-45 m away in a room whose lights are off (saved: find its switch). The
+  director goes to its fade.
+- **Gone the moment it is out of frame** after being seen (and when told to leave, the next time it is out of frame).
+- Near it the picture breaks up a little and the power sags. No sound of its own: the hum of the room it darkens cuts out.
+- Test menu (K): Come close (7 m), Come (14 m), Right behind me (3 m), Bold, Leave, Gone now. *Freeze* holds it and the
+  look; *Can't be caught* sends it off instead of the cut.
+
+## Testing the enemies: the Enemies menu (K)
+
+`Atmosphere/EnemiesMenu.cs`, `Atmosphere/EnemyDebug.cs` (2026-10-31, the owner: "a way to test him or future enemies
+instead of waiting around"). After Unreal's Gameplay Debugger (an overlay of what each AI is doing, toggled by a key) and
+Valve's notarget / ai_disable switches. **K** in a level opens a panel down the right side (the level stays in view; K or
+Escape closes it):
+- **Switches**: *Director hands off* (the tension director no longer sends, emboldens or calls off the enemies; any button
+  that brings one turns it on), *Can't be caught* (it reaches you and backs off), *Freeze enemies* (they stand still, their
+  anger stays put), *Show on screen* (their status in the top-left corner and a marker through walls where each really is,
+  red, and where it shows, yellow, with the menu closed too).
+- **Tension director**: its phase and tension; Peak now, a room goes dark, lights flicker, a door swings shut.
+- **Each enemy**: its status, *Turn to face it*, and its own buttons. The shadow: Come close (8-14 m off, out of sight),
+  Come (as the director sends it), Bold; anger Calm / Dull eyes (0.45) / Glowing eyes (0.8) / Charge now; Leave, Gone now.
+- **A new enemy**: implement `IDevEnemy` (name, status line, present, position, where it shows, its buttons as
+  `DevAction`s, `DevAction.Header` between groups) and call `EnemyDebug.Register(this)` in OnEnable /
+  `Unregister` in OnDisable; check `EnemyDebug.Hold`, `NoCatch` and `Freeze` in its own logic.

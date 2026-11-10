@@ -48,6 +48,10 @@ namespace Backrooms.Audio
     public class BuildingAudio : MonoBehaviour
     {
         public static BuildingAudio Instance { get; private set; }
+        /// <summary>The beds' level, 1 normally: the tension director lowers it for a quiet moment (the building goes silent).</summary>
+        public static float Duck = 1f;
+        /// <summary>The beds' level in a home (Interaction.HomeTracker eases it to half inside one): your own quiet room.</summary>
+        public static float HomeQuiet = 1f;
 
         public WorldStreamer streamer;
         public FixtureLightManager lights;
@@ -101,9 +105,15 @@ namespace Backrooms.Audio
         readonly List<float> _rank = new List<float>();
         readonly HashSet<Vector3> _wanted = new HashSet<Vector3>();
 
-        AudioSource _bed, _vent, _tone, _preview;
+        AudioSource _bed, _vent, _tone, _preview, _water;
+        /// <summary>0..1: how far the listener is into the Poolrooms (the Backrooms' beds fade out, water and a long
+        /// tiled reverb fade in).</summary>
+        public float PoolBlend { get; private set; }
+        [Tooltip("Level of the Poolrooms' water ambience (2026-10-31: quieter, the owner wanted it more chill).")] public float waterLevel = 0.028f;
         AudioLowPassFilter _ventLpf;
         AudioReverbFilter _reverb;
+        AudioEchoFilter _echo;              // the Poolrooms' flutter echo between parallel tiled walls (2026-11-01)
+        float _echoDelay;
         Vector2Int _fieldCell = new Vector2Int(int.MinValue, 0);
         float _nextField, _nextSelect, _nextReverb;
         float _distantSmoothed, _compSmoothed = 1f, _ventSmoothed, _poweredNearby;
@@ -142,6 +152,7 @@ namespace Backrooms.Audio
             _vent = Bed("VentilationBed", SoundBank.Ventilation, 9);
             _ventLpf = _vent.gameObject.AddComponent<AudioLowPassFilter>(); _ventLpf.cutoffFrequency = 4000f;
             _tone = Bed("RoomToneBed", SoundBank.RoomTone, 13);
+            _water = Bed("PoolWaterBed", SoundBank.PoolAmbience, 17);
             var pgo = new GameObject("SoundPreview"); pgo.transform.SetParent(transform, false);
             _preview = pgo.AddComponent<AudioSource>(); _preview.playOnAwake = false; _preview.dopplerLevel = 0f;
 
@@ -159,6 +170,17 @@ namespace Backrooms.Audio
                 _reverb.reverbPreset = AudioReverbPreset.User;
                 _reverb.dryLevel = 0f; _reverb.diffusion = 100f; _reverb.density = 100f;
                 _reverb.hfReference = 5000f; _reverb.lfReference = 250f; _reverb.roomLF = 0f;
+                // The flutter echo after the reverb, before the camcorder chain.
+                _echo = listener.GetComponent<AudioEchoFilter>();
+                if (!_echo)
+                {
+                    var chain = listener.GetComponent<CamcorderAudioChain>();
+                    bool had = chain;
+                    if (chain) DestroyImmediate(chain);
+                    _echo = listener.gameObject.AddComponent<AudioEchoFilter>();
+                    if (had) listener.gameObject.AddComponent<CamcorderAudioChain>();
+                }
+                _echo.dryMix = 1f; _echo.wetMix = 0f; _echo.decayRatio = 0.35f; _echo.enabled = false;
             }
         }
 
@@ -212,6 +234,8 @@ namespace Backrooms.Audio
             UpdateHumVoices(ear, now, dt);
             UpdateBuzz(ear, now, dt);
             UpdateEvents(ear, now);
+            bool inPool = PoolWorld.Instance && PoolWorld.Instance.IsPool(ear);
+            PoolBlend = Mathf.MoveTowards(PoolBlend, inPool ? 1f : 0f, dt / 1.2f);
             UpdateBeds(dt);
             if (now >= _nextReverb) { _nextReverb = now + 0.1f; UpdateReverb(); }
             UpdatePreview(now);
@@ -236,14 +260,14 @@ namespace Backrooms.Audio
             var p = Field.Query(source);
             float occ = Mathf.Clamp01(Dev.occlusion);
             var r = new Render { pos = source, extra = 1f, cutoff = 22000f };
-            if (p.walls == 0 || occ <= 0f) { r.gain = SoundCatalog.DistanceGain(id, p.direct); return r; }
+            if ((p.walls == 0 && p.doors == 0) || occ <= 0f) { r.gain = SoundCatalog.DistanceGain(id, p.direct); return r; }
 
             // Around the walls: from the doorway's direction, at the walking distance, a little duller.
             float bend = Mathf.Clamp01((p.path - p.direct) / 6f);
             float viaExtra = Mathf.Lerp(1f, 0.5f, bend * occ);
             float via = p.reachable ? SoundCatalog.DistanceGain(id, p.path) * viaExtra : 0f;
-            // Through the walls: quiet and heavily muffled (about -18 dB per wall).
-            float thruExtra = Mathf.Lerp(1f, Mathf.Pow(0.12f, p.walls), occ);
+            // Through the walls: quiet and heavily muffled (about -18 dB per wall); a shut door about -9 dB, less muffled.
+            float thruExtra = Mathf.Lerp(1f, Mathf.Pow(0.12f, p.walls) * Mathf.Pow(0.35f, p.doors), occ);
             float thru = SoundCatalog.DistanceGain(id, p.direct) * thruExtra;
             if (via >= thru && p.reachable)
             {
@@ -258,7 +282,7 @@ namespace Backrooms.Audio
             else
             {
                 r.extra = thruExtra;
-                r.cutoff = Mathf.Lerp(22000f, p.walls > 1 ? 450f : 700f, occ);
+                r.cutoff = Mathf.Lerp(22000f, p.walls > 1 ? 450f : p.walls == 1 ? 700f : 1600f, occ);
                 r.gain = thru;
             }
             return r;
@@ -448,8 +472,10 @@ namespace Backrooms.Audio
                 oct = Mathf.Clamp(oct, -10f * dt, 10f * dt);
                 v.cutoff *= Mathf.Pow(2f, oct);
                 v.lpf.cutoffFrequency = v.cutoff;
-                v.src.pitch = pitch * v.detune;
-                v.src.volume = baseLvl * catVol * v.level * pathGain * _compSmoothed * Smooth(v.fade) * power;
+                // A brownout: the hum drops and slurs with the sagging supply.
+                float mains = lights ? lights.Mains : 1f;
+                v.src.pitch = pitch * v.detune * (1f - (1f - mains) * 0.35f);
+                v.src.volume = baseLvl * catVol * v.level * pathGain * _compSmoothed * Smooth(v.fade) * power * mains * mains * mains * GameSettings.Ambience;
 
                 // Faulty stutter and strike edges come from the same curve as the light.
                 if (v.lastPower < 0.35f && power > 0.75f)
@@ -539,7 +565,7 @@ namespace Backrooms.Audio
                 v.lpf.cutoffFrequency = Mathf.Exp(Mathf.Lerp(Mathf.Log(Mathf.Max(10f, v.lpf.cutoffFrequency)), Mathf.Log(r.cutoff), posK));
                 v.src.pitch = SoundCatalog.Pitch(id);
                 float stutterGate = power > 0.5f ? 0.6f : 1f;    // louder arcing in the dark dips
-                v.src.volume = baseLvl * catVol * Mathf.Clamp(crackle, 0f, 2f) * v.buzzEnv * stutterGate * pathGainB * Smooth(v.fade);
+                v.src.volume = baseLvl * catVol * Mathf.Clamp(crackle, 0f, 2f) * v.buzzEnv * stutterGate * pathGainB * Smooth(v.fade) * GameSettings.Ambience;
             }
             BuzzActive = count;
         }
@@ -578,7 +604,7 @@ namespace Backrooms.Audio
 
         void UpdateBeds(float dt)
         {
-            float amb = Mathf.Clamp(Dev.ambience, 0f, 2f);
+            float amb = Mathf.Clamp(Dev.ambience, 0f, 2f) * Mathf.Clamp01(Duck) * Mathf.Clamp01(HomeQuiet) * GameSettings.Ambience;
             float bedK = 1f - Mathf.Exp(-dt / 1.5f);
 
             _distantSmoothed = Mathf.Lerp(_distantSmoothed, DistantLevel, bedK);
@@ -592,11 +618,16 @@ namespace Backrooms.Audio
             float ventT = SoundBank.BaseLevel(SoundIds.Ventilation) * SoundCatalog.Volume(SoundIds.Ventilation) * amb
                           * Mathf.Lerp(0.55f, 1.15f, size) * Mathf.Lerp(0.45f, 1f, _poweredNearby) * drift;
             _ventSmoothed = Mathf.Lerp(_ventSmoothed, ventT, bedK);
-            _vent.volume = _ventSmoothed;
+            _vent.volume = _ventSmoothed * GameSettings.Ambience;
             _vent.pitch = SoundCatalog.Pitch(SoundIds.Ventilation);
             _ventLpf.cutoffFrequency = Mathf.Lerp(_ventLpf.cutoffFrequency, Mathf.Lerp(1800f, 6000f, Mathf.Max(size * 0.6f, hard)), bedK);
 
             _tone.volume = SoundBank.BaseLevel(SoundIds.RoomTone) * SoundCatalog.Volume(SoundIds.RoomTone) * amb;
+
+            // The Poolrooms have no lights or air handling: none of the building's beds, only water.
+            float office = 1f - PoolBlend;
+            _bed.volume *= office; _vent.volume *= office; _tone.volume *= office;
+            _water.volume = waterLevel * amb * PoolBlend;
         }
 
         void UpdateReverb()
@@ -616,6 +647,23 @@ namespace Backrooms.Audio
             float hfRatioT = Mathf.Lerp(0.45f, 0.8f, hard);
             float refDelayT = Mathf.Clamp(size / 340f * 0.6f, 0.003f, 0.05f);
             float delayT = Mathf.Clamp(size / 340f, 0.008f, 0.07f);
+            if (PoolBlend > 0f)
+            {
+                // Tile, water and bare concrete: a longer, wetter tail than the offices', but kept well under the sound
+                // itself (2026-10-31: the owner heard "weird infinite echoing": the tail had been up to 5.5 s, louder than
+                // the dry sound and as bright, so every step and splash rang on). Natatoriums are treated to keep their
+                // reverberation near 1.5-2.5 s, and the highs die first in the humid air.
+                float p = PoolBlend;
+                float poolDecay = Mathf.Clamp(1.2f + 0.02f * Mathf.Sqrt(vol), 1.4f, 2.6f);
+                decay = Mathf.Lerp(decay, poolDecay, p);
+                roomT = Mathf.Lerp(roomT, amt <= 0.001f ? -10000f : -900f + 2000f * Mathf.Log10(amt), p);
+                roomHFT = Mathf.Lerp(roomHFT, -700f, p);
+                reflT = Mathf.Lerp(reflT, -800f, p);
+                revT = Mathf.Lerp(revT, -450f, p);
+                hfRatioT = Mathf.Lerp(hfRatioT, 0.55f, p);
+                refDelayT = Mathf.Lerp(refDelayT, 0.035f, p);
+                delayT = Mathf.Lerp(delayT, 0.06f, p);
+            }
             const float k = 0.15f;              // 10 Hz updates, ~0.65 s time constant
             _rvDecay += (decay - _rvDecay) * k; _rvRoom += (roomT - _rvRoom) * k; _rvRoomHF += (roomHFT - _rvRoomHF) * k;
             _rvRefl += (reflT - _rvRefl) * k; _rvRev += (revT - _rvRev) * k; _rvHFRatio += (hfRatioT - _rvHFRatio) * k;
@@ -624,7 +672,21 @@ namespace Backrooms.Audio
             _reverb.reflectionsLevel = _rvRefl; _reverb.reverbLevel = _rvRev; _reverb.decayHFRatio = _rvHFRatio;
             _reverb.reflectionsDelay = _rvRefDelay; _reverb.reverbDelay = _rvDelay;
             ReverbDecay = _rvDecay;
-            SpaceLabel = (hard > 0.5f ? "plaster" : "drop ceiling") + ", " + area.ToString("0") + " m² visible, ceiling " + h.ToString("0.0") + " m";
+            // A flutter echo (2026-11-01, the realism plan 8): between parallel tiled walls a sharp sound comes back as a
+            // quick, fading train of repeats, one every round trip across the room (about 2 x its width / 343 m/s).
+            if (_echo)
+            {
+                bool on = PoolBlend > 0.01f;
+                if (_echo.enabled != on) _echo.enabled = on;
+                if (on)
+                {
+                    float width = Mathf.Clamp(size * 0.8f, 3f, 14f), delay = 2f * width / 343f * 1000f;
+                    if (Mathf.Abs(delay - _echoDelay) > 6f) { _echoDelay = delay; _echo.delay = delay; }
+                    _echo.decayRatio = 0.25f;
+                    _echo.wetMix = 0.05f * PoolBlend * Mathf.Clamp01(amt);
+                }
+            }
+            SpaceLabel = (PoolBlend > 0.5f ? "tiles and water" : hard > 0.5f ? "plaster" : "drop ceiling") + ", " + area.ToString("0") + " m² visible, ceiling " + h.ToString("0.0") + " m";
         }
 
         // ---------------- Preview (F5 > Sound) ----------------

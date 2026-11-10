@@ -35,6 +35,10 @@ Shader "Backrooms/CamcorderVideo"
             float4 _CamVideo3;   // x pedestal, y knee point, z time (s), w enabled (0/1)
             float4 _CamVideo4;   // x frame index, y sensor lines (noise grid), z scan lines, w grain size multiplier
             float4 _CamVideo5;   // x OSD curvature, y OSD texture enabled
+            float4 _CamVideo6;   // xy: motion smear vector in uv units (from the camera's turn rate)
+            float4 _CamVideo7;   // x head-switching band, y compression blotches
+            float4 _CamVideo8;   // x recording lines (0 = full display resolution), y colour detail (fraction of the luma resolution)
+            float4 _CamVideo9;   // x noclip glitch 0..1, y vertical roll (fraction of the frame), z random per frame
             TEXTURE2D(_CamOSDTex);
 
             // ---------------- Noise ----------------
@@ -114,7 +118,34 @@ Shader "Backrooms/CamcorderVideo"
                 return float3(v.x + 1.403 * v.z, v.x - 0.344 * v.y - 0.714 * v.z, v.x + 1.770 * v.y);
             }
 
+            // Prefiltered box around uv: four bilinear taps at the quarter points of the footprint (uv units).
+            float3 FetchBox(float2 uv, float2 foot)
+            {
+                float2 o = foot * 0.25;
+                return (FetchG(uv + float2(-o.x, -o.y)) + FetchG(uv + float2(o.x, -o.y)) + FetchG(uv + float2(-o.x, o.y)) + FetchG(uv + float2(o.x, o.y))) * 0.25;
+            }
+
+            // The picture as a recorder with a fixed pixel grid sees it: each recorded pixel averages the screen
+            // pixels it covers (so nothing aliases), then the grid is reconstructed with plain bilinear
+            // interpolation (smooth, never blocky), independent of the display resolution.
+            // _CamVideo8.z (line doubling) picks the nearest recorded line instead of blending two, so each line is
+            // shown as a solid band, as in field-doubled SD video. _CamVideo1.y (softness) widens the averaging
+            // footprint for optics and processing that are softer than the recorded grid.
+            float3 FetchRecorded(float2 uv, float2 grid, float doubling)
+            {
+                float2 g = uv * grid - 0.5;
+                float2 i = floor(g), f = frac(g);
+                f.y = lerp(f.y, step(0.5, f.y), saturate(doubling));
+                float2 foot = (1.0 + max(_CamVideo1.y, 0)) / grid;
+                float3 a = FetchBox((i + 0.5) / grid, foot);
+                float3 b = FetchBox((i + float2(1, 0) + 0.5) / grid, foot);
+                float3 c = FetchBox((i + float2(0, 1) + 0.5) / grid, foot);
+                float3 d = FetchBox((i + float2(1, 1) + 0.5) / grid, foot);
+                return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
+            }
+
             float Sinc(float x) { x *= PI; return abs(x) < 1e-4 ? 1.0 : sin(x) / x; }
+            float GHash(float3 p) { p = frac(p * float3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return frac((p.x + p.y) * p.z); }
 
             float4 Frag(Varyings input) : SV_Target
             {
@@ -127,9 +158,27 @@ Shader "Backrooms/CamcorderVideo"
                 float t = _CamVideo3.z;
                 uint frame = (uint)_CamVideo4.x;
 
+                // Noclip glitch: the tape loses tracking. The picture rolls (with the black blanking bar at the seam),
+                // bands of lines tear sideways by different amounts, every line jitters, and the tracking band goes wild.
+                float glitch = _CamVideo9.x;
+                float blank = 0;
+                if (glitch > 0.001)
+                {
+                    float roll = _CamVideo9.y;
+                    uv.y = frac(uv.y + roll);
+                    float seam = min(uv.y, 1.0 - uv.y);
+                    blank = roll > 0.001 ? smoothstep(0.035 * glitch + 0.003, 0.0, seam) : 0;
+                    float bands = lerp(9.0, 46.0, frac(_CamVideo9.z * 7.13));
+                    float bandId = floor(uv.y * bands);
+                    float tearOn = step(1.15 - glitch * 0.85, abs(GridNoise(float2(bandId, 9.0), frame, 523u)));
+                    uv.x += GridNoise(float2(bandId, 3.0), frame, 517u) * 0.11 * glitch * tearOn;
+                    uv.x += GridNoise(float2(uv.y * 240.0, t * 60.0), frame, 529u) * 0.005 * glitch;
+                    uv.x = frac(uv.x);
+                }
+
                 // Tape tracking: a soft band of horizontal displacement drifting up the frame,
                 // smooth (low-frequency) jitter so the image wobbles instead of tearing into stripes.
-                float tracking = _CamVideo2.w;
+                float tracking = max(_CamVideo2.w, glitch * 3.0);
                 float bandY = frac(t * 0.071);
                 float bandDist = abs(uv.y - bandY);
                 bandDist = min(bandDist, 1.0 - bandDist);
@@ -140,49 +189,120 @@ Shader "Backrooms/CamcorderVideo"
                     uv.x += band * wob * 0.004 * tracking;
                 }
 
+                // Head-switching band along the bottom: the picture tears sideways there.
+                float hsw = _CamVideo7.x;
+                float hsK = hsw > 0.001 ? smoothstep(0.045, 0.0, uv.y) * hsw : 0;
+                if (hsK > 0.001)
+                    uv.x += GridNoise(float2(uv.y * 400.0, t * 40.0), frame, 303u) * 0.03 * hsK;
+
                 // Work in display (gamma) space like the camera's own signal processing.
-                float soft = _CamVideo1.y;
-                float r1 = max(soft, 0.75);
-                float3 c0 = FetchG(uv);
-                // 8-tap disc for softness, rotated so the kernel never aligns with the pixel grid.
-                float3 blurN = 0;
-                [unroll] for (int k = 0; k < 8; k++)
+                float y; float2 cc;
+                if (_CamVideo8.x > 1.0)
                 {
-                    float a = k * (PI * 0.25) + 0.3926991;
-                    blurN += FetchG(uv + float2(cos(a), sin(a)) * px * r1);
+                    // Fixed recording resolution: luminance at the full recorded grid, colour at a coarser one
+                    // (extra detail loss horizontally, as in 4:2:x video), mild edge enhancement from the luma
+                    // detail that the colour grid cannot see.
+                    float aspectR = res.x / res.y;
+                    float2 gridL = float2(_CamVideo8.x * aspectR, _CamVideo8.x);
+                    float cd = clamp(_CamVideo8.y, 0.2, 1.0);
+                    float2 gridC = float2(gridL.x * cd, gridL.y * lerp(1.0, cd, 0.5));
+                    float3 cL = FetchRecorded(uv, gridL, _CamVideo8.z);          // brightness: line-doubled
+                    float3 cC = FetchRecorded(uv + float2(_CamVideo1.w * px.x, 0), gridC, 0.0);   // colour: smooth (measured: no colour stair-steps)
+                    float yL = ToYCC(cL).x, yC = ToYCC(cC).x;
+                    float edgeL = yL - yC;
+                    float coredL = sign(edgeL) * max(abs(edgeL) - 0.006, 0);
+                    y = yL + clamp(coredL, -0.1, 0.1) * _CamVideo1.x * 0.35;
+                    cc = ToYCC(cC).yz;
                 }
-                blurN *= 0.125;
-                float softW = saturate(soft * 0.5);
-                float3 softC = lerp(c0, (c0 + blurN * 2) / 3, softW);
+                else
+                {
+                    float soft = _CamVideo1.y;
+                    float r1 = max(soft, 0.75);
+                    float3 c0 = FetchG(uv);
+                    // 8-tap disc for softness, rotated so the kernel never aligns with the pixel grid.
+                    float3 blurN = 0;
+                    [unroll] for (int k = 0; k < 8; k++)
+                    {
+                        float a = k * (PI * 0.25) + 0.3926991;
+                        blurN += FetchG(uv + float2(cos(a), sin(a)) * px * r1);
+                    }
+                    blurN *= 0.125;
+                    float softW = saturate(soft * 0.5);
+                    float3 softC = lerp(c0, (c0 + blurN * 2) / 3, softW);
 
-                // Edge enhancement on luma only (classic halos around edges), with coring so noise and
-                // fine texture are not sharpened into crunch.
-                float r2 = r1 + 1.5;
-                float3 wide = 0;
-                [unroll] for (int j = 0; j < 8; j++)
-                {
-                    float a = j * (PI * 0.25);
-                    wide += FetchG(uv + float2(cos(a), sin(a)) * px * r2);
-                }
-                wide *= 0.125;
-                float yS = ToYCC(softC).x;
-                float edge = yS - ToYCC(wide).x;
-                float cored = sign(edge) * max(abs(edge) - 0.008, 0);
-                cored = sign(cored) * min(abs(cored), 0.12);
-                float y = yS + cored * _CamVideo1.x;
+                    // Edge enhancement on luma only (classic halos around edges), with coring so noise and
+                    // fine texture are not sharpened into crunch.
+                    float r2 = r1 + 1.5;
+                    float3 wide = 0;
+                    [unroll] for (int j = 0; j < 8; j++)
+                    {
+                        float a = j * (PI * 0.25);
+                        wide += FetchG(uv + float2(cos(a), sin(a)) * px * r2);
+                    }
+                    wide *= 0.125;
+                    float yS = ToYCC(softC).x;
+                    float edge = yS - ToYCC(wide).x;
+                    float cored = sign(edge) * max(abs(edge) - 0.008, 0);
+                    cored = sign(cored) * min(abs(cored), 0.12);
+                    y = yS + cored * _CamVideo1.x;
 
-                // Chroma: horizontally subsampled and smeared, slightly delayed relative to luma.
-                float bleed = _CamVideo1.z, shift = _CamVideo1.w;
-                float2 cc = 0; float wsum = 0;
-                [unroll] for (int i = -3; i <= 3; i++)
-                {
-                    float w = exp(-i * i / 4.5);
-                    cc += ToYCC(FetchG(uv + float2((i * bleed / 3.0 + shift) * px.x, 0))).yz * w;
-                    wsum += w;
+                    // Chroma: horizontally subsampled and smeared, slightly delayed relative to luma.
+                    float bleed = _CamVideo1.z, shift = _CamVideo1.w;
+                    cc = 0; float wsum = 0;
+                    [unroll] for (int i = -3; i <= 3; i++)
+                    {
+                        float w = exp(-i * i / 4.5);
+                        cc += ToYCC(FetchG(uv + float2((i * bleed / 3.0 + shift) * px.x, 0))).yz * w;
+                        wsum += w;
+                    }
+                    cc /= wsum;
                 }
-                cc /= wsum;
+
+                // Compression blotches: chroma and brightness held in 12 px blocks that re-draw every few frames.
+                float blk = _CamVideo7.y;
+                if (blk > 0.001)
+                {
+                    // With a recording resolution the blocks are the codec's 8 x 8 blocks of recorded pixels, and fine
+                    // low-contrast detail inside each block is flattened toward the block's mean (strong edges survive),
+                    // which leaves faint steps at the block borders. Otherwise: 12 screen-pixel blotches.
+                    float bs = _CamVideo8.x > 1.0 ? 8.0 * res.y / _CamVideo8.x : 12.0;
+                    float2 bpx = floor(uv * res / bs);
+                    float2 buv = (bpx + 0.5) * bs / res;
+                    if (_CamVideo8.x > 1.0)
+                    {
+                        float yB = ToYCC(FetchBox(buv, bs * px)).x;
+                        float dy = y - yB;
+                        y = yB + dy * lerp(1.0, smoothstep(0.015, 0.07, abs(dy)), saturate(blk));
+                    }
+                    float2 cb = ToYCC(FetchG(buv)).yz;
+                    float rnd = Rand3(int2(bpx), frame / 3u, 55u).x;
+                    cc = lerp(cc, cb, saturate(blk * (0.3 + 0.9 * rnd)));
+                    y += (Rand3(int2(bpx), frame / 5u, 77u).y - 0.5) * 0.045 * blk;
+                }
 
                 float3 col = FromYCC(float3(y, cc));
+
+                // Colour flicker: every recorded frame gets its own small random lift in brightness and shift in tint
+                // (film-like frame-to-frame colour change). 1 is plainly visible; the slider goes well past that.
+                float cfl = _CamVideo7.w;
+                if (cfl > 0.001)
+                {
+                    float3 fr = Rand3(int2(3, 5), frame, 901u) - 0.5;
+                    col *= 1.0 + fr.x * 0.07 * cfl;
+                    col += FromYCC(float3(0, fr.y * 0.035 * cfl, fr.z * 0.035 * cfl));
+                }
+
+                // Sensor motion blur: smear along the camera's turn, mostly trailing behind the motion.
+                float2 mv = _CamVideo6.xy;
+                float mlen = length(mv * res);
+                if (mlen > 1.5)
+                {
+                    float3 acc = 0;
+                    [unroll] for (int m = 0; m < 16; m++)
+                        acc += FetchG(uv + mv * (m / 15.0 - 0.7));
+                    float3 mb = acc * (1.0 / 16.0);
+                    col = lerp(col, mb, saturate((mlen - 1.5) / 5.0));
+                }
 
                 // Highlight knee: compress above the knee point and clip at 100%.
                 float knee = _CamVideo3.y;
@@ -218,6 +338,53 @@ Shader "Backrooms/CamcorderVideo"
                 {
                     float spark = GridNoise(float2(uv.x * 160.0, uv.y * res.y * 0.5), frame, 211u);
                     col += (0.04 + max(spark, 0) * 0.12) * band * tracking;
+                }
+
+                // Head-switching noise: a band of blue / magenta static that changes colour and flickers.
+                if (hsK > 0.001)
+                {
+                    float hue = 0.5 + 0.5 * sin(t * 2.3 + uv.x * 5.0);
+                    float3 tint = lerp(float3(0.22, 0.3, 1.0), float3(1.0, 0.25, 0.75), hue);
+                    float sp = GridNoise(float2(uv.x * 220.0, uv.y * res.y * 0.6), frame, 331u);
+                    col = lerp(col, tint * (0.55 + 0.45 * saturate(sp * 0.5 + 0.5)), saturate(hsK * 0.55));
+                    col += max(sp, 0) * 0.25 * hsK * step(uv.y, 0.012);          // the bottom few lines: bright static
+                }
+
+                // Bottom line (measured from the episode): the last few recorded lines turn lilac over the right part
+                // of the frame (from about 46 % across), with a small pink spot where it starts and only a faint tint
+                // to the left. Steady, no tearing.
+                float bl = _CamVideo7.z;
+                if (bl > 0.001)
+                {
+                    float lh = _CamVideo8.x > 1.0 ? 4.0 / _CamVideo8.x : 0.0075;   // about four recorded lines
+                    float v = saturate(1.0 - uv.y / lh);
+                    v *= v;
+                    if (v > 0)
+                    {
+                        float split = 0.46 + 0.004 * sin(t * 1.7);
+                        float right = smoothstep(split - 0.004, split + 0.004, uv.x);
+                        float spot = exp(-pow((uv.x - split - 0.006) / 0.009, 2.0));
+                        float3 lilac = float3(0.02, -0.05, 0.24);
+                        col += (lilac * lerp(0.2, 1.0, right) + float3(0.12, -0.04, 0.02) * spot) * v * bl;
+                    }
+                }
+
+                // Noclip glitch, after the image: dropout streaks (short white and black flecks along the lines), colour
+                // falling apart into grey and noise, and the blanking bar where the rolling picture wraps.
+                if (glitch > 0.001)
+                {
+                    // Dropouts: dashes of random length on a few lines, more as it gets worse.
+                    float lineId = floor(uv.y * res.y * 0.5);
+                    float fr = (float)(frame % 4096u);
+                    float seg = floor(uv.x * 4.0 + GHash(float3(lineId, 1.7, fr)) * 4.0);
+                    float rnd = GHash(float3(lineId, seg, fr + 13.0));
+                    float on = step(1.0 - 0.06 * glitch * glitch, rnd);
+                    float white = step(0.35, GHash(float3(seg, lineId, fr + 29.0)));
+                    col = lerp(col, white > 0.5 ? float3(0.92, 0.92, 0.9) : float3(0.02, 0.02, 0.03), on * 0.85);
+                    float gl = dot(col, float3(0.299, 0.587, 0.114));
+                    col = lerp(col, gl.xxx, 0.45 * glitch);
+                    col += GridNoise(uv * float2(res.x * 0.25, res.y * 0.5), frame, 547u) * 0.1 * glitch;
+                    col *= 1.0 - blank;
                 }
 
                 // Viewfinder OSD (drawn by its own camera), bent with a gentle barrel warp so the text

@@ -78,6 +78,26 @@ namespace Backrooms.DebugTools
             _acc = _accMain = _accRender = _accGpu = 0f; _n = 0;
         }
 
+        // ---------------- Fixed-length samples (automated comparisons) ----------------
+
+        readonly System.Collections.Generic.List<float> _sFrame = new System.Collections.Generic.List<float>(), _sGpu = new System.Collections.Generic.List<float>();
+        int _sampleLeft;
+        /// <summary>Last finished sample: frame and GPU median / 95th percentile in ms.</summary>
+        public string SampleResult { get; private set; } = "";
+        public bool Sampling => _sampleLeft > 0;
+
+        /// <summary>Records the next <paramref name="frames"/> frames; read <see cref="SampleResult"/> when <see cref="Sampling"/> is false.</summary>
+        public void BeginSample(int frames) { _sFrame.Clear(); _sGpu.Clear(); _sampleLeft = Mathf.Max(1, frames); SampleResult = ""; }
+
+        void LateUpdate()
+        {
+            if (_sampleLeft <= 0) return;
+            _sFrame.Add(Time.unscaledDeltaTime * 1000f); _sGpu.Add(Ms(_gpu));
+            if (--_sampleLeft > 0) return;
+            float P(System.Collections.Generic.List<float> l, float q) { l.Sort(); return l[Mathf.Clamp(Mathf.RoundToInt(q * (l.Count - 1)), 0, l.Count - 1)]; }
+            SampleResult = $"frame {P(_sFrame, 0.5f):0.0}/{P(_sFrame, 0.95f):0.0} ms ({1000f / P(_sFrame, 0.5f):0} fps)  gpu {P(_sGpu, 0.5f):0.0}/{P(_sGpu, 0.95f):0.0} ms  n={_sFrame.Count}";
+        }
+
         public string Summary() =>
             $"{Fps:0} fps ({FrameMs:0.0} ms)  main {MainMs:0.0} ms  render {RenderMs:0.0} ms  gpu {GpuMs:0.0} ms\n" +
             $"draw calls {DrawCalls}  set-pass {SetPassCalls}  shadow casters {ShadowCasters}  triangles {Triangles / 1000}k";

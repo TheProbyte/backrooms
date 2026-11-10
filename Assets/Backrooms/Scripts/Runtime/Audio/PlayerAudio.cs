@@ -3,8 +3,11 @@ using UnityEngine;
 namespace Backrooms.Audio
 {
     /// <summary>
-    /// The operator's own sounds: carpet footsteps from actual distance walked, and the handling signal
-    /// (movement rumble + a thump per step) that the camcorder chain turns into handling noise.
+    /// The operator's own sounds: footsteps, and the handling signal (movement rumble + a thump per step) that the
+    /// camcorder chain turns into handling noise. Walking with the legs shown, each step is heard when and where a foot
+    /// actually comes down (FirstPersonBody.FootLanded), on what the floor is there (carpet, wood, tile, concrete, water;
+    /// <see cref="Surfaces"/>), with a scuff of the shoe as you stop. Crawling (no legs shown) steps by distance, on
+    /// sheet metal in the ducts.
     /// </summary>
     [RequireComponent(typeof(CamcorderPlayerController))]
     public class PlayerAudio : MonoBehaviour
@@ -14,12 +17,17 @@ namespace Backrooms.Audio
 
         CamcorderPlayerController _player;
         CamcorderAudioChain _chain;
-        AudioSource _feet, _zoom;
+        AudioSource _feet, _zoom, _wade;
+        float _wadeLevel;
+        int _wadeStepsHeard;
         float _zoomLevel;
         int _zoomVersion = -1;
         float _travel;
         int _last = -1, _version = -1;
         Vector3 _lastPos;
+        Interaction.FirstPersonBody _body;
+        float _recentSpeed;
+        int _scuffPick, _slidesHeard;
 
         void Start()
         {
@@ -37,14 +45,82 @@ namespace Backrooms.Audio
             _zoom = zgo.AddComponent<AudioSource>();
             _zoom.clip = SoundBank.ZoomMotor; _zoom.loop = true; _zoom.playOnAwake = false; _zoom.volume = 0f;
             _zoom.Play();
+            // Wading: a loop under the steps whose level follows the speed through water.
+            var wgo = new GameObject("Wading");
+            wgo.transform.SetParent(transform, false);
+            wgo.transform.localPosition = new Vector3(0f, 0.25f, 0.1f);
+            _wade = wgo.AddComponent<AudioSource>();
+            _wade.clip = SoundBank.WadeLoop; _wade.loop = true; _wade.playOnAwake = false; _wade.volume = 0f;
             _lastPos = transform.position;
+            _body = GetComponent<Interaction.FirstPersonBody>();
+            if (_body) _body.FootLanded += OnFoot;
+        }
+
+        void OnDestroy() { if (_body) _body.FootLanded -= OnFoot; }
+
+        /// <summary>A foot came down: its step, from where it is, on what is under it.</summary>
+        void OnFoot(Vector3 at, float speed)
+        {
+            if (!_feet || !_player || !_player.IsGrounded || _player.noclip) return;
+            const string id = SoundIds.Footsteps;
+            var floor = Surfaces.At(at, transform);
+            bool stopping = speed < 0.35f && _recentSpeed > 0.8f;
+            float heavy = _player.IsRunning ? 1.25f : _player.CurrentStance == CamcorderPlayerController.Stance.Crouch ? 0.55f
+                        : Mathf.Lerp(0.5f, 0.85f, speed / Mathf.Max(0.1f, _player.walkSpeed));
+            if (speed < 0.25f && !stopping) heavy *= 0.35f;                                  // turning or shuffling on the spot
+            Play(floor, at, heavy);
+            // Wet carpet (a damp patch, Generation.DampFloor): the step squelches too.
+            if (floor == ProceduralSounds.Floor.Carpet && Generation.DampFloor.At(at))
+                _feet.PlayOneShot(SoundBank.WaterStep(Random.Range(0, SoundBank.WaterStepCount)), SoundBank.BaseLevel(id) * SoundCatalog.Volume(id) * heavy * 0.35f);
+            if (stopping)
+            {
+                _feet.PlayOneShot(SoundBank.Scuff(_scuffPick++), SoundBank.BaseLevel(id) * SoundCatalog.Volume(id) * (floor == ProceduralSounds.Floor.Carpet ? 0.5f : 0.8f));
+                _recentSpeed = 0f;
+            }
+            if (_chain && speed > 0.25f) _chain.HandlingImpulse();
+        }
+
+        void Play(ProceduralSounds.Floor floor, Vector3 at, float heavy)
+        {
+            const string id = SoundIds.Footsteps;
+            float varAmt = SoundCatalog.ParamA(id);
+            int pick;
+            int count = floor == ProceduralSounds.Floor.Carpet ? SoundBank.StepCount : floor == ProceduralSounds.Floor.Water ? SoundBank.WaterStepCount : 6;
+            do pick = Random.Range(0, count); while (pick == _last && varAmt > 0.01f && count > 1);
+            _last = pick;
+            AudioClip clip; float k = 1f;
+            switch (floor)
+            {
+                case ProceduralSounds.Floor.Water: clip = SoundBank.WaterStep(pick); k = 1.1f; break;
+                case ProceduralSounds.Floor.Carpet: clip = SoundBank.Step(pick); break;
+                case ProceduralSounds.Floor.Tile: clip = SoundBank.HardStep(floor, pick); k = 1.25f; break;
+                case ProceduralSounds.Floor.Metal: clip = SoundBank.HardStep(floor, pick); k = 1.3f; break;
+                default: clip = SoundBank.HardStep(floor, pick); k = 1.1f; break;
+            }
+            _feet.transform.position = at + Vector3.up * 0.03f;
+            _feet.pitch = SoundCatalog.Pitch(id) * (1f + (Random.value - 0.5f) * 0.05f * varAmt);
+            _feet.volume = 1f;
+            // PlayOneShot lets the previous step's tail finish instead of cutting it off (that cut was the pop).
+            _feet.PlayOneShot(clip, SoundBank.BaseLevel(id) * SoundCatalog.Volume(id) * heavy * k * (1f + (Random.value - 0.5f) * 0.3f * varAmt));
         }
 
         void Update()
         {
             if (!_chain) { var l = FindAnyObjectByType<AudioListener>(); if (l) _chain = l.GetComponent<CamcorderAudioChain>(); }
             const string id = SoundIds.Footsteps;
-            if (SoundCatalog.Version != _version) { SoundBank.ApplySpatial(_feet, id); _version = SoundCatalog.Version; }
+            if (SoundCatalog.Version != _version) { SoundBank.ApplySpatial(_feet, id); if (_wade) SoundBank.ApplySpatial(_wade, id); _version = SoundCatalog.Version; }
+
+            // Wading: louder the faster you go through the water, gone when you stop or step out.
+            if (_wade)
+            {
+                bool wading = Generation.PoolRipples.PlayerInWater && _player.IsGrounded && !_player.noclip;
+                float want = wading ? Mathf.Clamp01(_player.PlanarVelocity.magnitude / Mathf.Max(0.1f, _player.runSpeed)) : 0f;
+                _wadeLevel = Mathf.MoveTowards(_wadeLevel, want, Time.deltaTime * (want > _wadeLevel ? 3f : 1.5f));
+                _wade.volume = SoundBank.BaseLevel(id) * SoundCatalog.Volume(id) * 0.55f * _wadeLevel;
+                _wade.pitch = 0.9f + 0.2f * _wadeLevel;
+                if (_wadeLevel > 0.001f && !_wade.isPlaying) _wade.Play();
+                else if (_wadeLevel <= 0.001f && _wade.isPlaying) _wade.Stop();
+            }
 
             // Zoom motor follows the motor speed (no sound when the lens is still).
             if (SoundCatalog.Version != _zoomVersion) { SoundBank.ApplySpatial(_zoom, SoundIds.ZoomMotor); _zoomVersion = SoundCatalog.Version; }
@@ -52,6 +128,17 @@ namespace Backrooms.Audio
             _zoomLevel = Mathf.MoveTowards(_zoomLevel, zm, Time.deltaTime * 6f);
             _zoom.volume = SoundBank.BaseLevel(SoundIds.ZoomMotor) * SoundCatalog.Volume(SoundIds.ZoomMotor) * _zoomLevel;
             _zoom.pitch = SoundCatalog.Pitch(SoundIds.ZoomMotor) * (0.85f + 0.15f * _zoomLevel);
+
+            // Sliding after crouching from a run: the rub along the floor, dying away with it.
+            if (_player.Slides != _slidesHeard)
+            {
+                _slidesHeard = _player.Slides;
+                var slideOn = Surfaces.At(transform.position, transform);
+                bool soft = slideOn == ProceduralSounds.Floor.Carpet || slideOn == ProceduralSounds.Floor.Water;
+                _feet.transform.localPosition = new Vector3(0f, 0.05f, 0.1f);
+                _feet.PlayOneShot(SoundBank.SlideRub(soft ? 0 : 1), SoundBank.BaseLevel(SoundIds.Footsteps) * SoundCatalog.Volume(SoundIds.Footsteps) * (soft ? 1.4f : 1.2f));
+                if (_chain) _chain.HandlingImpulse();
+            }
 
             // Landing from a jump: a heavier step and a thump on the mic.
             if (_player.LandedThisFrame > 0f)
@@ -66,26 +153,34 @@ namespace Backrooms.Audio
             _lastPos = pos;
             bool walking = !_player.noclip && _player.IsGrounded;
             float speed = _player.PlanarVelocity.magnitude;
+            _recentSpeed = Mathf.Max(speed, _recentSpeed - Time.deltaTime * 1.5f);
             if (_chain) _chain.handlingMotion = walking ? Mathf.Clamp01(speed / Mathf.Max(0.1f, _player.runSpeed)) : 0f;
             if (!walking || d.magnitude > 2f) { _travel = 0f; return; }       // teleports don't step
+            if (_body && _body.FeetActive) { _travel = 0f; return; }           // the feet play their own steps
+            if (_player.Sliding) { _travel = 0f; return; }                     // the slide is its own sound
 
+            // Wading: a step each time a foot comes down on the water's clock (in step with the camera's gait).
+            if (_player.Wade > 0.5f && !_player.IsCrawling)
+            {
+                _travel = 0f;
+                if (_player.WadeSteps == _wadeStepsHeard) return;
+                _wadeStepsHeard = _player.WadeSteps;
+                if (speed < 0.15f) return;
+                Play(ProceduralSounds.Floor.Water, transform.position, _player.IsRunning ? 1.4f : Mathf.Lerp(0.7f, 1f, speed / Mathf.Max(0.1f, _player.walkSpeed)));
+                if (_chain) _chain.HandlingImpulse();
+                return;
+            }
+            _wadeStepsHeard = _player.WadeSteps;
             _travel += d.magnitude;
-            float stride = _player.IsCrawling ? 0.42f : _player.IsRunning ? runStride : walkStride;
+            float stride = _player.IsCrawling ? (_player.CrawlingFast ? 0.5f : 0.42f) : _player.IsRunning ? runStride : walkStride;
             if (_travel < stride) return;
             _travel -= stride;
             if (speed < 0.15f) return;
 
-            float varAmt = SoundCatalog.ParamA(id);
-            int pick;
-            int count = SoundBank.StepCount;
-            do pick = Random.Range(0, count); while (pick == _last && varAmt > 0.01f && count > 1);
-            _last = pick;
-            var clip = SoundBank.Step(pick);
-            float heavy = _player.IsCrawling ? 0.45f : _player.IsRunning ? 1.5f : Mathf.Lerp(0.7f, 1f, speed / Mathf.Max(0.1f, _player.walkSpeed));
-            _feet.pitch = SoundCatalog.Pitch(id) * (1f + (Random.value - 0.5f) * 0.05f * varAmt);
-            _feet.volume = 1f;
-            // PlayOneShot lets the previous step's tail finish instead of cutting it off (that cut was the pop).
-            _feet.PlayOneShot(clip, SoundBank.BaseLevel(id) * SoundCatalog.Volume(id) * heavy * (1f + (Random.value - 0.5f) * 0.3f * varAmt));
+            // Crawling (or no legs to step with): by distance, hands and knees on what is under you.
+            var under = Surfaces.At(transform.position, transform);
+            float heavy = _player.IsCrawling ? (under == ProceduralSounds.Floor.Metal ? 0.6f : 0.45f) : _player.IsRunning ? 1.5f : Mathf.Lerp(0.7f, 1f, speed / Mathf.Max(0.1f, _player.walkSpeed));
+            Play(under, transform.position, heavy);
             if (_chain) _chain.HandlingImpulse();
         }
     }

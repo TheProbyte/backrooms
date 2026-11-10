@@ -1,0 +1,169 @@
+// Chalk lines and tape strips on the world's surfaces (Interaction/Items/Marks.cs, and the tape outline of noclip doors).
+// The marks have no lighting of their own: each pixel takes the light of the surface right under it from the camera's
+// opaque copy (its luminance, relative to a typical wall's), so a mark is as lit as its wall in every zone and under
+// any lamp. Cameras without the opaque copy (reflection probes, the scene view) use a fixed middle grey instead.
+//
+// uv0: x across the mark (-1..1), y along it (metres from its start), z kind (0 chalk, 1 tape), w its length (metres).
+// Tape strips are laid a little wider than the tape (TapeMargin each side) so a soft shadow can fall past its edges.
+// Tape covers what is under it: its light is the brightest of a few samples spread across its own width, so the grout
+// lines of tiles (or any fine pattern) under it do not show through.
+// Vertex colour: the mark's colour and strength.
+Shader "Backrooms/Marks"
+{
+    Properties
+    {
+        _Reference ("Luminance of a typical lit wall", Float) = 0.42
+    }
+    SubShader
+    {
+        Tags { "RenderType" = "Transparent" "RenderPipeline" = "UniversalPipeline" "Queue" = "Transparent-60" "IgnoreProjector" = "True" }
+        Pass
+        {
+            Name "Forward"
+            Tags { "LightMode" = "UniversalForward" }
+            Blend SrcAlpha OneMinusSrcAlpha
+            ZWrite Off ZTest LEqual Cull Back
+            Offset -1, -3
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma multi_compile_fog
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareOpaqueTexture.hlsl"
+            float _PoolScreenTextures;
+            float4 _MarksAir[8];        // air moving out of vents near the camera: xyz position, w strength
+            float _MarksAirCount;
+            CBUFFER_START(UnityPerMaterial)
+                float _Reference;
+            CBUFFER_END
+
+            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; float4 uv : TEXCOORD0; half4 color : COLOR; };
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION; float4 uv : TEXCOORD0; half4 color : COLOR;
+                float3 positionWS : TEXCOORD1; float4 screen : TEXCOORD2; half fogFactor : TEXCOORD3;
+            };
+
+            Varyings vert(Attributes i)
+            {
+                Varyings o;
+                o.positionWS = TransformObjectToWorld(i.positionOS.xyz);
+                // Tape near a vent: its torn ends lift and flutter a few millimetres in the moving air.
+                if (i.uv.z > 0.5 && _MarksAirCount > 0.5)
+                {
+                    float len = max(i.uv.w, 1e-4), along = i.uv.y;
+                    float lift = saturate(1.0 - min(along, len - along) / 0.07);
+                    lift *= lift;
+                    if (lift > 0.0)
+                    {
+                        float air = 0.0;
+                        [unroll] for (int k = 0; k < 8; k++)
+                        {
+                            float on = k < (int)_MarksAirCount ? 1.0 : 0.0;
+                            air += on * _MarksAir[k].w * saturate(1.0 - distance(o.positionWS, _MarksAir[k].xyz) / 3.5);
+                        }
+                        air = saturate(air);
+                        float h = frac(sin(dot(floor(o.positionWS * 20.0), float3(12.9898, 78.233, 37.719))) * 43758.5453);
+                        float t = _Time.y;
+                        float flutter = 0.5 + 0.25 * sin(t * 21.0 + h * 40.0) + 0.25 * sin(t * 33.7 + h * 13.0);
+                        float3 n = normalize(TransformObjectToWorldNormal(i.normalOS));
+                        o.positionWS += n * lift * air * flutter * (0.004 + 0.003 * (i.uv.x * 0.5 + 0.5));
+                    }
+                }
+                o.positionCS = TransformWorldToHClip(o.positionWS);
+                o.screen = ComputeScreenPos(o.positionCS);
+                o.uv = i.uv; o.color = i.color;
+                o.fogFactor = ComputeFogFactor(o.positionCS.z);
+                return o;
+            }
+
+            float Hash(float3 p) { p = frac(p * float3(443.897, 441.423, 437.195)); p += dot(p, p.yzx + 19.19); return frac((p.x + p.y) * p.z); }
+            float Noise(float3 p)
+            {
+                float3 i = floor(p), f = frac(p); f = f * f * (3.0 - 2.0 * f);
+                float a = lerp(lerp(Hash(i), Hash(i + float3(1, 0, 0)), f.x), lerp(Hash(i + float3(0, 1, 0)), Hash(i + float3(1, 1, 0)), f.x), f.y);
+                float b = lerp(lerp(Hash(i + float3(0, 0, 1)), Hash(i + float3(1, 0, 1)), f.x), lerp(Hash(i + float3(0, 1, 1)), Hash(i + float3(1, 1, 1)), f.x), f.y);
+                return lerp(a, b, f.z);
+            }
+
+            half4 frag(Varyings i) : SV_Target
+            {
+                float across = i.uv.x, along = i.uv.y, kind = i.uv.z, len = max(i.uv.w, 1e-4);
+                float a = 0;
+                if (kind < 0.5)
+                {
+                    // Chalk: a soft-edged line, broken by the grain of the wall (fine noise fixed in the world), thinning
+                    // toward its rounded ends.
+                    float halfW = 0.0055;
+                    float endFade = saturate(min(along, len - along) / halfW + 0.35);
+                    float edge = smoothstep(1.0, 0.45, abs(across));
+                    float grain = Noise(i.positionWS * 900.0) * 0.6 + Noise(i.positionWS * 260.0) * 0.4;
+                    a = edge * endFade * smoothstep(0.28, 0.62, grain + 0.18 * (1.0 - abs(across)));
+                    a *= 0.92;
+                }
+                float shade = 1.0;
+                bool tapeShadow = false;
+                if (kind > 0.5)
+                {
+                    // Tape: a ragged tear at each end; past its long edges, the strip's margin is a soft shadow on the wall.
+                    const float edgeAt = 0.889;                       // tape half width / (half width + margin)
+                    float x = abs(across) / edgeAt;                   // 0 middle .. 1 the tape's edge
+                    float tear0 = 0.004 + 0.004 * Hash(float3(floor(across * 9.0), 1.0, len));
+                    float tear1 = 0.004 + 0.004 * Hash(float3(floor(across * 9.0), 7.0, len));
+                    float ends = step(tear0, along) * step(along, len - tear1);
+                    if (x > 1.0)
+                    {
+                        tapeShadow = true;
+                        a = ends * (1.0 - smoothstep(1.0, 1.0 / edgeAt, x)) * 0.35;
+                    }
+                    else
+                    {
+                        a = ends;
+                        // A little thickness: a darker cut edge, a slight lip of light just inside it.
+                        shade = lerp(1.0, 0.72, smoothstep(0.93, 1.0, x)) * (1.0 + 0.07 * smoothstep(0.78, 0.9, x) * (1.0 - smoothstep(0.9, 0.96, x)));
+                        // Crepe paper: fine diagonal crinkle and soft larger wrinkles.
+                        float2 pw = float2(dot(i.positionWS, float3(0.7, 0.4, 0.6)), dot(i.positionWS, float3(-0.4, 0.8, 0.45)));
+                        shade *= 0.95 + 0.05 * sin((pw.x + pw.y * 0.6) * 900.0 + Noise(i.positionWS * 300.0) * 4.0);
+                        shade *= 0.94 + 0.06 * Noise(i.positionWS * 45.0);
+                    }
+                }
+                a *= i.color.a;
+                clip(a - 0.01);
+
+                // Light at this spot: the surface under the mark, from the opaque copy. Tape takes the brightest of a few
+                // samples across about its own width (the light, without the pattern under it).
+                float lum = 0.5 * _Reference / 0.42;
+                [branch] if (_PoolScreenTextures > 0.5)
+                {
+                    float2 suv = i.screen.xy / i.screen.w;
+                    float3 under = SAMPLE_TEXTURE2D_X_LOD(_CameraOpaqueTexture, sampler_CameraOpaqueTexture, UnityStereoTransformScreenSpaceTex(suv), 0).rgb;
+                    lum = dot(under, float3(0.2126, 0.7152, 0.0722));
+                    if (kind > 0.5)
+                    {
+                        float px = length(ddx(i.positionWS)) + length(ddy(i.positionWS));
+                        float r = clamp(0.03 / max(px * 0.5, 1e-5), 2.0, 48.0);          // ~3 cm in pixels
+                        float2 st = r / _ScreenParams.xy;
+                        float m = lum;
+                        [unroll] for (int k = 0; k < 8; k++)
+                        {
+                            float ang = k * 0.785398;
+                            float2 o = float2(cos(ang), sin(ang)) * st * (k % 2 == 0 ? 1.0 : 0.55);
+                            float3 s = SAMPLE_TEXTURE2D_X_LOD(_CameraOpaqueTexture, sampler_CameraOpaqueTexture, UnityStereoTransformScreenSpaceTex(suv + o), 0).rgb;
+                            m = max(m, dot(s, float3(0.2126, 0.7152, 0.0722)));
+                        }
+                        lum = lerp(lum, m, 0.85);
+                    }
+                }
+                float light = min(lum / _Reference, 2.5);
+                // Vertex colours arrive as authored (sRGB): the tape's blue is made linear here, or it shows washed out.
+                // Chalk keeps its value (its off-white was tuned by eye as it is).
+                half3 albedo = kind > 0.5 ? pow(max(i.color.rgb, 0.0), 2.2) : i.color.rgb;
+                half3 col = tapeShadow ? half3(0.0, 0.0, 0.02) * light : albedo * light * shade;
+                col = MixFog(col, i.fogFactor);
+                return half4(col, a);
+            }
+            ENDHLSL
+        }
+    }
+}

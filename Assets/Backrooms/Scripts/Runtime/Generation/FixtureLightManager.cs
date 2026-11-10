@@ -10,17 +10,20 @@ namespace Backrooms.Generation
     /// the camera. Rules that keep lighting stable while you move:
     ///  - Every powered fixture within <see cref="maxDistance"/> is lit, nearest first, whether visible or
     ///    not: the building is already lit, nothing switches on as you approach. The farthest dim into fog.
-    ///  - Unshadowed lights only reach their own room's rendering layer, so light never passes through a
-    ///    wall. The nearest lights get shadows (with hysteresis, easing in); once a shadow is fully in, that
-    ///    light reaches every layer, so it spills naturally through doorways while walls still block it.
-    ///  - Walls cast shadows through closed proxy boxes (see OfficeChunkBuilder), so corners and
-    ///    baseboards don't leak in shadow maps.
-    ///  - The nearest troffers also get a soft "bounce" point light restricted to their room's layer.
-    /// Newly streamed chunks power up with a fluorescent start-up flicker, and chunks being unloaded
+    ///  - Every fixture light (shadowed or not) only reaches its own light zone's rendering layer, so light
+    ///    never passes through a wall. Zones use 28 layers: 7 colours in 4 sets chosen by chunk parity, so
+    ///    neighbouring chunks never share a layer (see LightLayers and OfficeLayoutGenerator.AssignColors).
+    ///  - The nearest lights get shadows (with hysteresis, easing in). Shadows only add detail inside the
+    ///    room (furniture, pillars); they do not let light out of it.
+    ///  - Light through openings comes from doorway lights placed in the receiving room.
+    ///  - The nearest troffers also get a soft upward "bounce" light restricted to their zone's layer.
+    ///  - Each slot also owns a disabled "spill" light (an every-layer shadowed copy, kept for experiments;
+    ///    it is never switched on).
+    /// Newly streamed chunks can power up with a fluorescent start-up flicker, and chunks being unloaded
     /// stutter off; faulty tubes occasionally stutter. Fixture sound lives in Backrooms.Audio.BuildingAudio,
     /// which reads <see cref="PowerLevel"/> so hum, strikes and buzz stay in time with the light.
     /// </summary>
-    public class FixtureLightManager : MonoBehaviour
+    public partial class FixtureLightManager : MonoBehaviour
     {
         public Transform viewer;
 
@@ -28,6 +31,8 @@ namespace Backrooms.Generation
         public Color tubeColor = new Color(1.0f, 0.965f, 0.86f);
         [Range(0f, 30f)] public float tubeIntensity = 7f;
         [Range(2f, 10f)] public float tubeRange = 6f;
+        [Range(0f, 1f)] [Tooltip("How broadly a ceiling fixture throws its light. 0 = a lamp-like cone with an edge (pools on nearby walls); 1 = a near-hemisphere falloff like a diffuse troffer, which washes the room evenly.")]
+        public float spread = 0.8f;
         [Range(0f, 3f)] public float bounceIntensity = 0.8f;
         [Range(1f, 8f)] public float bounceRange = 4.4f;
         [Tooltip("Dome fittings on tall ceilings: intensity multiplier per metre of extra height.")]
@@ -69,10 +74,32 @@ namespace Backrooms.Generation
         public float powerFlickerTime = 1.1f;
 
         public int ActiveLights { get; private set; }
+        /// <summary>
+        /// The building's supply, 1 normally: every so often it sags a few percent for a second or two (the nearby lights
+        /// dim together and the hum drops and slurs with them), as old wiring does under load.
+        /// </summary>
+        public float Mains { get; private set; } = 1f;
+        [Tooltip("How deep the building's occasional brownouts go (0 = never).")]
+        [Range(0f, 0.2f)] public float brownoutDepth = 0.07f;
+        /// <summary>A deeper sag the tension director asks for (0..1 of the supply lost), on top of the brownouts.</summary>
+        public static float DirectorSag;
+        /// <summary>Ceiling fixtures throw their measured (IES) light shape (GraphicsOptions.photometric; PhotometricProfiles).</summary>
+        public static bool Photometric = true;
+
+        void UpdateMains(float now)
+        {
+            float n = Mathf.PerlinNoise(now * 0.045f, 7.3f);
+            float sag = Mathf.Clamp01((n - 0.74f) / 0.14f);
+            float quiver = 1f - 0.25f * Mathf.PerlinNoise(now * 9f, 1.7f) * sag;
+            Mains = 1f - Mathf.Max(brownoutDepth * sag * quiver, Mathf.Clamp01(DirectorSag) * (0.85f + 0.15f * Mathf.PerlinNoise(now * 11f, 3.1f)));
+        }
+        /// <summary>Smoothed CPU time of LateUpdate (both modes), for comparisons.</summary>
+        public float LastUpdateMs { get; private set; }
+        readonly System.Diagnostics.Stopwatch _timer = new System.Diagnostics.Stopwatch();
 
         class Slot
         {
-            public Light main, bounce, spill;   // spill: the shadowed, every-room copy of main
+            public Light main, bounce, spill;   // spill: an every-layer shadowed copy of main (unused, always off)
             public bool busy;
             public Vector3 sourcePos;
             public LightSource src;
@@ -81,18 +108,32 @@ namespace Backrooms.Generation
             public float shadowK;          // 0..1 shadow strength ramp
             public bool allLayers;         // (lamps) shadowed lamps light every room
             public float spillW;           // 0 = all light from the room-only main, 1 = from the shadowed spill
+            // What the grid mode last set on main (each Light setter is a call into the engine: set only what changed).
+            // Cleared whenever anything else sets the light (Release, a mode switch).
+            public float cIntensity = float.NaN, cRange = float.NaN, cSpot = float.NaN, cInner = float.NaN, cStrength = float.NaN, cBias = float.NaN;
+            public Color cColor = new Color(-1f, -1f, -1f, -1f);
+            public int cEnabled = -1, cShadows = -1;
+            public void ForgetSet()
+            {
+                cIntensity = cRange = cSpot = cInner = cStrength = cBias = float.NaN;
+                cColor = new Color(-1f, -1f, -1f, -1f); cEnabled = cShadows = -1;
+            }
         }
 
         class ChunkPower
         {
             public List<LightSource> lights;
             public List<Renderer> lenses, faulty;
+            public List<(Renderer r, RoomLens rl)> roomLenses;   // lit lenses of each room (switched with LightZones)
+            public RoomLens[] faultyRooms;
+            public bool roomClean;         // room lenses shown plainly lit (nothing to do until a switch or a power change)
             public float start;            // time power began (start-up) or -1 when steady
             public float stop = -1f;       // time power-down began
             public float seed;
         }
 
-        readonly Dictionary<Vector2Int, ChunkPower> _chunks = new Dictionary<Vector2Int, ChunkPower>();
+        readonly Dictionary<Vector3Int, ChunkPower> _chunks = new Dictionary<Vector3Int, ChunkPower>();
+        int _minStorey, _maxStorey;           // storeys with registered chunks (chunk keys are x, storey, z)
         readonly List<LightSource> _candidates = new List<LightSource>();
         readonly List<Slot> _troffers = new List<Slot>(), _lamps = new List<Slot>();
         MaterialPropertyBlock _mpb;
@@ -104,13 +145,26 @@ namespace Backrooms.Generation
         // ---------------- Registration ----------------
 
         /// <summary>Called by the streamer. animatePowerOn: flicker the area on (false for the initial load).</summary>
-        public void Register(Vector2Int chunk, List<LightSource> lights, List<Renderer> lenses, List<Renderer> faulty, bool animatePowerOn)
+        public void Register(Vector3Int chunk, List<LightSource> lights, List<Renderer> lenses, List<Renderer> faulty, bool animatePowerOn)
         {
+            _minStorey = Mathf.Min(_minStorey, chunk.y); _maxStorey = Mathf.Max(_maxStorey, chunk.y);
             for (int i = 0; i < lights.Count; i++) { var l = lights[i]; l.chunk = chunk; lights[i] = l; }
+            // A room's lenses go on and off with its switch: kept apart from the rest.
+            var plain = new List<Renderer>();
+            var rooms = new List<(Renderer, RoomLens)>();
+            if (lenses != null)
+                foreach (var r in lenses)
+                {
+                    var rl = r ? r.GetComponent<RoomLens>() : null;
+                    if (rl) rooms.Add((r, rl)); else plain.Add(r);
+                }
+            faulty = faulty ?? new List<Renderer>();
+            var faultyRooms = new RoomLens[faulty.Count];
+            for (int i = 0; i < faulty.Count; i++) faultyRooms[i] = faulty[i] ? faulty[i].GetComponent<RoomLens>() : null;
             _chunks[chunk] = new ChunkPower
             {
-                lights = lights, lenses = lenses ?? new List<Renderer>(), faulty = faulty ?? new List<Renderer>(),
-                start = animatePowerOn ? Time.time : -1f, seed = (chunk.x * 0.731f + chunk.y * 1.37f) % 10f,
+                lights = lights, lenses = plain, faulty = faulty, roomLenses = rooms, faultyRooms = faultyRooms,
+                start = animatePowerOn ? Time.time : -1f, seed = (chunk.x * 0.731f + chunk.z * 1.37f + chunk.y * 2.11f) % 10f,
             };
         }
 
@@ -121,16 +175,19 @@ namespace Backrooms.Generation
         }
 
         /// <summary>Starts the power-down stutter. Returns the seconds until the chunk may be destroyed.</summary>
-        public float BeginPowerDown(Vector2Int chunk)
+        public float BeginPowerDown(Vector3Int chunk)
         {
             if (_chunks.TryGetValue(chunk, out var p) && p.stop < 0f) p.stop = Time.time;
             return powerFlickerTime;
         }
 
-        public void Unregister(Vector2Int chunk)
+        public void Unregister(Vector3Int chunk)
         {
             if (!_chunks.TryGetValue(chunk, out var p)) return;
             _chunks.Remove(chunk);
+            // Grid mode: the share owns the slot, so free it through the share.
+            foreach (var sh in _shares.Values)
+                if (sh.slot != null && sh.src.chunk == chunk) { Release(sh.slot); sh.slot = null; }
             foreach (var s in _troffers) if (s.busy && s.src.chunk == chunk) Release(s);
             foreach (var s in _lamps) if (s.busy && s.src.chunk == chunk) Release(s);
         }
@@ -144,7 +201,8 @@ namespace Backrooms.Generation
             float r2 = radius * radius;
             for (int dx = -r; dx <= r; dx++)
             for (int dz = -r; dz <= r; dz++)
-                if (_chunks.TryGetValue(new Vector2Int(c.x + dx, c.y + dz), out var cp))
+            for (int s = _minStorey; s <= _maxStorey; s++)
+                if (_chunks.TryGetValue(new Vector3Int(c.x + dx, s, c.y + dz), out var cp))
                     foreach (var l in cp.lights)
                         if (!l.isLamp && (l.position - center).sqrMagnitude < r2) result.Add(l);
         }
@@ -159,6 +217,17 @@ namespace Backrooms.Generation
             _mpb = new MaterialPropertyBlock();
             for (int i = 0; i < maxTroffers; i++) _troffers.Add(MakeSlot(false, i));
             for (int i = 0; i < maxLamps; i++) _lamps.Add(MakeSlot(true, i));
+        }
+
+        /// <summary>Cone of a ceiling fixture for a given spread (see <see cref="spread"/>). The falloff between the two angles
+        /// is linear in cos (LGrid_AngleAtten), so full spread (179 / 0) is a Lambertian panel, intensity ~ cos(angle), the
+        /// way a flat diffuser throws light; lower spreads narrow it toward a downlight.</summary>
+        public static void TrofferCone(float spread, bool dome, bool strip, out float outer, out float inner)
+        {
+            float o0 = dome ? 170f : strip ? 160f : 150f, i0 = dome ? 40f : 60f;
+            spread = Mathf.Clamp01(spread);
+            outer = Mathf.Lerp(o0, 179f, spread);
+            inner = Mathf.Lerp(i0, 0f, spread);
         }
 
         Slot MakeSlot(bool lamp, int i)
@@ -182,8 +251,8 @@ namespace Backrooms.Generation
                 s.main.spotAngle = 150f;
                 s.main.innerSpotAngle = 60f;
                 go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-                // The shadowed copy: lights every room (its shadow stops it at walls), so light spills
-                // through doorways. Main and spill crossfade, so nothing pops when a light gains a shadow.
+                // An every-layer shadowed copy of main (its shadow would stop it at walls). Not used: it
+                // stays disabled; doorway lights carry light through openings instead.
                 var sp = new GameObject("Spill");
                 sp.transform.SetParent(go.transform, false);
                 s.spill = sp.AddComponent<Light>();
@@ -224,26 +293,45 @@ namespace Backrooms.Generation
 
         // ---------------- Per frame ----------------
 
+        // Profiler markers for the parts of a frame (cheap; seen in the Profiler and by the benchmark's marker run).
+        static readonly Unity.Profiling.ProfilerMarker s_pMains = new Unity.Profiling.ProfilerMarker("FixtureLights.Mains"),
+            s_pGrid = new Unity.Profiling.ProfilerMarker("FixtureLights.Grid"), s_pTiers = new Unity.Profiling.ProfilerMarker("FixtureLights.ShadowTiers"),
+            s_pLens = new Unity.Profiling.ProfilerMarker("FixtureLights.Lens");
+
         void LateUpdate()
         {
             if (!viewer) return;
+            _timer.Restart();
             Vector3 eye = viewer.position;
             float now = Time.time;
-
-            // Gather candidates from chunks near the viewer.
             _eye = eye;
+            using (s_pMains.Auto()) UpdateMains(now);
+
+            ApplyMode();
+            if (UseGrid)
+            {
+                ApplyShadowTier();
+                using (s_pGrid.Auto()) LateUpdateGrid(eye, now);
+                using (s_pTiers.Auto()) NearShadowTiers(eye);
+                using (s_pLens.Auto()) UpdateLensEmission(now);
+                LastUpdateMs = Mathf.Lerp(LastUpdateMs, (float)_timer.Elapsed.TotalMilliseconds, 0.1f);
+                return;
+            }
+
+            // Room-layer mode. Gather candidates from chunks near the viewer.
             _candidates.Clear();
             var center = WorldStreamer.ChunkOf(eye);
             int r = Mathf.CeilToInt(maxDistance / OfficeBiome.ChunkSize);
             for (int dx = -r; dx <= r; dx++)
             for (int dz = -r; dz <= r; dz++)
-                if (_chunks.TryGetValue(new Vector2Int(center.x + dx, center.y + dz), out var cp))
+            for (int s = _minStorey; s <= _maxStorey; s++)
+                if (_chunks.TryGetValue(new Vector3Int(center.x + dx, s, center.y + dz), out var cp))
                     foreach (var l in cp.lights)
                         if ((l.position - eye).sqrMagnitude < maxDistance * maxDistance) _candidates.Add(l);
 
             // The building is already lit: every powered fixture in range is on, nearest first, with no
-            // dependence on what the camera can see. Light only reaches its own room (rendering layers),
-            // so an unshadowed light can never shine through a wall.
+            // dependence on what the camera can see. Light only reaches its own zone (rendering layers),
+            // so it can never shine through a wall.
             if (_byDistance == null) _byDistance = (a, b) => (a.position - _eye).sqrMagnitude.CompareTo((b.position - _eye).sqrMagnitude);
             _candidates.Sort(_byDistance);
             _wantedTroffers.Clear(); _wantedLamps.Clear();
@@ -263,7 +351,9 @@ namespace Backrooms.Generation
             UpdateDoorways(eye);
 
             ActiveLights = Assign(_troffers, _wantedTroffers, eye, shadowedTroffers) + Assign(_lamps, _wantedLamps, eye, shadowedLamps);
+            NearShadowTiers(eye);
             UpdateLensEmission(now);
+            LastUpdateMs = Mathf.Lerp(LastUpdateMs, (float)_timer.Elapsed.TotalMilliseconds, 0.1f);
         }
 
         readonly List<int> _wantedTroffers = new List<int>(), _wantedLamps = new List<int>();
@@ -271,15 +361,66 @@ namespace Backrooms.Generation
         Vector3 _eye;
         float _rankEdge = float.MaxValue, _bounceEdge = float.MaxValue;
 
+        /// <summary>
+        /// Shadow-map resolution of the ceiling lights: the chosen tier, lowered when that many shadowed
+        /// lights would not fit the 4096 atlas (16 maps at 1024, 64 at 512), so URP never has to shrink them.
+        /// </summary>
         void ApplyShadowTier()
         {
-            if (_appliedTier == shadowTier) return;
-            _appliedTier = shadowTier;
-            int tier = shadowTier == 0 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierLow
-                     : shadowTier == 2 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierHigh
+            int maps = UseGrid ? Mathf.Min(shadowedTroffers, 64) + faultyRealLights + realLamps * 6 + 4 : shadowedTroffers + 3 + shadowedLamps * 6;
+            _mapsNeeded = maps;
+            int fit = maps <= 16 ? 2 : maps <= 64 ? 1 : 0;
+            int want = Mathf.Min(shadowTier, fit);
+            if (_appliedTier == want) return;
+            _appliedTier = want;
+            int tier = want == 0 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierLow
+                     : want == 2 ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierHigh
                      : UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium;
-            foreach (var t in _troffers) if (t.spill) s_tierField?.SetValue(t.spill.GetUniversalAdditionalLightData(), tier);
+            foreach (var t in _troffers) s_tierField?.SetValue(t.main.GetUniversalAdditionalLightData(), tier);   // the shadowed ceiling lights
+            _highNear.Clear();
         }
+
+        [Tooltip("The ceiling lights nearest the viewer get 1024 shadow maps when the rest are at 512: the player's own shadow " +
+                 "under them is cast by thin, moving legs, which a coarse map turns into a shimmering blob.")]
+        public int nearHighShadows = 4;
+        int _mapsNeeded;
+        readonly HashSet<Slot> _highNear = new HashSet<Slot>();
+        readonly List<Slot> _nearSort = new List<Slot>();
+
+        void NearShadowTiers(Vector3 eye)
+        {
+            int room = _appliedTier == 1 ? Mathf.Clamp((64 - _mapsNeeded) / 3, 0, nearHighShadows) : 0;   // a 1024 map is four 512 tiles
+            _nearSort.Clear();
+            foreach (var s in _troffers) if (s.busy && s.main.enabled && s.main.shadows != LightShadows.None) _nearSort.Add(s);
+            _nearEye = eye;
+            if (_nearCmp == null) _nearCmp = (a, b) => (a.main.transform.position - _nearEye).sqrMagnitude.CompareTo((b.main.transform.position - _nearEye).sqrMagnitude);
+            _nearSort.Sort(_nearCmp);
+            // The nearest few, but a light already high keeps it until another is clearly nearer (no flipping as you walk).
+            float edge = room > 0 && _nearSort.Count > 0 ? Vector3.Distance(_nearSort[Mathf.Min(room, _nearSort.Count) - 1].main.transform.position, eye) + 0.8f : -1f;
+            int kept = 0;
+            for (int i = 0; i < _nearSort.Count; i++)
+            {
+                var s = _nearSort[i];
+                bool want = kept < room && (i < room || (_highNear.Contains(s) && Vector3.Distance(s.main.transform.position, eye) < edge));
+                if (want) kept++;
+                bool have = _highNear.Contains(s);
+                if (want == have) continue;
+                if (want) _highNear.Add(s); else _highNear.Remove(s);
+                s_tierField?.SetValue(s.main.GetUniversalAdditionalLightData(), want ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierHigh
+                                                                                      : UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium);
+            }
+            // Lights that went out or lost their shadow drop back.
+            _highDrop.Clear();
+            foreach (var s in _highNear) if (!s.busy || !s.main.enabled || s.main.shadows == LightShadows.None) _highDrop.Add(s);
+            foreach (var s in _highDrop)
+            {
+                _highNear.Remove(s);
+                s_tierField?.SetValue(s.main.GetUniversalAdditionalLightData(), UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium);
+            }
+        }
+        readonly List<Slot> _highDrop = new List<Slot>();
+        Vector3 _nearEye;
+        System.Comparison<Slot> _nearCmp;
 
         /// <summary>Lights currently enabled (ceiling, lamps and bounce) and shadowed, for the Graphics tab.</summary>
         public int EnabledLights { get; private set; }
@@ -322,7 +463,7 @@ namespace Backrooms.Generation
                 if (free.spill) { free.spill.enabled = false; free.spill.shadows = LightShadows.None; }
                 if (free.bounce)
                 {
-                    float drop = src.dome ? Mathf.Min(src.ceiling * 0.45f, 2.2f) : 1.1f;
+                    float drop = src.dome && !src.flush ? Mathf.Min(src.ceiling * 0.45f, 2.2f) : 1.1f;
                     free.bounce.transform.position = src.position + Vector3.down * drop;
                     free.bounce.GetUniversalAdditionalLightData().renderingLayers = src.roomLayer & ~1u;
                 }
@@ -388,12 +529,13 @@ namespace Backrooms.Generation
                 float extra = s.src.ceiling - OfficeBiome.CeilingHeight;
                 float boost = s.src.dome || s.src.strip ? 1f + extra * domeHeightBoost : 1f;
                 if (s.src.dome) boost *= 1.6f;                // domes are spaced wider than troffers
-                float intensity = tubeIntensity * k * boost;
+                float intensity = tubeIntensity * k * boost * Mains;
                 float range = s.src.dome || s.src.strip ? tubeRange + extra * 1.3f : tubeRange;
                 // Domes light the whole hemisphere: a near-180 cone with a wide soft falloff, so no
                 // cone edge is drawn across tall walls. Strips are a little narrower.
-                float angle = s.src.dome ? 170f : s.src.strip ? 160f : 150f, inner = s.src.dome ? 40f : 60f;
+                TrofferCone(spread, s.src.dome, s.src.strip, out float angle, out float inner);
                 Color col = s.src.strip ? stripColor : tubeColor;
+                if (s.src.tint.a > 0f) col *= s.src.tint;          // its own tubes (old, a yellowed lens)
 
                 // Ceiling lights only ever light their own room (rendering layer), so no light can pass
                 // through a wall whatever the shadow resolution. Shadows ease in for the nearest lights and
@@ -418,7 +560,7 @@ namespace Backrooms.Generation
                 if (bounces >= bounceCount + 8) bk = 0f;      // safety cap only
                 s.bounce.enabled = k > 0.002f && bounceIntensity > 0f && bk > 0.01f;
                 if (s.bounce.enabled) { bounces++; enabled++; }
-                s.bounce.intensity = bounceIntensity * k * bk * (s.src.dome ? 1.6f : 1f);
+                s.bounce.intensity = bounceIntensity * k * bk * (s.src.dome && !s.src.flush ? 1.6f : 1f);
                 s.bounce.range = s.src.dome || s.src.strip ? bounceRange * 1.6f : bounceRange;
                 s.bounce.color = s.src.strip ? Color.Lerp(stripColor, new Color(0.95f, 0.92f, 0.85f), 0.5f)
                                              : Color.Lerp(tubeColor, new Color(1f, 0.9f, 0.62f), 0.5f);
@@ -432,6 +574,7 @@ namespace Backrooms.Generation
         {
             s.busy = false; s.fade = 0f; s.target = 0f; s.shadowK = 0f; s.wantShadow = false; s.allLayers = false; s.spillW = 0f;
             s.main.enabled = false; s.main.shadows = LightShadows.None;
+            s.ForgetSet();
             if (s.spill) { s.spill.enabled = false; s.spill.shadows = LightShadows.None; }
             if (s.bounce) s.bounce.enabled = false;
         }
@@ -444,7 +587,7 @@ namespace Backrooms.Generation
         [Range(0f, 3f)] public float doorwayGain = 0.55f;
         public float doorwayDistance = 18f;
 
-        readonly Dictionary<Vector2Int, List<Doorway>> _doors = new Dictionary<Vector2Int, List<Doorway>>();
+        readonly Dictionary<Vector3Int, List<Doorway>> _doors = new Dictionary<Vector3Int, List<Doorway>>();
         readonly List<Doorway> _doorCands = new List<Doorway>();
         readonly List<Light> _doorPool = new List<Light>();
         readonly List<float> _doorLevel = new List<float>();
@@ -452,8 +595,8 @@ namespace Backrooms.Generation
         System.Comparison<Doorway> _doorByDist;
 
         /// <summary>Called by the streamer with the chunk's doorways (receiving side of each opening).</summary>
-        public void RegisterDoorways(Vector2Int chunk, List<Doorway> doors) { _doors[chunk] = doors; }
-        public void UnregisterDoorways(Vector2Int chunk) { _doors.Remove(chunk); }
+        public void RegisterDoorways(Vector3Int chunk, List<Doorway> doors) { _doors[chunk] = doors; }
+        public void UnregisterDoorways(Vector3Int chunk) { _doors.Remove(chunk); }
 
         void EnsureDoorPool()
         {
@@ -484,7 +627,8 @@ namespace Backrooms.Generation
             float r2 = doorwayDistance * doorwayDistance;
             for (int dx = -r; dx <= r; dx++)
             for (int dz = -r; dz <= r; dz++)
-                if (_doors.TryGetValue(new Vector2Int(center.x + dx, center.y + dz), out var list))
+            for (int s = _minStorey; s <= _maxStorey; s++)
+                if (_doors.TryGetValue(new Vector3Int(center.x + dx, s, center.y + dz), out var list))
                     foreach (var dw in list) if ((dw.position - eye).sqrMagnitude < r2) _doorCands.Add(dw);
             if (_doorByDist == null) _doorByDist = (a, b) => (a.position - _eye).sqrMagnitude.CompareTo((b.position - _eye).sqrMagnitude);
             _doorCands.Sort(_doorByDist);
@@ -528,6 +672,23 @@ namespace Backrooms.Generation
             }
         }
 
+        /// <summary>
+        /// How lit a room of a chunk is, 0..1, from its ceiling lights' power (switched off, faulty, powering down all
+        /// count): what shows under a shut door from that room.
+        /// </summary>
+        public float RoomLight(Vector3Int chunk, int room, float now)
+        {
+            if (room < 0 || !_chunks.TryGetValue(chunk, out var cp)) return 0f;
+            float sum = 0f;
+            for (int i = 0; i < cp.lights.Count; i++)
+            {
+                var l = cp.lights[i];
+                if (l.room != room || l.isLamp) continue;
+                sum += PowerLevel(l, now);
+            }
+            return 1f - Mathf.Exp(-sum * 0.9f);
+        }
+
         // ---------------- Flicker ----------------
 
         /// <summary>0..1 multiplier from area power-up/down and faulty-tube stutter.</summary>
@@ -543,7 +704,10 @@ namespace Backrooms.Generation
                 if (t > 2f) cp.start = -1f;
             }
             if (cp.stop >= 0f) level *= ShutdownCurve(now - cp.stop - seed * powerFlickerTime * 0.4f, seed);
-            if (src.faultyId >= 0) level *= FaultyCurve(now, seed);
+            if (src.faultyId >= 0) level *= src.starter ? StarterCurve(now, seed) : FaultyCurve(now, seed);
+            if (src.room >= 0) level *= LightZones.Level(src.chunk, src.room, now, seed);     // the room's wall switch
+            level *= LightZones.ClosingLevel(src.chunk, now, seed);                           // closing time on a contract floor
+            level *= 1f - src.dim;                                                           // an old fixture (a tube out)
             return level;
         }
 
@@ -567,13 +731,45 @@ namespace Backrooms.Generation
         }
 
         /// <summary>Mostly steady, with rare bursts of rapid stutter lasting under a second.</summary>
-        static float FaultyCurve(float now, float seed)
+        /// <summary>1 = the original amount of flicker, 0 = none; above 1 more often and deeper.</summary>
+        [Range(0f, 1.5f)] public float flickerAmount = 1f;
+
+        float FaultyCurve(float now, float seed)
         {
+            float a = flickerAmount;
+            if (a <= 0.001f) return 1f;
             float burst = Mathf.PerlinNoise(now * 0.18f, seed * 31f);
-            if (burst < 0.72f) return 1f;
+            float threshold = a <= 1f ? Mathf.Lerp(1.01f, 0.72f, a) : Mathf.Lerp(0.72f, 0.55f, a - 1f);      // how often a tube has a bad spell
+            if (burst < threshold) return 1f;
             float s = Mathf.PerlinNoise(now * 28f, seed * 7f);
-            return s > 0.5f ? 1f : 0.08f + s * 0.3f;
+            float low = Mathf.Lerp(1f, 0.08f + s * 0.3f, Mathf.Clamp01(a));                               // how deep the dips go
+            return s > 0.5f ? 1f : low;
         }
+
+        /// <summary>
+        /// A tube that will not strike (2026-11-03): each try is a few seconds dark (the filaments' faint glow), then two to
+        /// four quick blinks; about one try in three it catches and stays lit for a while, else it goes dark and tries again.
+        /// </summary>
+        static float StarterCurve(float now, float seed)
+        {
+            float period = 4.5f + 4f * seed;
+            float t = now + seed * 37f;
+            float cycle = Mathf.Floor(t / period), u = t - cycle * period;
+            float h = Frac(Mathf.Sin(cycle * 12.9898f + seed * 78.233f) * 43758.5453f);
+            float dark = 1.2f + 1.6f * Frac(seed * 7.13f + h);
+            if (u < dark) return 0.03f;
+            float b = u - dark;
+            int blinks = 2 + (int)(h * 3f);
+            for (int k = 0; k < blinks; k++)
+            {
+                float s = k * 0.23f;
+                if (b < s + 0.07f) return b >= s ? 0.8f : 0.03f;
+            }
+            if (h < 0.35f && b > blinks * 0.23f) return 1f;                   // caught
+            return 0.03f;
+        }
+
+        static float Frac(float x) => x - Mathf.Floor(x);
 
         static float Hash01(Vector3 p)
         {
@@ -591,9 +787,11 @@ namespace Backrooms.Generation
             foreach (var kv in _chunks)
             {
                 var cp = kv.Value;
-                bool animating = cp.start >= 0f || cp.stop >= 0f;
-                float level = 1f;
-                if (cp.start >= 0f) level = StartupCurve(now - cp.start - 0.25f, cp.seed % 1f);
+                // (Closing time on a contract floor: the lenses go dark with the tubes, LightZones.ClosingLevel.)
+                float closing = LightZones.ClosingLevel(kv.Key, now, cp.seed % 1f);
+                bool animating = cp.start >= 0f || cp.stop >= 0f || closing < 1f;
+                float level = closing;
+                if (cp.start >= 0f) level *= StartupCurve(now - cp.start - 0.25f, cp.seed % 1f);
                 if (cp.stop >= 0f) level *= ShutdownCurve(now - cp.stop, cp.seed % 1f);
                 foreach (var r in cp.lenses)
                 {
@@ -601,13 +799,35 @@ namespace Backrooms.Generation
                     if (!animating) { if (r.HasPropertyBlock()) r.SetPropertyBlock(null); continue; }
                     _mpb.Clear(); _mpb.SetColor(EmissionId, BaseEmission(r) * level); r.SetPropertyBlock(_mpb);
                 }
+                bool switched = LightZones.Touched(kv.Key);
                 for (int i = 0; i < cp.faulty.Count; i++)
                 {
                     var r = cp.faulty[i];
                     if (!r) continue;
                     float f = level;
-                    foreach (var l in cp.lights) if (l.faultyId == i) { f *= FaultyCurve(now, Hash01(l.position)); break; }
+                    foreach (var l in cp.lights) if (l.faultyId == i) { f *= l.starter ? StarterCurve(now, Hash01(l.position)) : FaultyCurve(now, Hash01(l.position)); break; }
+                    var rl = cp.faultyRooms != null && i < cp.faultyRooms.Length ? cp.faultyRooms[i] : null;
+                    if (switched && rl)
+                    {
+                        float z = LightZones.Level(kv.Key, rl.room, now, cp.seed % 1f);
+                        var want = z <= 0.02f && rl.off ? rl.off : rl.on;
+                        if (r.sharedMaterial != want) r.sharedMaterial = want;
+                        f *= z;
+                    }
                     _mpb.Clear(); _mpb.SetColor(EmissionId, BaseEmission(r) * f); r.SetPropertyBlock(_mpb);
+                }
+                // Each room's lenses: the unlit lens while its switch is off, flickering on with the tubes.
+                if (cp.roomLenses == null || (!switched && !animating && cp.roomClean)) continue;
+                cp.roomClean = !switched && !animating;
+                foreach (var (r, rl) in cp.roomLenses)
+                {
+                    if (!r) continue;
+                    float z = switched ? LightZones.Level(kv.Key, rl.room, now, cp.seed % 1f) : 1f;
+                    var want = z <= 0.02f && rl.off ? rl.off : rl.on;
+                    if (r.sharedMaterial != want) r.sharedMaterial = want;
+                    float k = z * level;
+                    if (k >= 0.999f || want == rl.off) { if (r.HasPropertyBlock()) r.SetPropertyBlock(null); continue; }
+                    _mpb.Clear(); _mpb.SetColor(EmissionId, BaseEmission(r) * k); r.SetPropertyBlock(_mpb);
                 }
             }
         }

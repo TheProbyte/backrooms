@@ -1,0 +1,192 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Backrooms.Generation
+{
+    /// <summary>How a zone's districts are built: office architecture, or the tiled, flooded Poolrooms.</summary>
+    public enum ZoneStyle { Office, Pool }
+
+    /// <summary>One biome inside a zone: its rules and the top of its band on the zone's density field.</summary>
+    [Serializable]
+    public class BiomeBand
+    {
+        public BiomeRules rules = new BiomeRules();
+        [Tooltip("Density (0..1) up to which this biome applies. Bands are ordered; the last one takes the rest.")]
+        public float upTo = 1f;
+    }
+
+    /// <summary>
+    /// A zone: a very large region (a "level") with its own biome table, look, sound, power and vertical
+    /// profile. Zones are placed as Voronoi regions (see <see cref="WorldGenSettings.ZoneAt"/>).
+    /// Authored as <see cref="ZoneDefinition"/> assets; this is the plain copy the generator uses.
+    /// </summary>
+    [Serializable]
+    public class ZoneRules
+    {
+        public string name = "Level 0";
+        public Color mapColor = new Color(0.86f, 0.74f, 0.36f);
+        [Tooltip("Relative chance that a zone region picks this zone (0 = only where forced, e.g. spawn).")]
+        public float weight = 1f;
+
+        [Header("Biomes (ordered along the density field)")]
+        public List<BiomeBand> biomes = new List<BiomeBand>();
+        [Tooltip("Biome used for districts on this zone's edges (the transition pieces between zones).")]
+        public string edgeBiome = "Hallways";
+
+        [Header("Neighbours")]
+        [Tooltip("Zones allowed to touch this one directly (empty = any).")]
+        public List<string> neighbours = new List<string>();
+        [Tooltip("Zone placed along the edge where this zone meets a zone it may not touch.")]
+        public string transitionZone = "";
+
+        [Header("Look and sound")]
+        [Tooltip("Apply this zone's fog (off: keep the scene's fog, e.g. the owner's tuned look).")]
+        public bool overrideFog;
+        public Color fogColor = new Color(0.16f, 0.15f, 0.11f);
+        public float fogDensity = 0.05f;
+        [Tooltip("Ambience preset name for the audio system.")]
+        public string ambience = "office";
+        [Tooltip("Share of fixtures that have power (scales every biome's working-light chances).")]
+        [Range(0f, 1f)] public float power = 1f;
+
+        [Header("Vertical profile")]
+        [Tooltip("Lowest storey that exists in this zone.")] public int minStorey = 0;
+        [Tooltip("Highest storey that exists in this zone.")] public int maxStorey = 1;
+        [Tooltip("Storeys above the ground that exist all over the zone (streamed everywhere, not only near tall rooms).")]
+        public int fullStoreys = 0;
+
+        [Header("Architecture")]
+        [Tooltip("How its districts are built (Office: the Backrooms; Pool: tiled, flooded rooms lit by the sun).")]
+        public ZoneStyle style = ZoneStyle.Office;
+        [Tooltip("No openings to other zones: its edges are solid walls, so it is only reached through far crawl holes.")]
+        public bool sealedEdges;
+
+        [Header("Placement")]
+        [Tooltip("Placed by hand as a square of districts around pinCentre (weight is then ignored), instead of as Voronoi regions.")]
+        public bool pinned;
+        [Tooltip("Centre district of a pinned zone.")] public Vector2Int pinCentre;
+        [Tooltip("Districts each way from the centre (radius 5 = 11 x 11 districts, about 630 m across).")] public int pinRadius = 5;
+        [Tooltip("A far crawl hole from a district of another zone (entranceFrom) into a district of this one (entranceTo). See FarLinks.")]
+        public bool entrance;
+        public Vector2Int entranceFrom, entranceTo;
+
+        /// <summary>Is this district inside the pinned square?</summary>
+        public bool PinnedContains(Vector2Int district) =>
+            pinned && Mathf.Abs(district.x - pinCentre.x) <= pinRadius && Mathf.Abs(district.y - pinCentre.y) <= pinRadius;
+
+        public ZoneRules Clone()
+        {
+            var c = (ZoneRules)MemberwiseClone();
+            c.biomes = new List<BiomeBand>();
+            foreach (var b in biomes) c.biomes.Add(new BiomeBand { rules = b.rules.Clone(), upTo = b.upTo });
+            c.neighbours = new List<string>(neighbours);
+            return c;
+        }
+
+        public BiomeBand Band(string biomeName)
+        {
+            foreach (var b in biomes) if (b.rules.name == biomeName) return b;
+            return null;
+        }
+
+        public bool Allows(string other) => neighbours.Count == 0 || neighbours.Contains(other) || other == name;
+
+        /// <summary>
+        /// The Poolrooms: endless tiled halls flooded with still water, lit by the sun through openings in the roof. A pinned
+        /// zone far from spawn with sealed edges, entered through a far crawl hole from the spawn district.
+        /// </summary>
+        public static ZoneRules Poolrooms() => new ZoneRules
+        {
+            name = "Poolrooms", mapColor = new Color(0.45f, 0.8f, 0.76f), weight = 0f,
+            // The channels where the zone's density runs low, the water park where it runs high (2026-11-01), in regions.
+            biomes = new List<BiomeBand>
+            {
+                new BiomeBand { rules = BiomeRules.Channels(), upTo = 0.28f }, new BiomeBand { rules = BiomeRules.Poolrooms(), upTo = 0.64f },
+                new BiomeBand { rules = BiomeRules.WaterPark(), upTo = 1f },
+            },
+            edgeBiome = "Poolrooms",
+            overrideFog = true, fogColor = new Color(0.66f, 0.77f, 0.75f), fogDensity = 0.0035f, ambience = "pool", power = 0f,
+            minStorey = 0, maxStorey = 1, fullStoreys = 1,
+            style = ZoneStyle.Pool, sealedEdges = true,
+            pinned = true, pinCentre = new Vector2Int(24, 0), pinRadius = 5,
+            entrance = true, entranceFrom = new Vector2Int(0, 0), entranceTo = new Vector2Int(24, 0),
+        };
+
+        /// <summary>The ground level: endless offices, with hallways and warehouse floors on its density field.</summary>
+        public static ZoneRules Level0() => new ZoneRules
+        {
+            name = "Level 0",
+            biomes = new List<BiomeBand>
+            {
+                new BiomeBand { rules = BiomeRules.Hallways(), upTo = 0.3f },
+                new BiomeBand { rules = BiomeRules.Offices(), upTo = 0.55f },
+                new BiomeBand { rules = BiomeRules.LivingRooms(), upTo = 0.78f },
+                new BiomeBand { rules = BiomeRules.Warehouse(), upTo = 1f },
+            },
+        };
+    }
+
+    public enum LandmarkKind
+    {
+        /// <summary>Tall painted hall with a double row of columns and arched doorways in the middle of each side.</summary>
+        ColonnadeHall,
+        /// <summary>Two-storey lightwell: an arcade around a void, with a railed balcony on the storey above.</summary>
+        Atrium,
+        /// <summary>A room built by the player in build mode (CustomRooms); the rule name is the blueprint id.</summary>
+        Custom,
+    }
+
+    /// <summary>A rare set piece, placed on a sparse grid and reserved before rooms fill in.</summary>
+    [Serializable]
+    public class LandmarkRules
+    {
+        public string name = "Colonnade hall";
+        public LandmarkKind kind = LandmarkKind.ColonnadeHall;
+        [Tooltip("Footprint in cells (1.2 m).")] public int width = 10, depth = 10;
+        [Tooltip("Chance that a landmark cell holds a landmark at all (shared by all landmarks).")]
+        [Range(0f, 1f)] public float chance = 0.35f;
+        [Tooltip("Relative weight among landmarks allowed at a spot.")] public float weight = 1f;
+        [Tooltip("Zones it may appear in (empty = any).")] public List<string> zones = new List<string>();
+        [Tooltip("Biomes it may appear in (empty = any).")] public List<string> biomes = new List<string>();
+        [Tooltip("Storeys the landmark spans, from the ground storey up.")] public int storeys = 1;
+
+        public LandmarkRules Clone()
+        {
+            var c = (LandmarkRules)MemberwiseClone();
+            c.zones = new List<string>(zones); c.biomes = new List<string>(biomes);
+            return c;
+        }
+
+        public static LandmarkRules ColonnadeHall() => new LandmarkRules
+        {
+            name = "Colonnade hall", kind = LandmarkKind.ColonnadeHall, width = 10, depth = 12, chance = 0.35f, weight = 1f,
+            biomes = new List<string> { "Offices", "Warehouse" },
+        };
+
+        public static LandmarkRules Atrium() => new LandmarkRules
+        {
+            name = "Atrium", kind = LandmarkKind.Atrium, width = 16, depth = 12, chance = 0.35f, weight = 1f, storeys = 2,
+            biomes = new List<string> { "Offices" },
+        };
+    }
+
+    /// <summary>Where a landmark landed: a rectangle of cells in one district.</summary>
+    public struct LandmarkPlacement
+    {
+        public string name;
+        public LandmarkKind kind;
+        public Vector2Int district;   // district (x, z)
+        public RectInt rect;          // district-local cells (the whole reserved area, atrium plus its annex)
+        public RectInt core;          // atrium only: the atrium proper (ring and well); equals rect when there is no annex
+        public RectInt annex;         // atrium only: the stairs / elevator wing along one side of the core (width 0 if none)
+        public int side;              // which side of the core the annex is on: 0 south, 1 north, 2 west, 3 east
+        public int connectors;        // AtriumAnnex.Stairs | AtriumAnnex.Elevator
+        public int storeys;           // spans storeys 0 .. storeys - 1
+        public int seed;              // for the landmark's own dice
+        public string blueprint;      // custom rooms: the blueprint id
+        public int variant;           // custom rooms: which layout of the blueprint
+        public int rot;               // custom rooms: quarter turns of the blueprint
+        public RectInt WorldCells => new RectInt(district.x * WorldGenSettings.DistrictCells + rect.x, district.y * WorldGenSettings.DistrictCells + rect.y, rect.width, rect.height);
+    }
+}

@@ -6,7 +6,11 @@ namespace Backrooms
     /// Handheld camcorder motion, applied as a local offset on the camera transform.
     /// Three layers: slow irregular "breathing" sway at rest, a gentle footstep-driven
     /// bob while walking, and heavier, rougher shake while running. Mouse look lives on
-    /// the parent pivot, so shake never fights or delays aim.
+    /// the parent pivot, so shake never fights or delays aim. With the recordings on (recordedWalk; CameraMotionClip, from
+    /// a phone held like the camcorder): standing plays the hand's own drift and tremor (Idle), walking forward the
+    /// recorded walk in step with the feet (Walk), side-steps the recorded side-steps at their own pace (StrafeLeft,
+    /// StrafeRight: the body's quick side-steps would play them nearly three times too fast), and turning adds the tremor
+    /// the hand had at that turn speed (Look). Breathing stays generated (its sounds keep time with it).
     /// </summary>
     public class HandheldCameraShake : MonoBehaviour
     {
@@ -54,10 +58,70 @@ namespace Backrooms
         [Tooltip("Small irregular wobble while turning. 0 = off.")]
         [Range(0f, 2f)] public float lookJitter = 0.5f;
 
+        [Header("Roughness")]
+        [Tooltip("Fast, irregular hand shake (about 2 to 12 Hz) on top of the smooth bob, strongest while walking: an operator " +
+                 "walking with the camera in one hand rather than a steady glide. 0 = off. In degrees at 1.")]
+        [Range(0f, 3f)] public float roughness = 0f;
+
+        [Header("Recorded motion")]
+        [Tooltip("The camera moves the way a phone held like the camcorder did (Resources/CameraMotion, built by " +
+                 "Tools/CameraMotion): standing, walking (in step with the feet), side-stepping and turning, instead of the " +
+                 "generated sway and bob.")]
+        public bool recordedWalk = true;
+        [Tooltip("How much of the recorded walk's stride-to-stride irregularity is kept: 1 as recorded, 0 every stride the " +
+                 "same (the shared rhythm of the steps, without the jitter), up to 2 double.")]
+        [Range(0f, 2f)] public float walkJitter = 1f;
+
+        /// <summary>Physical effort from moving something (0..1, set each frame by PropGrabber): adds a strained tremble.</summary>
+        [System.NonSerialized] public float effort;
+        /// <summary>How far the camcorder hand dips while the other hand works (0..1, set by PropGrabber).</summary>
+        [System.NonSerialized] public float dip;
+        /// <summary>1: the camcorder hangs on its strap at the chest (both hands free: PropGrabber H), still recording. It
+        /// looks ahead and down from there, swings like a pendulum when you start, stop and turn, and bobs with the steps.</summary>
+        [System.NonSerialized] public float strap;
+        /// <summary>Camera menu > CAMERA SHAKE > Shake while hanging: the strap's pendulum swing and the shake on it, x (0 steady).</summary>
+        [System.NonSerialized] public float hangingShake = 1f;
+        /// <summary>What the hands hold while it hangs: the camera keeps out of it (pulled up toward the eye, over it).</summary>
+        [System.NonSerialized] public Collider[] avoid;
+        /// <summary>While it hangs: a point it tips up or down to keep in the picture (a box lifted to stack it), or null.</summary>
+        [System.NonSerialized] public Vector3? strapLook;
+        float _strapLookW, _strapLookTip;
+        /// <summary>
+        /// While it hangs: 0 it looks ahead and down from the chest (the look moves it a quarter as far), 1 it is held up
+        /// nearer the eye and looks where you look (carrying a box: 2026-11-08, the owner found the chest view covered by
+        /// the box and the outline needs aiming).
+        /// </summary>
+        [System.NonSerialized] public float strapFollow;
+        float _strapFollowS;
+        Vector3 _clear;
+        float _strapT;
+        Vector3 _swing, _swingVel, _lastVel, _velF;
+        float _lastYaw;
+        /// <summary>How hard the operator is breathing (set by Interaction.BodyPresence): above 0 deeper, below 0 shallower.</summary>
+        [System.NonSerialized] public float exertion;
+        /// <summary>Where the breath is (radians; in from 0, out from pi).</summary>
+        public float BreathPhase => _breathPhase;
+        float _effort, _dip;
+
         float _walkBlend, _runBlend, _stepPhase, _breathPhase;
+        // The recorded walk: where along it (strides), its pace (strides a second, from the feet), a correction still to
+        // ease in, and when a foot last landed.
+        static CameraMotionClip s_walk, s_idle, s_strafeL, s_strafeR, s_look;
+        static bool s_walkTried;
+        Interaction.FirstPersonBody _body;
+        float _bodyLook = -10f, _strideT, _strideRate, _strideFix, _lastFoot = -10f;
+        // The other recordings: where along them (seconds; strides for the side-steps) and how much of each side-step.
+        float _idleT, _strafeT, _lookT, _wLeft, _wRight;
+        /// <summary>Where along the recorded walk the camera is (strides; the left foot lands at whole numbers).</summary>
+        public float WalkStride => _strideT;
+        /// <summary>Whether walking plays the recording (it is on and loaded).</summary>
+        public bool PlaysRecordedWalk => recordedWalk && Walk != null;
         Vector2 _lookVel, _lookOff, _lookOffVel;
         float _lookRoll;
         Vector3 _seed;
+        // Crouch-walking and crawling: how much of each, where along their own gait, and the stance last frame.
+        float _crawlBlend, _crouchBlend, _lowPhase;
+        int _lastStance = -1;
 
         void Awake()
         {
@@ -91,6 +155,28 @@ namespace Backrooms
             Vector3 walkPos = new Vector3(Mathf.Sin(step * 0.5f) * 0.4f, bob, 0f) * walkBobHeight;
             Vector3 walkRot = new Vector3(bob * 0.6f, Mathf.Sin(step * 0.5f) * 0.3f, Mathf.Sin(step * 0.5f) * 0.5f) * walkSwayDegrees
                             + Noise3(t * 0.9f + 57f) * walkSwayDegrees * 0.4f;
+            // Recorded: the phone recording's sway, step bob and tremor, at the feet's own pace. It already has the hand's
+            // own shake in it, so the generated idle wander and the roughness's walking part give way to it.
+            bool rec = PlaysRecordedWalk;
+            if (rec)
+            {
+                UpdateStride(dt, speed);
+                Walk.Sample(_strideT, out walkRot, out walkPos, walkJitter);
+                // Side-steps (2026-11-03): the recorded ones, by how much of the movement is sideways; at their own recorded
+                // pace (scaled a little by the speed), not the feet's.
+                RecordedStrafe(dt, speed, ref walkRot, ref walkPos);
+            }
+            float gen = rec ? 0f : 1f;
+            // Standing (2026-11-03): the hand's own drift, corrections and tremor, recorded, in place of the generated
+            // wander; it gives way to the walk (which has the hand in it) as you set off.
+            Vector3 idlePos = Vector3.zero;
+            var idleClip = Idle;
+            bool recIdle = recordedWalk && idleClip != null;
+            if (recIdle)
+            {
+                _idleT = Mathf.Repeat(_idleT + dt, idleClip.Seconds);
+                idleClip.Sample(_idleT, out idleRot, out idlePos);
+            }
 
             // Run: heavier bob plus higher-frequency rough shake.
             Vector3 runPos = new Vector3(Mathf.Sin(step * 0.5f) * 0.5f, bob, 0f) * runBobHeight;
@@ -98,26 +184,335 @@ namespace Backrooms
                            + Noise3(t * 4.5f + 113f) * runShakeDegrees * 0.45f;
 
             float walkOnly = _walkBlend * (1f - _runBlend);
+
+            // Wading (2026-10-31): the water's own gait instead of the land walk. Each step the leg comes up out of the
+            // water slowly and goes down quickly (a nod as the foot plants), more rise and fall, the weight rolling from leg
+            // to leg (unevenly: one side heavier), leaning a little into the water's push; running, lurching; standing, a
+            // faint sway as the water moves round the legs. In step with the controller's clock (WadePhase).
+            float wade = player ? player.Wade : 0f;
+            Vector3 wadePos = Vector3.zero, wadeRot = Vector3.zero;
+            if (wade > 0.001f && grounded)
+            {
+                float sp = Mathf.Clamp01(player.PlanarVelocity.magnitude / Mathf.Max(0.1f, player.walkSpeed));
+                float ph = player.WadePhase, u = Mathf.Repeat(ph, 1f);
+                int stepIndex = Mathf.FloorToInt(ph);
+                float side = (stepIndex & 1) == 0 ? 1f : -1.2f;
+                float lift = u < 0.68f ? Mathf.SmoothStep(0f, 1f, u / 0.68f) : 1f - Mathf.SmoothStep(0f, 1f, (u - 0.68f) / 0.32f);
+                float plant = Mathf.Pow(1f - lift, 6f);
+                float amp = wade * sp;
+                wadePos = new Vector3(side * 0.007f * lift, (lift - 0.5f) * Mathf.Lerp(0.026f, 0.044f, _runBlend), 0f) * amp;
+                wadeRot = new Vector3(0.9f * sp + plant * Mathf.Lerp(0.9f, 1.6f, _runBlend), side * 0.45f * lift,
+                                      side * Mathf.Lerp(1.3f, 2.3f, _runBlend) * (lift - 0.3f)) * amp;
+                // Running: each step lands a little differently (a lurch held through that step).
+                var lurch = new Vector3(Mathf.PerlinNoise(stepIndex * 0.71f, _seed.x) - 0.5f, Mathf.PerlinNoise(stepIndex * 0.71f, _seed.y) - 0.5f,
+                                        Mathf.PerlinNoise(stepIndex * 0.71f, _seed.z) - 0.5f);
+                wadeRot += lurch * 3.2f * _runBlend * amp * (0.4f + 0.6f * lift);
+                // Standing in it: the water moving round the legs.
+                wadeRot += Noise3(t * 0.17f + 777f) * 0.4f * wade * (1f - sp);
+                walkOnly *= 1f - 0.75f * wade;
+            }
+            // Stepping down into the water and climbing out: a dip and a lift.
+            bool inWade = wade > 0.5f;
+            if (inWade != _wasWading && player && grounded)
+            {
+                _wadeDipVel += inWade ? -0.35f : 0.22f;
+                Jolt(inWade ? new Vector3(26f, 0f, 9f) : new Vector3(-14f, 0f, -5f));
+            }
+            _wasWading = inWade;
+            for (float rem = Mathf.Min(dt, 0.1f); rem > 1e-5f; rem -= 1f / 120f)
+            {
+                float h = Mathf.Min(rem, 1f / 120f);
+                _wadeDipVel += (-_wadeDip * 90f - _wadeDipVel * 11f) * h;
+                _wadeDip += _wadeDipVel * h;
+            }
+            wadePos.y += _wadeDip;
+            // Crouch-walking and crawling (2026-11-09, the owner: "improve animations ... crouching, crawling"): they used a
+            // faint copy of the walk's bob at the wrong pace. Each has its own gait now, in step with the ground covered
+            // (the crawl's with its hand-falls, as the sounds are: PlayerAudio).
+            //  - Crawling: the weight rocks onto each planted hand in turn, so the camera sways across and rolls with it,
+            //    dips as the hand takes the weight and nods as the knee follows.
+            //  - Crouch-walking: bent knees absorb less: a deeper, slower bob and a roll from foot to foot.
+            // Getting down and up: the camera tips forward going down onto the hands and back coming up.
+            Vector3 lowPos = Vector3.zero, lowRot = Vector3.zero;
+            if (player)
+            {
+                int stance = (int)player.CurrentStance;
+                if (_lastStance >= 0 && stance != _lastStance && grounded && !player.seated)
+                {
+                    bool down = stance > _lastStance;
+                    bool crawl = stance == 2 || _lastStance == 2;
+                    Jolt(down ? new Vector3(crawl ? 16f : 7f, 0f, crawl ? 4f : 2f) : new Vector3(crawl ? -10f : -5f, 0f, crawl ? -3f : -1.5f));
+                }
+                _lastStance = stance;
+                bool crawling = stance == 2, crouching = stance == 1 && !player.Sliding;
+                _crawlBlend = Mathf.MoveTowards(_crawlBlend, crawling && grounded ? 1f : 0f, dt * 3f);
+                _crouchBlend = Mathf.MoveTowards(_crouchBlend, crouching && grounded ? 1f : 0f, dt * 3f);
+                float low = Mathf.Max(_crawlBlend, _crouchBlend);
+                if (low > 0.001f)
+                {
+                    float metres = player.PlanarVelocity.magnitude;
+                    _lowPhase += metres * dt / (crawling ? (player.CrawlingFast ? 0.5f : 0.42f) : 0.55f);
+                    float lu = Mathf.Repeat(_lowPhase, 1f);
+                    float sideNow = (Mathf.FloorToInt(_lowPhase) & 1) == 0 ? 1f : -1f;
+                    float arc = Mathf.Sin(lu * Mathf.PI);                 // over one hand-fall or step
+                    float plant = Mathf.Pow(1f - lu, 5f);               // the moment the weight lands
+                    float going = Mathf.Clamp01(metres / 0.25f);
+                    float ca = _crawlBlend * going, ka = _crouchBlend * going * (1f - _crawlBlend);
+                    lowPos = new Vector3(sideNow * 0.016f * arc, -0.012f * plant - 0.004f * arc, 0f) * ca
+                           + new Vector3(sideNow * 0.006f * arc, (Mathf.Abs(Mathf.Sin(lu * Mathf.PI)) - 0.5f) * 0.02f, 0f) * ka;
+                    lowRot = new Vector3(1.6f * plant, sideNow * 0.9f * arc, -sideNow * 2.4f * arc) * ca
+                           + new Vector3(0.7f * plant, sideNow * 0.3f * arc, -sideNow * 1.0f * arc) * ka;
+                    if (player.CrawlingFast) { lowPos *= 1.3f; lowRot *= 1.35f; }
+                    // Still, low down: the arms holding the weight tremble a little.
+                    lowRot += Noise3(t * 1.7f + 911f) * 0.25f * _crawlBlend * (1f - going);
+                    walkOnly *= 1f - (0.9f * _crawlBlend + 0.65f * _crouchBlend * (1f - _crawlBlend));
+                }
+            }
+
             // Breathing: irregular period (rate wanders a little) so it never reads as a metronome.
             _breathPhase += dt * breathingRate * (0.85f + 0.3f * Mathf.PerlinNoise(t * 0.05f, _seed.x)) * Mathf.PI * 2f;
             float breath = Mathf.Sin(_breathPhase) + 0.25f * Mathf.Sin(_breathPhase * 2f + 0.8f);
-            float breathWeight = 1f - _walkBlend * 0.7f;
+            // Out of breath, it shows even while walking.
+            float ex = Mathf.Clamp(exertion, -0.6f, 1f);
+            float breathWeight = (1f - _walkBlend * 0.7f * (1f - Mathf.Max(0f, ex))) * (1f + (ex >= 0f ? 2.2f * ex : ex));
             Vector3 breathRot = new Vector3(breath * breathingDegrees, 0f, breath * breathingDegrees * 0.25f) * breathWeight;
             Vector3 breathPos = new Vector3(0f, breath * breathingHeight, 0f) * breathWeight;
 
             // Stabilisation removes the fast components first (run shake), then some of the slow ones.
             float stab = 1f - stabilization;
-            Vector3 pos = breathPos * (1f - stabilization * 0.5f) + (walkPos * walkOnly + runPos * _runBlend) * Mathf.Lerp(1f, 0.45f, stabilization);
-            Vector3 rot = breathRot * (1f - stabilization * 0.5f)
-                        + idleRot * Mathf.Lerp(1f, 0.6f, _walkBlend) * Mathf.Lerp(1f, 0.4f, stabilization)
+            float runShare = _runBlend * (1f - 0.6f * wade);
+            float idleW = recIdle ? 1f - _walkBlend : Mathf.Lerp(1f, rec ? 0.25f : 0.6f, _walkBlend);
+            Vector3 pos = breathPos * (1f - stabilization * 0.5f) + (walkPos * walkOnly + runPos * runShare) * Mathf.Lerp(1f, 0.45f, stabilization)
+                        + wadePos * Mathf.Lerp(1f, 0.6f, stabilization) + idlePos * idleW * Mathf.Lerp(1f, 0.5f, stabilization);
+            Vector3 rot = breathRot * (1f - stabilization * 0.5f) + wadeRot * Mathf.Lerp(1f, 0.5f, stabilization)
+                        + idleRot * idleW * Mathf.Lerp(1f, 0.4f, stabilization)
                         + walkRot * walkOnly * Mathf.Lerp(1f, 0.35f, stabilization)
-                        + runRot * _runBlend * Mathf.Lerp(1f, 0.25f, stabilization) * (0.5f + 0.5f * stab);
+                        + runRot * runShare * Mathf.Lerp(1f, 0.25f, stabilization) * (0.5f + 0.5f * stab);
+
+            pos += lowPos * Mathf.Lerp(1f, 0.6f, stabilization);
+            rot += lowRot * Mathf.Lerp(1f, 0.5f, stabilization);
 
             rot += LookMotion(dt, t) * (1f - stabilization * 0.5f);
 
-            transform.localPosition = pos * shakeIntensity;
-            transform.localRotation = Quaternion.Euler(rot * shakeIntensity);
+            // Rough hand shake: three octaves of noise (the fastest is what reads as jerky), more while walking,
+            // and each footstep lands with a small extra jolt.
+            if (roughness > 0f)
+            {
+                float active = 0.35f + 0.65f * _walkBlend * gen;
+                Vector3 r = Noise3(t * 2.3f + 401f) * 0.6f + Noise3(t * 5.9f + 433f) * 0.3f + Noise3(t * 12.7f + 467f) * 0.05f;
+                r.y += (Mathf.PerlinNoise(t * 6.7f, _seed.y + 17f) * 2f - 1f) * 0.25f;          // a little extra fast yaw: the wrist
+                float jolt = Mathf.Pow(1f - Mathf.Abs(Mathf.Sin(step)), 3f) * _walkBlend;    // the heel strike
+                r += new Vector3(bob * 0.9f * _walkBlend + jolt * 0.25f, 0f, jolt * 0.1f * Mathf.Sign(Mathf.Sin(step * 0.5f))) * gen;
+                rot += r * roughness * active * Mathf.Lerp(1f, 0.3f, stabilization);
+            }
+
+            // Working with the other hand: the camcorder sinks and tilts a little, and trembles under effort.
+            _effort = Mathf.MoveTowards(_effort, Mathf.Clamp01(effort), dt * 2.5f);
+            _dip = Mathf.Lerp(_dip, Mathf.Clamp01(dip), 1f - Mathf.Exp(-dt / 0.35f));
+            // The camcorder is in the left hand: it sags and turns toward the right, where the other hand is busy.
+            pos += new Vector3(0.012f, -0.035f, 0f) * _dip;
+            rot += new Vector3(3.2f, 1.2f, -2.0f) * _dip;
+            rot += (Noise3(t * 9f + 333f) * 0.35f + Noise3(t * 3.1f + 71f) * 0.5f) * _effort;
+
+            // Jolts (a cord yanked out of the hand): a damped spring, felt even with the shake turned off. Stepped at
+            // 120 Hz at most: in one long frame (a hitch while far chunks load after a teleport) a single step blew the
+            // spring up and left the camera on its side.
+            for (float rem = Mathf.Min(dt, 0.25f); rem > 1e-5f; rem -= 1f / 120f)
+            {
+                float h = Mathf.Min(rem, 1f / 120f);
+                _joltVel += (-_jolt * 260f - _joltVel * 22f) * h;
+                _jolt += _joltVel * h;
+            }
+            if (float.IsNaN(_jolt.x + _jolt.y + _jolt.z) || float.IsNaN(_joltVel.x + _joltVel.y + _joltVel.z)) _jolt = _joltVel = Vector3.zero;
+            _jolt = Vector3.ClampMagnitude(_jolt, 20f);
+            // Held a little out in front of the eye (CamcorderPlayerController.CamcorderHold), the shake on top.
+            Vector3 lp = (player ? player.CamcorderHold : Vector3.zero) + pos * shakeIntensity;
+            Quaternion lr = Quaternion.Euler(rot * shakeIntensity + _jolt);
+            _strapT = Mathf.MoveTowards(_strapT, Mathf.Clamp01(strap), dt / 0.7f);
+            var pivot = transform.parent;
+            if (_strapT > 0f && player && pivot)
+            {
+                // On the strap: at the chest, facing the way the body does, tipped down; the look moves it only as far as
+                // the chest leans. A pendulum: it swings back as you set off, forward as you stop, out as you turn.
+                var body = player.transform;
+                // (From the body's smoothed velocity: frame-to-frame acceleration is noise, and shook it.)
+                Vector3 v = Quaternion.Inverse(body.rotation) * player.PlanarVelocity;
+                _velF = Vector3.Lerp(_velF, v, 1f - Mathf.Exp(-dt / 0.12f));
+                Vector3 acc = dt > 1e-4f ? (_velF - _lastVel) / dt : Vector3.zero;
+                float yawRate = dt > 1e-4f ? Mathf.DeltaAngle(_lastYaw, body.eulerAngles.y) / dt : 0f;
+                if (Mathf.Abs(yawRate) > 400f) yawRate = 0f;                                   // a teleport, not a turn
+                _lastVel = _velF; _lastYaw = body.eulerAngles.y;
+                Vector3 drive = new Vector3(-acc.z * 1.6f, -yawRate * 0.03f, acc.x * 2f) * Mathf.Max(0f, hangingShake);
+                const float k = 75f, c = 2.8f;
+                for (float rem = Mathf.Min(dt, 0.1f); rem > 1e-5f; rem -= 1f / 120f)
+                {
+                    float h = Mathf.Min(rem, 1f / 120f);
+                    _swingVel += (k * (Vector3.ClampMagnitude(drive, 25f) - _swing) - c * _swingVel) * h;
+                    _swing += _swingVel * h;
+                }
+                _swing = Vector3.ClampMagnitude(_swing, 30f);
+                _strapFollowS = Mathf.MoveTowards(_strapFollowS, Mathf.Clamp01(strapFollow), dt / 0.35f);
+                float follow = Mathf.SmoothStep(0f, 1f, _strapFollowS);
+                float tip = Mathf.Lerp(10f + 0.25f * player.Pitch, player.Pitch, follow);
+                float hs = Mathf.Max(0f, hangingShake) * (1f - 0.6f * follow);
+                Vector3 wp = pivot.position + body.rotation * (new Vector3(0f, Mathf.Lerp(-0.34f, -0.1f, follow), Mathf.Lerp(0.1f, 0.05f, follow)) + pos * shakeIntensity * 1.3f * hs);
+                // Kept on what the hands lift (round 14: a box raised to stack it went out of the top of the picture).
+                if (strapLook.HasValue)
+                {
+                    Vector3 d = strapLook.Value - wp;
+                    _strapLookTip = Mathf.Clamp(-Mathf.Atan2(d.y, new Vector2(d.x, d.z).magnitude) * Mathf.Rad2Deg + 8f, -50f, 60f);
+                }
+                _strapLookW = Mathf.MoveTowards(_strapLookW, strapLook.HasValue ? 1f : 0f, dt / 0.4f);
+                tip = Mathf.Lerp(tip, _strapLookTip, Mathf.SmoothStep(0f, 1f, _strapLookW));
+                // Not inside what you hold: up toward the eye until clear of it (eased, so it does not jump).
+                Vector3 clearTo = KeepClear(pivot.position, wp) - wp;
+                _clear = Vector3.Lerp(_clear, clearTo, 1f - Mathf.Exp(-dt / (clearTo.sqrMagnitude > _clear.sqrMagnitude ? 0.12f : 0.4f)));
+                wp += _clear;
+                Quaternion wr = body.rotation * Quaternion.Euler(tip + _swing.x, _swing.y, _swing.z) * Quaternion.Euler(rot * shakeIntensity * 0.7f * hs + _jolt);
+                Vector3 sp = Quaternion.Inverse(pivot.rotation) * (wp - pivot.position);
+                Quaternion sr = Quaternion.Inverse(pivot.rotation) * wr;
+                float s = Mathf.SmoothStep(0f, 1f, _strapT);
+                lp = Vector3.Lerp(lp, sp, s);
+                lr = Quaternion.Slerp(lr, sr, s);
+            }
+            else if (player) { _clear = Vector3.zero; _velF = _lastVel = Quaternion.Inverse(player.transform.rotation) * player.PlanarVelocity; _lastYaw = player.transform.eulerAngles.y; _swing = _swingVel = Vector3.zero; }
+            transform.localPosition = lp;
+            transform.localRotation = lr;
         }
+
+        /// <summary>The camera's spot, moved along the line up to the eye until it is 30 cm clear of what the hands hold.</summary>
+        Vector3 KeepClear(Vector3 eye, Vector3 at)
+        {
+            if (avoid == null || avoid.Length == 0) return at;
+            const float room = 0.3f;                           // (12 cm left only the fabric in view)
+            for (int step = 0; step <= 20; step++)
+            {
+                Vector3 p = Vector3.Lerp(at, eye, step / 20f);
+                bool clear = true;
+                foreach (var c in avoid)
+                {
+                    if (!c || !c.enabled || c.isTrigger) continue;
+                    if (c is MeshCollider mc && !mc.convex) continue;
+                    if ((c.ClosestPoint(p) - p).sqrMagnitude < room * room) { clear = false; break; }
+                }
+                if (clear) return p;
+            }
+            return eye;
+        }
+
+        /// <summary>How far down onto its strap the camcorder is (0 in the hand, 1 hanging).</summary>
+        public float StrapAmount => _strapT;
+        /// <summary>For probes: the strap pendulum (degrees) and how far the camera rose to stay clear (m).</summary>
+        public Vector3 StrapSwing => _swing;
+        public Vector3 StrapClear => _clear;
+
+        Vector3 _jolt, _joltVel;
+        float _wadeDip, _wadeDipVel;
+        bool _wasWading;
+
+        /// <summary>A sudden knock to the camera (degrees per second of pitch, yaw, roll), which springs back.</summary>
+        public void Jolt(Vector3 kick) { _joltVel += kick; }
+
+        // ---------------- Recorded walk ----------------
+
+        static CameraMotionClip Walk
+        {
+            get
+            {
+                if (!s_walkTried) { s_walkTried = true; s_walk = CameraMotionClip.Load("CameraMotion/Walk"); }
+                return s_walk;
+            }
+        }
+
+        static CameraMotionClip Idle { get { LoadOthers(); return s_idle; } }
+        static CameraMotionClip StrafeLeft { get { LoadOthers(); return s_strafeL; } }
+        static CameraMotionClip StrafeRight { get { LoadOthers(); return s_strafeR; } }
+        static CameraMotionClip Look { get { LoadOthers(); return s_look; } }
+        static bool s_othersTried;
+        static void LoadOthers()
+        {
+            if (s_othersTried) return;
+            s_othersTried = true;
+            s_idle = CameraMotionClip.Load("CameraMotion/Idle");
+            s_strafeL = CameraMotionClip.Load("CameraMotion/StrafeLeft");
+            s_strafeR = CameraMotionClip.Load("CameraMotion/StrafeRight");
+            s_look = CameraMotionClip.Load("CameraMotion/Look");
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() { s_walk = s_idle = s_strafeL = s_strafeR = s_look = null; s_walkTried = s_othersTried = false; }
+
+        /// <summary>For probes: how much of the walk is the recorded side-step to the left and to the right (0..1).</summary>
+        public Vector2 StrafeWeights => new Vector2(_wLeft, _wRight);
+
+        /// <summary>
+        /// Blends the recorded side-steps into the walk by how much of the movement is sideways (eased, so a change of
+        /// direction does not snap). They play at their own recorded pace times the speed (clamped): the body side-steps
+        /// about four times a second at walking speed, and the recording's 1.5 a second sped up that far read as a shudder.
+        /// </summary>
+        void RecordedStrafe(float dt, float speed, ref Vector3 rot, ref Vector3 pos)
+        {
+            var l = StrafeLeft; var r = StrafeRight;
+            float side = 0f;
+            if (player)
+            {
+                Vector3 v = Quaternion.Inverse(player.transform.rotation) * player.PlanarVelocity;
+                float m = new Vector2(v.x, v.z).magnitude;
+                if (m > 0.05f) side = v.x / m;
+            }
+            float k = 1f - Mathf.Exp(-dt / 0.25f);
+            _wLeft = Mathf.Lerp(_wLeft, l != null ? Mathf.Clamp01(-side) : 0f, k);
+            _wRight = Mathf.Lerp(_wRight, r != null ? Mathf.Clamp01(side) : 0f, k);
+            if (_wLeft + _wRight < 0.001f) return;
+            var any = l ?? r;
+            _strafeT += Mathf.Clamp(speed, 0.5f, 1.3f) * dt / any.StrideSeconds;
+            Vector3 sr = Vector3.zero, sp = Vector3.zero;
+            if (l != null && _wLeft > 0.001f) { l.Sample(_strafeT, out var a, out var b, walkJitter); sr += a * _wLeft; sp += b * _wLeft; }
+            if (r != null && _wRight > 0.001f) { r.Sample(_strafeT, out var a, out var b, walkJitter); sr += a * _wRight; sp += b * _wRight; }
+            float fw = 1f - Mathf.Clamp01(_wLeft + _wRight);
+            rot = rot * fw + sr;
+            pos = pos * fw + sp;
+        }
+
+        /// <summary>
+        /// Moves along the recorded walk at the feet's pace: each time a foot lands (FirstPersonBody.FootLanded) the
+        /// recording is drawn toward that foot's landing in it (the left at the start of a stride, the right part-way), eased
+        /// in, never backward and at most three times the pace; the pace comes from the time between the last two steps.
+        /// With no body, or standing, the recorded pace scaled by the walking speed.
+        /// </summary>
+        void UpdateStride(float dt, float speed)
+        {
+            if (!_body && Time.unscaledTime > _bodyLook)
+            {
+                _bodyLook = Time.unscaledTime + 1f;
+                _body = FindAnyObjectByType<Interaction.FirstPersonBody>();
+                if (_body) _body.FootLanded += OnFootLanded;
+            }
+            var clip = Walk;
+            bool paced = _strideRate > 0f && Time.time - _lastFoot < 1.2f;
+            float advance = (paced ? _strideRate : Mathf.Clamp(speed, 0.5f, 1.4f) / clip.StrideSeconds) * dt;
+            float fix = Mathf.Clamp(_strideFix * (1f - Mathf.Exp(-dt / 0.1f)), -0.8f * advance, 2f * advance);
+            _strideFix -= fix;
+            _strideT = Mathf.Repeat(_strideT + advance + fix, clip.Strides);
+        }
+
+        void OnFootLanded(Vector3 at, float speed)
+        {
+            var clip = Walk;
+            if (clip == null || !player || !recordedWalk) return;
+            float now = Time.time, gap = now - _lastFoot;
+            _lastFoot = now;
+            if (gap > 0.25f && gap < 1.2f) _strideRate = _strideRate > 0f ? Mathf.Lerp(_strideRate, 0.5f / gap, 0.5f) : 0.5f / gap;
+            Transform root = player.transform;
+            bool right = Vector3.Dot(at - root.position, root.right) > 0f;
+            float phase = _strideT - Mathf.Floor(_strideT);
+            float err = Mathf.Repeat((right ? clip.RightFootPhase : 0f) - phase + 0.5f, 1f) - 0.5f;
+            // Not walking yet (the layer is off): straight there.
+            if (_walkBlend < 0.05f) { _strideT = Mathf.Repeat(_strideT + err, clip.Strides); _strideFix = 0f; }
+            else _strideFix = err;
+        }
+
+        void OnDestroy() { if (_body) _body.FootLanded -= OnFootLanded; }
 
         /// <summary>
         /// Secondary motion from turning, added on top of the (instant) mouse look, so there is no input
@@ -138,7 +533,18 @@ namespace Backrooms
             _lookOffVel += acc * dt;
             _lookOff += _lookOffVel * dt;
             float speed = _lookVel.magnitude;
-            Vector3 jitter = Noise3(t * 7f + 211f) * Mathf.Min(speed * 0.004f, 0.6f) * lookJitter;
+            Vector3 jitter;
+            var look = recordedWalk ? Look : null;
+            if (look != null && look.HasTurnTremor)
+            {
+                // Recorded (2026-11-03): the tremor the hand had while turning this fast, less what it has standing still
+                // (the standing recording has that); at 0.5 (the setting's default) as recorded.
+                _lookT = Mathf.Repeat(_lookT + dt, look.Seconds);
+                look.Sample(_lookT, out var tex, out _);
+                float rest = look.TurnTremor(0f), at = look.TurnTremor(speed);
+                jitter = tex * Mathf.Sqrt(Mathf.Max(0f, at * at - rest * rest)) * lookJitter * 2f;
+            }
+            else jitter = Noise3(t * 7f + 211f) * Mathf.Min(speed * 0.004f, 0.6f) * lookJitter;
             _lookRoll = Mathf.Lerp(_lookRoll, Mathf.Clamp(-_lookVel.x * 0.006f, -1.5f, 1.5f) * lookOvershoot, 1f - Mathf.Exp(-dt / 0.15f));
             // Camera local rotation: x = pitch (down positive), y = yaw.
             return new Vector3(_lookOff.y + jitter.x, _lookOff.x + jitter.y, _lookRoll + jitter.z);

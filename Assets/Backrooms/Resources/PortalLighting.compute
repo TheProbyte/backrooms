@@ -1,0 +1,43 @@
+#pragma kernel SamplePortalLighting
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Assets/Backrooms/Shaders/LightGridSample.hlsl"
+RWTexture2D<float4> _PortalLightOutput;
+
+half3 PortalIncident(float3 P, half3 N)
+{
+    half3 incident = BackroomsLightGrid(P, N);
+    if (_LGridFar.x < 0.5) return incident; // texture mode already contains direct light
+    // Full output (not the grid share) keeps the transported energy stable during real/grid handover.
+    uint2 tile = LGrid_TileRange(P);
+    [loop] for (uint j = 0; j < tile.y; j++)
+    {
+        LGridLight f = _LGridLights[_LGridTileLights[tile.x + j]];
+        if (!LGrid_FixtureMayReach(f, P) || dot(f.colorAll, f.colorAll) < 1e-10) continue;
+        float3 toLight = f.pos - P;
+        float distance2 = dot(toLight, toLight);
+        float3 L = toLight * rsqrt(max(distance2, 0.01));
+        float a = LGrid_DistAtten(distance2, f.range) * saturate(dot(N, L));
+        if (dot(f.dir, f.dir) > 0.5) a *= LGrid_Profile(dot(f.dir, -L), f.cosOuter, f.cosInner, f.padding.y);
+        if (a < 1e-5 || LGrid_LightVisible(P, N, f.pos) < 0.5) continue;
+        a *= LocalLightVisibility(P, N, f.pos);
+        incident += f.colorAll * (a * _LGridParams.y);
+    }
+    return incident;
+}
+
+int _PortalEndOffset;   // first row to write (a single far-site row is resampled with its own grid bound)
+
+[numthreads(6, 1, 1)]
+void SamplePortalLighting(uint3 id : SV_DispatchThreadID)
+{
+    uint end = id.y + (uint)_PortalEndOffset;
+    if (end >= (uint)_PortalSpillCount) return;
+    float3 N = id.x == 0 ? float3(1,0,0) : id.x == 1 ? float3(-1,0,0) :
+               id.x == 2 ? float3(0,1,0) : id.x == 3 ? float3(0,-1,0) :
+               id.x == 4 ? float3(0,0,1) : float3(0,0,-1);
+    float3 P = _PortalSpillPartner[end].xyz + _PortalSpillPartnerNormal[end].xyz * 0.12;
+    if (id.x == 2) P.y -= _PortalSpillPosition[end].w * 0.5 - 0.03;
+    if (id.x == 3) P.y += _PortalSpillPosition[end].w * 0.5 - 0.03;
+    bool valid = _LGridParams.x > 0.5 && all(P.xz > _LGridWindow.xy + 1) && all(P.xz < _LGridWindow.zw - 1);
+    _PortalLightOutput[uint2(id.x, end)] = float4(valid ? PortalIncident(P, N) : 0, 1);
+}

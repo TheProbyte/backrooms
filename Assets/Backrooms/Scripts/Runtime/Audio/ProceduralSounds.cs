@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Backrooms.Audio
@@ -7,7 +8,7 @@ namespace Backrooms.Audio
     /// Loops are long (7-29 s), use whole cycles of every periodic part, and crossfade their noise
     /// tail into the head, so they loop without clicks and without an obvious short repeat.
     /// </summary>
-    public static class ProceduralSounds
+    public static partial class ProceduralSounds
     {
         public const int Rate = 44100;
         const float TwoPi = 6.2831853f;
@@ -192,6 +193,25 @@ namespace Backrooms.Audio
             return Clip("Tick_" + variant, d, 1);
         }
 
+        /// <summary>A camcorder menu's key beep: a short square-ish tone (variant 0: move, 1: choose, 2: back).</summary>
+        public static AudioClip MenuBeep(int variant)
+        {
+            float f = variant == 1 ? 2350f : variant == 2 ? 1500f : 1950f;
+            float len = variant == 1 ? 0.075f : 0.04f;
+            int n = (int)(Rate * len);
+            var d = new float[n];
+            var lp = Biquad.LowPass(5200f);
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
+                float ph = t * (variant == 1 && t > 0.035f ? f * 1.26f : f);           // "choose" rises a third halfway
+                float sq = Mathf.Clamp(Mathf.Sin(ph * Mathf.PI * 2f) * 3f, -1f, 1f);
+                d[i] = lp.Run(sq) * Mathf.Min(1f, t / 0.002f) * Mathf.Min(1f, (len - t) / 0.006f);
+            }
+            Normalize(d, 0.35f);
+            return Clip("MenuBeep_" + variant, d, 1);
+        }
+
         // ---------------- Beds (stereo) ----------------
 
         /// <summary>Air handling: low duct rumble plus soft airy diffuser noise, decorrelated L/R.</summary>
@@ -239,6 +259,102 @@ namespace Backrooms.Audio
             var data = Seamless(raw, n, fade, 2);
             Normalize(data, 0.5f);
             return Clip("RoomTone", data, 2);
+        }
+
+        /// <summary>
+        /// The Poolrooms (2026-10-31: calmer and quieter, the owner: "more chill, quiet"): the soft low wash of a lot of
+        /// still water, a slow breath of it, now and then a faint lap against a tiled edge far off, and every several seconds
+        /// a distant drip (a tiny bubble, not a chirp). Decorrelated L/R, 31 s seamless loop. The reverb does the rest.
+        /// </summary>
+        public static AudioClip PoolAmbience()
+        {
+            float L = 31f;
+            int n = (int)(Rate * L), fade = Rate * 2;
+            var raw = new float[(n + fade) * 2];
+            var rng = new System.Random(4242);
+            var lowL = Biquad.LowPass(230f); var lowR = Biquad.LowPass(250f);
+            var lapL = Biquad.BandPass(520f, 1.4f); var lapR = Biquad.BandPass(480f, 1.4f);
+            var dripLp = Biquad.LowPass(2400f);
+            // Laps: (time, length, pan), sparse; drips: (time, pitch, pan), 4-9 s apart.
+            var laps = new List<(float t, float len, float pan)>();
+            for (float t = 1.2f; t < L + 2f; t += 2.5f + (float)rng.NextDouble() * 4f)
+                laps.Add((t, 0.6f + (float)rng.NextDouble() * 0.8f, (float)rng.NextDouble()));
+            var drips = new List<(float t, float hz, float pan)>();
+            for (float t = 2.5f; t < L + 2f; t += 4f + (float)rng.NextDouble() * 5f)
+                drips.Add((t, 1100f + (float)rng.NextDouble() * 900f, (float)rng.NextDouble()));
+            for (int i = 0; i < n + fade; i++)
+            {
+                float t = i / (float)Rate;
+                float breathL = 0.75f + 0.25f * Mathf.Sin(TwoPi * 0.071f * t) + 0.1f * Mathf.Sin(TwoPi * 0.19f * t + 1.1f);
+                float breathR = 0.75f + 0.25f * Mathf.Sin(TwoPi * 0.064f * t + 2.0f) + 0.1f * Mathf.Sin(TwoPi * 0.17f * t + 0.3f);
+                float l = lowL.Run(White(rng)) * 1.1f * breathL, r = lowR.Run(White(rng)) * 1.1f * breathR;
+                float wl = lapL.Run(White(rng)), wr = lapR.Run(White(rng));
+                foreach (var (t0, len, pan) in laps)
+                {
+                    float u = (t - t0) / len;
+                    if (u < 0f || u > 1f) continue;
+                    float e = Mathf.Sin(u * Mathf.PI); e *= e * 0.22f;
+                    l += wl * e * (1f - pan * 0.7f); r += wr * e * (0.3f + pan * 0.7f);
+                }
+                foreach (var (t0, hz, pan) in drips)
+                {
+                    float dt = t - t0;
+                    if (dt < 0f || dt > 0.08f) continue;
+                    // A drop: the faint tick of it landing, then the small bubble it leaves ringing a few ms (barely rising).
+                    float tick = dt < 0.002f ? White(rng) * (1f - dt / 0.002f) * 0.15f : 0f;
+                    float bub = Mathf.Sin(TwoPi * hz * (1f + dt * 2.5f) * dt) * Mathf.Exp(-dt * 70f) * 0.22f;
+                    float d = dripLp.Run(tick + bub);
+                    l += d * (1f - pan); r += d * pan;
+                }
+                raw[i * 2] = l; raw[i * 2 + 1] = r;
+            }
+            var data = Seamless(raw, n, fade, 2);
+            Normalize(data, 0.4f);
+            return Clip("PoolAmbience", data, 2);
+        }
+
+        /// <summary>Aerosol hiss (loop): broadband noise, brightest around 5 kHz, with a slight flutter.</summary>
+        public static AudioClip SprayHiss()
+        {
+            float L = 2f;
+            int n = (int)(Rate * L), fade = Rate / 4;
+            var raw = new float[n + fade];
+            var rng = new System.Random(515);
+            var bp = Biquad.BandPass(5200f, 0.55f);
+            var hp = Biquad.HighPass(1500f);
+            for (int i = 0; i < n + fade; i++)
+            {
+                float t = i / (float)Rate;
+                float flutter = 1f + 0.08f * Mathf.Sin(TwoPi * 23f * t) + 0.05f * Mathf.Sin(TwoPi * 37f * t + 1f);
+                raw[i] = (bp.Run(White(rng)) * 0.9f + hp.Run(White(rng)) * 0.25f) * flutter;
+            }
+            var data = Seamless(raw, n, fade, 1);
+            Normalize(data, 0.5f);
+            return Clip("SprayHiss", data, 1);
+        }
+
+        /// <summary>The mixing ball rattling in a spray can (variant 0-3): a few quick metallic clicks.</summary>
+        public static AudioClip CanRattle(int variant)
+        {
+            int n = (int)(Rate * 0.5f);
+            var d = new float[n];
+            var rng = new System.Random(808 + variant * 7);
+            int hits = 4 + variant % 3;
+            for (int h = 0; h < hits; h++)
+            {
+                float at = 0.02f + h * (0.07f + (float)rng.NextDouble() * 0.03f);
+                float hz = 2600f + (float)rng.NextDouble() * 1400f;
+                float amp = 0.5f + (float)rng.NextDouble() * 0.5f;
+                int s0 = (int)(at * Rate);
+                for (int i = s0; i < n; i++)
+                {
+                    float dt = (i - s0) / (float)Rate;
+                    if (dt > 0.05f) break;
+                    d[i] += (Mathf.Sin(TwoPi * hz * dt) * 0.7f + Mathf.Sin(TwoPi * hz * 2.7f * dt) * 0.3f + White(rng) * 0.3f) * Mathf.Exp(-dt * 140f) * amp;
+                }
+            }
+            Normalize(d, 0.6f);
+            return Clip("CanRattle_" + variant, d, 1);
         }
 
         /// <summary>The aggregate hum of many distant fixtures: soft, low-passed, with slow beating.</summary>
@@ -294,6 +410,97 @@ namespace Backrooms.Audio
         }
 
         // ---------------- Footsteps ----------------
+
+        /// <summary>
+        /// A step through shin-deep water (variant 0-7; 2026-10-31, rebuilt: the old one's droplets swept up four times in
+        /// pitch and sounded like blasters). Most of the sound of water is small bubbles caught under it, each ringing a few
+        /// milliseconds at a pitch set by its size (Minnaert: about 6.5 kHz over its diameter in mm) and barely rising; so:
+        /// the low slosh of the water pushed aside, a soft swoosh of the leg going through, a little spray, a fizz of
+        /// dozens of tiny bubbles crowded at the start and thinning out, and two or three drops falling back.
+        /// </summary>
+        public static AudioClip WaterStep(int variant)
+        {
+            int n = (int)(Rate * 0.75f);
+            var d = new float[n];
+            var rng = new System.Random(1700 + variant * 31);
+            var sloshLp = Biquad.LowPass(520f + variant * 25f); var sloshBp = Biquad.BandPass(240f + variant * 15f, 0.8f);
+            var swoosh = Biquad.BandPass(800f + (variant % 4) * 90f, 0.7f);
+            var spray = Biquad.HighPass(3200f);
+            var air = Biquad.LowPass(5200f);
+            float wob1 = 8f + (float)rng.NextDouble() * 5f, wob2 = 13f + (float)rng.NextDouble() * 6f, ph = (float)rng.NextDouble() * 6f;
+            float swooshLen = 0.22f + (float)rng.NextDouble() * 0.1f;
+            // Bubbles: (start, pitch, ring time, level); most in the first tenth of a second.
+            int count = 55 + rng.Next(30);
+            var bubbles = new (float at, float hz, float tau, float amp)[count];
+            for (int k = 0; k < count; k++)
+            {
+                float at = 0.015f - Mathf.Log(1f - (float)rng.NextDouble() * 0.98f) * 0.09f;
+                float diam = 1.8f + (float)rng.NextDouble() * (float)rng.NextDouble() * 5.5f;      // mm, mostly small
+                float hz = 6520f / diam;
+                bubbles[k] = (at, hz, Mathf.Clamp(5.5f / hz * 1000f, 1.5f, 6f) / 1000f, (0.02f + (float)rng.NextDouble() * 0.06f) * Mathf.Sqrt(diam / 3f) * Mathf.Exp(-at * 4f));
+            }
+            int dropCount = 2 + rng.Next(2);
+            var drops = new (float at, float hz)[dropCount];
+            for (int k = 0; k < dropCount; k++) drops[k] = (0.22f + (float)rng.NextDouble() * 0.35f, 900f + (float)rng.NextDouble() * 700f);
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
+                // Slosh: the water pushed aside and settling back, wobbling.
+                float se = Mathf.Min(1f, t / 0.03f) * Mathf.Exp(-t / 0.17f) * (1f + 0.3f * Mathf.Sin(TwoPi * wob1 * t + ph) * Mathf.Sin(TwoPi * wob2 * t));
+                float w = White(rng);
+                float slosh = (sloshLp.Run(w) * 0.8f + sloshBp.Run(w) * 1.2f) * se;
+                // Swoosh: the leg moving through.
+                float u = t / swooshLen;
+                float swe = u < 1f ? Mathf.Sin(u * Mathf.PI) * (1f - u * 0.4f) : 0f;
+                float sw = swoosh.Run(White(rng)) * swe * 0.35f;
+                // Spray: a little hiss at the start.
+                float sp = spray.Run(White(rng)) * Mathf.Min(1f, t / 0.008f) * Mathf.Exp(-t / 0.06f) * 0.12f;
+                // Bubbles.
+                float bub = 0f;
+                foreach (var (at, hz, tau, amp) in bubbles)
+                {
+                    float dt = t - at;
+                    if (dt < 0f || dt > tau * 5f) continue;
+                    bub += Mathf.Sin(TwoPi * hz * (1f + 0.1f * hz * 0.001f * dt * 40f) * dt) * Mathf.Exp(-dt / tau) * amp;
+                }
+                // Drops falling back.
+                float dr = 0f;
+                foreach (var (at, hz) in drops)
+                {
+                    float dt = t - at;
+                    if (dt < 0f || dt > 0.05f) continue;
+                    dr += Mathf.Sin(TwoPi * hz * (1f + dt * 3f) * dt) * Mathf.Exp(-dt * 90f) * 0.07f + (dt < 0.0015f ? White(rng) * 0.05f : 0f);
+                }
+                d[i] = slosh + sw + sp + air.Run(bub + dr);
+            }
+            for (int i = 0; i < 600; i++) d[n - 1 - i] *= i / 600f;
+            Normalize(d, 0.55f);
+            return Clip("WaterStep_" + variant, d, 1);
+        }
+
+        /// <summary>
+        /// Wading: the steady swish of legs moving through water, swelling with each stride, with a faint fizz of bubbles.
+        /// 4 s seamless loop; its level follows the player's speed in water (PlayerAudio).
+        /// </summary>
+        public static AudioClip WadeLoop()
+        {
+            float L = 4f;
+            int n = (int)(Rate * L), fade = Rate / 2;
+            var raw = new float[n + fade];
+            var rng = new System.Random(5150);
+            var body = Biquad.BandPass(330f, 0.6f); var hiss = Biquad.BandPass(1300f, 0.8f); var fizz = Biquad.HighPass(2500f);
+            for (int i = 0; i < n + fade; i++)
+            {
+                float t = i / (float)Rate;
+                // Two legs: swells at the stride (about 1.6 a second), uneven.
+                float sw = 0.35f + 0.65f * Mathf.Pow(Mathf.Abs(Mathf.Sin(TwoPi * 0.8f * t + 0.3f * Mathf.Sin(TwoPi * 0.25f * t))), 1.5f);
+                float w = White(rng);
+                raw[i] = (body.Run(w) * 1.0f + hiss.Run(White(rng)) * 0.35f) * sw + fizz.Run(White(rng)) * 0.04f * sw * sw;
+            }
+            var data = Seamless(raw, n, fade, 1);
+            Normalize(data, 0.4f);
+            return Clip("WadeLoop", data, 1);
+        }
 
         /// <summary>One carpet step (variant 0-7): heel thud through the floor plus a fabric scuff.</summary>
         public static AudioClip CarpetStep(int variant)
