@@ -204,7 +204,7 @@ namespace Backrooms.Net
         void OnWorkSay(NetReader r)
         {
             string text = r.Str();
-            if (!Host) CamcorderOSD.Notice(text);
+            if (!Host) CamcorderOSD.Title(text);
         }
 
         /// <summary>A joined game: a moment happened on the host (a batch stored, a batch signed back in).</summary>

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using Backrooms.Camcorder;
 using Backrooms.Generation;
@@ -66,6 +67,84 @@ namespace Backrooms.Interaction
         }
 
         static int Sz(int size, float scale) => Mathf.Max(13, Mathf.RoundToInt(size * scale));
+
+        // ---- The side panels as data (2026-11-10, Docs/UiPlan.md U4): UI.SidePanels draws them as cards and rows. ----
+
+        /// <summary>A batch as a card: whose (colour, pictogram), how many, what to do now in a word or two and in what
+        /// colour, how long, and a bar (0..1, -1 none) that drains as the time runs out or fills as the boxes go up.</summary>
+        public struct BatchView { public int client, count; public string name, state, time; public bool rush, dim; public Color ink; public float fill; }
+
+        /// <summary>A work order as a row: its title, its count against its target (target 0: no count), done or not.</summary>
+        public struct OrderView { public string title; public int have, need; public bool done; }
+
+        public sealed class SideView
+        {
+            public string date = "", next = "", stage = "", unlocks = "";
+            public int pay, stageDone, stageTotal;
+            public bool running;
+            public readonly List<BatchView> batches = new List<BatchView>();
+            public readonly List<OrderView> orders = new List<OrderView>();
+            /// <summary>Clients whose work needs something you lack, or who are on hold.</summary>
+            public readonly List<string> notes = new List<string>();
+        }
+
+        public void FillSide(SideView v)
+        {
+            v.batches.Clear(); v.orders.Clear(); v.notes.Clear();
+            v.date = v.next = v.stage = v.unlocks = ""; v.pay = v.stageDone = v.stageTotal = 0;
+            if (D == null) return;
+            v.date = DateText; v.pay = D.pay; v.running = Running; v.next = NextStep;
+            var list = new List<BatchData>(D.batches);
+            list.Sort((a, b) => Rank(a).CompareTo(Rank(b)));
+            var mgr = MovablePropManager.Instance;
+            foreach (var b in list)
+            {
+                if (b.state == 0 && !D.seamsFound.Contains(b.client)) continue;
+                if (b.state == 0 && (NeedOf(b.client) != null || OnHold(b.client))) continue;
+                var c = new BatchView { client = Mathf.Clamp(b.client, 0, 3), name = Name(b.client), count = b.count, rush = b.rush, fill = -1f, time = "", ink = UI.UiKit.Tan };
+                switch (b.state)
+                {
+                    case 0: c.state = "PICK UP"; c.dim = true; break;
+                    case 1:
+                    {
+                        int safe = mgr ? SafeCount(b, mgr) : 0, total = Mathf.Max(1, b.boxes.Count);
+                        int left = b.boxes.Count - safe;
+                        c.state = left > 0 ? $"SHELVE {left}" : "ALL SHELVED"; c.ink = UI.UiKit.Amber; c.fill = safe / (float)total;
+                        break;
+                    }
+                    case 2:
+                        c.state = "STORED"; c.ink = UI.UiKit.Good; c.time = MinSec(b.left);
+                        c.fill = b.storeFor > 0f ? Mathf.Clamp01(b.left / b.storeFor) : 0f;
+                        break;
+                    default:
+                        bool late = b.since > b.window;
+                        c.state = late ? "LATE" : "TAKE BACK"; c.ink = late ? UI.UiKit.Bad : UI.UiKit.Amber;
+                        c.time = late ? "" : MinSec(b.window - b.since);
+                        c.fill = late ? 0f : b.window > 0f ? Mathf.Clamp01(1f - b.since / b.window) : 0f;
+                        break;
+                }
+                v.batches.Add(c);
+            }
+            foreach (int k in D.seamsFound)
+            {
+                string need = NeedOf(k);
+                if (need != null) v.notes.Add($"{Name(k)} NEEDS {need}");
+                else if (OnHold(k)) v.notes.Add($"{Name(k)} ON HOLD - RETURN THEIR LATE BOXES");
+            }
+            if (!WorkOrders.Active) return;
+            v.stage = WorkOrders.StageName; v.unlocks = WorkOrders.UnlocksOf(D.woStage);
+            for (int i = 0; i < WorkOrders.All.Length; i++)
+            {
+                var o = WorkOrders.All[i];
+                if (o.stage != D.woStage) continue;
+                bool done = WorkOrders.Done(i);
+                v.stageTotal++; if (done) v.stageDone++;
+                bool counted = WorkOrders.CountText(i).Length > 0 && o.target > 1;
+                v.orders.Add(new OrderView { title = o.title, done = done, need = counted ? o.target : 0, have = counted ? Mathf.Min(WorkOrders.Progress(i), o.target) : 0 });
+            }
+        }
+
+        static float Rank(BatchData b) => b.state == 3 ? -1000f + (b.window - b.since) : b.state == 2 ? b.left : b.state == 1 ? 100000f : 200000f;
 
         void Step(float scale)
         {
@@ -172,13 +251,7 @@ namespace Backrooms.Interaction
                 // Hidden, it still shows for a while when something on it changes (an order moved on, new boxes).
                 if (_full != _last && _last.Length > 0 && _full.Length > 0) _popUntil = Time.unscaledTime + PopFor;
                 _last = _full;
-                if (side && _c)
-                {
-                    // (A 16:9 screen's bars are 240 wide: the text a little smaller there.)
-                    float scale = Mathf.Clamp(CamcorderOSD.SideWidth / 420f, 0.72f, 1f);
-                    CamcorderOSD.SideRight = _c.SideWork(scale) + "\n\n<size=15><color=#968A6E>J - HIDE</color></size>";
-                    CamcorderOSD.SideLeft = _c.SideBatches(scale);
-                }
+                // (The side panels read the work themselves: UI.SidePanels, from Contracts.FillSide.)
             }
             float pop = Mathf.Clamp01((_popUntil - Time.unscaledTime) / 0.6f);
             bool popping = pop > 0.01f;
@@ -189,6 +262,6 @@ namespace Backrooms.Interaction
             CamcorderOSD.SideAlpha = _mode != 0 ? 1f : pop;
         }
 
-        void OnDisable() { CamcorderOSD.Tracker = ""; CamcorderOSD.TrackerAlpha = 0f; CamcorderOSD.SideRight = CamcorderOSD.SideLeft = ""; }
+        void OnDisable() { CamcorderOSD.Tracker = ""; CamcorderOSD.TrackerAlpha = 0f; }
     }
 }

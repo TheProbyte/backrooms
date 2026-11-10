@@ -131,7 +131,7 @@ namespace Backrooms.CustomRooms
             bool offerBuild = !net && (DevTools.On || InBuilder);
             int rows = 5 + (testing ? 1 : 0) + (offerReference ? 1 : 0) + (offerBuild ? 1 : 0);
             var addresses = net && Net.NetSession.IsHost ? Net.NetTransport.LocalAddresses() : null;
-            float extra = net ? 34 + (addresses != null ? 30 * Mathf.Min(3, Mathf.Max(1, addresses.Count)) : 0) : 0;
+            float extra = net ? 34 + (addresses != null ? 34 * Mathf.Min(3, Mathf.Max(1, addresses.Count)) : 0) : 0;
             float h = 24 + 40 + 10 + rows * 56 + 24 + extra;
             var box = new Rect(cx, ImUi.Height * 0.5f - h * 0.5f, w, h);
             ImUi.FramedBox(box);
@@ -146,7 +146,18 @@ namespace Backrooms.CustomRooms
                 if (addresses != null)
                 {
                     if (addresses.Count == 0) GUI.Label(col.Row(22), "NO NETWORK ADDRESS FOUND", ImUi.Small);
-                    for (int i = 0; i < addresses.Count && i < 3; i++) GUI.Label(col.Row(22), $"{addresses[i].what}:  {addresses[i].address}:{Net.NetSession.Port}", ImUi.Small);
+                    for (int i = 0; i < addresses.Count && i < 3; i++)
+                    {
+                        // (2026-11-10, Docs/UiPlan.md U7) COPY puts the address on the clipboard to paste to a friend.
+                        var row = col.Row(26);
+                        string addr = $"{addresses[i].address}:{Net.NetSession.Port}";
+                        GUI.Label(new Rect(row.x, row.y, row.width - 80, row.height), $"{addresses[i].what}:  {addr}", ImUi.Small);
+                        if (ImUi.Button(new Rect(row.xMax - 72, row.y + 1, 72, row.height - 2), "COPY"))
+                        {
+                            GUIUtility.systemCopyBuffer = addr;
+                            Camcorder.CamcorderOSD.Notice("COPIED " + addr);
+                        }
+                    }
                 }
             }
 

@@ -55,6 +55,14 @@ namespace Backrooms.Net
         /// <summary>How loud you are speaking now (0..1): your own suit's mouth.</summary>
         public static float OwnTalk => Instance ? Instance._ownLevel : 0f;
 
+        /// <summary>How loud a player is speaking now (0..1), you or a friend: the talk marks (Docs/UiPlan.md U7).</summary>
+        public static float TalkOf(int id)
+        {
+            if (!Instance) return 0f;
+            if (id == NetSession.LocalId) return Instance._ownLevel;
+            return Instance._voices.TryGetValue(id, out var v) ? v.Level : 0f;
+        }
+
         void UpdateVoice()
         {
             UpdateCapture();
@@ -243,6 +251,7 @@ namespace Backrooms.Net
             long _writeAbs, _playAbs;             // where they are in samples since it started (not wrapped round the loop)
             int _lastPlay;
             float _level, _levelAt;
+            public float Level => _level;
             int _pushed, _late, _dropped;
             float _peak;
 

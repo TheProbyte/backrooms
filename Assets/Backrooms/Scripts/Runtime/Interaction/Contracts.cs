@@ -217,7 +217,7 @@ namespace Backrooms.Interaction
             D.batches.RemoveAll(b => b.boxes.Count == 0 && b.state > 0);
             D.stored.Remove(id);
             MovablePropManager.Instance?.Forget(id);
-            CamcorderOSD.Notice("FRAGILE BOX BROKEN - $15 OFF THE PAY");
+            CamcorderOSD.Title("FRAGILE BOX BROKEN - $15 OFF THE PAY");
             Beep(false);
             _dirty = true;
         }

@@ -103,7 +103,22 @@ namespace Backrooms.DebugTools
             yield return new WaitForSecondsRealtime(3f);
             yield return AllShapes("10-hub");
 
-            Camcorder.CamcorderOSD.Notice("CONTRACT TAKEN - TAKE THE LIFT DOWN");
+            // Batches in every state for the side panels' cards (this run's own throwaway world: its save is never kept):
+            // the first lot stored with time left, one due back, one late.
+            var data = Saves.GameSession.Data;
+            if (data != null && data.batches.Count > 0)
+            {
+                var first = data.batches[0];
+                first.state = 2; first.storeFor = 240f; first.left = 150f;
+                data.batches.Add(new Saves.BatchData { id = 9001, client = 1, count = 6, state = 3, window = 180f, since = 60f });
+                data.batches.Add(new Saves.BatchData { id = 9002, client = 2, count = 3, state = 3, window = 180f, since = 200f });
+                yield return new WaitForSecondsRealtime(0.6f);
+                yield return AllShapes("10b-batches");
+            }
+
+            Camcorder.CamcorderOSD.Title("TALLMORE STORED - +$40 - DUE BACK IN 3:00");
+            Camcorder.CamcorderOSD.Notice("ORDERED - SHELVING KIT - WAITING BY THE LIFT");
+            Camcorder.CamcorderOSD.Notice("PLUGGED IN - LOAD 2 OF 4");
             yield return new WaitForSecondsRealtime(0.6f);
             yield return AllShapes("11-notice", 0.2f);
 
@@ -112,6 +127,14 @@ namespace Backrooms.DebugTools
             yield return AllShapes("12-pay-slip");
             Camcorder.CamcorderOSD.ShowSlip("", 0.01f);
             yield return new WaitForSecondsRealtime(0.5f);
+
+            Interaction.PropGrabber.ForceHint = "CLICK PUT DOWN · HOLD THROW · HOLD ON A BOX TAKE IT TOO · R TURN";
+            yield return Frames(3);
+            yield return AllShapes("12b-prompts");
+            Interaction.PropGrabber.ForceHint = "HOLD G TO PACK IT BACK INTO ITS CRATE";
+            yield return Frames(3);
+            yield return AllShapes("12c-prompt-hold");
+            Interaction.PropGrabber.ForceHint = null;
 
             var pause = CustomRooms.PauseMenu.Instance;
             if (pause)

@@ -3,8 +3,9 @@
 A review of everything the player reads or clicks, with what to improve and in what order. Where an item changes the
 design, `GameDesign.md` changes with the work.
 
-**Where it stands (2026-11-10): pass 0 is built** (U1 the kit, U3 the picture run, U12 the developer switch; details
-under each). Passes 1 to 5 are not. Pictures after pass 0: `Docs/screenshots/ui/pass0/`.
+**Where it stands (2026-11-10): passes 0 and 1 are built** (U1 the kit, U3 the picture run, U12 the developer switch;
+U4 the side panels, U5 prompts, U6 notices, U7 co-op; details under each). Passes 2 to 5 are not. Pictures:
+`Docs/screenshots/ui/pass0/`, `Docs/screenshots/ui/pass1/`.
 
 **How to read it**
 - Every item says what was found, what to do, how big it is (**S** under a session, **M** a session or two, **L**
@@ -143,6 +144,15 @@ Numbers that matter (seen in the code):
   - The F5 menu and the panels never draw over each other.
 - **Worked when:** on a 16:9 screen, what is due next can be read from the left bar at a glance, with no wrapped
   sentence anywhere.
+- **Built (2026-11-10):** `UI/SidePanels.cs` draws them in uGUI from `Contracts.FillSide` (data, no rich text).
+  Left: the date, IN HAND large, business time; a card per batch (the client's colour stripe and pictogram from
+  `UiKit.Mark`, the same quads as the boxes; name and count; PICK UP, SHELVE 3, STORED, TAKE BACK or LATE in the
+  kit's tan, amber, green or red; the time left; a bar that drains, or fills as boxes go up). Right: NEXT and the step;
+  the stage with its count; each order as a tick row with a filling bar where it has a target; UNLOCKS; a J key cap.
+  16:10 bars (110 to 200 wide) get compact cards on the left only, the work in the picture as before. The panel under
+  F5 (left) or F2 (right) hides while that menu is open. **Changed:** the panels no longer depend on the viewfinder
+  marks being on (they were off by default, which hid the work for most players). Seen in the picture run at all five
+  shapes, with stored, due and late batches put into its throwaway world.
 
 ### U5. Hints become prompts (M)
 - **Found:** hints are a line of 17 px Arial centred over the bottom of the picture, with the key written in the
@@ -153,6 +163,12 @@ Numbers that matter (seen in the code):
   controller changes it. The first time a prompt appears it stays longer; after that it is brief.
 - **Why:** it is the game's most-read text, and the part a controller needs most.
 - **Worked when:** every hint in the game goes through it, and changing a key in Settings changes what it shows.
+- **Built (2026-11-10):** `UI/Prompts.cs`. Every hint line still comes from where it is written; `Prompts.Parse` reads
+  it into prompts (CLICK and RIGHT CLICK as the mouse with that button filled, HOLD and LET GO as a gold tag, MOUSE as
+  the mouse, single keys, 1-4, W/A/S/D as a key cap; anything else a plain note), drawn as cap and verb in Courier
+  Prime over the bottom of the picture. Key labels come from one table (`KeyLabel`): no rebinding exists yet, so that
+  table is where it will go. Tests cover every hint form in the game. **Not done:** "longer the first time" (hints
+  show while you aim at something, so they already stay as long as needed).
 
 ### U6. Notices queue instead of replacing each other (S)
 - **Found:** one notice shows at a time, in the middle of the picture, for four seconds; a second one replaces the
@@ -161,6 +177,11 @@ Numbers that matter (seen in the code):
   plan (DUE BACK, LATE, NEW CLIENT FOUND) and **lines** at the lower left for the rest (ORDERED, 2 MORE). A friend's
   name in their colour when it is about them.
 - **Worked when:** storing a batch while a friend buys something shows both.
+- **Built (2026-11-10):** `CamcorderOSD.Title` (news that changes the plan: everything through `Contracts.Tell`, a
+  co-op host's notices, FRAGILE BOX BROKEN, ORIENTATION DONE, HOME) queues three at most, each shown in turn (3 s while
+  others wait); `CamcorderOSD.Notice` is now a line at the picture's lower left, three at once, the same line again
+  refreshed instead of stacked. Seen in the picture run: a title and two lines together. **Not done:** a friend's name
+  in their colour (notices do not say who caused them yet).
 
 ### U7. Co-op on screen (S to M)
 - **Found:** the Tab list is a navy box (the old look) in Arial; name tags are 15 px labels; nothing shows who is
@@ -169,6 +190,12 @@ Numbers that matter (seen in the code):
   ping; a small mark by a name tag while that friend speaks; the join address on the pause menu kept, with a COPY
   button.
 - **Worked when:** with two players, you can tell who is speaking and where they are without asking.
+- **Built (2026-11-10):** the Tab list in the kit (a chocolate panel with the amber frame and stripe; each player's
+  colour chip, name, where they are: HUB, FLOOR or a client's room, from `NetWorld.PlaceOf`; ping, red over 150 ms);
+  three talk bars beside a name in the list and on the name tag while that player speaks (`NetWorld.TalkOf`, the
+  voice level the mouths already use); COPY beside each join address on the pause menu. Seen in a two-copy loopback
+  game (`-net-host -work-test -coop-shots <folder>`): the list and the tag. **Not seen:** the talk bars (no microphone
+  in the test).
 
 ---
 
@@ -295,7 +322,7 @@ Each pass ends with the pictures from U3 taken again and the owner looking at th
 | Pass | What | Items | Done when |
 |---|---|---|---|
 | **0. Ground** (built 2026-11-10) | The picture run, the kit, the developer switch | U3, U1, U12 | Before-pictures exist; two shipped fonts; a player cannot reach a developer tool |
-| **1. In play** | Side panels, prompts, notices, co-op marks | U4, U5, U6, U7 | "What is due next" reads at a glance on 16:9; every hint is a prompt |
+| **1. In play** (built 2026-11-10) | Side panels, prompts, notices, co-op marks | U4, U5, U6, U7 | "What is due next" reads at a glance on 16:9; every hint is a prompt |
 | **2. Menus** | Title, one menu language, settings, worlds and friends | U8, U9, U10, U11 | Main and pause menus look like one game; text size is a setting |
 | **3. Camcorder and world** | The player's F5, the pixel-screen kit, the boards | U13, U14, U15 | Nothing cut off in F5; every world screen readable at its distance |
 | **4. Reach** | Small screens, words in one place | U17, U18 (U16 not yet) | 12 px floor at 1280 x 800; wording in one file |
@@ -319,7 +346,7 @@ Still open:
 
 ## Small things seen today (to fix on the way, whatever the order)
 
-- The F5 menu and the left side panel draw over each other.
+- ~~The F5 menu and the left side panel draw over each other~~ (the panel hides under F5, pass 1).
 - F5 preset buttons cut their labels (DEFAUL T, FOUND FOOTAG E, REFERE NCE MATCH, LOW LIGHT GAIN clipped).
 - The L menu cuts "Cassette (lunch break mix)".
 - The title screen's date is OCT 19 1998; the game's is MAR 1996.

@@ -90,6 +90,30 @@ namespace Backrooms.DebugTools
             if (wake && wake.Busy) wake.GetUp();
             yield return new WaitForSecondsRealtime(8f);                    // (the first lot is stacked behind the seam)
             Debug.Log("[WorkTest] start: " + Net.NetWorld.WorkReport());
+            // -coop-shots <folder> (2026-11-10, Docs/UiPlan.md U7): the player list and the friend's name tag, pictured.
+            int shots = System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-coop-shots");
+            if (shots >= 0 && shots + 1 < System.Environment.GetCommandLineArgs().Length)
+            {
+                string dir = System.Environment.GetCommandLineArgs()[shots + 1];
+                System.IO.Directory.CreateDirectory(dir);
+                var me = FindAnyObjectByType<CamcorderPlayerController>();
+                var friendAvatar = FindAnyObjectByType<Net.RemotePlayer>();
+                if (me && friendAvatar)
+                {
+                    // Face the friend from a few metres away.
+                    var to = friendAvatar.transform.position - me.transform.position; to.y = 0f;
+                    if (to.sqrMagnitude > 0.01f) me.TeleportSafe(friendAvatar.transform.position - to.normalized * 3f, Quaternion.LookRotation(to).eulerAngles.y, 0f);
+                }
+                yield return new WaitForSecondsRealtime(1.5f);
+                yield return new WaitForEndOfFrame();
+                ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(dir, "coop-name-tag.png"));
+                Net.NetSession.ShowList = true;
+                yield return new WaitForSecondsRealtime(1f);
+                yield return new WaitForEndOfFrame();
+                ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(dir, "coop-tab-list.png"));
+                yield return new WaitForSecondsRealtime(0.5f);
+                Net.NetSession.ShowList = false;
+            }
             Net.NetDebug.Send(friend, "work");
             yield return new WaitForSecondsRealtime(2f);
             Net.NetDebug.Send(friend, "worklot store 0");

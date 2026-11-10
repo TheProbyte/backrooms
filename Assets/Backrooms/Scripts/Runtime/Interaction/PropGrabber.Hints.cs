@@ -13,13 +13,14 @@ namespace Backrooms.Interaction
     public partial class PropGrabber
     {
         /// <summary>The line shown now (for tests), or null.</summary>
-        public string HintText => Time.time < _noteUntil ? _note : _hint;
+        public string HintText => ForceHint ?? (Time.time < _noteUntil ? _note : _hint);
+        /// <summary>For the picture run (DebugTools.UiShots): a hint line shown whatever the hands are on, or null.</summary>
+        public static string ForceHint;
         /// <summary>For probes: which grab edge the marks show now (-1: none).</summary>
         public int MarkEdge => _hintMark.HasValue ? _markEdge : -1;
         string _hint, _note;
         float _noteUntil = -10f;
         Vector3? _hintMark;
-        GUIStyle _hintStyle;
         /// <summary>No jitter along the edge for the marks (FindGrip varies a real grab a few centimetres; re-rolled each
         /// frame, the marks shook, round 13).</summary>
         sealed class NoJitter : System.Random { public override double NextDouble() => 0.5; }
@@ -138,17 +139,9 @@ namespace Backrooms.Interaction
             string text = HintText;
             if (string.IsNullOrEmpty(text)) return;
             float scale = Screen.height / 1080f;
-            if (_hintStyle == null) _hintStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, font = Backrooms.UI.UiKit.Font(Backrooms.UI.UiKit.Face.Paper, true) };
-            _hintStyle.fontSize = Mathf.Max(9, Mathf.RoundToInt(17f * scale));
-            float y = PocketsTop - 46f * scale;
-            var r = new Rect(0f, y, Screen.width, 26f * scale);
+            // (2026-11-10, Docs/UiPlan.md U5: drawn as prompts, a key cap or the mouse and a verb, UI.Prompts.)
             bool note = Time.time < _noteUntil;
-            var old = GUI.color;
-            GUI.color = new Color(0f, 0f, 0f, 0.7f);
-            GUI.Label(new Rect(r.x + 1.5f, r.y + 1.5f, r.width, r.height), text, _hintStyle);
-            GUI.color = note ? new Color(1f, 0.9f, 0.6f, 0.9f) : new Color(1f, 1f, 1f, 0.75f);
-            GUI.Label(r, text, _hintStyle);
-            GUI.color = old;
+            Backrooms.UI.Prompts.Draw(text, Screen.width * 0.5f, PocketsTop - 56f * scale, scale, note ? 0.95f : 0.88f, note);
             if (_hintMark.HasValue && !note) FocusMarksAlpha(_markShown, 0.035f, 12f, 0.45f);
         }
     }

@@ -27,11 +27,47 @@ namespace Backrooms.Camcorder
         Text _rec, _counter, _date, _time, _sp, _dev;
         Text _notice;
         static string s_notice;
-        static float s_noticeAt = -100f;
+        static float s_noticeAt = -100f, s_noticeFor = NoticeFor;
         const float NoticeFor = 4f;
 
-        /// <summary>A word stamped in the middle of the picture for a few seconds (HOME), shown with or without the viewfinder display.</summary>
-        public static void Notice(string text) { s_notice = text; s_noticeAt = Time.unscaledTime; }
+        // Notices (2026-11-10, Docs/UiPlan.md U6): one at a time used to replace the last, and with co-op the host's arrive
+        // on everyone's screen too. Now two weights. A title, in the middle of the picture, is news that changes your plan
+        // (a new client, stored, due back, late, an order done): they queue, three at most waiting, each shown in turn, the
+        // oldest dropped. A line, small at the lower left of the picture above the date, is the rest (ordered, plugged in,
+        // locked, 2 more): up to three at once, the newest at the bottom.
+        static readonly System.Collections.Generic.List<string> s_titles = new System.Collections.Generic.List<string>();
+        static readonly System.Collections.Generic.List<(string text, float at)> s_lines = new System.Collections.Generic.List<(string, float)>();
+        const int MaxTitlesWaiting = 3, MaxLines = 3;
+        const float LineFor = 4.5f;
+        readonly Text[] _lines = new Text[MaxLines];
+
+        /// <summary>A title in the middle of the picture: news that changes the plan. Queued behind any showing.</summary>
+        public static void Title(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            if (text == s_notice && Time.unscaledTime - s_noticeAt < s_noticeFor) return;
+            if (s_titles.Contains(text)) return;
+            s_titles.Add(text);
+            if (s_titles.Count > MaxTitlesWaiting) s_titles.RemoveAt(0);
+        }
+
+        /// <summary>A line at the lower left of the picture for a few seconds: what just happened, or why not.</summary>
+        public static void Notice(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            // The same line again (2 MORE, 1 MORE ...): it stays, refreshed, instead of stacking.
+            if (s_lines.Count > 0 && s_lines[s_lines.Count - 1].text == text) { s_lines[s_lines.Count - 1] = (text, Time.unscaledTime); return; }
+            s_lines.Add((text, Time.unscaledTime));
+            if (s_lines.Count > MaxLines) s_lines.RemoveAt(0);
+        }
+
+        /// <summary>For tests: no titles or lines.</summary>
+        public static void ClearNotices() { s_titles.Clear(); s_lines.Clear(); s_notice = null; s_noticeAt = -100f; }
+
+        /// <summary>For tests: the title showing now (or null) and how many wait.</summary>
+        public static string TitleShowing => Time.unscaledTime - s_noticeAt < s_noticeFor ? s_notice : null;
+        public static int TitlesWaiting => s_titles.Count;
+        public static int LinesShowing { get { int n = 0; foreach (var l in s_lines) if (Time.unscaledTime - l.at < LineFor) n++; return n; } }
 
         /// <summary>The LOW LIGHT warning (0..1, faded in and out by Interaction.ShelfWatch while you look at a shelf that is
         /// not lit enough to be safe overnight), as real camcorders warned when the picture was too dark.</summary>
@@ -53,10 +89,13 @@ namespace Backrooms.Camcorder
         /// picture only the camcorder's own marks stay. <see cref="SideWidth"/> is a bar's width in the display's units
         /// (1080 high), 0 with no bars: Interaction.OrderTracker sizes its text by it.
         /// </summary>
-        public static string SideRight = "", SideLeft = "";
         public static float SideAlpha = 1f, SideWidth;
-        public const float MinSide = 200f;
-        Text _sideR, _sideL;
+        public const float MinSide = Backrooms.UI.SidePanels.MinFull;
+        /// <summary>The panels themselves, drawn as cards and rows (UI.SidePanels, 2026-11-10).</summary>
+        Backrooms.UI.SidePanels _panels;
+        CamcorderVisualMenu _f5;
+        Backrooms.Interaction.ItemTuningMenu _f2;
+        float _menusLooked = -10f;
 
         /// <summary>Money in (Interaction.Contracts.PayMoment): IN HAND counts up from one figure to the other over this
         /// long, bottom right of the picture, and stays a few seconds.</summary>
@@ -233,8 +272,8 @@ namespace Backrooms.Camcorder
             rim.effectColor = new Color(0, 0, 0, 0.8f); rim.effectDistance = new Vector2(1.5f, -1.5f);
             _money = Label("", new Vector2(1, 0), Vector2.zero, TextAnchor.LowerRight, 40);
             _money.enabled = false;
-            _sideR = SidePanel("SideRight");
-            _sideL = SidePanel("SideLeft");
+            _panels = gameObject.AddComponent<Backrooms.UI.SidePanels>();
+            _panels.Build(_barCanvas.transform, _paper, _paperBold);
             _notice = Label("", new Vector2(0.5f, 0.5f), new Vector2(0, -60), TextAnchor.MiddleCenter, 72);
             _notice.transform.SetParent(_barCanvas.transform, false);
             var nr = _notice.rectTransform; nr.anchorMin = nr.anchorMax = nr.pivot = new Vector2(0.5f, 0.32f); nr.anchoredPosition = Vector2.zero;
@@ -245,6 +284,15 @@ namespace Backrooms.Camcorder
             _notice.resizeTextForBestFit = true;
             _notice.resizeTextMinSize = 26; _notice.resizeTextMaxSize = 56;
             _notice.lineSpacing = 1f;
+            for (int i = 0; i < MaxLines; i++)
+            {
+                var l = Label("", new Vector2(0, 0), Vector2.zero, TextAnchor.LowerLeft, 26);
+                l.transform.SetParent(_barCanvas.transform, false);
+                var lr = l.rectTransform; lr.anchorMin = lr.anchorMax = lr.pivot = Vector2.zero; lr.sizeDelta = new Vector2(900, 34);
+                l.horizontalOverflow = HorizontalWrapMode.Overflow;
+                l.enabled = false;
+                _lines[i] = l;
+            }
             _debug.transform.SetParent(_barCanvas.transform, false);
             var dr2 = _debug.rectTransform; dr2.anchorMin = dr2.anchorMax = dr2.pivot = new Vector2(1, 0); dr2.anchoredPosition = new Vector2(-16, 12);
             Battery();
@@ -336,20 +384,6 @@ namespace Backrooms.Camcorder
             float k = Mathf.Min(Mathf.SmoothStep(0f, 1f, t / 0.35f), Mathf.SmoothStep(0f, 1f, (s_slipFor - t) / 0.5f));
             _slip.anchoredPosition = new Vector2(-380f, Mathf.Lerp(-_slip.sizeDelta.y - 20f, 215f, k));
             _slip.localRotation = Quaternion.Euler(0f, 0f, 1.2f);
-        }
-
-        /// <summary>A side panel's text, flat on the bars' canvas (over the black bar it sits in).</summary>
-        Text SidePanel(string name)
-        {
-            var t = new GameObject(name).AddComponent<Text>();
-            t.transform.SetParent(_barCanvas.transform, false);
-            t.font = _paper; t.fontSize = 22; t.alignment = TextAnchor.UpperLeft; t.supportRichText = true;
-            t.color = new Color(Backrooms.UI.UiKit.Cream.r, Backrooms.UI.UiKit.Cream.g, Backrooms.UI.UiKit.Cream.b, 0.92f);
-            t.horizontalOverflow = HorizontalWrapMode.Wrap; t.verticalOverflow = VerticalWrapMode.Truncate;
-            t.lineSpacing = 1.08f;
-            t.raycastTarget = false;
-            t.enabled = false;
-            return t;
         }
 
         RectTransform Bar(string name, bool left)
@@ -461,11 +495,18 @@ namespace Backrooms.Camcorder
             _debug.enabled = showDebug;
             _dev.enabled = DevTools.On;
             UpdateSlip();
-            // A notice given while the slip is up (the new morning's NEW WORK) waits until it has gone.
-            if (_slip && _slip.gameObject.activeSelf && s_noticeAt >= s_slipAt) s_noticeAt = Time.unscaledTime;
+            // The next title in the queue when the last has gone (shorter while others wait). A title given while the slip is
+            // up waits until it has gone.
+            bool slipUp = _slip && _slip.gameObject.activeSelf;
+            if (Time.unscaledTime - s_noticeAt >= s_noticeFor && s_titles.Count > 0 && !slipUp)
+            {
+                s_notice = s_titles[0]; s_titles.RemoveAt(0);
+                s_noticeAt = Time.unscaledTime;
+                s_noticeFor = s_titles.Count > 0 ? 3f : NoticeFor;
+            }
             float na = Time.unscaledTime - s_noticeAt;
-            if (_slip && _slip.gameObject.activeSelf && s_noticeAt >= s_slipAt) na = NoticeFor;    // (held back: hidden)
-            _notice.enabled = na < NoticeFor && !string.IsNullOrEmpty(s_notice);
+            if (slipUp && s_noticeAt >= s_slipAt) { s_noticeAt = Time.unscaledTime; na = s_noticeFor; }    // (held back: hidden)
+            _notice.enabled = na < s_noticeFor && !string.IsNullOrEmpty(s_notice);
             if (_notice.enabled)
             {
                 _notice.text = s_notice;
@@ -474,8 +515,30 @@ namespace Backrooms.Camcorder
                 float pw = Mathf.Min(cr.width, cr.height * (_frame ? _frame.GetComponent<AspectRatioFitter>().aspectRatio : 16f / 9f));
                 _notice.rectTransform.sizeDelta = new Vector2(pw * 0.8f, 150f);
                 // Steady, then a few blinks out, like a camcorder's title.
-                bool show = na < NoticeFor - 1f || ((na * 4f) % 1f) < 0.6f;
+                bool show = na < s_noticeFor - 1f || ((na * 4f) % 1f) < 0.6f;
                 _notice.color = new Color(_ink.r, _ink.g, _ink.b, show ? 0.95f : 0f);
+            }
+            // The lines: at the picture's lower left, above the time and date, the newest at the bottom.
+            {
+                var cr = ((RectTransform)_barCanvas.transform).rect;
+                float aspect = _frame ? _frame.GetComponent<AspectRatioFitter>().aspectRatio : 16f / 9f;
+                float pw = Mathf.Min(cr.width, cr.height * aspect), ph = pw / aspect;
+                float left = (cr.width - pw) * 0.5f + pw * 0.06f, bottom = (cr.height - ph) * 0.5f + ph * 0.07f + 96f;
+                s_lines.RemoveAll(l => Time.unscaledTime - l.at >= LineFor);
+                for (int i = 0; i < MaxLines; i++)
+                {
+                    var t = _lines[i];
+                    if (!t) continue;
+                    int k = s_lines.Count - 1 - i;       // 0 the newest, at the bottom
+                    t.enabled = k >= 0;
+                    if (k < 0) continue;
+                    var (text, at) = s_lines[k];
+                    float age = Time.unscaledTime - at;
+                    float a = Mathf.Clamp01((LineFor - age) / 0.5f) * Mathf.Clamp01(age / 0.12f);
+                    t.text = text;
+                    t.rectTransform.anchoredPosition = new Vector2(left, bottom + i * 34f);
+                    t.color = new Color(_ink.r, _ink.g, _ink.b, 0.92f * a * (i == 0 ? 1f : 0.8f));
+                }
             }
             // LOW LIGHT: faded in, then a slow blink while it stays.
             if (_lowLight)
@@ -502,25 +565,19 @@ namespace Backrooms.Camcorder
             }
             // The side panels: the work in the right bar, your batches in the left, hard against the picture.
             SideWidth = bar;
-            bool side = bar >= MinSide && visible;
-            if (_sideR && _sideL)
+            // (2026-11-10: not tied to the viewfinder marks any more. The marks are off by default, which hid the work too.)
+            bool side = bar >= MinSide;
+            if (_panels)
             {
-                bool on = side && SideAlpha > 0.01f;
-                _sideR.enabled = on && !string.IsNullOrEmpty(SideRight);
-                _sideL.enabled = on && !string.IsNullOrEmpty(SideLeft);
-                if (on)
+                // The F5 menu sits over the left bar and item tuning (F2) over the right: the panel under one is hidden.
+                if (Time.unscaledTime - _menusLooked > 1f)
                 {
-                    float pw = Mathf.Min(bar - 36f, 560f), ph = h - 150f;
-                    var rr = _sideR.rectTransform;
-                    rr.anchorMin = rr.anchorMax = new Vector2(1, 1); rr.pivot = new Vector2(0, 1);
-                    rr.anchoredPosition = new Vector2(-bar + 18f, -72f); rr.sizeDelta = new Vector2(pw, ph);
-                    var lr = _sideL.rectTransform;
-                    lr.anchorMin = lr.anchorMax = new Vector2(0, 1); lr.pivot = new Vector2(1, 1);
-                    lr.anchoredPosition = new Vector2(bar - 18f, -72f); lr.sizeDelta = new Vector2(pw, ph);
-                    _sideR.text = SideRight; _sideL.text = SideLeft;
-                    var c = new Color(Backrooms.UI.UiKit.Cream.r, Backrooms.UI.UiKit.Cream.g, Backrooms.UI.UiKit.Cream.b, 0.92f * SideAlpha);
-                    _sideR.color = c; _sideL.color = c;
+                    _menusLooked = Time.unscaledTime;
+                    if (!_f5) _f5 = FindAnyObjectByType<CamcorderVisualMenu>();
+                    if (!_f2) _f2 = FindAnyObjectByType<Backrooms.Interaction.ItemTuningMenu>();
                 }
+                bool f5 = _f5 && _f5.IsOpen, f2 = _f2 && _f2.IsOpen;
+                _panels.Layout(bar, !f5, !f2, SideAlpha);
             }
             // The work orders in the picture, top right: only with no bars to put them in (a narrow window, 4:3 off).
             if (_tracker)

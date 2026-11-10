@@ -17,7 +17,7 @@ namespace Backrooms.UI
     /// Resources/Fonts with their licences (SIL Open Font License 1.1); Pixelify Sans is the variable font cut into fixed
     /// Regular and Bold files, as Unity reads no variable fonts.
     /// </summary>
-    public static class UiKit
+    public static partial class UiKit
     {
         public enum Face { Cam, Paper }
 

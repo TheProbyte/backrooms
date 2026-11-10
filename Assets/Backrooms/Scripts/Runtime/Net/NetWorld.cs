@@ -232,6 +232,18 @@ namespace Backrooms.Net
             Avatar(id)?.Push(s);
         }
 
+        /// <summary>Where a player is, in a word or two (the Tab list): the hub, the floor, or a client's room.</summary>
+        public static string PlaceOf(int id)
+        {
+            Vector3? p = null;
+            if (id == NetSession.LocalId) { var me = FindAnyObjectByType<CamcorderPlayerController>(); if (me) p = me.transform.position; }
+            else if (Instance && Instance._avatars.TryGetValue(id, out var a) && a && a.HasState) p = a.transform.position;
+            if (!p.HasValue) return "";
+            if (Generation.HubPlan.InHub(p.Value)) return "HUB";
+            int k = Generation.SeamPlan.KindAt(p.Value);
+            return k >= 0 ? Interaction.Contracts.Clients[k] + "'S" : "FLOOR";
+        }
+
         RemotePlayer Avatar(int id)
         {
             if (id == Me || id < 0) return null;
@@ -399,6 +411,13 @@ namespace Backrooms.Net
                 GUI.color = new Color(c.r, c.g, c.b, alpha);
                 GUI.Label(rect, NetSession.NameOf(a.Peer), s_tag);
                 GUI.color = old;
+                // Talking (2026-11-10, Docs/UiPlan.md U7): three small bars after the name, moving with their voice.
+                float talk = TalkOf(a.Peer);
+                if (talk > 0.04f)
+                {
+                    float nameW = s_tag.CalcSize(new GUIContent(NetSession.NameOf(a.Peer))).x;
+                    UI.Talk.Bars(new Rect(rect.center.x + nameW * 0.5f + 6f, rect.y + 3f, 16f, rect.height - 6f), talk, new Color(c.r, c.g, c.b, alpha));
+                }
             }
         }
     }

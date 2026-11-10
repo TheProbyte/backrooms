@@ -111,6 +111,12 @@ camcorder. Alone or with up to three friends.
   ROOM, BUILD A SECTION) exist only in the editor, a development build, or with `-dev` on the command line; there they
   can be turned off in Settings (DEVELOPER TOOLS), and a small DEV in the viewfinder shows they are on. [built
   2026-11-10]
+- **What is on screen while you work** (Docs/UiPlan.md pass 1): in the black bars beside the 4:3 picture, your batches
+  as cards on the left (the client's colour and mark, how many, what to do now, the time left as a draining bar) and
+  the work on the right (the next step, this stage's orders as tick rows with filling bars); hints as key caps and
+  verbs; news that changes the plan as a title in the middle (queued, never replacing each other), the rest as small
+  lines at the lower left; in co-op a player list with where everyone is, and talk bars by a name while that friend
+  speaks. The side panels show whether or not the viewfinder marks are on. [built 2026-11-10]
 
 ## 5. The places
 
@@ -648,8 +654,9 @@ packing job → powered racks.
 ## Other docs
 
 - `Docs/UiPlan.md`: every screen, panel and prompt reviewed (2026-11-09), and a plan in passes to give them one look,
-  split the developer tools from the player's game, and reach small screens. Pass 0 built 2026-11-10 (the two
-  typefaces and the colour names, the developer switch, `-ui-shots`); passes 1 to 5 not built. Decided 2026-11-10: the
+  split the developer tools from the player's game, and reach small screens. Passes 0 and 1 built 2026-11-10 (the
+  two typefaces and the colour names, the developer switch, `-ui-shots`; the side panels, prompts, notices, co-op
+  marks); passes 2 to 5 not built. Decided 2026-11-10: the
   developer tools and build mode are for the owner only (off in the player's game); no controller yet; other languages
   later; a title screen with the game's name, the name itself still open (Overflow is taken by a Japanese studio).
   The game's two typefaces: Pixelify Sans for the camcorder's marks, Courier Prime for the company's paper (menus,

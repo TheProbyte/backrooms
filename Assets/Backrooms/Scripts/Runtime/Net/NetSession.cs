@@ -564,11 +564,13 @@ namespace Backrooms.Net
 
         void UpdateNotes() { _notes.RemoveAll(n => Time.unscaledTime > n.until); }
 
-        static GUIStyle s_note, s_list;
+        static GUIStyle s_note, s_list, s_small;
+        /// <summary>For tests and pictures: the player list shown as if Tab were held.</summary>
+        public static bool ShowList;
 
         void OnGUI()
         {
-            bool tab = Active && Keyboard.current != null && Keyboard.current.tabKey.isPressed && GameSession.InWorldForNet;
+            bool tab = Active && (ShowList || (Keyboard.current != null && Keyboard.current.tabKey.isPressed)) && GameSession.InWorldForNet;
             if (_notes.Count == 0 && !tab) return;
             ImUi.Begin();
             if (s_note == null)
@@ -591,24 +593,45 @@ namespace Backrooms.Net
             }
             if (tab)
             {
-                float w = 460, h = 70 + Peers.Count * 40;
-                var box = new Rect(ImUi.Width * 0.5f - w * 0.5f, 260, w, h);
-                ImUi.Fill(box, new Color(0.04f, 0.09f, 0.27f, 0.9f));
-                GUI.Label(new Rect(box.x + 20, box.y + 12, w - 40, 34), IsHost ? "PLAYERS (YOU ARE HOSTING)" : "PLAYERS", s_list);
-                float py = box.y + 52;
+                // (2026-11-10, Docs/UiPlan.md U7) In the kit: each player's colour, name, where they are, their ping, and
+                // a talk mark while they speak.
+                if (s_small == null)
+                {
+                    // (White text, so GUI.color gives the kit's colour exactly: the label's default grey dimmed it.)
+                    s_list.normal.textColor = Color.white;
+                    s_small = new GUIStyle(s_list) { font = Backrooms.UI.UiKit.Font(Backrooms.UI.UiKit.Face.Paper, true), fontSize = 18 };
+                }
+                float w = 620, h = 96 + Peers.Count * 46;
+                var box = new Rect(ImUi.Width * 0.5f - w * 0.5f, 240, w, h);
+                Backrooms.UI.UiKit.GuiRound(box, new Color(Backrooms.UI.UiKit.Choc.r, Backrooms.UI.UiKit.Choc.g, Backrooms.UI.UiKit.Choc.b, 0.95f));
+                Backrooms.UI.UiKit.GuiRound(box, Backrooms.UI.UiKit.Amber, true);
+                var oldC = GUI.color;
+                GUI.color = Backrooms.UI.UiKit.Amber;
+                GUI.Label(new Rect(box.x + 24, box.y + 14, w - 48, 30), IsHost ? "PLAYERS · YOU ARE HOSTING" : "PLAYERS", s_list);
+                ImUi.Stripe(new Rect(box.x + 24, box.y + 50, w - 48, 6));
+                GUI.color = oldC;
+                float py = box.y + 70;
                 var ids = new List<int>(Peers.Keys); ids.Sort();
                 foreach (var id in ids)
                 {
                     var p = Peers[id];
-                    var old = GUI.color; GUI.color = p.Colour;
-                    string state = id == 0 ? "HOST" : !p.inWorld ? "JOINING" : (IsHost ? $"{Mathf.RoundToInt(p.ping * 1000f)} MS" : "");
-                    if (id == LocalId) state = (state.Length > 0 ? state + " · " : "") + "YOU" + (IsClient ? $" · {Mathf.RoundToInt(p.ping * 1000f)} MS" : "");
-                    GUI.Label(new Rect(box.x + 24, py, w - 48, 34), p.name, s_list);
-                    GUI.color = new Color(0.75f, 0.82f, 1f);
-                    var right = new GUIStyle(s_list) { alignment = TextAnchor.MiddleRight };
-                    GUI.Label(new Rect(box.x + 24, py, w - 48, 34), state, right);
+                    var old = GUI.color;
+                    var chip = new Rect(box.x + 24, py + 7, 22, 22);
+                    Backrooms.UI.UiKit.GuiRound(chip, p.Colour);
+                    GUI.color = Backrooms.UI.UiKit.Cream;
+                    GUI.Label(new Rect(box.x + 58, py, 230, 36), p.name + (id == LocalId ? " (YOU)" : ""), s_list);
+                    float talk = NetWorld.TalkOf(id);
+                    if (talk > 0.04f) Backrooms.UI.Talk.Bars(new Rect(box.x + 58 + s_list.CalcSize(new GUIContent(p.name + (id == LocalId ? " (YOU)" : ""))).x + 8, py + 8, 18, 20), talk, p.Colour);
+                    GUI.color = Backrooms.UI.UiKit.Tan;
+                    string place = !p.inWorld ? "JOINING" : NetWorld.PlaceOf(id);
+                    GUI.Label(new Rect(box.x + 330, py, 170, 36), place, s_small);
+                    int ms = Mathf.RoundToInt(p.ping * 1000f);
+                    string ping = id == 0 && IsHost ? "HOST" : (IsHost || id == LocalId) && p.inWorld ? $"{ms} MS" : id == 0 ? "HOST" : "";
+                    var right = new GUIStyle(s_small) { alignment = TextAnchor.MiddleRight };
+                    GUI.color = ms > 150 && ping.EndsWith("MS") ? Backrooms.UI.UiKit.Bad : Backrooms.UI.UiKit.Tan;
+                    GUI.Label(new Rect(box.x + 24, py, w - 48, 36), ping, right);
                     GUI.color = old;
-                    py += 40;
+                    py += 46;
                 }
             }
             ImUi.End();

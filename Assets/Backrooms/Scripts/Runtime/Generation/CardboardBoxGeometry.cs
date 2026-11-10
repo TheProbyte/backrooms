@@ -153,27 +153,23 @@ namespace Backrooms.Generation
                 Vector3 ey = Vector3.up;
                 void Shape(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3) =>
                     tape.Quad(o + ex * (x0 * u) + ey * (y0 * u), o + ex * (x1 * u) + ey * (y1 * u), o + ex * (x2 * u) + ey * (y2 * u), o + ex * (x3 * u) + ey * (y3 * u), n, MeshWriter.MetreUV);
-                switch (mark)
-                {
-                    case 0:     // TALLMORE: three bars, rising
-                        Shape(-0.95f, -1f, -0.45f, -1f, -0.45f, -0.25f, -0.95f, -0.25f);
-                        Shape(-0.25f, -1f, 0.25f, -1f, 0.25f, 0.35f, -0.25f, 0.35f);
-                        Shape(0.45f, -1f, 0.95f, -1f, 0.95f, 1f, 0.45f, 1f);
-                        break;
-                    case 1:     // QUILLBY: a diamond
-                        Shape(0f, -1f, 0.8f, 0f, 0f, 1f, -0.8f, 0f);
-                        break;
-                    case 2:     // PAPERLARK: a chevron (a bird's wings)
-                        Shape(-1f, 0.55f, 0f, -0.35f, 0f, -1f, -1f, -0.1f);
-                        Shape(0f, -0.35f, 1f, 0.55f, 1f, -0.1f, 0f, -1f);
-                        break;
-                    default:    // BELLWEATHER: a bell (wide at the foot), its clapper under it
-                        Shape(-0.9f, -0.55f, 0.9f, -0.55f, 0.42f, 1f, -0.42f, 1f);
-                        Shape(-0.22f, -1f, 0.22f, -1f, 0.22f, -0.7f, -0.22f, -0.7f);
-                        break;
-                }
+                foreach (var q in MarkShapes[Mathf.Clamp(mark, 0, MarkShapes.Length - 1)])
+                    Shape(q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7]);
             }
         }
+
+        /// <summary>
+        /// The four clients' pictograms, as quads (x0, y0 .. x3, y3) in a box from -1 to 1, y up: TALLMORE three bars rising,
+        /// QUILLBY a diamond, PAPERLARK a chevron (a bird's wings), BELLWEATHER a bell (wide at the foot) and its clapper.
+        /// The boxes print them; the interface (UI.UiKit.Mark) draws the same shapes.
+        /// </summary>
+        public static readonly float[][][] MarkShapes =
+        {
+            new[] { new[] { -0.95f, -1f, -0.45f, -1f, -0.45f, -0.25f, -0.95f, -0.25f }, new[] { -0.25f, -1f, 0.25f, -1f, 0.25f, 0.35f, -0.25f, 0.35f }, new[] { 0.45f, -1f, 0.95f, -1f, 0.95f, 1f, 0.45f, 1f } },
+            new[] { new[] { 0f, -1f, 0.8f, 0f, 0f, 1f, -0.8f, 0f } },
+            new[] { new[] { -1f, 0.55f, 0f, -0.35f, 0f, -1f, -1f, -0.1f }, new[] { 0f, -0.35f, 1f, 0.55f, 1f, -0.1f, 0f, -1f } },
+            new[] { new[] { -0.9f, -0.55f, 0.9f, -0.55f, 0.42f, 1f, -0.42f, 1f }, new[] { -0.22f, -1f, 0.22f, -1f, 0.22f, -0.7f, -0.22f, -0.7f } },
+        };
 
         /// <summary>Box with chamfered edges: six inset faces, twelve edge strips with smooth normals, eight corner fans.</summary>
         public static void RoundedBox(MeshWriter w, Vector3 c, Vector3 half, float b, Quaternion rot, MeshWriter.UVProjector uv)

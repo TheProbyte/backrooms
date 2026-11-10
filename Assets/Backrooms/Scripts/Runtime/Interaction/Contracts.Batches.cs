@@ -128,7 +128,7 @@ namespace Backrooms.Interaction
         float _lastTick = -1f;
 
         /// <summary>A notice about the work: on this screen and, hosting, on everyone's.</summary>
-        internal static void Tell(string text) { CamcorderOSD.Notice(text); Net.WorkNet.Say(text); }
+        internal static void Tell(string text) { CamcorderOSD.Title(text); Net.WorkNet.Say(text); }
 
         void BatchTick()
         {
