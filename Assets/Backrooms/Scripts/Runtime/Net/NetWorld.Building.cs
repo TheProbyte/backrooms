@@ -46,6 +46,8 @@ namespace Backrooms.Net
             NetHooks.NailRemove = at => { var w = W(Msg.Unnail); w.Vec(at); NetSession.SendWorld(true); };
             NetHooks.PropWoke = LocalWoke;
             NetHooks.PropRested = LocalRested;
+            NetHooks.PropPlaced = LocalPlaced;
+            NetHooks.PropForgot = LocalForgot;
         }
 
         void UnhookBuilding()
@@ -54,6 +56,7 @@ namespace Backrooms.Net
             NetHooks.DoorRest = null; NetHooks.DoorBolt = null; NetHooks.Poke = null;
             NetHooks.Strip = null; NetHooks.Tape = null; NetHooks.Scrape = null; NetHooks.Strike = null;
             NetHooks.NailAdd = null; NetHooks.NailRemove = null; NetHooks.PropWoke = null; NetHooks.PropRested = null;
+            NetHooks.PropPlaced = null; NetHooks.PropForgot = null;
         }
 
         static Vector3Int V3i(NetReader r) => new Vector3Int(r.Int(), r.Int(), r.Int());

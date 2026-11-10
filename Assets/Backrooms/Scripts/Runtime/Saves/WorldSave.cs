@@ -191,6 +191,10 @@ namespace Backrooms.Saves
         /// <summary>While stored: how long each box (by index) has been unsafe without a break.</summary>
         public List<float> unsafeFor = new List<float>();
         public bool fragile, riskSaid, lateSaid;
+        /// <summary>A rush lot (2026-11-09): half the storage time for half as much pay again; offered, never forced.</summary>
+        public bool rush;
+        /// <summary>A rush lot waiting: the business time it was offered at (it is withdrawn if nobody takes it).</summary>
+        public float offeredAt;
     }
 
     /// <summary>A contract on the board (Interaction.Contracts; before 2026-11-09's batches: kept to read old saves).</summary>

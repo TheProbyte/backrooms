@@ -57,6 +57,17 @@ namespace Backrooms.Net
         static float F(string[] a, int i, float d = 0f) => i < a.Length && float.TryParse(a[i], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : d;
         static string V(Vector3 v) => $"({v.x:0.00}, {v.y:0.00}, {v.z:0.00})";
 
+        /// <summary>The work as this game has it (for comparing two games' logs).</summary>
+        public static string WorkReport()
+        {
+            var d = Saves.GameSession.Data;
+            if (d == null) return "no world";
+            var cs = Contracts.Instance;
+            var sb = new System.Text.StringBuilder($"pay {d.pay} earned {d.earned} in {d.batchesIn} done {d.batchesDone} shelves {d.shelves.Count} delivered {d.delivered} running {(cs && cs.Running)}");
+            foreach (var b in d.batches) sb.Append($" [b{b.id} c{b.client} s{b.state} n{b.boxes.Count}]");
+            return sb.ToString();
+        }
+
         string RunDebug(string cmd)
         {
             var a = cmd.Split(' ');
@@ -162,6 +173,44 @@ namespace Backrooms.Net
                     string path = a.Length > 1 ? cmd.Substring(5) : Application.persistentDataPath + "/netshot.png";
                     ScreenCapture.CaptureScreenshot(path);
                     return "picture to " + path;
+                }
+                case "work": return WorkReport();
+                case "ask": WorkNet.Ask(cmd.Substring(4)); return "asked";
+                case "worklot":
+                {
+                    // worklot store|return <client>: as if this player carried the client's lot onto the first shelf, or back
+                    // to the client's pallet (the boxes put there as props this game moved).
+                    var d = Saves.GameSession.Data; var mgr = MovablePropManager.Instance;
+                    if (d == null || !mgr || a.Length < 3) return "no world";
+                    int client = (int)F(a, 2);
+                    bool store = a[1] == "store";
+                    Saves.BatchData b = null;
+                    foreach (var o in d.batches) if (o.client == client && (store ? o.state <= 1 : o.state == 3)) b = o;
+                    if (b == null) return "no such batch";
+                    int i = 0;
+                    if (store)
+                    {
+                        if (d.shelves.Count == 0 || !Shelves.Pose(d.shelves[0], out var at, out var rot, out int v)) return "no shelf";
+                        var t = ShelfTypes.Get(v);
+                        _ctrl.TeleportSafe(at + rot * new Vector3(0f, 0.06f, 1.6f), rot.eulerAngles.y + 180f, 0f);
+                        foreach (var id in b.boxes)
+                        {
+                            int level = Mathf.Min(i / 2, t.levels - 1);
+                            var p = at + rot * new Vector3(i % 2 == 0 ? -0.27f : 0.27f, ShelfTypes.DeckTop(t, level) + 0.01f, 0f);
+                            var spec = Contracts.BoxSpec(id, p, rot.eulerAngles.y);
+                            if (spec != null) mgr.Place(spec, p, rot);
+                            i++;
+                        }
+                        return "stored " + i + " boxes on shelf " + d.shelves[0];
+                    }
+                    foreach (var id in b.boxes)
+                    {
+                        var p = Generation.SeamPlan.Stack(client, i, Contracts.BoxSize(id));
+                        var spec = Contracts.BoxSpec(id, p, 180f);
+                        if (spec != null) mgr.Place(spec, p, Quaternion.Euler(0f, 180f, 0f));
+                        i++;
+                    }
+                    return "returned " + i + " boxes";
                 }
                 case "leave": NetSession.Stop(null); return "leaving";
                 case "quit": Application.Quit(); return "quitting";

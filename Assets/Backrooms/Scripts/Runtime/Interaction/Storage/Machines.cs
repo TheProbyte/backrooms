@@ -59,8 +59,10 @@ namespace Backrooms.Interaction
         {
             var mgr = MovablePropManager.Instance;
             if (D == null || !mgr) return 0;
-            ulong id = Id(kind, D.nextKit++);
+            ulong id = Net.WorkNet.Client ? Id(kind, ((Net.NetSession.LocalId + 1) << 24) | Random.Range(1, 1 << 24)) : Id(kind, D.nextKit++);
             ListOf(kind).Add(id);
+            Net.WorkNet.Ask("machine+ " + id);
+            Net.WorkNet.Changed();
             var a = WorldStreamer.Current ? WorldStreamer.Current.assets : null;
             string model = Model(kind);
             var spec = new MovableSpec
@@ -69,15 +71,28 @@ namespace Backrooms.Interaction
                 yaw = rot.eulerAngles.y, size = Size(kind), pinned = true,
                 fitting = model,                              // (blocks stand in if it is not loaded: MachineUnit)
             };
-            mgr.NetPlace(spec, at, rot);
+            mgr.Place(spec, at, rot);
             CamcorderOSD.Notice(kind == Kits.Kind.Generator ? "GENERATOR SET UP - ON THE POWER BILL" : Kits.Name(kind) + " SET UP - CLICK IT TO PLUG IN");
             return id;
+        }
+
+        /// <summary>Co-op, the host: a joined player set a machine up, or took one down.</summary>
+        public static void Register(ulong id) { if (D != null && !ListOf(KindOf(id)).Contains(id)) ListOf(KindOf(id)).Add(id); }
+        public static void Unregister(ulong id)
+        {
+            if (D == null) return;
+            var kind = KindOf(id);
+            ListOf(kind).Remove(id);
+            if (kind == Kits.Kind.Generator) { for (int i = D.plugGenerator.Count - 1; i >= 0; i--) if (D.plugGenerator[i] == id) Unplug(D.plugMachine[i]); }
+            else Unplug(id);
         }
 
         public static void Remove(ulong id)
         {
             if (D == null) return;
             var kind = KindOf(id);
+            Net.WorkNet.Ask("machine- " + id);
+            Net.WorkNet.Changed();
             ListOf(kind).Remove(id);
             if (kind == Kits.Kind.Generator) { for (int i = D.plugGenerator.Count - 1; i >= 0; i--) if (D.plugGenerator[i] == id) Unplug(D.plugMachine[i]); }
             else Unplug(id);

@@ -64,7 +64,7 @@ namespace Backrooms.Interaction
             ulong id = Id(k, d.nextKit++);
             var spec = Contracts.BoxSpec(id, at, rot.eulerAngles.y);
             if (spec == null) return 0;
-            mgr.NetPlace(spec, at, rot);
+            mgr.Place(spec, at, rot);
             return id;
         }
     }
@@ -167,6 +167,20 @@ namespace Backrooms.Interaction
             _dirty = true;
         }
 
+        /// <summary>The host: orders the named thing for a joined player (the same as pressing ORDER on it). True if it went through.</summary>
+        public bool OrderByName(string name)
+        {
+            if (D == null) return false;
+            List();
+            int i = _items.FindIndex(x => x.name == name);
+            if (i < 0 || _items[i].locked || D.pay < _items[i].cost) return false;
+            int was = _pick, pay = D.pay;
+            _pick = i;
+            Order();
+            _pick = Mathf.Clamp(was, 0, Mathf.Max(0, _items.Count - 1));
+            return D.pay < pay;
+        }
+
         void Order()
         {
             if (D == null) return;
@@ -176,7 +190,10 @@ namespace Backrooms.Interaction
             var it = _items[_pick];
             if (it.locked) { CamcorderOSD.Notice($"{it.name} - LOCKED - {WorkOrders.FinishText(it.unlock)} (J)"); cs?.Beep(false); return; }
             if (D.pay < it.cost) { CamcorderOSD.Notice($"NOT ENOUGH - ${D.pay} IN HAND"); cs?.Beep(false); return; }
+            // Co-op: the crew's one wallet is the host's; a joined game asks it to pay and deliver.
+            if (Net.WorkNet.Client) { Net.WorkNet.Ask("order " + it.name); cs?.Beep(true); return; }
             D.pay -= it.cost;
+            Net.WorkNet.Changed();
             Deliver(it);
             CamcorderOSD.Notice($"ORDERED - {it.name} - WAITING BY THE LIFT");
             cs?.Beep(true);

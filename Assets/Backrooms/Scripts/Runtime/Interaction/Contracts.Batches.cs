@@ -34,6 +34,16 @@ namespace Backrooms.Interaction
         /// BELLWEATHER's long flat-packs a platform truck.</summary>
         static readonly string[] Needs = { null, "A HAND TRUCK", null, "A PLATFORM TRUCK" };
         public const float Grace = 45f, LateSlide = 300f, LateFloor = 0.5f, ScuffCost = 0.05f, NextLotAfter = 20f;
+        /// <summary>
+        /// Rush lots (2026-11-09, Docs/ImprovementPlan.md F5: pressure you choose). About one lot in <see cref="RushOneIn"/>
+        /// (0: none) is offered as a rush: stored half as long, paid half as much again, marked RUSH in red on the seam's
+        /// card. It is an offer on the card, not an event: nothing happens if you leave it, and after
+        /// <see cref="RushOfferFor"/> seconds of business time untaken the client sends an ordinary lot instead. Which lots
+        /// are rushes follows from their number, so a world and its co-op guests always agree. Not before two batches are done.
+        /// </summary>
+        public const int RushOneIn = 4;
+        public const float RushOfferFor = 240f, RushTime = 0.5f, RushPay = 1.5f;
+        static bool IsRush(int batchId) => RushOneIn > 0 && unchecked((uint)batchId * 2654435761u) % (uint)RushOneIn == 0;
         /// <summary>A stored box left unsafe and unattended this long (s) brings the warning (the scuff comes at
         /// <see cref="Grace"/>); anyone within <see cref="Attending"/> m of it is attending to it, and its clock waits.</summary>
         public const float WarnAfter = 10f, Attending = 8f;
@@ -117,8 +127,13 @@ namespace Backrooms.Interaction
 
         float _lastTick = -1f;
 
+        /// <summary>A notice about the work: on this screen and, hosting, on everyone's.</summary>
+        internal static void Tell(string text) { CamcorderOSD.Notice(text); Net.WorkNet.Say(text); }
+
         void BatchTick()
         {
+            // Co-op: the host runs the work; a joined game shows what the host sends (Net.NetWorld.Work).
+            if (Net.WorkNet.Client) { Running = Net.WorkNet.HostRunning; EnsureStorage(); return; }
             if (D.workVersion < 2) { if (!MovablePropManager.Instance) return; Migrate(); }
             float now = Time.time;
             float dt = _lastTick < 0f ? 0f : Mathf.Min(now - _lastTick, 2f);
@@ -219,21 +234,26 @@ namespace Backrooms.Interaction
         {
             if (!D.seamsFound.Contains(LeaseSeams.FirstKind)) D.seamsFound.Add(LeaseSeams.FirstKind);   // (taped from the lift)
             var player = streamer ? streamer.player : null;
-            if (!player) return;
-            var p = player.position;
+            if (player) NoteFoundAt(player.position);
+            // (Co-op: a friend finding a seam finds it for the crew. By the plan's seams, not the ones loaded round the host.)
+            foreach (var r in _remotes) if (r) NoteFoundAt(r.transform.position);
+        }
+
+        void NoteFoundAt(Vector3 p)
+        {
             int kind = -1;
             if (SeamPlan.InZone(p)) kind = SeamPlan.KindAt(p);
-            else foreach (var s in Seam.All)
-                if (s && s.kind <= 3 && (s.transform.position - p).sqrMagnitude < 9f)
+            else foreach (var s in _seams)
+                if (s.kind <= 3 && (s.position - p).sqrMagnitude < 9f)
                 {
                     kind = s.kind;
                     // (Another seam, even one more of TALLMORE's: on a floor with few kinds this is what finding one means.)
-                    if (!D.otherSeamFound && !IsFirstSeam(s.id)) { D.otherSeamFound = true; _dirty = true; if (D.seamsFound.Contains(kind)) CamcorderOSD.Notice($"ANOTHER {LeaseSeams.Kinds[kind]} SEAM - MORE OF {Clients[kind]}'S WORK"); }
+                    if (!D.otherSeamFound && !IsFirstSeam(s.id)) { D.otherSeamFound = true; _dirty = true; if (D.seamsFound.Contains(kind)) Tell($"ANOTHER {LeaseSeams.Kinds[kind]} SEAM - MORE OF {Clients[kind]}'S WORK"); }
                     break;
                 }
             if (kind < 0 || kind > 3 || D.seamsFound.Contains(kind)) return;
             D.seamsFound.Add(kind);
-            if (kind != LeaseSeams.FirstKind) CamcorderOSD.Notice($"NEW CLIENT FOUND - {Clients[kind]} ({LeaseSeams.Kinds[kind]}) - THEIR CARD IS BY THE SEAM");
+            if (kind != LeaseSeams.FirstKind) Tell($"NEW CLIENT FOUND - {Clients[kind]} ({LeaseSeams.Kinds[kind]}) - THEIR CARD IS BY THE SEAM");
             _dirty = true;
         }
 
@@ -259,12 +279,23 @@ namespace Backrooms.Interaction
             bool first = D.batchesIn == 0 && client == LeaseSeams.FirstKind;
             int stage = Mathf.Clamp(D.woStage, 0, 4);
             b.count = first ? 4 : LotBoxes[client] + Mathf.Min(stage, 3);
+            // (Co-op: half as many boxes again for each extra player; the pay follows the count.)
+            b.count = Mathf.RoundToInt(b.count * (1f + 0.5f * (Net.WorkNet.Players - 1)));
             if (!first && D.chutes.Exists(id => _seams.Exists(s => s.id == id && s.kind == client))) b.count = Mathf.RoundToInt(b.count * 1.5f);   // a chute: big lots
             float minutes = first ? 3f : LotMinutes[client] + 0.5f * stage;
-            b.storeFor = minutes * 60f;
-            b.window = WindowFor(b.storeFor);
+            b.rush = !first && D.batchesDone >= 2 && IsRush(b.id);
             b.fragile = client == 1 && WorkOrders.WantsFragile;
             Price(client, b.count, minutes, Distance(client), D.rates, out b.intake, out b.completion);
+            if (b.rush)
+            {
+                // Half the time, half as much pay again (each payment to the nearest $5).
+                minutes = Mathf.Max(1.5f, minutes * RushTime);
+                b.intake = Mathf.RoundToInt(b.intake * RushPay / 5f) * 5;
+                b.completion = Mathf.RoundToInt(b.completion * RushPay / 5f) * 5;
+                b.offeredAt = D.business;
+            }
+            b.storeFor = minutes * 60f;
+            b.window = WindowFor(b.storeFor);
             StackLot(b);
             if (b.boxes.Count == 0) return;
             D.batches.Add(b);
@@ -285,7 +316,7 @@ namespace Backrooms.Interaction
                 var at = SeamPlan.Stack(b.client, i, size);
                 var spec = BoxSpec(id, at, 180f);
                 if (spec == null) return;
-                mgr.NetPlace(spec, at, Quaternion.Euler(0f, 180f, 0f));
+                mgr.Place(spec, at, Quaternion.Euler(0f, 180f, 0f));
                 b.boxes.Add(id);
             }
         }
@@ -297,13 +328,15 @@ namespace Backrooms.Interaction
         {
             // An overdue batch puts the client on hold: a lot nobody has touched goes back.
             if (OnHold(b.client)) { Withdraw(b, mgr); return; }
+            // A rush nobody took: the client sends an ordinary lot instead (once nobody is in the room to see the swap).
+            if (b.rush && D.business - b.offeredAt > RushOfferFor && !AnyoneIn(b.client)) { Withdraw(b, mgr); D.lotAt[b.client] = D.business; return; }
             foreach (var id in b.boxes)
                 if (mgr.Where(id, out var p, out bool held) && (held || !InRoom(p, b.client)))
                 {
                     b.state = 1;
                     D.lotAt[b.client] = D.business + NextLotAfter;
                     if (!D.seamsFound.Contains(b.client)) D.seamsFound.Add(b.client);
-                    CamcorderOSD.Notice($"{Clients[b.client]} BATCH TAKEN - {b.count} BOXES - SHELVE THEM ALL ON LIT SHELVES");
+                    Tell($"{Clients[b.client]} BATCH TAKEN - {b.count} BOXES - SHELVE THEM ALL ON LIT SHELVES");
                     _dirty = true;
                     return;
                 }
@@ -337,8 +370,9 @@ namespace Backrooms.Interaction
             // The moment (F1): the tickets stamped with a thunk, the figure counting up.
             ShelfTickets.Stamp(b, "STORED", "+$" + b.intake);
             PayMoment(D.pay - b.intake, b.intake);
+            Net.WorkNet.Stored(b.id, b.intake);
             Trip($"{Clients[b.client]} STORED ({b.boxes.Count})", "$" + b.intake);
-            CamcorderOSD.Notice($"{Clients[b.client]} STORED - +${b.intake} - DUE BACK IN {MinSec(b.left)}");
+            Tell($"{Clients[b.client]} STORED - +${b.intake} - DUE BACK IN {MinSec(b.left)}");
             Beep(true);
             _dirty = true;
         }
@@ -364,7 +398,7 @@ namespace Backrooms.Interaction
                     D.scuffed.Add(id);
                     var mp = MovableProp.Find(id);
                     if (mp) ScuffMarks.Attach(mp);
-                    CamcorderOSD.Notice($"A {Clients[b.client]} BOX GOT SCUFFED - {Mathf.RoundToInt(ScuffCost * 100f)}% OFF ITS PAY");
+                    Tell($"A {Clients[b.client]} BOX GOT SCUFFED - {Mathf.RoundToInt(ScuffCost * 100f)}% OFF ITS PAY");
                     Beep(false);
                     _dirty = true;
                 }
@@ -372,13 +406,13 @@ namespace Backrooms.Interaction
             if (risk > 0 && !b.riskSaid && dt > 0f)
             {
                 b.riskSaid = true;
-                CamcorderOSD.Notice($"{risk} {Clients[b.client]} BOX{(risk > 1 ? "ES" : "")} LEFT OFF A LIT SHELF - THEY'LL GET SCUFFED");
+                Tell($"{risk} {Clients[b.client]} BOX{(risk > 1 ? "ES" : "")} LEFT OFF A LIT SHELF - THEY'LL GET SCUFFED");
             }
             else if (risk == 0) b.riskSaid = false;
             if (b.left > 0f) return;
             b.state = 3;
             b.since = 0f;
-            CamcorderOSD.Notice($"{Clients[b.client]}'S BOXES ARE DUE BACK - TAKE THEM THROUGH THEIR SEAM ({MinSec(b.window)})");
+            Tell($"{Clients[b.client]}'S BOXES ARE DUE BACK - TAKE THEM THROUGH THEIR SEAM ({MinSec(b.window)})");
             Beep(true);
             _dirty = true;
         }
@@ -389,7 +423,7 @@ namespace Backrooms.Interaction
             if (b.since > b.window && !b.lateSaid)
             {
                 b.lateSaid = true;
-                CamcorderOSD.Notice($"{Clients[b.client]}'S BOXES ARE LATE - THE PAY IS DROPPING, AND THEY'RE ON HOLD");
+                Tell($"{Clients[b.client]}'S BOXES ARE LATE - THE PAY IS DROPPING, AND THEY'RE ON HOLD");
                 Beep(false);
                 _dirty = true;
             }
@@ -408,8 +442,10 @@ namespace Backrooms.Interaction
             D.batchesDone++;
             // The moment (F1): the receipt printing beside the pickup sign, the figure counting up.
             PayMoment(D.pay - pay, pay);
-            ReceiptPrinters.Instance?.Print(b.client, Clients[b.client], settle ? "SETTLED" : "RETURNED", $"{back} OF {b.boxes.Count} BOXES",
-                !onTime && !settle ? "LATE" : lost > 0 ? lost + " LOST" : "ON TIME", scuffs > 0 ? scuffs + " SCUFFED" : "", "+$" + pay, "", DateText);
+            var receipt = new[] { Clients[b.client], settle ? "SETTLED" : "RETURNED", $"{back} OF {b.boxes.Count} BOXES",
+                !onTime && !settle ? "LATE" : lost > 0 ? lost + " LOST" : "ON TIME", scuffs > 0 ? scuffs + " SCUFFED" : "", "+$" + pay, "", DateText };
+            ReceiptPrinters.Instance?.Print(b.client, receipt);
+            Net.WorkNet.Returned(b.client, pay, receipt);
             if (onTime) D.batchesOnTime++;
             if (!D.clientsServed.Contains(b.client)) D.clientsServed.Add(b.client);
             string note = settle ? $" {back} OF {b.boxes.Count}" : !onTime ? " LATE" : "";
@@ -419,7 +455,7 @@ namespace Backrooms.Interaction
             // owner, 2026-11-09: they "immediately disappear in front of you".)
             foreach (var id in b.boxes) { Collect(id); D.scuffed.Remove(id); D.fragile.Remove(id); D.stored.Remove(id); }
             D.batches.Remove(b);
-            CamcorderOSD.Notice(settle ? $"{Clients[b.client]} SETTLED - {back} OF {b.boxes.Count} BACK, {lost} CHARGED AS LOST - +${pay} - THEY'LL TAKE WORK AGAIN"
+            Tell(settle ? $"{Clients[b.client]} SETTLED - {back} OF {b.boxes.Count} BACK, {lost} CHARGED AS LOST - +${pay} - THEY'LL TAKE WORK AGAIN"
                                        : $"{Clients[b.client]} RETURNED - +${pay}" + (onTime ? "" : " (LATE)"));
             Beep(true);
             WorkOrders.BatchReturned(b.client, onTime, b.fragile);
@@ -533,6 +569,7 @@ namespace Backrooms.Interaction
             if (w != null)
             {
                 int days = Mathf.Max(1, Mathf.RoundToInt(w.storeFor * ClientDaysPerSecond));
+                if (w.rush) lines.Add(("RUSH: HALF TIME +50%", CardRed));
                 lines.Add(($"LOT: {w.count} BOXES" + (w.fragile ? " FRAGILE" : ""), w.fragile ? CardRed : CardInk));
                 lines.Add(($"STORE {MinSec(w.storeFor)} ({days} DAYS)", CardInk));
                 lines.Add(($"${w.intake} IN + ${w.completion} BACK", CardInk));

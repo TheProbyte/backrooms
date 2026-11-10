@@ -3,6 +3,74 @@
 A review of the game against its own outline (`Docs/GameDesign.md`), with what to improve and in what order. Nothing
 here is built yet. Where an item changes the design, `GameDesign.md` changes with the work, as always.
 
+## Where the plan stands (2026-11-09, evening)
+
+The owner's answer: go ahead with all of it; the Classic look can go; co-op moves up; improve the animations too.
+
+| Item | State |
+|---|---|
+| E8 commit, save guard, edit guard, STATUS | **Done.** Play in the editor uses a test save folder whenever an agent's lock file exists; script and shader edits are refused while Unity plays. |
+| Classic look | **Removed** from the code; 317 model files nothing loads any more deleted (76 MB of source). The biome's old materials and photo textures are still referenced by the biome asset: to come out with E7. |
+| F1 pay moments | **Built:** the count-up with a till's bell, the STORED stamp on the tickets, a receipt printer beside each pickup sign. |
+| F2 shelf tickets | **Built:** a ticket and a lamp on every shelf (green, amber, red blinking). |
+| V1 list in the side bars | **Built:** work on the right, batches on the left; with no bars, the one next step in the picture. |
+| V2 seams | **Built:** blue light round the tape and across the carpet, a faint cast on the walls, the client's flag. |
+| V3 wallpaper ink | **Built** (the dark inks half as strong again). Not yet looked at in three rooms. |
+| V4 client marks | **Built:** a pictogram on both large faces. And found on the way: the "pink tape" was a missing material on any saved or networked box. Fixed. |
+| Animations (added by the owner) | **Built:** friends' walk, idle, turn on the spot, crouch, crawl, air, slide, lying and getting up; your own crawl hand (in the suit's glove), crouch and crawl camera gait; getting up off the cot as one move. |
+| E3 measure the real game | **Built and run**, and it found the game's worst frame cost (a stocked storage room), fixed the same day (below). |
+| E1 stutters | **Partly.** Pipeline states are recorded and made ahead of time at start-up; the first seam trip is clean, the first lift arrival is not (below). |
+| E2 ray-tracing scene | **Half done, on purpose.** The scene is gathered every other frame (measured: 1.3 ms of the main thread down to 0.8 on average). Rebuilding it on the graphics card every frame is kept: a stale one could point at freed memory. The plan's "3 ms" was too hopeful: most of that cost is the rebuild, not the gather. |
+| E4 IL2CPP trial | **Not done:** the IL2CPP module is not installed in this Unity (installing it is the owner's call). |
+| F3 co-op for the work | **Built** and checked with two copies of the game on one PC. Throw-and-catch and two-person loads: not built. |
+| F5 rush lots | **Built** (one lot in four, an offer on the card). Audits: not built. |
+| F6 hub answers back | **A first step:** a printed notice on the lobby wall for each stage done. No PA voice, no shutter. |
+| V5 time passing | **A first step:** a tear-off calendar in each client's room showing the camcorder's date. |
+| F4 thin walls, V6, V7, E5, E6, E7 (the rest) | **Not done.** |
+| F0 the hand-play sitting | **The owner's.** Everything above is seen in the editor and in test runs, not played by hand. |
+
+**Measured after the work** (the final build, RTX 4070, Ryzen 7 5800X, 1920 x 1080, cap off). The work-floor spots are
+the first numbers the game has for its own work.
+
+| Spot | Frame (median) | Worst frame |
+|---|---|---|
+| Hub, lift hall | 9.4 ms (107 fps) | 13.8 ms |
+| Lift down (first ride) | 10.6 ms | **320 ms** (unchanged) |
+| Corridor | 9.6 ms (105 fps) | 121 ms (was 238) |
+| By the lift, nothing stored | 10.3 ms (97 fps) | 13.8 ms |
+| The same place with 12 shelves and 96 boxes | 14.8 ms (67 fps) | 18.3 ms |
+| First walk through a seam | 13.9 ms | 39.6 ms |
+| Later walks through, and the way back | 6.5 to 8.2 ms | 12 to 13 ms |
+| Standing in a client's room | 6.0 ms (166 fps) | 8.9 ms |
+
+**Found by the new spots, and fixed the same day: a stocked storage room.** Every pixel near a shelf tested each carton
+and each part of each shelf as a light occluder (the furniture boxes of the light grid: up to 160 in one place).
+
+| 12 shelves, 96 boxes | Before | After |
+|---|---|---|
+| Ray tracing on | 20.8 ms (48 fps) | 14.8 ms (67 fps) |
+| Ray tracing off (a card without it) | **52.4 ms (19 fps)** | 13.7 ms (73 fps) |
+
+Cartons no longer count as occluders (their own model casts their shadow), a shelf counts as its decks only, and a
+tile hands the shaders at most 24 boxes. A hundred boxes still cost about 4.5 ms with ray tracing and 7.5 without
+(their shadows): the next thing to look at before lots grow.
+
+**What the measuring corrected in this plan:**
+- **E1, the stutters: only partly.** Making the pipeline states ahead of time (198 states of 161 shader variants,
+  recorded on a full benchmark run) did not touch the 320 ms frame on the first lift arrival: that one is something
+  else (first-time loading or the ray-tracing structures of a whole new place), still to be named with a profiler
+  capture. The first seam trip is clean now (39.6 ms at worst).
+- **E2, the ray-tracing scene: smaller than hoped.** The gather was 1.3 ms, not 3.5; it is now done every other frame
+  (0.8 ms on average). The rest of that cost is rebuilding the scene on the graphics card every frame, which is kept:
+  a stale one could point at freed memory. The "6 ms wait" seen in the first profile was the benchmark's own
+  frame-timing capture, not the game.
+- **The floor kept loaded behind you costs nothing that shows** (6.0 ms in the client's room).
+
+**Co-op, checked with two copies of the final build on one PC:** a friend's game stored TALLMORE's lot (the light it
+measured at the shelf reached the host), took it back when due, and ordered a shelving kit from the shared wallet; both
+games' money and batches matched after every step ($0, $10, $35, $75), the next lot grew from 4 boxes to 6 for two
+players, and neither log has an error.
+
 **How to read it**
 - Every item says what was found, what to do, how big it is (**S** under a session, **M** a session or two, **L**
   several) and how to tell it worked.

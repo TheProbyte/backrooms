@@ -178,7 +178,7 @@ namespace Backrooms.Interaction
             D.woDone.Add(i);
             var o = All[i];
             D.pay += o.pay; D.earned += o.pay;
-            CamcorderOSD.Notice($"WORK ORDER DONE - {o.title} - ${o.pay}");
+            Contracts.Tell($"WORK ORDER DONE - {o.title} - ${o.pay}");
             bool stageDone = true;
             for (int k = 0; k < All.Length; k++) if (All[k].stage == D.woStage && !Done(k)) stageDone = false;
             if (stageDone) Advance();
@@ -193,7 +193,7 @@ namespace Backrooms.Interaction
             if (s < StageUnlocks.Length) foreach (var k in StageUnlocks[s]) Unlocks.Give(k);
             D.woStage++;
             string now = s < s_unlockNames.Length ? s_unlockNames[s] : "";
-            CamcorderOSD.Notice(D.woStage < Stages ? $"NEW WORK ORDERS - UNLOCKED: {now}" : $"THE MAIN FLOOR IS RUNNING - UNLOCKED: {now}");
+            Contracts.Tell(D.woStage < Stages ? $"NEW WORK ORDERS - UNLOCKED: {now}" : $"THE MAIN FLOOR IS RUNNING - UNLOCKED: {now}");
         }
 
         /// <summary>Checked twice a second (Contracts): what is counted by looking (the tape, seams found, shelves put up,

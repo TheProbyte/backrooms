@@ -86,6 +86,20 @@ namespace Backrooms.Interaction
             _dirty = true;
         }
 
+        /// <summary>The host: buys the named improvement for a joined player. True if it went through.</summary>
+        public bool OrderByName(string name)
+        {
+            if (D == null) return false;
+            List();
+            int i = _items.FindIndex(x => x.name == name);
+            if (i < 0 || _items[i].locked || D.pay < _items[i].cost) return false;
+            int was = _pick, pay = D.pay;
+            _pick = i;
+            Order();
+            _pick = Mathf.Clamp(was, 0, Mathf.Max(0, _items.Count - 1));
+            return D.pay < pay;
+        }
+
         void Order()
         {
             if (D == null) return;
@@ -97,6 +111,9 @@ namespace Backrooms.Interaction
             string no = it.kind == Kind.Poolrooms && LeasePlan.WingCount == 0 ? "LEASE A WING FIRST"
                       : D.pay < it.cost ? $"NOT ENOUGH - ${D.pay} IN HAND" : null;
             if (no != null) { CamcorderOSD.Notice(no); cs?.Beep(false); return; }
+            // Co-op: the crew's one wallet is the host's; a joined game asks it to buy.
+            if (Net.WorkNet.Client) { Net.WorkNet.Ask("improve " + it.name); cs?.Beep(true); return; }
+            Net.WorkNet.Changed();
             D.pay -= it.cost;
             switch (it.kind)
             {
@@ -149,7 +166,7 @@ namespace Backrooms.Interaction
             ulong id = KitId(D.chuteKits++);
             var spec = Contracts.BoxSpec(id, at, rot.eulerAngles.y);
             if (spec == null) return 0;
-            mgr.NetPlace(spec, at, rot);
+            mgr.Place(spec, at, rot);
             return id;
         }
 
@@ -171,7 +188,7 @@ namespace Backrooms.Interaction
             ulong id = KitId(n);
             var at = ByTheLift(1.6f + 0.8f * (n % 3), 2.2f + 0.6f * (n / 3 % 2), out var rot);
             var spec = Contracts.BoxSpec(id, at, rot.eulerAngles.y);
-            if (spec != null) mgr.NetPlace(spec, at, rot);
+            if (spec != null) mgr.Place(spec, at, rot);
         }
 
         void PlaceTruck(int n, bool fresh)
@@ -184,7 +201,7 @@ namespace Backrooms.Interaction
             var at = ByTheLift(-1.8f - 1.2f * n, 2.4f, out var rot);
             rot *= Quaternion.Euler(0f, 90f, 0f);
             var spec = new MovableSpec { id = id, kind = MovableKind.PlatformTruck, renderMask = uint.MaxValue, proxyMaterial = a.baseboard, position = at, yaw = rot.eulerAngles.y };
-            mgr.NetPlace(spec, at, rot);
+            mgr.Place(spec, at, rot);
         }
 
         void Update()

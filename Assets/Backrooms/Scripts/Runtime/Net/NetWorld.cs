@@ -121,6 +121,7 @@ namespace Backrooms.Net
             TickDoors();
             TickPaint();
             TickInventory();
+            TickWork();
         }
 
         // ---------------- Messages ----------------
@@ -129,6 +130,7 @@ namespace Backrooms.Net
         bool Handle(int from, Msg kind, NetReader r)
         {
             if (kind == Msg.Debug) { OnDebug(from, r); return false; }        // (as if the player did it: its changes go out)
+            if (kind == Msg.WorkAsk) { OnWorkAsk(from, r); return false; }    // (the host does it: what it makes goes out)
             bool relay = true;
             NetHooks.Apply(() => relay = HandleNow(from, kind, r));
             return relay;
@@ -150,6 +152,10 @@ namespace Backrooms.Net
                 case Msg.PropMove: OnPropMove(r); return true;
                 case Msg.PropRest: OnPropRest(from, r); return true;
                 case Msg.PropOwner: return OnPropOwner(from, r);
+                case Msg.PropGone: OnPropGone(r); return true;
+                case Msg.Work: OnWork(r); return false;
+                case Msg.WorkSay: OnWorkSay(r); return false;
+                case Msg.WorkEvent: OnWorkEvent(r); return false;
                 case Msg.DoorMove: OnDoorMove(r); return true;
                 case Msg.DoorRest: OnDoorRest(r); return true;
                 case Msg.DoorBolt: OnDoorBolt(r); return true;

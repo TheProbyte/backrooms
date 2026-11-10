@@ -44,6 +44,40 @@ namespace Backrooms.Net
             SendPropRest(p);
         }
 
+        /// <summary>The game here put a prop into the world itself (a lot stacked, a kit delivered, a shelf put up): what it
+        /// is and where, for every game's record (as a prop come to rest, which is what it is).</summary>
+        void LocalPlaced(MovableSpec spec, Vector3 pos, Quaternion rot)
+        {
+            if (spec == null) return;
+            var pn = PropOf(spec.id);
+            pn.owner = -1; pn.buf.Clear();
+            var w = W(Msg.PropRest);
+            w.ULong(spec.id);
+            w.Vec(pos); w.Rot(rot);
+            w.Bool(spec.pinned);
+            w.Str(JsonUtility.ToJson(WorldSaver.FromSpec(spec, pos, rot)));
+            w.Byte((byte)Me); w.Double(Now);
+            NetSession.SendWorld(true);
+        }
+
+        /// <summary>The game here took a prop out of the world (a kit's crate once it is put up, a batch collected).</summary>
+        void LocalForgot(ulong id)
+        {
+            _props.Remove(id);
+            var w = W(Msg.PropGone);
+            w.ULong(id);
+            NetSession.SendWorld(true);
+        }
+
+        void OnPropGone(NetReader r)
+        {
+            ulong id = r.ULong();
+            var p = MovableProp.Find(id);
+            if (p && _hand && _hand.Held == p) _hand.Release("it is gone");
+            MovablePropManager.Instance?.Forget(id);
+            _props.Remove(id);
+        }
+
         void SendPropRest(MovableProp p)
         {
             var w = W(Msg.PropRest);

@@ -130,6 +130,18 @@ namespace Backrooms.DebugTools
                 yield break;
             }
 
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-benchmark-work") >= 0)
+            {
+                // Only the work floor's spots (the storage room, the seam trips, a client's room).
+                var wakeW = FindAnyObjectByType<Interaction.HubWake>();
+                if (wakeW) wakeW.GetUp();
+                for (int f = 0; f < 5; f++) yield return null;
+                yield return WorkFloor(world, player);
+                File.WriteAllText(_output, _report.ToString());
+                Application.Quit();
+                yield break;
+            }
+
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-benchmark-markers") >= 0)
             {
                 yield return Markers(world, player);
@@ -166,6 +178,7 @@ namespace Backrooms.DebugTools
             yield return Spot("walk (streaming)", world, player, new Vector3(-17.76f, 0f, 36.41f), 82f, 0f, 900, new Vector2(0f, 1f));
             if (FindHole(world, false, out var nearHole, out var nearNormal)) yield return Crawl("crawl through", world, player, nearHole, nearNormal);
             if (FindHole(world, true, out var farHole, out var farNormal)) yield return Crawl("crawl through (far)", world, player, farHole, farNormal);
+            yield return WorkFloor(world, player);
 
             File.WriteAllText(_output, _report.ToString());
             Debug.Log("[Backrooms] Benchmark written to " + _output + "\n" + _report);
@@ -436,6 +449,111 @@ namespace Backrooms.DebugTools
             _report.AppendLine($"{name,-18} median {P(0.5f):0.0} ms ({1000f / P(0.5f):0} fps)   p95 {P(0.95f):0.0} ms ({1000f / P(0.95f):0} fps)   worst {sorted[sorted.Count - 1]:0.0} ms   n={ms.Count}   over 25 ms: {slow}   trip: {(warpAt >= 0 ? "yes" : "NO")}");
             ms.Sort((a, b) => b.ms.CompareTo(a.ms));
             for (int i = 0; i < Mathf.Min(6, ms.Count); i++) _report.AppendLine($"    {ms[i].ms,5:0.0} ms  {ms[i].phase}");
+        }
+
+        /// <summary>
+        /// The work, measured (2026-11-09, Docs/ImprovementPlan.md E3: the benchmark had no boxes, no seam and no client's
+        /// room in it, so nobody would have seen the work slow the game down). On the leased floor by the lift: twelve
+        /// shelves in two rows with 96 boxes on them as four stored batches (the tickets, the lamps and the half-second
+        /// checks all running), stood in front of; then the nearest seam walked through and back twice (the first trip
+        /// shows what a first use costs, the second what every trip does), and the client's room stood in.
+        /// </summary>
+        IEnumerator WorkFloor(WorldStreamer world, CamcorderPlayerController player)
+        {
+            var cab = HubPlan.WorldCab;
+            Vector3 stand = cab.position + cab.rotation * new Vector3(0f, 0.05f, 1.6f);
+            float yaw = cab.rotation.eulerAngles.y;
+            player.botInput = Vector2.zero;
+            player.TeleportSafe(stand, yaw, 6f);
+            float t0 = Time.realtimeSinceStartup;
+            while (world.QueuedChunks > 0 && Time.realtimeSinceStartup - t0 < 60f) yield return null;
+            for (int i = 0; i < 120; i++) yield return null;
+            var d = Saves.GameSession.Data;
+            var mgr = Interaction.MovablePropManager.Instance;
+            if (d == null || !mgr || !Interaction.Contracts.Instance) { _report.AppendLine("work floor          (no contract floor in this world: skipped)"); yield break; }
+            // The same view before anything is stored there: what the storage costs is the difference.
+            yield return Spot("by the lift, empty", world, player, stand, yaw, 6f, 400, Vector2.zero);
+            var batches = new Saves.BatchData[4];
+            for (int k = 0; k < 4; k++)
+            {
+                batches[k] = new Saves.BatchData { id = ++d.nextBatch, client = k, state = 2, storeFor = 99999f, left = 99999f, window = 600f, intake = 10, completion = 20 };
+                d.batches.Add(batches[k]);
+            }
+            int n = 0;
+            var type = Interaction.ShelfTypes.Get(Interaction.ShelfTypes.Standard);
+            for (int row = 0; row < 2; row++)
+            for (int col = 0; col < 6; col++)
+            {
+                Vector3 at = stand + cab.rotation * new Vector3((col - 2.5f) * 1.2f, -0.05f, 2.6f + row * 1.8f);
+                var rot = cab.rotation * Quaternion.Euler(0f, 180f, 0f);            // facing where the camera stands
+                ulong shelf = Interaction.Shelves.Add(Interaction.ShelfTypes.Standard, at, rot);
+                if (shelf == 0) continue;
+                Interaction.Shelves.SetLevel(shelf, 1f);
+                for (int level = 0; level < type.levels; level++)
+                for (int side = 0; side < 2; side++)
+                {
+                    int client = n % 4;
+                    ulong id = Interaction.Contracts.BoxId(client, d.nextBox++, 0);
+                    Vector3 p = at + rot * new Vector3(side == 0 ? -0.27f : 0.27f, Interaction.ShelfTypes.DeckTop(type, level) + 0.01f, 0f);
+                    var spec = Interaction.Contracts.BoxSpec(id, p, rot.eulerAngles.y);
+                    if (spec == null) continue;
+                    mgr.NetPlace(spec, p, rot);
+                    batches[client].boxes.Add(id); batches[client].unsafeFor.Add(0f);
+                    n++;
+                }
+            }
+            for (int k = 0; k < 4; k++) batches[k].count = batches[k].boxes.Count;
+            _report.AppendLine($"    (the work floor: 12 shelves, {n} boxes in 4 stored batches, by the lift)");
+            yield return Spot("storage, " + n + " boxes", world, player, stand, yaw, 6f, 600, Vector2.zero);
+
+            // The nearest seam: through and back, twice.
+            Interaction.Seam seam = null; float best = float.MaxValue;
+            foreach (var s in Interaction.Seam.All)
+            {
+                if (!s || s.kind > 3) continue;
+                float dd = (s.transform.position - stand).sqrMagnitude;
+                if (dd < best) { best = dd; seam = s; }
+            }
+            if (!seam) { _report.AppendLine("seam trip           (no seam loaded near the lift: skipped)"); yield break; }
+            Vector3 front = seam.transform.position + seam.transform.forward * 1.4f + Vector3.up * 0.05f;
+            float toward = Quaternion.LookRotation(-seam.transform.forward).eulerAngles.y;
+            for (int round = 0; round < 2; round++)
+            {
+                yield return Trip("seam, there" + (round == 0 ? " (1st)" : ""), world, player, front, toward, true);
+                if (!SeamPlan.InZone(player.transform.position)) { _report.AppendLine("    (did not get through: the rest of the trip skipped)"); yield break; }
+                if (round == 0) yield return Spot("client's room", world, player, player.transform.position, player.transform.eulerAngles.y, 0f, 600, Vector2.zero);
+                int kind = SeamPlan.KindAt(player.transform.position);
+                SeamPlan.Tear(kind, out var tear, out var normal);
+                yield return Trip("seam, back" + (round == 0 ? " (1st)" : ""), world, player, tear + normal * 1.4f + Vector3.up * 0.05f, Quaternion.LookRotation(-normal).eulerAngles.y, false);
+            }
+        }
+
+        /// <summary>A walk through a seam: stood in front of it, walked at it, every frame until 1.5 s after arriving on the
+        /// other side (or six seconds, if the way is shut).</summary>
+        IEnumerator Trip(string name, WorldStreamer world, CamcorderPlayerController player, Vector3 from, float yaw, bool intoRoom)
+        {
+            player.botInput = Vector2.zero;
+            player.Teleport(from, yaw, 0f);
+            float warm = Time.realtimeSinceStartup + 1.5f;
+            while (Time.realtimeSinceStartup < warm) yield return null;
+            var ms = new List<float>(900);
+            var split = new Split();
+            player.botInput = new Vector2(0f, 1f);
+            float until = Time.realtimeSinceStartup + 6f, arrivedAt = -1f;
+            while (Time.realtimeSinceStartup < until)
+            {
+                yield return null;
+                ms.Add(Time.unscaledDeltaTime * 1000f); split.Sample();
+                bool there = SeamPlan.InZone(player.transform.position) == intoRoom;
+                if (there && arrivedAt < 0f) { arrivedAt = Time.realtimeSinceStartup; until = arrivedAt + 1.5f; player.botInput = Vector2.zero; }
+            }
+            player.botInput = null;
+            var sorted = new List<float>(ms); sorted.Sort();
+            float P(float q) => sorted[Mathf.Clamp(Mathf.RoundToInt(q * (sorted.Count - 1)), 0, sorted.Count - 1)];
+            int over33 = 0, over50 = 0; foreach (var v in ms) { if (v > 33.4f) over33++; if (v > 50f) over50++; }
+            _report.AppendLine($"{name,-18} median {P(0.5f):0.0} ms ({1000f / P(0.5f):0} fps)   p95 {P(0.95f):0.0} ms   worst {sorted[sorted.Count - 1]:0.0} ms   n={ms.Count}   >33ms {over33}   >50ms {over50}   arrived={arrivedAt >= 0f}");
+            _report.AppendLine("    " + split.Report());
+            split.Dispose();
         }
 
         /// <summary>

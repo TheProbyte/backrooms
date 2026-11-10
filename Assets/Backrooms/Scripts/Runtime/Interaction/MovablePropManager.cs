@@ -87,9 +87,22 @@ namespace Backrooms.Interaction
         /// <summary>Gone for good (a contract's box sent through a seam, or its floor given up): out of the world and the save.</summary>
         public void Forget(ulong id)
         {
+            // (Co-op: taken out of every player's world. Not while a change from the network is being applied.)
+            if (Net.NetHooks.On) Net.NetHooks.PropForgot?.Invoke(id);
             if (!_moved.TryGetValue(id, out var r)) return;
             if (r.live) Destroy(r.live.gameObject);
             _moved.Remove(id);
+        }
+
+        /// <summary>
+        /// The game itself puts a prop into the world (a lot stacked behind a seam, a kit delivered, a shelf put up): here,
+        /// and in co-op in every player's game. (NetPlace alone only records it here: what a change from the network uses.)
+        /// </summary>
+        public void Place(MovableSpec spec, Vector3 position, Quaternion rotation)
+        {
+            if (spec == null) return;
+            NetPlace(spec, position, rotation);
+            if (Net.NetHooks.On) Net.NetHooks.PropPlaced?.Invoke(spec, position, rotation);
         }
 
         void Awake() { Instance = this; }

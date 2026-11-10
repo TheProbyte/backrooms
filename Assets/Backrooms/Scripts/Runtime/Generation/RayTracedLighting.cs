@@ -74,6 +74,9 @@ namespace Backrooms.Generation
         /// <summary>Frames worked out, and the instances in the scene last frame (for tests and the debug readout).</summary>
         public int Frames { get; private set; }
         public int SceneInstances { get; private set; }
+        [Tooltip("Debug: count the instances in the rays' scene each gather (SceneInstances). It stalls the main thread until " +
+                 "the render thread has caught up, so leave it off outside a measurement.")]
+        public bool countInstances;
         public float CullMs { get; private set; }
 
         internal const uint MaskCasters = 1u, MaskVisible = 2u;
@@ -256,8 +259,26 @@ namespace Backrooms.Generation
             }
         }
 
+        [Tooltip("The rays' scene is gathered afresh every this many frames (1: every frame). In between, the last one is " +
+                 "traced again: what moved in that frame casts its shadow from where it was a frame ago, which the shadows' " +
+                 "own blending over several frames hides.")]
+        [Range(1, 4)] public int gatherEvery = 2;
+        int _gatherSkip;
+
         void GatherScene(Vector3 centre)
         {
+            // (2026-11-09, Docs/ImprovementPlan.md E2.) Clearing the scene and culling every renderer into it again cost
+            // 1.4 ms of the main thread a frame here (3,000 instances out of 12,000 renderers). Measured: a renderer that is
+            // destroyed leaves the scene by itself, so a frame without a gather traces nothing stale but positions. So it
+            // is gathered every other frame, except while it is still growing or being warmed, or after a jump.
+            bool settled = _radiusNow >= sceneRadius - 0.01f && !s_prewarmOn && (centre - _lastCentre).sqrMagnitude < 8f * 8f;
+            if (gatherEvery > 1 && settled && ++_gatherSkip < gatherEvery)
+            {
+                _gatherFrame = Time.frameCount;
+                _lastCentre = centre;
+                return;
+            }
+            _gatherSkip = 0;
             _watch.Restart();
             _gatherFrame = Time.frameCount;
             if (s_prewarmOn && _prewarmSeen != s_prewarmVersion) { _prewarmSeen = s_prewarmVersion; _prewarmRadius = 0f; }
@@ -285,7 +306,10 @@ namespace Backrooms.Generation
                     _scene.CullInstances(ref _cull);
                 }
             }
-            SceneInstances = (int)_scene.GetInstanceCount();
+            // (2026-11-09: asking the scene how many instances it holds is answered by the render thread, so the main
+            // thread stopped and waited for it to finish everything queued before: 6.6 ms of every frame in the profile,
+            // for a number nothing reads but a debugger. Asked only when someone wants it.)
+            if (countInstances) SceneInstances = (int)_scene.GetInstanceCount();
             _watch.Stop();
             CullMs = Mathf.Lerp(CullMs, (float)_watch.Elapsed.TotalMilliseconds, 0.1f);
         }

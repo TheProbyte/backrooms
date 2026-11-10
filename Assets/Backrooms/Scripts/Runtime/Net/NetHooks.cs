@@ -30,6 +30,9 @@ namespace Backrooms.Net
         public static Action<Vector3, Vector3, ulong> NailAdd;           // head, direction, prop (0: the building)
         public static Action<Vector3> NailRemove;
         public static Action<Interaction.MovableProp> PropWoke, PropRested;
+        /// <summary>The game itself put a prop into the world (a lot, a kit, a shelf), or took one out of it.</summary>
+        public static Action<Interaction.MovableSpec, Vector3, Quaternion> PropPlaced;
+        public static Action<ulong> PropForgot;
 
         /// <summary>Runs a change that came from the network (its own hooks stay quiet).</summary>
         public static void Apply(Action a)

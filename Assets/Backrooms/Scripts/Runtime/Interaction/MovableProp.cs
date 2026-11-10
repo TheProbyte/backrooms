@@ -150,7 +150,20 @@ namespace Backrooms.Interaction
             root.transform.SetPositionAndRotation(position, rotation);
             if (spec.scale > 0.01f && Mathf.Abs(spec.scale - 1f) > 0.001f) root.transform.localScale = Vector3.one * spec.scale;
             // (Not upholstery: its collision boxes darkened the wall behind it in a box above its back; it casts its own shadow.)
-            if (!OwnShadow(spec.kind)) root.AddComponent<LightingOccluder>();
+            // (2026-11-09: nor the things whose own model casts their shadow: OwnShadow(spec). Cartons were the costly ones:
+            // every pixel near a stocked shelf tested each of them. And a shelf is its decks only: the posts and the back
+            // add nothing the eye can find, and were five of its nine boxes.)
+            if (!OwnShadow(spec))
+            {
+                var occ = root.AddComponent<LightingOccluder>();
+                if (spec.kind == MovableKind.Shelf)
+                {
+                    var all = root.GetComponents<BoxCollider>();
+                    int decks = Mathf.Min(all.Length, ShelfTypes.Get(spec.variant).levels);
+                    occ.Boxes = new BoxCollider[decks];
+                    System.Array.Copy(all, occ.Boxes, decks);
+                }
+            }
             root.AddComponent<Audio.ImpactSounder>();             // knocks, thumps and scraping (Audio/ImpactAudio)
             var mp = root.AddComponent<MovableProp>();
             mp.Spec = spec; mp.Shape = shape; mp.Body = rb;

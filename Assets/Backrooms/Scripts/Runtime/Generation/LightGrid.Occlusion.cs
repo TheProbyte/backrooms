@@ -7,6 +7,14 @@ namespace Backrooms.Generation
     {
         [Range(0f, 1f)] public float contactOcclusion = 0.65f;
         public const int MaxOccluders = 160;
+        /// <summary>
+        /// The most boxes one tile hands the shaders (2026-11-09). Every pixel on a surface in a tile tests every box in
+        /// it (four rays each, and again for each light without a shadow map), so a pile of things in one place cost by the
+        /// pile: a storage room of 12 shelves and 96 cartons ran at 19 fps without ray tracing and 48 with it, on a card
+        /// that draws the empty room at over 100. The boxes are sorted nearest the eye first, so a full tile keeps its
+        /// nearest.
+        /// </summary>
+        public const int MaxPerTile = 24;
         public int OccluderCount { get; private set; }
         public int OcclusionRevision { get; private set; }
         struct OccluderRecord { public Vector4 centre, halfSize, inverseRotation; }
@@ -128,7 +136,7 @@ namespace Backrooms.Generation
                     var bounds = _nearBoxes[i].box.bounds; bounds.Expand(4f);
                     int x0 = Mathf.Max(xMin, Mathf.FloorToInt(bounds.min.x / tileSize)), x1 = Mathf.Min(xMin + Tiles - 1, Mathf.FloorToInt(bounds.max.x / tileSize));
                     int z0 = Mathf.Max(zMin, Mathf.FloorToInt(bounds.min.z / tileSize)), z1 = Mathf.Min(zMin + Tiles - 1, Mathf.FloorToInt(bounds.max.z / tileSize));
-                    for (int x = x0; x <= x1; x++) for (int z = z0; z <= z1; z++) _occBins[Wrap(z, Tiles) * Tiles + Wrap(x, Tiles)].Add((uint)i);
+                    for (int x = x0; x <= x1; x++) for (int z = z0; z <= z1; z++) { var bin = _occBins[Wrap(z, Tiles) * Tiles + Wrap(x, Tiles)]; if (bin.Count < MaxPerTile) bin.Add((uint)i); }
                 }
                 _occIndices.Clear();
                 for (int i = 0; i < _occBins.Length; i++) { _occTiles[i * 2] = (uint)_occIndices.Count; _occTiles[i * 2 + 1] = (uint)_occBins[i].Count; _occIndices.AddRange(_occBins[i]); }

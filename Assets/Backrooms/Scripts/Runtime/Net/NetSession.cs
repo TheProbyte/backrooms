@@ -18,10 +18,13 @@ namespace Backrooms.Net
         Player = 20,
         ItemHeld = 21, ItemMove = 22, ItemRest = 23, ItemGone = 24, LootTaken = 25, ItemAmount = 26, ItemOwner = 27,
         PropMove = 30, PropRest = 31, PropOwner = 32,
+        PropGone = 33,                   // a prop taken out of the world by the game itself (a kit put up, a batch collected)
         DoorMove = 40, DoorRest = 41, DoorBolt = 42, Light = 43, Drain = 44, Breaker = 45, Home = 46, Poke = 47,
         Paint = 50, Mark = 51, Strike = 52, Nail = 53, Unnail = 54,
         Inventory = 60, Boombox = 61, Plug = 62,
         Voice = 63,                      // 60 ms of a player's voice (NetWorld.Voice, VoiceCodec)
+        // The work (NetWorld.Work): the host's state to everyone; a joined game's requests; notices; moments.
+        Work = 70, WorkAsk = 71, WorkSay = 72, WorkEvent = 73,
         Debug = 90,
     }
 

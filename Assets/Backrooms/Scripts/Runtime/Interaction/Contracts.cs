@@ -235,12 +235,13 @@ namespace Backrooms.Interaction
             SlipFrame();
             if (Time.time < _nextCheck) return;
             _nextCheck = Time.time + 0.5f;
-            EnsureFloorStart();
+            if (!Net.WorkNet.Client) EnsureFloorStart();             // (co-op: the host sets the floor up)
             EnsureGuideTape();
             BatchTick();
-            if (WorkOrders.Active) WorkOrders.Tick(_seams);
+            if (WorkOrders.Active && !Net.WorkNet.Client) WorkOrders.Tick(_seams);
             if (_dirty) { _dirty = false; DrawBoard(); }
             else DrawBoardClock();
+            Commend();
         }
 
         void EnsureStorage()
@@ -355,6 +356,28 @@ namespace Backrooms.Interaction
             _slipSound = Sound(transform, "SlipSound", HubPlan.World(14.05f, 14.2f, 1.2f), 9f);
             _slipSound.spatialBlend = 0f;                       // (printed wherever you come up: heard as the camcorder hears it)
         }
+
+        /// <summary>
+        /// The company answers back (2026-11-09, Docs/ImprovementPlan.md F6): each stage of work orders finished leaves a
+        /// printed notice on the lobby wall beside the work board, in a column, so the hub shows how far the floor has
+        /// come. (The PA voice and bigger changes, a shutter rolling up, a light behind the manager's blinds, are still to
+        /// make.)
+        /// </summary>
+        void Commend()
+        {
+            if (D == null || _commended >= D.woStage) return;
+            float face = OfficeBiome.WallThickness * 0.5f;
+            var rot = Quaternion.Euler(0f, 180f, 0f);
+            for (int k = Mathf.Max(0, _commended); k < D.woStage && k < WorkOrders.StageNames.Length - 1; k++)
+            {
+                string name = WorkOrders.StageNames[k];
+                int dash = name.IndexOf(" - ");
+                if (dash >= 0) name = name.Substring(0, dash);
+                Label(transform, "StageDone" + k, name + " COMPLETE", HubPlan.World(9.3f, 14.4f - face, 1.95f - 0.16f * k) + new Vector3(0f, 0f, -0.004f), rot, 0.62f);
+            }
+            _commended = D.woStage;
+        }
+        int _commended;
 
         // ---- Shared with the improvements board ----
 
@@ -474,7 +497,7 @@ namespace Backrooms.Interaction
         /// on the left; on the right, in plain words, what to do with it now and how long is left.</summary>
         BoardRow BatchRow(BatchData b)
         {
-            var r = new BoardRow { chip = Client(b.client), rightInk = Amber, text = $"{Name(b.client)} X{b.count}" };
+            var r = new BoardRow { chip = Client(b.client), rightInk = Amber, text = $"{Name(b.client)} X{b.count}" + (b.rush ? " RUSH" : "") };
             switch (b.state)
             {
                 case 0: r.right = "READY TO PICK UP"; r.dim = true; break;

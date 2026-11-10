@@ -28,14 +28,20 @@ namespace Backrooms.Interaction
             var player = streamer ? streamer.player : null;
             if (!player) return;
             bool out_ = !HubPlan.InZone(player.position);
-            if (_wasOut && !out_ && (D.trip.Count > 0 || D.tripPower > 0)) PrintTrip();
+            if (_wasOut && !out_ && (D.trip.Count > 0 || D.tripPower > 0) && (!Net.WorkNet.Client || TripKey() != _tripShown)) PrintTrip();
             _wasOut = out_;
         }
+
+        string _tripShown = "";
+        string TripKey() => string.Join("|", D.trip) + "|" + D.tripPower;
 
         void PrintTrip()
         {
             var lines = new List<(string, string)>();
-            D.trips++;
+            // Co-op: the crew's trip is the host's to close (it clears the slip when the host comes up); a joined game
+            // shows the same lines when its own player comes up, once.
+            bool follow = Net.WorkNet.Client;
+            if (follow) _tripShown = TripKey(); else D.trips++;
             lines.Add(($"TRIP {D.trips}", DateText));
             lines.Add(("--", ""));
             int total = 0;
@@ -51,9 +57,11 @@ namespace Backrooms.Interaction
             lines.Add(("--", ""));
             lines.Add(("THIS TRIP", (total < 0 ? "-$" : "$") + Mathf.Abs(total)));
             lines.Add(("IN HAND", "$" + D.pay));
+            if (follow) { CamcorderOSD.ShowSlip(Join(lines)); SlipSound(); return; }
             D.lastSlip = Join(lines);
             D.trip.Clear();
             D.tripPower = 0;
+            Net.WorkNet.Changed();
             CamcorderOSD.ShowSlip(D.lastSlip);
             SlipSound();
             _dirty = true;

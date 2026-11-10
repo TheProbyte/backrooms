@@ -100,6 +100,8 @@ namespace Backrooms.Interaction
             public Transform paper;
             public Mesh mesh;
             public int step = -1;
+            public Texture2D calendar;
+            public string calendarDate = "";
             public Texture2D tex;
             public float printAt = -100f;
             public bool torn = true;
@@ -155,6 +157,7 @@ namespace Backrooms.Interaction
             }
             if (Time.time < _next) return;
             _next = Time.time + 1f;
+            for (int k = 0; k < 4; k++) if (_printers[k] != null) Calendar(_printers[k]);
             var cam = Camera.main;
             bool near = cam && SeamPlan.InZone(cam.transform.position);
             for (int k = 0; k < 4; k++)
@@ -223,12 +226,51 @@ namespace Backrooms.Interaction
             var r = q.GetComponent<MeshRenderer>();
             r.sharedMaterial = mat; r.shadowCastingMode = ShadowCastingMode.Off; r.renderingLayerMask = uint.MaxValue; r.enabled = false;
             _printers[kind] = new Printer { root = root, paper = q.transform, tex = tex, mesh = mesh };
+            // A tear-off calendar on the wall beside it (Docs/ImprovementPlan.md V5): the camcorder's date, so "weeks pass
+            // in minutes" is seen in the client's own room, not only said.
+            var cal = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            cal.name = "Calendar";
+            Destroy(cal.GetComponent<Collider>());
+            cal.transform.SetParent(root.transform, false);
+            cal.transform.localPosition = new Vector3(0.46f, 0.24f, 0.058f);
+            cal.transform.localScale = new Vector3(0.2f, 0.2f * CH / CW, 1f);
+            var ctex = new Texture2D(CW, CH, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "Calendar" };
+            var cmat = new Material(sh) { name = "Calendar" };
+            cmat.SetTexture("_BaseMap", ctex); cmat.SetColor("_BaseColor", new Color(0.82f, 0.8f, 0.76f));
+            var cr = cal.GetComponent<MeshRenderer>();
+            cr.sharedMaterial = cmat; cr.shadowCastingMode = ShadowCastingMode.Off; cr.renderingLayerMask = uint.MaxValue;
+            _printers[kind].calendar = ctex;
+            Calendar(_printers[kind]);
+        }
+
+        const int CW = 48, CH = 58;
+
+        /// <summary>The calendar's page: the month on a red band, the day big, the year under it. Redrawn when the day turns.</summary>
+        static void Calendar(Printer p)
+        {
+            var cs = Contracts.Instance;
+            var now = cs ? cs.Clock : null;
+            if (p.calendar == null || !now.HasValue) return;
+            string key = now.Value.ToString("yyyyMMdd");
+            if (key == p.calendarDate) return;
+            p.calendarDate = key;
+            var px = new Color32[CW * CH];
+            for (int i = 0; i < px.Length; i++) px[i] = Paper;
+            PixelFont.Fill(px, CW, CH, 0, 0, CW, 14, Red);
+            PixelFont.DrawCentred(px, CW, CH, now.Value.ToString("MMM").ToUpperInvariant(), CW / 2, 4, 1, Paper);
+            PixelFont.DrawCentred(px, CW, CH, now.Value.Day.ToString(), CW / 2, 19, 3, Ink);
+            PixelFont.DrawCentred(px, CW, CH, now.Value.Year.ToString(), CW / 2, 46, 1, Ink);
+            // (The stubs of the pages torn off, along the top.)
+            for (int x = 2; x < CW - 2; x += 3) PixelFont.Fill(px, CW, CH, x, 0, x + 1, 2, Paper);
+            p.calendar.SetPixels32(px);
+            p.calendar.Apply(false);
         }
 
         void Drop(int kind)
         {
             var p = _printers[kind];
             if (p == null) return;
+            if (p.calendar) Destroy(p.calendar);
             if (p.tex) Destroy(p.tex);
             if (p.mesh) Destroy(p.mesh);
             if (p.root) Destroy(p.root);

@@ -251,7 +251,11 @@ allowed to do something.
   shelves for ever earns nothing more.
 - **Every batch has an ending**, failure included: a fragile box that breaks leaves its batch ($15 off), and a box lost
   for good is settled as above.
-- **Early clients are forgiving**; optional **express** work with tight times could come later. [planned]
+- **Early clients are forgiving.**
+- **Rush lots** [built 2026-11-09]: about one lot in four, once two batches are done, is offered as a **RUSH** (red
+  on the seam's card and in the list): stored half as long, paid half as much again. It is an offer, never an event:
+  leave it and nothing happens; after four minutes of business time untaken, the client sends an ordinary lot
+  instead. (`Contracts.RushOneIn`: 0 switches them off.)
 
 ### Goods being handled, goods left out [built]
 - **Stored safely:** on a shelf lit enough (section 8).
@@ -541,8 +545,21 @@ off the floor (in the hub or behind a seam).
   and glove), planted while you move over it and reaching forward in turn; the camera rocks onto each hand-fall.
   Crouch-walking has its own deeper, slower bob. Getting down onto your hands tips the camera forward, getting up tips
   it back.
-- **Not shared yet:** batches, the slip, shelves being placed, machines and the hand truck. [planned]
-- [open] How the workload grows with more players, and who may spend the shared money.
+- **The work is shared** (2026-11-09, moved ahead of exploration and packing at the owner's word: "you can move coop
+  up"). One job for the crew:
+  - **The host's game runs the work** (lots, countdowns, payments, work orders, the power bill) and sends it to
+    everyone as it changes; a joined game shows the same batches, money, tickets, board, cards and side panels, and
+    gets the STORED stamp, the receipt and the count-up at the same instant.
+  - **One wallet, anyone may spend:** ordering at the counter or the improvements board from a joined game asks the
+    host, which pays and delivers (everyone is told who ordered what).
+  - **Anyone may build:** a shelf or machine put up or packed away by anyone counts for the crew; the light measured
+    at a shelf by whoever is near it counts, however far off the host is.
+  - **Lots grow with the crew:** half as many boxes again for each extra player, and the pay follows the count.
+  - **Finding a seam finds it for everyone.** The trip slip prints for each player as they come up; the host's coming
+    up closes the trip.
+  - **Checked** with two copies of the game on one PC: a friend's game stored a lot and took it back, and both games
+    agreed on the money and the batches at every step. **Not yet tried with a friend over the internet.**
+- **Not shared yet:** the hand truck's place, a machine's plug, a throw caught in the air, two-person loads. [planned]
 
 ## 14. Still to decide [open]
 
@@ -551,7 +568,8 @@ off the floor (in the hub or behind a seam).
 3. **Packing:** how it is done by hand, and whether supplies (boxes, tape) are ever bought.
 4. **Powered racks and standing arrangements:** sizes, routing, limits.
 5. **The dark's nudges:** thresholds and timing (scuffs are built).
-6. **Co-op:** workload with more players, shared spending.
+6. **Co-op:** (decided 2026-11-09: one wallet anyone may spend from; lots half as big again per extra player. To
+   tune in play.)
 7. **Doors:** do they come back, and what would they do that is fun and feels like progress?
 8. **Order kinds:** which ideas in section 7 to use.
 9. **The end:** does the game have an ending (the manager's office, a last level), or does it go on?
@@ -583,8 +601,17 @@ off the floor (in the hub or behind a seam).
   generators, conveyors, floodlights and their models, the LOW LIGHT warning, fragile boxes, carrying boxes.
 - **Not checked yet:** anything of the batches played by hand; boxes on a platform truck or cart counting as handled;
   the hand truck's look while walking; tall shelving and pallet racking put up in play; co-op with any of the work.
+- **Built on 2026-11-09 from the improvement plan** (`ImprovementPlan.md`, which lists what was measured): shelf
+  tickets and lamps, the pay moments (count-up, stamp, receipt printer), the work list in the side bars, seams that
+  leak light and carry the client's flag, the bolder wallpaper print, the clients' marks on boxes, the animations (a
+  friend's walk, crouch, crawl, lying and getting up; your own crawl hand, crouch and crawl camera, getting up off
+  the cot), the shared work in co-op, rush lots, a notice in the hub for each stage done, a calendar in each
+  client's room, the Classic look removed, pipeline states made ahead of time, the benchmark's work-floor spots.
+  Also found and fixed: a stocked storage room ran at 19 fps on a card without ray tracing (now 73).
+  **Seen in the editor and in the builds' tests; not yet played by hand.**
 - **Not made yet:** the dark's nudges, packing, powered racks and standing arrangements, heavy and mixed loads, audits,
-  the real orientation tape and its PA voice, muzak, co-op for the work, anything past the main floor.
+  the real orientation tape and its PA voice, muzak, anything past the main floor; in co-op, the hand truck's place, a
+  machine's plug, catching a thrown box and two-person loads; the survey marks for walls worth knocking through.
 
 ## 16. Building it: the slices
 
@@ -602,7 +629,8 @@ packing job → powered racks.
    rooms), the dark's nudges.
 3. **Slice 3: one packing job**: PAPERLARK's notebooks and pencils in, four school packs out through a seam.
 4. **Slice 4: the powered rack**: release by button, then automatic release, then standing arrangements.
-5. **Then:** co-op for all of it; the real orientation tape.
+5. **Then:** the real orientation tape. (Co-op for the work was moved up and built on 2026-11-09: section 13. New
+   systems are built shared from the start.)
 
 ## Other docs
 

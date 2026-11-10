@@ -75,6 +75,9 @@ namespace Backrooms.Interaction
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics() { s_level.Clear(); s_loadedFrom = null; }
 
+        /// <summary>The save's light levels were replaced (co-op: the host's work arrived): read them again.</summary>
+        public static void Reloaded() => s_loadedFrom = null;
+
         static void EnsureLoaded()
         {
             if (D == null || s_loadedFrom == D) return;
@@ -102,9 +105,12 @@ namespace Backrooms.Interaction
         {
             var mgr = MovablePropManager.Instance;
             if (D == null || !mgr) return 0;
-            ulong id = Id(D.nextShelf++);
+            // (Co-op: a joined game numbers its shelves from its own range, so two players putting one up at the same
+            // moment never give them the same name, and tells the host.)
+            ulong id = Net.WorkNet.Client ? Id(((Net.NetSession.LocalId + 1) << 24) | Random.Range(1, 1 << 24)) : Id(D.nextShelf++);
             D.shelves.Add(id);
-            mgr.NetPlace(Spec(id, variant, at, rot.eulerAngles.y), at, rot);
+            Net.WorkNet.Ask("shelf+ " + id);
+            mgr.Place(Spec(id, variant, at, rot.eulerAngles.y), at, rot);
             return id;
         }
 
@@ -114,6 +120,8 @@ namespace Backrooms.Interaction
             if (D == null) return;
             D.shelves.Remove(id);
             SetLevel(id, -1f);
+            Net.WorkNet.Ask("shelf- " + id);
+            Net.WorkNet.Changed();
             MovablePropManager.Instance?.Forget(id);
         }
 
@@ -353,7 +361,7 @@ namespace Backrooms.Interaction
                 else to = far ? Near(rng, p, 35f, 160f, ref cells, world, slot) : Near(rng, p, 6f, 25f, ref cells, world, slot);
                 float yaw = (float)rng.NextDouble() * 360f;
                 var spec = Contracts.BoxSpec(id, to, yaw);
-                if (spec != null) mgr.NetPlace(spec, to, Quaternion.Euler(0f, yaw, 0f));
+                if (spec != null) mgr.Place(spec, to, Quaternion.Euler(0f, yaw, 0f));
                 rep.moved++;
             }
             return rep;
@@ -454,7 +462,11 @@ namespace Backrooms.Interaction
                 for (int k = 0; k < Mathf.Min(_live.Count, 8); k++)
                 {
                     var mp = _live[_cursor++ % _live.Count];
-                    Shelves.SetLevel(mp.Spec.id, ShelfTypes.IsBroken(mp.Spec.variant) ? 0f : Mathf.Clamp01(Shelves.Measure(mp, _lights) + Shelves.CeilingAt(mp.transform.position + Vector3.up * 0.5f)));
+                    float level = ShelfTypes.IsBroken(mp.Spec.variant) ? 0f : Mathf.Clamp01(Shelves.Measure(mp, _lights) + Shelves.CeilingAt(mp.transform.position + Vector3.up * 0.5f));
+                    // (Co-op: what a joined game measures at the shelves near its player is told to the host, which may be far off.)
+                    if (Net.WorkNet.Client && Mathf.Abs(level - Shelves.Level(mp.Spec.id)) > 0.04f)
+                        Net.WorkNet.Ask("light " + mp.Spec.id + " " + level.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                    Shelves.SetLevel(mp.Spec.id, level);
                 }
             }
             Gaze();
