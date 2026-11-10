@@ -61,6 +61,18 @@ namespace Backrooms.Camcorder
             if (s_lines.Count > MaxLines) s_lines.RemoveAt(0);
         }
 
+        /// <summary>
+        /// A spoken line as a subtitle (Settings > ACCESSIBILITY > SUBTITLES, 2026-11-10): who speaks and what, for a few
+        /// seconds, at the foot of the picture. Ready for the PA voice and the orientation tape; nothing speaks yet.
+        /// </summary>
+        public static void Subtitle(string speaker, string text, float seconds = 4f)
+        {
+            if (!GameSettings.Subtitles || string.IsNullOrEmpty(text)) return;
+            s_sub = string.IsNullOrEmpty(speaker) ? text : speaker + ": " + text; s_subUntil = Time.unscaledTime + seconds;
+        }
+        static string s_sub; static float s_subUntil;
+        Text _subtitle;
+
         /// <summary>For tests: no titles or lines.</summary>
         public static void ClearNotices() { s_titles.Clear(); s_lines.Clear(); s_notice = null; s_noticeAt = -100f; }
 
@@ -122,9 +134,13 @@ namespace Backrooms.Camcorder
         float _t0;
         Font _font, _paper, _paperBold;
 
+        /// <summary>The date and time the display starts from (the main menu: the world's first morning, 2026-11-10; it read
+        /// OCT 19 1998 there and MAR 1996 in play).</summary>
+        public void SetStart(DateTime start) { _start = start; _t0 = Time.time; }
+
         void Awake()
         {
-            if (!DateTime.TryParse(startDate, out _start)) _start = new DateTime(1998, 10, 19, 22, 41, 0);
+            if (!DateTime.TryParse(startDate, out _start)) _start = new DateTime(1996, 3, 11, 9, 0, 0);
             _t0 = Time.time;
             // The kit's two faces (UiKit, 2026-11-10): the camcorder's marks in its own, the side panels and the pay slip on
             // the company's paper.
@@ -284,6 +300,12 @@ namespace Backrooms.Camcorder
             _notice.resizeTextForBestFit = true;
             _notice.resizeTextMinSize = 26; _notice.resizeTextMaxSize = 56;
             _notice.lineSpacing = 1f;
+            _subtitle = Label("", new Vector2(0.5f, 0f), Vector2.zero, TextAnchor.LowerCenter, 26);
+            _subtitle.transform.SetParent(_barCanvas.transform, false);
+            _subtitle.font = _paper;
+            _subtitle.horizontalOverflow = HorizontalWrapMode.Wrap;
+            { var sr = _subtitle.rectTransform; sr.anchorMin = sr.anchorMax = sr.pivot = new Vector2(0.5f, 0f); sr.anchoredPosition = new Vector2(0f, 150f); sr.sizeDelta = new Vector2(1100f, 80f); }
+            _subtitle.enabled = false;
             for (int i = 0; i < MaxLines; i++)
             {
                 var l = Label("", new Vector2(0, 0), Vector2.zero, TextAnchor.LowerLeft, 26);
@@ -515,8 +537,14 @@ namespace Backrooms.Camcorder
                 float pw = Mathf.Min(cr.width, cr.height * (_frame ? _frame.GetComponent<AspectRatioFitter>().aspectRatio : 16f / 9f));
                 _notice.rectTransform.sizeDelta = new Vector2(pw * 0.8f, 150f);
                 // Steady, then a few blinks out, like a camcorder's title.
-                bool show = na < s_noticeFor - 1f || ((na * 4f) % 1f) < 0.6f;
+                bool show = na < s_noticeFor - 1f || GameSettings.Steady || ((na * 4f) % 1f) < 0.6f;
                 _notice.color = new Color(_ink.r, _ink.g, _ink.b, show ? 0.95f : 0f);
+            }
+            if (_subtitle)
+            {
+                bool sub = !string.IsNullOrEmpty(s_sub) && Time.unscaledTime < s_subUntil;
+                _subtitle.enabled = sub;
+                if (sub) { _subtitle.text = s_sub; _subtitle.fontSize = Mathf.RoundToInt(26f * Backrooms.UI.UiKit.TextScale); _subtitle.color = new Color(1f, 1f, 1f, 0.95f); }
             }
             // The lines: at the picture's lower left, above the time and date, the newest at the bottom.
             {
@@ -545,7 +573,7 @@ namespace Backrooms.Camcorder
             {
                 bool on = LowLight > 0.01f;
                 _lowLight.enabled = on;
-                if (on) _lowLight.color = new Color(_ink.r, _ink.g, _ink.b, 0.95f * LowLight * (LowLight < 0.99f || ((Time.unscaledTime * 1.25f) % 1f) < 0.7f ? 1f : 0.35f));
+                if (on) _lowLight.color = new Color(_ink.r, _ink.g, _ink.b, 0.95f * LowLight * (LowLight < 0.99f || GameSettings.Steady || ((Time.unscaledTime * 1.25f) % 1f) < 0.7f ? 1f : 0.35f));
             }
             // Money in: the figure counts up, holds, and goes.
             if (_money)
@@ -604,7 +632,7 @@ namespace Backrooms.Camcorder
             // A contract's office hours (Interaction.Contracts): the clock shows the shift's time of day.
             var shift = Backrooms.Interaction.Contracts.Instance ? Backrooms.Interaction.Contracts.Instance.Clock : null;
             if (shift.HasValue) now = shift.Value;
-            bool blink = ((Time.time - _t0) % 1.2f) < 0.8f;
+            bool blink = GameSettings.Steady || ((Time.time - _t0) % 1.2f) < 0.8f;
             _recDot.enabled = blink && !standby;
             _rec.text = standby ? "STBY" : "REC";
             _rec.rectTransform.anchoredPosition = new Vector2(standby ? 0 : 32, 0);

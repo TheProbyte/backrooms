@@ -98,7 +98,7 @@ namespace Backrooms.Camcorder
             var go = new GameObject("CamcorderMenu_UI");
             go.transform.SetParent(transform, false);
             _doc = go.AddComponent<UIDocument>();
-            _doc.panelSettings = Resources.Load<PanelSettings>("UI/CamcorderPanel");
+            _doc.panelSettings = Backrooms.UI.UiKit.Panel;
             _root = _doc.rootVisualElement;
             var sheet = Resources.Load<StyleSheet>("UI/CamcorderMenu");
             if (sheet) _root.styleSheets.Add(sheet);

@@ -31,7 +31,7 @@ namespace Backrooms.CustomRooms
         static Texture2D _white;
         static readonly Dictionary<Color, Texture2D> Tex = new Dictionary<Color, Texture2D>();
 
-        public static float Scale => Screen.height / 1080f;
+        public static float Scale => Screen.height / 1080f * Backrooms.UI.UiKit.TextScale;
         public static float Width => Screen.width / Scale;
         public static float Height => 1080f;
 

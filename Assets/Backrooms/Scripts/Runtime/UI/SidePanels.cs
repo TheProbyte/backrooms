@@ -27,6 +27,9 @@ namespace Backrooms.UI
         Font _font, _bold;
         readonly Contracts.SideView _view = new Contracts.SideView();
         float _next;
+        // TEXT SIZE (UiKit.TextScale): every text's own size times this, and the cards' spacing with it.
+        readonly Dictionary<Text, int> _baseSize = new Dictionary<Text, int>();
+        float _k = 1f;
 
         // Left
         Text _date, _inHandLabel, _money, _running, _batchesLabel;
@@ -89,10 +92,17 @@ namespace Backrooms.UI
         {
             if (!_left) return;
             bool compact = bar < MinFull;
+            if (Menu.MainMenu.IsShowing) leftOn = rightOn = false;     // (the title screen: no work to show)
             leftOn &= bar >= MinCompact && alpha > 0.01f;
             rightOn &= !compact && alpha > 0.01f;
             SetActive(_left, leftOn); SetActive(_right, rightOn);
             if (!leftOn && !rightOn) return;
+            float k = UiKit.TextScale;
+            if (!Mathf.Approximately(k, _k))
+            {
+                _k = k;
+                foreach (var kv in _baseSize) if (kv.Key) kv.Key.fontSize = Mathf.RoundToInt(kv.Value * k);
+            }
             if (Time.unscaledTime >= _next || _view.date.Length == 0)
             {
                 _next = Time.unscaledTime + 0.25f;
@@ -126,7 +136,7 @@ namespace Backrooms.UI
             float y = 0f;
             y = Put(_date, 0f, y, w, v.date) - 6f;
             y = Put(_inHandLabel, 0f, y, w, compact ? "" : "IN HAND") - 0f;
-            _money.fontSize = compact ? 28 : 38;
+            _money.fontSize = Mathf.RoundToInt((compact ? 28 : 38) * _k);
             y = Put(_money, 0f, y, w, "$" + v.pay) - 4f;
             _running.color = v.running ? UiKit.Good : UiKit.Tan;
             y = Put(_running, 0f, y, w, compact ? "" : v.running ? "BUSINESS TIME RUNNING" : "TIME STOPPED - OFF THE FLOOR") - 22f;
@@ -153,31 +163,38 @@ namespace Backrooms.UI
         float LayoutCard(Card c, Contracts.BatchView b, float y, float w, bool compact)
         {
             c.root.gameObject.SetActive(true);
-            float h = compact ? 62f : 74f;
+            float k = _k;
+            float h = (compact ? 62f : 74f) * k;
             Place(c.root, 0f, y, w, h);
             var col = UiKit.Client(b.client);
             c.bg.color = new Color(UiKit.Cream.r, UiKit.Cream.g, UiKit.Cream.b, b.dim ? 0.04f : 0.08f);
             c.stripe.color = col;
             c.mark.color = Color.Lerp(col, Color.white, 0.25f);
-            float ms = compact ? 24f : 28f;
-            Place(c.mark.rectTransform, 14f, -9f, ms, ms);
+            float ms = (compact ? 24f : 28f) * k;
+            Place(c.mark.rectTransform, 14f, -9f * k, ms, ms);
             if (compact)
             {
                 c.name.text = "";
-                Put(c.count, 14f + ms + 6f, -9f, w - ms - 26f, "×" + b.count);
-                Put(c.state, 14f, -38f, w - 22f, "");
+                Put(c.count, 14f + ms + 6f, -9f * k, w - ms - 26f, "×" + b.count);
+                Put(c.state, 14f, -38f * k, w - 22f, "");
                 c.time.alignment = TextAnchor.UpperLeft;
-                Put(c.time, 14f, -38f, w - 22f, b.time.Length > 0 ? b.time : b.state);
+                Put(c.time, 14f, -38f * k, w - 22f, b.time.Length > 0 ? b.time : b.state);
             }
             else
             {
-                float nameW = w - 14f - ms - 8f - 50f;
-                Put(c.name, 14f + ms + 8f, -11f, nameW, b.name + (b.rush ? " RUSH" : ""));
+                float countW = 48f * k;
+                float nameW = w - 14f - ms - 8f - countW - 4f;
+                // The name shrinks to fit beside the count (a long name at TEXT SIZE LARGER ran into it).
+                if (!c.name.gameObject.activeSelf) c.name.gameObject.SetActive(true);
+                c.name.text = b.name + (b.rush ? " RUSH" : "");
+                c.name.horizontalOverflow = HorizontalWrapMode.Wrap; c.name.verticalOverflow = VerticalWrapMode.Truncate;
+                c.name.resizeTextForBestFit = true; c.name.resizeTextMinSize = 11; c.name.resizeTextMaxSize = Mathf.RoundToInt(20f * k);
+                Place(c.name.rectTransform, 14f + ms + 8f, -11f * k, nameW, 26f * k);
                 c.count.alignment = TextAnchor.UpperRight;
-                Put(c.count, w - 58f, -11f, 48f, "×" + b.count);
-                Put(c.state, 14f, -44f, w - 80f, b.state);
+                Put(c.count, w - countW - 10f, -11f * k, countW, "×" + b.count);
+                Put(c.state, 14f, -44f * k, w - 80f * k, b.state);
                 c.time.alignment = TextAnchor.UpperRight;
-                Put(c.time, w - 80f, -44f, 70f, b.time);
+                Put(c.time, w - 80f * k, -44f * k, 70f * k, b.time);
             }
             c.state.color = b.ink; c.time.color = b.ink;
             c.name.color = c.count.color = b.dim ? UiKit.Tan : UiKit.Cream;
@@ -206,26 +223,26 @@ namespace Backrooms.UI
             for (; i < v.orders.Count; i++) y = LayoutRow(RowAt(i), v.orders[i], y, w) - 8f;
             for (int k = i; k < _rows.Count; k++) _rows[k].root.gameObject.SetActive(false);
             y = Put(_unlocks, 0f, y - 4f, w, orders && v.unlocks.Length > 0 ? "UNLOCKS " + v.unlocks : "") - 26f;
-            Place(_hideCap.rectTransform, 0f, y, 28f, 28f);
-            Place(_hideKey.rectTransform, 0f, 0f, 28f, 28f);
+            Place(_hideCap.rectTransform, 0f, y, 28f * _k, 28f * _k);
+            Place(_hideKey.rectTransform, 0f, 0f, 28f * _k, 28f * _k);
             _hideKey.rectTransform.anchorMin = Vector2.zero; _hideKey.rectTransform.anchorMax = Vector2.one;
             _hideKey.rectTransform.offsetMin = _hideKey.rectTransform.offsetMax = Vector2.zero;
-            Put(_hideText, 36f, y - 4f, w - 36f, "HIDE");
+            Put(_hideText, 36f * _k, y - 4f * _k, w - 36f * _k, "HIDE");
         }
 
         float LayoutRow(Row r, Contracts.OrderView o, float y, float w)
         {
             r.root.gameObject.SetActive(true);
-            float countW = o.need > 0 && !o.done ? 64f : 0f;
+            float countW = o.need > 0 && !o.done ? 64f * _k : 0f;
             r.title.color = o.done ? UiKit.Good : UiKit.Cream;
-            float th = Measure(r.title, w - 26f - countW, o.title);
+            float th = Measure(r.title, w - 26f * _k - countW, o.title);
             float h = Mathf.Max(18f, th) + (o.need > 0 && !o.done ? 12f : 0f);
             Place(r.root, 0f, y, w, h);
-            Place(r.box.rectTransform, 0f, -2f, 16f, 16f);
+            Place(r.box.rectTransform, 0f, -2f * _k, 16f * _k, 16f * _k);
             r.box.color = o.done ? UiKit.Good : UiKit.Cream;
             r.tick.gameObject.SetActive(o.done);
             r.tick.color = UiKit.Good;
-            Put(r.title, 26f, 0f, w - 26f - countW, o.title);
+            Put(r.title, 26f * _k, 0f, w - 26f * _k - countW, o.title);
             r.count.alignment = TextAnchor.UpperRight;
             Put(r.count, w - countW, 0f, countW, countW > 0f ? $"{o.have}/{o.need}" : "");
             bool bar = o.need > 0 && !o.done;
@@ -328,6 +345,8 @@ namespace Backrooms.UI
             t.font = f; t.fontSize = size; t.color = c; t.alignment = TextAnchor.UpperLeft;
             t.horizontalOverflow = HorizontalWrapMode.Wrap; t.verticalOverflow = VerticalWrapMode.Overflow;
             t.lineSpacing = 1.05f; t.raycastTarget = false; t.supportRichText = false;
+            _baseSize[t] = size;
+            t.fontSize = Mathf.RoundToInt(size * _k);
             return t;
         }
 

@@ -88,3 +88,70 @@
 }
 .lk-preview { width: 280px; height: 350px; border-width: 1px; border-color: var(--choc-soft); }
 .mm-root .lk-cardtext { font-size: 18px; letter-spacing: 2px; margin-top: 8px; -unity-font-style: bold; white-space: normal; color: var(--choc); text-shadow: 0 0 0 var(--none); }
+
+/* ---- Settings (2026-11-10, Docs/UiPlan.md U10): tabs along the top, label and value in two columns, a bar under an
+   amount, the chosen line's description in one place. ---- */
+.mm-panel.st-panel { width: 820px; top: 12%; }
+.st-tabs { flex-direction: row; flex-wrap: wrap; margin: 0 0 10px 0; }
+.mm-root .st-tab {
+    font-size: 17px; letter-spacing: 2px; -unity-font-style: bold; color: var(--tan);
+    padding: 4px 10px 6px 10px; margin: 0 4px 4px 0; border-bottom-width: 3px; border-color: var(--none);
+}
+.mm-root .st-tab:hover { color: var(--cream); }
+.mm-root .st-tab.st-on { color: var(--amber); border-bottom-color: var(--amber); }
+.st-list { min-height: 300px; }
+.st-row { align-items: flex-start; }
+.mm-root .st-label { font-size: 22px; letter-spacing: 3px; -unity-font-style: bold; width: 330px; padding-top: 2px; }
+.st-value { flex-grow: 1; flex-direction: column; }
+.st-valrow { flex-direction: row; align-items: center; }
+.mm-root .st-arrow { font-size: 18px; width: 30px; -unity-text-align: middle-center; color: var(--tan); }
+.mm-root .st-arrow:hover { color: var(--cream); }
+.mm-root .st-val { font-size: 22px; letter-spacing: 2px; -unity-font-style: bold; min-width: 200px; -unity-text-align: middle-center; }
+.st-bar { height: 6px; margin: 4px 30px 2px 30px; background-color: var(--line); border-radius: 3px; }
+.st-fill { height: 6px; background-color: var(--amber); border-radius: 3px; width: 0; }
+.mm-item.mm-sel .st-bar { background-color: var(--choc-soft); }
+.mm-item.mm-sel .st-fill { background-color: var(--choc); }
+.mm-root .mm-item.mm-sel .st-arrow { color: var(--choc); }
+.mm-root .st-desc {
+    font-size: 17px; color: var(--tan); white-space: normal; min-height: 52px; margin: 10px 4px 0 4px;
+    padding-top: 8px; border-top-width: 1px; border-color: var(--line);
+}
+.st-keyrow { flex-direction: row; align-items: center; margin: 3px 4px; }
+.mm-root .st-key {
+    font-size: 17px; -unity-font-style: bold; min-width: 130px; -unity-text-align: middle-center; padding: 2px 8px;
+    border-width: 2px; border-bottom-width: 3px; border-color: var(--cream); border-radius: 5px; margin-right: 18px;
+}
+.mm-root .st-keywhat { font-size: 18px; }
+
+/* ---- The title screen (2026-11-10, U8): the game's name over the picture, the menu under it, the build in a corner. ---- */
+.tt-block { position: absolute; top: 20%; flex-direction: column; }
+.mm-root .tt-name { font-size: 132px; -unity-font-style: bold; color: var(--amber); letter-spacing: 4px; text-shadow: 6px 6px 0 var(--shadow); }
+.tt-stripe { flex-direction: row; height: 12px; width: 560px; margin: 2px 0 10px 6px; }
+.tt-stripe > VisualElement { flex-grow: 1; }
+.mm-root .tt-tag { font-size: 22px; letter-spacing: 6px; margin-left: 8px; }
+.mm-panel.tt-menu { top: 52%; width: 520px; }
+.mm-root .tt-build { position: absolute; right: 2%; bottom: 3%; font-size: 17px; color: var(--tan); }
+
+/* ---- Save slots as cards (U11): the world's day, money, stage, time played and last played. ---- */
+.sl-top { flex-direction: row; justify-content: space-between; align-items: flex-end; }
+.mm-root .sl-day { font-size: 17px; -unity-font-style: bold; color: var(--gold); margin-right: 18px; }
+.mm-root .mm-item.mm-sel .sl-day { color: var(--choc); }
+.sl-facts { flex-direction: row; flex-wrap: wrap; margin-top: 4px; }
+.mm-root .sl-fact { font-size: 17px; margin-right: 18px; color: var(--cream); }
+.mm-root .mm-item.mm-sel .sl-fact { color: var(--choc); }
+
+/* ---- The pause menu (U9): the main menu's panel, titled PAUSED; co-op lines and COPY. ---- */
+.mm-panel.ps-panel { top: 22%; width: 560px; }
+.ps-addr { flex-direction: row; align-items: center; justify-content: space-between; margin: 2px 4px; }
+.mm-root .ps-addrtext { font-size: 17px; color: var(--tan); }
+.mm-root .ps-copy {
+    font-size: 17px; letter-spacing: 2px; padding: 2px 10px; border-width: 1px; border-color: var(--line-strong); border-radius: 3px;
+}
+.mm-root .ps-copy:hover { background-color: var(--cream); color: var(--choc); text-shadow: 0 0 0 var(--none); }
+
+/* The KEYS page in two columns (it ran off the bottom in one). */
+.st-keycols { flex-direction: row; }
+.st-keycol { width: 50%; flex-direction: column; }
+.st-keycol .st-key { min-width: 110px; margin-right: 12px; }
+.st-keycol .st-keywhat { font-size: 17px; flex-shrink: 1; white-space: normal; }
+.mm-root .mm-slot .mm-detail { white-space: normal; }

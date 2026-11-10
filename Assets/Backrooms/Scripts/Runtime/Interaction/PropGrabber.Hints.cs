@@ -138,7 +138,7 @@ namespace Backrooms.Interaction
         {
             string text = HintText;
             if (string.IsNullOrEmpty(text)) return;
-            float scale = Screen.height / 1080f;
+            float scale = Screen.height / 1080f * Backrooms.UI.UiKit.TextScale;
             // (2026-11-10, Docs/UiPlan.md U5: drawn as prompts, a key cap or the mouse and a verb, UI.Prompts.)
             bool note = Time.time < _noteUntil;
             Backrooms.UI.Prompts.Draw(text, Screen.width * 0.5f, PocketsTop - 56f * scale, scale, note ? 0.95f : 0.88f, note);

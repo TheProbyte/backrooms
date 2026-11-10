@@ -654,12 +654,30 @@ namespace Backrooms
         float EyeTarget => seated ? seatEye : CurrentStance == Stance.Crawl ? crawlEye : CurrentStance == Stance.Crouch ? crouchEye : standEye;
         float HeightFor(Stance st) => st == Stance.Crawl ? crawlHeight : st == Stance.Crouch ? crouchHeight : standHeight;
 
+        bool _crouchBeforeCrawl;
+
         void UpdateStance(Keyboard kb, bool hasFocus)
         {
             if (!hasFocus || noclip) return;
             Stance want = CurrentStance;
-            if (kb.cKey.wasPressedThisFrame) want = CurrentStance == Stance.Crouch ? Stance.Stand : Stance.Crouch;
-            if (kb.leftCtrlKey.wasPressedThisFrame) want = CurrentStance == Stance.Crawl ? Stance.Crouch : Stance.Crawl;
+            // A press each way, or (Settings > CONTROLS, 2026-11-10) down only while the key is held.
+            bool holdC = GameSettings.HoldCrouch, holdCtrl = GameSettings.HoldCrawl;
+            if (holdCtrl)
+            {
+                if (kb.leftCtrlKey.isPressed) want = Stance.Crawl;
+                else if (CurrentStance == Stance.Crawl) want = holdC && kb.cKey.isPressed ? Stance.Crouch : _crouchBeforeCrawl ? Stance.Crouch : Stance.Stand;
+            }
+            else if (kb.leftCtrlKey.wasPressedThisFrame) want = CurrentStance == Stance.Crawl ? Stance.Crouch : Stance.Crawl;
+            if (holdC)
+            {
+                if (want != Stance.Crawl)
+                {
+                    if (kb.cKey.isPressed) want = Stance.Crouch;
+                    else if (CurrentStance == Stance.Crouch) want = Stance.Stand;
+                }
+            }
+            else if (kb.cKey.wasPressedThisFrame) want = CurrentStance == Stance.Crouch ? Stance.Stand : Stance.Crouch;
+            if (want == Stance.Crawl && CurrentStance != Stance.Crawl) _crouchBeforeCrawl = CurrentStance == Stance.Crouch && !holdC;
             SetStanceEased(want);
         }
 

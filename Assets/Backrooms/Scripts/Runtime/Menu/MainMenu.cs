@@ -48,8 +48,8 @@ namespace Backrooms.Menu
         enum Page { Top, Saves, Settings, Multi, Host, Join }
         Page _page;
         UIDocument _doc;
-        VisualElement _root, _panel, _list;
-        Label _pageLabel;
+        VisualElement _root, _panel, _list, _header, _title;
+        Label _pageLabel, _heading;
         readonly List<(VisualElement el, Action act)> _items = new List<(VisualElement, Action)>();
         readonly Dictionary<int, Action<int>> _steps = new Dictionary<int, Action<int>>();
         CamcorderVisualMenu _vm;
@@ -88,7 +88,7 @@ namespace Backrooms.Menu
             var items = GetComponent<ItemsMenu>();
             if (items) items.enabled = false;
             _osd = FindAnyObjectByType<CamcorderOSD>();
-            if (_osd) _osd.standby = true;
+            if (_osd) { _osd.standby = true; _osd.SetStart(new DateTime(1996, 3, 11, 9, 0, 0)); }
 
             _beep = gameObject.AddComponent<AudioSource>();
             _beep.playOnAwake = false; _beep.spatialBlend = 0f; _beep.volume = 0.45f; _beep.ignoreListenerPause = true;
@@ -109,6 +109,19 @@ namespace Backrooms.Menu
 
         void Update()
         {
+            // The name and the menu sit inside the picture, clear of the black bar (they sat across its edge).
+            if (_panel != null)
+            {
+                var inPicture = new Length((Backrooms.UI.UiKit.BarShare + 0.035f) * 100f, LengthUnit.Percent);
+                _panel.style.left = inPicture;
+                if (_title != null)
+                {
+                    _title.style.left = inPicture;
+                    // Only on the first page, and not behind settings, YOUR LOOK or the camcorder's menu.
+                    bool over = SettingsMenu.IsOpen || LookMenu.IsOpen || _vmShown || _page != Page.Top || _leaving;
+                    _title.style.display = over ? DisplayStyle.None : DisplayStyle.Flex;
+                }
+            }
             CamcorderPlayerController.InputBlocked = true;
             if (Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
@@ -216,7 +229,7 @@ namespace Backrooms.Menu
             var go = new GameObject("MainMenu_UI");
             go.transform.SetParent(transform, false);
             _doc = go.AddComponent<UIDocument>();
-            _doc.panelSettings = Resources.Load<PanelSettings>("UI/CamcorderPanel");
+            _doc.panelSettings = Backrooms.UI.UiKit.Panel;
             _doc.sortingOrder = 10;
             _root = _doc.rootVisualElement;
             var sheet = Resources.Load<StyleSheet>("UI/MainMenu");
@@ -225,13 +238,24 @@ namespace Backrooms.Menu
             _root.pickingMode = PickingMode.Ignore;
             ApplyMenuFont(_root);
 
+            // The title screen (2026-11-10, Docs/UiPlan.md U8): the game's name in the company's colours over the picture,
+            // the stripe under it. (OVERFLOW stands in until the owner names the game: the studio name is taken.)
+            _title = new VisualElement(); _title.AddToClassList("tt-block"); _title.pickingMode = PickingMode.Ignore;
+            _title.Add(Text(GameName, "tt-name"));
+            var tstripe = new VisualElement(); tstripe.AddToClassList("tt-stripe"); tstripe.pickingMode = PickingMode.Ignore;
+            foreach (var c in new[] { "mm-s1", "mm-s2", "mm-s3" }) { var b = new VisualElement(); b.AddToClassList(c); b.pickingMode = PickingMode.Ignore; tstripe.Add(b); }
+            _title.Add(tstripe);
+            _title.Add(Text("STORAGE & RETURNS  ·  SINCE 1961", "tt-tag"));
+            _root.Add(_title);
+            _root.Add(Text("BUILD " + Application.version, "tt-build"));
+
             _panel = new VisualElement();
             _panel.AddToClassList("mm-panel");
             _root.Add(_panel);
-            var header = new VisualElement(); header.AddToClassList("mm-header");
-            header.Add(Text("MENU", "mm-title"));
-            _pageLabel = Text("", "mm-page"); header.Add(_pageLabel);
-            _panel.Add(header);
+            _header = new VisualElement(); _header.AddToClassList("mm-header");
+            _heading = Text("", "mm-title"); _header.Add(_heading);
+            _pageLabel = Text("", "mm-page"); _header.Add(_pageLabel);
+            _panel.Add(_header);
             var rule = new VisualElement(); rule.AddToClassList("mm-rule"); _panel.Add(rule);
             AddStripe(_panel);
             _list = new VisualElement(); _list.AddToClassList("mm-list"); _panel.Add(_list);
@@ -245,6 +269,12 @@ namespace Backrooms.Menu
             ApplyLook(_root);
             _list.Clear(); _items.Clear(); _steps.Clear();
             _panel.EnableInClassList("mm-wide", page != Page.Top);
+            _panel.EnableInClassList("tt-menu", page == Page.Top);
+            if (_title != null) _title.style.display = page == Page.Top ? DisplayStyle.Flex : DisplayStyle.None;
+            // Every menu was titled MENU: now the page says what it is (the first page needs no heading under the name).
+            _header.style.display = page == Page.Top ? DisplayStyle.None : DisplayStyle.Flex;
+            _heading.text = page == Page.Saves ? "WORLDS" : page == Page.Multi ? "PLAY WITH FRIENDS" : page == Page.Host ? "HOST A WORLD"
+                          : page == Page.Join ? "JOIN A GAME" : page == Page.Settings ? "SETTINGS" : "";
             switch (page)
             {
                 case Page.Top:
@@ -252,18 +282,18 @@ namespace Backrooms.Menu
                     // Back from a co-op game that ended (the host left, the connection dropped): why, once.
                     if (!string.IsNullOrEmpty(Net.NetSession.LastError)) { _list.Add(Text(Net.NetSession.LastError, "mm-note")); Net.NetSession.LastError = null; }
                     Item("PLAY", () => { Beep(1); Show(Page.Saves); });
-                    Item("MULTIPLAYER", () => { Beep(1); Show(Page.Multi); });
+                    Item("PLAY WITH FRIENDS", () => { Beep(1); Show(Page.Multi); });
                     Item("YOUR LOOK", OpenLook);
                     Item("SETTINGS", OpenSettings);
                     Item("QUIT", Quit);
                     break;
                 case Page.Saves:
-                    _pageLabel.text = "WORLD SELECT";
+                    _pageLabel.text = "";
                     for (int i = 0; i < SaveSlots.Count; i++) Slot(i);
                     Item("BACK", () => { Beep(2); Show(Page.Top); }, true);
                     break;
                 case Page.Multi:
-                    _pageLabel.text = "MULTIPLAYER";
+                    _pageLabel.text = "";
                     Field("NAME", Net.NetSession.PlayerName, 16, v => Net.NetSession.PlayerName = v);
                     Item("HOST A WORLD ►", () => { Beep(1); Show(Page.Host); });
                     Item("JOIN A GAME ►", () => { Beep(1); Show(Page.Join); });
@@ -272,7 +302,7 @@ namespace Backrooms.Menu
                     break;
                 case Page.Host:
                 {
-                    _pageLabel.text = "HOST A WORLD";
+                    _pageLabel.text = "";
                     var addrs = Net.NetTransport.LocalAddresses();
                     var said = new List<string>();
                     foreach (var (address, what) in addrs) if (said.Count < 3) said.Add(what + "  " + address);
@@ -285,16 +315,22 @@ namespace Backrooms.Menu
                     break;
                 }
                 case Page.Join:
-                    _pageLabel.text = "JOIN A GAME";
+                    _pageLabel.text = "";
                     _addrField = Field("ADDRESS", Net.NetSession.LastAddress, 64, v => Net.NetSession.LastAddress = v.Trim());
                     Field("PORT", Net.NetSession.Port.ToString(), 5, v => { if (int.TryParse(v, out int p)) Net.NetSession.Port = p; });
                     Item("JOIN ►", JoinNow);
+                    // Recent hosts (2026-11-10, U11): the last three joined, one press each.
+                    foreach (var recent in RecentHosts())
+                    {
+                        string r = recent;
+                        Item("JOIN " + r, () => { if (_addrField != null) _addrField.value = r; JoinNow(); }, true);
+                    }
                     _netStatus = Text("", "mm-note"); _list.Add(_netStatus);
                     _list.Add(Text("THE HOST'S HAMACHI ADDRESS (25.X.X.X), THEIR LAN ADDRESS (192.168.X.X) OR ANY VPN'S, AND THEIR PORT (7777 UNLESS THEY CHANGED IT). CTRL+V PASTES.", "mm-desc"));
                     Item("BACK", () => { if (Net.NetSession.Active) Net.NetSession.Stop(null, false); Beep(2); Show(Page.Multi); }, true);
                     break;
                 case Page.Settings:
-                    _pageLabel.text = "SETTINGS";
+                    _pageLabel.text = "";
                     Option("SCREEN", () => ScreenSettings.ModeNames[(int)ScreenSettings.CurrentMode], d =>
                     {
                         int m = ((int)ScreenSettings.CurrentMode + d + ScreenSettings.ModeNames.Length) % ScreenSettings.ModeNames.Length;
@@ -393,13 +429,17 @@ namespace Backrooms.Menu
             var row = new VisualElement(); row.AddToClassList("mm-item"); row.AddToClassList("mm-slot");
             row.Add(Text("►", "mm-cursor"));
             var body = new VisualElement(); body.AddToClassList("mm-slotbody");
+            // A card (2026-11-10, U11): the world's own date, money in hand and stage first; time played and when last.
             body.Add(Text($"WORLD {slot + 1}", "mm-slotname"));
-            if (d == null) body.Add(Text("EMPTY  —  START A NEW SAVE", "mm-empty"));
+            if (d == null) body.Add(Text("EMPTY  —  START A NEW WORLD", "mm-empty"));
             else
             {
-                string zone = string.IsNullOrEmpty(d.zone) ? "" : d.zone.ToUpperInvariant() + "    ";
-                body.Add(Text($"{zone}{Tape(d.playSeconds)} ON TAPE", "mm-detail"));
-                body.Add(Text($"SEED {d.seed}    SAVED {Stamp(d.saved)}", "mm-detail"));
+                var facts = new VisualElement(); facts.AddToClassList("sl-facts");
+                facts.Add(Text(WorldDay(d), "sl-day"));
+                facts.Add(Text($"${d.pay} IN HAND", "sl-fact"));
+                facts.Add(Text(StageOf(d), "sl-fact"));
+                body.Add(facts);
+                body.Add(Text($"{Tape(d.playSeconds)} PLAYED    LAST {Stamp(d.saved)}" + (DevTools.On ? $"    SEED {d.seed}" : ""), "mm-detail"));
             }
             row.Add(body);
             if (d != null)
@@ -467,6 +507,7 @@ namespace Backrooms.Menu
             if (addr.Length == 0) { Beep(2); if (_netStatus != null) _netStatus.text = "TYPE THE HOST'S ADDRESS FIRST"; return; }
             Net.NetSession.LastAddress = addr; Net.NetSession.Port = port;
             if (!Net.NetSession.Join(addr, port, out var err)) { Beep(2); if (_netStatus != null) _netStatus.text = err; return; }
+            RememberHost(addr + ":" + port);
             Beep(1);
         }
 
@@ -474,7 +515,48 @@ namespace Backrooms.Menu
         {
             if (_netStatus == null || (_page != Page.Join && _page != Page.Host)) return;
             if (Net.NetSession.Active) _netStatus.text = Net.NetSession.Status;
-            else if (!string.IsNullOrEmpty(Net.NetSession.LastError)) _netStatus.text = (_page == Page.Join ? "COULD NOT JOIN: " : "") + Net.NetSession.LastError;
+            else if (!string.IsNullOrEmpty(Net.NetSession.LastError))
+            {
+                string e = Net.NetSession.LastError;
+                // What to try, in plain words (2026-11-10, U11).
+                string tip = _page != Page.Join ? "" : e.Contains("TIMED OUT") || e.Contains("NOTHING HEARD") ? "  CHECK THE ADDRESS AND PORT, THAT THE HOST HAS THEIR WORLD OPEN, AND THAT YOU ARE BOTH ON THE SAME HAMACHI OR VPN NETWORK."
+                           : e.Contains("REFUSED") ? "  THE HOST'S GAME IS NOT LISTENING ON THAT PORT: ASK THEM FOR IT." : "";
+                _netStatus.text = (_page == Page.Join ? "COULD NOT JOIN: " : "") + e + tip;
+            }
+        }
+
+        /// <summary>The game's name on the title screen: a stand-in until the owner names it (Docs/UiPlan.md U8).</summary>
+        public const string GameName = "OVERFLOW";
+
+        /// <summary>A world's date on the camcorder (business time as client days from its first morning).</summary>
+        static string WorldDay(WorldSaveData d)
+        {
+            var day = new DateTime(1996, 3, 11).AddDays(Math.Floor(d.business * Contracts.ClientDaysPerSecond));
+            return day.ToString("MMM dd yyyy", System.Globalization.CultureInfo.InvariantCulture).ToUpperInvariant();
+        }
+
+        static string StageOf(WorldSaveData d)
+        {
+            var names = WorkOrders.StageNames;
+            return names[Mathf.Clamp(d.woStage, 0, names.Length - 1)];
+        }
+
+        const string RecentKey = "Backrooms.RecentHosts";
+
+        /// <summary>The last hosts joined, newest first (address:port), at most three.</summary>
+        static List<string> RecentHosts()
+        {
+            var list = new List<string>();
+            foreach (var s in PlayerPrefs.GetString(RecentKey, "").Split('|')) if (s.Length > 0 && list.Count < 3) list.Add(s);
+            return list;
+        }
+
+        static void RememberHost(string hostPort)
+        {
+            var list = RecentHosts();
+            list.Remove(hostPort); list.Insert(0, hostPort);
+            if (list.Count > 3) list.RemoveRange(3, list.Count - 3);
+            PlayerPrefs.SetString(RecentKey, string.Join("|", list)); PlayerPrefs.Save();
         }
 
         static string Tape(double seconds)

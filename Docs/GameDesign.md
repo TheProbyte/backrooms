@@ -117,6 +117,11 @@ camcorder. Alone or with up to three friends.
   verbs; news that changes the plan as a title in the middle (queued, never replacing each other), the rest as small
   lines at the lower left; in co-op a player list with where everyone is, and talk bars by a name while that friend
   speaks. The side panels show whether or not the viewfinder marks are on. [built 2026-11-10]
+- **The menus** (Docs/UiPlan.md pass 2): a title screen with the game's name (OVERFLOW until it is named) over the
+  camcorder's picture; the pause menu (PAUSED) built as the main menu is; QUIT and ending a hosted game ask once;
+  settings in tabs with aligned values, and TEXT SIZE (three steps, every menu, panel and prompt), crouch and crawl held
+  or pressed, FLASHING steady, SUBTITLES; worlds shown as cards (their date, money, stage, time played); the last three
+  hosts on JOIN A GAME. [built 2026-11-10]
 
 ## 5. The places
 
@@ -654,9 +659,9 @@ packing job → powered racks.
 ## Other docs
 
 - `Docs/UiPlan.md`: every screen, panel and prompt reviewed (2026-11-09), and a plan in passes to give them one look,
-  split the developer tools from the player's game, and reach small screens. Passes 0 and 1 built 2026-11-10 (the
+  split the developer tools from the player's game, and reach small screens. Passes 0, 1 and 2 built 2026-11-10 (the
   two typefaces and the colour names, the developer switch, `-ui-shots`; the side panels, prompts, notices, co-op
-  marks); passes 2 to 5 not built. Decided 2026-11-10: the
+  marks; the title screen, pause menu, settings and world cards); passes 3 to 5 not built. Decided 2026-11-10: the
   developer tools and build mode are for the owner only (off in the player's game); no controller yet; other languages
   later; a title screen with the game's name, the name itself still open (Overflow is taken by a Japanese studio).
   The game's two typefaces: Pixelify Sans for the camcorder's marks, Courier Prime for the company's paper (menus,

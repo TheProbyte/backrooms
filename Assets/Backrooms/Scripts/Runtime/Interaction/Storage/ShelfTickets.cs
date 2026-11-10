@@ -197,7 +197,7 @@ namespace Backrooms.Interaction
             // The blink (red: due back; faster when late) runs every frame; the rest twice a second.
             if (_lampState >= 3)
             {
-                bool on = (Time.time * (_lampState == 4 ? 3.2f : 1.4f)) % 1f < 0.55f;
+                bool on = GameSettings.Steady || (Time.time * (_lampState == 4 ? 3.2f : 1.4f)) % 1f < 0.55f;   // (FLASHING off: steady red)
                 if (on != _blinkOn) { _blinkOn = on; _lampMat.SetColor("_BaseColor", on ? LampRed : LampOff); }
             }
             if (Time.time < _next) return;

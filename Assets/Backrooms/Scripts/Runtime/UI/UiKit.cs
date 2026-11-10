@@ -57,6 +57,44 @@ namespace Backrooms.UI
 
         public const int Small = 17, Body = 22, Large = 28, Title = 36, Display = 56;
 
+        /// <summary>TEXT SIZE (Settings, ACCESSIBILITY): 1, 1.15 or 1.3, applied to the menus (UI Toolkit), the IMGUI
+        /// screens, the side panels and the prompts. The camcorder's own marks keep their size.</summary>
+        public static float TextScale => GameSettings.TextSize == 2 ? 1.3f : GameSettings.TextSize == 1 ? 1.15f : 1f;
+
+        static PanelSettings _panel;
+
+        /// <summary>
+        /// The menus' panel settings: a copy of Resources/UI/CamcorderPanel made at run time, so TEXT SIZE can change its
+        /// scale without touching the asset (in the editor a change to the asset itself would be saved). Every UI Toolkit
+        /// screen uses this.
+        /// </summary>
+        public static PanelSettings Panel
+        {
+            get
+            {
+                if (_panel) return _panel;
+                var src = Resources.Load<PanelSettings>("UI/CamcorderPanel");
+                if (!src) return null;
+                _panel = Object.Instantiate(src);
+                _panel.name = "CamcorderPanel (run time)";
+                _panel.hideFlags = HideFlags.DontSave;
+                ApplyTextScale();
+                GameSettings.TextSizeChanged += ApplyTextScale;
+                return _panel;
+            }
+        }
+
+        static void ApplyTextScale()
+        {
+            if (!_panel) return;
+            float k = TextScale;
+            _panel.referenceResolution = new Vector2Int(Mathf.RoundToInt(1920f / k), Mathf.RoundToInt(1080f / k));
+        }
+
+        /// <summary>The share of the screen's width each black bar beside the 4:3 picture takes (0 without bars): menus sit
+        /// inside the picture, not across the join.</summary>
+        public static float BarShare => Screen.width > 0 ? Mathf.Clamp01(Camcorder.CamcorderOSD.SideWidth * Screen.height / (1080f * Screen.width)) : 0f;
+
         // ---- Fonts ----
 
         static Font _cam, _camBold, _paper, _paperBold;

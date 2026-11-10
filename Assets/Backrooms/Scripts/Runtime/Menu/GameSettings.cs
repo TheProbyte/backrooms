@@ -26,6 +26,9 @@ namespace Backrooms
             public float shake = 1f, blur = 1f, brightness = 0f;
             public float voices = 1f;
             public bool micOn = true, pushToTalk;
+            // (2026-11-10, Docs/UiPlan.md U10) Reading and holding.
+            public int textSize;
+            public bool holdCrouch, holdCrawl, steady, subtitles = true;
             public int version = 1;
         }
 
@@ -54,6 +57,17 @@ namespace Backrooms
         /// <summary>Brightness: an exposure offset (EV, -1.5 .. 1.5).</summary>
         public static float Brightness { get => D.brightness; set { D.brightness = Mathf.Clamp(value, -1.5f, 1.5f); Changed(); } }
 
+        /// <summary>TEXT SIZE: 0 normal, 1 large, 2 larger (UI.UiKit.TextScale: every menu, panel and prompt).</summary>
+        public static int TextSize { get => D.textSize; set { D.textSize = Mathf.Clamp(value, 0, 2); Changed(); } }
+        /// <summary>Crouch and crawl while the key is held, instead of a press each way.</summary>
+        public static bool HoldCrouch { get => D.holdCrouch; set { D.holdCrouch = value; Changed(); } }
+        public static bool HoldCrawl { get => D.holdCrawl; set { D.holdCrawl = value; Changed(); } }
+        /// <summary>FLASHING off: blinking marks (REC, notices going, LOW LIGHT, the shelf lamps' red) hold steady.</summary>
+        public static bool Steady { get => D.steady; set { D.steady = value; Changed(); } }
+        /// <summary>SUBTITLES for spoken lines (the PA voice and the orientation tape when they speak: CamcorderOSD.Subtitle).</summary>
+        public static bool Subtitles { get => D.subtitles; set { D.subtitles = value; Changed(); } }
+        public static event System.Action TextSizeChanged;
+
         static void Load()
         {
             s_d = null;
@@ -63,8 +77,10 @@ namespace Backrooms
             Apply();
         }
 
+        static int s_lastText = -1;
         static void Changed()
         {
+            if (s_lastText != D.textSize) { s_lastText = D.textSize; TextSizeChanged?.Invoke(); }
             try { PlayerPrefs.SetString(Key, JsonUtility.ToJson(D)); PlayerPrefs.Save(); } catch (System.Exception) { }
             Apply();
         }
@@ -80,6 +96,7 @@ namespace Backrooms
         public static void ResetSound() { D.master = 1f; D.ambience = 1f; D.music = 1f; D.voices = 1f; D.micOn = true; D.pushToTalk = false; Changed(); }
         public static void ResetControls() { D.sensitivity = 1f; D.invertY = false; Changed(); }
         public static void ResetComfort() { D.shake = 1f; D.blur = 1f; D.brightness = 0f; Changed(); }
+        public static void ResetAccess() { D.textSize = 0; D.holdCrouch = D.holdCrawl = false; D.steady = false; D.subtitles = true; Changed(); }
 
         /// <summary>The motion-sickness preset (as Resident Evil 4's and others' one switch): little shake, no blur.</summary>
         public static void ReduceMotion() { D.shake = 0.25f; D.blur = 0f; Changed(); }

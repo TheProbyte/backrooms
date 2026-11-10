@@ -3,9 +3,10 @@
 A review of everything the player reads or clicks, with what to improve and in what order. Where an item changes the
 design, `GameDesign.md` changes with the work.
 
-**Where it stands (2026-11-10): passes 0 and 1 are built** (U1 the kit, U3 the picture run, U12 the developer switch;
-U4 the side panels, U5 prompts, U6 notices, U7 co-op; details under each). Passes 2 to 5 are not. Pictures:
-`Docs/screenshots/ui/pass0/`, `Docs/screenshots/ui/pass1/`.
+**Where it stands (2026-11-10): passes 0, 1 and 2 are built** (U1 the kit, U3 the picture run, U12 the developer
+switch; U4 the side panels, U5 prompts, U6 notices, U7 co-op; U8 the title screen, U9 one menu language, U10 settings,
+U11 worlds and friends; details under each). Passes 3 to 5 are not. Pictures: `Docs/screenshots/ui/pass0/`, `pass1/`,
+`pass2/`.
 
 **How to read it**
 - Every item says what was found, what to do, how big it is (**S** under a session, **M** a session or two, **L**
@@ -212,6 +213,11 @@ Numbers that matter (seen in the code):
   already taken (a Japanese game studio of that name, and a Steam game called Overflow: Number Crunch), so the title
   screen shows OVERFLOW as a stand-in until the owner picks a name. The company in the game stays Overflow.
 - **Worked when:** a picture of the title screen could be the store page's first image.
+- **Built (2026-11-10):** the name (`MainMenu.GameName`, OVERFLOW for now) large in the company amber with the stripe
+  and STORAGE & RETURNS · SINCE 1961 under it; the menu under that, both placed inside the picture whatever the bars
+  (`UiKit.BarShare`); BUILD 0.1.0 small in the corner; the camcorder's date MAR. 11 1996 (the world's first morning)
+  instead of OCT 19 1998; the side panels kept off it. **Kept:** the backdrop is still the camcorder on its side on the
+  carpet (a composed hub shot is not done).
 
 ### U9. One menu language (M)
 - **Found (seen):** main menu and settings are a keyboard cursor list; pause is mouse buttons in another font;
@@ -220,6 +226,11 @@ Numbers that matter (seen in the code):
   Every menu works with keyboard, mouse and controller alike. Every destructive choice (erase a world, quit to menu
   while hosting) asks once, the same way.
 - **Worked when:** the pause menu and the main menu look like the same game in a side-by-side picture.
+- **Built (2026-11-10):** the pause menu is UI Toolkit with the main menu's panel, list, cursor and keys (arrows, W S,
+  Enter; the mouse as well), titled PAUSED, inside the picture; co-op lines and each address with COPY; QUIT and SAVE
+  AND END THE GAME (hosting) ask once (a second press within four seconds), as ERASE on a world does. Every page of the
+  main menu now has its own heading (WORLDS, PLAY WITH FRIENDS, HOST A WORLD, JOIN A GAME), never MENU. **Not done:**
+  the developer menus (L, K, F2, build mode) stay IMGUI: they are not the player's.
 
 ### U10. Settings that read as settings (M)
 - **Found (seen):** values sit wherever the label ends (QUALITY ◄ ULTRA ►, RESOLUTION ◄ 100 % ►), so nothing lines
@@ -232,10 +243,22 @@ Numbers that matter (seen in the code):
   - **SUBTITLES**, ready for the PA voice and the orientation tape;
   - **DEVELOPER TOOLS** (U12).
 - **Worked when:** every value on a page starts at the same column, and text size changes every screen at once.
+- **Built (2026-11-10):** `Menu/SettingsMenu.cs` rewritten: the pages are tabs (SOUND, CONTROLS, COMFORT,
+  ACCESSIBILITY, GRAPHICS, SCREEN, KEYS; Q and E or Tab, or a click); label and value in two columns, ◄ ► clickable,
+  a bar under amounts; the chosen line's description in one place. New: **TEXT SIZE** (normal, large 115 %, larger
+  130 %: the menus through a run-time copy of the panel settings, `UiKit.Panel`, the IMGUI screens, the side panels and
+  the prompts; the camcorder's own marks keep their size), **CROUCH** and **CRAWL** each PRESS or HOLD, **FLASHING**
+  (STEADY: REC, notices going, LOW LIGHT and the shelf lamps' red stay lit), **SUBTITLES** (on by default;
+  `CamcorderOSD.Subtitle` is ready, nothing speaks yet), DEVELOPER TOOLS on the KEYS page, which lists every key in two
+  columns. **Not done:** PANEL SIZE (TEXT SIZE covers the panels); HOLD OR TOGGLE for carrying (taking is already a
+  click, and pushing a hold).
 
 ### U11. Worlds and friends (S each)
 - **Do:** save slots as cards with what a player wants to know (the day, money in hand, stage, time played, last
   played); the multiplayer page with the address field, recent hosts, and a plain reason when a join fails.
+- **Built (2026-11-10):** each world a card: its own date on the camcorder, money in hand, its stage, time played,
+  last played (the seed only with the developer tools on). JOIN A GAME keeps the last three hosts as one-press entries,
+  and a failed join says what to try (check the address and port, that the host's world is open, the same VPN).
 
 ---
 
@@ -323,7 +346,7 @@ Each pass ends with the pictures from U3 taken again and the owner looking at th
 |---|---|---|---|
 | **0. Ground** (built 2026-11-10) | The picture run, the kit, the developer switch | U3, U1, U12 | Before-pictures exist; two shipped fonts; a player cannot reach a developer tool |
 | **1. In play** (built 2026-11-10) | Side panels, prompts, notices, co-op marks | U4, U5, U6, U7 | "What is due next" reads at a glance on 16:9; every hint is a prompt |
-| **2. Menus** | Title, one menu language, settings, worlds and friends | U8, U9, U10, U11 | Main and pause menus look like one game; text size is a setting |
+| **2. Menus** (built 2026-11-10) | Title, one menu language, settings, worlds and friends | U8, U9, U10, U11 | Main and pause menus look like one game; text size is a setting |
 | **3. Camcorder and world** | The player's F5, the pixel-screen kit, the boards | U13, U14, U15 | Nothing cut off in F5; every world screen readable at its distance |
 | **4. Reach** | Small screens, words in one place | U17, U18 (U16 not yet) | 12 px floor at 1280 x 800; wording in one file |
 | **5. Feel** | Sounds and motion | U19 | One set of sounds everywhere |
@@ -349,9 +372,9 @@ Still open:
 - ~~The F5 menu and the left side panel draw over each other~~ (the panel hides under F5, pass 1).
 - F5 preset buttons cut their labels (DEFAUL T, FOUND FOOTAG E, REFERE NCE MATCH, LOW LIGHT GAIN clipped).
 - The L menu cuts "Cassette (lunch break mix)".
-- The title screen's date is OCT 19 1998; the game's is MAR 1996.
+- ~~The title screen's date is OCT 19 1998; the game's is MAR 1996~~ (pass 2).
 - ~~Settings opened by script showed the main menu through it~~ (not so: the picture run shows settings alone).
-- Every menu is titled MENU.
+- ~~Every menu is titled MENU~~ (pass 2).
 - ~~`ImUi.cs` keeps the retired Classic palette~~ (gone, pass 0).
 
 ## Sources

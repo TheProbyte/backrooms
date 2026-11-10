@@ -103,7 +103,7 @@ namespace Backrooms.Menu
         void Build()
         {
             _doc = gameObject.AddComponent<UIDocument>();
-            _doc.panelSettings = Resources.Load<PanelSettings>("UI/CamcorderPanel");
+            _doc.panelSettings = Backrooms.UI.UiKit.Panel;
             _doc.sortingOrder = 21;
             _root = _doc.rootVisualElement;
             var sheet = Resources.Load<StyleSheet>("UI/MainMenu");

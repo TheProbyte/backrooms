@@ -68,20 +68,22 @@ namespace Backrooms.DebugTools
                 show?.Invoke(mm, new[] { Enum.Parse(page, "Top") });
 
                 typeof(Menu.MainMenu).GetMethod("OpenSettings", Any)?.Invoke(mm, null);
-                yield return AllShapes("04-settings");
-                var settings = FindAnyObjectByType<Menu.SettingsMenu>();
-                if (settings)
+                yield return Frames(5);
+                // Every settings tab (2026-11-10: the pages are tabs now).
+                for (int p = 0; p < Menu.SettingsMenu.PageCount; p++)
                 {
-                    var sp = typeof(Menu.SettingsMenu).GetNestedType("Page", Any);
-                    var showPage = typeof(Menu.SettingsMenu).GetMethod("ShowPage", Any);
-                    foreach (var (p, name) in new[] { ("Sound", "05-settings-sound"), ("Graphics", "06-settings-graphics"), ("Screen", "07-settings-screen"), ("Keys", "08-settings-keys") })
-                    {
-                        showPage?.Invoke(settings, new[] { Enum.Parse(sp, p) });
-                        yield return AllShapes(name);
-                    }
-                    typeof(Menu.SettingsMenu).GetMethod("Close", Any)?.Invoke(settings, null);
-                    yield return Frames(5);
+                    Menu.SettingsMenu.ShowPageForShots(p);
+                    yield return AllShapes($"04-settings-{p}-{Menu.SettingsMenu.PageName(p).ToLowerInvariant()}");
                 }
+                // TEXT SIZE at LARGER: the same page, everything bigger (the player's own size put back after).
+                int size0 = GameSettings.TextSize;
+                GameSettings.TextSize = 2;
+                Menu.SettingsMenu.ShowPageForShots(3);
+                yield return Frames(5);
+                yield return AllShapes("04-settings-text-larger");
+                GameSettings.TextSize = size0;
+                Menu.SettingsMenu.CloseForShots();
+                yield return Frames(5);
                 typeof(Menu.MainMenu).GetMethod("OpenLook", Any)?.Invoke(mm, null);
                 yield return Frames(20);
                 yield return AllShapes("09-your-look");
@@ -114,6 +116,11 @@ namespace Backrooms.DebugTools
                 data.batches.Add(new Saves.BatchData { id = 9002, client = 2, count = 3, state = 3, window = 180f, since = 200f });
                 yield return new WaitForSecondsRealtime(0.6f);
                 yield return AllShapes("10b-batches");
+                int size1 = GameSettings.TextSize;
+                GameSettings.TextSize = 2;
+                yield return new WaitForSecondsRealtime(0.4f);
+                yield return AllShapes("10c-batches-text-larger");
+                GameSettings.TextSize = size1;
             }
 
             Camcorder.CamcorderOSD.Title("TALLMORE STORED - +$40 - DUE BACK IN 3:00");

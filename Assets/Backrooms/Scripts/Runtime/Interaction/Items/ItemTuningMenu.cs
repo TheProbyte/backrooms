@@ -144,7 +144,7 @@ namespace Backrooms.Interaction
         {
             if (_root != null) return;
             _doc = gameObject.AddComponent<UIDocument>();
-            _doc.panelSettings = Resources.Load<PanelSettings>("UI/CamcorderPanel");
+            _doc.panelSettings = Backrooms.UI.UiKit.Panel;
             _doc.sortingOrder = 50;
             _root = _doc.rootVisualElement;
             var sheet = Resources.Load<StyleSheet>("UI/CamcorderMenu");
