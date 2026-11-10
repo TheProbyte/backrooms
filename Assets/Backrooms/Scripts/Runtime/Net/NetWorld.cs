@@ -379,7 +379,7 @@ namespace Backrooms.Net
             if (!_ready || _avatars.Count == 0) return;
             var cam = Camera.main;
             if (!cam) return;
-            if (s_tag == null) s_tag = new GUIStyle(GUI.skin.label) { fontSize = 15, alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
+            if (s_tag == null) s_tag = new GUIStyle(GUI.skin.label) { fontSize = 17, alignment = TextAnchor.MiddleCenter, font = Backrooms.UI.UiKit.Font(Backrooms.UI.UiKit.Face.Paper, true) };
             foreach (var a in _avatars.Values)
             {
                 if (!a || !a.HasState) continue;

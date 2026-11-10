@@ -55,9 +55,8 @@ namespace Backrooms.Menu
         {
             if (_big == null)
             {
-                Font font = null;
-                try { font = Font.CreateDynamicFontFromOSFont(new[] { "Consolas", "Lucida Console", "Courier New" }, 64); } catch (Exception) { }
-                _big = new GUIStyle(GUI.skin.label) { font = font, fontSize = 64, fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperLeft };
+                // The camcorder's own face (UiKit): its blue screen.
+                _big = new GUIStyle(GUI.skin.label) { font = Backrooms.UI.UiKit.Font(Backrooms.UI.UiKit.Face.Cam, true), fontSize = 64, alignment = TextAnchor.UpperLeft };
                 _blue = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
                 _blue.SetPixel(0, 0, new Color(0.05f, 0.12f, 0.62f)); _blue.Apply();
             }

@@ -5,32 +5,27 @@ using UnityEngine.InputSystem;
 namespace Backrooms.CustomRooms
 {
     /// <summary>
-    /// A small flat theme (dark grey, or the company's colours in the Overflow art style) for the immediate-mode screens (the pause menu and build mode), scaled so the layout is the same
-    /// at every resolution: positions are in "virtual pixels" of a 1080-line screen.
+    /// The immediate-mode screens' theme (the pause menu, build mode, the developer menus), in the kit's colours and the
+    /// company's paper face (UI/UiKit), scaled so the layout is the same at every resolution: positions are in "virtual
+    /// pixels" of a 1080-line screen. (2026-11-10: the Classic look's grey palette is gone.)
     /// </summary>
     public static class ImUi
     {
-        // Two palettes: the camcorder's dark grey, and in the Overflow art style the company's (2026-11-07, as the main
-        // menu's .mm-ov in MainMenu.uss: chocolate panels, the amber accent, cream type). The styles are rebuilt when the
-        // ART STYLE setting changes.
-        static bool Ov => Backrooms.Generation.ArtStyle.Current == Backrooms.Generation.ArtStyle.Look.Overflow;
-        static Color C(int r, int g, int b) => new Color(r / 255f, g / 255f, b / 255f, 1f);
         /// <summary>The full-screen backdrop of the builder's library.</summary>
-        public static Color Deep => Ov ? C(20, 13, 9) : new Color(0.045f, 0.047f, 0.05f, 1f);
-        public static Color Back => Ov ? C(38, 26, 18) : new Color(0.07f, 0.075f, 0.08f, 1f);
-        public static Color Panel => Ov ? C(59, 42, 30) : new Color(0.11f, 0.115f, 0.12f, 1f);
-        public static Color Raised => Ov ? C(84, 61, 43) : new Color(0.17f, 0.175f, 0.185f, 1f);
-        public static Color Hover => Ov ? C(110, 80, 55) : new Color(0.24f, 0.245f, 0.26f, 1f);
-        public static Color Accent => Ov ? C(240, 162, 30) : new Color(0.93f, 0.78f, 0.28f, 1f);
-        /// <summary>Type and marks drawn on the accent (black, or the company's chocolate).</summary>
-        public static Color OnAccent => Ov ? C(59, 42, 30) : Color.black;
-        public static Color Text => Ov ? C(243, 230, 200) : new Color(0.9f, 0.9f, 0.88f, 1f);
-        public static Color Dim => Ov ? C(205, 180, 138) : new Color(0.62f, 0.62f, 0.6f, 1f);
-        public static Color Bad => Ov ? C(226, 92, 52) : new Color(0.9f, 0.38f, 0.32f, 1f);
-        public static Color Good => Ov ? C(168, 184, 72) : new Color(0.45f, 0.78f, 0.45f, 1f);
-        static Color FieldBack => Ov ? C(44, 31, 21) : new Color(0.05f, 0.05f, 0.055f, 1f);
-        static Color FieldFocus => Ov ? C(66, 47, 32) : new Color(0.08f, 0.08f, 0.09f, 1f);
-        static bool _builtOv;
+        public static Color Deep => Backrooms.UI.UiKit.Ground;
+        public static Color Back => Backrooms.UI.UiKit.ChocDeep;
+        public static Color Panel => Backrooms.UI.UiKit.Choc;
+        public static Color Raised => Backrooms.UI.UiKit.ChocRaised;
+        public static Color Hover => Backrooms.UI.UiKit.ChocHover;
+        public static Color Accent => Backrooms.UI.UiKit.Amber;
+        /// <summary>Type and marks drawn on the accent (the company's chocolate).</summary>
+        public static Color OnAccent => Backrooms.UI.UiKit.Choc;
+        public static Color Text => Backrooms.UI.UiKit.Cream;
+        public static Color Dim => Backrooms.UI.UiKit.Tan;
+        public static Color Bad => Backrooms.UI.UiKit.Bad;
+        public static Color Good => Backrooms.UI.UiKit.Good;
+        static Color FieldBack => new Color(44 / 255f, 31 / 255f, 21 / 255f, 1f);
+        static Color FieldFocus => new Color(66 / 255f, 47 / 255f, 32 / 255f, 1f);
 
         static GUIStyle _label, _title, _small, _button, _active, _box, _field, _toggle, _header, _card, _tooltip, _smallWrap;
         static Texture2D _white;
@@ -74,19 +69,21 @@ namespace Backrooms.CustomRooms
 
         static void Init()
         {
-            if (_label != null && _white && _builtOv == Ov) return;
-            _builtOv = Ov;
+            if (_label != null && _white) return;
             _white = Solid(Color.white);
+            var regular = Backrooms.UI.UiKit.Font(Backrooms.UI.UiKit.Face.Paper);
+            var bold = Backrooms.UI.UiKit.Font(Backrooms.UI.UiKit.Face.Paper, true);
             GUIStyle Make(Color bg, Color fg, int size, FontStyle fs = FontStyle.Normal, TextAnchor a = TextAnchor.MiddleLeft)
             {
-                var s = new GUIStyle(GUI.skin.label) { fontSize = size, fontStyle = fs, alignment = a, wordWrap = false, richText = false, clipping = TextClipping.Clip };
+                // Bold is its own file (UiKit): the face, not a style.
+                var s = new GUIStyle(GUI.skin.label) { font = fs == FontStyle.Bold ? bold : regular, fontSize = size, fontStyle = FontStyle.Normal, alignment = a, wordWrap = false, richText = false, clipping = TextClipping.Clip };
                 s.normal.textColor = fg; s.normal.background = bg.a > 0 ? Solid(bg) : null;
                 s.hover.textColor = fg; s.active.textColor = fg; s.focused.textColor = fg;
                 s.padding = new RectOffset(8, 8, 2, 2);
                 return s;
             }
             _label = Make(Color.clear, Text, 16);
-            _small = Make(Color.clear, Dim, 13);
+            _small = Make(Color.clear, Dim, 15);
             _smallWrap = new GUIStyle(_small) { wordWrap = true };
             _title = Make(Color.clear, Accent, 30, FontStyle.Bold);
             _header = Make(Raised, Accent, 14, FontStyle.Bold);
@@ -111,22 +108,20 @@ namespace Backrooms.CustomRooms
 
         public static void PanelBox(Rect r) { Fill(r, Panel); }
 
-        /// <summary>A panel; in the Overflow art style with the company's amber frame.</summary>
+        /// <summary>A panel with the company's amber frame.</summary>
         public static void FramedBox(Rect r)
         {
-            if (!Ov) { PanelBox(r); return; }
             Fill(r, Accent);
             Fill(new Rect(r.x + 2, r.y + 2, r.width - 4, r.height - 4), Panel);
         }
 
-        /// <summary>The company's orange, gold and avocado stripe under a title (the Overflow art style only, as the main menu's).</summary>
+        /// <summary>The company's orange, gold and avocado stripe under a title (as the main menu's).</summary>
         public static void Stripe(Rect r)
         {
-            if (!Ov) return;
             float h = r.height / 3f;
-            Fill(new Rect(r.x, r.y, r.width, h), C(217, 102, 31));
-            Fill(new Rect(r.x, r.y + h, r.width, h), C(232, 178, 58));
-            Fill(new Rect(r.x, r.y + 2 * h, r.width, h), C(124, 138, 46));
+            Fill(new Rect(r.x, r.y, r.width, h), Backrooms.UI.UiKit.Orange);
+            Fill(new Rect(r.x, r.y + h, r.width, h), Backrooms.UI.UiKit.Gold);
+            Fill(new Rect(r.x, r.y + 2 * h, r.width, h), Backrooms.UI.UiKit.Avocado);
         }
 
         public static void Header(Rect r, string text) { GUI.Label(r, text.ToUpperInvariant(), _header); }

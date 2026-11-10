@@ -260,7 +260,7 @@ namespace Backrooms.Interaction
             if (Time.time > _pocketShowUntil) return;
             float a = Mathf.Clamp01((_pocketShowUntil - Time.time) / 0.4f);
             float scale = Screen.height / 1080f;
-            if (_pocketStyle == null) _pocketStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
+            if (_pocketStyle == null) _pocketStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, font = Backrooms.UI.UiKit.Font(Backrooms.UI.UiKit.Face.Paper, true) };
             _pocketStyle.fontSize = Mathf.Max(10, Mathf.RoundToInt(21f * scale));
             float w = 250f * scale, h = 54f * scale, gap = 10f * scale;
             int cells = PocketCount + (WornBag ? 1 : 0);

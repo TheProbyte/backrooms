@@ -346,14 +346,10 @@ namespace Backrooms.Menu
         }
 
         /// <summary>
-        /// The company's look on a menu (2026-11-06, Phase 5): in the Overflow art style the menus are Overflow's own
-        /// paperwork, chocolate with the amber bar and the company stripe (MainMenu.uss, .mm-ov); in Classic the
-        /// camcorder's navy menu as before.
+        /// The company's look on a menu: Overflow's own paperwork, chocolate with the amber bar and the company stripe
+        /// (MainMenu.uss). Since 2026-11-10 the only look, so this only makes sure the kit is on the tree.
         /// </summary>
-        internal static void ApplyLook(VisualElement root)
-        {
-            if (root != null) root.EnableInClassList("mm-ov", Backrooms.Generation.ArtStyle.Current == Backrooms.Generation.ArtStyle.Look.Overflow);
-        }
+        internal static void ApplyLook(VisualElement root) => ApplyMenuFont(root);
 
         /// <summary>The company stripe under a menu's title (orange, gold, avocado; shown in the Overflow look only).</summary>
         internal static void AddStripe(VisualElement panel)
@@ -566,24 +562,7 @@ namespace Backrooms.Menu
             return l;
         }
 
-        /// <summary>The same monospaced system font as the F5 menu (a camcorder's character generator).</summary>
-        static UnityEngine.TextCore.Text.FontAsset s_font;
-
-        internal static void ApplyMenuFont(VisualElement root)
-        {
-            // Made once and kept across scene loads (the menu comes back with every load of the world scene).
-            if (!s_font)
-                foreach (var family in new[] { "Consolas", "Lucida Console", "Courier New" })
-                {
-                    try
-                    {
-                        s_font = UnityEngine.TextCore.Text.FontAsset.CreateFontAsset(family, "Bold");
-                        if (!s_font) s_font = UnityEngine.TextCore.Text.FontAsset.CreateFontAsset(family, "Regular");
-                        if (s_font) break;
-                    }
-                    catch (Exception) { }
-                }
-            if (s_font) root.style.unityFontDefinition = FontDefinition.FromSDFFont(s_font);
-        }
+        /// <summary>The menus' typeface and colour names: the kit's paper face (UiKit, Courier Prime).</summary>
+        internal static void ApplyMenuFont(VisualElement root) => Backrooms.UI.UiKit.Apply(root, Backrooms.UI.UiKit.Face.Paper);
     }
 }

@@ -152,6 +152,8 @@ namespace Backrooms.Menu
                     Item("SCREEN ►", () => Go(Page.Screen));
                     Item("KEYS ►", () => Go(Page.Keys));
                     if (_onAdvanced != null) Item("CAMCORDER MENU (ADVANCED) ►", () => { var a = _onAdvanced; Close(); a(); });
+                    // The developer's tools (DevTools): only where they exist at all (the editor, a development build, -dev).
+                    if (DevTools.Available) Option("DEVELOPER TOOLS", () => DevTools.On ? "ON" : "OFF", d => DevTools.On = !DevTools.On);
                     Item("BACK", Back, true);
                     break;
 

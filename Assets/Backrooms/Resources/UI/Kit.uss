@@ -1,0 +1,29 @@
+/* The interface kit's colours by name (Docs/UiPlan.md U1, 2026-11-10). The same values as UiKit.cs (C#), kept equal by
+   UiKitTests. UiKit.Apply adds this sheet and the .kit class to a menu's root; the menus' sheets read var(--name).
+   USS cannot fade a variable, so the see-through ones are names of their own. */
+.kit {
+    --choc: rgb(59, 42, 30);
+    --choc-raised: rgb(84, 61, 43);
+    --choc-hover: rgb(110, 80, 55);
+    --choc-deep: rgb(38, 26, 18);
+    --ground: rgb(20, 13, 9);
+    --amber: rgb(240, 162, 30);
+    --orange: rgb(217, 102, 31);
+    --gold: rgb(232, 178, 58);
+    --avocado: rgb(124, 138, 46);
+    --cream: rgb(243, 230, 200);
+    --tan: rgb(205, 180, 138);
+    --good: rgb(168, 184, 72);
+    --warn: rgb(232, 178, 58);
+    --bad: rgb(226, 92, 52);
+
+    --panel: rgba(59, 42, 30, 0.95);
+    --shadow: rgba(20, 13, 9, 0.9);
+    --field: rgba(20, 13, 9, 0.6);
+    --line: rgba(243, 230, 200, 0.35);
+    --line-strong: rgba(243, 230, 200, 0.6);
+    --amber-soft: rgba(240, 162, 30, 0.18);
+    --amber-faint: rgba(240, 162, 30, 0.12);
+    --choc-soft: rgba(59, 42, 30, 0.35);
+    --none: rgba(0, 0, 0, 0);
+}

@@ -88,11 +88,8 @@ namespace Backrooms.Camcorder
             }
         }
 
-        /// <summary>The company's colours in the Overflow art style (CamcorderMenu.uss, .cc-ov); the navy menu in Classic.</summary>
-        void ApplyStyleColours()
-        {
-            _root?.EnableInClassList("cc-ov", Backrooms.Generation.ArtStyle.Current == Backrooms.Generation.ArtStyle.Look.Overflow);
-        }
+        /// <summary>The company's colours (CamcorderMenu.uss, read from the kit's names): the only look since 2026-11-10.</summary>
+        void ApplyStyleColours() { }
 
         // ---------------- Layout ----------------
 
@@ -177,23 +174,8 @@ namespace Backrooms.Camcorder
         static readonly string[] PageNames = { "CAMERA SET", "PLAYER SET", "WORLD SET", "AUDIO SET", "SOUND LIST", "DISPLAY SET", "LIGHTING SET", "LOCATIONS" };
         Label _pageLabel, _stby;
 
-        /// <summary>A monospaced system font reads closer to a camcorder's character generator; falls back
-        /// to the default font when none is installed.</summary>
-        void ApplyMenuFont()
-        {
-            foreach (var family in new[] { "Consolas", "Lucida Console", "Courier New" })
-            {
-                try
-                {
-                    var fa = UnityEngine.TextCore.Text.FontAsset.CreateFontAsset(family, "Bold");
-                    if (fa == null) fa = UnityEngine.TextCore.Text.FontAsset.CreateFontAsset(family, "Regular");
-                    if (fa == null) continue;
-                    _root.style.unityFontDefinition = FontDefinition.FromSDFFont(fa);
-                    return;
-                }
-                catch (Exception) { }
-            }
-        }
+        /// <summary>The camcorder's own face (UiKit, Pixelify Sans): this is the camcorder's menu.</summary>
+        void ApplyMenuFont() => Backrooms.UI.UiKit.Apply(_root, Backrooms.UI.UiKit.Face.Cam);
 
         ScrollView[] _views;
         Button[] _tabButtons;

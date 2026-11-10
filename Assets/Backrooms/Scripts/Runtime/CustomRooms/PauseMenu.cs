@@ -126,8 +126,10 @@ namespace Backrooms.CustomRooms
             float w = 420, cx = ImUi.Width * 0.5f - w * 0.5f;
             bool testing = BuildSession.Testing && scene == SceneIds.World && !CustomRoomTest.Reference;
             bool net = Net.NetSession.Active;
-            bool offerReference = !(CustomRoomTest.Reference && scene == SceneIds.World) && !net;
-            int rows = 6 + (testing ? 1 : 0) + (offerReference ? 1 : 0) - (net ? 1 : 0);
+            // The reference room and build mode are the developer's (DevTools, 2026-11-10).
+            bool offerReference = !(CustomRoomTest.Reference && scene == SceneIds.World) && !net && DevTools.On;
+            bool offerBuild = !net && (DevTools.On || InBuilder);
+            int rows = 5 + (testing ? 1 : 0) + (offerReference ? 1 : 0) + (offerBuild ? 1 : 0);
             var addresses = net && Net.NetSession.IsHost ? Net.NetTransport.LocalAddresses() : null;
             float extra = net ? 34 + (addresses != null ? 30 * Mathf.Min(3, Mathf.Max(1, addresses.Count)) : 0) : 0;
             float h = 24 + 40 + 10 + rows * 56 + 24 + extra;
@@ -173,7 +175,7 @@ namespace Backrooms.CustomRooms
             }
             // The reference room is a room of the procedural world (ReferenceBlueprint), lit exactly like the game.
             if (offerReference && ImUi.Button(col.Row(), "REFERENCE ROOM")) { Close(); CustomRoomTest.End(); CustomRoomTest.BeginReference(); Load(SceneIds.World); }
-            if (!net && ImUi.Button(col.Row(), InBuilder ? "ROOM LIBRARY" : "BUILD A SECTION"))
+            if (offerBuild && ImUi.Button(col.Row(), InBuilder ? "ROOM LIBRARY" : "BUILD A SECTION"))
             {
                 Close(); CustomRoomTest.End();
                 if (InBuilder) BuilderApp.Current?.ShowLibrary(); else Load(SceneIds.Build);

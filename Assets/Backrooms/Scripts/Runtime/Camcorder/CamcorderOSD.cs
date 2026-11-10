@@ -24,7 +24,7 @@ namespace Backrooms.Camcorder
 
         Canvas _canvas;
         RectTransform _frame, _barL, _barR, _content;
-        Text _rec, _counter, _date, _time, _sp;
+        Text _rec, _counter, _date, _time, _sp, _dev;
         Text _notice;
         static string s_notice;
         static float s_noticeAt = -100f;
@@ -81,13 +81,17 @@ namespace Backrooms.Camcorder
         Image _recDot;
         DateTime _start;
         float _t0;
-        Font _font;
+        Font _font, _paper, _paperBold;
 
         void Awake()
         {
             if (!DateTime.TryParse(startDate, out _start)) _start = new DateTime(1998, 10, 19, 22, 41, 0);
             _t0 = Time.time;
-            _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            // The kit's two faces (UiKit, 2026-11-10): the camcorder's marks in its own, the side panels and the pay slip on
+            // the company's paper.
+            _font = Backrooms.UI.UiKit.Font(Backrooms.UI.UiKit.Face.Cam);
+            _paper = Backrooms.UI.UiKit.Font(Backrooms.UI.UiKit.Face.Paper);
+            _paperBold = Backrooms.UI.UiKit.Font(Backrooms.UI.UiKit.Face.Paper, true);
             Build();
         }
 
@@ -211,6 +215,8 @@ namespace Backrooms.Camcorder
 
             _rec = Label("REC", new Vector2(0, 1), new Vector2(32, 0), TextAnchor.UpperLeft, 34);
             _sp = Label("SP", new Vector2(0, 1), new Vector2(0, -46), TextAnchor.UpperLeft, 28);
+            // The developer's tools are on (DevTools): a small DEV under SP, so a picture shows it was not the player's game.
+            _dev = Label("DEV", new Vector2(0, 1), new Vector2(0, -84), TextAnchor.UpperLeft, 22);
             _counter = Label("0:00:00", new Vector2(1, 1), Vector2.zero, TextAnchor.UpperRight, 34);
             _time = Label("", new Vector2(0, 0), new Vector2(0, 44), TextAnchor.LowerLeft, 34);
             _date = Label("", new Vector2(0, 0), Vector2.zero, TextAnchor.LowerLeft, 34);
@@ -218,6 +224,7 @@ namespace Backrooms.Camcorder
             _lowLight = Label("LOW LIGHT", new Vector2(0, 0.5f), Vector2.zero, TextAnchor.MiddleLeft, 40);
             _tracker = Label("", new Vector2(1, 1), new Vector2(0, -96), TextAnchor.UpperRight, 22);
             _tracker.supportRichText = true;
+            _tracker.font = _paper;   // the work list: company paper, as in the side panels
             _tracker.horizontalOverflow = HorizontalWrapMode.Wrap;
             _tracker.lineSpacing = 1.05f;
             _tracker.rectTransform.sizeDelta = new Vector2(700, 640);
@@ -249,7 +256,7 @@ namespace Backrooms.Camcorder
         {
             var paper = new GameObject("PaySlip").AddComponent<Image>();
             paper.transform.SetParent(_barCanvas.transform, false);
-            paper.color = new Color(0.95f, 0.92f, 0.84f, 1f);
+            paper.color = Backrooms.UI.UiKit.Cream;
             _slip = paper.rectTransform;
             _slip.anchorMin = _slip.anchorMax = new Vector2(0.5f, 0f);
             _slip.pivot = new Vector2(0.5f, 0f);
@@ -259,23 +266,23 @@ namespace Backrooms.Camcorder
             // The company's amber band along the top, its name on it.
             var band = new GameObject("Band").AddComponent<Image>();
             band.transform.SetParent(_slip, false);
-            band.color = new Color(0.94f, 0.64f, 0.12f, 1f);
+            band.color = Backrooms.UI.UiKit.Amber;
             var br = band.rectTransform;
             br.anchorMin = new Vector2(0, 1); br.anchorMax = new Vector2(1, 1); br.pivot = new Vector2(0.5f, 1);
             br.sizeDelta = new Vector2(0, 44); br.anchoredPosition = Vector2.zero;
-            var ink = new Color(59 / 255f, 42 / 255f, 30 / 255f, 1f);
+            var ink = Backrooms.UI.UiKit.Choc;
             Text T(string name, Transform parent, TextAnchor align, int size)
             {
                 var t = new GameObject(name).AddComponent<Text>();
                 t.transform.SetParent(parent, false);
-                t.font = _font; t.fontSize = size; t.alignment = align; t.color = ink; t.lineSpacing = 1.1f;
+                t.font = _paper; t.fontSize = size; t.alignment = align; t.color = ink; t.lineSpacing = 1.1f;
                 t.horizontalOverflow = HorizontalWrapMode.Overflow; t.verticalOverflow = VerticalWrapMode.Overflow;
                 var r = t.rectTransform;
                 r.anchorMin = new Vector2(0, 1); r.anchorMax = new Vector2(1, 1); r.pivot = new Vector2(0.5f, 1);
                 return t;
             }
             _slipHead = T("Head", band.transform, TextAnchor.MiddleCenter, 24);
-            _slipHead.fontStyle = FontStyle.Bold;
+            _slipHead.font = _paperBold;
             _slipHead.text = "OVERFLOW  -  PAY SLIP";
             var hr = _slipHead.rectTransform; hr.anchorMin = Vector2.zero; hr.anchorMax = Vector2.one; hr.offsetMin = hr.offsetMax = Vector2.zero;
             _slipLeft = T("Left", _slip, TextAnchor.UpperLeft, 21);
@@ -336,8 +343,8 @@ namespace Backrooms.Camcorder
         {
             var t = new GameObject(name).AddComponent<Text>();
             t.transform.SetParent(_barCanvas.transform, false);
-            t.font = _font; t.fontSize = 22; t.alignment = TextAnchor.UpperLeft; t.supportRichText = true;
-            t.color = new Color(243 / 255f, 230 / 255f, 200 / 255f, 0.92f);
+            t.font = _paper; t.fontSize = 22; t.alignment = TextAnchor.UpperLeft; t.supportRichText = true;
+            t.color = new Color(Backrooms.UI.UiKit.Cream.r, Backrooms.UI.UiKit.Cream.g, Backrooms.UI.UiKit.Cream.b, 0.92f);
             t.horizontalOverflow = HorizontalWrapMode.Wrap; t.verticalOverflow = VerticalWrapMode.Truncate;
             t.lineSpacing = 1.08f;
             t.raycastTarget = false;
@@ -420,7 +427,7 @@ namespace Backrooms.Camcorder
             int ov = Backrooms.Generation.ArtStyle.Current == Backrooms.Generation.ArtStyle.Look.Overflow ? 1 : 0;
             if (ov == _inkShown) return;
             _inkShown = ov;
-            _ink = ov == 1 ? new Color(243 / 255f, 230 / 255f, 200 / 255f, 1f) : Color.white;
+            _ink = ov == 1 ? Backrooms.UI.UiKit.Cream : Color.white;
             var shadow = ov == 1 ? new Color(30 / 255f, 18 / 255f, 8 / 255f, 0.8f) : new Color(0, 0, 0, 0.75f);
             foreach (var root in new Transform[] { _content, _notice.transform, _debug.transform })
             {
@@ -452,6 +459,7 @@ namespace Backrooms.Camcorder
             _content.gameObject.SetActive(visible);
             ApplyInk();
             _debug.enabled = showDebug;
+            _dev.enabled = DevTools.On;
             UpdateSlip();
             // A notice given while the slip is up (the new morning's NEW WORK) waits until it has gone.
             if (_slip && _slip.gameObject.activeSelf && s_noticeAt >= s_slipAt) s_noticeAt = Time.unscaledTime;
@@ -510,7 +518,7 @@ namespace Backrooms.Camcorder
                     lr.anchorMin = lr.anchorMax = new Vector2(0, 1); lr.pivot = new Vector2(1, 1);
                     lr.anchoredPosition = new Vector2(bar - 18f, -72f); lr.sizeDelta = new Vector2(pw, ph);
                     _sideR.text = SideRight; _sideL.text = SideLeft;
-                    var c = new Color(243 / 255f, 230 / 255f, 200 / 255f, 0.92f * SideAlpha);
+                    var c = new Color(Backrooms.UI.UiKit.Cream.r, Backrooms.UI.UiKit.Cream.g, Backrooms.UI.UiKit.Cream.b, 0.92f * SideAlpha);
                     _sideR.color = c; _sideL.color = c;
                 }
             }

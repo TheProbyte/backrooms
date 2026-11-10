@@ -282,8 +282,7 @@ namespace Backrooms
             bool hasFocus = !blocked && Cursor.lockState == CursorLockMode.Locked && (Application.isFocused || !requireWindowFocus);
             HasFocus = hasFocus;
             if (hasFocus) UpdateLook(mouse.delta.ReadValue() * FovMultiplier * lookScale);   // aim slows down when zoomed in
-            if (hasFocus && keyboard.vKey.wasPressedThisFrame) SetNoclip(!noclip);             // V: fly through everything (quick testing)
-            UpdateZoom(keyboard, hasFocus);
+            if (hasFocus && keyboard.vKey.wasPressedThisFrame && DevTools.On) SetNoclip(!noclip);   // V: fly through everything (a developer's tool, DevTools)            UpdateZoom(keyboard, hasFocus);
             if (seated)
             {
                 // On a seat: where it puts you, nothing of walking (Interaction.Seating moves you with it).

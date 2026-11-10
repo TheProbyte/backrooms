@@ -10,7 +10,9 @@ scope changes, this doc changes first (or with the work). How the game used to w
 - **Checked by script** means a test drove it in Play; **played by hand** means someone played it with mouse and keys.
   Only playing by hand says whether something feels good.
 - Numbers are where things stand now, to be tuned in play.
-- The game was "Still Recording" until 2026-11; it is now **Overflow** (also a working title).
+- The game was "Still Recording" until 2026-11; it is now **Overflow** (also a working title). Overflow is already a
+  Japanese game studio's name and part of a Steam game's title, so the game's own name is still to be picked; the
+  company in the game stays Overflow.
 
 ---
 
@@ -98,6 +100,17 @@ camcorder. Alone or with up to three friends.
   appears is not heard. [built 2026-11-09]
 - **On-screen notices** (the camcorder's titles, centre-low) wrap onto two lines and shrink to fit inside the picture;
   never cut off at the sides. [built 2026-11-09]
+- **The interface's two typefaces** (the owner, 2026-11-10), shipped with the game so every PC shows the same letters:
+  **Pixelify Sans** for the camcorder's own marks (REC, the counter, the date, notices, LOW LIGHT, the F5 menu, the
+  tape's blue screen) and **Courier Prime**, a typewriter face, for the company's paper (the menus, settings, the pause
+  menu, the side panels, prompts, the pay slip, the co-op list). The 5 x 7 pixel font stays on the boards and screens
+  in the world. Every screen takes its colours from one table of names (chocolate, amber, cream, tan, the stripe's
+  orange, gold and avocado, good, warning, bad). [built 2026-11-10]
+- **The developer's tools are not the player's** (the owner, 2026-11-10: "build mode and dev is for me technically,
+  not future players"): L (items, PROGRESSION), K (enemies), V (flying), F2 (item tuning) and build mode (REFERENCE
+  ROOM, BUILD A SECTION) exist only in the editor, a development build, or with `-dev` on the command line; there they
+  can be turned off in Settings (DEVELOPER TOOLS), and a small DEV in the viewfinder shows they are on. [built
+  2026-11-10]
 
 ## 5. The places
 
@@ -634,6 +647,13 @@ packing job → powered racks.
 
 ## Other docs
 
+- `Docs/UiPlan.md`: every screen, panel and prompt reviewed (2026-11-09), and a plan in passes to give them one look,
+  split the developer tools from the player's game, and reach small screens. Pass 0 built 2026-11-10 (the two
+  typefaces and the colour names, the developer switch, `-ui-shots`); passes 1 to 5 not built. Decided 2026-11-10: the
+  developer tools and build mode are for the owner only (off in the player's game); no controller yet; other languages
+  later; a title screen with the game's name, the name itself still open (Overflow is taken by a Japanese studio).
+  The game's two typefaces: Pixelify Sans for the camcorder's marks, Courier Prime for the company's paper (menus,
+  side panels, prompts, slips); the 5 x 7 pixel font stays on the screens in the world.
 - `Docs/ImprovementPlan.md`: a review of the game against this outline (2026-11-09) and a plan in passes: fun, the
   look, efficiency. Not built; items move into this doc as they are agreed.
 - `Docs/DesignHistory.md`: how the game used to work (the working day, rent, the night) and what replaced it.

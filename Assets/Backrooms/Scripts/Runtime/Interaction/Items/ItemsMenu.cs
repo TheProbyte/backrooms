@@ -41,7 +41,7 @@ namespace Backrooms.Interaction
             var kb = Keyboard.current;
             if (kb == null) return;
             bool otherMenu = PauseMenu.IsOpen || (CamcorderPlayerController.InputBlocked && !_open);
-            if (kb.lKey.wasPressedThisFrame && !otherMenu) SetOpen(!_open);
+            if (kb.lKey.wasPressedThisFrame && !otherMenu && (DevTools.On || _open)) SetOpen(!_open);   // a developer's tool (DevTools)
             else if (_open && kb.escapeKey.wasPressedThisFrame && _openedFrame != Time.frameCount) SetOpen(false);
         }
 

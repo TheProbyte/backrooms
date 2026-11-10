@@ -1,123 +1,125 @@
-/* F5 menu styled after a late-90s camcorder's on-screen menu: navy box with a thin white frame,
-   white outlined capitals, an amber highlight bar on the item under the pointer. */
+/* F5, the camcorder's menu: the company's chocolate panel with the amber frame and selection bar, cream type in the
+   camcorder's face (Pixelify Sans, UiKit), tan notes. Colours are the kit's names (Kit.uss). Sizes are still the tuning
+   bench's: the player's F5 is pass 3 of Docs/UiPlan.md (U13).
+   (2026-11-10: the Classic look's navy and white rules are gone; this was .cc-ov.) */
 
 .cc-root { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
 .cc-root .unity-label, .cc-root .unity-text-element {
-    color: rgb(242, 246, 255); font-size: 15px; letter-spacing: 1px;
-    text-shadow: 1px 1px 0 rgba(0, 0, 20, 0.9);
+    color: var(--cream); font-size: 15px; letter-spacing: 1px;
+    text-shadow: 1px 1px 0 var(--shadow);
 }
 
 .cc-panel {
     position: absolute; left: 18px; top: 18px; bottom: 18px; width: 460px;
-    background-color: rgba(10, 22, 70, 0.94);
-    border-width: 2px; border-color: rgba(225, 232, 255, 0.9);
+    background-color: var(--panel);
+    border-width: 2px; border-color: var(--amber); border-radius: 6px;
     padding: 10px 12px 10px 12px;
 }
 
 /* Header: MENU + page name, STBY tag. */
 .cc-header { flex-direction: row; align-items: flex-end; margin: 0 2px 6px 2px; flex-shrink: 0; }
 .cc-root .cc-title { font-size: 26px; -unity-font-style: bold; letter-spacing: 3px; margin: 0; }
-.cc-root .cc-page { font-size: 15px; margin-left: 14px; margin-bottom: 4px; flex-grow: 1; color: rgb(170, 200, 255); }
-.cc-root .cc-stby { font-size: 14px; color: rgb(255, 196, 60); margin-bottom: 4px; }
-.cc-rule { height: 2px; background-color: rgba(225, 232, 255, 0.75); margin: 2px 0 6px 0; flex-shrink: 0; }
+.cc-root .cc-page { font-size: 15px; margin-left: 14px; margin-bottom: 4px; flex-grow: 1; color: var(--tan); }
+.cc-root .cc-stby { font-size: 14px; color: var(--gold); margin-bottom: 4px; }
+.cc-rule { height: 2px; background-color: var(--amber); margin: 2px 0 6px 0; flex-shrink: 0; }
 
-.cc-root .cc-hint { font-size: 12px; color: rgb(170, 200, 255); margin: 4px 2px 2px 2px; }
+.cc-root .cc-hint { font-size: 12px; color: var(--tan); margin: 4px 2px 2px 2px; }
 
 .cc-btnrow { flex-direction: row; flex-shrink: 0; height: 30px; margin: 2px 0; }
 .cc-root .cc-btn {
     flex-grow: 1; flex-basis: 0; margin: 0 2px; padding: 0 2px; white-space: normal; overflow: hidden;
-    background-color: rgba(0, 0, 0, 0);
-    border-width: 1px; border-radius: 0; border-color: rgba(225, 232, 255, 0.55);
-    color: rgb(242, 246, 255); font-size: 13px; letter-spacing: 1px;
+    background-color: var(--none);
+    border-width: 1px; border-radius: 3px; border-color: var(--line);
+    color: var(--cream); font-size: 13px; letter-spacing: 1px;
     -unity-text-align: middle-center;
 }
-.cc-root .cc-btn:hover { background-color: rgb(255, 196, 60); color: rgb(10, 22, 70); text-shadow: 0 0 0 rgba(0,0,0,0); border-color: rgb(255, 196, 60); }
-.cc-root .cc-btn:active { background-color: rgb(255, 255, 255); color: rgb(10, 22, 70); }
-.cc-root .cc-tab { font-size: 11px; border-color: rgba(225, 232, 255, 0.35); }
-.cc-root .cc-tab.cc-selected { background-color: rgb(242, 246, 255); color: rgb(10, 22, 70); text-shadow: 0 0 0 rgba(0,0,0,0); }
-.cc-root .cc-btn.cc-selected { background-color: rgb(242, 246, 255); color: rgb(10, 22, 70); text-shadow: 0 0 0 rgba(0,0,0,0); }
+.cc-root .cc-btn:hover { background-color: var(--amber); color: var(--choc); text-shadow: 0 0 0 var(--none); border-color: var(--amber); }
+.cc-root .cc-btn:active { background-color: var(--cream); color: var(--choc); }
+.cc-root .cc-tab { font-size: 11px; border-color: var(--line); }
+.cc-root .cc-tab.cc-selected, .cc-root .cc-btn.cc-selected, .cc-root .cc-presets .cc-btn.cc-selected {
+    background-color: var(--cream); color: var(--choc); text-shadow: 0 0 0 var(--none);
+}
 .cc-root .cc-presets .cc-btn { font-size: 12px; }
-.cc-root .cc-presets .cc-btn.cc-selected { background-color: rgb(242, 246, 255); color: rgb(10, 22, 70); text-shadow: 0 0 0 rgba(0,0,0,0); }
 .cc-root .cc-btn.cc-left { -unity-text-align: middle-left; padding-left: 10px; height: 26px; flex-grow: 0; flex-basis: auto; margin: 1px 0; border-width: 0; }
 
 .cc-scroll { flex-grow: 1; margin-top: 4px; }
 .cc-scroll .unity-scroll-view__content-container { padding: 2px 12px 12px 2px; }
-.cc-scroll .unity-scroller { background-color: rgba(0, 0, 0, 0); border-width: 0; }
+.cc-scroll .unity-scroller { background-color: var(--none); border-width: 0; }
 .cc-scroll .unity-scroller--vertical { width: 6px; }
 .cc-scroll .unity-scroller--vertical .unity-base-slider { margin: 0; }
-.cc-scroll .unity-scroller--vertical .unity-base-slider__tracker { background-color: rgba(225, 232, 255, 0.12); border-width: 0; }
-.cc-scroll .unity-scroller--vertical .unity-base-slider__dragger { background-color: rgba(225, 232, 255, 0.7); border-width: 0; border-radius: 0; width: 6px; left: 0; }
+.cc-scroll .unity-scroller--vertical .unity-base-slider__tracker { background-color: var(--amber-faint); border-width: 0; }
+.cc-scroll .unity-scroller--vertical .unity-base-slider__dragger { background-color: var(--amber); border-width: 0; border-radius: 0; width: 6px; left: 0; }
 .cc-scroll .unity-scroller__low-button, .cc-scroll .unity-scroller__high-button { display: none; }
 
-/* Sections read like menu pages: a white bar with the page name. */
+/* Sections read like menu pages: a bar with the page name. */
 .cc-root .cc-section {
     font-size: 14px; letter-spacing: 2px; margin-top: 14px; padding: 2px 8px;
-    background-color: rgba(225, 232, 255, 0.16); border-left-width: 4px; border-left-color: rgb(242, 246, 255);
+    background-color: var(--amber-soft); border-left-width: 4px; border-left-color: var(--amber);
 }
-.cc-root .cc-desc { font-size: 12px; color: rgb(170, 200, 255); margin: 3px 0 5px 2px; white-space: normal; letter-spacing: 0; }
+.cc-root .cc-desc { font-size: 12px; color: var(--tan); margin: 3px 0 5px 2px; white-space: normal; letter-spacing: 0; }
 .cc-root .cc-readout { font-size: 13px; white-space: normal; margin: 2px 0 6px 2px; letter-spacing: 0; }
-.cc-root .cc-cat { font-size: 12px; color: rgb(170, 200, 255); margin-top: 8px; }
+.cc-root .cc-cat { font-size: 12px; color: var(--tan); margin-top: 8px; }
 
 /* Rows: the hovered one becomes the amber selection bar. */
-.cc-row { padding: 3px 6px 2px 6px; margin: 1px 0; }
-.cc-row:hover { background-color: rgb(255, 196, 60); }
-.cc-root .cc-row:hover .unity-label, .cc-root .cc-row:hover .unity-text-element { color: rgb(10, 22, 70); text-shadow: 0 0 0 rgba(0,0,0,0); }
+.cc-row { padding: 3px 6px 2px 6px; margin: 1px 0; border-radius: 3px; }
+.cc-row:hover { background-color: var(--amber); }
+.cc-root .cc-row:hover .unity-label, .cc-root .cc-row:hover .unity-text-element { color: var(--choc); text-shadow: 0 0 0 var(--none); }
 .cc-rowhead { flex-direction: row; justify-content: space-between; }
 .cc-root .cc-value { -unity-text-align: upper-right; min-width: 80px; }
 
 .cc-slider { margin: 3px 0 2px 0; height: 14px; }
-.cc-slider .unity-base-slider__tracker { background-color: rgba(225, 232, 255, 0.25); border-width: 0; border-radius: 0; height: 4px; margin-top: -2px; }
-.cc-slider .unity-base-slider__fill { background-color: rgb(242, 246, 255); }
-.cc-slider .unity-base-slider__dragger { background-color: rgb(242, 246, 255); border-width: 1px; border-color: rgb(10, 22, 70); border-radius: 0; width: 8px; height: 14px; margin-top: -7px; }
+.cc-slider .unity-base-slider__tracker { background-color: var(--line); border-width: 0; border-radius: 0; height: 4px; margin-top: -2px; }
+.cc-slider .unity-base-slider__fill { background-color: var(--cream); }
+.cc-slider .unity-base-slider__dragger { background-color: var(--cream); border-width: 1px; border-color: var(--choc); border-radius: 0; width: 8px; height: 14px; margin-top: -7px; }
 .cc-slider .unity-base-slider__dragger-border { display: none; }
-.cc-row:hover .cc-slider .unity-base-slider__tracker { background-color: rgba(10, 22, 70, 0.35); }
-.cc-row:hover .cc-slider .unity-base-slider__fill, .cc-row:hover .cc-slider .unity-base-slider__dragger { background-color: rgb(10, 22, 70); }
+.cc-row:hover .cc-slider .unity-base-slider__tracker { background-color: var(--choc-soft); }
+.cc-row:hover .cc-slider .unity-base-slider__fill, .cc-row:hover .cc-slider .unity-base-slider__dragger { background-color: var(--choc); }
 
 .cc-toggle { margin: 2px 0; }
 .cc-toggle .unity-toggle__checkmark {
-    width: 16px; height: 16px; background-color: rgba(0, 0, 0, 0); background-image: none;
-    border-width: 2px; border-color: rgb(242, 246, 255); border-radius: 0;
+    width: 16px; height: 16px; background-color: var(--none); background-image: none;
+    border-width: 2px; border-color: var(--cream); border-radius: 3px;
 }
-.cc-toggle:checked .unity-toggle__checkmark { background-color: rgb(242, 246, 255); }
-.cc-row:hover .cc-toggle .unity-toggle__checkmark { border-color: rgb(10, 22, 70); }
-.cc-row:hover .cc-toggle:checked .unity-toggle__checkmark { background-color: rgb(10, 22, 70); }
+.cc-toggle:checked .unity-toggle__checkmark { background-color: var(--amber); }
+.cc-row:hover .cc-toggle .unity-toggle__checkmark { border-color: var(--choc); }
+.cc-row:hover .cc-toggle:checked .unity-toggle__checkmark { background-color: var(--choc); }
 .cc-root .cc-toggle .unity-toggle__text { margin-left: 10px; font-size: 15px; }
 
 .cc-root .cc-field { flex-grow: 1; flex-basis: 0; margin: 0 2px; }
 .cc-root .cc-field .unity-base-text-field__input {
-    background-color: rgba(0, 0, 0, 0.35); border-width: 1px; border-color: rgba(225, 232, 255, 0.55); border-radius: 0;
-    color: rgb(242, 246, 255); font-size: 14px; padding-left: 8px; -unity-text-align: middle-left;
+    background-color: var(--field); border-width: 1px; border-color: var(--line); border-radius: 3px;
+    color: var(--cream); font-size: 14px; padding-left: 8px; -unity-text-align: middle-left;
 }
 
 .cc-root .cc-foldout { margin-top: 6px; }
-.cc-root .cc-foldout > .unity-foldout__toggle { background-color: rgba(225, 232, 255, 0.08); height: 30px; margin: 0; padding-left: 6px; }
-.cc-root .cc-foldout > .unity-foldout__toggle:hover { background-color: rgb(255, 196, 60); }
+.cc-root .cc-foldout > .unity-foldout__toggle { background-color: var(--amber-faint); height: 30px; margin: 0; padding-left: 6px; }
+.cc-root .cc-foldout > .unity-foldout__toggle:hover { background-color: var(--amber); }
 .cc-root .cc-foldout > .unity-foldout__toggle .unity-foldout__text { font-size: 14px; letter-spacing: 2px; }
-.cc-root .cc-foldout > .unity-foldout__toggle:hover .unity-foldout__text { color: rgb(10, 22, 70); }
+.cc-root .cc-foldout > .unity-foldout__toggle:hover .unity-foldout__text { color: var(--choc); }
 .cc-root .cc-foldout > .unity-foldout__content { margin-left: 8px; }
 
 .cc-map-row { flex-direction: row; height: 292px; margin-top: 4px; }
-.cc-map { width: 280px; height: 280px; margin-top: 6px; border-width: 1px; border-color: rgba(225, 232, 255, 0.6); }
+.cc-map { width: 280px; height: 280px; margin-top: 6px; border-width: 1px; border-color: var(--amber); }
 .cc-marker { position: absolute; width: 7px; height: 7px; margin-left: -3px; margin-bottom: -3px; background-color: white; }
 .cc-root .cc-legend { font-size: 12px; margin-left: 10px; flex-shrink: 1; white-space: normal; letter-spacing: 0; }
 
 .cc-tip {
     position: absolute; width: 380px;
-    background-color: rgba(10, 22, 70, 0.96);
-    border-width: 2px; border-color: rgba(225, 232, 255, 0.9);
+    background-color: var(--panel);
+    border-width: 2px; border-color: var(--amber); border-radius: 6px;
     padding: 8px 12px 10px 12px;
 }
-.cc-root .cc-tip-title { font-size: 14px; letter-spacing: 2px; color: rgb(255, 196, 60); margin-bottom: 4px; }
+.cc-root .cc-tip-title { font-size: 14px; letter-spacing: 2px; color: var(--gold); margin-bottom: 4px; }
 .cc-root .cc-tip-body { white-space: normal; font-size: 14px; letter-spacing: 0; }
 
 .cc-footer { margin-top: 6px; height: 30px; }
-.cc-root .cc-detail-title { font-size: 16px; letter-spacing: 1px; margin-top: 12px; color: rgb(255, 196, 60); }
+.cc-root .cc-detail-title { font-size: 16px; letter-spacing: 1px; margin-top: 12px; color: var(--gold); }
 
 /* F6 minimap: framed like a viewfinder inset, under the REC readout. */
 .cc-mini { position: absolute; left: 28px; top: 190px; width: 220px; }
 .cc-mini-map {
     width: 220px; height: 220px; opacity: 0.88;
-    border-width: 2px; border-color: rgba(225, 232, 255, 0.9);
+    border-width: 2px; border-color: var(--amber);
 }
 .cc-root .cc-mini-marker {
     position: absolute; width: 16px; height: 16px; margin-left: -8px; margin-bottom: -8px;
@@ -125,34 +127,3 @@
     color: white; -unity-text-outline-width: 1px; -unity-text-outline-color: black;
 }
 .cc-root .cc-mini-label { font-size: 12px; margin-top: 4px; letter-spacing: 2px; }
-
-/* The Overflow art style (2026-11-07): the company's colours, as the main menu's .mm-ov (MainMenu.uss): chocolate
-   panels with the amber frame and selection bar, cream type, tan notes. CamcorderVisualMenu sets .cc-ov on the root. */
-.cc-root.cc-ov .unity-label, .cc-root.cc-ov .unity-text-element { color: rgb(243, 230, 200); text-shadow: 1px 1px 0 rgba(30, 18, 8, 0.9); }
-.cc-ov .cc-panel, .cc-ov .cc-tip { background-color: rgba(59, 42, 30, 0.95); border-color: rgb(240, 162, 30); border-radius: 6px; }
-.cc-ov .cc-rule { background-color: rgb(240, 162, 30); }
-.cc-root.cc-ov .cc-page, .cc-root.cc-ov .cc-hint, .cc-root.cc-ov .cc-desc, .cc-root.cc-ov .cc-cat { color: rgb(205, 180, 138); }
-.cc-root.cc-ov .cc-stby, .cc-root.cc-ov .cc-tip-title, .cc-root.cc-ov .cc-detail-title { color: rgb(232, 178, 58); }
-.cc-root.cc-ov .cc-btn { border-color: rgba(243, 230, 200, 0.45); border-radius: 3px; color: rgb(243, 230, 200); }
-.cc-root.cc-ov .cc-btn:hover { background-color: rgb(240, 162, 30); border-color: rgb(240, 162, 30); color: rgb(59, 42, 30); }
-.cc-root.cc-ov .cc-btn:active { background-color: rgb(243, 230, 200); color: rgb(59, 42, 30); }
-.cc-root.cc-ov .cc-tab.cc-selected, .cc-root.cc-ov .cc-btn.cc-selected, .cc-root.cc-ov .cc-presets .cc-btn.cc-selected { background-color: rgb(243, 230, 200); color: rgb(59, 42, 30); }
-.cc-root.cc-ov .cc-section { background-color: rgba(240, 162, 30, 0.18); border-left-color: rgb(240, 162, 30); }
-.cc-ov .cc-row { border-radius: 3px; }
-.cc-ov .cc-row:hover { background-color: rgb(240, 162, 30); }
-.cc-root.cc-ov .cc-row:hover .unity-label, .cc-root.cc-ov .cc-row:hover .unity-text-element { color: rgb(59, 42, 30); }
-.cc-ov .cc-slider .unity-base-slider__tracker { background-color: rgba(243, 230, 200, 0.25); }
-.cc-ov .cc-slider .unity-base-slider__fill, .cc-ov .cc-slider .unity-base-slider__dragger { background-color: rgb(243, 230, 200); }
-.cc-ov .cc-slider .unity-base-slider__dragger { border-color: rgb(59, 42, 30); }
-.cc-ov .cc-row:hover .cc-slider .unity-base-slider__tracker { background-color: rgba(59, 42, 30, 0.35); }
-.cc-ov .cc-row:hover .cc-slider .unity-base-slider__fill, .cc-ov .cc-row:hover .cc-slider .unity-base-slider__dragger { background-color: rgb(59, 42, 30); }
-.cc-ov .cc-toggle .unity-toggle__checkmark { border-color: rgb(243, 230, 200); border-radius: 3px; }
-.cc-ov .cc-toggle:checked .unity-toggle__checkmark { background-color: rgb(240, 162, 30); }
-.cc-ov .cc-row:hover .cc-toggle .unity-toggle__checkmark { border-color: rgb(59, 42, 30); }
-.cc-ov .cc-row:hover .cc-toggle:checked .unity-toggle__checkmark { background-color: rgb(59, 42, 30); }
-.cc-root.cc-ov .cc-field .unity-base-text-field__input { background-color: rgba(30, 20, 13, 0.7); border-color: rgba(243, 230, 200, 0.45); color: rgb(243, 230, 200); border-radius: 3px; }
-.cc-root.cc-ov .cc-foldout > .unity-foldout__toggle { background-color: rgba(240, 162, 30, 0.12); }
-.cc-root.cc-ov .cc-foldout > .unity-foldout__toggle:hover { background-color: rgb(240, 162, 30); }
-.cc-root.cc-ov .cc-foldout > .unity-foldout__toggle:hover .unity-foldout__text { color: rgb(59, 42, 30); }
-.cc-ov .cc-map, .cc-ov .cc-mini-map { border-color: rgb(240, 162, 30); }
-.cc-ov .cc-scroll .unity-scroller--vertical .unity-base-slider__dragger { background-color: rgba(240, 162, 30, 0.8); }

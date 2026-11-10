@@ -52,7 +52,7 @@ namespace Backrooms.Interaction
                 if (kb.f2Key.wasPressedThisFrame || kb.escapeKey.wasPressedThisFrame) SetOpen(false);
                 else if (F5Open()) SetOpen(false);
             }
-            else if (kb.f2Key.wasPressedThisFrame && !F5Open() && !CustomRooms.PauseMenu.IsOpen && FindAnyObjectByType<CamcorderPlayerController>())
+            else if (kb.f2Key.wasPressedThisFrame && DevTools.On && !F5Open() && !CustomRooms.PauseMenu.IsOpen && FindAnyObjectByType<CamcorderPlayerController>())
             {
                 var item = Target();
                 if (item) Show(item);
@@ -151,6 +151,7 @@ namespace Backrooms.Interaction
             if (sheet) _root.styleSheets.Add(sheet);
             _root.AddToClassList("cc-root");
             _root.pickingMode = PickingMode.Ignore;
+            Backrooms.UI.UiKit.Apply(_root, Backrooms.UI.UiKit.Face.Paper);
 
             _panel = new VisualElement { name = "ItemTuning" };
             _panel.AddToClassList("cc-panel");

@@ -138,7 +138,7 @@ namespace Backrooms.Interaction
             string text = HintText;
             if (string.IsNullOrEmpty(text)) return;
             float scale = Screen.height / 1080f;
-            if (_hintStyle == null) _hintStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
+            if (_hintStyle == null) _hintStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, font = Backrooms.UI.UiKit.Font(Backrooms.UI.UiKit.Face.Paper, true) };
             _hintStyle.fontSize = Mathf.Max(9, Mathf.RoundToInt(17f * scale));
             float y = PocketsTop - 46f * scale;
             var r = new Rect(0f, y, Screen.width, 26f * scale);
