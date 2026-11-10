@@ -10,7 +10,7 @@ namespace Backrooms.Interaction
     /// fifteen times a second with a slow rolling band, a cold blue glow on whoever sits in front of it, and a faint hiss.
     /// <para>The orientation tape (2026-11-08, a stand-in until the real cut is in): sit down in the training room and a
     /// short tape of title cards plays (about 20 s: the job in a few lines), then goes back to snow. Watching it to the end
-    /// is half of the first work order (WorkOrders: watch the tape, clock in). Getting up stops it.</para>
+    /// is the first work order (WorkOrders: watch the tape). Getting up stops it.</para>
     /// </summary>
     public class HubTvScreen : MonoBehaviour
     {
@@ -36,12 +36,14 @@ namespace Backrooms.Interaction
         {
             new[] { "OVERFLOW", "ORIENTATION", "TAPE 1 OF 1" },
             new[] { "THE WORLD IS FULL.", "BEHIND IT THERE IS MORE.", "WE RENT IT OUT." },
-            new[] { "1. TAKE A WORK ORDER", "AT THE BOARD." },
-            new[] { "2. RIDE THE LIFT DOWN.", "OFFICE HOURS: 9 TO 5." },
-            new[] { "3. BOXES GO ON SHELVES.", "OFF A SHELF, NO PAY." },
-            new[] { "4. KEEP YOUR SHELVES LIT.", "THE DARK TAKES THE REST." },
-            new[] { "WE CHARGE THE CLIENT", "EVERY DAY.", "THE POWER BILL", "IS YOURS." },
-            new[] { "BE BACK BY CLOSING.", "THERE'S ALWAYS MORE ROOM." },
+            new[] { "1. FIND A SEAM.", "A CLIENT IS BEHIND IT." },
+            new[] { "2. BRING THEIR BOXES IN.", "SHELVE THEM IN THE LIGHT." },
+            new[] { "WE PAY A THIRD", "WHEN THEY ARE SAFE." },
+            new[] { "TIME RUNS FAST", "BEHIND THE SEAMS.", "THREE WEEKS THERE,", "MINUTES HERE." },
+            new[] { "3. TAKE THEM BACK", "WHEN THEY ARE DUE.", "THE REST IS PAID THEN." },
+            new[] { "KEEP YOUR SHELVES LIT.", "THE DARK SCUFFS THE REST." },
+            new[] { "THE POWER BILL", "IS YOURS." },
+            new[] { "GET IT BACK ON TIME.", "THERE'S ALWAYS MORE ROOM." },
             new[] { "END OF TAPE" },
         };
 
@@ -113,7 +115,7 @@ namespace Backrooms.Interaction
             if (!finished || d == null) return;
             bool first = !d.tapeWatched;
             d.tapeWatched = true;
-            if (first) Camcorder.CamcorderOSD.Notice("ORIENTATION DONE - NOW RIDE THE LIFT DOWN TO CLOCK IN");
+            if (first) Camcorder.CamcorderOSD.Notice("ORIENTATION DONE - TAKE THE LIFT DOWN AND FOLLOW THE BLUE TAPE");
             Contracts.Instance?.Changed();
         }
 
@@ -191,7 +193,7 @@ namespace Backrooms.Interaction
         {
             _roll = Mathf.Repeat(_roll + Time.deltaTime * 0.12f, 1f);
             // The hiss is the building's sound: it follows the AMBIENCE setting (quieter under the tape).
-            if (_hiss) _hiss.volume = (_playing ? 0.03f : 0.08f) * GameSettings.Ambience;
+            if (_hiss) _hiss.volume = (_playing ? 0.015f : 0.035f) * GameSettings.Ambience;     // (2026-11-09: half, the training room was loud)
             // Sitting down in front of it plays the tape; getting up stops it.
             bool seated = SeatedHere();
             if (seated && !_wasSeated && !_playing) StartTape();

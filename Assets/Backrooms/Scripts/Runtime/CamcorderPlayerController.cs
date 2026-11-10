@@ -410,6 +410,9 @@ namespace Backrooms
             transform.SetPositionAndRotation(position, Quaternion.Euler(0f, _yaw, 0f));
             _controller.enabled = !noclip;
             PlanarVelocity = Quaternion.Euler(0f, yawDelta, 0f) * PlanarVelocity;
+            // (2026-11-09: a seam's room not yet solid on a first trip let the player fall through its floor. Held still
+            // until there is floor under them, as after TeleportSafe.)
+            _holdForGround = 4f;
         }
 
         /// <summary>Like <see cref="Teleport"/>, but holds the player still (no falling) until floor collision exists below, for places whose chunks are still loading.</summary>

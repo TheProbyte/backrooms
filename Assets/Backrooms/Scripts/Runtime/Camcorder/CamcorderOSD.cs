@@ -44,6 +44,19 @@ namespace Backrooms.Camcorder
         public static float TrackerAlpha;
         public static string TrackerHint = "";
         Text _tracker;
+
+        /// <summary>
+        /// The pay slip (2026-11-08, Interaction.Contracts.Punch): printed at punch-out and held up in front of you for a
+        /// while, a paper slip with the day's lines (each "left\tright"; "--" a rule), as a day ends on its report in
+        /// Supermarket Simulator. Shown flat over the picture (not through the eyepiece's curve), with or without the
+        /// viewfinder display.
+        /// </summary>
+        public static void ShowSlip(string lines, float seconds = 14f) { s_slip = lines ?? ""; s_slipAt = Time.unscaledTime; s_slipFor = seconds; s_slipNew = true; }
+        static string s_slip = "";
+        static float s_slipAt = -100f, s_slipFor = 14f;
+        static bool s_slipNew;
+        RectTransform _slip;
+        Text _slipLeft, _slipRight, _slipHead;
         Image _recDot;
         DateTime _start;
         float _t0;
@@ -193,10 +206,104 @@ namespace Backrooms.Camcorder
             _notice = Label("", new Vector2(0.5f, 0.5f), new Vector2(0, -60), TextAnchor.MiddleCenter, 72);
             _notice.transform.SetParent(_barCanvas.transform, false);
             var nr = _notice.rectTransform; nr.anchorMin = nr.anchorMax = nr.pivot = new Vector2(0.5f, 0.32f); nr.anchoredPosition = Vector2.zero;
+            // (2026-11-09, the owner: "the huge text on screen is always cut off". It was one line of 72 that never wrapped,
+            // so a long notice ran off both sides. Now it wraps inside the picture and shrinks to fit: two lines at most.)
+            _notice.horizontalOverflow = HorizontalWrapMode.Wrap;
+            _notice.verticalOverflow = VerticalWrapMode.Truncate;
+            _notice.resizeTextForBestFit = true;
+            _notice.resizeTextMinSize = 26; _notice.resizeTextMaxSize = 56;
+            _notice.lineSpacing = 1f;
             _debug.transform.SetParent(_barCanvas.transform, false);
             var dr2 = _debug.rectTransform; dr2.anchorMin = dr2.anchorMax = dr2.pivot = new Vector2(1, 0); dr2.anchoredPosition = new Vector2(-16, 12);
             Battery();
+            BuildSlip();
             SetupCurvedCanvas();
+        }
+
+        void BuildSlip()
+        {
+            var paper = new GameObject("PaySlip").AddComponent<Image>();
+            paper.transform.SetParent(_barCanvas.transform, false);
+            paper.color = new Color(0.95f, 0.92f, 0.84f, 1f);
+            _slip = paper.rectTransform;
+            _slip.anchorMin = _slip.anchorMax = new Vector2(0.5f, 0f);
+            _slip.pivot = new Vector2(0.5f, 0f);
+            _slip.sizeDelta = new Vector2(560, 400);
+            var sh = paper.gameObject.AddComponent<Shadow>();
+            sh.effectColor = new Color(0f, 0f, 0f, 0.45f); sh.effectDistance = new Vector2(6, -6);
+            // The company's amber band along the top, its name on it.
+            var band = new GameObject("Band").AddComponent<Image>();
+            band.transform.SetParent(_slip, false);
+            band.color = new Color(0.94f, 0.64f, 0.12f, 1f);
+            var br = band.rectTransform;
+            br.anchorMin = new Vector2(0, 1); br.anchorMax = new Vector2(1, 1); br.pivot = new Vector2(0.5f, 1);
+            br.sizeDelta = new Vector2(0, 44); br.anchoredPosition = Vector2.zero;
+            var ink = new Color(59 / 255f, 42 / 255f, 30 / 255f, 1f);
+            Text T(string name, Transform parent, TextAnchor align, int size)
+            {
+                var t = new GameObject(name).AddComponent<Text>();
+                t.transform.SetParent(parent, false);
+                t.font = _font; t.fontSize = size; t.alignment = align; t.color = ink; t.lineSpacing = 1.1f;
+                t.horizontalOverflow = HorizontalWrapMode.Overflow; t.verticalOverflow = VerticalWrapMode.Overflow;
+                var r = t.rectTransform;
+                r.anchorMin = new Vector2(0, 1); r.anchorMax = new Vector2(1, 1); r.pivot = new Vector2(0.5f, 1);
+                return t;
+            }
+            _slipHead = T("Head", band.transform, TextAnchor.MiddleCenter, 24);
+            _slipHead.fontStyle = FontStyle.Bold;
+            _slipHead.text = "OVERFLOW  -  PAY SLIP";
+            var hr = _slipHead.rectTransform; hr.anchorMin = Vector2.zero; hr.anchorMax = Vector2.one; hr.offsetMin = hr.offsetMax = Vector2.zero;
+            _slipLeft = T("Left", _slip, TextAnchor.UpperLeft, 21);
+            _slipRight = T("Right", _slip, TextAnchor.UpperRight, 21);
+            foreach (var t in new[] { _slipLeft, _slipRight })
+            {
+                var r = t.rectTransform;
+                r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one;
+                r.offsetMin = new Vector2(26, 14); r.offsetMax = new Vector2(-26, -58);
+            }
+            _slip.gameObject.SetActive(false);
+        }
+
+        /// <summary>The slip: slides up from the bottom, stays, slides away.</summary>
+        void UpdateSlip()
+        {
+            if (!_slip) return;
+            float t = Time.unscaledTime - s_slipAt;
+            bool on = !string.IsNullOrEmpty(s_slip) && t < s_slipFor;
+            _slip.gameObject.SetActive(on);
+            if (!on) return;
+            if (s_slipNew)
+            {
+                s_slipNew = false;
+                var left = new System.Text.StringBuilder();
+                var right = new System.Text.StringBuilder();
+                int n = 0;
+                foreach (var line in s_slip.Split('\n'))
+                {
+                    int tab = line.IndexOf('\t');
+                    string l = tab >= 0 ? line.Substring(0, tab) : line, r = tab >= 0 ? line.Substring(tab + 1) : "";
+                    bool rule = l == "--";
+                    bool total = l == "TODAY" || l == "IN HAND";
+                    if (n > 0) { left.Append('\n'); right.Append('\n'); }
+                    if (rule) { left.Append("<color=#3b2a1e66>- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -</color>"); }
+                    else if (total) { left.Append("<b>").Append(l).Append("</b>"); right.Append("<b>").Append(r).Append("</b>"); }
+                    else
+                    {
+                        left.Append(l);
+                        // LOST in red, money taken off in red.
+                        right.Append(r == "LOST" || r.StartsWith("-") ? "<color=#b8402a>" + r + "</color>" : r);
+                    }
+                    n++;
+                }
+                _slipLeft.supportRichText = _slipRight.supportRichText = true;
+                _slipLeft.text = left.ToString();
+                _slipRight.text = right.ToString();
+                _slip.sizeDelta = new Vector2(620, 58 + 30 + n * 25.5f);
+            }
+            // In over 0.35 s, out over the last 0.5 s.
+            float k = Mathf.Min(Mathf.SmoothStep(0f, 1f, t / 0.35f), Mathf.SmoothStep(0f, 1f, (s_slipFor - t) / 0.5f));
+            _slip.anchoredPosition = new Vector2(-380f, Mathf.Lerp(-_slip.sizeDelta.y - 20f, 215f, k));
+            _slip.localRotation = Quaternion.Euler(0f, 0f, 1.2f);
         }
 
         RectTransform Bar(string name, bool left)
@@ -306,11 +413,19 @@ namespace Backrooms.Camcorder
             _content.gameObject.SetActive(visible);
             ApplyInk();
             _debug.enabled = showDebug;
+            UpdateSlip();
+            // A notice given while the slip is up (the new morning's NEW WORK) waits until it has gone.
+            if (_slip && _slip.gameObject.activeSelf && s_noticeAt >= s_slipAt) s_noticeAt = Time.unscaledTime;
             float na = Time.unscaledTime - s_noticeAt;
+            if (_slip && _slip.gameObject.activeSelf && s_noticeAt >= s_slipAt) na = NoticeFor;    // (held back: hidden)
             _notice.enabled = na < NoticeFor && !string.IsNullOrEmpty(s_notice);
             if (_notice.enabled)
             {
                 _notice.text = s_notice;
+                // As wide as the picture less a margin (the picture is 16:9 or 4:3 inside whatever window).
+                var cr = ((RectTransform)_barCanvas.transform).rect;
+                float pw = Mathf.Min(cr.width, cr.height * (_frame ? _frame.GetComponent<AspectRatioFitter>().aspectRatio : 16f / 9f));
+                _notice.rectTransform.sizeDelta = new Vector2(pw * 0.8f, 150f);
                 // Steady, then a few blinks out, like a camcorder's title.
                 bool show = na < NoticeFor - 1f || ((na * 4f) % 1f) < 0.6f;
                 _notice.color = new Color(_ink.r, _ink.g, _ink.b, show ? 0.95f : 0f);

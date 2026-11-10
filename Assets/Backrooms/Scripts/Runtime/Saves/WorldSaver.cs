@@ -187,7 +187,7 @@ namespace Backrooms.Saves
                 else if (target > 0 && target - 1 < spawned.Count && spawned[target - 1] is CordBox into && !into.coiled)
                 {
                     var sockets = into.BoxSockets;
-                    if (data[i].plugSocket >= 0 && data[i].plugSocket < sockets.Count) plug.PlugInto(sockets[data[i].plugSocket]);
+                    if (data[i].plugSocket >= 0 && data[i].plugSocket < sockets.Count) plug.PlugInto(sockets[data[i].plugSocket], quiet: true);
                 }
                 user.WakeCord();
             }

@@ -216,7 +216,7 @@ namespace Backrooms.Interaction
                 _light = lg.AddComponent<Light>();
                 _light.type = LightType.Spot; _light.spotAngle = 110f; _light.innerSpotAngle = 60f;
                 _light.range = 16f; _light.intensity = 0f; _light.color = new Color(1f, 0.95f, 0.86f);
-                _light.shadows = LightShadows.Soft; _light.renderingLayerMask = -1;
+                _light.shadows = LightShadows.None; _light.renderingLayerMask = -1;      // (FloodShadows decides)
             }
             if (_kind != Kits.Kind.Generator)
             {
@@ -249,6 +249,7 @@ namespace Backrooms.Interaction
                 return;
             }
             bool on = Machines.Powered(id);
+            if (_light) FloodShadows();
             if (_light)
             {
                 _light.intensity = Mathf.MoveTowards(_light.intensity, on ? 18f : 0f, Time.deltaTime * 40f);
@@ -258,6 +259,33 @@ namespace Backrooms.Interaction
                 if (_lens) _lens.sharedMaterial = lit ? s_lensOn : s_lensOff;
             }
             Cable();
+        }
+
+        // ---------------- Floodlight shadows (2026-11-08 profile: about 0.35 ms of GPU each, at any distance) ----------------
+
+        static readonly List<MachineUnit> s_floods = new List<MachineUnit>();
+        static int s_floodFrame = -1;
+        const int ShadowedFloods = 2;
+        const float FloodShadowReach = 14f;
+
+        /// <summary>Once a frame for them all: only the two lit floodlights nearest the camera within 14 m cast shadows
+        /// (soft up close, hard further off), as the lamps keep theirs to within 14-20 m.</summary>
+        void FloodShadows()
+        {
+            if (s_floodFrame == Time.frameCount) return;
+            s_floodFrame = Time.frameCount;
+            var cam = Camera.main;
+            s_floods.Clear();
+            foreach (var m in s_live.Values) if (m && m._light && m._light.intensity > 0.01f) s_floods.Add(m);
+            if (!cam) { foreach (var m in s_floods) m._light.shadows = LightShadows.None; return; }
+            var eye = cam.transform.position;
+            s_floods.Sort((a, b) => (a.transform.position - eye).sqrMagnitude.CompareTo((b.transform.position - eye).sqrMagnitude));
+            for (int i = 0; i < s_floods.Count; i++)
+            {
+                float d2 = (s_floods[i].transform.position - eye).sqrMagnitude;
+                var want = i >= ShadowedFloods || d2 > FloodShadowReach * FloodShadowReach ? LightShadows.None : d2 < 36f ? LightShadows.Soft : LightShadows.Hard;
+                if (s_floods[i]._light.shadows != want) s_floods[i]._light.shadows = want;
+            }
         }
 
         void Cable()

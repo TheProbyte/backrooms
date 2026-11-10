@@ -270,16 +270,7 @@ namespace Backrooms.Interaction
         void CabPressed(int side)
         {
             var c = _cabs[side];
-            // Down from the hub only with a contract taken (Docs/ContractFloorsPlan.md): nowhere to go without one. With
-            // work orders on the board (2026-11-08) the floor is always yours to go down to (to clock in, put up shelves,
-            // light them), until closing.
-            var cs = Contracts.Instance;
-            bool orders = WorkOrders.Active && cs && !cs.Closed;
-            if (side == Hub && cs && !cs.HasFloor && !orders && !c.leaving)
-            {
-                Camcorder.CamcorderOSD.Notice("NO JOB TAKEN - SEE THE BOARD");
-                return;
-            }
+            // (The lift used to go down only with work taken and on the clock; since 2026-11-09 the floor is always open.)
             if (side == Hub) FollowFloor();                              // (a contract taken a moment ago: its floor's cab)
             if (c.leaving || c.arriving > 0 || !(c.phase == Phase.Open || c.phase == Phase.Opening)) return;
             c.leaving = true; c.swapped = false; c.rideT = -1f; c.phase = Phase.Closing;
@@ -480,7 +471,7 @@ namespace Backrooms.Interaction
                 float m = c.localRider ? _moment : 0f;
                 Fade(c.motor, moving ? (0.08f + 0.4f * speed) * (1f - 0.7f * m) : arriving ? 0.05f : 0f, dt * 0.8f);
                 if (c.motor) c.motor.pitch = (0.7f + 0.4f * speed) * (c.localRider ? warble : 1f);
-                Fade(c.fan, 0.08f * GameSettings.Ambience, dt);          // (the building's sound: AMBIENCE)
+                Fade(c.fan, 0.04f * GameSettings.Ambience, dt);          // (the building's sound: AMBIENCE)
                 Fade(c.doors, doorsMoving ? 0.3f : 0f, dt * 2.5f);
                 Fade(c.tone, moving ? 0.5f * m : 0f, dt * 2f);
                 if (c.tone) c.tone.pitch = 1f / Mathf.Max(0.5f, warble);

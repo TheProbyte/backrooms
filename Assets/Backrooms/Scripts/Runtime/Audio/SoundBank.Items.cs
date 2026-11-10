@@ -18,6 +18,9 @@ namespace Backrooms.Audio
         public static AudioClip CordReel => s_reel ? s_reel : (s_reel = ProceduralSounds.CordReel());
         public static AudioClip CordYank => s_yank ? s_yank : (s_yank = ProceduralSounds.CordYank());
         public static AudioClip NoclipCrackle => s_crackle ? s_crackle : (s_crackle = ProceduralSounds.NoclipCrackle());
+        static AudioClip s_hush;
+        /// <summary>The seams' soft way through (2026-11-09).</summary>
+        public static AudioClip NoclipHush => s_hush ? s_hush : (s_hush = ProceduralSounds.NoclipHush());
 
         public static AudioClip ChickenSqueeze(int i)
         {

@@ -104,7 +104,13 @@ namespace Backrooms.Interaction
             Wake();
         }
 
-        public void Wake() { _asleep = false; _sleepT = 0f; _settleT = -1f; }
+        public void Wake() { _asleep = false; _sleepT = 0f; _settleT = -1f; _endsStill = 0f; }
+
+        // (2026-11-08 profile: lamp cords whose ends jiggled a millimetre, a lamp resting on the floor, never slept: about
+        // 0.4 ms each every frame. Woken now only when an end has moved 2 mm from where it was, and asleep once its ends have
+        // been still 2.5 s whatever the particles do.)
+        Vector3 _refA, _refB;
+        float _endsStill;
 
         /// <summary>Wakes every cord lying in a box (a wall that changed under it: it may have to fall).</summary>
         public static void WakeAround(Bounds b)
@@ -192,7 +198,8 @@ namespace Backrooms.Interaction
         {
             if (!endA || !endB) { Destroy(gameObject); return; }
             Vector3 a = A, b = B;
-            if ((a - _lastA).sqrMagnitude > 1e-6f || (b - _lastB).sqrMagnitude > 1e-6f) Wake();
+            if ((a - _refA).sqrMagnitude > 4e-6f || (b - _refB).sqrMagnitude > 4e-6f) { _refA = a; _refB = b; Wake(); }
+            else _endsStill += Time.deltaTime;
             _lastA = a; _lastB = b;
 
             Feed(a, b);
@@ -207,6 +214,7 @@ namespace Backrooms.Interaction
                 if (float.IsNaN(move) || float.IsNaN(_p[_n / 2].x)) { Lay(); move = 1f; }
                 if (move < 0.0005f) { _sleepT += dt; if (_sleepT > 0.6f) _asleep = true; } else _sleepT = 0f;
                 if (!_asleep) Settle(dt);
+                if (_endsStill > 2.5f && !reeling) _asleep = true;
                 Rebuild();
             }
         }
@@ -372,7 +380,9 @@ namespace Backrooms.Interaction
 
         bool Ignored(Collider c)
         {
-            if (c.isTrigger || c.GetComponent<CharacterController>() || BrokenWall(c)) return true;
+            // (TryGetComponent: GetComponent finding nothing allocated an error message in the editor for every particle's
+            // every hit, every frame: 2 ms and 161 KB a frame with three lamps out, 2026-11-08 profile.)
+            if (c.isTrigger || c is CharacterController || c.TryGetComponent<CharacterController>(out _) || BrokenWall(c)) return true;
             var t = c.transform;
             return (endA && t.IsChildOf(endA.transform)) || (endB && t.IsChildOf(endB.transform));
         }

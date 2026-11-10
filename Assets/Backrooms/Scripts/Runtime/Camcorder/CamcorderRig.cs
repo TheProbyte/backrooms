@@ -59,6 +59,10 @@ namespace Backrooms.Camcorder
         /// a dolly against the widening lens), extra barrel or pincushion, and the picture squeezed tall (above 0) or wide.</summary>
         public static float Dolly, LensWarp, LensStretch;
         Vector3 _dollyOffset;
+        /// <summary>The seams' way through (2026-11-09, NoclipTravel): the picture washed out to white (0..1) and soft pale
+        /// snow (0..1), instead of the old rolling and tearing.</summary>
+        public static float Wash, Snow;
+        float _snowBand;
         /// <summary>How far the picture has rolled (0..1 of the frame) while the glitch lasts.</summary>
         public static float GlitchRoll;
 
@@ -71,6 +75,7 @@ namespace Backrooms.Camcorder
         static readonly int IdWB = Shader.PropertyToID("_CamWB"), IdTone = Shader.PropertyToID("_CamTone"), IdLowLight = Shader.PropertyToID("_CamLowLight");
         static readonly int IdFmt = Shader.PropertyToID("_CamFmt"), IdLumaW = Shader.PropertyToID("_CamLumaW"), IdChroma = Shader.PropertyToID("_CamChroma");
         static readonly int IdDetail = Shader.PropertyToID("_CamDetail"), IdTape = Shader.PropertyToID("_CamTape"), IdTBC = Shader.PropertyToID("_CamTBC");
+        static readonly int IdWhite = Shader.PropertyToID("_CamWhite");
         static readonly int IdTrack = Shader.PropertyToID("_CamTrack"), IdGlitch = Shader.PropertyToID("_CamGlitch"), IdDisplay = Shader.PropertyToID("_CamDisplay");
 
         void Awake()
@@ -369,6 +374,8 @@ namespace Backrooms.Camcorder
             float barPos = 0.85f + 0.2f * (Mathf.PerlinNoise(t * 0.03f, 0.5f) - 0.5f);
             m.SetVector(IdTrack, new Vector4(fmt.analog ? s.trackingNoise : 0f, barPos, Mathf.Clamp(s.pedestal, 0f, 0.15f), s.bottomLine));
             m.SetVector(IdGlitch, new Vector4(Mathf.Clamp01(Glitch), GlitchRoll, Random.value, t));
+            _snowBand = Mathf.Repeat(_snowBand + Time.unscaledDeltaTime * 0.35f, 1f);
+            m.SetVector(IdWhite, new Vector4(Mathf.Clamp01(Wash), Mathf.Clamp01(Snow), _snowBand, 0f));
             m.SetVector(IdDisplay, new Vector4(Mathf.Clamp01(s.lineDoubling), s.interlace ? 1f : 0f, frameIndex & 1, Mathf.Clamp01(s.scanlines)));
         }
 

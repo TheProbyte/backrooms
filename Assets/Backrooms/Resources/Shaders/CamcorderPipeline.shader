@@ -48,6 +48,7 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
     float4 _CamTBC;         // x: line jitter (px), y: top flagging (px), z: head-switch lines, w: head-switch skew (px)
     float4 _CamTrack;       // x: tracking noise bar, y: bar position (0 top .. 1 bottom), z: setup (pedestal), w: bottom line
     float4 _CamGlitch;      // x: noclip glitch 0..1, y: roll (fraction of the frame), z: random per frame, w: time (s)
+    float4 _CamWhite;        // the seams' way through (2026-11-09): x white-out 0..1, y soft snow 0..1, z the snow's band (0..1)
 
     float4 _CamDisplay;     // x: line doubling 0..1, y: interlace (0 off, 1 bob), z: field parity, w: CRT scanlines
     float4 _CamOSD;         // x: OSD on (0/1), y: OSD curvature, z, w: unused
@@ -443,6 +444,21 @@ Shader "Hidden/Backrooms/CamcorderPipeline"
             C *= glitch > 0.5 ? 0 : 1 - glitch;
             Y += Gauss(int2((int)(x / 2), ln), field, 789u) * 0.1 * glitch;
             Y *= 1 - blank; C *= 1 - blank;
+        }
+
+        // The way through a seam (2026-11-09, the owner's reference: walk into the wall, the frame goes white, a moment of
+        // soft snow, then the room comes up out of white as the exposure settles). No roll, no tear: the highlights blow out
+        // first and the rest follows (the lens pressed to a lit wall, then the iris catching up); the snow is pale, its
+        // colour mostly gone, with one slow band of chroma drifting through.
+        if (_CamWhite.x > 0.001 || _CamWhite.y > 0.001)
+        {
+            float w = _CamWhite.x, s = _CamWhite.y;
+            float n = Gauss(int2((int)(x / 1.5), ln), field, 811u) * 0.6 + Gauss(int2((int)(x / 6.0), ln), field, 813u) * 0.4;
+            float band = exp(-pow((frac(uv.y + _CamWhite.z) - 0.5) * 6.0, 2.0));
+            Y = lerp(Y, 0.74 + 0.1 * n, s);
+            C = lerp(C, float2(0.05, -0.035) * band * (0.6 + 0.4 * n), s);
+            Y = lerp(saturate(Y * (1 + 3.0 * w)), 0.96, w * w);
+            C *= 1 - w;
         }
 
         // Setup: video black sits a little above zero (7.5 IRE on analog NTSC).

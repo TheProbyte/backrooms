@@ -98,8 +98,12 @@ namespace Backrooms.Generation
 
             // ---- Prints on the side faces (a face = one of the four vertical sides) ----
             // side: 0 = +Z, 1 = -Z, 2 = +X, 3 = -X.
+            // (2026-11-08, the owner: stickers that overlap flicker. Each one a little further off the board than the one
+            // before, over the tape too, so one simply lies on another.)
+            int layer = 0;
             void Decal(int side, Rect atlas, float width, float yCentre, float along)
             {
+                float dl = 0.0007f + 0.0012f * ++layer;
                 float aspect = atlas.height * 512f / (atlas.width * 1024f);       // height / width in texels
                 float w = width * 0.5f, hgt = width * aspect * 0.5f;
                 float faceHalf = side < 2 ? hx : hz;
@@ -108,10 +112,10 @@ namespace Backrooms.Generation
                 Vector3 a, b, c, d, n;
                 switch (side)
                 {
-                    case 0: n = N(0, 0, 1); a = P(along + w, y - hgt, hz + lift); b = P(along - w, y - hgt, hz + lift); c = P(along - w, y + hgt, hz + lift); d = P(along + w, y + hgt, hz + lift); break;
-                    case 1: n = N(0, 0, -1); a = P(along - w, y - hgt, -hz - lift); b = P(along + w, y - hgt, -hz - lift); c = P(along + w, y + hgt, -hz - lift); d = P(along - w, y + hgt, -hz - lift); break;
-                    case 2: n = N(1, 0, 0); a = P(hx + lift, y - hgt, along - w); b = P(hx + lift, y - hgt, along + w); c = P(hx + lift, y + hgt, along + w); d = P(hx + lift, y + hgt, along - w); break;
-                    default: n = N(-1, 0, 0); a = P(-hx - lift, y - hgt, along + w); b = P(-hx - lift, y - hgt, along - w); c = P(-hx - lift, y + hgt, along - w); d = P(-hx - lift, y + hgt, along + w); break;
+                    case 0: n = N(0, 0, 1); a = P(along + w, y - hgt, hz + dl); b = P(along - w, y - hgt, hz + dl); c = P(along - w, y + hgt, hz + dl); d = P(along + w, y + hgt, hz + dl); break;
+                    case 1: n = N(0, 0, -1); a = P(along - w, y - hgt, -hz - dl); b = P(along + w, y - hgt, -hz - dl); c = P(along + w, y + hgt, -hz - dl); d = P(along - w, y + hgt, -hz - dl); break;
+                    case 2: n = N(1, 0, 0); a = P(hx + dl, y - hgt, along - w); b = P(hx + dl, y - hgt, along + w); c = P(hx + dl, y + hgt, along + w); d = P(hx + dl, y + hgt, along - w); break;
+                    default: n = N(-1, 0, 0); a = P(-hx - dl, y - hgt, along + w); b = P(-hx - dl, y - hgt, along - w); c = P(-hx - dl, y + hgt, along - w); d = P(-hx - dl, y + hgt, along + w); break;
                 }
                 print.Quad(a, b, c, d, n, new Vector2(atlas.xMin, atlas.yMin), new Vector2(atlas.xMax, atlas.yMin), new Vector2(atlas.xMax, atlas.yMax), new Vector2(atlas.xMin, atlas.yMax));
             }

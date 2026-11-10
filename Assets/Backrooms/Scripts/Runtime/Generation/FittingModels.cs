@@ -65,7 +65,7 @@ namespace Backrooms.Generation
             // The real world through the seams (Tools/Blender/build_real.py, 2026-11-07; Overflow folder only): SeamRooms.
             "RealHighBay", "RealBatten", "RealWindow", "RollerDoor", "ShopCounter", "RealGondolaA", "RealGondolaB",
             "ShowroomSofa", "ShowroomSofaB", "ShowroomChair", "ShowroomTable", "ShowroomLamp", "ShowroomRug", "SaleBanner",
-            "PalletJack", "RealSignForklift", "RealSignHiVis", "RealSignFire", "HiVisHooks", "RealWallPhone", "RealClock", "Guillotine",
+            "PalletJack", "RealSignForklift", "RealSignHiVis", "RealSignFire", "HiVisHooks", "RealWallPhone", "RealClock", "Guillotine", "StaffDoor",
         };
 
         static readonly Dictionary<string, Part[]> s_models = new Dictionary<string, Part[]>();

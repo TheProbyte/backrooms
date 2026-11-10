@@ -105,6 +105,10 @@ namespace Backrooms.Saves
         /// <summary>Last night: boxes that were safe, moved by the dark, gone for good (the board's report).</summary>
         public int lastSafe, lastMoved, lastGone;
         public bool hasReport;
+        /// <summary>The punch clock (2026-11-08): work orders done today (for the pay slip) and the last pay slip, its lines
+        /// as "left\tright" (Interaction.Contracts.PunchOut; shown again at the pay window).</summary>
+        public List<int> doneToday = new List<int>();
+        public string lastSlip = "";
 
         // ---- The supply counter and kits (Interaction.Supplies, Interaction.Kits, Interaction.KitPlacer) ----
         /// <summary>Things delivered by the lift so far (where the next one waits), the next kit crate's number, shelves put
@@ -124,6 +128,40 @@ namespace Backrooms.Saves
         public bool tapeWatched;
         /// <summary>Fragile boxes (break if dropped or thrown).</summary>
         public List<ulong> fragile = new List<ulong>();
+        // ---- Batches (2026-11-09, Docs/GameDesign.md sections 6-7; Interaction.Contracts.Batches) ----
+        /// <summary>The save's version of the work: 2 from batches (older saves are moved over once: Contracts.Migrate).</summary>
+        public int workVersion;
+        /// <summary>The clients' batches: waiting behind their seam, coming in, stored, due back. Returned ones are gone.</summary>
+        public List<BatchData> batches = new List<BatchData>();
+        public int nextBatch;
+        /// <summary>Business time run so far (s): it runs on the floor and behind the seams, never in the hub. The camcorder's
+        /// date follows it (client time).</summary>
+        public float business;
+        /// <summary>When each client's next lot may go out behind its seam (business time), by client.</summary>
+        public List<float> lotAt = new List<float>();
+        /// <summary>Clients whose seam you have found (been within a few metres of, or through).</summary>
+        public List<int> seamsFound = new List<int>();
+        /// <summary>A seam other than the taped first one has been found (any client's: a floor may have few kinds).</summary>
+        public bool otherSeamFound;
+        /// <summary>Batches stored (intake paid), returned, returned within their window; clients returned to.</summary>
+        public int batchesIn, batchesDone, batchesOnTime;
+        public List<int> clientsServed = new List<int>();
+        /// <summary>Scuffed boxes (left unsafe too long while stored: a mark on them, a little off the pay).</summary>
+        public List<ulong> scuffed = new List<ulong>();
+        /// <summary>Boxes signed for (returned, or a withdrawn lot), left where they are until nobody can see them go
+        /// (Contracts.Batches, 2026-11-09).</summary>
+        public List<ulong> collect = new List<ulong>();
+        /// <summary>This trip's pay slip so far ("left\tright" lines; printed when you ride back up) and trips made.</summary>
+        public List<string> trip = new List<string>();
+        public int trips;
+        /// <summary>The power bill run up and not taken yet (dollars), and what this trip's power came to.</summary>
+        public float powerOwed;
+        public int tripPower;
+        /// <summary>Hand trucks on the floor (x, y, z, yaw each).</summary>
+        public List<float> handTrucks = new List<float>();
+        /// <summary>BETTER RATES bought (each: new batches pay 15% more).</summary>
+        public int rates;
+
         /// <summary>Generators set up on the floor (the power bill) and their moved-prop ids.</summary>
         public List<ulong> generators = new List<ulong>();
         public List<ulong> conveyors = new List<ulong>();
@@ -135,7 +173,27 @@ namespace Backrooms.Saves
         public List<int> tubesFixed = new List<int>();
     }
 
-    /// <summary>A contract on the board (Interaction.Contracts).</summary>
+    /// <summary>
+    /// A client's batch (2026-11-09, Docs/GameDesign.md section 7): a lot of boxes taken from behind their seam, stored on
+    /// lit shelves for a set business time, then taken back through the same seam. Paid twice: the intake fee once every
+    /// box is safe on a shelf, the completion pay when it is back (less lateness and scuffs).
+    /// </summary>
+    [Serializable]
+    public class BatchData
+    {
+        public int id, client, count;
+        /// <summary>0 waiting behind the seam, 1 coming in, 2 stored (its countdown running), 3 due back.</summary>
+        public int state;
+        public int intake, completion;
+        /// <summary>How long it is stored (business seconds), how long is left, the collection window, time since due.</summary>
+        public float storeFor, left, window, since;
+        public List<ulong> boxes = new List<ulong>();
+        /// <summary>While stored: how long each box (by index) has been unsafe without a break.</summary>
+        public List<float> unsafeFor = new List<float>();
+        public bool fragile, riskSaid, lateSaid;
+    }
+
+    /// <summary>A contract on the board (Interaction.Contracts; before 2026-11-09's batches: kept to read old saves).</summary>
     [Serializable]
     public class ContractData
     {

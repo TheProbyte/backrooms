@@ -349,7 +349,7 @@ namespace Backrooms.Interaction
             if (best == null) return;
             startPlugged = false;
             Unbundle();
-            _plug.PlugInto(best);
+            _plug.PlugInto(best, quiet: true);
             if (_cord) _cord.Lay();
         }
 

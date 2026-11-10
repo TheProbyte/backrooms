@@ -214,6 +214,29 @@ namespace Backrooms.Interaction
 
         static readonly RaycastHit[] s_hits = new RaycastHit[16];
 
+        /// <summary>
+        /// The building's own light at a point (2026-11-09, decision 6: any light reaching a shelf counts, the ceiling's
+        /// included): a room with every tube working gives <see cref="CeilingAllOn"/>, one with some working
+        /// <see cref="CeilingMixed"/>, a dark room (or one switched off) nothing. The tubes stay as they are now (no
+        /// closing): working ones stay on, dead ones stay dead.
+        /// </summary>
+        public static float CeilingAt(Vector3 p)
+        {
+            var ws = WorldStreamer.Current;
+            if (!ws) return 0f;
+            var L = ws.LayoutAt(WorldStreamer.ChunkOf(p));
+            if (L == null) return 0f;
+            int x = Mathf.FloorToInt(p.x / OfficeBiome.CellSize) - L.coord.x * L.N, z = Mathf.FloorToInt(p.z / OfficeBiome.CellSize) - L.coord.y * L.N;
+            if (!L.InChunk(x, z)) return 0f;
+            var room = L.RoomAt(x, z);
+            if (LightZones.IsOff(new Vector3Int(L.coord.x, L.storey, L.coord.y), L.roomOf[x, z])) return 0f;
+            return room.lights == LightMode.AllOn ? CeilingAllOn : room.lights == LightMode.Mixed ? CeilingMixed : 0f;
+        }
+
+        /// <summary>The ceiling's share of a shelf's light (tune here if lamps end up mattering too little: about half the
+        /// floor's rooms have every tube working).</summary>
+        public static float CeilingAllOn = 1f, CeilingMixed = 0.5f;
+
         /// <summary>How lit a standing shelf is by these lamps' lights (0..1): the mean over points along each deck's front
         /// (two a deck), each point's light added up from every lamp that reaches it and capped at full.</summary>
         public static float Measure(MovableProp shelf, List<Light> lights)
@@ -395,13 +418,14 @@ namespace Backrooms.Interaction
     /// <summary>
     /// On the contract floor (added by Interaction.Contracts): measures the light at the shelves near you a few times a
     /// second (Shelves.Measure, kept per shelf), and shows the camcorder's LOW LIGHT warning when you look at a shelf for a
-    /// moment and it is not lit enough to be safe overnight.
+    /// moment and it is not lit enough to be safe.
     /// </summary>
     public class ShelfWatch : MonoBehaviour
     {
         readonly List<Light> _lights = new List<Light>();
+        readonly List<Light> _userLights = new List<Light>();
         readonly List<MovableProp> _live = new List<MovableProp>();
-        float _next;
+        float _next, _nextFind;
         int _cursor;
         float _gaze, _alpha;
         ulong _gazed;
@@ -414,9 +438,14 @@ namespace Backrooms.Interaction
             {
                 _next = Time.time + 0.3f;
                 _lights.Clear();
-                foreach (var u in FindObjectsByType<PowerUser>(FindObjectsSortMode.None))
-                    foreach (var l in u.GetComponentsInChildren<Light>())
-                        if (l.intensity > 0.01f) _lights.Add(l);
+                // (2026-11-08 profile: searching the scene for the lamps each pass spiked; the lamps change rarely.)
+                if (Time.time >= _nextFind)
+                {
+                    _nextFind = Time.time + 2f;
+                    _userLights.Clear();
+                    foreach (var u in FindObjectsByType<PowerUser>(FindObjectsSortMode.None)) _userLights.AddRange(u.GetComponentsInChildren<Light>());
+                }
+                foreach (var l in _userLights) if (l && l.intensity > 0.01f) _lights.Add(l);
                 foreach (var l in Machines.Lights) if (l && l.intensity > 0.01f) _lights.Add(l);      // floodlights
                 _live.Clear();
                 foreach (var id in d.shelves) { var mp = MovableProp.Find(id); if (mp) _live.Add(mp); }
@@ -424,7 +453,7 @@ namespace Backrooms.Interaction
                 for (int k = 0; k < Mathf.Min(_live.Count, 8); k++)
                 {
                     var mp = _live[_cursor++ % _live.Count];
-                    Shelves.SetLevel(mp.Spec.id, Shelves.Measure(mp, _lights));
+                    Shelves.SetLevel(mp.Spec.id, ShelfTypes.IsBroken(mp.Spec.variant) ? 0f : Mathf.Clamp01(Shelves.Measure(mp, _lights) + Shelves.CeilingAt(mp.transform.position + Vector3.up * 0.5f)));
                 }
             }
             Gaze();

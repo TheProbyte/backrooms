@@ -71,6 +71,8 @@ namespace Backrooms.Interaction
             _blocker.center = new Vector3(0f, NoclipDoors.Height * 0.5f, -(OfficeBiome.WallThickness * 0.5f + 0.004f));
             _blocker.size = new Vector3(NoclipDoors.Width + 0.1f, NoclipDoors.Height + 0.1f, OfficeBiome.WallThickness);
             _blocker.enabled = NoclipPassage.SeamsShut;
+            // The client's card beside it (2026-11-09): what they offer and where your work with them stands.
+            if (this.kind <= 3) SeamCard.Attach(this, mask);
         }
 
         /// <summary>

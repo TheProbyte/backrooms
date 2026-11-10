@@ -164,6 +164,7 @@ namespace Backrooms.Interaction
             RuntimeIndoorReflections.Instance?.Prepare(root);
             PoolLitSwitch.Attach(root);                           // lit by the Poolrooms' light while it is in them
             FragileBox.Attach(mp);                                // a fragile load's box: breaks if dropped hard
+            ScuffMarks.Attach(mp);                                // a scuffed box (left unsafe too long): its scrapes
             Machines.Attach(mp);                                  // a generator, conveyor or floodlight: what it does
             return mp;
         }
@@ -333,12 +334,20 @@ namespace Backrooms.Interaction
                 for (int i = 0; i < n; i++)
                 {
                     var o = _touching[i].attachedRigidbody ? _touching[i].attachedRigidbody.GetComponent<MovableProp>() : null;
-                    if (o && o != this && o.Body.isKinematic) o.Wake();
+                    if (o && o != this && o.Body.isKinematic && !StaysPut(o)) o.Wake();
                 }
             }
         }
 
         static readonly Collider[] _touching = new Collider[16];
+
+        /// <summary>A frozen box beside this one that should not wake with it (2026-11-09): boxes next to the one taken or
+        /// knocked stay where they were put; only what is stacked on top of it (it would float) comes along.</summary>
+        bool StaysPut(MovableProp o)
+        {
+            if (Spec.kind != MovableKind.Box || o.Spec.kind != MovableKind.Box) return false;
+            return o.WorldBounds.min.y < WorldBounds.max.y - 0.05f;
+        }
 
         void FixedUpdate()
         {
@@ -357,6 +366,7 @@ namespace Backrooms.Interaction
                 if (_casters.sharedMaterial != want) _casters.sharedMaterial = want;
             }
             if (held) { _still = 0f; return; }
+            if (Spec.kind == MovableKind.Box) NoclipTravel.PropStep(this);      // thrown through a seam or noclip door
             bool still = Body.linearVelocity.sqrMagnitude < 0.0025f && Body.angularVelocity.sqrMagnitude < 0.01f;
             _still = still ? _still + Time.fixedDeltaTime : 0f;
             if (_still > 0.8f || Body.IsSleeping()) Freeze();
@@ -378,7 +388,10 @@ namespace Backrooms.Interaction
         {
             // Something moving hits a frozen prop hard enough: it joins in.
             var other = c.rigidbody ? c.rigidbody.GetComponent<MovableProp>() : null;
-            if (other && other.Body.isKinematic && !other.NetRemote && !Body.isKinematic && c.relativeVelocity.sqrMagnitude > 0.16f)
+            // (2026-11-09, decision: stored goods stay put: a box at rest on a shelf takes a real hit to move, a thrown box
+            // or a truck driven into it, not a nudge from a trolley or someone brushing past.)
+            float need = other && other.Spec.kind == MovableKind.Box && Shelves.On(other.transform.position, out _) ? 2.2f * 2.2f : 0.16f;
+            if (other && other.Body.isKinematic && !other.NetRemote && !Body.isKinematic && c.relativeVelocity.sqrMagnitude > need)
             {
                 other.Wake();
                 other.Body.AddForceAtPosition(-c.impulse * 0.6f, c.GetContact(0).point, ForceMode.Impulse);

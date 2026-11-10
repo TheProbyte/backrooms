@@ -29,6 +29,10 @@ namespace Backrooms.CustomRooms
         /// <summary>The pickup pallet's middle and the DELIVERIES bay (blueprint metres).</summary>
         public static readonly Vector2 Pickup = new Vector2(1.5f, 8.3f);
         public static readonly Rect Bay = new Rect(5.4f, 7.0f, 2.6f, 2.2f);
+        /// <summary>The client's staff door (2026-11-09): on the east wall beside the DELIVERIES bay, shut and locked; how the
+        /// client's people come for returned boxes and bring the next lot (Interaction.StaffDoors rattles it).</summary>
+        public const float DoorZ = 7.9f;
+        public static float DoorX => W * C - Face;
         /// <summary>The pallet's deck height: the boxes stand on it.</summary>
         public const float PalletTop = 0.145f;
 
@@ -72,6 +76,9 @@ namespace Backrooms.CustomRooms
             Fit("SeamPickupSign", Pickup.x, north, 180f, Vector3.zero, 1.55f);
             Fit("SeamBay", Bay.center.x, Bay.center.y, 180f, Vector3.zero);                     // (reads from the way in)
             Fit("SeamShop" + kind, 4.2f, north, 180f, Vector3.zero, kind == 0 ? 2.8f : 2.15f);
+            // The client's own way in and out (2026-11-09, the owner: "how do people get in and out to take and put boxes
+            // there"): a staff door beside the bay, always shut and locked to you.
+            Fit("StaffDoor", east, DoorZ, -90f, new Vector3(1.06f, 2.13f, 0.16f));
 
             // Lights: LED high-bays in the warehouse, battens elsewhere, on a 4.2 x 2.4 m grid.
             for (int ix = 0; ix < 2; ix++)

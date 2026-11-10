@@ -25,6 +25,8 @@ Slots named "Glow_..." shine (BakedMaterials: their colour is their light): lens
   - HiVisHooks: a coat rail with three hi-vis vests.
   - RealWallPhone: a beige wall phone with its coiled cord. RealClock: a plain white office clock.
   - Guillotine: a print shop's stack cutter on its stand.
+  - StaffDoor: the client's own staff door, shut and locked (hollow metal, wired-glass vision panel lit from the shop,
+    lever handle, push-button lock, kick plate, closer, STAFF ONLY, light under it).
 
 Frames: Blender front toward -Y, Z up; wall things' backs on the wall (y = 0); origin at the middle of the foot.
 Unity (x, y, z) = (x, z, -y).
@@ -179,6 +181,68 @@ def roller_door():
         o.rotation_euler = (math.radians(90), 0, 0)
         o.location = (W_ / 2 + 0.32, -0.08, z)
     return join([finish(p, "RollerDoor", sharp_deg=40)] + cards, "RollerDoor")
+
+
+def staff_door():
+    """The client's own staff door (2026-11-09, the owner: "there should be a closed locked door in all realworld rooms
+    because how do people get in and out to take and put boxes there"): a commercial hollow-metal door in its frame, shut
+    and locked. A wired-glass vision panel with the shop's light behind it, a lever handle and a push-button combination
+    lock over it (the 90s mechanical kind), a kick plate, a closer on the head, STAFF ONLY, and light under it."""
+    LF = S("Paint_StaffDoor", hx('#BDB6A4'), "paint", 0.5, 0.15)
+    FR = S("Paint_StaffFrame", hx('#5F666C'), "paint", 0.45, 0.3)
+    ST = S("Steel_StaffKick", (0.72, 0.72, 0.7), "metal", 0.35, 0.9)
+    CH = S("Chrome_StaffLever", (0.78, 0.78, 0.76), "metal", 0.25, 1.0)
+    LK = S("Metal_StaffLock", (0.62, 0.6, 0.55), "metal", 0.35, 0.9)
+    BK = S("Paint_StaffCloser", (0.2, 0.2, 0.2), "paint", 0.5, 0.3)
+    W_, H_ = 0.92, 2.06
+    hx_ = W_ / 2 - 0.12                                     # the handle side's x
+    p = [rbox("JambL", (0.07, 0.07, H_ + 0.07), (-W_ / 2 - 0.035, -0.035, (H_ + 0.07) / 2), FR, 0.008, 2),
+         rbox("JambR", (0.07, 0.07, H_ + 0.07), (W_ / 2 + 0.035, -0.035, (H_ + 0.07) / 2), FR, 0.008, 2),
+         rbox("Head", (W_ + 0.14, 0.07, 0.07), (0, -0.035, H_ + 0.035), FR, 0.008, 2),
+         rbox("Leaf", (W_ - 0.01, 0.045, H_ - 0.012), (0, -0.026, (H_ - 0.012) / 2 + 0.008), LF, 0.006, 2),
+         rbox("Kick", (W_ - 0.06, 0.004, 0.25), (0, -0.05, 0.14), ST, 0.002, 1),
+         # The lever on its rose, pointing at the hinges.
+         cyl("Rose", 0.03, 0, 0.012, CH, 20, 0, 0),
+         rbox("Lever", (0.13, 0.022, 0.024), (hx_ - 0.055, -0.08, 1.02), CH, 0.009, 2),
+         rbox("LeverNeck", (0.024, 0.03, 0.024), (hx_, -0.064, 1.02), CH, 0.008, 2),
+         # The push-button lock: a cast body, five buttons in a column, the knob that throws the bolt.
+         rbox("LockBody", (0.068, 0.028, 0.19), (hx_, -0.062, 1.27), LK, 0.01, 2),
+         cyl("LockKnob", 0.021, 0, 0.02, LK, 18, 0, 0),
+         # The closer on the head, its arm folded.
+         rbox("Closer", (0.3, 0.06, 0.07), (-0.18, -0.08, H_ - 0.06), BK, 0.012, 2),
+         rbox("CloserArm", (0.32, 0.02, 0.02), (-0.06, -0.07, H_ + 0.02), BK, 0.006, 1)]
+    for o, z in ((p[5], 1.02), (p[9], 1.205)):
+        o.rotation_euler = (math.radians(90), 0, 0)
+        o.location = (hx_, -0.049, z)
+    for i in range(5):
+        b = cyl("LockButton", 0.009, 0, 0.008, CH, 12, 0, 0)
+        b.rotation_euler = (math.radians(90), 0, 0)
+        b.location = (hx_, -0.077, 1.33 - i * 0.026)
+        p.append(b)
+    # The vision panel: wired glass, the shop's warm light behind it.
+    vp = Canvas(48, 144, (0.0, 0.0, 0.0))
+    for y in range(144):
+        for x in range(48):
+            t = 0.55 + 0.12 * (1 - y / 143)
+            wire = (x % 12 == 0) or (y % 12 == 0)
+            vp.px[y * 48 + x] = [0.25, 0.24, 0.22, 1.0] if wire else [0.95 * t, 0.9 * t, 0.78 * t, 1.0]
+    p.append(rbox("VisionFrame", (0.2, 0.012, 0.56), (0, -0.05, 1.55), FR, 0.004, 1))
+    cards = [card("Vision", 0.17, 0.52, (0, -0.0565, 1.55), print_mat("Glow_StaffVision", vp)),
+             card("Gap", W_ - 0.06, 0.012, (0, -0.012, 0.007), glow("StaffGap", (0.95, 0.88, 0.7)))]
+    spill = Canvas(64, 32, (0, 0, 0))
+    for y in range(32):
+        t = (1 - y / 31) ** 2.2 * 0.3
+        for x in range(64):
+            e = min(1.0, min(x, 63 - x) / 8.0)
+            spill.px[y * 64 + x] = [0.95 * t * e, 0.88 * t * e, 0.7 * t * e, 1.0]
+    cards.append(card("Spill", W_ - 0.1, 0.3, (0, -0.16, 0.0015), print_mat("Glow_StaffSpill", spill), normal=(0, 0, 1)))
+    # STAFF ONLY, screwed on above the glass.
+    sg = Canvas(200, 60, (0.93, 0.93, 0.9))
+    sg.frame(0, 0, 200, 60, 3, (0.7, 0.12, 0.1))
+    sg.text_c("STAFF ONLY", 100, 22, 2, (0.7, 0.12, 0.1))
+    p.append(rbox("SignBack", (0.3, 0.006, 0.09), (0, -0.052, 1.9), S("Plastic_StaffSign", (0.93, 0.93, 0.9), "plastic", 0.4), 0.003, 1))
+    cards.append(card("Sign", 0.29, 0.085, (0, -0.0555, 1.9), print_mat("Print_StaffSign", sg, sharp=True)))
+    return join([finish(p, "StaffDoor", sharp_deg=40)] + cards, "StaffDoor")
 
 
 # ------------------------------------------------------------------------------------------------- shops
@@ -522,4 +586,5 @@ run_baked([
     ("RealWallPhone", wall_phone, SIGN, {"scale": 0.5}),
     ("RealClock", real_clock, SIGN, {"scale": 0.4, "px_per_m": 500.0}),
     ("Guillotine", guillotine, V, {"scale": 1.0}),
+    ("StaffDoor", staff_door, (0.6, -1.0, 0.25), {"scale": 1.0, "px_per_m": 300.0}),
 ])

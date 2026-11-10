@@ -116,28 +116,67 @@ def walk(rng, x, y, length, step, turn, heading=None):
 # ---------------- the textures ----------------
 
 def wallpaper():
-    """Level 0's wallpaper, simplified: one broad lighter stripe a tile with a column of bold chevrons, a darker gap
-    between with a pair of pin stripes, painted patches over it. One tile = 0.6 m (1024 px). (No roll seam here: the
-    world adds the 53 cm roll seams itself, OfficeChunkBuilder.Paper.)"""
+    """Level 0's wallpaper (redrawn 2026-11-09, the owner: "backrooms wallpaper print could be better ... i like the hub
+    walls"): a printed mustard paper in the hub wall's painted way. Two stripes a tile (one each 0.3 m), each a lighter
+    band edged with dark pin lines, down its middle a column of bold chevrons with a diamond over each; the second
+    stripe's column dropped half a step (a half-drop repeat, as real wallpapers are printed, so the rows don't line up
+    across the wall). Between the stripes a faint ground of small dots. The ink sits a hair off the paper's register and
+    thins in patches; big soft painted patches over all. One tile = 0.6 m (1024 px). (No roll seam here: the world adds
+    the 53 cm roll seams itself, OfficeChunkBuilder.Paper.)"""
     n = 1024
     ys, xs = np.mgrid[0:n, 0:n].astype(np.float64)
-    u = xs / n
-    v = 0 * xs
-    band = blur(np.clip((0.3 - np.abs(u - 0.5)) / 0.01, 0, 1), 3)
-    v += band * 0.05
-    for c in (0.06, 0.94):
-        v -= np.clip((0.004 - np.abs(u - c)) / 0.003, 0, 1) * 0.07
-    # chevrons: a V every 192 px (11 cm) down the band's middle, pointing up
-    cy = (ys % 192) / 192.0
-    du = np.abs(u - 0.5)
-    chev = np.clip((0.06 - np.abs(cy - 0.3 - du * 2.0)) / 0.015, 0, 1) * (du < 0.15)
-    motif = blur(chev, 1.5)
-    v += motif * 0.085
-    v += painted(n, 90, 11, levels=4, soft=6) * 0.035 + painted(n, 260, 12, levels=3, soft=18) * 0.03
-    v += noise(n, 1.4, 13) * 0.008
-    rgb = shade((214, 197, 112), v, warm=0.6)
+    period = n / 6.0                                   # motif step: 10 cm, six to a tile
+    ink = np.zeros((n, n))                             # the printed motif (0..1)
+    pin = np.zeros((n, n))                             # the dark pin lines
+    band = np.zeros((n, n))
+    for k, (centre, drop) in enumerate(((0.25, 0.0), (0.75, 0.5))):
+        u = (xs / n - centre)
+        u = (u + 0.5) % 1.0 - 0.5                      # wrapped distance across the tile
+        du = np.abs(u) * n                             # px from the stripe's middle
+        band = np.maximum(band, np.clip((92 - du) / 2.0, 0, 1))
+        for e in (92, 80):                             # a double pin line at each edge
+            pin = np.maximum(pin, np.clip((2.2 - np.abs(du - e)) / 1.0, 0, 1) * (1.0 if e == 92 else 0.55))
+        cy = ((ys / period + drop) % 1.0) * period     # px down from this step's top
+        # a bold chevron pointing up, 60 px wide
+        chev_y = 78 + du * 0.62
+        chev = np.clip((12 - np.abs(cy - chev_y)) / 1.2, 0, 1)
+        chev *= np.clip((44 - du) / 1.5, 0, 1)
+        # a diamond over it
+        dia = np.clip((16 - (np.abs(cy - 38) + du * 1.15)) / 1.2, 0, 1)
+        # two small dots either side of the chevron's tips
+        dots = np.zeros((n, n))
+        for sx in (-58.0, 58.0):
+            ux = (u * n - sx)
+            dots = np.maximum(dots, np.clip((5.5 - np.sqrt(ux ** 2 + (cy - 112) ** 2)) / 1.0, 0, 1))
+        ink = np.maximum(ink, np.maximum(chev, np.maximum(dia, dots * 0.8)))
+    # The ground between the stripes: small faint dots on a grid, half-dropped too.
+    gx = (xs % (n / 8.0)) - n / 16.0
+    gy = ((ys + (np.floor(xs / (n / 8.0)) % 2) * period * 0.5) % (period * 0.5)) - period * 0.25
+    ground = np.clip((3.0 - np.sqrt(gx ** 2 + gy ** 2)) / 1.0, 0, 1) * (1 - band)
+    # Print: the ink a hair off register, thinner in patches.
+    ink_off = np.roll(np.roll(ink, 2, 0), -1, 1)
+    thin = 0.72 + 0.28 * np.clip(painted(n, 30, 15, 3, 3) * 0.5 + 0.5, 0, 1)
+    paper = (214, 190, 104)                            # mustard #D6BE68 (the style sheet)
+    # (The patches are kept faint: the tile is only 0.6 m, so anything bold repeats across the wall. The world's own
+    # stains and dirt give the large-scale variety.)
+    v = band * 0.07
+    v += painted(n, 110, 11, levels=4, soft=7) * 0.016 + painted(n, 300, 12, levels=3, soft=20) * 0.01
+    v += noise(n, 1.4, 13) * 0.006
+    rgb = shade(paper, v, warm=0.6)
+    ink_c = np.array([244.0, 230.0, 162.0])            # cream-gold ink, a shade lighter than the paper
+    shadow_c = np.array([150.0, 118.0, 52.0])          # its misregistered dark under-print
+    a_shadow = blur(ink_off, 0.8) * 0.28 * thin
+    rgb = rgb * (1 - a_shadow[..., None]) + shadow_c * a_shadow[..., None]
+    a_ink = blur(ink, 0.7) * 0.95 * thin
+    rgb = rgb * (1 - a_ink[..., None]) + ink_c * a_ink[..., None]
+    a_pin = blur(pin, 0.6) * 0.42
+    rgb = rgb * (1 - a_pin[..., None]) + np.array([140.0, 112.0, 50.0]) * a_pin[..., None]
+    a_g = blur(ground, 0.6) * 0.16
+    rgb = rgb * (1 - a_g[..., None]) + ink_c * a_g[..., None]
     save_rgb(rgb, 'OF_Wallpaper_Albedo.png')
-    save_normal(blur(motif * 1.0 + band * 0.3, 1.5), 2.0, 'OF_Wallpaper_Normal.png')
+    # Embossed vinyl: the motif and the band raised a little, the pins pressed in, some paper tooth.
+    height = blur(ink, 1.5) * 1.0 + blur(band, 2.0) * 0.25 - blur(pin, 1.0) * 0.3 + painted(n, 5, 16, 3, 1.0) * 0.06
+    save_normal(height, 2.0, 'OF_Wallpaper_Normal.png')
 
 
 def carpet():

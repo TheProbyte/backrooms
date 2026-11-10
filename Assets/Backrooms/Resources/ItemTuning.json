@@ -1,6 +1,15 @@
 {
     "items": [
         {
+            "type": "Chalk",
+            "values": [
+                {
+                    "name": "reach",
+                    "value": "0.877"
+                }
+            ]
+        },
+        {
             "type": "CordBox",
             "values": [
                 {
@@ -45,6 +54,15 @@
                 {
                     "name": "dropletsPerSecond",
                     "value": "515"
+                }
+            ]
+        },
+        {
+            "type": "TapeRoll",
+            "values": [
+                {
+                    "name": "bendRadius",
+                    "value": "0.194"
                 }
             ]
         }

@@ -160,6 +160,16 @@ namespace Backrooms.Interaction
                     Vector3 back = -f * (depth * 0.5f - Mathf.Min(0.065f, depth * 0.25f));
                     float gy = s.y * 0.5f;
                     SetGrips(r * halfAcross + back + Vector3.up * gy, r, -r * halfAcross + back + Vector3.up * gy, -r);
+                    if (HandTruck.Equipped)
+                    {
+                        // On the hand truck's nose plate (2026-11-09): low and out ahead, the hands on its handles (in the
+                        // box's frame where it will ride, as the body carries both).
+                        _carryCentre = new Vector3(0f, HandTruck.PlateTop + s.y * 0.5f, HandTruck.PlateZ + depth * 0.5f);
+                        _carryArc = 0.06f;
+                        var toBox = Quaternion.Inverse(_carryRot);
+                        Vector3 origin = _carryCentre - _carryRot * b.center;
+                        SetGrips(toBox * (HandTruck.Handle(Side) - origin), toBox * Vector3.up, toBox * (HandTruck.Handle(-Side) - origin), toBox * Vector3.up);
+                    }
                     break;
                 }
             }
@@ -189,7 +199,7 @@ namespace Backrooms.Interaction
             if (Held) Held.Body.useGravity = true;
             if (_carryColliders != null) _letGo.Add((_carryColliders, Held));
             _carryColliders = null;
-            _outShown = false; _qBoxDown = -1f; BoxTossCharge = 0f; _lmbDownAt = -1f;
+            _outShown = false; BoxTossCharge = 0f; _windUp = 0f; _lmbDownAt = -1f;
         }
 
         /// <summary>Things let go of near the body, passed through until it is clear of them.</summary>
@@ -235,8 +245,9 @@ namespace Backrooms.Interaction
             Vector3 boundsMid = Held.Shape.bounds.center;
             bool box = Held.Spec.kind == MovableKind.Box;
             // A box sways: the bob of the walk, the lag of a turn (PropGrabber.Boxes).
-            centreLocal = _carryCentre + CarryLiftOffset + (box ? _carrySway + Vector3.down * _stackLower : Vector3.zero);
-            rotLocal = box ? Quaternion.Euler(0f, _turnLag, -_carrySway.x * 40f) * _carryRot : _carryRot;
+            float wind = box ? Mathf.SmoothStep(0f, 1f, _windUp) : 0f;
+            centreLocal = _carryCentre + CarryLiftOffset + (box ? _carrySway + Vector3.down * _stackLower + new Vector3(0.03f * Side, 0.07f, -0.13f) * wind : Vector3.zero);
+            rotLocal = box ? Quaternion.Euler(-10f * wind, _turnLag, -_carrySway.x * 40f) * _carryRot : _carryRot;
             Vector3 p = centreLocal - rotLocal * boundsMid;
             float s = Mathf.SmoothStep(0f, 1f, _carryT);
             // (Up first, then over: lifted in an arc so it clears the floor as it turns.)
@@ -251,7 +262,7 @@ namespace Backrooms.Interaction
         /// down to the floor; further out as it goes up or down, clear of the head and the knees. Measured from the eye, so
         /// crouched it is carried lower.
         /// </summary>
-        Vector3 CarryLiftOffset => Held && Held.Spec.kind == MovableKind.Box ? new Vector3(0f, _carryLift + (_player.BaseEye - 1.58f), Mathf.Abs(_carryLift) * 0.18f) : Vector3.zero;
+        Vector3 CarryLiftOffset => Held && Held.Spec.kind == MovableKind.Box && !HandTruck.Equipped ? new Vector3(0f, _carryLift + (_player.BaseEye - 1.58f), Mathf.Abs(_carryLift) * 0.18f) : Vector3.zero;
 
         /// <summary>The range of the lift for the box held: its bottom from 3 cm to 1.5 m above the feet.</summary>
         void CarryLiftRange(out float lo, out float hi)

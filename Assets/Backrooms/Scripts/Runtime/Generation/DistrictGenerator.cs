@@ -891,7 +891,7 @@ namespace Backrooms.Generation
                 float gap = OfficeBiome.WallThickness * 0.5f + 0.5f + 0.03f + (float)rng.NextDouble() * 0.08f;
                 var pos = wall + inward * gap;
                 float yaw = (side >= 2 ? 0f : 90f) + (float)(rng.NextDouble() - 0.5) * 6f;
-                L.props.Add(new Prop { kind = PropKind.Pallet, position = pos, yaw = yaw, size = new Vector3(1.2f, 1.6f, 1.0f), variant = rng.Next(1 << 16), roomColor = r.color });
+                L.props.Add(new Prop { kind = PropKind.Pallet, position = pos, yaw = yaw, size = new Vector3(1.2f, 1.6f, 1.0f), variant = rng.Next(1 << 16), roomColor = r.color, bare = true });
                 used.Add(centre);
             }
         }
@@ -915,7 +915,7 @@ namespace Backrooms.Generation
                         if (p.vertex.x >= x - 1 && p.vertex.x <= x + 3 && p.vertex.y >= z - 1 && p.vertex.y <= z + 2) blocked = true;
                     if (blocked) continue;
                     L.props.Add(new Prop { kind = PropKind.StorageRack, position = new Vector2((x + 1) * C, (z + 0.5f) * C),
-                        yaw = 0f, size = new Vector3(2.3f, h, 0.95f), variant = rng.Next(1 << 16), roomColor = r.color });
+                        yaw = 0f, size = new Vector3(2.3f, h, 0.95f), variant = rng.Next(1 << 16), roomColor = r.color, bare = true });
                 }
             }
         }
@@ -1163,7 +1163,9 @@ namespace Backrooms.Generation
                             if (!ok) break;
                         }
                         float yaw = Mathf.Atan2(inward.x, inward.y) * Mathf.Rad2Deg + (float)(rng.NextDouble() - 0.5) * 30f;
-                        L.props.Add(new Prop { kind = PropKind.Box, position = pos, yaw = yaw, size = size, variant = rng.Next(1 << 16), roomColor = r.color });
+                        // (No loose boxes of the world's own any more, 2026-11-09, the owner: every box is a client's now.
+                        // The dice are still rolled, so everything after comes out as before.)
+                        rng.Next(1 << 16);
                         s += size.x * 0.5f + 0.06f + (float)rng.NextDouble() * 0.15f + 0.2f;
                     }
                     break;

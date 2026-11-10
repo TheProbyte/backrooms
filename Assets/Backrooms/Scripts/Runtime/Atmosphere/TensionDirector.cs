@@ -36,6 +36,11 @@ namespace Backrooms.Atmosphere
         const string PrefsKey = "Backrooms.TensionDirector.Strength";
         static float s_strength = -1f;
 
+        /// <summary>Off for now (2026-11-09, the owner: "remove the monster for now honestly or turn him off"; the power dips
+        /// in the seams' rooms were its doing too). Docs/GameDesign.md: no creatures in the current scope. Nothing it does
+        /// runs (the shadow, the power dips, the flickers, the sounds); true brings it all back as it was.</summary>
+        public static bool Enabled = false;
+
         /// <summary>0 off, 0.5 subtle, 1 normal, up to 2 intense (saved).</summary>
         public static float Strength
         {
@@ -94,7 +99,7 @@ namespace Backrooms.Atmosphere
             float dt = Time.deltaTime;
             var ws = WorldStreamer.Current;
             if (!_player) _player = FindAnyObjectByType<CamcorderPlayerController>();
-            bool active = Strength > 0.01f && ws && !ws.MenuMode && _player && !_player.noclip && !InPool(ws, _player.transform.position)
+            bool active = Enabled && Strength > 0.01f && ws && !ws.MenuMode && _player && !_player.noclip && !InPool(ws, _player.transform.position)
                           && !HubPlan.InHub(_player.transform.position);          // (the hub is safe: Docs/HubPlan.md)
             Active = active;
             // The quiet and the power dip ease back whatever happens.

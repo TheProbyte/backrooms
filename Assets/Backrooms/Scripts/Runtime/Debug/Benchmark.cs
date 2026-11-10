@@ -444,15 +444,6 @@ namespace Backrooms.DebugTools
         /// </summary>
         IEnumerator Ride(string name, WorldStreamer world, CamcorderPlayerController player, bool fromHub)
         {
-            // The lift goes down only with a contract taken (Interaction.Contracts): the medium floor's, once the board is up.
-            var cs = Interaction.Contracts.Instance;
-            if (fromHub && cs && !cs.HasFloor)
-            {
-                float wait = Time.realtimeSinceStartup + 30f;
-                while (Saves.GameSession.Data != null && Saves.GameSession.Data.board.Count == 0 && Time.realtimeSinceStartup < wait) yield return null;
-                cs.Take(Mathf.Min(1, Saves.GameSession.Data.board.Count - 1));
-                yield return null;
-            }
             var lift = Interaction.HubLift.Instance;
             var frame = fromHub ? HubPlan.HubCab : HubPlan.WorldCab;
             player.botInput = Vector2.zero;

@@ -164,6 +164,41 @@ namespace Backrooms.Interaction
             _status = go ? $"Spawned: {e.name}." : $"Could not spawn {e.name}.";
         }
 
+        // ---------------- Progression (2026-11-09) ----------------
+
+        /// <summary>
+        /// The skip buttons (the owner: "scalable ways for me to skip progression in game - like a menu or something, so I can
+        /// skip to when the supply counter is open"), like Satisfactory's Creative Mode: a button per work-order stage (made
+        /// from WorkOrders' list, so a new stage gets one), money, and business time. Returns where the items start.
+        /// </summary>
+        float Progression(Rect r)
+        {
+            var d = Saves.GameSession.Data;
+            var cs = Contracts.Instance;
+            if (d == null || !cs) return r.y;
+            ImUi.Header(new Rect(r.x, r.y, r.width, 28), "PROGRESSION - " + (WorkOrders.Active ? WorkOrders.StageName : "ALL UNLOCKED") + " - $" + d.pay);
+            float x = r.x, y = r.y + 32f, bh = 34f, gap = 8f;
+            bool Btn(string label, float bw)
+            {
+                if (x + bw > r.xMax) { x = r.x; y += bh + gap; }
+                bool hit = ImUi.Button(new Rect(x, y, bw, bh), label);
+                x += bw + gap;
+                return hit;
+            }
+            for (int s = 1; s <= WorkOrders.Stages; s++)
+            {
+                bool past = d.woStage >= s;
+                string label = WorkOrders.SkipLabel(s) + (past ? " (DONE)" : "");
+                if (Btn(label, 262f) && !past) { WorkOrders.SkipTo(s); _status = "Skipped: " + WorkOrders.SkipLabel(s).ToLowerInvariant() + "."; }
+            }
+            x = r.x; y += bh + gap;
+            if (Btn("+$100", 100f)) { cs.DevPay(100); _status = "+$100."; }
+            if (Btn("+$1000", 110f)) { cs.DevPay(1000); _status = "+$1000."; }
+            if (Btn("+1 MIN BUSINESS TIME", 230f)) { cs.DevSkip(60f); _status = "One minute of business time passes."; }
+            if (Btn("+5 MIN BUSINESS TIME", 230f)) { cs.DevSkip(300f); _status = "Five minutes of business time pass."; }
+            return y + bh + 14f;
+        }
+
         // ---------------- UI ----------------
 
         void OnGUI()
@@ -181,7 +216,8 @@ namespace Backrooms.Interaction
 
             const float tileW = 168f, tileH = 172f, gap = 12f;
             int cols = Mathf.Max(1, Mathf.FloorToInt((w - 56f + gap) / (tileW + gap)));
-            var view = new Rect(box.x + 28, box.y + 108, w - 56, h - 108 - 44);
+            float top = Progression(new Rect(box.x + 28, box.y + 104, w - 56, 0f));
+            var view = new Rect(box.x + 28, top, w - 56, box.yMax - 44 - top);
             // Layout: sections, each a header and its rows of tiles.
             var sections = new List<string>();
             foreach (var e in _entries) if (!sections.Contains(e.category)) sections.Add(e.category);

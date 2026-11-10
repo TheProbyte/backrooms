@@ -216,6 +216,29 @@ namespace Backrooms.Audio
             return Clip((squeeze ? "ChickenSqueeze_" : "ChickenRelease_") + variant, d, 1);
         }
 
+        /// <summary>
+        /// The way through a seam (2026-11-09, the owner: the old crackle was "loud and annoying if you're doing it a lot"):
+        /// a soft hush of tape noise, low-passed, swelling in over a tenth of a second and gone by 0.7 s, under a faint
+        /// low push of air. Quiet enough to hear a hundred times.
+        /// </summary>
+        public static AudioClip NoclipHush()
+        {
+            int n = (int)(Rate * 0.75f);
+            var d = new float[n];
+            var rng = new System.Random(2027);
+            var lp = Biquad.LowPass(2600f); var lp2 = Biquad.LowPass(2600f); var low = Biquad.LowPass(140f);
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
+                float env = t < 0.09f ? t / 0.09f : Mathf.Exp(-(t - 0.09f) * 5.5f);
+                float hiss = lp2.Run(lp.Run(White(rng))) * (0.85f + 0.15f * Mathf.Sin(t * 2f * Mathf.PI * 7f));
+                float push = low.Run(White(rng)) * 3f * Mathf.Exp(-t * 9f);
+                d[i] = (hiss + push) * env;
+            }
+            Normalize(d, 0.3f);
+            return Clip("NoclipHush", d, 1);
+        }
+
         /// <summary>The camcorder's audio as its tape glitches through a noclip door: digital crackle and dropouts.</summary>
         public static AudioClip NoclipCrackle()
         {

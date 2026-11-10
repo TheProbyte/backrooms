@@ -110,7 +110,9 @@ namespace Backrooms.Interaction
             return true;
         }
 
-        public bool PlugInto(Socket s)
+        /// <summary>Into the socket. Quiet: put there as the world loads (a lamp that starts plugged in, a plug restored from
+        /// the save), with no click (2026-11-09, the owner: "odd sounds when the place loads, like clicks").</summary>
+        public bool PlugInto(Socket s, bool quiet = false)
         {
             if (!CanUse(s)) return false;
             if (Socket != null) Socket.occupant = null;
@@ -118,7 +120,7 @@ namespace Backrooms.Interaction
             Socket = s; s.occupant = this;
             Body.isKinematic = true;
             Pose();
-            _fx.PlayOneShot(SoundBank.PlugIn, 0.7f * SoundCatalog.Volume(SoundIds.Cords));
+            if (!quiet) _fx.PlayOneShot(SoundBank.PlugIn, 0.7f * SoundCatalog.Volume(SoundIds.Cords));
             Wake();
             return true;
         }

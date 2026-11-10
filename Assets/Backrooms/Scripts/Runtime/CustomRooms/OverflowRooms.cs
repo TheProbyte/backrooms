@@ -116,7 +116,9 @@ namespace Backrooms.CustomRooms
                     if (kv.Key == Area.Manager) { f.on = x == 13 && z == 13; f.mood = 1; }
                     if (kv.Key == Area.Lobby && ((x == 9 && z == 9) || (x == 15 && z == 11))) f.on = false;
                     if (kv.Key == Area.Lobby && x == 13 && z == 7) f.faulty = true;
-                    if (kv.Key == Area.Lockers && x == 1 && z == 9) { f.faulty = true; f.buzz = true; }
+                    // (The lockers' faulty buzzing tube went 2026-11-09, the owner: "super loud noises in locker room and training
+                    // room still". Its buzz was a loop at 0.55 at full AMBIENCE, 36 times the hub's own hum, 3 m from the
+                    // training room's doors with a 6 m reach, and heard through the wall.)
                     v.fixtures.Add(f);
                 }
             }
@@ -218,7 +220,7 @@ namespace Backrooms.CustomRooms
             // The building's sounds: the lights' hum, air in the vents. (2026-11-08, the owner: "some sounds way too loud" in
             // the hub: at 0.35, 0.3 and 0.25 the hub was 10-18 times as loud as the floor, the lobby's hum heard through the
             // walls in the training room. Now about the floor's level, a little busier.)
-            v.sounds.Add(new SoundDef { x = 10.8f, z = 10.8f, y = 2.5f, kind = SoundKind.Hum, volume = 0.04f, range = 8f });
+            v.sounds.Add(new SoundDef { x = 10.8f, z = 10.8f, y = 2.5f, kind = SoundKind.Hum, volume = 0.015f, range = 6f });
             v.sounds.Add(new SoundDef { x = 11.4f, z = 5.4f, y = 2.5f, kind = SoundKind.Air, volume = 0.05f, range = 7f });
             v.sounds.Add(new SoundDef { x = 5.4f, z = 19.8f, y = 3.6f, kind = SoundKind.Air, volume = 0.05f, range = 7f });
 

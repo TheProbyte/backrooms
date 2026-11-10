@@ -1,0 +1,33 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "wallpaper",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8737",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "LiveWallpaper/wallpaper"
+      ],
+      "port": 8737
+    },
+    {
+      "name": "cozy",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8741",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "F:/Projects/cozy-beach"
+      ],
+      "port": 8741
+    }
+  ]
+}

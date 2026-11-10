@@ -193,7 +193,7 @@ namespace Backrooms.Audio
 
         // ---------------- Scraping ----------------
 
-        internal static void Sliding(ImpactSounder s) { if (s.slipTarget > 0.1f) { s_sliding.Add(s); Ensure(); } }
+        internal static void Sliding(ImpactSounder s) { if (s.slipTarget > 0.1f && Time.time >= s.quietUntil) { s_sliding.Add(s); Ensure(); } }   // (not while it settles after loading, as the knocks)
 
         sealed class Runner : MonoBehaviour
         {

@@ -7,27 +7,23 @@ using UnityEngine;
 namespace Backrooms.Interaction
 {
     /// <summary>
-    /// Work orders (2026-11-08, Docs/GameDesign.md section 7, "like Satisfactory's milestones"): the board's work is a fixed
-    /// sequence, the same in every world. Onboarding comes first, in order (each as soon as the last is done: no waiting for
-    /// the next day, the owner: "I'm done, what do I do, wait for 20 minutes"); then tiers of orders done in any
-    /// order; then a big gate (the first quarter's shipment). Each order pays when it is done, and finishing a stage unlocks
-    /// things at the supply counter and the improvements board (Unlocks). Each tier's orders teach what it unlocks next.
-    /// After the gate (past the main floor, still to design) the board posts the old side jobs.
-    /// <para>Box work (store, ship, return) is done in batches: each day an open order's batch of boxes waits at
-    /// the seam (a ContractData on the board, done as before); paying it in adds to the order. Keeping boxes safe is counted
-    /// overnight (the night's safe count); putting up shelves and the chute row are counted as they happen.</para>
+    /// Work orders (2026-11-08, revised 2026-11-09: Docs/GameDesign.md section 7, "like Satisfactory's milestones"): the
+    /// company's goals, a fixed sequence, the same in every world. Onboarding comes first, in order; then tiers of orders
+    /// done in any order; then a big gate. Each order pays when it is done, and finishing a stage unlocks things at the
+    /// supply counter and the improvements board (Unlocks). Since the batches (Contracts.Batches) the goals are broad: store
+    /// a batch, have so many boxes stored safely at once, complete so many batches, work for three clients, rather than one
+    /// exact job. Everything is counted as it happens.
     /// </summary>
     public static class WorkOrders
     {
-        public enum Goal { ClockIn, Store, Return, PutUpShelves, KeepSafe, Ship, Audit, ChuteRow }
+        public enum Goal { Tape, StoreBatch, FindSeam, ReturnBatch, PutUpShelves, StoredAtOnce, Batches, Clients, FragileBatch, OnTime, ChuteRow }
 
         public struct Order
         {
             public int stage;
             public string title, line;
             public Goal goal;
-            public int client, target, pay, byHour;
-            public bool fragile;
+            public int target, pay;
         }
 
         public static readonly string[] StageNames = { "ONBOARDING", "TIER 1 - GETTING SET UP", "TIER 2 - MORE CLIENTS", "TIER 3 - RUNNING THE FLOOR", "THE FIRST QUARTER", "OVERFLOW WORK" };
@@ -35,20 +31,20 @@ namespace Backrooms.Interaction
         /// <summary>What each stage unlocks when its last order is done (Docs/GameDesign.md section 7's table).</summary>
         public static readonly string[][] StageUnlocks =
         {
-            new[] { "counter", "truck" },
-            new[] { "worklamp", "chute", "overtime1" },
+            new[] { "counter", "handtruck" },
+            new[] { "truck", "worklamp", "chute" },
             new[] { "tallshelf", "generator", "repairkit" },
-            new[] { "conveyor", "floodlight", "rentreview1" },
-            new[] { "rack", "overtime2", "overtime3", "backup1", "backup2", "rentreview2", "wings", "poolrooms" },
+            new[] { "conveyor", "floodlight", "rates1" },
+            new[] { "rack", "rates2", "wings", "poolrooms" },
         };
 
         static readonly string[] s_unlockNames =
         {
-            "THE SUPPLY COUNTER, THE PLATFORM TRUCK",
-            "WORK LAMPS, INTAKE CHUTES, OVERTIME",
+            "THE SUPPLY COUNTER, THE HAND TRUCK",
+            "THE PLATFORM TRUCK, WORK LAMPS, INTAKE CHUTES",
             "TALL SHELVING, GENERATORS, THE REPAIR KIT",
-            "CONVEYORS, FLOODLIGHTS, A RENT REVIEW",
-            "PALLET RACKING, MORE UPGRADES, THE WINGS",
+            "CONVEYORS, FLOODLIGHTS, BETTER RATES",
+            "PALLET RACKING, BETTER RATES, THE WINGS",
         };
 
         /// <summary>What finishing a stage unlocks, in words ("" past the last).</summary>
@@ -56,27 +52,27 @@ namespace Backrooms.Interaction
 
         public static readonly Order[] All =
         {
-            // Onboarding, in order, one a day.
-            new Order { stage = 0, title = "WATCH THE TAPE, CLOCK IN", line = "SIT DOWN IN THE TRAINING ROOM, THEN RIDE THE LIFT DOWN", goal = Goal.ClockIn, target = 1, pay = 20 },
-            new Order { stage = 0, title = "FIRST STORAGE", line = "FOLLOW THE BLUE TAPE - 5 BOXES ONTO THE STARTER SHELF", goal = Goal.Store, client = 0, target = 5, pay = 80 },
-            new Order { stage = 0, title = "FIND THE PRINT SHOP", line = "FIND ITS SEAM - BRING BACK THE SAMPLE BOX", goal = Goal.Store, client = 1, target = 1, pay = 60 },
-            new Order { stage = 0, title = "RETRIEVAL", line = "3 STORED BOXES BACK TO THEIR OWNER", goal = Goal.Return, client = 0, target = 3, pay = 70 },
+            // Onboarding, in order.
+            new Order { stage = 0, title = "WATCH THE TAPE", line = "SIT DOWN IN THE TRAINING ROOM", goal = Goal.Tape, target = 1, pay = 20 },
+            new Order { stage = 0, title = "FIRST STORAGE", line = "FOLLOW THE BLUE TAPE FROM THE LIFT - SHELVE TALLMORE'S BOXES ON THE LIT STARTER SHELF", goal = Goal.StoreBatch, target = 1, pay = 60 },
+            new Order { stage = 0, title = "FIND ANOTHER SEAM", line = "WHILE THEY WAIT, FIND ANOTHER SEAM OUT ON THE FLOOR - ITS CARD SAYS WHAT IT OFFERS", goal = Goal.FindSeam, target = 1, pay = 40 },
+            new Order { stage = 0, title = "BACK ON TIME", line = "WHEN TALLMORE'S BOXES ARE DUE, TAKE THEM BACK THROUGH THEIR SEAM", goal = Goal.ReturnBatch, target = 1, pay = 60 },
             // Tier 1: getting set up.
             new Order { stage = 1, title = "PUT UP 2 SHELVING KITS", line = "FROM THE SUPPLY COUNTER - ANYWHERE ON THE FLOOR", goal = Goal.PutUpShelves, target = 2, pay = 60 },
-            new Order { stage = 1, title = "KEEP 20 BOXES SAFE", line = "OVERNIGHT, ON LIT SHELVES - NEW BOXES DAILY", goal = Goal.KeepSafe, target = 20, pay = 150 },
-            new Order { stage = 1, title = "SHIP 10 BOXES", line = "FROM ONE CLIENT'S SEAM TO ANOTHER'S", goal = Goal.Ship, target = 10, pay = 120 },
+            new Order { stage = 1, title = "20 BOXES STORED SAFELY", line = "HAVE 20 BOXES OF STORED BATCHES ON LIT SHELVES AT ONCE", goal = Goal.StoredAtOnce, target = 20, pay = 150 },
+            new Order { stage = 1, title = "COMPLETE 4 BATCHES", line = "STORED AND RETURNED - ANY CLIENTS", goal = Goal.Batches, target = 4, pay = 120 },
             // Tier 2: more clients.
-            new Order { stage = 2, title = "STORE FOR PAPERLARK", line = "8 OF THEIR BOXES ON YOUR SHELVES", goal = Goal.Store, client = 2, target = 8, pay = 120 },
-            new Order { stage = 2, title = "A FRAGILE LOAD", line = "4 QUILLBY BOXES - DO NOT DROP OR THROW THEM", goal = Goal.Store, client = 1, target = 4, pay = 140, fragile = true },
-            new Order { stage = 2, title = "AN AUDIT FOR TALLMORE", line = "4 OF THEIRS BACK TO THEM BY NOON", goal = Goal.Audit, client = 0, target = 4, pay = 130, byHour = 12 },
+            new Order { stage = 2, title = "THREE CLIENTS", line = "RETURN A BATCH TO 3 DIFFERENT CLIENTS (OR EVERY ONE ON YOUR FLOOR)", goal = Goal.Clients, target = 3, pay = 120 },
+            new Order { stage = 2, title = "A FRAGILE LOAD", line = "A QUILLBY BATCH MARKED FRAGILE - DO NOT DROP OR THROW THEM", goal = Goal.FragileBatch, target = 1, pay = 140 },
+            new Order { stage = 2, title = "ON TIME", line = "RETURN 3 BATCHES INSIDE THEIR WINDOW", goal = Goal.OnTime, target = 3, pay = 130 },
             // Tier 3: running the floor.
-            new Order { stage = 3, title = "KEEP 50 BOXES SAFE", line = "OVERNIGHT, ON LIT SHELVES - NEW BOXES DAILY", goal = Goal.KeepSafe, target = 50, pay = 300 },
+            new Order { stage = 3, title = "50 BOXES STORED SAFELY", line = "HAVE 50 BOXES OF STORED BATCHES ON LIT SHELVES AT ONCE", goal = Goal.StoredAtOnce, target = 50, pay = 300 },
             new Order { stage = 3, title = "A CHUTE AND A SHELF ROW", line = "3 SHELVES WITHIN 12 M OF A SEAM WITH A CHUTE", goal = Goal.ChuteRow, target = 1, pay = 200 },
             // The gate.
-            new Order { stage = 4, title = "FIRST QUARTER'S SHIPMENT", line = "80 BOXES SAFE AT ONCE - NEW BOXES DAILY", goal = Goal.KeepSafe, target = 80, pay = 600 },
+            new Order { stage = 4, title = "THE FIRST QUARTER", line = "COMPLETE 20 BATCHES", goal = Goal.Batches, target = 20, pay = 600 },
         };
 
-        /// <summary>Stages with orders; past them, the board posts side jobs.</summary>
+        /// <summary>Stages with orders; past them, the seams' batches are the work.</summary>
         public const int Stages = 5;
 
         static WorldSaveData D => GameSession.Data;
@@ -91,10 +87,8 @@ namespace Backrooms.Interaction
 
         public static bool Done(int i) => D != null && D.woDone.Contains(i);
         public static int Progress(int i) { if (D == null) return 0; Ensure(); return D.woProgress[i]; }
-        public static bool BoxWork(Goal g) => g == Goal.Store || g == Goal.Return || g == Goal.Ship || g == Goal.Audit || g == Goal.KeepSafe;
 
-        /// <summary>The orders on the board now (up to three): onboarding's next one (from the day after the last), or the
-        /// stage's orders not done.</summary>
+        /// <summary>The orders open now: onboarding's next one, or the stage's orders not done.</summary>
         public static List<int> Open()
         {
             var list = new List<int>();
@@ -109,14 +103,61 @@ namespace Backrooms.Interaction
             return list;
         }
 
-        /// <summary>(Onboarding used to wait a day between orders; it no longer does.)</summary>
-        public static bool WaitingForTomorrow => false;
+        /// <summary>A fragile load is asked for: QUILLBY's next lot is marked fragile.</summary>
+        public static bool WantsFragile { get { foreach (int i in Open()) if (All[i].goal == Goal.FragileBatch) return true; return false; } }
+
+        /// <summary>An order's progress in words for the tracker ("" for one with nothing to count).</summary>
+        public static string ProgressText(int i)
+        {
+            var o = All[i];
+            switch (o.goal)
+            {
+                case Goal.Tape: return D.tapeWatched ? "WATCHED" : "NOT YET";
+                case Goal.FindSeam: case Goal.ChuteRow: case Goal.StoreBatch: case Goal.ReturnBatch: case Goal.FragileBatch: return "";
+                case Goal.StoredAtOnce: return $"{(Contracts.Instance ? Contracts.Instance.SafeNow : 0)} OF {o.target} SAFE NOW";
+                default: return $"{Progress(i)} OF {o.target}";
+            }
+        }
+
+        /// <summary>An order's count for the checklist ("12/20"), or "" for one done in a single step.</summary>
+        public static string CountText(int i)
+        {
+            var o = All[i];
+            switch (o.goal)
+            {
+                case Goal.StoredAtOnce: return $"{(Contracts.Instance ? Contracts.Instance.SafeNow : 0)}/{o.target}";
+                case Goal.PutUpShelves: case Goal.Batches: case Goal.Clients: case Goal.OnTime: return $"{Progress(i)}/{o.target}";
+                default: return "";
+            }
+        }
+
+        /// <summary>The stage whose orders unlock this (-1: none does).</summary>
+        public static int StageOf(string unlock)
+        {
+            for (int s = 0; s < StageUnlocks.Length; s++) foreach (var k in StageUnlocks[s]) if (k == unlock) return s;
+            return -1;
+        }
+
+        /// <summary>What to do to unlock it, in words: "FINISH ONBOARDING'S WORK ORDERS", "FINISH TIER 2'S WORK ORDERS".</summary>
+        public static string FinishText(string unlock)
+        {
+            int s = StageOf(unlock);
+            return s < 0 ? "LOCKED" : s == 0 ? "FINISH ONBOARDING'S WORK ORDERS" : s < Stages - 1 ? $"FINISH TIER {s}'S WORK ORDERS" : "FINISH THE FIRST QUARTER'S WORK ORDER";
+        }
+
+        /// <summary>A locked thing's line on a board: which stage's work orders open it ("AFTER ONBOARDING", "AFTER TIER 1").</summary>
+        public static string LockedText(string unlock)
+        {
+            int s = StageOf(unlock);
+            return s < 0 ? "LOCKED" : s == 0 ? "AFTER ONBOARDING" : s < Stages - 1 ? $"AFTER TIER {s}" : "AFTER THE QUARTER";
+        }
 
         public static void Credit(int i, int n)
         {
             if (D == null || i < 0 || i >= All.Length || Done(i) || n <= 0) return;
             Ensure();
             D.woProgress[i] = Mathf.Min(All[i].target, D.woProgress[i] + n);
+            Contracts.Instance?.Changed();
             if (D.woProgress[i] >= All[i].target) Complete(i);
         }
 
@@ -155,7 +196,8 @@ namespace Backrooms.Interaction
             CamcorderOSD.Notice(D.woStage < Stages ? $"NEW WORK ORDERS - UNLOCKED: {now}" : $"THE MAIN FLOOR IS RUNNING - UNLOCKED: {now}");
         }
 
-        /// <summary>Checked twice a second (Contracts): clocking in, shelves put up, the chute row.</summary>
+        /// <summary>Checked twice a second (Contracts): what is counted by looking (the tape, seams found, shelves put up,
+        /// boxes stored at once, the chute row, onboarding's batches).</summary>
         public static void Tick(List<LeaseSeams.SeamInfo> seams)
         {
             if (!Active) return;
@@ -164,18 +206,73 @@ namespace Backrooms.Interaction
                 var o = All[i];
                 switch (o.goal)
                 {
-                    case Goal.ClockIn: if (D.tapeWatched && D.shift >= 0f) Set(i, 1); break;
+                    case Goal.Tape: if (D.tapeWatched) Set(i, 1); break;
+                    case Goal.StoreBatch: if (D.batchesIn > 0) Set(i, 1); break;
+                    case Goal.FindSeam: { int n = D.otherSeamFound ? 1 : 0; foreach (int k in D.seamsFound) if (k != LeaseSeams.FirstKind) n++; Set(i, n); break; }
+                    case Goal.ReturnBatch: if (D.batchesDone > 0) Set(i, 1); break;
                     case Goal.PutUpShelves: Set(i, D.kitShelves); break;
+                    case Goal.StoredAtOnce: if (Contracts.Instance) Set(i, Mathf.Max(Progress(i), Contracts.Instance.SafeNow)); break;
+                    case Goal.Clients:
+                    {
+                        // (Every client on your floor, if it has fewer than three.)
+                        int need = Contracts.Instance ? Mathf.Clamp(Contracts.Instance.ClientsOnFloor, 1, o.target) : o.target;
+                        Set(i, D.clientsServed.Count >= need ? o.target : D.clientsServed.Count);
+                        break;
+                    }
                     case Goal.ChuteRow: if (ChuteRow(seams)) Set(i, 1); break;
                 }
             }
         }
 
-        /// <summary>After the night: keeping boxes safe counts what was safe on lit shelves.</summary>
-        public static void Night(int safe)
+        /// <summary>A batch returned: the orders that count batches, on-time ones and fragile loads.</summary>
+        public static void BatchReturned(int client, bool onTime, bool fragile)
         {
             if (!Active) return;
-            foreach (int i in Open()) if (All[i].goal == Goal.KeepSafe) Set(i, Mathf.Max(Progress(i), safe));
+            foreach (int i in Open())
+            {
+                var g = All[i].goal;
+                if (g == Goal.Batches) Credit(i, 1);
+                else if (g == Goal.OnTime && onTime) Credit(i, 1);
+                else if (g == Goal.FragileBatch && fragile) Credit(i, 1);
+            }
+        }
+
+        /// <summary>A save from before the batches (2026-11-09): the orders list changed, so the stage it was on starts
+        /// again on the new list; the stages before it stay done (and what they unlocked stays unlocked).</summary>
+        /// <summary>
+        /// The developer skip (L menu, PROGRESSION; 2026-11-09, the owner: "scalable ways for me to skip progression ... so
+        /// I can skip to when the supply counter is open"): every order before this stage counted done (not paid), the tape
+        /// watched, and every unlock those stages give. Like Satisfactory's Creative Mode "unlock all tiers". It only goes
+        /// forward. Stages = everything unlocked.
+        /// </summary>
+        public static void SkipTo(int stage)
+        {
+            if (D == null) return;
+            stage = Mathf.Clamp(stage, 0, Stages);
+            Ensure();
+            for (int i = 0; i < All.Length; i++)
+                if (All[i].stage < stage && !D.woDone.Contains(i)) { D.woDone.Add(i); D.woProgress[i] = All[i].target; }
+            for (int s = 0; s < stage && s < StageUnlocks.Length; s++) foreach (var k in StageUnlocks[s]) Unlocks.Give(k);
+            if (stage > 0) D.tapeWatched = true;
+            if (stage > D.woStage) D.woStage = stage;
+            Contracts.Instance?.Changed();
+            Supplies.Instance?.Changed();
+            Improvements.Instance?.Changed();
+        }
+
+        /// <summary>The skip menu's buttons: one per stage, made from the stage list (a new stage gets its own button).</summary>
+        public static string SkipLabel(int stage)
+            => stage >= Stages ? "UNLOCK EVERYTHING" : stage == 1 ? "SKIP ONBOARDING" : "SKIP TO " + StageNames[stage].Split(new[] { " - " }, System.StringSplitOptions.None)[0];
+
+        public static void Migrate()
+        {
+            if (D == null) return;
+            D.woProgress.Clear();
+            D.woDone.Clear();
+            for (int i = 0; i < All.Length; i++) if (All[i].stage < D.woStage) D.woDone.Add(i);
+            // (Orders the old list already paid for, done again here without paying twice: the tape.)
+            if (D.woStage == 0 && D.tapeWatched) D.woDone.Add(0);
+            for (int s = 0; s < D.woStage && s < StageUnlocks.Length; s++) foreach (var k in StageUnlocks[s]) Unlocks.Give(k);
         }
 
         /// <summary>A fitted chute with three standing shelves within 12 m of its seam.</summary>
@@ -193,14 +290,11 @@ namespace Backrooms.Interaction
             return false;
         }
 
-        // ---------------- Today's batch of an order's boxes ----------------
-
-        /// <summary>The leased seam a client's boxes come from (the nearest to the lift of their kind), or the nearest of any
-        /// kind if theirs is not on the floor.</summary>
+        /// <summary>The leased seam a client's boxes come from (the nearest to the lift of their kind; the first client's,
+        /// the taped first seam), or the nearest of any kind if theirs is not on the floor.</summary>
         public static bool SeamFor(int client, List<LeaseSeams.SeamInfo> seams, Vector3 lift, out LeaseSeams.SeamInfo seam, int not = -1)
         {
             seam = default;
-            // The first client's boxes always come from the first seam: the one the company's tape leads to.
             if (client == LeaseSeams.FirstKind && not != LeaseSeams.FirstKind)
                 foreach (var s in seams) if (LeaseSeams.IsFirst(s, LeasePlan.Current)) { seam = s; return true; }
             float best = float.MaxValue; bool found = false;
@@ -212,56 +306,6 @@ namespace Backrooms.Interaction
                     if (d < best) { best = d; seam = s; found = true; }
                 }
             return found;
-        }
-
-        /// <summary>The client whose name an order's row shows (theirs, or the stand-in whose seam is on the floor).</summary>
-        public static int ClientFor(int i, List<LeaseSeams.SeamInfo> seams, Vector3 lift)
-        {
-            var o = All[i];
-            int client = o.goal == Goal.KeepSafe || o.goal == Goal.Ship ? (D.day + i) % 4 : o.client;
-            return seams != null && SeamFor(client, seams, lift, out var s) ? s.kind : client;
-        }
-
-        /// <summary>Today's batch for an order (null: nothing to take: no box work, nothing of theirs stored, no seam).</summary>
-        public static ContractData Batch(int i, List<LeaseSeams.SeamInfo> seams, Vector3 lift, int slot, int[] storedBy, out string why)
-        {
-            why = null;
-            var o = All[i];
-            if (!BoxWork(o.goal)) { why = "NOTHING TO TAKE - JUST DO IT"; return null; }
-            if (seams == null || seams.Count == 0) { why = "NO SEAMS ON THE FLOOR"; return null; }
-            int left = o.target - Progress(i);
-            var c = new ContractData { slot = slot, orderPlusOne = i + 1, fragile = o.fragile, byHour = o.byHour };
-            switch (o.goal)
-            {
-                case Goal.Store:
-                case Goal.KeepSafe:
-                {
-                    int client = o.goal == Goal.KeepSafe ? (D.day + i) % 4 : o.client;
-                    if (!SeamFor(client, seams, lift, out var s)) { why = "NO SEAMS ON THE FLOOR"; return null; }
-                    int count = o.goal == Goal.KeepSafe ? Mathf.Clamp(o.target - D.stored.Count, 0, 8) : Mathf.Min(left, 6);
-                    if (count <= 0) { why = "ENOUGH STORED - KEEP THEM SAFE TONIGHT"; return null; }
-                    c.kind = 0; c.from = s.id; c.fromKind = s.kind; c.count = count;
-                    break;
-                }
-                case Goal.Ship:
-                {
-                    if (!SeamFor((D.day + i) % 4, seams, lift, out var a) || !SeamFor((D.day + i + 1) % 4, seams, lift, out var b, a.kind))
-                    { why = "NEEDS TWO CLIENTS' SEAMS"; return null; }
-                    c.kind = 1; c.from = a.id; c.fromKind = a.kind; c.to = b.id; c.toKind = b.kind; c.count = Mathf.Min(left, 5);
-                    break;
-                }
-                default:            // Return, Audit: the client's own stored boxes back to their seam
-                {
-                    if (!SeamFor(o.client, seams, lift, out var s)) { why = "NO SEAMS ON THE FLOOR"; return null; }
-                    int have = storedBy != null ? storedBy[Mathf.Clamp(s.kind, 0, 3)] : 0;
-                    int count = Mathf.Min(left, have);
-                    if (count <= 0) { why = "NOTHING OF THEIRS IS STORED YET"; return null; }
-                    c.kind = 2; c.to = s.id; c.toKind = c.fromKind = s.kind; c.count = count;
-                    break;
-                }
-            }
-            c.pay = 5 * c.count;          // (a little a box; the order pays when it is done)
-            return c;
         }
     }
 

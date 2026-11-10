@@ -70,8 +70,12 @@ namespace Backrooms.Generation
         }
 
         /// <summary>Steel pallet rack: four slotted uprights, orange box beams, deck boards, end bracing, loaded shelves.</summary>
+        /// <summary>The rack or pallet being built is bare (Prop.bare): its cartons are left off.</summary>
+        bool _bare;
+
         void Rack(Prop p, Vector3 at)
         {
+            _bare = p.bare;
             if (Mathf.Abs(p.yaw) < 0.001f) { RackUnrotated(p, at); return; }
             var starts = new Dictionary<MeshWriter, int>();
             foreach (var w in _writers.Values) starts[w] = w.VertexCount;
@@ -91,9 +95,13 @@ namespace Backrooms.Generation
         /// <summary>A movable carton standing at foot (chunk-local), never the heavy paper-filled kind (MovableShapes).</summary>
         void Carton(ulong id, Vector3 foot, float yaw, Vector3 size, int color, System.Random rng)
         {
+            int variant = (rng.Next(1, 1 << 12) << 3) | (1 + rng.Next(7));
+            // (A bare rack or pallet, the generator's own: no cartons on it, 2026-11-09, the owner: "there should no longer
+            // be random boxes that spawn in the backrooms levels". The dice are still rolled, so the rest comes out as before.)
+            if (_bare) return;
             var s = Movable(id, Interaction.MovableKind.Box, foot + Vector3.up * 0.002f, yaw, color);
             s.size = size;
-            s.variant = (rng.Next(1, 1 << 12) << 3) | (1 + rng.Next(7));
+            s.variant = variant;
             s.cardboard = true;
             s.materials = new[] { BoardMat, TapeMat, PrintMat };
         }
@@ -220,6 +228,7 @@ namespace Backrooms.Generation
         /// p.size.y is unused (the load is rolled here).</summary>
         void Pallet(Prop p, Vector3 at, Quaternion rot)
         {
+            _bare = p.bare;
             int col = p.roomColor;
             var rng = new System.Random(p.variant ^ 0x9A11);
             const float PL = PalletGeometry.Length, PW = PalletGeometry.Width, PH = PalletGeometry.Height;

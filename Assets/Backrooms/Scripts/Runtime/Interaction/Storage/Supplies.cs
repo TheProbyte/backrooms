@@ -98,9 +98,9 @@ namespace Backrooms.Interaction
 
         WorldSaveData D => GameSession.Data;
 
-        enum What { Kit, DeskLamp, Cord, HammerAndNails, Truck, WorkLamp, Floodlight, RepairKit, SpareTubes }
+        enum What { Kit, DeskLamp, Cord, HammerAndNails, HandTruck, Truck, WorkLamp, Floodlight, RepairKit, SpareTubes }
 
-        struct Item { public What what; public Kits.Kind kit; public string name, note, unlock; public int cost; }
+        struct Item { public What what; public Kits.Kind kit; public string name, note, unlock; public int cost; public bool locked; }
 
         static readonly Item[] s_all =
         {
@@ -108,6 +108,7 @@ namespace Backrooms.Interaction
             new Item { what = What.DeskLamp, name = "DESK LAMP", note = "PLUGS INTO ANY OUTLET", cost = 25, unlock = "counter" },
             new Item { what = What.Cord, name = "EXTENSION CORD", note = "THREE SOCKETS ON A LONG LEAD", cost = 20, unlock = "counter" },
             new Item { what = What.HammerAndNails, name = "HAMMER AND NAILS", note = "STAND UP KNOCKED-OVER SHELVES", cost = 30, unlock = "counter" },
+            new Item { what = What.HandTruck, name = "HAND TRUCK", note = "4 OR 5 BOXES ON WHEELS", cost = 40, unlock = "handtruck" },
             new Item { what = What.Truck, name = "PLATFORM TRUCK", note = "BOXES RIDE ON IT", cost = 120, unlock = "truck" },
             new Item { what = What.WorkLamp, name = "WORK LAMP", note = "BRIGHT - LIGHTS TWO SHELVES", cost = 90, unlock = "worklamp" },
             new Item { what = What.Kit, kit = Kits.Kind.Chute, name = "INTAKE CHUTE KIT", note = "SET IT DOWN AT A SEAM", cost = 150, unlock = "chute" },
@@ -139,13 +140,20 @@ namespace Backrooms.Interaction
         void List()
         {
             _items.Clear();
-            foreach (var it in s_all)
+            // (2026-11-09, the owner: "how to get improvements? unlocked by work orders isn't clear". Everything is listed;
+            // what is locked shows greyed with the work orders that open it, as Satisfactory shows a milestone's unlocks.)
+            var locked = new List<Item>();
+            foreach (var it0 in s_all)
             {
-                if (!Unlocks.Has(it.unlock)) continue;
+                var it = it0;
                 if (it.what == What.Truck && D.trucks >= 2) continue;
+                if (it.what == What.HandTruck && D.handTrucks.Count >= 8) continue;
                 if (it.what == What.SpareTubes || it.what == What.RepairKit) { if (!Fixes.Ready) continue; }
-                _items.Add(it);
+                it.locked = !Unlocks.Has(it.unlock);
+                (it.locked ? locked : _items).Add(it);
             }
+            locked.Sort((a, b) => WorkOrders.StageOf(a.unlock).CompareTo(WorkOrders.StageOf(b.unlock)));
+            _items.AddRange(locked);
             _pick = Mathf.Clamp(_pick, 0, Mathf.Max(0, _items.Count - 1));
         }
 
@@ -164,8 +172,9 @@ namespace Backrooms.Interaction
             if (D == null) return;
             List();
             var cs = Contracts.Instance;
-            if (_items.Count == 0) { CamcorderOSD.Notice("THE COUNTER OPENS AFTER ONBOARDING"); cs?.Beep(false); return; }
+            if (_items.Count == 0) { cs?.Beep(false); return; }
             var it = _items[_pick];
+            if (it.locked) { CamcorderOSD.Notice($"{it.name} - LOCKED - {WorkOrders.FinishText(it.unlock)} (J)"); cs?.Beep(false); return; }
             if (D.pay < it.cost) { CamcorderOSD.Notice($"NOT ENOUGH - ${D.pay} IN HAND"); cs?.Beep(false); return; }
             D.pay -= it.cost;
             Deliver(it);
@@ -198,6 +207,7 @@ namespace Backrooms.Interaction
                     else Kits.Spawn(it.kit, at, rot);
                     break;
                 case What.DeskLamp: DeskLamp.Create(at + Vector3.up * 0.02f, rot); break;
+                case What.HandTruck: HandTruck.Create(at, rot); break;
                 case What.Cord: CordBox.Create(at + Vector3.up * 0.02f, rot); break;
                 case What.HammerAndNails:
                     Hammer.Create(at + Vector3.up * 0.016f, rot * Quaternion.Euler(-90f, 0f, 0f) * Quaternion.Euler(0f, 90f, 0f));
@@ -246,11 +256,6 @@ namespace Backrooms.Interaction
             for (int i = 0; i < _px.Length; i++) _px[i] = G;
             PixelFont.Fill(_px, BW, BH, 0, 0, BW, 34, new Color32(217, 102, 31, 255));
             PixelFont.DrawCentred(_px, BW, BH, "SUPPLY COUNTER", BW / 2, 6, 3, Contracts.Choc);
-            if (_items.Count == 0)
-            {
-                PixelFont.DrawCentred(_px, BW, BH, "CLOSED", BW / 2, 90, 4, A);
-                PixelFont.DrawCentred(_px, BW, BH, "OPENS AFTER ONBOARDING", BW / 2, 132, 2, Dm);
-            }
             int rows = Mathf.Min(_items.Count, 7);
             int first = Mathf.Clamp(_pick - rows + 1, 0, Mathf.Max(0, _items.Count - rows));
             for (int r = 0; r < rows; r++)
@@ -260,22 +265,28 @@ namespace Backrooms.Interaction
                 int y = 40 + r * 21;
                 bool sel = i == _pick;
                 if (sel) PixelFont.Fill(_px, BW, BH, 6, y - 2, BW - 6, y + 18, Contracts.Flap);
-                var ink = sel ? A : D.pay >= it.cost ? new Color32(205, 160, 72, 255) : Dm;
+                var ink = it.locked ? (sel ? Contracts.LockedSel : Contracts.Locked) : sel ? A : D.pay >= it.cost ? new Color32(205, 160, 72, 255) : Dm;
                 PixelFont.Draw(_px, BW, BH, (sel ? "> " : "  ") + it.name, 10, y + 1, 2, ink);
-                string cost = "$" + it.cost;
-                PixelFont.Draw(_px, BW, BH, cost, BW - 12 - PixelFont.Width(cost, 2), y + 1, 2, ink);
+                string cost = it.locked ? WorkOrders.LockedText(it.unlock) : "$" + it.cost;
+                int dot = it.locked ? 1 : 2;
+                PixelFont.Draw(_px, BW, BH, cost, BW - 12 - PixelFont.Width(cost, dot), y + 1 + (dot == 1 ? 4 : 0), dot, ink);
             }
-            if (_items.Count > 0) PixelFont.DrawCentred(_px, BW, BH, _items[_pick].note, BW / 2, 192, 1, Dm);
+            if (_items.Count > 0)
+            {
+                var pk = _items[_pick];
+                PixelFont.DrawCentred(_px, BW, BH, pk.locked ? WorkOrders.FinishText(pk.unlock) + " (J)" : pk.note, BW / 2, 192, 1, pk.locked ? Contracts.Red : Dm);
+            }
             int bx(float dx) => Mathf.RoundToInt((0.5f - dx / 2.3f) * BW);
             PixelFont.DrawCentred(_px, BW, BH, "NEXT", bx(0.35f), 212, 2, A);
-            PixelFont.DrawCentred(_px, BW, BH, "ORDER", bx(-0.35f), 212, 2, _items.Count > 0 ? A : Dm);
+            bool canPick = _items.Count > 0 && !_items[_pick].locked;
+            PixelFont.DrawCentred(_px, BW, BH, "ORDER", bx(-0.35f), 212, 2, canPick ? A : Dm);
             PixelFont.Fill(_px, BW, BH, 0, 246, BW, 248, new Color32(217, 102, 31, 255));
             PixelFont.Fill(_px, BW, BH, 0, 248, BW, 250, new Color32(232, 178, 58, 255));
             PixelFont.Fill(_px, BW, BH, 0, 250, BW, 252, new Color32(124, 138, 46, 255));
             PixelFont.Draw(_px, BW, BH, "DELIVERED BY THE LIFT", 12, 230, 2, A);
             string right = "IN HAND $" + D.pay;
             PixelFont.Draw(_px, BW, BH, right, BW - 12 - PixelFont.Width(right, 2), 230, 2, A);
-            if (_order) _order.SetLit(_items.Count > 0 && D.pay >= _items[_pick].cost);
+            if (_order) _order.SetLit(canPick && D.pay >= _items[_pick].cost);
             _tex.SetPixels32(_px);
             _tex.Apply(false);
         }

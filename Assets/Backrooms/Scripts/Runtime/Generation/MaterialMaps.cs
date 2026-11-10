@@ -168,9 +168,16 @@ namespace Backrooms.Generation
             OrangePeel = SkyWallpaper = HomeBaseboard = null; HomeCarpets = new Material[0];
             PlayRug = RugBacking = null; RugBindings = new Material[0];
             if (a.baseboard && a.baseboard.HasProperty(BaseColor)) HomeBaseboard = Tinted(For(a.baseboard), " (home, painted)", new Color(0.82f, 0.8f, 0.76f, 1f));
-            var peelN = Resources.Load<Texture2D>("Textures/Home/OrangePeel_Normal");
-            var peelA = Resources.Load<Texture2D>("Textures/Home/OrangePeel_Albedo");
-            var sky = Resources.Load<Texture2D>("Textures/Home/SkyClouds");
+            // In the Overflow look, painted remakes (2026-11-09, Tools/Textures/make_overflow_home.py): named OF_ so the photo
+            // peel's relief (Surfaces) is not laid over the painted one.
+            Texture2D HomeTex(string name)
+            {
+                var t = ArtStyle.Current == ArtStyle.Look.Overflow ? Resources.Load<Texture2D>("Overflow/Textures/Home/OF_" + name) : null;
+                return t ? t : Resources.Load<Texture2D>("Textures/Home/" + name);
+            }
+            var peelN = HomeTex("OrangePeel_Normal");
+            var peelA = HomeTex("OrangePeel_Albedo");
+            var sky = HomeTex("SkyClouds");
             void Bump(Material m, float strength)
             {
                 if (!peelN || !m.HasProperty(BumpMap)) return;

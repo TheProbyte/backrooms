@@ -83,7 +83,7 @@ namespace Backrooms.Interaction
             {
                 var kit = KitPlacer.CarryHint(Held);
                 if (kit != null) { _hint = kit; return; }
-                _hint = Carrying ? (Held.Spec.kind == MovableKind.Box ? "CLICK PUT DOWN · HOLD ON A BOX TAKE IT TOO · Q DROP · HOLD Q TOSS · R TURN" : "CLICK TO PUT IT DOWN")
+                _hint = Carrying ? (Held.Spec.kind == MovableKind.Box ? "CLICK PUT DOWN · HOLD THROW · HOLD ON A BOX TAKE IT TOO · R TURN" : "CLICK TO PUT IT DOWN")
                       : Tipping ? "MOUSE UP TIPS IT UP · DOWN LOWERS IT · LET GO TO DROP"
                       : "W PUSH · S PULL · MOUSE TURNS IT · MOUSE UP LIFTS";
                 return;
@@ -113,7 +113,7 @@ namespace Backrooms.Interaction
             if (AimedDoorGrip.HasValue) { _hint = "CLICK TO OPEN OR SHUT · HOLD TO MOVE IT SLOWLY"; return; }
             if (AimedProp(out var prop, out var grip, out var v))
             {
-                _hint = IsLight(prop) ? (prop.Spec.kind == MovableKind.Box ? "CLICK TO PICK UP · HOLD TO TAKE A FEW" : $"CLICK TO CARRY {NameOf(prop)}")
+                _hint = IsLight(prop) ? (prop.Spec.kind == MovableKind.Box ? (OnTopOf(prop) ? "CLICK TO PICK UP THE STACK" : "CLICK TO PICK UP") : $"CLICK TO CARRY {NameOf(prop)}")
                                         + (Seating.CanSitOn(prop) && (!_seating || !_seating.Seated) ? " · E SIT" : "")
                       : $"HOLD TO {v} {NameOf(prop)}" + (Seating.CanSitOn(prop) && (!_seating || !_seating.Seated) ? " · E SIT" : "");
                 _hintMark = grip;

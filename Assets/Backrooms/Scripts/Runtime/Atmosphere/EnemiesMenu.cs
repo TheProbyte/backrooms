@@ -36,6 +36,8 @@ namespace Backrooms.Atmosphere
         {
             var kb = Keyboard.current;
             if (kb == null) return;
+            // (2026-11-08 profile: the search for the player below cost 1.9 ms every frame. Only when it matters now.)
+            if (!_open && !kb.kKey.wasPressedThisFrame) return;
             var ws = WorldStreamer.Current;
             bool can = ws && !ws.MenuMode && FindAnyObjectByType<CamcorderPlayerController>();
             if (_open && !can) { SetOpen(false); return; }

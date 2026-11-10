@@ -383,6 +383,9 @@ namespace Backrooms.Generation
         public const int FloralSofaStyle = 100;
         /// <summary>A model the player brought in (<see cref="PropKind.Custom"/>): its file name in CustomModels.</summary>
         public string model;
+        /// <summary>A rack or pallet with nothing on it: the generator's own (2026-11-09: every box in the game is a client's
+        /// now, Contracts). Build mode's racks and pallets still come loaded.</summary>
+        public bool bare;
     }
 
     /// <summary>

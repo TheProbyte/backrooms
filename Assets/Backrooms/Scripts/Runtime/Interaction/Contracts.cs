@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Backrooms.Camcorder;
 using Backrooms.Generation;
 using Backrooms.Saves;
@@ -9,33 +8,24 @@ using UnityEngine.Rendering;
 namespace Backrooms.Interaction
 {
     /// <summary>
-    /// Contracts (2026-11-07, Docs/ContractFloorsPlan.md): the working day. Every world has one floor (LeasePlan), kept for
-    /// good; every day the hub's board posts three jobs on it:
-    /// <list type="bullet">
-    /// <item>STORE: a client's boxes wait on the pickup pallet in their place (through their seam): bring them in and put them
-    ///   in the floor's storage. They stay there, and earn rent every day, until the client wants them back.</item>
-    /// <item>SHIP: carry a client's boxes from their place to another place's DELIVERIES bay.</item>
-    /// <item>RETURN: a client wants stored boxes back: take that many of theirs (their tape's colour) to their place's
-    ///   DELIVERIES bay.</item>
-    /// </list>
-    /// Take as many as you like with the buttons under the rows, ride the lift down, do them before closing, ride back up
-    /// and press PAY at the window. When the day's jobs are done (or closing has come), PAY ends the day: the rent on what
-    /// is stored is paid, and tomorrow's board goes up. The money buys improvements (Improvements), one a night.
-    /// <para>Office hours: the shift starts when you first step out on the floor, 9 AM on the camcorder's clock, and closes
-    /// at 5 PM, 15 minutes later (later with overtime bought). At closing the floor's lights die and the seams shut; a minute
-    /// later whoever is still down there blacks out and wakes on their cot, and what was not done is lost.</para>
-    /// <para>Co-op: what is posted depends only on the world's seed, the day and what is stored (every game posts the same
-    /// board), the buttons are shared presses (NetHooks.Poke), and the boxes have fixed ids (shared like any moved prop).</para>
+    /// The work (2026-11-07, revised 2026-11-09: Docs/GameDesign.md sections 6-7). Every world has one floor (LeasePlan),
+    /// kept for good. Its clients' seams are always open for business (Contracts.Batches): take a lot of boxes from behind
+    /// a seam, store it on lit shelves for its time, bring it back when it is due; paid a third when it is stored and the
+    /// rest when it is back. The company's work orders (WorkOrders) set broad goals on top and unlock what the counter sells.
+    /// <para>No working day since 2026-11-09: no shift, no closing, no blackout, no night. Business time runs while anyone is
+    /// out of the hub; the camcorder's date follows it (client time). A slip prints each time you ride back up
+    /// (Contracts.Slip). The old day's code is kept in git history (the punch clock pass, 2026-11-08).</para>
+    /// <para>Co-op: lots depend on the save, which the host keeps; boxes have fixed ids (shared like any moved prop). The
+    /// batches themselves are not synced to friends yet.</para>
     /// </summary>
     public partial class Contracts : MonoBehaviour
     {
         public static Contracts Instance { get; private set; }
         public WorldStreamer streamer;
 
-        /// <summary>Nine to five, in seconds (an hour of overtime is an eighth of it again).</summary>
+        /// <summary>The old working day's length (s): the power bill is still priced by it (a generator's charge a day).</summary>
         public const float DaySeconds = 15f * 60f;
-        const int HourStart = 9, HourEnd = 17;
-        /// <summary>The clients (the four places: LeaseSeams.Kinds): their names on the board, and their tape's colour.</summary>
+        /// <summary>The clients (the four places: LeaseSeams.Kinds): their names, and their tape's colour.</summary>
         public static readonly string[] Clients = { "TALLMORE", "QUILLBY", "PAPERLARK", "BELLWEATHER" };
         public static readonly Color[] ClientColours =
         {
@@ -43,39 +33,22 @@ namespace Backrooms.Interaction
         };
 
         WorldSaveData D => GameSession.Data;
-        Task<List<ContractData>> _posting;
-        int _postingDay = -1;
-        float _nextCheck, _closedAt = -1f;
+        float _nextCheck;
         bool _dirty = true;
 
-        // ---------------- The state ----------------
-
-        public float ShiftSeconds => DaySeconds * (1f + (D != null ? D.overtime : 0) / 8f);
-        public float ClosingGrace => 60f + 60f * (D != null ? D.backupLights : 0);
-        public int RentRate => 2 + (D != null ? D.rentReviews : 0);
-
-        /// <summary>A job taken today and not over (being done, or done and not paid).</summary>
-        public bool HasFloor { get { if (D == null) return false; foreach (var c in D.board) if (c.state == 1 || c.state == 2) return true; return false; } }
-        public bool ShiftOn => D != null && D.shift >= 0f;
-        public bool Closed => ShiftOn && D.shift >= ShiftSeconds;
-        int Open { get { int n = 0; if (D != null) foreach (var c in D.board) if (c.state == 1) n++; return n; } }
-
-        float _offSince;
-
-        /// <summary>The time of day for the camcorder's clock: the working day's date (from March 11 1996); off shift the
-        /// morning before it (from 8:30, stopping at 8:59), on shift the shift's time.</summary>
+        /// <summary>The camcorder's date and time: the date follows client time (about a day a minute of business time,
+        /// decision 10), the time of day runs as a normal clock from 9 AM.</summary>
         public System.DateTime? Clock
         {
             get
             {
                 if (D == null) return null;
-                if (!ShiftOn) return new System.DateTime(1996, 3, 11, 8, 30, 0).AddDays(D.day - 1).AddSeconds(Mathf.Min(Time.time - _offSince, 1740f));
-                float hours = Mathf.Min(D.shift, ShiftSeconds + 600f) / DaySeconds * (HourEnd - HourStart);
-                return new System.DateTime(1996, 3, 11, HourStart, 0, 0).AddDays(D.day - 1).AddHours(hours);
+                double days = System.Math.Floor(D.business * ClientDaysPerSecond);
+                return new System.DateTime(1996, 3, 11, 9, 0, 0).AddDays(days).AddSeconds(D.business % 86400f);
             }
         }
 
-        string ClosingTime => (HourEnd - 12 + (D != null ? D.overtime : 0)) + " PM";
+        public string DateText => Clock.HasValue ? Clock.Value.ToString("MMM dd yyyy").ToUpperInvariant() : "";
 
         void Awake() { Instance = this; }
         void OnDestroy() { if (Instance == this) Instance = null; LightZones.ClosingAt = -1f; PowerGrid.AllLive = false; }
@@ -84,226 +57,21 @@ namespace Backrooms.Interaction
         {
             if (D == null) { enabled = false; return; }
             if (D.day < 1) D.day = 1;
-            _offSince = Time.time;
             BuildHub();
             D.lease = LeasePlan.Current;
             // Storage (2026-11-08, Docs/GameDesign.md section 8): shelves measured for light, every outlet live.
             if (!GetComponent<ShelfWatch>()) gameObject.AddComponent<ShelfWatch>();
             if (!GetComponent<OrderTracker>()) gameObject.AddComponent<OrderTracker>();
+            if (!GetComponent<StaffDoors>()) gameObject.AddComponent<StaffDoors>();
             PowerGrid.AllLive = true;
-            if (Closed) { LightZones.ClosingAt = Time.time - 30f; _closedAt = Time.time - ClosingGrace * 0.5f; }
-            NoclipPassage.SeamsShut = Closed;
-            EnsurePosted();
-        }
-
-        // ---------------- Posting ----------------
-
-        void EnsurePosted()
-        {
-            // Work orders (WorkOrders) are the board's work until the main floor is running; side jobs after that.
-            if (WorkOrders.Active) return;
-            if (D.board.Count > 0 || _posting != null) return;
-            var world = streamer ? streamer.World : null;
-            if (world == null || LeasePlan.Current < 0) return;
-            int seed = streamer.Seed, slot = LeasePlan.Current, day = D.day;
-            var stored = StoredByClient();
-            _postingDay = day;
-            _posting = Task.Run(() => Post(world, seed, slot, day, stored));
-            _dirty = true;
-        }
-
-        int[] StoredByClient()
-        {
-            var n = new int[4];
-            foreach (var id in D.stored) n[BoxClient(id)]++;
-            return n;
-        }
-
-        /// <summary>The day's three jobs on the floor's leased parts (its seams and storage rooms: LeaseSeams.Survey).</summary>
-        static List<ContractData> Post(WorldGenerator world, int seed, int slot, int day, int[] stored)
-        {
-            var list = new List<ContractData>();
-            var seams = new List<LeaseSeams.SeamInfo>();
-            var storage = new List<Rect>();
-            LeaseSeams.Survey(world, slot, seams, storage);
-            if (seams.Count == 0) return list;
-            var rng = new System.Random(unchecked(seed * 31 + day * 7919 + 0x0C0A));
-            var lift = LeasePlan.DistrictOrigin(LeasePlan.Centre(slot));
-            var used = new HashSet<ulong>();
-            var perKind = new int[4];
-            var left = (int[])stored.Clone();
-            for (int k = 0; k < 3; k++)
-                for (int tries = 0; tries < 8; tries++)
-                {
-                    var c = Make(rng, day, seams, storage.Count > 0, left, used, perKind, lift);
-                    if (c == null) continue;
-                    c.slot = slot;
-                    list.Add(c);
-                    break;
-                }
-            return list;
-        }
-
-        static ContractData Make(System.Random rng, int day, List<LeaseSeams.SeamInfo> seams, bool hasStorage, int[] stored,
-                                 HashSet<ulong> used, int[] perKind, Vector3 lift)
-        {
-            // Which kind: storing most, shipping when there are two places, returns once there is something stored.
-            bool canShip = false;
-            for (int i = 0; i < seams.Count && !canShip; i++) for (int j = 0; j < seams.Count; j++) if (seams[i].kind != seams[j].kind) { canShip = true; break; }
-            bool canReturn = false;
-            for (int k = 0; k < 4; k++) if (stored[k] >= 2 && seams.Exists(s => s.kind == k)) canReturn = true;
-            double r = rng.NextDouble();
-            int kind = canReturn && r < 0.28 ? 2 : canShip && r < 0.6 ? 1 : hasStorage ? 0 : canShip ? 1 : canReturn ? 2 : -1;
-            if (kind < 0) return null;
-            int growth = Mathf.Min(day - 1, 12);
-            var c = new ContractData { kind = kind };
-            LeaseSeams.SeamInfo Pick(System.Predicate<LeaseSeams.SeamInfo> ok)
-            {
-                var pool = seams.FindAll(s => ok(s) && !used.Contains(s.id));
-                if (pool.Count == 0) pool = seams.FindAll(ok);
-                return pool.Count == 0 ? default : pool[rng.Next(pool.Count)];
-            }
-            float dist;
-            switch (kind)
-            {
-                case 0:
-                {
-                    var s = Pick(x => perKind[x.kind] < 24);
-                    if (s.id == 0) return null;
-                    c.from = s.id; c.fromKind = s.kind;
-                    c.count = Mathf.Min(4 + rng.Next(0, 3) + growth / 3, 36 - perKind[s.kind]);
-                    perKind[s.kind] += c.count;
-                    dist = Vector3.Distance(lift, s.position);
-                    break;
-                }
-                case 1:
-                {
-                    var a = Pick(x => perKind[x.kind] < 24);
-                    if (a.id == 0) return null;
-                    var b = Pick(x => x.kind != a.kind);
-                    if (b.id == 0) return null;
-                    c.from = a.id; c.fromKind = a.kind; c.to = b.id; c.toKind = b.kind;
-                    c.count = Mathf.Min(3 + rng.Next(0, 3) + growth / 4, 36 - perKind[a.kind]);
-                    perKind[a.kind] += c.count;
-                    dist = Vector3.Distance(lift, a.position) + Vector3.Distance(a.position, b.position) * 0.6f;
-                    break;
-                }
-                default:
-                {
-                    var b = Pick(x => stored[x.kind] >= 2);
-                    if (b.id == 0) return null;
-                    c.to = b.id; c.toKind = c.fromKind = b.kind;
-                    c.count = Mathf.Min(stored[b.kind], 2 + rng.Next(0, 3) + growth / 5);
-                    stored[b.kind] -= c.count;
-                    dist = Vector3.Distance(lift, b.position);
-                    break;
-                }
-            }
-            if (c.count <= 0) return null;
-            used.Add(c.from); if (c.to != 0) used.Add(c.to);
-            float perBox = kind == 0 ? 10f : kind == 1 ? 14f : 12f;
-            c.pay = Mathf.RoundToInt((30f + perBox * c.count) * (1f + dist / 300f) / 5f) * 5;
-            return c;
-        }
-
-        // ---------------- Taking one, being paid ----------------
-
-        /// <summary>The button under a row of the board: a work order's row (today's batch of its boxes), or a side job.</summary>
-        public void Take(int i)
-        {
-            if (D == null) return;
-            if (WorkOrders.Active) { TakeOrder(i); return; }
-            if (i < 0 || i >= D.board.Count) return;
-            TakeJob(D.board[i]);
-        }
-
-        /// <summary>Today's batch of the order on that row, if it has box work and none is taken today.</summary>
-        void TakeOrder(int row)
-        {
-            var open = WorkOrders.Open();
-            if (row < 0 || row >= open.Count) { Beep(false); return; }
-            int idx = open[row];
-            if (Batch(idx) != null) { CamcorderOSD.Notice("TAKEN FOR TODAY"); Beep(false); return; }
-            if (ShiftOn) { CamcorderOSD.Notice("TAKE IT BEFORE THE SHIFT"); Beep(false); return; }
-            EnsureStorage();
-            var c = WorkOrders.Batch(idx, _seams, LiftPoint, LeasePlan.Current, StoredByClient(), out var why);
-            if (c == null) { CamcorderOSD.Notice(why ?? "NOTHING TO TAKE"); Beep(false); return; }
-            D.board.Add(c);
-            TakeJob(c);
-        }
-
-        /// <summary>Today's batch of an order (posted, taken, done or paid today), or null.</summary>
-        ContractData Batch(int order)
-        {
-            foreach (var c in D.board) if (c.orderPlusOne == order + 1 && c.state != 3) return c;
-            return null;
-        }
-
-        Vector3 LiftPoint => LeasePlan.Current >= 0 ? LeasePlan.DistrictOrigin(LeasePlan.Centre(LeasePlan.Current)) : Vector3.zero;
-
-        void TakeJob(ContractData c, bool auto = false)
-        {
-            if (c.state != 0) { if (!auto) Beep(false); return; }
-            if (ShiftOn && !auto) { CamcorderOSD.Notice("NO NEW JOBS DURING THE SHIFT"); Beep(false); return; }
-            c.state = 1;
+            // (No closing any more: the lights stay as they are and the seams stay open.)
+            LightZones.ClosingAt = -1f;
             NoclipPassage.SeamsShut = false;
-            if (c.kind != 2) StackBoxes(c);
-            _dirty = true;
-            if (auto) return;
-            int n = 0; foreach (var x in D.board) if (x.state == 1) n++;
-            CamcorderOSD.Notice(n == 1 ? "JOB TAKEN - TAKE THE LIFT DOWN" : $"{n} JOBS TAKEN - TAKE THE LIFT DOWN");
-            Beep(true);
-        }
-
-        /// <summary>
-        /// The board is a notice, not a menu (2026-11-08, the owner: "more a notice of the next contract, not a pickable
-        /// one"): each open work order's boxes for the day go out to its seam by themselves (once a day, an order's batch;
-        /// a return as soon as there is something of theirs stored), and side jobs are all on as soon as they are posted.
-        /// </summary>
-        void AutoPost()
-        {
-            if (Closed || D == null) return;
-            if (!WorkOrders.Active)
-            {
-                foreach (var c in D.board) if (c.state == 0) TakeJob(c, true);
-                return;
-            }
-            EnsureStorage();
-            int posted = 0;
-            foreach (int idx in WorkOrders.Open())
-            {
-                if (!WorkOrders.BoxWork(WorkOrders.All[idx].goal) || HadBatch(idx)) continue;
-                var c = WorkOrders.Batch(idx, _seams, LiftPoint, LeasePlan.Current, StoredByClient(), out _);
-                if (c == null) continue;
-                D.board.Add(c);
-                TakeJob(c, true);
-                posted += c.count;
-            }
-            if (posted > 0) CamcorderOSD.Notice(posted == 1 ? "NEW WORK - A BOX IS WAITING AT ITS SEAM" : $"NEW WORK - {posted} BOXES WAITING AT THE SEAMS");
-        }
-
-        /// <summary>An order had a batch today (taken, done, paid or lost): one a day.</summary>
-        bool HadBatch(int order)
-        {
-            foreach (var c in D.board) if (c.orderPlusOne == order + 1) return true;
-            return false;
-        }
-
-        /// <summary>
-        /// The punch clock's CLOCK OUT button: ends the day now (2026-11-08, so there is never nothing to do but wait for
-        /// closing). Work not finished is lost (its boxes go back), what is done is paid, rent comes in for the share of the
-        /// shift you were clocked in (Rent), then the night.
-        /// </summary>
-        public void ClockOut()
-        {
-            if (D == null) return;
-            if (!ShiftOn) { CamcorderOSD.Notice("NOT CLOCKED IN - RIDE THE LIFT DOWN FIRST"); Beep(false); return; }
-            foreach (var c in D.board) if (c.state == 1) c.state = 3;
-            Collect();
+            HandTruck.LoadAll();
         }
 
         /// <summary>A small printed label on a wall (cream on the company's brown), width metres wide.</summary>
-        internal static void Label(Transform parent, string name, string text, Vector3 at, Quaternion rot, float width)
+        internal static GameObject Label(Transform parent, string name, string text, Vector3 at, Quaternion rot, float width)
         {
             int w = PixelFont.Width(text, 1) + 6, h = 11;
             var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = name };
@@ -322,65 +90,7 @@ namespace Backrooms.Interaction
             mat.SetTexture("_BaseMap", tex); mat.SetColor("_BaseColor", new Color(0.9f, 0.88f, 0.85f));
             var r = q.GetComponent<MeshRenderer>();
             r.sharedMaterial = mat; r.shadowCastingMode = ShadowCastingMode.Off; r.renderingLayerMask = uint.MaxValue;
-        }
-
-        /// <summary>The pay window's button: pay for what is done; at the end of the day, the rent too, and the day ends.</summary>
-        public void Collect()
-        {
-            if (D == null) return;
-            int paid = 0, jobs = 0;
-            foreach (var c in D.board)
-            {
-                if (c.state != 2) continue;
-                paid += c.pay; jobs++;
-                c.state = 4;
-                D.jobsDone++;
-                // A work order's batch: its boxes count toward the order (keeping boxes safe counts overnight instead).
-                if (c.orderPlusOne > 0 && WorkOrders.All[c.orderPlusOne - 1].goal != WorkOrders.Goal.KeepSafe) WorkOrders.Credit(c.orderPlusOne - 1, c.count);
-                var mgr = MovablePropManager.Instance;
-                if (c.kind == 0) foreach (var id in c.boxes) { if (!D.stored.Contains(id)) D.stored.Add(id); }      // kept, for rent
-                else if (c.kind == 1) { if (mgr) foreach (var id in c.boxes) mgr.Forget(id); }                       // delivered
-                else foreach (var id in c.boxes) { D.stored.Remove(id); if (mgr) mgr.Forget(id); }                  // handed back
-            }
-            D.pay += paid; D.earned += paid;
-            if (ShiftOn && (Closed || Open == 0)) { EndDay(paid); return; }
-            if (paid > 0) { CamcorderOSD.Notice(jobs == 1 ? $"PAID ${paid}" : $"PAID ${paid} FOR {jobs} JOBS"); Beep(true); }
-            else if (Open > 0) { CamcorderOSD.Notice(ShiftOn ? $"STILL OPEN - {Open} JOB{(Open > 1 ? "S" : "")} - CLOSING {ClosingTime}" : "TAKE THE LIFT DOWN"); Beep(false); }
-            else { CamcorderOSD.Notice($"NOTHING TO COLLECT - ${D.pay} IN HAND"); Beep(false); }
-            _dirty = true;
-        }
-
-        void EndDay(int paid)
-        {
-            var mgr = MovablePropManager.Instance;
-            foreach (var c in D.board)
-                if (c.state == 3 && c.kind != 2 && mgr) foreach (var id in c.boxes) mgr.Forget(id);   // (the client takes them back)
-            int kept = CountKept();
-            // Rent for the part of the shift you were clocked in (2026-11-08): clocking out at noon gets about half.
-            float worked = Mathf.Clamp01(D.shift / Mathf.Max(1f, ShiftSeconds));
-            int rent = Mathf.RoundToInt(kept * RentRate * worked);
-            D.pay += rent; D.earned += rent;
-            // The night: the dark moves what is not on a safe shelf (Shelves.Night); the board shows it in the morning.
-            var rep = streamer && streamer.World != null ? Shelves.Night(streamer.World, streamer.Seed, LeasePlan.Current, D.day) : default;
-            D.lastSafe = rep.safe; D.lastMoved = rep.moved; D.lastGone = rep.gone; D.hasReport = true;
-            WorkOrders.Night(rep.safe);
-            // The power bill (Docs/GameDesign.md section 8): each generator set up costs a little a day.
-            int bill = Machines.Bill();
-            D.pay -= bill;
-            string night = rep.moved + rep.gone == 0 ? "" : rep.gone > 0 ? $" - {rep.moved + rep.gone} LOST IN THE NIGHT" : $" - {rep.moved} MOVED IN THE NIGHT";
-            string part = worked >= 0.99f ? "" : $", {Mathf.RoundToInt(worked * 100f)}% OF THE DAY";
-            CamcorderOSD.Notice($"DAY {D.day} DONE - PAY ${paid} - RENT ${rent} ({kept} SAFE{part}){(bill > 0 ? $" - POWER -${bill}" : "")}{night}");
-            Beep(true);
-            D.day++;
-            _offSince = Time.time;
-            D.board.Clear();
-            D.shift = -1f;
-            LightZones.ClosingAt = -1f;
-            NoclipPassage.SeamsShut = false;
-            _closedAt = -1f;
-            _dirty = true;
-            EnsurePosted();
-            Improvements.Instance?.Changed();
+            return q;
         }
 
         // ---------------- Boxes ----------------
@@ -407,17 +117,16 @@ namespace Backrooms.Interaction
             (new Vector3(0.46f, 0.32f, 0.36f), 7.5f),
         };
 
-        /// <summary>The shape of a new box of a client's (OFFICE SUPPLY's batches small or medium, by the day).</summary>
-        public static int ShapeFor(int client, int day) => client == 1 ? 2 : client == 2 ? (day % 2 == 0 ? 1 : 4) : client == 3 ? 3 : 0;
+        /// <summary>The shape of a new box of a client's (OFFICE SUPPLY's lots small or medium, by turns).</summary>
+        public static int ShapeFor(int client, int n) => client == 1 ? 2 : client == 2 ? (n % 2 == 0 ? 1 : 4) : client == 3 ? 3 : 0;
         public static int BoxClient(ulong id) => (int)((id >> 40) & 0x3);
         public static bool IsBoxId(ulong id) => (id >> 48) == 0xC0A0ul;
 
-        /// <summary>Is this one of today's taken jobs' boxes, or a stored one?</summary>
+        /// <summary>Is this a box of a batch (waiting, coming in, stored or due back)?</summary>
         public bool IsBox(ulong id)
         {
             if (D == null || !IsBoxId(id)) return false;
-            if (D.stored.Contains(id)) return true;
-            foreach (var c in D.board) if (c.state == 1 && c.boxes.Contains(id)) return true;
+            foreach (var b in D.batches) if (b.boxes.Contains(id)) return true;
             return false;
         }
 
@@ -448,78 +157,51 @@ namespace Backrooms.Interaction
             };
         }
 
-        /// <summary>The job's boxes, stacked on the pickup pallet in the source seam's place (SeamPlan), after the boxes of any
-        /// other job taken from there today: they appear there when its room loads (moved props: MovablePropManager), and
-        /// are carried out through the seam.</summary>
-        void StackBoxes(ContractData c)
-        {
-            var mgr = MovablePropManager.Instance;
-            if (!mgr) return;
-            // Each job's boxes in piles of their own (their shape may not be the other jobs'), after the piles of any other
-            // job taken from there today.
-            int shape = ShapeFor(c.fromKind, D.day);
-            var size = BoxShapes[shape].size;
-            int piles = 0;
-            foreach (var o in D.board)
-            {
-                if (o == c || o.state != 1 || o.kind == 2 || o.fromKind != c.fromKind || o.boxes.Count == 0) continue;
-                int cap = SeamPlan.PileOf(BoxSize(o.boxes[0]));
-                piles = Mathf.Max(piles, (o.sent + o.count - 1) / cap + 1);
-            }
-            int first = piles * SeamPlan.PileOf(size);
-            c.boxes.Clear();
-            c.sent = first;                          // (where its boxes start in the place's stacks)
-            for (int i = 0; i < c.count; i++)
-            {
-                ulong id = BoxId(c.fromKind, D.nextBox++, shape);
-                if (c.fragile) D.fragile.Add(id);
-                var at = SeamPlan.Stack(c.fromKind, first + i, size);
-                var spec = BoxSpec(id, at, 180f);
-                if (spec == null) return;
-                mgr.NetPlace(spec, at, Quaternion.Euler(0f, 180f, 0f));
-                c.boxes.Add(id);
-            }
-        }
-
-        /// <summary>0 nothing, 1 a taken job's source (boxes come out), 2 a destination (boxes go in).</summary>
+        /// <summary>A seam's part in the work for its chute: 1 a lot is waiting behind it (boxes come out), else 0.</summary>
         public int RoleOf(ulong seam)
         {
             if (D == null) return 0;
-            int role = 0;
-            foreach (var c in D.board)
-            {
-                if (c.state != 1) continue;
-                if (c.kind != 2 && seam == c.from) return 1;
-                if (c.kind != 0 && seam == c.to) role = 2;
-            }
-            return role;
+            int kind = -1;
+            foreach (var s in _seams) if (s.id == seam) { kind = s.kind; break; }
+            if (kind < 0) return 0;
+            foreach (var b in D.batches) if (b.client == kind && b.state <= 1) return 1;
+            return 0;
         }
 
-        /// <summary>A fitted chute's next box from its seam's place: one still on the pickup pallet (not being carried).</summary>
+        /// <summary>A fitted chute's next box from its seam's place: one of a lot still on the pickup pallet.</summary>
         public bool TakeFromStack(ulong seam, out ulong id, out int index)
         {
             id = 0; index = 0;
             var mgr = MovablePropManager.Instance;
             if (D == null || !mgr) return false;
-            foreach (var c in D.board)
+            int kind = -1;
+            foreach (var s in _seams) if (s.id == seam) { kind = s.kind; break; }
+            if (kind < 0) return false;
+            foreach (var b in D.batches)
             {
-                if (c.state != 1 || c.kind == 2 || c.from != seam) continue;
-                for (int i = 0; i < c.boxes.Count; i++)
+                if (b.client != kind || b.state > 1) continue;
+                for (int i = 0; i < b.boxes.Count; i++)
                 {
-                    if (!mgr.Where(c.boxes[i], out var p, out bool held) || held) continue;
-                    if ((p - SeamPlan.Stack(c.fromKind, c.sent + i, BoxSize(c.boxes[i]))).sqrMagnitude > 0.3f * 0.3f) continue;
-                    id = c.boxes[i]; index = c.sent + i;
+                    if (!mgr.Where(b.boxes[i], out var p, out bool held) || held) continue;
+                    if ((p - SeamPlan.Stack(kind, i, BoxSize(b.boxes[i]))).sqrMagnitude > 0.3f * 0.3f) continue;
+                    id = b.boxes[i]; index = i;
                     return true;
                 }
             }
             return false;
         }
 
-        void Finish(ContractData c)
+        /// <summary>A fragile box hit too hard (FragileBox): broken, out of its batch, $15 off what it would have paid.</summary>
+        public void Broke(ulong id)
         {
-            c.state = 2;
-            CamcorderOSD.Notice(Open == 0 ? "ALL JOBS DONE - COLLECT YOUR PAY" : "JOB DONE");
-            Beep(true);
+            if (D == null || !D.fragile.Remove(id)) return;
+            foreach (var b in D.batches)
+                if (b.boxes.Remove(id)) { b.count = Mathf.Max(0, b.count - 1); b.completion = Mathf.Max(0, b.completion - 15); }
+            D.batches.RemoveAll(b => b.boxes.Count == 0 && b.state > 0);
+            D.stored.Remove(id);
+            MovablePropManager.Instance?.Forget(id);
+            CamcorderOSD.Notice("FRAGILE BOX BROKEN - $15 OFF THE PAY");
+            Beep(false);
             _dirty = true;
         }
 
@@ -528,53 +210,20 @@ namespace Backrooms.Interaction
         readonly List<Rect> _storage = new List<Rect>();
         int _storageFor = -1;
 
+        Vector3 LiftPoint => LeasePlan.Current >= 0 ? LeasePlan.DistrictOrigin(LeasePlan.Centre(LeasePlan.Current)) : Vector3.zero;
+
         void Update()
         {
             if (D == null) return;
-            if (_posting != null && _posting.IsCompleted)
-            {
-                if (_posting.Status == TaskStatus.RanToCompletion && D.board.Count == 0 && D.day == _postingDay) D.board.AddRange(_posting.Result);
-                else if (_posting.Exception != null) Debug.LogException(_posting.Exception);
-                _posting = null;
-                _dirty = true;
-            }
-            var player = streamer ? streamer.player : null;
-            // The shift: from the first step out on the floor with a job taken.
-            if (player)
-            {
-                if (D.shift < 0f && (Open > 0 || WorkOrders.Active) && LeasePlan.OnCurrent(player.position))
-                { D.shift = 0f; CamcorderOSD.Notice($"OFFICE HOURS 9 AM - {ClosingTime}"); _dirty = true; }
-                if (D.shift >= 0f && !Closed)
-                {
-                    D.shift += Time.deltaTime;
-                    if (Closed) Closing();
-                }
-            }
-            // A minute after closing (more with backup lights), whoever is still out there blacks out.
-            if (_closedAt >= 0f && player && Time.time - _closedAt > ClosingGrace && !HubPlan.InZone(player.position)) BlackOut();
-            if (Time.time >= _nextCheck)
-            {
-                _nextCheck = Time.time + 0.5f;
-                EnsureFloorStart();
-                EnsureGuideTape();
-                if (WorkOrders.Active) { EnsureStorage(); WorkOrders.Tick(_seams); }
-                AutoPost();
-                // An audit not back by its hour is lost (try again tomorrow).
-                var clock = Clock;
-                if (ShiftOn && !Closed && clock.HasValue)
-                    foreach (var c in D.board)
-                        if (c.state == 1 && c.byHour > 0 && clock.Value.Hour >= c.byHour)
-                        { c.state = 3; CamcorderOSD.Notice($"AUDIT MISSED - THEY WANTED THEM BY {(c.byHour > 12 ? c.byHour - 12 : c.byHour)}{(c.byHour >= 12 ? " PM" : " AM")}"); Beep(false); _dirty = true; }
-                foreach (var c in D.board)
-                {
-                    if (c.state != 1) continue;
-                    if (c.kind == 0) CountStored(c);
-                    else if (c.kind == 1) CountDelivered(c);
-                    else CountReturned(c);
-                }
-                if (_dirty) { _dirty = false; DrawBoard(); }
-                else DrawBoardClock();
-            }
+            SlipFrame();
+            if (Time.time < _nextCheck) return;
+            _nextCheck = Time.time + 0.5f;
+            EnsureFloorStart();
+            EnsureGuideTape();
+            BatchTick();
+            if (WorkOrders.Active) WorkOrders.Tick(_seams);
+            if (_dirty) { _dirty = false; DrawBoard(); }
+            else DrawBoardClock();
         }
 
         void EnsureStorage()
@@ -589,56 +238,6 @@ namespace Backrooms.Interaction
         }
 
         readonly List<LeaseSeams.SeamInfo> _seams = new List<LeaseSeams.SeamInfo>();
-
-        /// <summary>A fragile box hit too hard (FragileBox): broken, out of its batch (the order wants another in its place).</summary>
-        public void Broke(ulong id)
-        {
-            if (D == null || !D.fragile.Remove(id)) return;
-            foreach (var c in D.board)
-                if (c.boxes.Remove(id)) { c.count = Mathf.Max(0, c.count - 1); c.pay = Mathf.Max(0, c.pay - 15); }
-            D.stored.Remove(id);
-            MovablePropManager.Instance?.Forget(id);
-            CamcorderOSD.Notice("FRAGILE BOX BROKEN - $15 OFF THE PAY");
-            Beep(false);
-            _dirty = true;
-        }
-
-        /// <summary>Store jobs: a box counts once it is on a shelf (any of Overflow's shelves, wherever it stands).</summary>
-        static bool InStorage(Vector3 p) => Shelves.On(p, out _);
-
-        void CountStored(ContractData c)
-        {
-            var mgr = MovablePropManager.Instance;
-            if (!mgr) return;
-            int n = 0;
-            foreach (var id in c.boxes)
-                if (mgr.Where(id, out var p, out bool held) && !held && InStorage(p)) n++;
-            if (n != c.done) { c.done = n; _dirty = true; }
-            if (c.done >= c.count) Finish(c);
-        }
-
-        /// <summary>Stored boxes on a shelf lit enough to be safe (what rent is paid on: Docs/GameDesign.md section 8).</summary>
-        int CountKept()
-        {
-            var mgr = MovablePropManager.Instance;
-            if (!mgr) return 0;
-            int n = 0;
-            foreach (var id in D.stored) if (mgr.Where(id, out var p, out bool held) && !held && Shelves.OnSafe(p)) n++;
-            return n;
-        }
-
-        /// <summary>Stored boxes that are not safe now (off a shelf, or on one not lit enough): the board's AT RISK.</summary>
-        public int AtRisk
-        {
-            get
-            {
-                var mgr = MovablePropManager.Instance;
-                if (D == null || !mgr) return 0;
-                int n = 0;
-                foreach (var id in D.stored) if (mgr.Where(id, out var p, out _) && !Shelves.OnSafe(p)) n++;
-                return n;
-            }
-        }
 
         // ---------------- The starter shelf, the knocked-over ones (2026-11-08) ----------------
 
@@ -713,70 +312,13 @@ namespace Backrooms.Interaction
             }
         }
 
-        /// <summary>Ship: the job's boxes set down in the DELIVERIES bay of the destination's place.</summary>
-        void CountDelivered(ContractData c)
-        {
-            var mgr = MovablePropManager.Instance;
-            if (!mgr) return;
-            var bay = SeamPlan.Bay(c.toKind);
-            int n = 0;
-            foreach (var id in c.boxes)
-                if (mgr.Where(id, out var p, out bool held) && !held && bay.Contains(new Vector2(p.x, p.z))) n++;
-            if (n != c.done) { c.done = n; _dirty = true; }
-            if (c.done >= c.count) Finish(c);
-        }
-
-        /// <summary>Return: the client's stored boxes (any of theirs) set down in their place's DELIVERIES bay.</summary>
-        void CountReturned(ContractData c)
-        {
-            var mgr = MovablePropManager.Instance;
-            if (!mgr) return;
-            var bay = SeamPlan.Bay(c.toKind);
-            c.boxes.Clear();
-            foreach (var id in D.stored)
-            {
-                if (BoxClient(id) != c.toKind || c.boxes.Count >= c.count) continue;
-                bool taken = false;
-                foreach (var o in D.board) if (o != c && o.state == 1 && o.kind == 2 && o.boxes.Contains(id)) taken = true;
-                if (!taken && mgr.Where(id, out var p, out bool held) && !held && bay.Contains(new Vector2(p.x, p.z))) c.boxes.Add(id);
-            }
-            if (c.boxes.Count != c.done) { c.done = c.boxes.Count; _dirty = true; }
-            if (c.done >= c.count) Finish(c);
-        }
-
-        void Closing()
-        {
-            NoclipPassage.SeamsShut = true;                     // the seams close: whoever is in a place stays there
-            LightZones.ClosingAt = Time.time;
-            ClosingBell();
-            int lost = 0;
-            foreach (var c in D.board) if (c.state == 1) { c.state = 3; lost++; }
-            CamcorderOSD.Notice(lost > 0 ? $"CLOSING TIME - {lost} JOB{(lost > 1 ? "S" : "")} LOST" : "CLOSING TIME");
-            _closedAt = Time.time;
-            _dirty = true;
-        }
-
-        void BlackOut()
-        {
-            _closedAt = -1f;
-            foreach (var c in D.board) if (c.state == 1) c.state = 3;
-            // Dropped where they stood: what was held stays down there.
-            var grabber = streamer && streamer.player ? streamer.player.GetComponentInChildren<PropGrabber>() : null;
-            if (grabber) grabber.DropAll();
-            var wake = HubWake.Instance;
-            if (wake) wake.Begin(Net.NetSession.Active ? Net.NetSession.LocalId : 0);
-            else if (streamer) streamer.PlaceInHub(Net.NetSession.Active ? Net.NetSession.LocalId : 0);
-            CamcorderOSD.Notice("YOU BLACKED OUT");
-            _dirty = true;
-        }
-
-        // ---------------- The hub's board, its buttons and the pay window ----------------
+        // ---------------- The hub's board and the pay window ----------------
 
         const int BW = 480, BH = 252;
         Texture2D _boardTex;
         Color32[] _px;
-        ElevatorButton _payButton, _clockOutButton;
-        AudioSource _beep, _bell;
+        ElevatorButton _payButton;
+        AudioSource _beep;
         static Material s_plate, s_on, s_off;
 
         void BuildHub()
@@ -787,18 +329,14 @@ namespace Backrooms.Interaction
             var boardFoot = HubPlan.World(11.0f, 14.4f - face, 0.7f);
             var rot = Quaternion.Euler(0f, 180f, 0f);
             _boardTex = Screen(transform, "ContractsBoardScreen", boardFoot, rot, BW, BH, out _px);
-            // (No buttons under it since 2026-11-08: the board is a notice; the work goes out by itself: AutoPost.)
-            // PAY: beside the pay window (HubPayWindow at x 13.2, 1.2 wide), at the ledge's height.
-            _payButton = Button(transform, "CollectPay", HubPlan.World(14.05f, 14.4f - face, 1.25f), rot, Collect);
-            // CLOCK OUT (2026-11-08): beside the punch clock on the lift hall's west wall (HubPunchClock, facing east). Ends
-            // the day whenever you like: what is done is paid, rent for the hours you were in, then the night.
-            var east = Quaternion.Euler(0f, 90f, 0f);
-            var clockOut = HubPlan.World(7.2f + face, 4.6f, 1.15f);              // (on its south side: the card rack is north of it)
-            _clockOutButton = Button(transform, "ClockOut", clockOut, east, ClockOut);
-            Label(transform, "ClockOutLabel", "CLOCK OUT", clockOut + new Vector3(0.004f, 0.17f, 0f), east, 0.34f);
+            // The pay window (HubPayWindow at x 13.2, 1.2 wide), at the ledge's height: the last trip's slip again.
+            var payAt = HubPlan.World(14.05f, 14.4f - face, 1.25f);
+            _payButton = Button(transform, "PaySlip", payAt, rot, PayWindow);
+            Label(transform, "PaySlipLabel", "PAY SLIPS", payAt + new Vector3(0f, 0.17f, -0.004f), rot, 0.32f);
+            // (The punch clock on the lift hall's wall is the company's old days now: decoration, no button. 2026-11-09.)
             _beep = Sound(transform, "ContractsBeep", HubPlan.World(12.0f, 14.2f, 1.2f), 8f);
-            _bell = Sound(transform, "ClosingBell", Vector3.zero, 40f);
-            _bell.spatialBlend = 0f;
+            _slipSound = Sound(transform, "SlipSound", HubPlan.World(14.05f, 14.2f, 1.2f), 9f);
+            _slipSound.spatialBlend = 0f;                       // (printed wherever you come up: heard as the camcorder hears it)
         }
 
         // ---- Shared with the improvements board ----
@@ -883,12 +421,6 @@ namespace Backrooms.Interaction
             _beep.PlayOneShot(ok ? Tone(880f, 660f, 0.22f) : Tone(220f, 180f, 0.3f), 0.5f);
         }
 
-        void ClosingBell()
-        {
-            if (!_bell) return;
-            _bell.PlayOneShot(Bell(), 0.55f);
-        }
-
         static readonly Dictionary<(float, float, float), AudioClip> s_tones = new Dictionary<(float, float, float), AudioClip>();
         internal static AudioClip Tone(float f0, float f1, float len)
         {
@@ -906,155 +438,163 @@ namespace Backrooms.Interaction
             return s_tones[(f0, f1, len)] = clip;
         }
 
-        static AudioClip s_bellClip;
-        static AudioClip Bell()
-        {
-            if (s_bellClip) return s_bellClip;
-            // An electric school bell: a hammer on a gong at ~25 Hz, for two seconds, ringing out.
-            int sr = 44100, n = sr * 3;
-            var d = new float[n];
-            var rng = new System.Random(4);
-            for (int i = 0; i < n; i++)
-            {
-                float t = i / (float)sr;
-                float strike = t < 2f ? Mathf.Pow(Mathf.Abs(Mathf.Sin(Mathf.PI * 25f * t)), 8f) : 0f;
-                float ring = Mathf.Sin(2f * Mathf.PI * 1180f * t) * 0.6f + Mathf.Sin(2f * Mathf.PI * 2730f * t) * 0.3f + Mathf.Sin(2f * Mathf.PI * 4100f * t) * 0.12f;
-                float env = t < 2f ? 0.6f + 0.4f * strike : Mathf.Exp(-(t - 2f) * 5f) * 0.8f;
-                d[i] = ring * env * 0.3f + (float)(rng.NextDouble() - 0.5) * strike * 0.05f;
-            }
-            s_bellClip = AudioClip.Create("ClosingBell", n, 1, sr, false);
-            s_bellClip.SetData(d, 0);
-            return s_bellClip;
-        }
-
         // ---- Painting the board ----
 
         internal static readonly Color32 Ground = new Color32(20, 18, 15, 255), Flap = new Color32(36, 33, 30, 255), Amber = new Color32(245, 190, 80, 255),
-            Dim = new Color32(150, 118, 60, 255), Choc = new Color32(59, 42, 30, 255), Green = new Color32(140, 210, 110, 255), Red = new Color32(225, 90, 60, 255);
+            Dim = new Color32(150, 118, 60, 255), Choc = new Color32(59, 42, 30, 255), Green = new Color32(140, 210, 110, 255), Red = new Color32(225, 90, 60, 255),
+            Locked = new Color32(96, 82, 62, 255), LockedSel = new Color32(190, 150, 80, 255);
 
         static Color32 Client(int k) => (Color32)ClientColours[Mathf.Clamp(k, 0, 3)];
+        static string Name(int k) => Clients[Mathf.Clamp(k, 0, 3)];
 
-        /// <summary>The board as work orders (WorkOrders): the stage, then up to three orders, each with its progress and
-        /// today's batch; the button under a row takes that batch.</summary>
-        void DrawOrders()
+        // ---- The board (2026-11-09): your batches, a line each, with how long is left; along the foot what is safe, what
+        // is at risk, what is due back and what is in hand; and what to do next. The work orders: the camcorder's tracker.
+
+        struct BoardRow { public string text, right; public Color32 chip, rightInk; public bool dim; }
+        readonly List<BoardRow> _rows = new List<BoardRow>();
+
+        /// <summary>A batch as a line (2026-11-09, the owner: "BEHIND THE SEAM ... WAITING" was not clear): whose and how many
+        /// on the left; on the right, in plain words, what to do with it now and how long is left.</summary>
+        BoardRow BatchRow(BatchData b)
         {
-            for (int i = 0; i < _px.Length; i++) _px[i] = Ground;
-            PixelFont.Fill(_px, BW, BH, 0, 0, BW, 34, new Color32(240, 162, 30, 255));
-            PixelFont.Draw(_px, BW, BH, "WORK ORDERS - DAY " + D.day, 10, 4, 2, Choc);
-            PixelFont.Draw(_px, BW, BH, WorkOrders.StageName, 10, 21, 1, Choc);
-            EnsureStorage();
-            var open = WorkOrders.Open();
-            if (open.Count == 0)
-                PixelFont.DrawCentred(_px, BW, BH, WorkOrders.WaitingForTomorrow ? "THAT'S IT FOR TODAY" : "NO ORDERS", BW / 2, 96, 3, Amber);
-            if (open.Count == 0 && WorkOrders.WaitingForTomorrow)
-                PixelFont.DrawCentred(_px, BW, BH, "THE NEXT ORDER COMES IN THE MORNING", BW / 2, 132, 2, Dim);
-            for (int r = 0; r < open.Count && r < 3; r++)
+            var r = new BoardRow { chip = Client(b.client), rightInk = Amber, text = $"{Name(b.client)} X{b.count}" };
+            switch (b.state)
             {
-                int idx = open[r];
-                var o = WorkOrders.All[idx];
-                int client = WorkOrders.ClientFor(idx, _seams, LiftPoint);
-                int y = 40 + r * 58;
-                PixelFont.Fill(_px, BW, BH, 6, y - 3, BW - 6, y + 54, Flap);
-                bool boxes = WorkOrders.BoxWork(o.goal);
-                PixelFont.Fill(_px, BW, BH, 6, y - 3, 12, y + 54, boxes ? Client(client) : Amber);
-                PixelFont.Draw(_px, BW, BH, o.title, 22, y + 2, 2, Amber);
-                string pay = "$" + o.pay;
-                PixelFont.Draw(_px, BW, BH, pay, BW - 14 - PixelFont.Width(pay, 2), y + 2, 2, Amber);
-                RowText(idx, client, out string line, out string prog, out string today, out var c);
-                PixelFont.Draw(_px, BW, BH, line, 22, y + 21, 1, Dim);
-                // Progress, then today's batch.
-                PixelFont.Draw(_px, BW, BH, prog, 22, y + 37, 2, Amber);
-                if (today.Length > 0) PixelFont.Draw(_px, BW, BH, today, BW - 14 - PixelFont.Width(today, 1), y + 41, 1, c != null && c.state == 2 ? Green : Dim);
+                case 0: r.right = "READY TO PICK UP"; r.dim = true; break;
+                case 1:
+                {
+                    var mgr = MovablePropManager.Instance;
+                    int left = b.boxes.Count - (mgr ? SafeCount(b, mgr) : 0);
+                    r.right = left > 0 ? $"SHELVE {left} MORE" : "ALL SHELVED";
+                    break;
+                }
+                case 2: r.right = "STORED " + MinSec(b.left); r.rightInk = Green; break;
+                default:
+                    bool late = b.since > b.window;
+                    r.right = late ? "LATE - TAKE BACK" : "TAKE BACK " + MinSec(b.window - b.since);
+                    r.rightInk = late ? Red : Amber;
+                    break;
             }
-            bool payDue = PayDue;
-            if (_payButton) _payButton.SetLit(payDue || (ShiftOn && (Closed || Open == 0)));
-            if (_clockOutButton) _clockOutButton.SetLit(ShiftOn);
-            // What to do next.
-            string next = NextStep;
-            if (next.Length > 0) PixelFont.DrawCentred(_px, BW, BH, next, BW / 2, 214, 1, Green);
-            DrawBoardClock();
+            return r;
         }
 
-        /// <summary>An order row's words (the board and the camcorder's tracker): its instruction with the client's name,
-        /// its progress, and today's batch.</summary>
-        void RowText(int idx, int client, out string line, out string prog, out string today, out ContractData c)
+        void Rows()
         {
-            var o = WorkOrders.All[idx];
-            bool boxes = WorkOrders.BoxWork(o.goal);
-            line = o.line;
-            if (boxes && o.goal != WorkOrders.Goal.KeepSafe && o.goal != WorkOrders.Goal.Ship) line = Clients[Mathf.Clamp(client, 0, 3)] + ": " + line;
-            prog = o.goal == WorkOrders.Goal.ClockIn || o.goal == WorkOrders.Goal.ChuteRow ? "" : $"{WorkOrders.Progress(idx)} OF {o.target}";
-            c = Batch(idx);
-            today = !boxes ? "" : c == null ? (HadBatch(idx) ? "LOST TODAY - MORE TOMORROW" : "NO BOXES TODAY") : c.state == 1 ? $"TODAY: {c.done} OF {c.count} AT THE SEAM" : c.state == 2 ? "DONE - COLLECT PAY" : "PAID";
-            if (o.goal == WorkOrders.Goal.KeepSafe) prog = $"{WorkOrders.Progress(idx)} OF {o.target} SAFE LAST NIGHT";
-            if (o.goal == WorkOrders.Goal.ClockIn) prog = (D.tapeWatched ? "TAPE: YES" : "TAPE: NOT YET") + (D.shift >= 0f ? " - CLOCKED IN" : "");
+            _rows.Clear();
+            if (D == null) return;
+            // Due back first, then stored (soonest first), coming in, waiting.
+            var list = new List<BatchData>(D.batches);
+            list.Sort((a, b) => Rank(a).CompareTo(Rank(b)));
+            foreach (var b in list)
+            {
+                if (b.state == 0 && !D.seamsFound.Contains(b.client)) continue;      // (a client not found yet: not on the board)
+                _rows.Add(BatchRow(b));
+                if (_rows.Count == 4) break;
+            }
+            float Rank(BatchData b) => b.state == 3 ? -1000f + (b.window - b.since) : b.state == 2 ? b.left : b.state == 1 ? 100000f : 200000f;
         }
 
-        bool PayDue { get { if (D != null) foreach (var c in D.board) if (c.state == 2) return true; return false; } }
-
-        /// <summary>What to do next (the board's green line and the tracker's last).</summary>
-        string NextStep => D == null ? "" : !ShiftOn ? "RIDE THE LIFT DOWN TO CLOCK IN"
-                        : PayDue ? "WORK DONE - COLLECT YOUR PAY AT THE WINDOW"
-                        : Open == 0 ? "NOTHING WAITING - SET UP, OR CLOCK OUT AT THE PUNCH CLOCK" : "";
+        /// <summary>What to do next (the board's green line and the tracker's first): one plain step.</summary>
+        public string NextStep
+        {
+            get
+            {
+                if (D == null) return "";
+                if (!D.tapeWatched && WorkOrders.Active && D.woStage == 0) return "WATCH THE TAPE - SIT DOWN IN THE TRAINING ROOM";
+                foreach (var b in D.batches) if (b.state == 3) return b.since > b.window ? $"{Name(b.client)} IS LATE - TAKE THEIR BOXES BACK TO THEIR SEAM" : $"TAKE {Name(b.client)}'S BOXES BACK TO THEIR SEAM";
+                var mgr = MovablePropManager.Instance;
+                foreach (var b in D.batches)
+                    if (b.state == 1)
+                    {
+                        int left = b.boxes.Count - (mgr ? SafeCount(b, mgr) : 0);
+                        return $"PUT {left} MORE {Name(b.client)} BOX{(left == 1 ? "" : "ES")} ON A LIT SHELF";
+                    }
+                if (D.batchesIn == 0) return "FOLLOW THE BLUE TAPE FROM THE LIFT TO TALLMORE'S SEAM";
+                int risk = AtRisk;
+                if (risk > 0) return $"{risk} BOX{(risk > 1 ? "ES" : "")} LEFT OUT - PUT THEM ON A LIT SHELF";
+                foreach (int k in D.seamsFound)
+                {
+                    if (NeedOf(k) != null || OnHold(k)) continue;
+                    var w = Waiting(k);
+                    if (w != null) return $"MORE WORK: {Name(k)}'S {w.count} BOXES ARE READY AT THEIR SEAM";
+                }
+                return "FIND ANOTHER SEAM OUT ON THE FLOOR";
+            }
+        }
 
         void DrawBoard()
         {
-            if (_px == null) return;
-            if (WorkOrders.Active) { DrawOrders(); return; }
+            if (_px == null || D == null) return;
             for (int i = 0; i < _px.Length; i++) _px[i] = Ground;
-            PixelFont.Fill(_px, BW, BH, 0, 0, BW, 34, new Color32(240, 162, 30, 255));
-            PixelFont.DrawCentred(_px, BW, BH, "JOBS - DAY " + D.day, BW / 2, 6, 3, Choc);
-            if (D.board.Count == 0)
-                PixelFont.DrawCentred(_px, BW, BH, _posting != null ? "POSTING ..." : "NO JOBS POSTED", BW / 2, 110, 3, Amber);
-            for (int i = 0; i < D.board.Count && i < 3; i++)
-            {
-                var c = D.board[i];
-                int y = 40 + i * 58;
-                PixelFont.Fill(_px, BW, BH, 6, y - 3, BW - 6, y + 54, Flap);
-                // The client's tape colour down the row's edge.
-                PixelFont.Fill(_px, BW, BH, 6, y - 3, 12, y + 54, Client(c.kind == 2 ? c.toKind : c.fromKind));
-                bool taken = c.state != 0;
-                var ink = c.state == 4 ? Dim : Amber;
-                string client = Clients[Mathf.Clamp(c.kind == 2 ? c.toKind : c.fromKind, 0, 3)];
-                string what = c.kind == 0 ? $"STORE {c.count} BOXES" : c.kind == 1 ? $"SHIP {c.count} BOXES" : $"RETURN {c.count} BOXES";
-                PixelFont.Draw(_px, BW, BH, what, 22, y + 2, 2, ink);
-                string pay = "$" + c.pay;
-                PixelFont.Draw(_px, BW, BH, pay, BW - 14 - PixelFont.Width(pay, 2), y + 2, 2, ink);
-                // The route (from whose place to where), then how it is going.
-                string from = LeaseSeams.Kinds[Mathf.Clamp(c.fromKind, 0, 3)], to = LeaseSeams.Kinds[Mathf.Clamp(c.toKind, 0, 3)];
-                string route = c.kind == 0 ? from + " > STORAGE" : c.kind == 1 ? from + " > " + to : "STORAGE > " + to;
-                PixelFont.Draw(_px, BW, BH, route, 22, y + 20, 2, ink);
-                string st = !taken ? "FOR " + client : c.state == 1 ? $"TAKEN - {c.done} OF {c.count}" : c.state == 2 ? "DONE - COLLECT PAY" : c.state == 3 ? "LOST" : "PAID";
-                PixelFont.Draw(_px, BW, BH, st, 22, y + 37, 2, !taken ? Dim : c.state == 2 ? Green : c.state == 3 ? Red : ink);
-            }
-            bool payDue = false;
-            foreach (var c in D.board) if (c.state == 2) payDue = true;
-            if (_payButton) _payButton.SetLit(payDue || (ShiftOn && (Closed || Open == 0)));
+            DrawRowsOnly();
+            _rowsAt = Time.time;
+            if (_payButton) _payButton.SetLit(!string.IsNullOrEmpty(D.lastSlip));
             DrawBoardClock();
         }
 
+        float _rowsAt;
+
+        /// <summary>What changes by the second (every half second): the header's date, the countdowns, the four numbers
+        /// along the foot (safe, at risk, due back, in hand), and what to do next.</summary>
         void DrawBoardClock()
         {
-            if (_px == null) return;
-            PixelFont.Fill(_px, BW, BH, 0, 227, BW, BH, Ground);
+            if (_px == null || D == null) return;
+            // The countdowns move: the rows again every second.
+            if (Time.time - _rowsAt > 1f) { _rowsAt = Time.time; DrawRowsOnly(); }
+            PixelFont.Fill(_px, BW, BH, 0, 0, BW, 34, new Color32(240, 162, 30, 255));
+            PixelFont.Draw(_px, BW, BH, "WORK BOARD", 10, 7, 3, Choc);
+            string date = DateText;
+            PixelFont.Draw(_px, BW, BH, date, BW - 10 - PixelFont.Width(date, 2), 4, 2, Choc);
+            string sub = Running ? "BUSINESS TIME RUNNING" : "TIME STOPPED - YOU'RE OFF THE FLOOR";
+            PixelFont.Draw(_px, BW, BH, sub, BW - 10 - PixelFont.Width(sub, 1), 23, 1, Choc);
+            PixelFont.Fill(_px, BW, BH, 0, 184, BW, BH, Ground);
+            int safe = SafeNow, risk = AtRisk, due = 0, target = 0;
+            foreach (var b in D.batches) if (b.state == 3) due++;
+            if (WorkOrders.Active) foreach (int i in WorkOrders.Open()) if (WorkOrders.All[i].goal == WorkOrders.Goal.StoredAtOnce) target = Mathf.Max(target, WorkOrders.All[i].target);
+            Cell(0, "STORED SAFE", target > 0 ? safe + "/" + target : safe.ToString(), Amber);
+            Cell(1, "AT RISK", risk.ToString(), risk > 0 ? Red : Amber);
+            Cell(2, "DUE BACK", due.ToString(), due > 0 ? Green : Amber);
+            Cell(3, "IN HAND", "$" + D.pay, Amber);
+            string next = NextStep;
+            while (next.Length > 4 && PixelFont.Width(next, 1) > BW - 16) next = next.Substring(0, next.Length - 1);
+            if (next.Length > 0) PixelFont.DrawCentred(_px, BW, BH, next, BW / 2, 232, 1, Green);
             PixelFont.Fill(_px, BW, BH, 0, 246, BW, 248, new Color32(217, 102, 31, 255));
             PixelFont.Fill(_px, BW, BH, 0, 248, BW, 250, new Color32(232, 178, 58, 255));
             PixelFont.Fill(_px, BW, BH, 0, 250, BW, 252, new Color32(124, 138, 46, 255));
-            var clock = Clock;
-            string left = ShiftOn && clock.HasValue ? (Closed ? "CLOSED" : "NOW " + clock.Value.ToString("h:mm") + (clock.Value.Hour >= 12 ? " PM" : " AM")) : "OFFICE HOURS 9 - " + (HourEnd - 12 + D.overtime);
-            PixelFont.Draw(_px, BW, BH, left, 12, 230, 2, Amber);
-            string right = "IN HAND $" + D.pay;
-            PixelFont.Draw(_px, BW, BH, right, BW - 12 - PixelFont.Width(right, 2), 230, 2, Amber);
-            // Storage, in the header's right end: what is not safe now, and what the dark did last night.
-            PixelFont.Fill(_px, BW, BH, 352, 2, BW - 4, 32, new Color32(240, 162, 30, 255));
-            string risk = "AT RISK " + AtRisk, night = D.hasReport ? $"NIGHT: {D.lastMoved + D.lastGone} MOVED" : $"STORED {D.stored.Count}";
-            PixelFont.Draw(_px, BW, BH, risk, BW - 8 - PixelFont.Width(risk, 1), 6, 1, Choc);
-            PixelFont.Draw(_px, BW, BH, night, BW - 8 - PixelFont.Width(night, 1), 19, 1, Choc);
             _boardTex.SetPixels32(_px);
             _boardTex.Apply(false);
+
+            void Cell(int k, string label, string value, Color32 ink)
+            {
+                int x0 = 8 + k * 117, x1 = x0 + 112;
+                PixelFont.Fill(_px, BW, BH, x0, 188, x1, 226, Flap);
+                PixelFont.DrawCentred(_px, BW, BH, label, (x0 + x1) / 2, 192, 1, Dim);
+                PixelFont.DrawCentred(_px, BW, BH, value, (x0 + x1) / 2, 205, 2, ink);
+            }
         }
 
-        /// <summary>Redraw the board (something it shows changed elsewhere: an improvement bought).</summary>
+        /// <summary>The rows' area painted again (their countdowns), without the rest.</summary>
+        void DrawRowsOnly()
+        {
+            PixelFont.Fill(_px, BW, BH, 0, 34, BW, 184, Ground);
+            Rows();
+            PixelFont.Draw(_px, BW, BH, "YOUR BATCHES", 12, 41, 1, Dim);
+            if (_rows.Count == 0) PixelFont.DrawCentred(_px, BW, BH, "NOTHING ON THE GO", BW / 2, 96, 2, Dim);
+            for (int i = 0; i < _rows.Count && i < 4; i++)
+            {
+                var r = _rows[i];
+                int y = 54 + i * 32;
+                PixelFont.Fill(_px, BW, BH, 8, y - 4, BW - 8, y + 22, Flap);
+                PixelFont.Fill(_px, BW, BH, 8, y - 4, 16, y + 22, r.chip);
+                string text = r.text;
+                int room = BW - 26 - 26 - PixelFont.Width(r.right ?? "", 2);
+                while (text.Length > 4 && PixelFont.Width(text, 2) > room) text = text.Substring(0, text.Length - 1);
+                PixelFont.Draw(_px, BW, BH, text, 26, y + 2, 2, r.dim ? Dim : Amber);
+                if (!string.IsNullOrEmpty(r.right)) PixelFont.Draw(_px, BW, BH, r.right, BW - 18 - PixelFont.Width(r.right, 2), y + 2, 2, r.rightInk);
+            }
+        }
+
+        /// <summary>Redraw the board (something it shows changed elsewhere: something bought).</summary>
         public void Changed() => _dirty = true;
     }
 }

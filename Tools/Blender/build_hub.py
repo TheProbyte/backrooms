@@ -610,9 +610,12 @@ def sofa70():
     L, D, H = 2.1, 0.9, 0.78
     p = [rbox("Plinth", (L - 0.1, D - 0.1, 0.1), (0, 0, 0.05), WD, 0.015, 2),
          rbox("Base", (L, D, 0.28), (0, 0, 0.1 + 0.14), FB, 0.06, 4),
-         rbox("Back", (L, 0.24, H - 0.38), (0, D / 2 - 0.12, 0.38 + (H - 0.38) / 2), FB, 0.08, 4)]
+         # (2026-11-09, the owner: the hub couches flickered at the back corners. The back's ends and the arms' outer
+         # sides, and the arms' and back's rear faces, were the same planes: two faces fighting. The back now stops 2 cm
+         # inside each arm and the arms 2 cm inside the back's rear, so each corner shows one surface.)
+         rbox("Back", (L - 0.04, 0.24, H - 0.38), (0, D / 2 - 0.12, 0.38 + (H - 0.38) / 2), FB, 0.08, 4)]
     for sx in (-1, 1):
-        p.append(rbox("Arm", (0.22, D, 0.32), (sx * (L / 2 - 0.11), 0, 0.38 + 0.16), FB, 0.08, 4))
+        p.append(rbox("Arm", (0.22, D - 0.02, 0.32), (sx * (L / 2 - 0.11), -0.01, 0.38 + 0.16), FB, 0.08, 4))
     for k in range(3):                                     # three fat seat cushions and three back cushions
         x = -L / 2 + 0.22 + (L - 0.44) * (k + 0.5) / 3
         p.append(rbox("Seat", ((L - 0.44) / 3 - 0.02, D - 0.3, 0.16), (x, -0.08, 0.38 + 0.08), CU, 0.06, 4))

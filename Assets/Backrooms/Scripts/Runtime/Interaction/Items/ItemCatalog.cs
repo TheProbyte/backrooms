@@ -142,6 +142,34 @@ namespace Backrooms.Interaction
             list.Add(new Entry { name = "Platform trolley", category = "FURNITURE", clearance = 1.1f, spawn = (p, r, pv) => Movable(MovableKind.PlatformTruck, p, r, pv, s => { }) });
             if (a.floorLampPrefab)
                 list.Add(new Entry { name = "Floor lamp", category = "ITEMS", clearance = 0.9f, spawn = (p, r, pv) => FloorLamp.Create(p, r).gameObject });
+
+            // The work's things (2026-11-09, the owner: "no items are available" in L): what the supply counter sells, free
+            // here. Kits are crates as bought (carry one and set it down where its outline shows). In a picture only, a kit
+            // is built unsaved (no id taken); the hand truck and work lamp have no picture (making one would keep it).
+            GameObject Kit(Kits.Kind k, Vector3 p, Quaternion r, bool preview)
+            {
+                if (preview)
+                {
+                    var spec = Contracts.BoxSpec(Kits.Id(k, 0xFFFFFF), p, r.eulerAngles.y);
+                    return spec == null ? null : MovableProp.Spawn(spec, null, p, r).gameObject;
+                }
+                ulong id = Kits.Spawn(k, p, r);
+                var live = id != 0 ? MovableProp.Find(id) : null;
+                return live ? live.gameObject : null;
+            }
+            if (Saves.GameSession.Data != null)
+            {
+                foreach (var k in new[] { Kits.Kind.Shelf, Kits.Kind.TallShelf, Kits.Kind.Rack, Kits.Kind.Generator, Kits.Kind.Conveyor, Kits.Kind.Floodlight })
+                {
+                    var kind = k;
+                    list.Add(new Entry { name = Kits.Name(kind).Substring(0, 1) + Kits.Name(kind).Substring(1).ToLowerInvariant() + (Kits.ShelfVariant(kind) >= 0 ? " kit" : ""),
+                                         category = "WORK", clearance = 1.2f, spawn = (p, r, pv) => Kit(kind, p, r, pv) });
+                }
+                list.Add(new Entry { name = "Intake chute kit", category = "WORK", clearance = 1.1f,
+                                     spawn = (p, r, pv) => { if (pv || !Improvements.Instance) return null; ulong id = Improvements.Instance.SendChuteKit(p, r); var live = id != 0 ? MovableProp.Find(id) : null; return live ? live.gameObject : null; } });
+                list.Add(new Entry { name = "Hand truck", category = "WORK", clearance = 1.1f, spawn = (p, r, pv) => pv ? null : HandTruck.Create(p, r)?.gameObject });
+                list.Add(new Entry { name = "Work lamp", category = "WORK", clearance = 0.9f, spawn = (p, r, pv) => pv ? null : WorkLamp.Create(p + Vector3.up * 0.02f, r, false)?.gameObject });
+            }
             return list;
         }
 

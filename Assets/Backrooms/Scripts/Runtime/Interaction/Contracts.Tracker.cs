@@ -1,70 +1,69 @@
 using System.Text;
 using Backrooms.Camcorder;
 using Backrooms.Generation;
+using Backrooms.Saves;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace Backrooms.Interaction
 {
     /// <summary>
-    /// The work orders on the camcorder's screen (2026-11-08, the owner: "a way to see the contract or next tier ... instead
-    /// of forgetting and having to go back to hub"). The board's orders, pinned in the top right as Satisfactory pins its
-    /// milestone: each open order with its instruction, its progress and today's boxes, what the tier unlocks when it is
-    /// done, and what to do next. J hides it; hidden, it still pops up for a few seconds when an order moves on.
+    /// The work on the camcorder's screen (2026-11-08, the owner: "a way to see the contract or next tier ... instead of
+    /// forgetting and having to go back to hub"; batches 2026-11-09). Pinned in the top right as Satisfactory pins its
+    /// milestone: the stage's orders with their progress and what they unlock; then your batches, each with where it is and
+    /// how long is left; and what to do next. J hides it; hidden, it still pops up for a few seconds when something moves on.
     /// </summary>
     public partial class Contracts
     {
         readonly StringBuilder _tb = new StringBuilder();
 
-        static string SeamName(int kind) => LeaseSeams.Kinds[Mathf.Clamp(kind, 0, LeaseSeams.Kinds.Length - 1)];
-
-        /// <summary>The tracker's text (rich text: the order titles bigger, the rest small), or "" with nothing to show.</summary>
+        /// <summary>
+        /// The tracker's text (rich text, sizes only). 2026-11-09, the owner: "J to show work details is just words and way too
+        /// complicated". Now, like a game's pinned objective: the one next step on top; this stage's work orders as a
+        /// checklist with a count where there is one, and what finishing them unlocks; your batches one short line each (the
+        /// board's words). The long explanations stay on the boards and in the notices.
+        /// </summary>
         public string TrackerText()
         {
             if (D == null) return "";
             _tb.Clear();
+            string next = NextStep;
+            if (next.Length > 0) _tb.Append("<size=26>> ").Append(next).Append("</size>\n");
             if (WorkOrders.Active)
             {
-                EnsureStorage();
-                var open = WorkOrders.Open();
                 int inStage = 0, doneInStage = 0;
                 for (int i = 0; i < WorkOrders.All.Length; i++)
                     if (WorkOrders.All[i].stage == D.woStage) { inStage++; if (WorkOrders.Done(i)) doneInStage++; }
-                _tb.Append("<size=22>").Append(WorkOrders.StageName).Append(" - ").Append(doneInStage).Append(" OF ").Append(inStage).Append(" DONE</size>\n");
-                foreach (int idx in open)
+                _tb.Append("\n<size=20>").Append(WorkOrders.StageName).Append("  ").Append(doneInStage).Append("/").Append(inStage).Append("</size>\n");
+                for (int i = 0; i < WorkOrders.All.Length; i++)
                 {
-                    var o = WorkOrders.All[idx];
-                    int client = WorkOrders.ClientFor(idx, _seams, LiftPoint);
-                    RowText(idx, client, out string line, out string prog, out string today, out var c);
-                    // Which seam (the board shows it by the client's colour; here it is named).
-                    if (c != null && c.state == 1)
-                        today = today.Replace("AT THE SEAM", c.kind == 2 ? "FOR THE " + SeamName(c.toKind) + " SEAM" : "AT THE " + SeamName(c.fromKind) + " SEAM" + (c.kind == 1 ? " > " + SeamName(c.toKind) : ""));
-                    _tb.Append("<size=29>").Append(o.title).Append("  $").Append(o.pay).Append("</size>\n");
-                    _tb.Append("<size=22>").Append(line).Append("</size>\n");
-                    if (prog.Length > 0) _tb.Append("<size=22>").Append(prog).Append("</size>\n");
-                    if (today.Length > 0) _tb.Append("<size=22>").Append(today).Append("</size>\n");
+                    var o = WorkOrders.All[i];
+                    if (o.stage != D.woStage) continue;
+                    bool done = WorkOrders.Done(i);
+                    string count = done ? "" : WorkOrders.CountText(i);
+                    _tb.Append("<size=23>").Append(done ? "[X] " : "[  ] ").Append(o.title);
+                    if (count.Length > 0) _tb.Append("  ").Append(count);
+                    _tb.Append("</size>\n");
                 }
                 string unlocks = WorkOrders.UnlocksOf(D.woStage);
-                if (unlocks.Length > 0) _tb.Append("<size=22>WHEN DONE: ").Append(unlocks).Append("</size>\n");
+                if (unlocks.Length > 0) _tb.Append("<size=19>UNLOCKS: ").Append(unlocks).Append("</size>\n");
             }
-            else
+            int n = 0;
+            foreach (var b in D.batches)
             {
-                int n = 0;
-                foreach (var c in D.board)
-                {
-                    if (c.state != 1 && c.state != 2) continue;
-                    if (n++ == 0) _tb.Append("<size=22>TODAY'S JOBS</size>\n");
-                    string from = LeaseSeams.Kinds[Mathf.Clamp(c.fromKind, 0, 3)], to = LeaseSeams.Kinds[Mathf.Clamp(c.toKind, 0, 3)];
-                    string what = c.kind == 0 ? $"STORE {c.count} BOXES" : c.kind == 1 ? $"SHIP {c.count} BOXES" : $"RETURN {c.count} BOXES";
-                    string route = c.kind == 0 ? from + " > STORAGE" : c.kind == 1 ? from + " > " + to : "STORAGE > " + to;
-                    _tb.Append("<size=29>").Append(what).Append("  $").Append(c.pay).Append("</size>\n");
-                    _tb.Append("<size=22>").Append(route).Append("</size>\n");
-                    _tb.Append("<size=22>").Append(c.state == 2 ? "DONE - COLLECT PAY" : $"{c.done} OF {c.count}").Append("</size>\n");
-                }
-                if (n == 0) return NextStep.Length > 0 ? "<size=24>> " + NextStep + "</size>" : "";
+                if (b.state == 0 && !D.seamsFound.Contains(b.client)) continue;
+                if (b.state == 0 && (NeedOf(b.client) != null || OnHold(b.client))) continue;
+                if (n++ == 0) _tb.Append("\n<size=20>YOUR BATCHES</size>\n");
+                var row = BatchRow(b);
+                _tb.Append("<size=23>").Append(row.text).Append(" - ").Append(row.right).Append("</size>\n");
             }
-            string next = NextStep;
-            if (next.Length > 0) _tb.Append("<size=24>> ").Append(next).Append("</size>");
+            // Found clients whose work needs something you do not have yet.
+            foreach (int k in D.seamsFound)
+            {
+                string need = NeedOf(k);
+                if (need != null) _tb.Append("<size=20>").Append(Name(k)).Append(" NEEDS ").Append(need).Append("</size>\n");
+                else if (OnHold(k)) _tb.Append("<size=20>").Append(Name(k)).Append(" ON HOLD - RETURN THEIR LATE BOXES</size>\n");
+            }
             return _tb.ToString().TrimEnd('\n');
         }
     }
@@ -111,7 +110,7 @@ namespace Backrooms.Interaction
             }
             float pop = Mathf.Clamp01((_popUntil - Time.unscaledTime) / 0.6f);
             CamcorderOSD.TrackerAlpha = _shown ? 1f : pop;
-            CamcorderOSD.TrackerHint = _shown ? "J - HIDE" : "J - WORK ORDERS";
+            CamcorderOSD.TrackerHint = _shown ? "J - HIDE" : "J - WORK";
         }
 
         void OnDisable() { CamcorderOSD.Tracker = ""; CamcorderOSD.TrackerAlpha = 0f; }

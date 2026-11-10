@@ -10,12 +10,12 @@ namespace Backrooms.Interaction
     /// Improvements (2026-11-07, the owner: "each day you can improve one of your outputs ... like satisfactory";
     /// "improvements will be payed and you don't HAVE to have one each night"): the hub's second board, on the lobby's
     /// south wall, lists what the day's pay can buy for the floor. NEXT steps through the list, ORDER buys the one picked.
-    /// At most one a night (until the next day starts), never during the shift.
+    /// As many as you can pay for (2026-11-09: no shift, no one-a-night limit).
     /// <list type="bullet">
     /// <item>INTAKE CHUTE KIT: a crate waits by the lift on the floor; set it down in front of a seam and the chute is fitted
     ///   (Seam.Fit): from then on it pulls that place's boxes through by itself.</item>
     /// <item>PLATFORM TRUCK: a trolley by the lift; boxes ride on it (CartWheels).</item>
-    /// <item>OVERTIME: closing an hour later (6, 7, 8 PM). BACKUP LIGHTS: a minute more after closing before the dark.</item>
+    /// <item>BETTER RATES: new batches pay 15% more (overtime and backup lights went with the working day, 2026-11-09).</item>
     /// <item>RENT REVIEW: a dollar more a stored box a day.</item>
     /// <item>LEASE A WING (north, east, south, west): its hoarding comes down (LeaseGate), its seams and storage rooms are
     ///   the board's from the next day (LeasePlan).</item>
@@ -32,7 +32,7 @@ namespace Backrooms.Interaction
 
         enum Kind { ChuteKit, Truck, Overtime, BackupLights, RentReview, Wing, Poolrooms }
 
-        struct Item { public Kind kind; public int wing; public string name, note; public int cost; }
+        struct Item { public Kind kind; public int wing; public string name, note, unlock; public int cost; public bool locked; }
 
         readonly List<Item> _items = new List<Item>();
         int _pick;
@@ -56,17 +56,21 @@ namespace Backrooms.Interaction
         void List()
         {
             _items.Clear();
-            void Add(Kind k, string name, string note, int cost, int wing = -1) => _items.Add(new Item { kind = k, name = name, note = note, cost = cost, wing = wing });
+            var locked = new List<Item>();
+            void Add(Kind k, string name, string note, int cost, string unlock, int wing = -1)
+            {
+                var it = new Item { kind = k, name = name, note = note, cost = cost, wing = wing, unlock = unlock, locked = !Unlocks.Has(unlock) };
+                (it.locked ? locked : _items).Add(it);
+            }
             // (2026-11-08: kits and trucks are sold at the supply counter now; what is here lasts for good, each level
-            // unlocked by finishing work orders: Interaction.WorkOrders.)
-            if (D.overtime < 3 && Unlocks.Has("overtime" + (D.overtime + 1))) Add(Kind.Overtime, $"OVERTIME TO {6 + D.overtime} PM", "AN HOUR MORE A SHIFT", 200 + 100 * D.overtime);
-            if (D.backupLights < 2 && Unlocks.Has("backup" + (D.backupLights + 1))) Add(Kind.BackupLights, "BACKUP LIGHTS", "A MINUTE MORE AT CLOSING", 150 + 100 * D.backupLights);
-            if (D.rentReviews < 2 && Unlocks.Has("rentreview" + (D.rentReviews + 1))) Add(Kind.RentReview, "RENT REVIEW", "+$1 A SAFE BOX A DAY", 250 + 150 * D.rentReviews);
+            // unlocked by finishing work orders: Interaction.WorkOrders. 2026-11-09, the owner: "how to get improvements?
+            // unlocked by work orders isn't clear": all of it is listed, what is locked greyed with the orders that open it.)
+            if (D.rates < 2) Add(Kind.RentReview, "BETTER RATES", "NEW BATCHES PAY 15% MORE", 250 + 150 * D.rates, "rates" + (D.rates + 1));
             int owned = LeasePlan.WingCount;
-            if (Unlocks.Has("wings"))
-                for (int w = 0; w < 4; w++)
-                    if ((D.wings & (1 << w)) == 0) Add(Kind.Wing, $"LEASE {LeasePlan.WingNames[w]} WING", "MORE SEAMS AND FLOOR", 400 + 200 * owned, w);
-            if (!D.poolrooms && Unlocks.Has("poolrooms")) Add(Kind.Poolrooms, "POOLROOMS ACCESS", owned > 0 ? "A DOOR PAST YOUR FIRST WING" : "NEEDS A WING FIRST", 900);
+            for (int w = 0; w < 4; w++)
+                if ((D.wings & (1 << w)) == 0) Add(Kind.Wing, $"LEASE {LeasePlan.WingNames[w]} WING", "MORE SEAMS AND FLOOR", 400 + 200 * owned, "wings", w);
+            if (!D.poolrooms) Add(Kind.Poolrooms, "POOLROOMS ACCESS", owned > 0 ? "A DOOR PAST YOUR FIRST WING" : "NEEDS A WING FIRST", 900, "poolrooms");
+            _items.AddRange(locked);
             _pick = Mathf.Clamp(_pick, 0, Mathf.Max(0, _items.Count - 1));
         }
 
@@ -89,19 +93,16 @@ namespace Backrooms.Interaction
             if (_items.Count == 0) return;
             var it = _items[_pick];
             var cs = Contracts.Instance;
-            string no = cs && cs.ShiftOn ? "NOT DURING THE SHIFT"
-                      : it.kind == Kind.Poolrooms && LeasePlan.WingCount == 0 ? "LEASE A WING FIRST"
+            if (it.locked) { CamcorderOSD.Notice($"{it.name} - LOCKED - {WorkOrders.FinishText(it.unlock)} (J)"); cs?.Beep(false); return; }
+            string no = it.kind == Kind.Poolrooms && LeasePlan.WingCount == 0 ? "LEASE A WING FIRST"
                       : D.pay < it.cost ? $"NOT ENOUGH - ${D.pay} IN HAND" : null;
             if (no != null) { CamcorderOSD.Notice(no); cs?.Beep(false); return; }
             D.pay -= it.cost;
-            D.boughtDay = D.day;
             switch (it.kind)
             {
                 case Kind.ChuteKit: PlaceKit(D.chuteKits++, true); break;
                 case Kind.Truck: PlaceTruck(D.trucks++, true); break;
-                case Kind.Overtime: D.overtime++; break;
-                case Kind.BackupLights: D.backupLights++; break;
-                case Kind.RentReview: D.rentReviews++; break;
+                case Kind.RentReview: D.rates++; break;
                 case Kind.Wing:
                     D.wings |= 1 << it.wing;
                     LeasePlan.Wings = D.wings;
@@ -141,13 +142,15 @@ namespace Backrooms.Interaction
         public static bool HasChute(ulong seam) { var d = GameSession.Data; return d != null && d.chutes.Contains(seam); }
 
         /// <summary>The supply counter's intake chute kit, waiting at a spot by the lift.</summary>
-        public void SendChuteKit(Vector3 at, Quaternion rot)
+        public ulong SendChuteKit(Vector3 at, Quaternion rot)
         {
             var mgr = MovablePropManager.Instance;
-            if (!mgr || D == null) return;
+            if (!mgr || D == null) return 0;
             ulong id = KitId(D.chuteKits++);
             var spec = Contracts.BoxSpec(id, at, rot.eulerAngles.y);
-            if (spec != null) mgr.NetPlace(spec, at, rot);
+            if (spec == null) return 0;
+            mgr.NetPlace(spec, at, rot);
+            return id;
         }
 
         /// <summary>The supply counter's platform truck, by the lift.</summary>
@@ -253,13 +256,18 @@ namespace Backrooms.Interaction
                 bool sel = i == _pick;
                 bool afford = D.pay >= it.cost && !bought;
                 if (sel) PixelFont.Fill(_px, BW, BH, 6, y - 2, BW - 6, y + 18, Contracts.Flap);
-                var ink = sel ? A : afford ? new Color32(205, 160, 72, 255) : Dm;
+                var ink = it.locked ? (sel ? Contracts.LockedSel : Contracts.Locked) : sel ? A : afford ? new Color32(205, 160, 72, 255) : Dm;
                 PixelFont.Draw(_px, BW, BH, (sel ? "> " : "  ") + it.name, 10, y + 1, 2, ink);
-                string cost = "$" + it.cost;
-                PixelFont.Draw(_px, BW, BH, cost, BW - 12 - PixelFont.Width(cost, 2), y + 1, 2, ink);
+                string cost = it.locked ? WorkOrders.LockedText(it.unlock) : "$" + it.cost;
+                int dot = it.locked ? 1 : 2;
+                PixelFont.Draw(_px, BW, BH, cost, BW - 12 - PixelFont.Width(cost, dot), y + 1 + (dot == 1 ? 4 : 0), dot, ink);
             }
             // The picked one's note, and the buttons' labels.
-            if (_items.Count > 0) PixelFont.DrawCentred(_px, BW, BH, _items[_pick].note, BW / 2, 214 - 22, 1, Dm);
+            if (_items.Count > 0)
+            {
+                var pk = _items[_pick];
+                PixelFont.DrawCentred(_px, BW, BH, pk.locked ? WorkOrders.FinishText(pk.unlock) + " (J)" : pk.note, BW / 2, 214 - 22, 1, pk.locked ? Contracts.Red : Dm);
+            }
             else PixelFont.DrawCentred(_px, BW, BH, "NOTHING YET", BW / 2, 100, 3, Dm);
             int bx(float dx) => Mathf.RoundToInt((0.5f - dx / 2.3f) * BW);
             PixelFont.DrawCentred(_px, BW, BH, "NEXT", bx(0.35f), 212, 2, A);
@@ -267,11 +275,11 @@ namespace Backrooms.Interaction
             PixelFont.Fill(_px, BW, BH, 0, 246, BW, 248, new Color32(217, 102, 31, 255));
             PixelFont.Fill(_px, BW, BH, 0, 248, BW, 250, new Color32(232, 178, 58, 255));
             PixelFont.Fill(_px, BW, BH, 0, 250, BW, 252, new Color32(124, 138, 46, 255));
-            string left = _items.Count == 0 ? "UNLOCKED BY WORK ORDERS" : "LASTS FOR GOOD";
+            string left = "LASTS FOR GOOD";
             PixelFont.Draw(_px, BW, BH, left, 12, 230, 2, A);
             string right = "IN HAND $" + D.pay;
             PixelFont.Draw(_px, BW, BH, right, BW - 12 - PixelFont.Width(right, 2), 230, 2, A);
-            if (_order) _order.SetLit(!bought && _items.Count > 0 && D.pay >= _items[_pick].cost);
+            if (_order) _order.SetLit(!bought && _items.Count > 0 && !_items[_pick].locked && D.pay >= _items[_pick].cost);
             _tex.SetPixels32(_px);
             _tex.Apply(false);
         }

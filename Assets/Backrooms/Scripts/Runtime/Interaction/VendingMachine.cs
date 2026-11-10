@@ -78,9 +78,9 @@ namespace Backrooms.Interaction
 
             // Its sounds, from inside it.
             MakeClips();
-            _fan = Loop("Fan", s_fan, new Vector3(0f, 0.3f, -0.2f), 0.18f, 10f);
-            _comp = Loop("Compressor", s_comp, new Vector3(0.2f, 0.15f, -0.3f), 0f, 14f);
-            _buzz = Loop("Buzz", s_buzz, new Vector3(0.145f, 1.1f, Front - 0.05f), 0.035f, 5f);
+            _fan = Loop("Fan", s_fan, new Vector3(0f, 0.3f, -0.2f), 0.07f, 7f);
+            _comp = Loop("Compressor", s_comp, new Vector3(0.2f, 0.15f, -0.3f), 0f, 8f);
+            _buzz = Loop("Buzz", s_buzz, new Vector3(0.145f, 1.1f, Front - 0.05f), 0.02f, 4f);
             _fx = ItemModels.Source(gameObject, 12f);
 
             // What the fingers find: the button column.
@@ -157,7 +157,9 @@ namespace Backrooms.Interaction
             if (!_fan.isPlaying) _fan.Play();
             if (!_buzz.isPlaying) _buzz.Play();
             float amb = GameSettings.Ambience;                                  // (the building's sound: Settings)
-            _fan.volume = 0.18f * amb; _buzz.volume = 0.035f * amb;
+            // (2026-11-08, the owner: the hub still "buzzing": the fan, the hum and the compressor about 40% of before,
+            // and heard less far, the compressor through the walls most.)
+            _fan.volume = 0.07f * amb; _buzz.volume = 0.02f * amb;
             float dt = Time.deltaTime;
             // The compressor's cycle: on 40-90 s, off 25-60 s, a relay's click each way, easing in and out.
             _compTimer -= dt;
@@ -170,7 +172,7 @@ namespace Backrooms.Interaction
                 if (_compOn && !_comp.isPlaying) _comp.Play();
             }
             _compLevel = Mathf.MoveTowards(_compLevel, _compOn ? 1f : 0f, dt * (_compOn ? 0.6f : 1.5f));
-            _comp.volume = 0.32f * _compLevel * amb;
+            _comp.volume = 0.08f * _compLevel * amb;
             _comp.pitch = 0.94f + 0.06f * _compLevel;
             if (_compLevel <= 0f && _comp.isPlaying) _comp.Stop();
             // Now and then a tube behind the sign flickers.

@@ -11,16 +11,19 @@ namespace Backrooms.Interaction
     /// <list type="bullet">
     /// <item><b>Click a box to take it</b> (up to <see cref="BoxReach"/> from the eye: no walking over, the body bends
     /// quickly for a low one and the box comes up into the hands in about a third of a second; one on a high shelf slides
-    /// off toward you). Taken from a stack, it is the top one.</item>
+    /// off toward you). Whatever is stacked on it comes too (2026-11-08, round 2, the owner: "you should just pick up the
+    /// bottom one once you stack it"): click the bottom of a stack to take the stack, the top to take one.</item>
     /// <item><b>Carried low at the hips</b> (PropGrabber.Carry), bobbing a little as you walk and lagging a turn; the heavier
     /// the load, the slower you go. A wall stops a box but never knocks it out of your hands.</item>
-    /// <item><b>A few in your arms:</b> hold the button on another box and it goes on top of what you carry, one more every
-    /// <see cref="TakeEvery"/> while held (so holding on a stack takes its top few), up to <see cref="ArmLoad"/> kg and
-    /// <see cref="ArmHeight"/> m. Turn too fast and the top one falls off.</item>
-    /// <item><b>Putting down:</b> a see-through outline shows where the top box goes where you look (a shelf's deck under
-    /// where you aim, the floor, another box's top), lined up with what it stands on and flush with an edge or a box beside
-    /// it when close (a click is heard); R turns it a quarter turn; a click puts it there. Q sets it down at your feet;
-    /// held, Q winds up a gentle toss. Right click does nothing to a box (it flung them spinning).</item>
+    /// <item><b>A few in your arms:</b> hold the button on another box and it (and what is on it) goes on top of what you
+    /// carry, up to <see cref="ArmLoad"/> kg and <see cref="ArmHeight"/> m. Turn too fast and the top one falls off.</item>
+    /// <item><b>Putting down</b> (round 2, the owner did not like the green outline, and wanted the click to do it all): a
+    /// faint rectangle on the surface shows where the top box would go (a shelf's deck under where you aim, a box's top, the
+    /// floor close by), lined up with what it stands on and flush with an edge or a box beside it when close (a click is
+    /// heard). A tap of the button puts it there, or with no rectangle sets it down in front of you, facing the way you
+    /// look. Held, the button winds the box back and throws it on letting go, harder the longer it was held; thrown onto a
+    /// shelf's deck it slides in square (BoxThrown). Q does the same as the button. R turns it a quarter turn. Right
+    /// click does nothing to a box.</item>
     /// <item>It lands with a soft settle: a tiny squash, a puff of dust and its thud (ImpactAudio).</item>
     /// </list>
     /// </summary>
@@ -35,6 +38,10 @@ namespace Backrooms.Interaction
         const float PlaceReach = 2.6f;
         static readonly Vector2 BoxTossSpeed = new Vector2(2.2f, 5.5f);
         const float BoxTossFull = 0.8f;
+
+        /// <summary>What the arms (or the hand truck, 2026-11-09) take: kg, and how high a stack goes (m).</summary>
+        float LoadLimit => HandTruck.Equipped ? HandTruck.Load : ArmLoad;
+        float HeightLimit => HandTruck.Equipped ? HandTruck.Height : ArmHeight;
 
         /// <summary>Carrying a box (with any on top of it).</summary>
         public bool CarryingBox => Carrying && Held && Held.Spec.kind == MovableKind.Box;
@@ -64,8 +71,11 @@ namespace Backrooms.Interaction
         bool KitCrate => Held && KitPlacer.CarryHint(Held) != null;
 
         float _lmbDownAt = -1f, _nextTakeAt;
-        bool _pressUsed;
-        float _qBoxDown = -1f;
+        bool _pressUsed, _byQ;
+        /// <summary>This press began on a box (2026-11-09, decision 13): held, it takes; it never turns into a throw, even if
+        /// the aim slips off the box while held.</summary>
+        bool _pressOnBox;
+        float _windUp;
         /// <summary>0..1 while Q winds up a toss of the top box.</summary>
         public float BoxTossCharge { get; private set; }
         int _placeTurn;
@@ -75,8 +85,8 @@ namespace Backrooms.Interaction
         Vector3 _outPos, _outSize;
         Quaternion _outRot;
         float _flushClickAt;
-        static Material s_outGood, s_outFlush, s_outBad;
-        static Mesh s_cube;
+        static Material s_outFill, s_outLine, s_outLineFlush;
+        static readonly Dictionary<Vector2Int, Mesh> s_rects = new Dictionary<Vector2Int, Mesh>();
 
         // The feel: the quick bend for a low box, the dip as a heavy one comes up, the sway.
         float _quickStoop, _quickStoopT = -1f, _quickStoopDur = 0.3f;
@@ -93,24 +103,62 @@ namespace Backrooms.Interaction
 
         // ---------------- Taking ----------------
 
-        /// <summary>A click on a light box within reach: take it at once (its stack's top one).</summary>
+        /// <summary>A click on a light box within reach: take it at once, with whatever is stacked on it.</summary>
         bool TryQuickCarry()
         {
             if (!Look(BoxReach, out _, out var prop) || !prop || !BoxTakeable(prop)) return false;
-            prop = TopOf(prop);
+            var column = Column(prop);
+            if (!ColumnFits(column, 0f, 0f, null, out string why)) { Note(why); return true; }
             ClearPlan();
             _target = prop;
             _gripLocal = Vector3.zero; _normalLocal = Vector3.up; _edgeLocal = Vector3.zero; _fingersLocal = Vector3.zero;
             Attach();                                          // (AttachFurniture: StartCarry)
             if (!CarryingBox) return true;
-            _lmbDownAt = Time.time; _pressUsed = true; _nextTakeAt = Time.time + TakeEvery;
+            _lmbDownAt = Time.time; _pressUsed = true; _nextTakeAt = float.MaxValue; _byQ = false;
             _placeTurn = 0;
             Bend(prop);
             BoxSounds.PickUp(prop.transform.position, prop.Mass);
+            for (int i = 1; i < column.Count; i++) AddToArm(column[i]);
             return true;
         }
 
-        bool BoxTakeable(MovableProp p) => p && p.Spec.kind == MovableKind.Box && IsLight(p) && !p.Pinned && !p.NetRemote && !p.held && p.Shape != null;
+        /// <summary>A box and the boxes stacked on it, bottom first.</summary>
+        List<MovableProp> Column(MovableProp p)
+        {
+            var list = new List<MovableProp> { p };
+            for (int guard = 0; guard < 12; guard++)
+            {
+                var up = OnTopOf(list[list.Count - 1]);
+                if (!up || list.Contains(up)) break;
+                list.Add(up);
+            }
+            return list;
+        }
+
+        /// <summary>Can the arms take this column on top of what they hold (kg, m, and the top box's size)? Why not if not.</summary>
+        bool ColumnFits(List<MovableProp> column, float kg, float height, MovableProp under, out string why)
+        {
+            why = null;
+            foreach (var b in column) { kg += b.Mass; height += b.Spec.size.y; }
+            if (column.Count > 1 && kg > LoadLimit + 0.01f) { why = "TOO HEAVY TO TAKE THE STACK - TAKE THE TOP ONE FIRST"; return false; }
+            if (kg > LoadLimit + 0.01f) { why = HandTruck.Equipped ? "THE HAND TRUCK IS FULL" : "TOO HEAVY TO TAKE MORE"; return false; }
+            if (height > HeightLimit + 0.01f) { why = column.Count > 1 ? "TOO TALL A STACK TO CARRY - TAKE THE TOP ONE FIRST" : "THAT'S AS HIGH AS YOU CAN CARRY"; return false; }
+            if (under && Mathf.Max(column[0].Spec.size.x, column[0].Spec.size.z) > Mathf.Max(under.Spec.size.x, under.Spec.size.z) + 0.12f)
+            { why = "TOO BIG TO GO ON TOP"; return false; }
+            return true;
+        }
+
+        /// <summary>A box the view is on, past the boxes in the arms, that could be taken (or null).</summary>
+        MovableProp AimedTakeable()
+        {
+            var cam = _cam ? _cam.transform : transform;
+            if (!BoxRay(cam.position, cam.forward, BoxReach, out var hit)) return null;
+            var p = hit.collider.GetComponentInParent<MovableProp>();
+            return p && !InArms(p) && BoxTakeable(p) ? p : null;
+        }
+
+        bool BoxTakeable(MovableProp p) => p && p.Spec.kind == MovableKind.Box && IsLight(p) && !p.Pinned && !p.NetRemote && !p.held && p.Shape != null
+                                           && !Contracts.Collecting(p.Spec.id);          // (signed for: the client's now)
 
         /// <summary>The body's quick bend for a box low down (the lower, the deeper), and the dip as a heavy one comes up.</summary>
         void Bend(MovableProp p)
@@ -154,18 +202,12 @@ namespace Backrooms.Interaction
         {
             why = null;
             // (Past the boxes in the arms: looking down at a box on the floor, the view met the one carried first.)
-            var cam = _cam ? _cam.transform : transform;
-            if (!BoxRay(cam.position, cam.forward, BoxReach, out var hit)) return false;
-            var prop = hit.collider.GetComponentInParent<MovableProp>();
-            if (!prop || InArms(prop) || !BoxTakeable(prop)) return false;
-            prop = TopOf(prop);
-            if (InArms(prop)) return false;
+            var prop = AimedTakeable();
+            if (!prop) return false;
             if (Improvements.IsKit(prop.Spec.id) || Improvements.IsKit(Held.Spec.id)) { why = "ONE CRATE AT A TIME"; return false; }
-            if (ArmWeight + prop.Mass > ArmLoad + 0.01f) { why = "TOO HEAVY TO TAKE MORE"; return false; }
-            if (ArmStackHeight + prop.Spec.size.y > ArmHeight + 0.01f) { why = "THAT'S AS HIGH AS YOU CAN CARRY"; return false; }
-            var top = TopBox.Spec.size;
-            if (Mathf.Max(prop.Spec.size.x, prop.Spec.size.z) > Mathf.Max(top.x, top.z) + 0.12f) { why = "TOO BIG TO GO ON TOP"; return false; }
-            AddToArm(prop);
+            var column = Column(prop);
+            if (!ColumnFits(column, ArmWeight, ArmStackHeight, TopBox, out why)) return false;
+            foreach (var b in column) AddToArm(b);
             return true;
         }
 
@@ -215,6 +257,31 @@ namespace Backrooms.Interaction
             a.p.Body.angularDamping = a.savedDamping;
         }
 
+        /// <summary>
+        /// The player was moved in one jump (through a noclip door or a seam, NoclipTravel): what they carry comes along, each
+        /// box where it was relative to them, turned with them (2026-11-09, the owner: carrying two through a seam lost one;
+        /// only the bottom box was moved, and the ones on it were pulled back across the jump and fell). from: where the
+        /// player stood before; turn: how much they were turned.
+        /// </summary>
+        public void CarryAcross(Vector3 from, Quaternion turn)
+        {
+            var to = transform.position;
+            void Move(MovableProp p)
+            {
+                if (!p || !p.Body) return;
+                var np = to + turn * (p.Body.position - from);
+                var nr = turn * p.Body.rotation;
+                p.Body.position = np; p.Body.rotation = nr;
+                p.transform.SetPositionAndRotation(np, nr);
+                if (!p.Body.isKinematic) { p.Body.linearVelocity = turn * p.Body.linearVelocity; p.Body.angularVelocity = turn * p.Body.angularVelocity; }
+            }
+            if (Held) { Move(Held); MovablePropManager.Instance?.Store(Held); }
+            foreach (var a in _arm) Move(a.p);
+            _yawSet = false;                                   // (the jump's turn is not a fast turn: nothing slides off)
+            _fastTurnT = -0.25f;
+            _lastPlanar = _player ? _player.PlanarVelocity : Vector3.zero;
+        }
+
         /// <summary>Every box on top falls (the carry ended some other way).</summary>
         void DropArmBoxes()
         {
@@ -223,47 +290,58 @@ namespace Backrooms.Interaction
 
         // ---------------- Each frame ----------------
 
-        /// <summary>The buttons while carrying a box: click to put down, hold on a box to take it too, Q, R.</summary>
+        /// <summary>
+        /// The button while carrying a box (Q the same, but it never takes a box): a tap puts the top box down (on the
+        /// rectangle if one shows, else in front of you); held on another box, that box comes onto the stack; held anywhere
+        /// else, it winds up a throw that goes on letting go. R turns where it goes.
+        /// </summary>
         void UpdateBoxInput(bool focus, bool pressed, bool hold)
         {
             var kb = Keyboard.current;
-            if (pressed) { _lmbDownAt = Time.time; _pressUsed = false; _nextTakeAt = Time.time + TakeEvery; }
-            if (hold && _lmbDownAt >= 0f && Time.time >= _nextTakeAt)
+            bool qPressed = focus && kb != null && kb.qKey.wasPressedThisFrame;
+            if (pressed || (qPressed && _lmbDownAt < 0f))
             {
-                _nextTakeAt = Time.time + TakeEvery;
-                if (TryTakeAnother(out string why)) _pressUsed = true;
-                else if (why != null && !_pressUsed) { Note(why); _pressUsed = true; }
+                _lmbDownAt = Time.time; _pressUsed = false; _byQ = !pressed; _nextTakeAt = Time.time + TakeEvery;
+                _pressOnBox = pressed && AimedTakeable();
             }
-            if (!hold && _lmbDownAt >= 0f)
+            bool down = _byQ ? focus && kb != null && kb.qKey.isPressed : hold;
+            if (down && _lmbDownAt >= 0f && !_pressUsed)
             {
+                float held = Time.time - _lmbDownAt;
+                // Held on a box: take it (and its stack) onto yours; anywhere else, wind up a throw.
+                bool onBox = !_byQ && _pressOnBox;
+                if (onBox)
+                {
+                    BoxTossCharge = 0f;
+                    if (Time.time >= _nextTakeAt)
+                    {
+                        _nextTakeAt = Time.time + TakeEvery;
+                        if (TryTakeAnother(out string why)) _pressUsed = true;
+                        else if (why != null) { Note(why); _pressUsed = true; }
+                    }
+                }
+                else BoxTossCharge = held > throwHold ? Mathf.Clamp01((held - throwHold) / BoxTossFull) : 0f;
+            }
+            if (!down && _lmbDownAt >= 0f)
+            {
+                // (A hold that began on a box and took nothing does nothing: only a tap puts the top box down.)
+                bool tap = Time.time - _lmbDownAt < throwHold;
                 _lmbDownAt = -1f;
-                if (!_pressUsed) PutDownTop();
+                float charge = BoxTossCharge;
+                BoxTossCharge = 0f;
+                if (!_pressUsed) { if (charge > 0f) TossTop(Mathf.Max(0.05f, charge)); else if (!_pressOnBox || tap) PutDownTop(); }
+                _pressOnBox = false;
                 _pressUsed = false;
                 if (!CarryingBox) return;
             }
             if (focus && kb != null && kb.rKey.wasPressedThisFrame && !KitCrate) _placeTurn = (_placeTurn + 1) & 3;
-            // Q: a tap sets the top box down at your feet; held, a gentle toss on letting go.
-            if (focus && kb != null && kb.qKey.wasPressedThisFrame) _qBoxDown = Time.time;
-            if (_qBoxDown >= 0f)
-            {
-                float q = Time.time - _qBoxDown;
-                BoxTossCharge = q > throwHold ? Mathf.Clamp01((q - throwHold) / BoxTossFull) : 0f;
-                if (kb == null || !kb.qKey.isPressed)
-                {
-                    float charge = BoxTossCharge;
-                    _qBoxDown = -1f; BoxTossCharge = 0f;
-                    if (q <= throwHold) DropTopAtFeet(); else TossTop(Mathf.Max(0.05f, charge));
-                }
-            }
         }
 
-        /// <summary>The click: the top box to where the outline is.</summary>
+        /// <summary>The tap: the top box onto the rectangle, or down in front of you with none.</summary>
         void PutDownTop()
         {
-            if (KitCrate) { DropTopAtFeet(); return; }
-            if (!_outShown) { Note("LOOK WHERE TO PUT IT"); return; }
-            if (!_outValid) { Note("NO ROOM THERE"); return; }
-            SetDown(TopBox, _outPos, _outRot, 0.22f);
+            if (!KitCrate && _outShown && _outValid) { SetDown(TopBox, _outPos, _outRot, 0.22f); return; }
+            DropTopAtFeet();
         }
 
         /// <summary>The top box out of the arms (the carry ends with the last).</summary>
@@ -281,14 +359,16 @@ namespace Backrooms.Interaction
             _placeTurn = 0;
         }
 
-        /// <summary>Q tapped: the top box set down on the floor just in front of your feet (or let go, if there is no room).</summary>
+        /// <summary>Set down on the floor just in front of you, facing the way you look (squared to the room if nearly so),
+        /// or let go if there is no room.</summary>
         void DropTopAtFeet()
         {
             var box = TopBox;
             if (!box) return;
             var s = box.Spec.size;
             var fwd = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
-            float yaw = Mathf.Round(transform.eulerAngles.y / 90f) * 90f;
+            float you = transform.eulerAngles.y, square = Mathf.Round(you / 90f) * 90f;
+            float yaw = (Mathf.Abs(Mathf.DeltaAngle(you, square)) < 12f ? square : you) + _placeTurn * 90f;
             var rot = Quaternion.Euler(0f, yaw, 0f);
             float depth = Mathf.Abs(Vector3.Dot(rot * Vector3.forward, fwd)) * s.z + Mathf.Abs(Vector3.Dot(rot * Vector3.right, fwd)) * s.x;
             var at = transform.position + fwd * (0.32f + depth * 0.5f);
@@ -309,6 +389,7 @@ namespace Backrooms.Interaction
             box.Body.linearVelocity = _player.PlanarVelocity + (cam.forward + Vector3.up * 0.25f).normalized * speed;
             // (A little turn about its upright, not a fling end over end.)
             box.Body.angularVelocity = new Vector3(Random.Range(-0.4f, 0.4f), Random.Range(-1.2f, 1.2f), Random.Range(-0.4f, 0.4f));
+            BoxThrown.Watch(box);                                // (onto a shelf's deck: it slides in square)
             MicThump();
         }
 
@@ -317,7 +398,7 @@ namespace Backrooms.Interaction
         {
             float dt = Mathf.Max(Time.deltaTime, 1e-4f);
             float load = ArmWeight;
-            float heavy = Mathf.Clamp01(load / ArmLoad);
+            float heavy = Mathf.Clamp01(load / LoadLimit) * (HandTruck.Equipped ? 0.4f : 1f);      // (on wheels it is easy going)
             _player.pitchScale = 1f;
             _player.lookScale = Mathf.Lerp(0.95f, 0.72f, heavy);
             _player.moveScale = Mathf.Lerp(0.97f, 0.68f, heavy);
@@ -335,10 +416,12 @@ namespace Backrooms.Interaction
                                    -Mathf.Abs(Mathf.Sin(_boxBob)) * 0.014f * walk * give,
                                    Mathf.Clamp(-accel.z * 0.012f * give, -0.05f, 0.05f));
             _carrySway = Vector3.SmoothDamp(_carrySway, want, ref _carrySwayVel, 0.07f, Mathf.Infinity, dt);
+            // Winding up a throw: drawn back and up (PropGrabber.Carry: CarryTarget), snapping forward on the throw.
+            _windUp = Mathf.MoveTowards(_windUp, BoxTossCharge, dt * (BoxTossCharge > _windUp ? 3f : 12f));
             // (Four small boxes stood up to the eye, round 1 of this: the arms take the bottom one lower, toward the
             // thighs, as more go on it.)
             float above = ArmStackHeight - Held.Spec.size.y;
-            _stackLower = Mathf.SmoothDamp(_stackLower, Mathf.Clamp(above * 0.5f, 0f, 0.22f), ref _stackLowerVel, 0.15f, Mathf.Infinity, dt);
+            _stackLower = Mathf.SmoothDamp(_stackLower, HandTruck.Equipped ? 0f : Mathf.Clamp(above * 0.5f, 0f, 0.22f), ref _stackLowerVel, 0.15f, Mathf.Infinity, dt);
             _turnLag = Mathf.SmoothDamp(_turnLag, Mathf.Clamp(-_yawRate * Mathf.Rad2Deg * 0.035f * give, -9f, 9f), ref _turnLagVel, 0.08f, Mathf.Infinity, dt);
             // A heavy box coming up: the view dips with it.
             if (!_dipped && _carryT > 0.65f)
@@ -348,7 +431,7 @@ namespace Backrooms.Interaction
                 if (m >= 6f) { _liftDipT = 0f; _liftDipAmt = 0.025f + 0.0055f * (m - 6f); }
             }
             // Turning too fast with a stack: the top one goes.
-            if (_arm.Count > 0)
+            if (_arm.Count > 0 && !HandTruck.Equipped)            // (on the hand truck's plate, against its frame, they stay)
             {
                 float limit = 6.2f - 1.4f * (_arm.Count - 1) - 0.8f * heavy;
                 if (_fastTurnT < 0f) _fastTurnT = Mathf.Min(0f, _fastTurnT + dt);          // (just lost one: a moment's grace)
@@ -422,6 +505,14 @@ namespace Backrooms.Interaction
             var box = TopBox;
             if (!box || KitCrate || _carryT < 0.6f || BoxTossCharge > 0f || !_player.HasFocus) return;
             _outShown = Placement(box, out _outPos, out _outRot, out _outValid, out bool flush);
+            // Shown where it helps (2026-11-08, round 2): on a shelf, a box, a table; on the floor only close by. Elsewhere
+            // a tap sets it down in front of you.
+            if (_outShown && _outValid && _outPos.y - transform.position.y < 0.12f)
+            {
+                var flat = _outPos - transform.position; flat.y = 0f;
+                if (flat.magnitude > 1.9f) _outShown = false;
+            }
+            if (_outShown && !_outValid) _outShown = false;
             _outSize = box.Spec.size;
             if (_outShown && _outValid && flush && !_outFlush && Time.time > _flushClickAt)
             {
@@ -432,17 +523,41 @@ namespace Backrooms.Interaction
             if (_outShown) DrawOutline();
         }
 
+        /// <summary>A faint rectangle on the surface, the box's footprint: a pale fill and a cream edge (brighter flush).</summary>
         void DrawOutline()
         {
-            if (!s_cube) s_cube = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
-            if (!s_outGood)
+            if (!s_outFill)
             {
-                s_outGood = Ghost(new Color(0.55f, 1f, 0.55f, 0.24f));
-                s_outFlush = Ghost(new Color(0.75f, 1f, 0.75f, 0.38f));
-                s_outBad = Ghost(new Color(1f, 0.35f, 0.25f, 0.3f));
+                // (The company's amber: cream was lost against a pale deck and the carpet.)
+                s_outFill = Ghost(new Color(0.96f, 0.63f, 0.12f, 0.16f));
+                s_outLine = Ghost(new Color(0.96f, 0.6f, 0.1f, 0.75f));
+                s_outLineFlush = Ghost(new Color(1f, 0.85f, 0.35f, 0.95f));
             }
-            var m = Matrix4x4.TRS(_outPos + _outRot * new Vector3(0f, _outSize.y * 0.5f, 0f), _outRot, _outSize);
-            Graphics.DrawMesh(s_cube, m, !_outValid ? s_outBad : _outFlush ? s_outFlush : s_outGood, 0);
+            var key = new Vector2Int(Mathf.RoundToInt(_outSize.x * 100f), Mathf.RoundToInt(_outSize.z * 100f));
+            if (!s_rects.TryGetValue(key, out var mesh) || !mesh) s_rects[key] = mesh = RectMesh(_outSize.x, _outSize.z, 0.022f);
+            // (2 cm up: a shelf model's deck is a centimetre above its collider, and hid it.)
+            var m = Matrix4x4.TRS(_outPos + Vector3.up * 0.02f, _outRot, Vector3.one);
+            Graphics.DrawMesh(mesh, m, s_outFill, 0, null, 0);
+            Graphics.DrawMesh(mesh, m, _outFlush ? s_outLineFlush : s_outLine, 0, null, 1);
+        }
+
+        /// <summary>A flat rectangle w x d facing up: submesh 0 its inside, submesh 1 an edge t wide round it.</summary>
+        static Mesh RectMesh(float w, float d, float t)
+        {
+            float x = w * 0.5f, z = d * 0.5f, xi = x - t, zi = z - t;
+            var v = new[]
+            {
+                new Vector3(-x, 0f, -z), new Vector3(x, 0f, -z), new Vector3(x, 0f, z), new Vector3(-x, 0f, z),
+                new Vector3(-xi, 0f, -zi), new Vector3(xi, 0f, -zi), new Vector3(xi, 0f, zi), new Vector3(-xi, 0f, zi),
+            };
+            var mesh = new Mesh { name = "BoxFootprint", hideFlags = HideFlags.DontSave };
+            mesh.vertices = v;
+            mesh.subMeshCount = 2;
+            mesh.SetTriangles(new[] { 4, 6, 5, 4, 7, 6 }, 0);
+            mesh.SetTriangles(new[] { 0, 4, 1, 1, 4, 5, 1, 5, 2, 2, 5, 6, 2, 6, 3, 3, 6, 7, 3, 7, 0, 0, 7, 4 }, 1);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         static Material Ghost(Color c)
@@ -527,7 +642,7 @@ namespace Backrooms.Interaction
         /// On a box-shaped top (a shelf's deck, a table, a box): the box kept on it (clear of a shelf's posts and back), and
         /// flush with an edge it is within 6 cm of. True if flush.
         /// </summary>
-        static bool KeepOn(BoxCollider bc, MovableProp under, Vector3 size, Quaternion rot, ref Vector3 pos)
+        internal static bool KeepOn(BoxCollider bc, MovableProp under, Vector3 size, Quaternion rot, ref Vector3 pos)
         {
             var t = bc.transform;
             var local = t.InverseTransformPoint(pos) - bc.center;
@@ -591,6 +706,25 @@ namespace Backrooms.Interaction
                 return true;
             }
             return false;
+        }
+
+        /// <summary>Nothing in the way of the box at this pose (it, the player and boxes held aside).</summary>
+        internal static bool ClearFor(MovableProp box, Vector3 pos, Quaternion rot)
+        {
+            var size = box.Spec.size;
+            var c = pos + rot * new Vector3(0f, size.y * 0.5f + 0.006f, 0f);
+            var half = new Vector3(Mathf.Max(0.01f, size.x * 0.5f - 0.01f), Mathf.Max(0.01f, size.y * 0.5f - 0.006f), Mathf.Max(0.01f, size.z * 0.5f - 0.01f));
+            int n = Physics.OverlapBoxNonAlloc(c, half, s_boxOver, rot, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var col = s_boxOver[i];
+                if (col is CharacterController) continue;
+                var rb = col.attachedRigidbody;
+                var mp = rb ? rb.GetComponent<MovableProp>() : null;
+                if (mp && (mp == box || mp.held)) continue;
+                return false;
+            }
+            return true;
         }
 
         /// <summary>Nothing in the way of the box at this pose (it, the body and the boxes in the arms aside).</summary>
@@ -703,6 +837,65 @@ namespace Backrooms.Interaction
             if (_vis != null) for (int i = 0; i < _vis.Length; i++) if (_vis[i]) { _vis[i].localPosition = _visPos[i]; _vis[i].localScale = _visScale[i]; }
             _vis = null;
             if (_moving && _p) { _moving = false; _p.Body.detectCollisions = true; _p.Body.isKinematic = false; _p.held = false; }
+        }
+    }
+
+    /// <summary>
+    /// A thrown box (PropGrabber.Boxes, 2026-11-08 round 2, the owner: "if you throw ... it slides in nicely, slightly
+    /// assisted"): for a moment after the throw, landing on a shelf's deck it slides in square to the shelf, kept on the
+    /// deck and flush with its edge when close (as set down by hand), if there is room there.
+    /// </summary>
+    public class BoxThrown : MonoBehaviour
+    {
+        MovableProp _p;
+        float _until;
+        bool _done;
+
+        public static void Watch(MovableProp p)
+        {
+            if (!p) return;
+            var t = p.GetComponent<BoxThrown>();
+            if (!t) t = p.gameObject.AddComponent<BoxThrown>();
+            t._p = p; t._until = Time.time + 2.5f; t._done = false; t.enabled = true;
+        }
+
+        void Update() { if (Time.time > _until) enabled = false; }
+        void OnCollisionEnter(Collision c) => Try(c);
+        void OnCollisionStay(Collision c) => Try(c);
+
+        void Try(Collision c)
+        {
+            if (!enabled || _done || !_p || _p.held || !_p.Body || _p.Body.isKinematic) return;
+            var rb = c.collider.attachedRigidbody;
+            var shelf = rb ? rb.GetComponent<MovableProp>() : c.collider.GetComponentInParent<MovableProp>();
+            if (!shelf || shelf.Spec.kind != MovableKind.Shelf || ShelfTypes.IsBroken(shelf.Spec.variant)) return;
+            // Hitting the shelf anywhere near one of its decks (a post, a beam, the deck's edge, the deck itself), from the
+            // front or from above: the deck its middle is just over (or just under: it would have come down onto it).
+            var mid = _p.Body.worldCenterOfMass;
+            var size = _p.Spec.size;
+            BoxCollider best = null; float bestTop = 0f, bestD = float.MaxValue;
+            foreach (var bc in shelf.GetComponents<BoxCollider>())
+            {
+                if (bc.size.y > 0.06f || Mathf.Min(bc.size.x, bc.size.z) < 0.3f) continue;          // decks only
+                var t = bc.transform;
+                float top = t.TransformPoint(bc.center + Vector3.up * bc.size.y * 0.5f).y;
+                float above = mid.y - top;
+                if (above < -0.08f || above > size.y + 0.25f) continue;
+                var local = t.InverseTransformPoint(mid) - bc.center;
+                if (Mathf.Abs(local.x) > bc.size.x * 0.5f + 0.08f) continue;
+                if (local.z < -bc.size.z * 0.5f - 0.05f || local.z > bc.size.z * 0.5f + 0.35f) continue;    // over it, or just in front (+Z)
+                if (above < bestD) { bestD = Mathf.Abs(above); best = bc; bestTop = top; }
+            }
+            if (!best) return;
+            float sy = shelf.transform.eulerAngles.y;
+            var rot = Quaternion.Euler(0f, sy + Mathf.Round(Mathf.DeltaAngle(sy, _p.transform.eulerAngles.y) / 90f) * 90f, 0f);
+            var pos = new Vector3(mid.x, bestTop, mid.z);
+            PropGrabber.KeepOn(best, shelf, size, rot, ref pos);
+            pos.y = bestTop + 0.004f;
+            if (!PropGrabber.ClearFor(_p, pos, rot)) return;
+            _done = true;
+            enabled = false;
+            BoxSettle.Begin(_p, pos, rot, 0.18f);
         }
     }
 

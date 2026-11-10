@@ -85,6 +85,11 @@ namespace Backrooms.Generation
             _sitesChanged = true;
         }
 
+        /// <summary>Keeps the chunks within so many rings of a point's chunk loaded, the same square as round the player
+        /// (a second streaming source: the backrooms round a seam while you are in its room, NoclipTravel). Stored as a
+        /// site with a negative radius (rings).</summary>
+        public void SetArea(object owner, Vector3 point, int rings) => SetSite(owner, point, -Mathf.Max(1, rings));
+
         public void ClearSite(object owner) { if (_sites.Remove(owner)) _sitesChanged = true; }
         public int SiteCount => _sites.Count;
 
@@ -94,6 +99,7 @@ namespace Backrooms.Generation
             float S = OfficeBiome.ChunkSize;
             foreach (var site in _sites.Values)
             {
+                if (site.radius < 0f) { if (InRadius(column, ChunkOf(site.point), Mathf.RoundToInt(-site.radius))) return true; continue; }
                 float dx = Mathf.Max(column.x * S - site.point.x, 0f, site.point.x - (column.x + 1) * S);
                 float dz = Mathf.Max(column.y * S - site.point.z, 0f, site.point.z - (column.y + 1) * S);
                 if (dx * dx + dz * dz <= site.radius * site.radius) return true;
@@ -283,8 +289,9 @@ namespace Backrooms.Generation
             float S = OfficeBiome.ChunkSize;
             foreach (var site in _sites.Values)
             {
-                int x0 = Mathf.FloorToInt((site.point.x - site.radius) / S), x1 = Mathf.FloorToInt((site.point.x + site.radius) / S);
-                int z0 = Mathf.FloorToInt((site.point.z - site.radius) / S), z1 = Mathf.FloorToInt((site.point.z + site.radius) / S);
+                float reach = site.radius < 0f ? (-site.radius + 1f) * S : site.radius;          // (an area: its square, and a chunk spare)
+                int x0 = Mathf.FloorToInt((site.point.x - reach) / S), x1 = Mathf.FloorToInt((site.point.x + reach) / S);
+                int z0 = Mathf.FloorToInt((site.point.z - reach) / S), z1 = Mathf.FloorToInt((site.point.z + reach) / S);
                 for (int x = x0; x <= x1; x++)
                 for (int z = z0; z <= z1; z++)
                 {

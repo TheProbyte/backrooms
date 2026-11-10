@@ -270,7 +270,7 @@ namespace Backrooms.Interaction
             startPlugged = false;
             s_plugFrame = Time.frameCount;
             Unbundle();
-            _plug.PlugInto(best);
+            _plug.PlugInto(best, quiet: true);
             if (_cord) _cord.Lay();
         }
 
