@@ -2,7 +2,8 @@
 
 The game is called **Overflow** (working title; it was Still Recording). The design: `Docs/GameDesign.md`.
 
-Last updated 2026-11-04 (world version 13).
+**This file stops at 2026-11-04.** It is kept as the feature notes up to that date (free roam, before the work loop).
+What is built and checked now: `Docs/GameDesign.md` section 15. What is next: `Docs/ImprovementPlan.md`.
 
 ## Newest (2026-11-04)
 

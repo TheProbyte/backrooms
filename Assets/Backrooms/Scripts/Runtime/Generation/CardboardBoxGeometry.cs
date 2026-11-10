@@ -28,7 +28,8 @@ namespace Backrooms.Generation
 
         /// <param name="foot">Centre of the box's bottom face, in the writers' local space.</param>
         /// <param name="size">Width (x), height (y), depth (z) before rotation.</param>
-        public static void Build(MeshWriter body, MeshWriter tape, MeshWriter print, Vector3 foot, Vector3 size, float yawDegrees, System.Random rng)
+        /// <param name="mark">A client's pictogram (0-3) printed big on the two large faces in the tape's colour, or -1.</param>
+        public static void Build(MeshWriter body, MeshWriter tape, MeshWriter print, Vector3 foot, Vector3 size, float yawDegrees, System.Random rng, int mark = -1)
         {
             var rot = Quaternion.Euler(0f, yawDegrees, 0f);
             Vector3 centre = foot + Vector3.up * (size.y * 0.5f);
@@ -127,6 +128,51 @@ namespace Backrooms.Generation
             if (rng.NextDouble() < 0.4) Decal(longSide + (rng.NextDouble() < 0.5 ? 0 : 1), BoxPrintAtlas.ThisSideUp, Mathf.Min(0.1f, faceW * 0.22f), h * 0.5f, (float)(rng.NextDouble() - 0.5) * faceW * 0.8f);
             if (rng.NextDouble() < 0.22) Decal(longSide + (rng.NextDouble() < 0.5 ? 0 : 1), BoxPrintAtlas.Fragile, Mathf.Min(0.16f, faceW * 0.35f), h * 0.7f, (float)(rng.NextDouble() - 0.5) * faceW * 0.6f);
             if (rng.NextDouble() < 0.3) Decal(rng.Next(4), BoxPrintAtlas.Logo, Mathf.Min(0.14f, Mathf.Min(size.x, size.z) * 0.5f), h * 0.55f, 0f);
+
+            // ---- The client's mark (2026-11-09, Docs/ImprovementPlan.md V4) ----
+            // Boxes differed by tape colour and shape, and tape colours drift under the yellow light. So each client has
+            // one bold pictogram, printed on both large faces in their tape's colour (the style sheet's print rule: big,
+            // flat, few shapes). Readable without colour: TALLMORE three bars rising, QUILLBY a diamond, PAPERLARK a
+            // chevron, BELLWEATHER a bell.
+            if (mark < 0) return;
+            float u = Mathf.Min(h * 0.62f, faceW * 0.4f) * 0.5f;          // half the mark's box
+            float my = Mathf.Clamp(h * 0.5f, u + 0.015f, h - u - 0.015f);
+            float md = 0.0007f + 0.0012f * (layer + 2);
+            for (int s2 = 0; s2 < 2; s2++)
+            {
+                int side = longSide + s2;
+                // The face's frame: o its middle, ex along it (so the mark reads the right way round from outside), ey up.
+                Vector3 o, ex, n;
+                switch (side)
+                {
+                    case 0: n = N(0, 0, 1); o = P(0, my, hz + md); ex = N(-1, 0, 0); break;
+                    case 1: n = N(0, 0, -1); o = P(0, my, -hz - md); ex = N(1, 0, 0); break;
+                    case 2: n = N(1, 0, 0); o = P(hx + md, my, 0); ex = N(0, 0, 1); break;
+                    default: n = N(-1, 0, 0); o = P(-hx - md, my, 0); ex = N(0, 0, -1); break;
+                }
+                Vector3 ey = Vector3.up;
+                void Shape(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3) =>
+                    tape.Quad(o + ex * (x0 * u) + ey * (y0 * u), o + ex * (x1 * u) + ey * (y1 * u), o + ex * (x2 * u) + ey * (y2 * u), o + ex * (x3 * u) + ey * (y3 * u), n, MeshWriter.MetreUV);
+                switch (mark)
+                {
+                    case 0:     // TALLMORE: three bars, rising
+                        Shape(-0.95f, -1f, -0.45f, -1f, -0.45f, -0.25f, -0.95f, -0.25f);
+                        Shape(-0.25f, -1f, 0.25f, -1f, 0.25f, 0.35f, -0.25f, 0.35f);
+                        Shape(0.45f, -1f, 0.95f, -1f, 0.95f, 1f, 0.45f, 1f);
+                        break;
+                    case 1:     // QUILLBY: a diamond
+                        Shape(0f, -1f, 0.8f, 0f, 0f, 1f, -0.8f, 0f);
+                        break;
+                    case 2:     // PAPERLARK: a chevron (a bird's wings)
+                        Shape(-1f, 0.55f, 0f, -0.35f, 0f, -1f, -1f, -0.1f);
+                        Shape(0f, -0.35f, 1f, 0.55f, 1f, -0.1f, 0f, -1f);
+                        break;
+                    default:    // BELLWEATHER: a bell (wide at the foot), its clapper under it
+                        Shape(-0.9f, -0.55f, 0.9f, -0.55f, 0.42f, 1f, -0.42f, 1f);
+                        Shape(-0.22f, -1f, 0.22f, -1f, 0.22f, -0.7f, -0.22f, -0.7f);
+                        break;
+                }
+            }
         }
 
         /// <summary>Box with chamfered edges: six inset faces, twelve edge strips with smooth normals, eight corner fans.</summary>

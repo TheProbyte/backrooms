@@ -334,6 +334,9 @@ namespace Backrooms.Interaction
             for (int i = 0; i < b.boxes.Count; i++) b.unsafeFor.Add(0f);
             D.pay += b.intake; D.earned += b.intake;
             D.batchesIn++;
+            // The moment (F1): the tickets stamped with a thunk, the figure counting up.
+            ShelfTickets.Stamp(b, "STORED", "+$" + b.intake);
+            PayMoment(D.pay - b.intake, b.intake);
             Trip($"{Clients[b.client]} STORED ({b.boxes.Count})", "$" + b.intake);
             CamcorderOSD.Notice($"{Clients[b.client]} STORED - +${b.intake} - DUE BACK IN {MinSec(b.left)}");
             Beep(true);
@@ -403,6 +406,10 @@ namespace Backrooms.Interaction
             int lost = b.boxes.Count - back;
             D.pay += pay; D.earned += pay;
             D.batchesDone++;
+            // The moment (F1): the receipt printing beside the pickup sign, the figure counting up.
+            PayMoment(D.pay - pay, pay);
+            ReceiptPrinters.Instance?.Print(b.client, Clients[b.client], settle ? "SETTLED" : "RETURNED", $"{back} OF {b.boxes.Count} BOXES",
+                !onTime && !settle ? "LATE" : lost > 0 ? lost + " LOST" : "ON TIME", scuffs > 0 ? scuffs + " SCUFFED" : "", "+$" + pay, "", DateText);
             if (onTime) D.batchesOnTime++;
             if (!D.clientsServed.Contains(b.client)) D.clientsServed.Add(b.client);
             string note = settle ? $" {back} OF {b.boxes.Count}" : !onTime ? " LATE" : "";

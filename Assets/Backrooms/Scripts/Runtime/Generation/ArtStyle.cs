@@ -5,60 +5,28 @@ using UnityEngine;
 namespace Backrooms.Generation
 {
     /// <summary>
-    /// Which look the world is built in: Classic (the realistic materials) or Overflow (the new stylised ones). Chosen when a
-    /// world loads: <see cref="Biome"/> hands the streamer a copy of the biome's material list with the style set's
-    /// materials in place, so everything made from them (stained and cracked tiles, odd carpet tiles, troffers, the light
-    /// grid's surface colours) follows. Saves name materials by their slot, so they load in either look.
-    /// Saved in PlayerPrefs; <c>-art-style classic|overflow</c> on the command line picks one for that run only (the
-    /// benchmark's A/B).
+    /// The game's look: Overflow, the painted one. (The earlier realistic "Classic" look was a setting until 2026-11-09,
+    /// when the owner retired it: Docs/DesignHistory.md.) The biome asset still names the old materials in its slots;
+    /// <see cref="Biome"/> hands the streamer a copy with the style set's materials in place, so everything made from
+    /// them (stained and cracked tiles, odd carpet tiles, troffers, the light grid's surface colours) follows. Saves
+    /// name materials by their slot. Remade models sit under Resources/Overflow/ beside the ones not remade yet.
     /// </summary>
     public static class ArtStyle
     {
-        public enum Look { Classic = 0, Overflow = 1 }
+        public enum Look { Overflow = 1 }
 
-        const string Key = "Backrooms.ArtStyle";
-        static bool s_read;
-        static Look s_look;
         static StyleSet s_set;
         static readonly Dictionary<OfficeBiomeAssets, OfficeBiomeAssets> s_clones = new Dictionary<OfficeBiomeAssets, OfficeBiomeAssets>();
 
-        /// <summary>
-        /// The look forced on this thread for a while (0: none): the hub is always built in the Overflow look whatever the
-        /// setting (Docs/HubPlan.md), so the streamer forces it while a hub chunk is prepared or made (<see cref="Forcing"/>).
-        /// </summary>
-        [ThreadStatic] static int t_forced;
+        /// <summary>(Kept for its callers: there is one look now, so nothing is forced.)</summary>
+        public static ForcedLook Forcing(Look look) => default;
+        public readonly struct ForcedLook : IDisposable { public void Dispose() { } }
 
-        /// <summary>Forces a look on this thread until the returned scope is disposed.</summary>
-        public static ForcedLook Forcing(Look look) { int was = t_forced; t_forced = (int)look + 1; return new ForcedLook(was); }
-        public readonly struct ForcedLook : IDisposable
-        {
-            readonly int _was;
-            public ForcedLook(int was) { _was = was; }
-            public void Dispose() => t_forced = _was;
-        }
-
-        public static Look Current
-        {
-            get { if (t_forced != 0) return (Look)(t_forced - 1); if (!s_read) Read(); return s_look; }
-            set { s_read = true; s_look = value; PlayerPrefs.SetInt(Key, (int)value); PlayerPrefs.Save(); SetShaderGlobals(); }
-        }
-
+        public static Look Current => Look.Overflow;
 
         /// <summary>Tells the shaders drawn in code (the Poolrooms' tiles and water) which look it is. Main thread only.</summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        public static void SetShaderGlobals() => Shader.SetGlobalFloat("_BROverflow", Current == Look.Overflow ? 1f : 0f);
-
-        static void Read()
-        {
-            // (PlayerPrefs only answers on the main thread: a chunk built on a worker before anything read the look, as in
-            // the edit-mode tests, gets the default and asks again next time.)
-            try { s_look = (Look)Mathf.Clamp(PlayerPrefs.GetInt(Key, (int)Look.Overflow), 0, 1); s_read = true; }
-            catch (UnityException) { s_look = Look.Overflow; return; }
-            var args = Environment.GetCommandLineArgs();
-            int i = Array.IndexOf(args, "-art-style");
-            if (i >= 0 && i + 1 < args.Length)
-                s_look = args[i + 1].Equals("classic", StringComparison.OrdinalIgnoreCase) ? Look.Classic : Look.Overflow;
-        }
+        public static void SetShaderGlobals() => Shader.SetGlobalFloat("_BROverflow", 1f);
 
         /// <summary>
         /// A Resources asset in the current look: in Overflow its remake under Resources/Overflow/ (written there by the
@@ -90,29 +58,14 @@ namespace Backrooms.Generation
         {
             get
             {
-                if (Current != Look.Overflow) return null;
                 if (!s_set) s_set = Resources.Load<StyleSet>("Style/Overflow");
                 return s_set;
             }
         }
 
-        static OfficeBiomeAssets s_hubSource, s_hubBiome;
-
-        /// <summary>The biome's materials and prefabs in the Overflow look whatever the setting (the hub's), made once per
-        /// source asset (the world's own copy when the world is in Overflow already).</summary>
-        public static OfficeBiomeAssets OverflowBiome(OfficeBiomeAssets source, OfficeBiomeAssets worldCopy)
-        {
-            if (!source || !Application.isPlaying) return source;
-            if (Current == Look.Overflow) return worldCopy;
-            if (s_hubSource == source && s_hubBiome) return s_hubBiome;
-            if (s_hubBiome) UnityEngine.Object.Destroy(s_hubBiome);
-            using (Forcing(Look.Overflow))
-            {
-                s_hubSource = source;
-                s_hubBiome = MakeClone(source, Resources.Load<StyleSet>("Style/Overflow"));
-            }
-            return s_hubBiome;
-        }
+        /// <summary>The hub's materials and prefabs: the world's own copy (one look).</summary>
+        public static OfficeBiomeAssets OverflowBiome(OfficeBiomeAssets source, OfficeBiomeAssets worldCopy) =>
+            !source || !Application.isPlaying ? source : worldCopy;
 
         /// <summary>
         /// The biome's materials in the current look: the asset itself (Classic, edit mode), or a copy with the style set's

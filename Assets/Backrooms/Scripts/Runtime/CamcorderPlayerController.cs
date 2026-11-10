@@ -399,6 +399,14 @@ namespace Backrooms
             ApplyPivotRotation();
         }
 
+        /// <summary>Eases the view's pitch toward a value (a scripted move: sitting up off a cot). The mouse still adds to
+        /// it; rate is the share of the way to go this frame (0..1).</summary>
+        public void EasePitch(float toward, float rate)
+        {
+            _pitch = Mathf.Lerp(_pitch, Mathf.Clamp(toward, -pitchLimit, pitchLimitDown), Mathf.Clamp01(rate));
+            ApplyPivotRotation();
+        }
+
         /// <summary>
         /// Moves the player without stopping them (through a crawl hole): new position, turned by yawDelta degrees, with the
         /// current speed, stance and pitch kept and turned along.

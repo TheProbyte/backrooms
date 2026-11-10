@@ -63,6 +63,7 @@ namespace Backrooms.Interaction
             if (!GetComponent<ShelfWatch>()) gameObject.AddComponent<ShelfWatch>();
             if (!GetComponent<OrderTracker>()) gameObject.AddComponent<OrderTracker>();
             if (!GetComponent<StaffDoors>()) gameObject.AddComponent<StaffDoors>();
+            if (!GetComponent<ReceiptPrinters>()) gameObject.AddComponent<ReceiptPrinters>();
             PowerGrid.AllLive = true;
             // (No closing any more: the lights stay as they are and the seams stay open.)
             LightZones.ClosingAt = -1f;
@@ -132,6 +133,27 @@ namespace Backrooms.Interaction
 
         static readonly Material[] s_tape = new Material[5];
 
+        /// <summary>
+        /// The tape for a client's box or a kit (their colour; Overflow's amber on a kit), or null for any other box. Made in
+        /// code, so a save or a co-op message cannot name it: every box is given it again from its id when it is built
+        /// (MovableProp.BuildCardboard). Before 2026-11-09 a box that had been saved, or sent to a friend, came back with no
+        /// tape material and drew magenta.
+        /// </summary>
+        public static Material Tape(ulong id)
+        {
+            bool kit = Improvements.IsKit(id);
+            if (!kit && !IsBoxId(id)) return null;
+            int t = kit ? 4 : BoxClient(id);
+            if (s_tape[t]) return s_tape[t];
+            var streamer = Instance ? Instance.streamer : FindAnyObjectByType<WorldStreamer>();
+            var a = streamer ? streamer.assets : null;
+            if (!a || !a.boxTape) return null;
+            s_tape[t] = new Material(a.boxTape) { name = "Box tape " + t, hideFlags = HideFlags.DontSave };
+            var col = kit ? new Color(0.94f, 0.64f, 0.12f) : ClientColours[t];
+            if (s_tape[t].HasProperty("_BaseColor")) s_tape[t].SetColor("_BaseColor", col * 1.6f);
+            return s_tape[t];
+        }
+
         /// <summary>A contract's box (or an improvement's kit), as a movable cardboard box, or null. Its tape is its client's
         /// colour (Overflow's amber on a kit).</summary>
         public static MovableSpec BoxSpec(ulong id, Vector3 at, float yaw)
@@ -142,12 +164,7 @@ namespace Backrooms.Interaction
             if (!board) return null;
             bool kit = Improvements.IsKit(id);
             int t = kit ? 4 : BoxClient(id);
-            if (!s_tape[t] && a.boxTape)
-            {
-                s_tape[t] = new Material(a.boxTape) { name = "Box tape " + t, hideFlags = HideFlags.DontSave };
-                var col = kit ? new Color(0.94f, 0.64f, 0.12f) : ClientColours[t];
-                if (s_tape[t].HasProperty("_BaseColor")) s_tape[t].SetColor("_BaseColor", col * 1.6f);
-            }
+            Tape(id);
             return new MovableSpec
             {
                 id = id, kind = MovableKind.Box, renderMask = uint.MaxValue, proxyMaterial = a.baseboard, position = at, yaw = yaw,

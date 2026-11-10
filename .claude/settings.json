@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash|PowerShell|mcp__unity__(apply_text_edits|script_apply_edits|create_script|delete_script|manage_script|manage_shader)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/edit_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

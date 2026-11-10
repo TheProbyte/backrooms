@@ -16,7 +16,15 @@ namespace Backrooms.Net
     /// to footholds that swing and lift with a gait cycle) so crouching bends the knees and the soles stay on the floor;
     /// the spine leans into a crouch or a run; the head turns with their view; the left hand holds the camcorder to the eye;
     /// the right hand goes where theirs is (on a door's lever, a box, what they hold) or hangs and swings. Sitting: the hips
-    /// on the seat, the feet planted. Crawling: on hands and knees. Their footsteps are heard from their feet.
+    /// on the seat, the feet planted. Their footsteps are heard from their feet.
+    /// <para>2026-11-09 (the owner: "improve animations ... crouching, crawling, visuals for multiplayer other players,
+    /// laying down when getting out of the medbay"). What a walk cycle needs to stop looking stiff, as animators teach it
+    /// and procedural systems do it: the hips sway over the standing foot and turn with the stride while the chest turns
+    /// the other way; the body leans into speeding up, slowing and turning; the feet roll from heel to toe. Standing still:
+    /// breathing and a slow shift of weight, and the feet stay planted, stepping round when the body turns on the spot
+    /// instead of sliding. A real crouch (hips back and down, knees out). Crawling on hands and knees in a diagonal gait
+    /// (a knee with the opposite hand), the shins along the floor. In the air: knees tucked. Sliding: one leg out in
+    /// front. Lying down (on the return chute's belt and the cot): flat on the back, and sitting up from it.</para>
     /// A capsule (kinematic) stands where they are, so you bump into them and what you throw hits them.
     /// </summary>
     public sealed class RemotePlayer : MonoBehaviour
@@ -69,6 +77,12 @@ namespace Backrooms.Net
         readonly List<Material> _mats = new List<Material>();
         float _phase, _eye = 1.58f, _crouch, _run, _seat, _crawl, _speed, _handW;
         int _lastStepSide = -1, _stepPick;
+        // The feet planted while standing (world), and a step in progress (0..1) from where it left.
+        readonly Vector3[] _plant = new Vector3[2], _stepFrom = new Vector3[2];
+        readonly float[] _stepT = { 1f, 1f };
+        bool _planted;
+        float _lie, _air, _slide, _idleT, _turn, _lastYaw, _accFwd, _accSide;
+        Vector3 _lastVel;
 
         public static RemotePlayer Create(int peer, Transform parent)
         {
@@ -85,8 +99,7 @@ namespace Backrooms.Net
         void Build()
         {
             // The hazmat suit (rigged on the MakeHuman skeleton, so posed the same way), or the MakeHuman body.
-            // (The suit in the Overflow look, the MakeHuman body in Classic: Generation.ArtStyle.)
-            var hazmat = Generation.ArtStyle.Current == Generation.ArtStyle.Look.Overflow ? Resources.Load<GameObject>("Player/Hazmat/PlayerHazmatSuit") : null;
+            var hazmat = Resources.Load<GameObject>("Player/Hazmat/PlayerHazmatSuit");
             var prefab = hazmat ? hazmat : Resources.Load<GameObject>("Player/MPFB/PlayerMPFB");
             var shader = Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit");
             if (prefab)
@@ -350,12 +363,26 @@ namespace Backrooms.Net
             float want = Mathf.Clamp01((1.58f - _eye) / (1.58f - 1.02f));
             _crouch = Mathf.MoveTowards(_crouch, stance == 2 || seated ? 0f : want, dt * 4f);
             _crawl = Mathf.MoveTowards(_crawl, stance == 2 ? 1f : 0f, dt * 2.5f);
-            _seat = Mathf.MoveTowards(_seat, seated ? 1f : 0f, dt * 3f);
+            // Lying (the return chute's belt, the cot): seated with the eye almost on what they lie on.
+            bool lying = seated && s.eye < 0.4f;
+            _lie = Mathf.MoveTowards(_lie, lying ? 1f : 0f, dt * 2.2f);
+            _seat = Mathf.MoveTowards(_seat, seated && !lying ? 1f : 0f, dt * 3f);
+            _air = Mathf.MoveTowards(_air, seated || stance == 2 || (s.flags & FGround) != 0 ? 0f : 1f, dt * 5f);
+            _slide = Mathf.MoveTowards(_slide, (s.flags & FSlide) != 0 ? 1f : 0f, dt * 5f);
             Vector3 flatVel = new Vector3(s.vel.x, 0f, s.vel.z);
+            if (dt > 1e-5f)
+            {
+                // How fast they turn, and how they speed up or slow (in their own frame): the body leans with both.
+                _turn = Mathf.Lerp(_turn, Mathf.DeltaAngle(_lastYaw, s.yaw) / dt, 1f - Mathf.Exp(-dt * 6f));
+                Vector3 acc = transform.InverseTransformDirection((flatVel - _lastVel) / dt);
+                _accFwd = Mathf.Lerp(_accFwd, Mathf.Clamp(acc.z, -8f, 8f), 1f - Mathf.Exp(-dt * 5f));
+                _accSide = Mathf.Lerp(_accSide, Mathf.Clamp(acc.x, -8f, 8f), 1f - Mathf.Exp(-dt * 5f));
+            }
+            _lastYaw = s.yaw; _lastVel = flatVel;
             _speed = Mathf.Lerp(_speed, seated ? 0f : flatVel.magnitude, 1f - Mathf.Exp(-dt * 8f));
             _run = Mathf.MoveTowards(_run, (s.flags & FRun) != 0 ? 1f : 0f, dt * 3f);
             _handW = Mathf.MoveTowards(_handW, s.handBlend, dt * 6f);
-            if (_cap) { float h = Mathf.Lerp(1.75f, 1.2f, _crouch); h = Mathf.Lerp(h, 0.62f, _crawl); h = Mathf.Lerp(h, 1.3f, _seat); _cap.height = h; _cap.center = Vector3.up * h * 0.5f; }
+            if (_cap) { float h = Mathf.Lerp(1.75f, 1.2f, _crouch); h = Mathf.Lerp(h, 0.62f, _crawl); h = Mathf.Lerp(h, 1.3f, _seat); h = Mathf.Lerp(h, 0.56f, _lie); _cap.height = h; _cap.center = Vector3.up * h * 0.5f; }
 
             if (_body) Pose(s, dt);
             PlaceCamcorder(s);
@@ -369,61 +396,144 @@ namespace Backrooms.Net
             foreach (var (t, rot, pos) in _rest) { if (!t) continue; t.localRotation = rot; t.localPosition = pos; }
             var root = transform;
             Vector3 up = root.up, fwd = root.forward, right = root.right;
+            Quaternion pelvisRest = _pelvis ? _pelvis.rotation : root.rotation;
 
-            // The gait: a cycle a stride (two steps) long, faster with speed.
+            // The gait: a cycle a stride (two steps) long, faster with speed; crawling, two hand plants long.
             float stride = Mathf.Lerp(1.15f, 1.9f, _run) * Mathf.Lerp(1f, 0.6f, _crouch);
             float moving = Mathf.Clamp01(_speed / 0.4f);
-            _phase = Mathf.Repeat(_phase + _speed * dt / Mathf.Max(0.3f, stride), 1f);
+            _phase = Mathf.Repeat(_phase + _speed * dt / Mathf.Max(0.3f, Mathf.Lerp(stride, 0.84f, _crawl)), 1f);
+            float th = _phase * Mathf.PI * 2f;
             Vector3 localVel = root.InverseTransformDirection(new Vector3(s.vel.x, 0f, s.vel.z));
             Vector3 along = localVel.sqrMagnitude > 0.01f ? localVel.normalized : Vector3.forward;
+            // Standing still: breathing, and the weight shifting slowly from one leg to the other.
+            _idleT += dt;
+            float upright = (1f - _crawl) * (1f - _lie);
+            float idle = (1f - moving) * upright * (1f - _seat);
+            float breath = Mathf.Sin(_idleT * 1.5f + Peer);
+            float shift = Mathf.Sin(_idleT * 0.37f + Peer * 2.1f);
 
-            // Hips: lower as they crouch, on the seat when sitting, low and level when crawling.
-            float bob = moving * 0.025f * Mathf.Abs(Mathf.Sin(_phase * Mathf.PI * 2f));
-            float hipY = _pelvisRestY - 0.4f * _crouch - bob;
-            Vector3 hip = root.position + up * hipY - fwd * (0.06f * _crouch);
+            // Hips: lower as they crouch (and back: a crouch sits back), swaying over the standing foot as they walk; on the
+            // seat when sitting, low and level when crawling, on the mattress when lying.
+            float bob = moving * 0.03f * Mathf.Abs(Mathf.Sin(th));
+            float hipY = _pelvisRestY - 0.42f * _crouch - bob;
+            float sway = Mathf.Cos(th) * 0.022f * moving * Mathf.Lerp(1f, 0.5f, _run) + shift * 0.014f * idle;
+            Vector3 hip = root.position + up * hipY - fwd * (0.1f * _crouch) + right * sway;
+            hip = Vector3.Lerp(hip, root.position + up * 0.36f - fwd * 0.14f, _slide);
             if (_seat > 0.001f)
             {
                 Vector3 seatHip = root.TransformPoint(s.seatHip.sqrMagnitude > 0.001f ? s.seatHip : new Vector3(0f, Mathf.Max(0.42f, _eye - 0.78f), -0.35f));
                 hip = Vector3.Lerp(hip, seatHip, _seat);
             }
-            if (_crawl > 0.001f) hip = Vector3.Lerp(hip, root.position + up * 0.55f - fwd * 0.2f, _crawl);
+            if (_crawl > 0.001f) hip = Vector3.Lerp(hip, root.position + up * 0.5f - fwd * 0.32f + right * (Mathf.Cos(th) * 0.02f * moving), _crawl);
+            // Lying: the head is where they are (the pillow), the hips down the body from it.
+            Vector3 lieHip = root.TransformPoint(s.seatHip.sqrMagnitude > 0.001f ? s.seatHip : new Vector3(0f, -0.05f, 0.55f));
+            Vector3 spineDir = root.position - lieHip; spineDir.y *= 0.25f;
+            spineDir = spineDir.sqrMagnitude > 1e-4f ? spineDir.normalized : -fwd;
+            Vector3 lieRight = Vector3.Cross(spineDir, Vector3.up).normalized;
+            if (_lie > 0.001f) hip = Vector3.Lerp(hip, lieHip, _lie);
             if (_pelvis) _pelvis.position = hip;
-            // Crawling: the whole body tips forward onto its hands.
-            if (_pelvis && _crawl > 0.001f) _pelvis.rotation = Quaternion.AngleAxis(80f * _crawl, right) * _pelvis.rotation;
 
-            // The spine leans into a crouch or a run; the head takes the rest of the view.
-            float lean = 18f * _crouch + 7f * _run * moving - 4f * _seat;
-            if (_spine1) _spine1.rotation = Quaternion.AngleAxis(lean * 0.5f, right) * _spine1.rotation;
-            if (_spine2) _spine2.rotation = Quaternion.AngleAxis(lean * 0.3f, right) * _spine2.rotation;
-            float pitch = Mathf.Clamp(s.pitch, -70f, 70f) - lean - 75f * _crawl;
+            // The hips turn with the stride (the hip of the leg swinging forward goes forward with it) and tip into a
+            // crouch; the lean: into a crouch or a run, into speeding up (back when stopping), into a turn.
+            float twist = Mathf.Sin(th) * Mathf.Lerp(5f, 9f, _run) * moving * upright * (1f - _seat);
+            float lean = (26f * _crouch + (3f + 7f * _run) * moving + Mathf.Clamp(_accFwd * 1.5f, -6f, 8f) * (1f - _seat)) * upright - 4f * _seat - 24f * _slide;
+            float roll = (Mathf.Clamp(-_turn * 0.02f * Mathf.Clamp01(_speed / 2f), -6f, 6f) + Mathf.Clamp(-_accSide * 1.2f, -5f, 5f)) * upright * (1f - _seat);
+            if (_pelvis)
+            {
+                _pelvis.rotation = Quaternion.AngleAxis(twist, up) * Quaternion.AngleAxis(roll * 0.4f, fwd) * Quaternion.AngleAxis(8f * _crouch * upright - 10f * _slide, right) * _pelvis.rotation;
+                // Crawling: the whole body tips forward onto its hands.
+                if (_crawl > 0.001f) _pelvis.rotation = Quaternion.AngleAxis(78f * _crawl, right) * _pelvis.rotation;
+                // Lying on the back: the spine along the mattress to the pillow, the face to the ceiling.
+                if (_lie > 0.001f)
+                {
+                    var lieRot = Quaternion.LookRotation(Vector3.up, spineDir) * Quaternion.Inverse(root.rotation);
+                    _pelvis.rotation = Quaternion.Slerp(_pelvis.rotation, lieRot * pelvisRest, _lie);
+                }
+            }
+
+            // The spine: the lean, and the chest turning against the hips; breathing in the chest when still.
+            float keep = 1f - _lie;
+            if (_spine1) _spine1.rotation = Quaternion.AngleAxis(lean * 0.5f * keep, right) * Quaternion.AngleAxis(-twist * 0.6f, up) * Quaternion.AngleAxis(roll * 0.3f, fwd) * _spine1.rotation;
+            if (_spine2) _spine2.rotation = Quaternion.AngleAxis((lean * 0.3f - breath * 0.9f * idle) * keep, right) * Quaternion.AngleAxis(-twist * 0.7f, up) * Quaternion.AngleAxis(roll * 0.3f, fwd) * _spine2.rotation;
+            if (_spine3) _spine3.rotation = Quaternion.AngleAxis(-breath * 0.6f * idle * keep, right) * Quaternion.AngleAxis(-twist * 0.5f, up) * _spine3.rotation;
+            // The head takes the rest of the view (and stays level through the hips' turning: the chest has undone it).
+            float pitch = (Mathf.Clamp(s.pitch, -70f, 70f) - lean - 75f * _crawl) * keep;
             if (_neck) _neck.rotation = Quaternion.AngleAxis(pitch * 0.4f, right) * _neck.rotation;
             if (_head) _head.rotation = Quaternion.AngleAxis(pitch * 0.6f, right) * _head.rotation;
 
-            // The feet: footholds swinging along where they go, lifting on the way forward.
-            if (_crawl < 0.5f)
+            // The legs.
+            for (int side = 0; side < 2; side++)
             {
-                for (int side = 0; side < 2; side++)
+                var thigh = side == 0 ? _thighL : _thighR; var calf = side == 0 ? _calfL : _calfR; var foot = side == 0 ? _footL : _footR;
+                if (!thigh || !calf || !foot) continue;
+                float sx = side == 0 ? -1f : 1f;
+                float thS = th + side * Mathf.PI;
+                var footRest = root.rotation * (side == 0 ? _footLRest : _footRRest);
+                if (_lie > 0.5f)
                 {
-                    var thigh = side == 0 ? _thighL : _thighR; var calf = side == 0 ? _calfL : _calfR; var foot = side == 0 ? _footL : _footR;
-                    if (!thigh || !calf || !foot) continue;
-                    float th = (_phase + side * 0.5f) * Mathf.PI * 2f;
-                    float reach = 0.24f * stride * moving;
-                    float x = (side == 0 ? -0.11f : 0.11f) * Mathf.Lerp(1f, 1.35f, _crouch);
-                    Vector3 local = new Vector3(x, 0.073f, 0f) + along * (Mathf.Sin(th) * reach);
-                    local.y += Mathf.Max(0f, Mathf.Cos(th)) * 0.11f * moving * Mathf.Lerp(1f, 1.4f, _run);
-                    if (_seat > 0.001f) local = Vector3.Lerp(local, new Vector3(x * 1.2f, 0.073f, 0.12f), _seat);
-                    Vector3 target = root.TransformPoint(local);
-                    Vector3 knee = fwd + right * (side == 0 ? -0.15f : 0.15f) + up * 0.2f * _seat;
-                    TwoBone(thigh, calf, foot, target, knee);
-                    foot.rotation = root.rotation * (side == 0 ? _footLRest : _footRRest);
-                    // A step lands as the foot comes down.
-                    if (moving > 0.3f && (s.flags & FGround) != 0 && _seat < 0.5f)
+                    // Lying: straight out along the mattress, the toes up.
+                    Vector3 target = lieHip - spineDir * 0.84f + lieRight * (sx * 0.11f) + Vector3.up * 0.03f;
+                    TwoBone(thigh, calf, foot, target, Vector3.up);
+                    foot.rotation = Quaternion.LookRotation(Vector3.up, spineDir) * Quaternion.Inverse(root.rotation) * footRest;
+                    _plant[side] = root.TransformPoint(new Vector3(sx * 0.11f, 0.073f, 0f)); _stepT[side] = 1f;
+                    continue;
+                }
+                if (_crawl >= 0.5f)
+                {
+                    // Hands and knees: the knee on the floor under the hips, the shin lying back along the floor; each knee
+                    // comes forward with the opposite hand.
+                    var local = new Vector3(sx * 0.13f, 0.09f + Mathf.Max(0f, Mathf.Cos(thS)) * 0.03f * moving, -0.84f + Mathf.Sin(thS) * 0.13f * moving);
+                    TwoBone(thigh, calf, foot, root.TransformPoint(local), fwd - up * 0.9f + right * (sx * 0.1f));
+                    foot.rotation = Quaternion.AngleAxis(70f, right) * footRest;
+                    _plant[side] = root.TransformPoint(new Vector3(sx * 0.11f, 0.073f, 0f)); _stepT[side] = 1f;
+                    continue;
+                }
+                // Walking: footholds swinging along where they go, lifting on the way forward. Narrower at a run.
+                float reach = 0.24f * stride * moving;
+                float x = sx * 0.11f * Mathf.Lerp(1f, 1.45f, _crouch) * Mathf.Lerp(1f, 0.75f, _run * moving);
+                float lift = Mathf.Max(0f, Mathf.Cos(thS));
+                Vector3 cycleLocal = new Vector3(x, 0.073f, 0f) + along * (Mathf.Sin(thS) * reach);
+                cycleLocal.y += lift * 0.11f * moving * Mathf.Lerp(1f, 1.5f, _run);
+                Vector3 cycle = root.TransformPoint(cycleLocal);
+                Vector3 home = root.TransformPoint(new Vector3(x, 0.073f, 0f));
+                if (!_planted) _plant[side] = home;
+                // Standing (or nearly): the foot stays where it is in the world. Left behind by a turn on the spot or a
+                // shuffle, it steps to where it belongs, one foot at a time.
+                if (moving > 0.5f || _seat > 0.3f || _air > 0.3f || _slide > 0.3f) { _plant[side] = cycle; _stepT[side] = 1f; }
+                else
+                {
+                    if (_stepT[side] >= 1f)
                     {
-                        float c = Mathf.Cos(th);
-                        if (c < -0.85f && _lastStepSide != side) { _lastStepSide = side; Step(foot.position, s); }
+                        var p = _plant[side]; p.y = home.y; _plant[side] = p;
+                        Vector3 off = _plant[side] - home; off.y = 0f;
+                        if (off.magnitude > 0.2f && _stepT[1 - side] >= 1f) { _stepFrom[side] = _plant[side]; _stepT[side] = 0f; }
+                    }
+                    if (_stepT[side] < 1f)
+                    {
+                        _stepT[side] = Mathf.Min(1f, _stepT[side] + dt / 0.26f);
+                        float k = Mathf.SmoothStep(0f, 1f, _stepT[side]);
+                        _plant[side] = Vector3.Lerp(_stepFrom[side], home, k) + up * (Mathf.Sin(k * Mathf.PI) * 0.07f);
+                        if (_stepT[side] >= 1f && (s.flags & FGround) != 0) Step(home, s);
                     }
                 }
+                Vector3 goal = Vector3.Lerp(_plant[side], cycle, Mathf.Clamp01(moving * 2f));
+                // In the air: the knees come up. Sliding: one leg out in front, the other tucked. Sitting: planted.
+                goal += (up * 0.14f + fwd * 0.06f) * _air;
+                if (_slide > 0.001f) goal = Vector3.Lerp(goal, root.TransformPoint(side == 1 ? new Vector3(0.1f, 0.09f, 0.8f) : new Vector3(-0.16f, 0.073f, 0.26f)), _slide);
+                if (_seat > 0.001f) goal = Vector3.Lerp(goal, root.TransformPoint(new Vector3(x * 1.2f, 0.073f, 0.12f)), _seat);
+                Vector3 knee = fwd + right * (sx * (0.15f + 0.45f * _crouch)) + up * 0.2f * _seat;
+                TwoBone(thigh, calf, foot, goal, knee);
+                // The foot rolls: toes down as it pushes off behind, toes up as it comes down in front.
+                float rollFoot = lift > 0f ? Mathf.Lerp(22f, -14f, (Mathf.Sin(thS) + 1f) * 0.5f) * Mathf.Min(1f, lift * 3f) * moving * (1f - _seat) : 0f;
+                foot.rotation = Quaternion.AngleAxis(rollFoot + 30f * _air, right) * footRest;
+                // A step lands as the foot comes down.
+                if (moving > 0.3f && (s.flags & FGround) != 0 && _seat < 0.5f)
+                {
+                    float c = Mathf.Cos(thS);
+                    if (c < -0.85f && _lastStepSide != side) { _lastStepSide = side; Step(foot.position, s); }
+                }
             }
+            _planted = true;
 
             // The left hand holds the camcorder to the eye.
             Vector3 eye = root.position + up * _eye;
@@ -434,12 +544,17 @@ namespace Backrooms.Net
                 TwoBone(_upperL, _lowerL, _handL, grip, -right * 0.6f - up + fwd * 0.2f);
                 _handL.rotation = look * _handLRest;
             }
-            // The right hand: where theirs is, else hanging and swinging with the walk.
+            // The right hand: where theirs is, else hanging and swinging against the right leg (higher and wider at a run,
+            // out a little in the air); crawling, planted on the floor ahead, in step with the left knee; lying, by the side.
             if (_upperR && _lowerR && _handR)
             {
-                float th = _phase * Mathf.PI * 2f;
-                Vector3 hang = root.TransformPoint(new Vector3(0.24f, Mathf.Lerp(0.86f, 0.62f, _crouch) + (_seat * 0.1f), 0.05f + Mathf.Sin(th) * 0.16f * moving));
-                if (_crawl > 0.5f) hang = root.TransformPoint(new Vector3(0.2f, 0.05f, 0.45f + Mathf.Sin(th) * 0.12f * moving));
+                float swing = Mathf.Sin(th);
+                Vector3 hang = root.TransformPoint(new Vector3(0.24f + 0.04f * _run * moving, Mathf.Lerp(0.86f, 0.62f, _crouch) + _seat * 0.1f + (Mathf.Max(0f, swing) * 0.05f + 0.1f * _run) * moving,
+                                                               0.05f + swing * Mathf.Lerp(0.16f, 0.3f, _run) * moving));
+                hang += (up * 0.18f + right * 0.1f) * _air;
+                if (_slide > 0.001f) hang = Vector3.Lerp(hang, root.TransformPoint(new Vector3(0.3f, 0.12f, -0.25f)), _slide);      // a hand down behind, steadying
+                if (_crawl > 0.5f) hang = root.TransformPoint(new Vector3(0.2f, 0.05f + Mathf.Max(0f, Mathf.Cos(th)) * 0.06f * moving, 0.45f + swing * 0.14f * moving));
+                if (_lie > 0.5f) hang = lieHip + lieRight * 0.3f + spineDir * 0.08f + Vector3.up * 0.02f;
                 Vector3 grip = root.TransformPoint(s.hand);
                 // The palm (not the wrist) to the grip: the wrist short of it along the arm's reach.
                 Vector3 reach = grip - _upperR.position;

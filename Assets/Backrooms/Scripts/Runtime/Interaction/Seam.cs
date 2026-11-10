@@ -73,6 +73,113 @@ namespace Backrooms.Interaction
             _blocker.enabled = NoclipPassage.SeamsShut;
             // The client's card beside it (2026-11-09): what they offer and where your work with them stands.
             if (this.kind <= 3) SeamCard.Attach(this, mask);
+            MakeGlow();
+        }
+
+        // ---------------- The other side's light (2026-11-09, Docs/ImprovementPlan.md V2) ----------------
+        // A seam was a thin silver rectangle on a plain wall; behind it is the strongest contrast in the game (the client's
+        // room is cool, white and blue) and nothing of it showed on this side. Now the other side's light leaks through:
+        // a cool line round the tape's edges and across the carpet in front (as light shows under a shut door: the same
+        // shader), a faint cool cast on the walls near it (a small real light), and the client's colour on a flag standing
+        // out from the wall, so a seam can be picked out from the far end of a corridor. From the client's side (kind 4)
+        // it is the Backrooms' yellow that leaks the other way.
+
+        static Material s_spill;
+        static readonly Dictionary<int, Material> s_flags = new Dictionary<int, Material>();
+        readonly List<Renderer> _glow = new List<Renderer>();
+        MaterialPropertyBlock _mpb;
+        Light _leak;
+        float _nextGlow;
+        Color _glowColour;
+
+        void MakeGlow()
+        {
+            if (!s_spill)
+            {
+                var sh = Shader.Find("Backrooms/LightSpill");
+                if (!sh) return;
+                s_spill = new Material(sh) { name = "SeamLightSpill", hideFlags = HideFlags.DontSave };
+            }
+            _mpb = new MaterialPropertyBlock();
+            // (Tuned in play 2026-11-09: a pale blue on the mustard wall only read as white, so the leak is a saturated
+            // blue and strong; the lamp sits low, like light under a door.)
+            _glowColour = kind == 4 ? new Color(1f, 0.74f, 0.3f) : new Color(0.22f, 0.55f, 1f);
+            float hw = NoclipDoors.Width * 0.5f, top = NoclipDoors.Height;
+            const float z = 0.006f, out_ = 0.34f;
+            // (Each strip: its first two corners along the tape's edge, the other two where the light has faded.)
+            Strip("GlowFloor", new Vector3(-hw - 0.2f, 0.005f, 0.01f), new Vector3(hw + 0.2f, 0.005f, 0.01f), new Vector3(hw + 0.2f, 0.005f, 1.6f), new Vector3(-hw - 0.2f, 0.005f, 1.6f));
+            Strip("GlowLeft", new Vector3(-hw, 0f, z), new Vector3(-hw, top, z), new Vector3(-hw - out_, top, z), new Vector3(-hw - out_, 0f, z));
+            Strip("GlowRight", new Vector3(hw, top, z), new Vector3(hw, 0f, z), new Vector3(hw + out_, 0f, z), new Vector3(hw + out_, top, z));
+            Strip("GlowTop", new Vector3(-hw, top, z), new Vector3(hw, top, z), new Vector3(hw, top + out_, z), new Vector3(-hw, top + out_, z));
+            var lg = new GameObject("SeamLeak");
+            lg.transform.SetParent(transform, false);
+            lg.transform.localPosition = new Vector3(0f, 0.35f, 0.3f);
+            _leak = lg.AddComponent<Light>();
+            _leak.type = LightType.Point; _leak.range = 3.4f; _leak.intensity = 0f;
+            _leak.color = kind == 4 ? _glowColour : new Color(0.3f, 0.6f, 1f);
+            _leak.shadows = LightShadows.None; _leak.renderingLayerMask = (int)_mask;
+            if (kind <= 3)
+            {
+                // The client's flag: a stiff tab of their tape standing out from the wall above head height.
+                var flag = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                flag.name = "SeamFlag";
+                Destroy(flag.GetComponent<Collider>());
+                flag.transform.SetParent(transform, false);
+                flag.transform.localPosition = new Vector3(hw + 0.07f, 1.98f, 0.15f);
+                flag.transform.localScale = new Vector3(0.012f, 0.2f, 0.3f);
+                var fr = flag.GetComponent<MeshRenderer>();
+                fr.sharedMaterial = Flag(kind);
+                fr.shadowCastingMode = ShadowCastingMode.Off; fr.renderingLayerMask = _mask;
+            }
+            UpdateGlow(true);
+        }
+
+        void Strip(string name, Vector3 a, Vector3 b, Vector3 c, Vector3 d)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(transform, false);
+            var mesh = new Mesh { name = name };
+            mesh.vertices = new[] { a, b, c, d };
+            mesh.uv = new[] { new Vector2(0, 0), new Vector2(1, 0), new Vector2(1, 1), new Vector2(0, 1) };
+            mesh.triangles = new[] { 0, 2, 1, 0, 3, 2 };
+            mesh.RecalculateBounds();
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var r = go.AddComponent<MeshRenderer>();
+            r.sharedMaterial = s_spill;
+            r.shadowCastingMode = ShadowCastingMode.Off; r.receiveShadows = false;
+            r.lightProbeUsage = LightProbeUsage.Off; r.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            _glow.Add(r);
+        }
+
+        static Material Flag(int kind)
+        {
+            if (s_flags.TryGetValue(kind, out var m) && m) return m;
+            var sh = Shader.Find("Backrooms/Lit") ?? Shader.Find("Universal Render Pipeline/Lit");
+            m = new Material(sh) { name = "SeamFlag" + kind, hideFlags = HideFlags.DontSave };
+            m.SetColor("_BaseColor", Contracts.ClientColours[Mathf.Clamp(kind, 0, 3)]);
+            m.SetFloat("_Smoothness", 0.3f);
+            return s_flags[kind] = m;
+        }
+
+        /// <summary>The leak breathes a little (light seen through a gap), and goes when the seam is shut.</summary>
+        void UpdateGlow(bool force)
+        {
+            if (_mpb == null || (!force && Time.time < _nextGlow)) return;
+            _nextGlow = Time.time + 0.1f;
+            float t = Time.time * 0.7f + _seed * 20f;
+            float breathe = 0.86f + 0.1f * Mathf.Sin(t) + 0.04f * Mathf.Sin(t * 3.7f);
+            float k = breathe * (1f - _shut);
+            for (int i = 0; i < _glow.Count; i++)
+            {
+                var r = _glow[i];
+                if (!r) continue;
+                bool on = k > 0.02f;
+                if (r.enabled != on) r.enabled = on;
+                if (!on) continue;
+                _mpb.SetColor("_Color", _glowColour * ((i == 0 ? 2.4f : 2.1f) * (kind == 4 ? 0.5f : 1f) * k));
+                r.SetPropertyBlock(_mpb);
+            }
+            if (_leak) { _leak.intensity = (kind == 4 ? 0.3f : 0.55f) * k; _leak.enabled = k > 0.02f; }
         }
 
         /// <summary>
@@ -115,6 +222,7 @@ namespace Backrooms.Interaction
             _shut = Mathf.MoveTowards(_shut, NoclipPassage.SeamsShut ? 1f : 0f, Time.deltaTime * 0.5f);
             if (_blocker.enabled != NoclipPassage.SeamsShut) _blocker.enabled = NoclipPassage.SeamsShut;
             _hum.volume = Mathf.Lerp(0.26f, 0.03f, _shut);
+            UpdateGlow(false);
             if (fitted && !NoclipPassage.SeamsShut && Time.time >= _nextBox)
             {
                 _nextBox = Time.time + 3f;

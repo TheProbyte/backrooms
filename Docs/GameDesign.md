@@ -84,11 +84,13 @@ camcorder. Alone or with up to three friends.
   The full rules are in `Docs/StyleSheet.md`. [built]
 - **The hub's style is the house style:** seventies office furniture, fat cushions, walnut plinths, chunky tubes. All of
   Level 0's furniture is remade in it. [built]
-- **The Classic look** (the earlier realistic one) is still a setting; the hub is always in the Overflow look. [built]
+- **One look.** The Overflow look is the game's look. (The earlier realistic "Classic" look was a setting until
+  2026-11-09, when the owner retired it: `DesignHistory.md`.) [built; its unused textures still to come out of the build]
 - **The walls are painted like the hub's** (the owner, 2026-11-09: "i like the hub walls"): Level 0's mustard wallpaper
   is a printed pattern, a half-drop repeat of lighter stripes with chevrons and diamonds in slightly off-register ink, a
   faint dotted ground between; the homes' blue-sky paper is painted cumulus in three flat values, and their orange-peel
-  drywall is bold soft bumps in big patches. The Classic look keeps its photo textures. [built]
+  drywall is bold soft bumps in big patches. The wallpaper's contrast is carried by its dark inks (the under-print, the
+  pin lines, the stripe's tone), so the print still reads under the bright panels. [built]
 - **Sound:** the building's hum and air, fluorescent buzz, footsteps by floor, sound that goes round corners through
   doorways, muffled places behind the seams, a radio and traffic inside them, the camcorder's microphone on everything.
   Crackly muzak and the PA voice in the hub. [built; muzak and PA voice planned] Nothing clicks or scrapes as a place
@@ -103,7 +105,10 @@ camcorder. Alone or with up to three friends.
 A one-floor 70s company office, about 22 x 22 m, the same in every world, safe but eerie. **Business time stops while
 everyone is in it** (and behind the seams: section 6).
 - **First-aid room:** four cots (one per player). You arrive on a conveyor through a return chute behind your cot and
-  wake there when the world loads.
+  wake there when the world loads, lying on your back. **Getting up is one move seen through your own eyes** (about
+  three seconds): you sit up, the view coming down off the ceiling; slide down the mattress to its foot, your legs
+  going over the end; lean forward and stand. Friends see you lying on the belt and the cot, and getting up.
+  [built 2026-11-09]
 - **Locker room:** avocado lockers and a bench (decoration for now; storage in them is [open]).
 - **Lobby:** the work board, the pay window (PAY SLIPS), the supply counter, the improvements board, the OVERFLOW sign,
   reception with its lamp, the 70s sofas, the manager's locked office and his window. An upgrade station may later take
@@ -139,7 +144,11 @@ KEEP CLEAR) and the muffled sound of the place behind. Walk through and you are 
 built from real surfaces (block or drywall walls, polished concrete or vinyl, LED lights and daylight). The client's
 boxes wait on a pallet under an OVERFLOW PICKUP sign; returned boxes go back in the same room (the taped DELIVERIES bay
 is the natural spot). Every seam of a client leads to the same place. Each room has the client's own **staff door** beside
-the bay: shut and locked to you (it rattles), the shop's light under it; it is how their people come and go. [built
+the bay: shut and locked to you (it rattles), the shop's light under it; it is how their people come and go.
+**A seam shows what is behind it** (2026-11-09): the other side's cool light leaks round the tape's edges and across the
+carpet in front, with a faint blue cast on the walls near it, and a stiff flag of the client's tape stands out from the
+wall above head height, so a seam can be picked out from the far end of a corridor. From the client's room the way
+back leaks the Backrooms' yellow. Beside the OVERFLOW PICKUP sign is a small **receipt printer** (section 6). [built
 2026-11-09]
 - **Nobody is ever seen, but people come and go.** A new lot is brought in only while nobody is in the room, and
   returned boxes (paid the moment the last is back) stay where you left them until you have gone, then they are taken
@@ -191,6 +200,14 @@ carry them back through the same seam → paid, and the shelves are free again.*
 - There is no shift, no closing time, no blackout and no night. The hub is for planning, shopping, gearing up and the
   atmosphere.
 - Not used, and not approved: a sanity meter, monsters on a timer.
+
+### Getting paid is a moment [built 2026-11-09]
+The instant a payment lands, it happens on things, never as floating text:
+- The camcorder's **IN HAND** figure counts up (bottom right of the picture), a tick a step and a till's bell at the
+  end; longer and brighter for a bigger payment.
+- **Stored:** the batch's shelf tickets (section 8) are stamped STORED with a thunk.
+- **Returned:** a receipt prints from the small printer beside the OVERFLOW PICKUP sign (the client, RETURNED or
+  SETTLED, how many boxes, ON TIME or LATE, the pay) and tears off.
 
 ### The trip slip [built]
 Each time you come back up into the hub with something earned, a pay slip prints on the camcorder's screen: each batch
@@ -283,11 +300,19 @@ free). The goals are broad, about your operation, rarely one exact client.
 | **Gate: the first quarter** | Complete 20 batches ($600). | pallet racking, better rates, the wings and the Poolrooms |
 | **After the main floor** | [open]: the wings, the Poolrooms, later levels. | [open] |
 
-The orders are pinned on the camcorder's screen (top right, as Satisfactory pins its milestone), kept short like a
-game's pinned objective (2026-11-09, the owner: the old one was "just words"): the **one next step** on top; the stage's
-orders as a checklist (`[X]` done, `[ ]` open, a count like 12/20 where there is one) and one line of what finishing
-them unlocks; your batches a short line each in the board's words; clients needing equipment or on hold. **J** hides
-it; hidden, it still pops up for a few seconds when something moves on. [built]
+The work is pinned beside the picture, kept short like a game's pinned objective (2026-11-09, the owner: the old one
+was "just words"). The picture is 4:3, so a 16:9 screen has a black bar each side and a 32:9 screen has nearly two
+thirds of itself in them; the list used to sit over the picture instead (it covered a client's own sign). Now
+(2026-11-09) it lives **in the bars, as the camcorder's side panels**:
+- **Right bar:** the **one next step** on top; the stage's orders as a checklist (`[X]` done, `[ ]` open, a count like
+  12/20 where there is one) and one line of what finishing them unlocks.
+- **Left bar:** the date, IN HAND, whether business time is running, and your batches, each with its client's colour,
+  what to do with it now and how long is left; clients needing equipment or on hold.
+- Inside the picture only the camcorder's own marks stay: REC, the counter, the date, LOW LIGHT, notices, and the IN
+  HAND figure for a few seconds when money comes in.
+- **J** hides and shows the panels. On a window with no bars (narrow, or 4:3 off) the picture carries only the one
+  next step; J there goes round: next step, the whole list, hidden. Hidden, it still pops up for a few seconds when
+  something moves on. [built]
 
 ### The work board [built]
 In the lobby: WORK BOARD, the date, and whether business time is running; your batches a line each in the client's
@@ -298,6 +323,21 @@ SAFE (against the order's target), AT RISK, DUE BACK and IN HAND; and one green 
 ## 8. Storage: shelves, light and the dark
 
 The core of what you are paid for: boxes kept safe on your floor.
+
+### Shelf tickets: the state on the shelf [built 2026-11-09]
+Every standing shelf has a ticket holder on its front and one small lamp, so a storage room can be read without the
+list (as Hardspace: Shipbreaker puts its interface on the things themselves):
+- **The lamp**, read from across a room: **green**, its boxes are safe (dim green: empty and lit, ready); **amber**,
+  the shelf is not lit enough; **red and blinking**, boxes on it are due back (fast when late).
+- **The ticket**, read up close: the client's colour and name, how many of the batch's boxes are on this shelf, and
+  STORED 2:10, TAKE BACK 1:40, LATE or COMING IN (LOW LIGHT in red when it is not lit enough; EMPTY - LIT - READY when
+  free).
+- The camcorder's LOW LIGHT warning stays as the second cue.
+
+**A client's mark on its boxes** [built 2026-11-09]: besides their tape's colour, every box carries its client's
+pictogram, big, on both large faces: TALLMORE three bars rising, QUILLBY a diamond, PAPERLARK a chevron, BELLWEATHER a
+bell. Readable without colour. (The tape itself was drawn magenta on any box that had been saved, or sent to a
+friend, since the day it was added: it lost its material. Fixed the same day.)
 
 ### What counts as stored [built]
 - A box is **stored safely** only while it sits **on a shelf lit enough** (the top light level). A batch is stored once
@@ -489,6 +529,18 @@ Two to four players [built]: one hosts their world, the others join by its addre
 see each other's bodies and hands; items, furniture, carts, doors, lights, paint and marks are shared; the host's save
 keeps what each friend carried. Proximity voice chat moves the suit's mouth. Business time stops only when everyone is
 off the floor (in the hub or behind a seam).
+- **How a friend moves** (2026-11-09, the owner: "improve animations ... crouching, crawling, visuals for multiplayer
+  other players, laying down when getting out of the medbay"). All worked out in code from what their game sends:
+  walking, the hips sway over the standing foot and turn with the stride while the chest turns the other way, the feet
+  roll from heel to toe, and the body leans into speeding up, slowing and turning; standing, they breathe and shift
+  their weight, and their feet stay planted, stepping round when they turn on the spot; a real crouch (hips back and
+  down, knees out); crawling on hands and knees in a diagonal gait, shins along the floor; knees tucked in the air; one
+  leg out in front sliding; lying flat on the belt and the cot, and sitting up from it. [built; seen with a stand-in
+  player on one PC, not yet with a friend]
+- **What you see of yourself** [built 2026-11-09]: crawling, your free hand works the floor ahead (in the suit's sleeve
+  and glove), planted while you move over it and reaching forward in turn; the camera rocks onto each hand-fall.
+  Crouch-walking has its own deeper, slower bob. Getting down onto your hands tips the camera forward, getting up tips
+  it back.
 - **Not shared yet:** batches, the slip, shelves being placed, machines and the hand truck. [planned]
 - [open] How the workload grows with more players, and who may spend the shared money.
 

@@ -332,6 +332,35 @@ namespace Backrooms.Saves
         /// <summary>Another folder for the saves (tests); null: the player's own.</summary>
         public static string FolderOverride;
         public static string Folder => FolderOverride ?? Path.Combine(Application.persistentDataPath, "Saves");
+
+#if UNITY_EDITOR
+        /// <summary>An agent's Play test never touches the player's saves: while .claude/unity.lock exists, Play in
+        /// the editor uses a test folder (the lock's "saves=" line, else Temp/AgentSaves). Set before any scene
+        /// object wakes, so nothing can read or write the real folder first.</summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void AgentTestFolder()
+        {
+            FolderOverride = AgentFolder();
+            if (FolderOverride != null) Debug.Log("[SaveSlots] agent lock present: saves go to " + FolderOverride);
+        }
+
+        /// <summary>The test folder an agent's lock asks for, or null with no lock.</summary>
+        public static string AgentFolder()
+        {
+            string root = Path.GetDirectoryName(Application.dataPath);
+            string lockFile = Path.Combine(root, ".claude", "unity.lock");
+            if (!File.Exists(lockFile)) return null;
+            string folder = Path.Combine(root, "Temp", "AgentSaves");
+            try
+            {
+                foreach (string line in File.ReadAllLines(lockFile))
+                    if (line.StartsWith("saves=")) folder = line.Substring(6).Trim();
+            }
+            catch (IOException) { }
+            Directory.CreateDirectory(folder);
+            return folder;
+        }
+#endif
         public static string DataPath(int slot) => Path.Combine(Folder, $"world{slot + 1}.json");
         public static string PaintPath(int slot) => Path.Combine(Folder, $"world{slot + 1}.paint");
         public static string MarksPath(int slot) => Path.Combine(Folder, $"world{slot + 1}.marks");

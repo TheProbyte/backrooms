@@ -69,8 +69,7 @@ namespace Backrooms.Interaction
             if (!armPrefab) armPrefab = Resources.Load<GameObject>("Player/PlayerArm");
             // The hazmat suit (2026-11-06, Tools/Blender/style_lab_rig.py) is rigged on the MakeHuman body's skeleton, so it
             // takes its place and everything below drives it the same way.
-            // (The suit is the Overflow look's body; the Classic look keeps the MakeHuman body: Generation.ArtStyle.)
-            bool suit = useHazmatSuit && Generation.ArtStyle.Current == Generation.ArtStyle.Look.Overflow;
+            bool suit = useHazmatSuit;
             var hazmatPrefab = suit ? Resources.Load<GameObject>("Player/Hazmat/PlayerHazmatSuit") : null;
             var mpfbPrefab = !hazmatPrefab && useMakeHumanBody ? Resources.Load<GameObject>("Player/MPFB/PlayerMPFB") : null;
             var bodyPrefab = hazmatPrefab ? hazmatPrefab : mpfbPrefab ? mpfbPrefab : Resources.Load<GameObject>("Player/PlayerBody");
@@ -97,7 +96,7 @@ namespace Backrooms.Interaction
                 _body = Instantiate(bodyPrefab, transform, false).transform;
                 _body.name = "FirstPersonBody";
                 Setup(_body.gameObject, _isMpfb);
-                if (_isHazmat) SetupHazmat(_body);
+                if (_isHazmat) { SetupHazmat(_body); SuitLooseArm(); }
                 _hips = Find(_body, Bone("Hips")); _torso = Find(_body, Bone("Torso"));
                 _thighL = Find(_body, Bone("ThighL")); _thighR = Find(_body, Bone("ThighR")); _shinL = Find(_body, Bone("ShinL")); _shinR = Find(_body, Bone("ShinR"));
                 MeasureBody();
@@ -142,6 +141,16 @@ namespace Backrooms.Interaction
         /// </summary>
         /// <summary>Backrooms/Lit's settled dust is for the world, not the player (a negative detail-albedo scale turns it off).</summary>
         static void NoDust(Material m) { if (m && m.HasProperty("_DetailAlbedoMapScale")) m.SetFloat("_DetailAlbedoMapScale", -1f); }
+
+        /// <summary>The separate arm (what you see of yourself crawling: FirstPersonBody.Crawl) wears the suit too: its sleeve
+        /// the suit's yellow, the hand its dark rubber glove. It was a bare arm in a dark shirt.</summary>
+        void SuitLooseArm()
+        {
+            var glove = new Color(0.118f, 0.11f, 0.102f);
+            if (_mats.TryGetValue("Shirt", out var sleeve) && sleeve) { sleeve.SetColor("_BaseColor", new Color(0.93f, 0.6f, 0.11f)); sleeve.SetFloat("_Smoothness", 0.35f); }
+            if (_mats.TryGetValue("Skin", out var skin) && skin) { skin.SetColor("_BaseColor", glove); skin.SetFloat("_Smoothness", 0.3f); }
+            if (_mats.TryGetValue("Nail", out var nail) && nail) { nail.SetColor("_BaseColor", glove); nail.SetFloat("_Smoothness", 0.3f); }
+        }
 
         void Setup(GameObject go, bool mpfb)
         {
@@ -230,7 +239,7 @@ namespace Backrooms.Interaction
             if (_looseArm != null && _looseArm.renderers != null)
             {
                 // The separate arm is always there (the shadow has it) unless the body is not and nothing is held.
-                bool showLoose = loose && (blend > 0.001f || FeetActive);
+                bool showLoose = loose && (blend > 0.001f || FeetActive || CrawlHandWanted);      // (crawling: the hand works the floor)
                 foreach (var r in _looseArm.renderers) if (r) r.enabled = showLoose;
                 if (loose && !showLoose) { PalmError = 1f; return; }
             }
@@ -252,6 +261,7 @@ namespace Backrooms.Interaction
             // Resting (the Body and IK layers: hanging and swinging, or a hand on the world); reaching (the Override
             // layer, PropGrabber): palm on the grip.
             RestPose(natural, yaw, side, out Vector3 restWrist, out Quaternion restHand, out float restCurl);
+            if (loose) CrawlHand(yaw, side, ref restWrist, ref restHand, ref restCurl);
             bool poke = _grab.PokePose;
             // First person: the working arm is drawn while it does something; hanging at the side, only its shadow.
             // (Hands in view Off: never drawn, its shadow only.)

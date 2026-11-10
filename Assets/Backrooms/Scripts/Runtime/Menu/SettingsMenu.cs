@@ -208,14 +208,7 @@ namespace Backrooms.Menu
                         o.frameCap = Caps[(i + d + Caps.Length) % Caps.Length]; o.Save();
                     });
                     Option("VSYNC", () => o.vSync ? "ON" : "OFF", d => { o.vSync = !o.vSync; o.Save(); });
-                    Option("ART STYLE", () => Backrooms.Generation.ArtStyle.Current == Backrooms.Generation.ArtStyle.Look.Overflow ? "OVERFLOW" : "CLASSIC", d =>
-                    {
-                        var s = Backrooms.Generation.ArtStyle.Current;
-                        Backrooms.Generation.ArtStyle.Current = s == Backrooms.Generation.ArtStyle.Look.Overflow ? Backrooms.Generation.ArtStyle.Look.Classic : Backrooms.Generation.ArtStyle.Look.Overflow;
-                        MainMenu.ApplyLook(_root);                    // the menus follow at once
-                    });
                     Desc("QUALITY SETS HOW MANY LIGHTS CAST SHADOWS, HOW FAR, AND THE LIGHT BOUNCED ROUND THE ROOMS.");
-                    Desc("ART STYLE: THE NEW PAINTED LOOK OR THE OLD REALISTIC ONE. TAKES EFFECT WHEN A WORLD LOADS.");
                     Item("BACK", Back, true);
                     break;
                 }

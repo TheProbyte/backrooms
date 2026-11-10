@@ -588,79 +588,15 @@ namespace Backrooms.Generation
             int w = t.width;
             var rng = new System.Random(seed);
             int tile = w / 4;
-            // (The Overflow look's painted tiles get only the drawn stains: photographed ones read as photos on them.)
-            bool photos = ArtStyle.Current == ArtStyle.Look.Classic && LoadStamps();
             for (int ty = 0; ty < 4; ty++)
             for (int tx = 0; tx < 4; tx++)
             {
                 double kind = rng.NextDouble();
-                // Most water stains from the photographed tiles (turned, flipped, scaled, placed at random), some drawn.
-                if (kind < 0.8)
-                {
-                    if (photos && rng.NextDouble() < 0.75) PhotoStain(px, w, tx * tile, ty * tile, tile, rng);
-                    else WaterStain(px, w, tx * tile, ty * tile, tile, rng);
-                }
+                // Drawn water stains (painted tiles: a photographed stain reads as a photo on them).
+                if (kind < 0.8) WaterStain(px, w, tx * tile, ty * tile, tile, rng);
                 if (kind > 0.55) Mould(px, w, tx * tile, ty * tile, tile, rng);
             }
             return Finish(t, px);
-        }
-
-        // Two stains cut from photos of stained tiles (Resources/Textures/Photo/StainCorner, StainCentre: multiply stamps,
-        // white = no change, 512 px = one tile; Tools/Textures/make_surface_textures.py).
-        static Color32[] s_stampCorner, s_stampCentre;
-        static int s_stampW;
-
-        static bool LoadStamps()
-        {
-            if (s_stampCorner != null && s_stampCentre != null) return true;
-            var a = Resources.Load<Texture2D>("Textures/Photo/StainCorner");
-            var b = Resources.Load<Texture2D>("Textures/Photo/StainCentre");
-            if (!a || !b || a.width != b.width) return false;
-            var ta = Readable(a, " (read)", out s_stampCorner);
-            var tb = Readable(b, " (read)", out s_stampCentre);
-            s_stampW = a.width;
-            if (Application.isPlaying) { Object.Destroy(ta); Object.Destroy(tb); } else { Object.DestroyImmediate(ta); Object.DestroyImmediate(tb); }
-            return true;
-        }
-
-        /// <summary>
-        /// A photographed stain on one tile: the corner one stays in a corner (it ran in from the tile's edge, turned to any
-        /// of the four), the centre one at 55-95 % of the tile anywhere on it; a little fainter or full strength.
-        /// </summary>
-        static void PhotoStain(Color32[] px, int w, int ox, int oy, int tile, System.Random rng)
-        {
-            bool corner = rng.NextDouble() < 0.45;
-            var sp = corner ? s_stampCorner : s_stampCentre;
-            int rot = rng.Next(4);
-            bool flip = rng.NextDouble() < 0.5;
-            float scale = corner ? 0.8f + 0.2f * (float)rng.NextDouble() : 0.55f + 0.4f * (float)rng.NextDouble();
-            float strength = 0.65f + 0.35f * (float)rng.NextDouble();
-            int size = Mathf.Max(8, (int)(tile * scale));
-            int inset = tile / 48;
-            int room = Mathf.Max(0, tile - 2 * inset - size);
-            // The corner stain sits against the corner its own corner turns to; the centre one anywhere.
-            int sx = corner ? ((rot == 1 || rot == 2) ^ flip ? tile - inset - size : inset) : inset + rng.Next(room + 1);
-            int sy = corner ? (rot >= 2 ? tile - inset - size : inset) : inset + rng.Next(room + 1);
-            sx = Mathf.Clamp(sx, 0, tile - size); sy = Mathf.Clamp(sy, 0, tile - size);
-            int W = s_stampW;
-            for (int y = 0; y < size; y++)
-            for (int x = 0; x < size; x++)
-            {
-                float u = (x + 0.5f) / size, v = (y + 0.5f) / size;
-                if (flip) u = 1f - u;
-                for (int r = 0; r < rot; r++) { float t = u; u = v; v = 1f - t; }
-                // Bilinear in the stamp.
-                float fx = u * W - 0.5f, fy = v * W - 0.5f;
-                int x0 = Mathf.Clamp((int)fx, 0, W - 1), y0 = Mathf.Clamp((int)fy, 0, W - 1);
-                int x1 = Mathf.Min(x0 + 1, W - 1), y1 = Mathf.Min(y0 + 1, W - 1);
-                float ax = Mathf.Clamp01(fx - x0), ay = Mathf.Clamp01(fy - y0);
-                Color32 c00 = sp[y0 * W + x0], c10 = sp[y0 * W + x1], c01 = sp[y1 * W + x0], c11 = sp[y1 * W + x1];
-                float S(byte p00, byte p10, byte p01, byte p11) =>
-                    Mathf.Lerp(Mathf.Lerp(p00, p10, ax), Mathf.Lerp(p01, p11, ax), ay) / 255f;
-                float mr = S(c00.r, c10.r, c01.r, c11.r), mg = S(c00.g, c10.g, c01.g, c11.g), mb = S(c00.b, c10.b, c01.b, c11.b);
-                if (mr > 0.995f && mg > 0.995f && mb > 0.995f) continue;
-                Multiply(px, (oy + sy + y) * w + ox + sx + x, Mathf.Lerp(1f, mr, strength), Mathf.Lerp(1f, mg, strength), Mathf.Lerp(1f, mb, strength));
-            }
         }
 
         static void Multiply(Color32[] px, int i, float r, float g, float b)

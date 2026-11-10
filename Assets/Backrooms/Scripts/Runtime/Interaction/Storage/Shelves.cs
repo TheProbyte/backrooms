@@ -448,7 +448,8 @@ namespace Backrooms.Interaction
                 foreach (var l in _userLights) if (l && l.intensity > 0.01f) _lights.Add(l);
                 foreach (var l in Machines.Lights) if (l && l.intensity > 0.01f) _lights.Add(l);      // floodlights
                 _live.Clear();
-                foreach (var id in d.shelves) { var mp = MovableProp.Find(id); if (mp) _live.Add(mp); }
+                foreach (var id in d.shelves) { var mp = MovableProp.Find(id); if (mp) { _live.Add(mp); ShelfTicket.Ensure(mp); } }
+                ShelfTickets.Refresh();
                 // A few shelves a pass (all of them every second or so).
                 for (int k = 0; k < Mathf.Min(_live.Count, 8); k++)
                 {

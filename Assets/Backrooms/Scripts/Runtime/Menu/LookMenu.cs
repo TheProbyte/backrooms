@@ -235,8 +235,6 @@ namespace Backrooms.Menu
             Choice("SKIN", l => $"{Mathf.Clamp(l.skinTone, 0, skins - 1) + 1} OF {skins}", (ref PlayerLook l, int d) => l.skinTone = Wrap(Mathf.Clamp(l.skinTone, 0, skins - 1), d, skins));
             Choice("HAIR COLOUR", l => $"{Mathf.Clamp(l.hairTone, 0, hairs - 1) + 1} OF {hairs}", (ref PlayerLook l, int d) => l.hairTone = Wrap(Mathf.Clamp(l.hairTone, 0, hairs - 1), d, hairs));
             Choice("CREW NUMBER", l => Mathf.Clamp(l.crew, 0, PlayerLook.MaxCrew).ToString("00"), (ref PlayerLook l, int d) => l.crew = Wrap(l.crew - 1, d, PlayerLook.MaxCrew) + 1);
-            if (Backrooms.Generation.ArtStyle.Current != Backrooms.Generation.ArtStyle.Look.Overflow)
-                _list.Add(Text("THE SUIT IS WORN IN THE OVERFLOW ART STYLE (SETTINGS > GRAPHICS).", "mm-desc"));
             Item("RANDOM", () => { PlayerLook.Saved = PlayerLook.Random(skins, hairs); Beep(1); ShowLook(); Fill(); Select(_items.Count - 2, false); }, true);
             Item("BACK", Close, true);
             Select(0, false);

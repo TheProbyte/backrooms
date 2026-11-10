@@ -46,6 +46,27 @@ namespace Backrooms.Camcorder
         Text _tracker;
 
         /// <summary>
+        /// The side panels (2026-11-09, Docs/ImprovementPlan.md V1). The picture is 4:3: on a 16:9 screen a quarter of the
+        /// screen is black bar, on a 32:9 one nearly two thirds, and the work list used to sit over the picture instead.
+        /// With bars at least <see cref="MinSide"/> wide the list is drawn in them, as a camcorder's side panel: the work
+        /// (next step, this stage's orders) in the right bar, your batches and what is in hand in the left. Inside the
+        /// picture only the camcorder's own marks stay. <see cref="SideWidth"/> is a bar's width in the display's units
+        /// (1080 high), 0 with no bars: Interaction.OrderTracker sizes its text by it.
+        /// </summary>
+        public static string SideRight = "", SideLeft = "";
+        public static float SideAlpha = 1f, SideWidth;
+        public const float MinSide = 200f;
+        Text _sideR, _sideL;
+
+        /// <summary>Money in (Interaction.Contracts.PayMoment): IN HAND counts up from one figure to the other over this
+        /// long, bottom right of the picture, and stays a few seconds.</summary>
+        public static void Money(int from, int to, float time) { s_moneyFrom = from; s_moneyTo = to; s_moneyTime = Mathf.Max(0.1f, time); s_moneyAt = Time.unscaledTime; }
+        static int s_moneyFrom, s_moneyTo;
+        static float s_moneyAt = -100f, s_moneyTime = 1f;
+        const float MoneyFor = 5f;
+        Text _money;
+
+        /// <summary>
         /// The pay slip (2026-11-08, Interaction.Contracts.Punch): printed at punch-out and held up in front of you for a
         /// while, a paper slip with the day's lines (each "left\tright"; "--" a rule), as a day ends on its report in
         /// Supermarket Simulator. Shown flat over the picture (not through the eyepiece's curve), with or without the
@@ -203,6 +224,10 @@ namespace Backrooms.Camcorder
             // Smaller text over bright walls: a dark rim all round as well as the drop shadow.
             var rim = _tracker.gameObject.AddComponent<Outline>();
             rim.effectColor = new Color(0, 0, 0, 0.8f); rim.effectDistance = new Vector2(1.5f, -1.5f);
+            _money = Label("", new Vector2(1, 0), Vector2.zero, TextAnchor.LowerRight, 40);
+            _money.enabled = false;
+            _sideR = SidePanel("SideRight");
+            _sideL = SidePanel("SideLeft");
             _notice = Label("", new Vector2(0.5f, 0.5f), new Vector2(0, -60), TextAnchor.MiddleCenter, 72);
             _notice.transform.SetParent(_barCanvas.transform, false);
             var nr = _notice.rectTransform; nr.anchorMin = nr.anchorMax = nr.pivot = new Vector2(0.5f, 0.32f); nr.anchoredPosition = Vector2.zero;
@@ -304,6 +329,20 @@ namespace Backrooms.Camcorder
             float k = Mathf.Min(Mathf.SmoothStep(0f, 1f, t / 0.35f), Mathf.SmoothStep(0f, 1f, (s_slipFor - t) / 0.5f));
             _slip.anchoredPosition = new Vector2(-380f, Mathf.Lerp(-_slip.sizeDelta.y - 20f, 215f, k));
             _slip.localRotation = Quaternion.Euler(0f, 0f, 1.2f);
+        }
+
+        /// <summary>A side panel's text, flat on the bars' canvas (over the black bar it sits in).</summary>
+        Text SidePanel(string name)
+        {
+            var t = new GameObject(name).AddComponent<Text>();
+            t.transform.SetParent(_barCanvas.transform, false);
+            t.font = _font; t.fontSize = 22; t.alignment = TextAnchor.UpperLeft; t.supportRichText = true;
+            t.color = new Color(243 / 255f, 230 / 255f, 200 / 255f, 0.92f);
+            t.horizontalOverflow = HorizontalWrapMode.Wrap; t.verticalOverflow = VerticalWrapMode.Truncate;
+            t.lineSpacing = 1.08f;
+            t.raycastTarget = false;
+            t.enabled = false;
+            return t;
         }
 
         RectTransform Bar(string name, bool left)
@@ -437,10 +476,48 @@ namespace Backrooms.Camcorder
                 _lowLight.enabled = on;
                 if (on) _lowLight.color = new Color(_ink.r, _ink.g, _ink.b, 0.95f * LowLight * (LowLight < 0.99f || ((Time.unscaledTime * 1.25f) % 1f) < 0.7f ? 1f : 0.35f));
             }
-            // The work orders, top right.
+            // Money in: the figure counts up, holds, and goes.
+            if (_money)
+            {
+                float mt = Time.unscaledTime - s_moneyAt;
+                _money.enabled = mt < MoneyFor;
+                if (_money.enabled)
+                {
+                    float k = Mathf.Clamp01(mt / s_moneyTime);
+                    int shown = Mathf.RoundToInt(Mathf.Lerp(s_moneyFrom, s_moneyTo, k));
+                    _money.text = $"IN HAND  ${shown}";
+                    float fade = Mathf.Clamp01((MoneyFor - mt) / 0.6f);
+                    // (A little larger while it counts, settling as it lands.)
+                    _money.fontSize = k < 1f ? 44 : 40;
+                    _money.color = new Color(_ink.r, _ink.g, _ink.b, 0.95f * fade);
+                }
+            }
+            // The side panels: the work in the right bar, your batches in the left, hard against the picture.
+            SideWidth = bar;
+            bool side = bar >= MinSide && visible;
+            if (_sideR && _sideL)
+            {
+                bool on = side && SideAlpha > 0.01f;
+                _sideR.enabled = on && !string.IsNullOrEmpty(SideRight);
+                _sideL.enabled = on && !string.IsNullOrEmpty(SideLeft);
+                if (on)
+                {
+                    float pw = Mathf.Min(bar - 36f, 560f), ph = h - 150f;
+                    var rr = _sideR.rectTransform;
+                    rr.anchorMin = rr.anchorMax = new Vector2(1, 1); rr.pivot = new Vector2(0, 1);
+                    rr.anchoredPosition = new Vector2(-bar + 18f, -72f); rr.sizeDelta = new Vector2(pw, ph);
+                    var lr = _sideL.rectTransform;
+                    lr.anchorMin = lr.anchorMax = new Vector2(0, 1); lr.pivot = new Vector2(1, 1);
+                    lr.anchoredPosition = new Vector2(bar - 18f, -72f); lr.sizeDelta = new Vector2(pw, ph);
+                    _sideR.text = SideRight; _sideL.text = SideLeft;
+                    var c = new Color(243 / 255f, 230 / 255f, 200 / 255f, 0.92f * SideAlpha);
+                    _sideR.color = c; _sideL.color = c;
+                }
+            }
+            // The work orders in the picture, top right: only with no bars to put them in (a narrow window, 4:3 off).
             if (_tracker)
             {
-                bool any = !string.IsNullOrEmpty(Tracker);
+                bool any = !string.IsNullOrEmpty(Tracker) && !side;
                 bool full = any && TrackerAlpha > 0.01f;
                 _tracker.enabled = any;
                 if (any)

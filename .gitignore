@@ -50,3 +50,4 @@ Thumbs.db
 # Agent session lock (never committed)
 .claude/unity.lock
 .claude/settings.local.json
+.claude/unity.playing

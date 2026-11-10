@@ -154,24 +154,27 @@ def wallpaper():
     gy = ((ys + (np.floor(xs / (n / 8.0)) % 2) * period * 0.5) % (period * 0.5)) - period * 0.25
     ground = np.clip((3.0 - np.sqrt(gx ** 2 + gy ** 2)) / 1.0, 0, 1) * (1 - band)
     # Print: the ink a hair off register, thinner in patches.
-    ink_off = np.roll(np.roll(ink, 2, 0), -1, 1)
+    ink_off = np.roll(np.roll(ink, 3, 0), -2, 1)
     thin = 0.72 + 0.28 * np.clip(painted(n, 30, 15, 3, 3) * 0.5 + 0.5, 0, 1)
     paper = (214, 190, 104)                            # mustard #D6BE68 (the style sheet)
     # (The patches are kept faint: the tile is only 0.6 m, so anything bold repeats across the wall. The world's own
     # stains and dirt give the large-scale variety.)
-    v = band * 0.07
+    # (2026-11-09, Docs/ImprovementPlan.md V3: under the bright panels the print was barely there. A lighter ink
+    # on a light wall washes out first, so the contrast is carried by the dark side: the under-print, the pin lines and
+    # the stripe's own tone, each about half as strong again.)
+    v = band * 0.10
     v += painted(n, 110, 11, levels=4, soft=7) * 0.016 + painted(n, 300, 12, levels=3, soft=20) * 0.01
     v += noise(n, 1.4, 13) * 0.006
     rgb = shade(paper, v, warm=0.6)
     ink_c = np.array([244.0, 230.0, 162.0])            # cream-gold ink, a shade lighter than the paper
-    shadow_c = np.array([150.0, 118.0, 52.0])          # its misregistered dark under-print
-    a_shadow = blur(ink_off, 0.8) * 0.28 * thin
+    shadow_c = np.array([132.0, 100.0, 40.0])          # its misregistered dark under-print
+    a_shadow = blur(ink_off, 0.8) * 0.5 * thin
     rgb = rgb * (1 - a_shadow[..., None]) + shadow_c * a_shadow[..., None]
     a_ink = blur(ink, 0.7) * 0.95 * thin
     rgb = rgb * (1 - a_ink[..., None]) + ink_c * a_ink[..., None]
-    a_pin = blur(pin, 0.6) * 0.42
+    a_pin = blur(pin, 0.6) * 0.64
     rgb = rgb * (1 - a_pin[..., None]) + np.array([140.0, 112.0, 50.0]) * a_pin[..., None]
-    a_g = blur(ground, 0.6) * 0.16
+    a_g = blur(ground, 0.6) * 0.26
     rgb = rgb * (1 - a_g[..., None]) + ink_c * a_g[..., None]
     save_rgb(rgb, 'OF_Wallpaper_Albedo.png')
     # Embossed vinyl: the motif and the band raised a little, the pins pressed in, some paper tooth.

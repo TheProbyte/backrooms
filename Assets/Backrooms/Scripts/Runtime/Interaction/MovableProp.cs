@@ -231,7 +231,13 @@ namespace Backrooms.Interaction
             var board = new MeshWriter { worldOffset = spec.position };
             var tape = new MeshWriter { worldOffset = spec.position };
             var print = new MeshWriter { worldOffset = spec.position };
-            CardboardBoxGeometry.Build(board, tape, print, Vector3.zero, spec.size, 0f, new System.Random(spec.variant));
+            int mark = Contracts.IsBoxId(spec.id) && !Improvements.IsKit(spec.id) ? Contracts.BoxClient(spec.id) : -1;
+            // A client's or a kit's tape is made in code: found again here (a saved or sent box cannot name it). And no
+            // slot is ever left empty (an empty one draws magenta): the board stands in.
+            var ownTape = Contracts.Tape(spec.id);
+            if (ownTape && spec.materials.Length > 1) spec.materials[1] = ownTape;
+            for (int i = 1; i < spec.materials.Length; i++) if (!spec.materials[i]) spec.materials[i] = spec.materials[0];
+            CardboardBoxGeometry.Build(board, tape, print, Vector3.zero, spec.size, 0f, new System.Random(spec.variant), mark);
             OneRenderer(root, spec, meshes, "Carton", new[] { board, tape, print });
         }
 

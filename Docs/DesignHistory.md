@@ -3,6 +3,19 @@
 What the game was before the current design, kept so nothing is lost. **Not the current design**: that is
 `Docs/GameDesign.md`. Read this only to see how something used to work, or why it changed.
 
+## The Classic look, retired 2026-11-09
+
+Until 2026-11-09 the game had two looks, chosen in SETTINGS > GRAPHICS > ART STYLE (and `-art-style classic|overflow`
+on the command line for one run):
+- **Classic:** the first, realistic look: photographed textures (wallpaper, carpet, ceiling tiles, stains cut from
+  photos of stained tiles), the MakeHuman body in ordinary clothes, the first models of the furniture and items.
+- **Overflow:** the painted, chunky look built from 2026-11-06 (`StyleSheet.md`, `StyleRollout.md`).
+
+The hub was always drawn in Overflow whichever was chosen. The owner retired Classic on 2026-11-09 ("classic look can
+leave"): it doubled the upkeep of every texture and model, and both looks shipped in the build. The setting, the
+command-line switch, the photographed stains and the Classic body are gone from the code; the Classic textures and
+models that nothing loads any more are removed with the build-size work (`ImprovementPlan.md`, E7).
+
 ## What changed on 2026-11-09 (batches replaced the working day)
 
 The owner's design brief (`Overflow_Claude_Prompt.md`, 2026-11-09) and their answers that day replaced the working

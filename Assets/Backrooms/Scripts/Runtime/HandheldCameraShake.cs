@@ -119,6 +119,9 @@ namespace Backrooms
         Vector2 _lookVel, _lookOff, _lookOffVel;
         float _lookRoll;
         Vector3 _seed;
+        // Crouch-walking and crawling: how much of each, where along their own gait, and the stance last frame.
+        float _crawlBlend, _crouchBlend, _lowPhase;
+        int _lastStance = -1;
 
         void Awake()
         {
@@ -223,6 +226,49 @@ namespace Backrooms
                 _wadeDip += _wadeDipVel * h;
             }
             wadePos.y += _wadeDip;
+            // Crouch-walking and crawling (2026-11-09, the owner: "improve animations ... crouching, crawling"): they used a
+            // faint copy of the walk's bob at the wrong pace. Each has its own gait now, in step with the ground covered
+            // (the crawl's with its hand-falls, as the sounds are: PlayerAudio).
+            //  - Crawling: the weight rocks onto each planted hand in turn, so the camera sways across and rolls with it,
+            //    dips as the hand takes the weight and nods as the knee follows.
+            //  - Crouch-walking: bent knees absorb less: a deeper, slower bob and a roll from foot to foot.
+            // Getting down and up: the camera tips forward going down onto the hands and back coming up.
+            Vector3 lowPos = Vector3.zero, lowRot = Vector3.zero;
+            if (player)
+            {
+                int stance = (int)player.CurrentStance;
+                if (_lastStance >= 0 && stance != _lastStance && grounded && !player.seated)
+                {
+                    bool down = stance > _lastStance;
+                    bool crawl = stance == 2 || _lastStance == 2;
+                    Jolt(down ? new Vector3(crawl ? 16f : 7f, 0f, crawl ? 4f : 2f) : new Vector3(crawl ? -10f : -5f, 0f, crawl ? -3f : -1.5f));
+                }
+                _lastStance = stance;
+                bool crawling = stance == 2, crouching = stance == 1 && !player.Sliding;
+                _crawlBlend = Mathf.MoveTowards(_crawlBlend, crawling && grounded ? 1f : 0f, dt * 3f);
+                _crouchBlend = Mathf.MoveTowards(_crouchBlend, crouching && grounded ? 1f : 0f, dt * 3f);
+                float low = Mathf.Max(_crawlBlend, _crouchBlend);
+                if (low > 0.001f)
+                {
+                    float metres = player.PlanarVelocity.magnitude;
+                    _lowPhase += metres * dt / (crawling ? (player.CrawlingFast ? 0.5f : 0.42f) : 0.55f);
+                    float lu = Mathf.Repeat(_lowPhase, 1f);
+                    float sideNow = (Mathf.FloorToInt(_lowPhase) & 1) == 0 ? 1f : -1f;
+                    float arc = Mathf.Sin(lu * Mathf.PI);                 // over one hand-fall or step
+                    float plant = Mathf.Pow(1f - lu, 5f);               // the moment the weight lands
+                    float going = Mathf.Clamp01(metres / 0.25f);
+                    float ca = _crawlBlend * going, ka = _crouchBlend * going * (1f - _crawlBlend);
+                    lowPos = new Vector3(sideNow * 0.016f * arc, -0.012f * plant - 0.004f * arc, 0f) * ca
+                           + new Vector3(sideNow * 0.006f * arc, (Mathf.Abs(Mathf.Sin(lu * Mathf.PI)) - 0.5f) * 0.02f, 0f) * ka;
+                    lowRot = new Vector3(1.6f * plant, sideNow * 0.9f * arc, -sideNow * 2.4f * arc) * ca
+                           + new Vector3(0.7f * plant, sideNow * 0.3f * arc, -sideNow * 1.0f * arc) * ka;
+                    if (player.CrawlingFast) { lowPos *= 1.3f; lowRot *= 1.35f; }
+                    // Still, low down: the arms holding the weight tremble a little.
+                    lowRot += Noise3(t * 1.7f + 911f) * 0.25f * _crawlBlend * (1f - going);
+                    walkOnly *= 1f - (0.9f * _crawlBlend + 0.65f * _crouchBlend * (1f - _crawlBlend));
+                }
+            }
+
             // Breathing: irregular period (rate wanders a little) so it never reads as a metronome.
             _breathPhase += dt * breathingRate * (0.85f + 0.3f * Mathf.PerlinNoise(t * 0.05f, _seed.x)) * Mathf.PI * 2f;
             float breath = Mathf.Sin(_breathPhase) + 0.25f * Mathf.Sin(_breathPhase * 2f + 0.8f);
@@ -242,6 +288,9 @@ namespace Backrooms
                         + idleRot * idleW * Mathf.Lerp(1f, 0.4f, stabilization)
                         + walkRot * walkOnly * Mathf.Lerp(1f, 0.35f, stabilization)
                         + runRot * runShare * Mathf.Lerp(1f, 0.25f, stabilization) * (0.5f + 0.5f * stab);
+
+            pos += lowPos * Mathf.Lerp(1f, 0.6f, stabilization);
+            rot += lowRot * Mathf.Lerp(1f, 0.5f, stabilization);
 
             rot += LookMotion(dt, t) * (1f - stabilization * 0.5f);
 
